@@ -21,7 +21,10 @@ Lessons baked in from K4 reviews:
   - K4-I5: no dead `self._token` field; token lives in the headers
 """
 
+import json
 import logging
+import re
+import time
 from typing import Literal
 
 import httpx
@@ -29,6 +32,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.middleware.trace_id import current_trace_id
+
+# REG-P2-03 — per-user tool-catalog cache TTL. Short by design: the federation
+# overlay changes the instant a user registers/removes an external MCP server, so a
+# long cache would hide a just-registered server (or serve a just-removed one). 60s
+# bounds the staleness window while keeping most turns cache-hot.
+_TOOL_CATALOG_TTL_S = 60.0
+
+# An external federated (overlay) tool name — u_/b_/s_<hash8>_… — matching the
+# ai-gateway's OVERLAY_NAME_RE. Internal LoreWeave tools are unprefixed. External
+# tools may return plain text (prose/markdown), not the JSON internal tools return.
+_OVERLAY_TOOL_RE = re.compile(r"^[ubs]_[0-9a-f]{8}_")
 
 # ARCH-2 C2 — MCP client transport for the USE_MCP_TOOLS dual-run path.
 # Imported at module level (not lazily) so tests can patch these symbols at
@@ -91,11 +105,27 @@ class KnowledgeContext(BaseModel):
     token_count: int = 0
     stable_context: str = ""
     volatile_context: str = ""
+    # W1 — per-section token split of `context` (glossary_entities / facts /
+    # passages / summaries / instructions / ...), the nested detail of the
+    # contextBudget frame's memory_knowledge category. Defaults {} when talking
+    # to an older knowledge-service build (additive contract).
+    sections: dict[str, int] = {}
     # K21-B — per-project tool-calling opt-out, surfaced from
     # knowledge-service `projects.tool_calling_enabled`. Defaults True so
     # an older knowledge-service that omits the field, the no-project
     # path, and the degraded path all leave tool-calling enabled.
     tool_calling_enabled: bool = True
+    # WS-4C Half A — per-project canon auto-capture, surfaced from
+    # knowledge-service `projects.canon_capture_enabled`. Defaults FALSE, the
+    # opposite of tool_calling_enabled and deliberately so: capture spends the
+    # user's BYOK tokens, so an older knowledge-service that omits the field, the
+    # no-project path, and the degraded path must all leave capture OFF.
+    canon_capture_enabled: bool = False
+    # Interview-roleplay — rendered working_memory anchor (charter + state).
+    # Pinned into the system block AND tail-injected by stream_service. "" when
+    # the session has no working_memory block or on the degraded path; chat-service
+    # then falls back to the session's working_memory_seed (EC-4). M4 populates it.
+    working_memory: str = ""
 
 
 def _degraded() -> KnowledgeContext:
@@ -105,6 +135,60 @@ def _degraded() -> KnowledgeContext:
         recent_message_count=DEGRADED_RECENT_MESSAGE_COUNT,
         token_count=0,
     )
+
+
+_FASTMCP_ERR_PREFIX = re.compile(r"^Error executing tool [\w.-]+:\s*(?=\{)")
+
+
+def _strip_fastmcp_prefix(text: str) -> str:
+    """Drop FastMCP's ``Error executing tool <name>: `` preamble so the C4 body behind it
+    can actually be decoded.
+
+    K18 (2026-07-23) — without this, the decoding below NEVER RAN in production. FastMCP
+    wraps every raised `ToolError` as ``Error executing tool kg_add_nodes: {"message": …}``,
+    so `text.startswith("{")` was always False and every C4 body degraded to raw text: the
+    stable `code` a workflow is supposed to branch on (contract C5) was silently lost on
+    every single tool failure. It went unnoticed because the unit tests fed this function a
+    BARE `{"message": …}` string — the shape the contract describes, not the shape the
+    producer emits.
+
+    Deliberately narrow: the lookahead requires a `{` right after the colon, so a genuine
+    plain-text error that merely starts with those words is left alone.
+    """
+    return _FASTMCP_ERR_PREFIX.sub("", text, count=1)
+
+
+def _error_envelope(err_text: str) -> dict:
+    """Build the `{"success": False, ...}` envelope from an MCP isError payload.
+
+    D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR — knowledge-service raises on a tool
+    failure and puts a C4-shaped JSON body in `content[0].text`:
+    ``{"code"?, "message", "detail"?}`` (the same shape ai-gateway writes). Decode
+    it so a STABLE machine code (e.g. ``KG_ENDPOINT_NOT_NODE``) and its ``detail``
+    (``{"missing": [...]}``) survive to the caller, letting a workflow branch on the
+    code rather than pattern-match prose (contract C5).
+
+    Anything that isn't such a JSON object (plain-text errors from overlay/external
+    tools, or older services) degrades to the raw text — never raises.
+    """
+    text = _strip_fastmcp_prefix((err_text or "").strip())
+    if text.startswith("{"):
+        try:
+            body = json.loads(text)
+        except (ValueError, TypeError):
+            body = None
+        if isinstance(body, dict) and "message" in body:
+            out: dict = {
+                "success": False,
+                "result": None,
+                "error": str(body.get("message") or "mcp tool error"),
+            }
+            if body.get("code") is not None:
+                out["code"] = body["code"]
+            if body.get("detail") is not None:
+                out["detail"] = body["detail"]
+            return out
+    return {"success": False, "result": None, "error": text or "mcp tool error"}
 
 
 def _normalize_tool_parameters(input_schema: dict | None) -> dict:
@@ -169,9 +253,34 @@ class KnowledgeClient:
         if transport is not None:
             client_kwargs["transport"] = transport
         self._http = httpx.AsyncClient(**client_kwargs)
-        # K21-B — process cache for GET /internal/tools/definitions.
-        # None = not fetched yet; a list = the cached OpenAI schemas.
-        self._tool_definitions: list[dict] | None = None
+        # K21-B — cache for the federated tool catalog. Sourced from the ai-gateway
+        # `/mcp` MCP `tools/list` (see get_tool_definitions); the legacy
+        # `/internal/tools/definitions` HTTP path was retired in KM0.
+        # REG-P2-03 — the catalog is now PER-USER: the gateway appends the caller's
+        # external-MCP federation overlay (u_/b_/s_ tools) when it sees `X-User-Id`,
+        # so a single process-wide cache would leak one user's overlay to everyone.
+        # Keyed by user_id ("" = the base/no-user catalog), with a SHORT TTL because
+        # the overlay changes the moment a user registers/removes a server (aligns
+        # with the gateway's own overlay Q-CACHE TTL). Value = (expiry_monotonic, schemas).
+        self._tool_defs_cache: dict[str, tuple[float, list[dict]]] = {}
+        # T5 (audit) — cache project_id → book_id for the entity-presence gate. A
+        # stable mapping, so a plain dict (no TTL); only successes are cached so a
+        # transient miss self-heals. `None` is a legitimate cached value (Mode-1
+        # project with no book).
+        self._project_book_cache: dict[str, str | None] = {}
+        # T4c — separate process cache for the ADMIN catalog (`/mcp/admin`). The
+        # catalog is identical for every admin (only the per-request RS256 token
+        # varies), so the CATALOG is cached but the token is NEVER part of the
+        # cache key and is NEVER cached. Kept distinct from `_tool_definitions`
+        # so admin tools can never bleed into the user/book `/mcp` catalog (E17).
+        self._admin_tool_definitions: list[dict] | None = None
+        # MCP-fanout C-FT/C-GW (H10) — catalog-level metadata from the most recent
+        # successful list-tools (the gateway's `_meta`). Carries the partial-catalog
+        # / per-provider availability signal so find_tools can distinguish
+        # "no such tool" from "provider temporarily unavailable". None until a
+        # successful fetch; {} when the gateway sends no signal yet (clean seam
+        # for S-GATEWAY — see get_catalog_meta()).
+        self._catalog_meta: dict | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -182,7 +291,12 @@ class KnowledgeClient:
         user_id: str,
         session_id: str | None = None,
         project_id: str | None = None,
+        project_ids: list[str] | None = None,
         message: str = "",
+        language: str | None = None,
+        grounding: bool = True,
+        current_chapter_id: str | None = None,
+        context_length: int | None = None,
     ) -> KnowledgeContext:
         """POST /internal/context/build.
 
@@ -214,6 +328,15 @@ class KnowledgeClient:
             "user_id": user_id,
             "message": safe_message,
         }
+        # T5 (Context Budget Law D2) — the entity-presence gate's decision. Only send
+        # when gating OUT (False); omit when True so an older knowledge-service (no
+        # `grounding` field) is unaffected and the default full path stays byte-identical.
+        if not grounding:
+            body["grounding"] = False
+        # S6 — the display/target language for entity aliases (optional). Omitted
+        # when unset → knowledge returns source-language aliases (back-compat).
+        if language:
+            body["language"] = language
         # Truthy checks (not `is not None`) so empty strings are omitted,
         # which prevents knowledge-service's UUID validator from 422-ing
         # the call.
@@ -221,6 +344,23 @@ class KnowledgeClient:
             body["session_id"] = session_id
         if project_id:
             body["project_id"] = project_id
+        # Track B B1(2) — multi-KG: forward the project SET when present.
+        # knowledge-service's builder gives project_ids precedence over
+        # project_id (≥2 → the union mode, 1 → single, all-stale → 404). Empty
+        # ids are omitted (only the single-project / no-project path applies).
+        if project_ids:
+            body["project_ids"] = list(project_ids)
+        # M1b — the editor's open chapter, for the working-scope passage boost.
+        # Truthy check omits empty strings (would 422 knowledge's UUID validator).
+        # Only editor turns carry it; reader/glossary chat send nothing → no boost.
+        if current_chapter_id:
+            body["current_chapter_id"] = current_chapter_id
+        # Model-context-aware Mode-3 budget scaling — the session model's real
+        # resolved context window, so knowledge-service can scale its flat
+        # mode3_token_budget instead of every model getting the same cap. Omitted
+        # when unknown → an older/current knowledge-service keeps its flat default.
+        if context_length and context_length > 0:
+            body["context_length"] = context_length
 
         # K7e: forward the caller's trace_id so knowledge-service (and
         # glossary-service, one hop further) can stitch their logs to
@@ -244,6 +384,92 @@ class KnowledgeClient:
 
         # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
         return _degraded()
+
+    async def resolve_book_id(self, *, user_id: str, project_id: str) -> str | None:
+        """T5 (audit) — the knowledge project's linked `book_id`, for the chat
+        entity-presence gate (which needs the BOOK id, not the KNOWLEDGE project id a
+        session carries). Cached per project_id (stable mapping). Returns ``None`` on
+        a Mode-1/no-book project OR any failure — the gate then stays open
+        (bias-to-include), so a knowledge outage never breaks the turn, it just
+        forgoes the gate's savings. Uses `_base_url` (knowledge direct); this is a
+        cheap owner-scoped read, not a grounding pull, so it doesn't go via the gateway."""
+        if not project_id:
+            return None
+        if project_id in self._project_book_cache:
+            return self._project_book_cache[project_id]
+        url = f"{self._base_url}/internal/context/project-book/{project_id}"
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id}, headers=headers)
+            if resp.status_code == 200:
+                book_id = resp.json().get("book_id")
+                self._project_book_cache[project_id] = book_id  # cache success (incl. None)
+                return book_id
+            logger.warning("resolve_book_id %d for project %s", resp.status_code, project_id)
+        except Exception:  # noqa: BLE001 — degrade to gate-open, never raise into the turn
+            logger.warning("resolve_book_id failed for project %s", project_id, exc_info=False)
+        return None  # do NOT cache a failure — retry next turn
+
+    async def init_working_memory(
+        self, *, session_id: str, user_id: str, charter: dict
+    ) -> bool:
+        """POST /internal/working-memory/init — the goal-authority write path.
+
+        Pushes the FROZEN charter so knowledge-service owns the evolving block
+        (the executive then updates state). Best-effort: on any failure returns
+        False and logs — the session still anchors from its own
+        working_memory_seed (EC-4), so a knowledge outage never blocks start.
+        """
+        url = f"{self._base_url}/internal/working-memory/init"
+        body = {"session_id": session_id, "user_id": user_id, "charter": charter}
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(url, json=body, headers=headers)
+            if resp.status_code in (200, 204):
+                return True
+            logger.warning("init_working_memory non-2xx: %s", resp.status_code)
+            return False
+        except Exception:
+            logger.warning("init_working_memory failed for session %s", session_id, exc_info=True)
+            return False
+
+    async def tick_working_memory(
+        self, *, session_id: str, user_id: str,
+        model_source: str | None, model_ref: str | None,
+        recent_turns: list[dict],
+    ) -> str | None:
+        """POST /internal/working-memory/tick — run one executive pass.
+
+        Sends the session's model (the executive runs on it) + the recent-turns
+        window so knowledge-service needn't call back into chat. Best-effort:
+        returns the status string on success, None on any failure (the anchor
+        still holds from the existing block / seed).
+
+        Uses the LONGER tool timeout: the executive makes an LLM call, so the
+        build_context-sized default would disconnect mid-pass and could abort the
+        server-side handler before it writes state.
+        """
+        url = f"{self._base_url}/internal/working-memory/tick"
+        body = {
+            "session_id": session_id, "user_id": user_id,
+            "model_source": model_source, "model_ref": model_ref,
+            "recent_turns": recent_turns,
+        }
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.post(
+                url, json=body, headers=headers, timeout=self._tool_timeout_s,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("status")
+            logger.warning("tick_working_memory non-200: %s", resp.status_code)
+            return None
+        except Exception:
+            logger.warning("tick_working_memory failed for session %s", session_id, exc_info=True)
+            return None
 
     async def _build_context_at(
         self,
@@ -328,18 +554,24 @@ class KnowledgeClient:
         )
         return None
 
-    async def get_tool_definitions(self) -> list[dict]:
+    async def get_tool_definitions(self, user_id: str | None = None) -> list[dict]:
         """Fetch the federated tool catalog from the ai-gateway via MCP
         ``list-tools`` and convert each entry to an OpenAI function schema
-        (the shape the chat tool-loop advertises to the LLM). Cached
-        process-wide after the first success.
+        (the shape the chat tool-loop advertises to the LLM).
+
+        REG-P2-03 — pass ``user_id`` so the gateway appends the caller's external-MCP
+        federation overlay (``u_``/``b_``/``s_`` tools). The result is cached PER-USER
+        with a short TTL (``_TOOL_CATALOG_TTL_S``); omit ``user_id`` (base inspection
+        paths) to get the overlay-free platform catalog. Without the user id the
+        overlay never reaches the turn — the bug this fixes.
 
         Returns ``[]`` on any failure; the caller then runs the chat turn
-        tool-free. A failure is deliberately NOT cached, so a later turn
-        retries.
+        tool-free. A failure is deliberately NOT cached, so a later turn retries.
         """
-        if self._tool_definitions is not None:
-            return self._tool_definitions
+        cache_key = user_id or ""
+        cached = self._tool_defs_cache.get(cache_key)
+        if cached is not None and time.monotonic() < cached[0]:
+            return cached[1]
         if streamablehttp_client is None or ClientSession is None:
             logger.warning(
                 "get_tool_definitions called but the 'mcp' package is not installed"
@@ -348,6 +580,10 @@ class KnowledgeClient:
 
         mcp_url = f"{self._tools_base_url}/mcp"
         headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        # The per-user overlay is keyed on X-User-Id at the gateway; without it the
+        # gateway returns only the base (platform) catalog.
+        if user_id:
+            headers["X-User-Id"] = user_id
         tid = current_trace_id()
         if tid:
             headers["X-Trace-Id"] = tid
@@ -363,6 +599,77 @@ class KnowledgeClient:
             logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
             return []
 
+        tools = []
+        for t in listed.tools:
+            fn: dict = {
+                "name": t.name,
+                "description": t.description or "",
+                "parameters": _normalize_tool_parameters(t.inputSchema),
+            }
+            # MCP-fanout C-TOOL: preserve the per-tool `_meta` (tier / scope /
+            # synonyms / undo_hint) so the consumer can drive tier-based
+            # advertising + find_tools recall WITHOUT it ever reaching the
+            # provider — strip_tool_meta() removes it before the wire request.
+            meta = getattr(t, "meta", None)
+            if isinstance(meta, dict) and meta:
+                fn["_meta"] = dict(meta)
+            tools.append({"type": "function", "function": fn})
+        # MCP-fanout H10: stash the gateway's catalog-level `_meta` (availability /
+        # partial-catalog signal). The seam exists even when S-GATEWAY hasn't
+        # populated it yet (then it's {} and find_tools degrades to "no such tool"
+        # everywhere — never a false outage claim).
+        cat_meta = getattr(listed, "meta", None)
+        self._catalog_meta = dict(cat_meta) if isinstance(cat_meta, dict) else {}
+        self._tool_defs_cache[cache_key] = (time.monotonic() + _TOOL_CATALOG_TTL_S, tools)
+        return tools
+
+    async def get_admin_tool_definitions(self, admin_token: str | None) -> list[dict]:
+        """T4c — fetch the SYSTEM-TIER admin tool catalog from the gateway's
+        SEPARATE ``/mcp/admin`` endpoint (NOT ``/mcp``), presenting the caller's
+        RS256 ``admin:write`` token in ``X-Admin-Token``.
+
+        Curation (E17/INV-T6): this is the ONLY method that dials ``/mcp/admin``;
+        the user/book ``get_tool_definitions`` never does, so admin tool names
+        never appear in a non-admin session's catalog. Conversely an admin
+        session calls THIS, not ``get_tool_definitions``.
+
+        The CATALOG is cached process-wide (identical for every admin); the
+        ``admin_token`` is NEVER cached and NEVER logged (§6.7). No token, or any
+        transport/auth failure (incl. a 401 from the transport gate) → ``[]`` so
+        the turn degrades tool-free, same contract as the user path.
+        """
+        if not admin_token:
+            return []
+        if self._admin_tool_definitions is not None:
+            return self._admin_tool_definitions
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning(
+                "get_admin_tool_definitions called but the 'mcp' package is not installed"
+            )
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp/admin"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-Admin-Token": admin_token,
+        }
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_tools()
+        except Exception as exc:
+            # NOTE: log only the exception, never `headers` — `X-Admin-Token`
+            # is a bearer credential and must not reach the logs (§6.7).
+            logger.warning("get_admin_tool_definitions (mcp list-tools) failed: %s", exc)
+            return []
+
         tools = [
             {
                 "type": "function",
@@ -374,8 +681,21 @@ class KnowledgeClient:
             }
             for t in listed.tools
         ]
-        self._tool_definitions = tools
+        self._admin_tool_definitions = tools
         return tools
+
+    def get_catalog_meta(self) -> dict:
+        """MCP-fanout H10 — the gateway's catalog-level `_meta` from the last
+        successful list-tools, or ``{}`` if none was fetched / sent.
+
+        S-GATEWAY (C-GW) is expected to populate a per-provider availability map
+        here, e.g. ``{"unavailable_providers": ["book"], "partial": true}``, so a
+        consumer's find_tools can tell "no such tool" from "provider temporarily
+        down" (→ the agent says "try again," never "I can't"). Until that lands
+        this returns ``{}`` (a clean, non-lying default). TODO(S-GATEWAY): pin the
+        exact key shape at COMPOSE A.
+        """
+        return self._catalog_meta or {}
 
     async def mcp_execute_tool(
         self,
@@ -385,6 +705,8 @@ class KnowledgeClient:
         tool_name: str,
         tool_args: dict,
         project_id: str | None = None,
+        book_id: str | None = None,
+        admin_token: str | None = None,
     ) -> dict:
         """ARCH-2 C2 — execute a memory tool via MCP streamable HTTP transport.
 
@@ -395,6 +717,11 @@ class KnowledgeClient:
         Context headers carry user_id / project_id / session_id — they never
         appear in tool_args (design D3). A transport or protocol failure returns
         success=False (graceful degradation, same contract as execute_tool()).
+
+        T4c — when ``admin_token`` is set the call routes to the SEPARATE
+        ``/mcp/admin`` endpoint with the RS256 token in ``X-Admin-Token`` and
+        DOES NOT send ``X-User-Id``: admin authority is the verified RS256 token,
+        never the user id (INV-T2). The token is never logged (§6.7).
         """
         if streamablehttp_client is None or ClientSession is None:
             logger.warning("mcp_execute_tool called but the 'mcp' package is not installed")
@@ -404,14 +731,37 @@ class KnowledgeClient:
                 "error": "mcp tool backend unavailable: mcp package not installed",
             }
 
-        mcp_url = f"{self._tools_base_url}/mcp"
-        headers = {
-            "X-Internal-Token": self._http.headers["X-Internal-Token"],
-            "X-User-Id": user_id,
-            "X-Session-Id": session_id,
-        }
-        if project_id:
-            headers["X-Project-Id"] = project_id
+        # str() every id header value: session_id / project_id / book_id can arrive as a
+        # uuid.UUID OBJECT from asyncpg (session_row / a suspended-run record), and httpx
+        # refuses a non-str/bytes header value with "Header value must be str or bytes, not
+        # UUID" — which silently ABORTED the whole tool call. Found live 2026-07-25 on the
+        # RESUME path (glossary_task_provide_input for an adopt-standards gate): the UUID
+        # project_id killed the provide-input transport, so the accepted gate never ran its
+        # write and the book's ontology kinds were never created. Same UUID-not-str class as
+        # the _inject_context_ids fix; coerced HERE at the transport boundary so it holds for
+        # every caller (fresh turn + resume) regardless of where the id originated.
+        if admin_token:
+            # System-tier admin tool: separate endpoint, RS256 authority, NO X-User-Id.
+            mcp_url = f"{self._tools_base_url}/mcp/admin"
+            headers = {
+                "X-Internal-Token": self._http.headers["X-Internal-Token"],
+                "X-Admin-Token": admin_token,
+                "X-Session-Id": str(session_id),
+            }
+        else:
+            mcp_url = f"{self._tools_base_url}/mcp"
+            headers = {
+                "X-Internal-Token": self._http.headers["X-Internal-Token"],
+                "X-User-Id": str(user_id),
+                "X-Session-Id": str(session_id),
+            }
+        if project_id and not admin_token:
+            headers["X-Project-Id"] = str(project_id)
+        # Studio context binding (spec 2026-07-22) — forward the session's AMBIENT book as
+        # X-Book-Id so book-scoped tools resolve book_id when the model omits it (ResolveBookScope).
+        # A scope HINT, never authz (the tool still grant-checks it). Non-admin only.
+        if book_id and not admin_token:
+            headers["X-Book-Id"] = str(book_id)
         # K7e — mirror execute_tool: forward the caller's trace_id so
         # knowledge-service stitches its logs to the originating chat turn.
         # Omit when empty so knowledge-service mints its own.
@@ -435,7 +785,16 @@ class KnowledgeClient:
             ) as (read, write, _):
                 async with ClientSession(read, write) as mcp_session:
                     await mcp_session.initialize()
-                    result = await mcp_session.call_tool(tool_name, tool_args)
+                    # ext-tasks (T1c(3.f)) — the ACTIVATION switch. When enabled, declare
+                    # the tasks extension in this call's _meta so a capability-gated domain
+                    # tool returns a durable TASK (the driver holds/confirms it); when off,
+                    # the domain falls back to confirm_token (default, byte-unchanged). The
+                    # gateway forwards `_meta` to the owning provider.
+                    _task_meta = None
+                    if settings.tasks_gate_enabled:
+                        from app.services.task_detect import tasks_capability_meta  # noqa: PLC0415
+                        _task_meta = tasks_capability_meta()
+                    result = await mcp_session.call_tool(tool_name, tool_args, meta=_task_meta)
         except Exception as exc:
             logger.warning("mcp_execute_tool transport error: %s", exc)
             return {
@@ -447,15 +806,19 @@ class KnowledgeClient:
         # An MCP-level tool error (e.g. an auth ValueError raised inside the
         # server handler) surfaces as isError=True with the message in the
         # first text content item — map it to a success=False envelope.
+        #
+        # D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR: knowledge-service now raises on a
+        # tool failure, and its error text is the C4-shaped JSON body
+        # {"code"?, "message", "detail"?} (the same shape ai-gateway puts in
+        # content[0].text). Decode it so a stable `code` (e.g.
+        # KG_ENDPOINT_NOT_NODE) and `detail` ({"missing": [...]}) reach the caller
+        # — a workflow branches on the code, never on prose. Plain-text errors
+        # (external/overlay tools, older services) fall back to the raw text.
         if getattr(result, "isError", False):
             err_text = ""
             if result.content:
                 err_text = getattr(result.content[0], "text", "") or ""
-            return {
-                "success": False,
-                "result": None,
-                "error": err_text or "mcp tool error",
-            }
+            return _error_envelope(err_text)
 
         # FastMCP returns content as a list of TextContent/ImageContent items.
         # The knowledge-service handlers return JSON dicts serialised as the
@@ -464,15 +827,32 @@ class KnowledgeClient:
             return {"success": False, "result": None, "error": "mcp tool returned empty content"}
 
         first = result.content[0]
-        try:
-            import json as _json  # noqa: PLC0415
-            payload = _json.loads(first.text)
-        except Exception as exc:
-            logger.warning(
-                "mcp_execute_tool decode error: %s — raw: %s",
-                exc, getattr(first, "text", "?")[:200],
-            )
-            return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
+        import json as _json  # noqa: PLC0415
+        # #9B token-efficiency: heavy reads (e.g. glossary_book_ontology_read, ~42KB) now
+        # return a SHORT PLACEHOLDER in content[0].text ("ok — see structuredContent") + the
+        # real payload in `structuredContent`. Prefer structuredContent when present — otherwise
+        # json.loads() of the placeholder fails with "unparseable content" and a working tool
+        # reads as broken (the measured S02 blocker once book_id was being supplied).
+        _sc = getattr(result, "structuredContent", None)
+        if isinstance(_sc, dict) and _sc:
+            payload = _sc
+        else:
+            try:
+                payload = _json.loads(first.text)
+            except Exception as exc:
+                # External federated (overlay) tools may return PLAIN TEXT (prose/markdown),
+                # which is a VALID result — e.g. a DeepWiki tool returning a repo's wiki
+                # structure. Wrap it as {"text": ...} so the model can consume it. Internal
+                # LoreWeave tools always return JSON, so a decode failure there IS an error
+                # (never mask a real internal-tool bug as success).
+                if _OVERLAY_TOOL_RE.match(tool_name):
+                    text = getattr(first, "text", "") or ""
+                    return {"success": True, "result": {"text": text}, "error": None}
+                logger.warning(
+                    "mcp_execute_tool decode error: %s — raw: %s",
+                    exc, getattr(first, "text", "?")[:200],
+                )
+                return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
 
         if isinstance(payload, dict) and payload.get("success") is False:
             # Server-side tool error propagated as a structured dict.
@@ -482,11 +862,232 @@ class KnowledgeClient:
                 "error": payload.get("error", "tool error"),
             }
 
+        # ext-tasks (T1c(3)) — a capability-gated domain tool may return a durable
+        # task HANDLE instead of a normal result (the confirm gate: open_gate). Surface
+        # it as a task envelope the tool loop suspends on. FastMCP may nest a dict
+        # return under `result`, so check both shapes. DORMANT until chat-service
+        # declares tasks capability (no gate handle comes back before then).
+        from app.services.task_detect import task_envelope_from_content  # noqa: PLC0415
+
+        _task = task_envelope_from_content(payload)
+        if _task is None and isinstance(payload, dict):
+            _task = task_envelope_from_content(payload.get("result"))
+        if _task is not None:
+            return _task
+
         # Canonical {} empty-success contract: keep this byte-identical to
         # execute_tool's success path. A wire "null" yields payload=None after
         # json.loads — coerce it to {} so an empty success is {} on BOTH
         # transports (the MCP server's _dispatch already does the same).
         return {"success": True, "result": payload if payload is not None else {}, "error": None}
+
+    # ── Wave C5 — MCP resources + prompts (federated via ai-gateway) ─────────
+    # Same degrade contract as get_tool_definitions / mcp_execute_tool: any
+    # transport or protocol failure returns empty/None — never raises into the
+    # chat turn. Listings need only the service token (like tools/list);
+    # read_mcp_resource carries the caller's envelope identity because the
+    # downstream resource read is tenancy-gated (project ownership).
+
+    async def list_mcp_resources(self) -> list[dict]:
+        """Wave C5 — list the federated MCP resources from the ai-gateway:
+        concrete resources (``resources/list``) plus resource TEMPLATES
+        (``resources/templates/list`` — knowledge's project-scoped resources
+        are ``{project_id}`` templates, so a concrete-only list would hide
+        them). Each entry is a plain dict carrying ``uri`` (concrete) or
+        ``uri_template`` (template) plus name/description/mime_type.
+
+        Returns ``[]`` on any failure. Not cached — the listing is cheap and
+        per-provider availability shifts between refreshes.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("list_mcp_resources called but the 'mcp' package is not installed")
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_resources()
+                    # Templates are tolerated independently: a gateway build
+                    # without templates support still yields the concrete list.
+                    try:
+                        templates = await mcp_session.list_resource_templates()
+                    except Exception as exc:  # noqa: BLE001 — degrade, don't raise
+                        logger.warning("list_mcp_resources templates sub-list failed: %s", exc)
+                        templates = None
+        except Exception as exc:
+            logger.warning("list_mcp_resources (mcp) failed: %s", exc)
+            return []
+
+        out: list[dict] = []
+        for r in getattr(listed, "resources", None) or []:
+            out.append({
+                "uri": str(r.uri),
+                "name": r.name or "",
+                "description": r.description or "",
+                "mime_type": r.mimeType or "",
+            })
+        for t in getattr(templates, "resourceTemplates", None) or []:
+            out.append({
+                "uri_template": t.uriTemplate,
+                "name": t.name or "",
+                "description": t.description or "",
+                "mime_type": t.mimeType or "",
+            })
+        return out
+
+    async def read_mcp_resource(
+        self,
+        uri: str,
+        *,
+        user_id: str,
+        session_id: str,
+        project_id: str | None = None,
+    ) -> dict | None:
+        """Wave C5 — read one federated MCP resource through the gateway.
+
+        Identity rides the SAME envelope headers as mcp_execute_tool (design
+        D3): the knowledge resources verify project ownership downstream, so
+        the caller's user/session identity is mandatory, never an LLM arg.
+
+        Returns ``{"uri", "mime_type", "text"}`` from the first contents item
+        on success, or ``None`` on ANY failure (transport, protocol, tenancy
+        rejection, blob-only content) — never raises into the turn.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("read_mcp_resource called but the 'mcp' package is not installed")
+            return None
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-User-Id": user_id,
+            "X-Session-Id": session_id,
+        }
+        if project_id:
+            headers["X-Project-Id"] = project_id
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    result = await mcp_session.read_resource(uri)
+        except Exception as exc:
+            logger.warning("read_mcp_resource failed for %s: %s", uri, exc)
+            return None
+
+        contents = getattr(result, "contents", None) or []
+        if not contents:
+            return None
+        first = contents[0]
+        text = getattr(first, "text", None)
+        if text is None:
+            # Blob (binary) resources have no text form — nothing usable for
+            # the chat loop; treat as a degrade, not an error.
+            return None
+        return {
+            "uri": str(getattr(first, "uri", uri)),
+            "mime_type": getattr(first, "mimeType", "") or "",
+            "text": text,
+        }
+
+    async def list_mcp_prompts(self) -> list[dict]:
+        """Wave C5 — list the federated MCP prompts from the ai-gateway
+        (``prompts/list``). Each entry is a plain dict: name, description, and
+        the argument specs (name/description/required).
+
+        Returns ``[]`` on any failure — the caller degrades prompt-free.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("list_mcp_prompts called but the 'mcp' package is not installed")
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_prompts()
+        except Exception as exc:
+            logger.warning("list_mcp_prompts (mcp) failed: %s", exc)
+            return []
+
+        return [
+            {
+                "name": p.name,
+                "description": p.description or "",
+                "arguments": [
+                    {
+                        "name": a.name,
+                        "description": a.description or "",
+                        "required": bool(a.required),
+                    }
+                    for a in (p.arguments or [])
+                ],
+            }
+            for p in getattr(listed, "prompts", None) or []
+        ]
+
+    async def get_mcp_prompt(
+        self, name: str, arguments: dict[str, str] | None = None
+    ) -> dict | None:
+        """Wave C5 — render one federated MCP prompt (``prompts/get``).
+
+        Prompts render canned instructions only (no stored data), so no
+        envelope identity is needed. Returns ``{"description", "messages"}``
+        — messages as ``[{"role", "text"}]`` — or ``None`` on any failure.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("get_mcp_prompt called but the 'mcp' package is not installed")
+            return None
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    result = await mcp_session.get_prompt(name, arguments or {})
+        except Exception as exc:
+            logger.warning("get_mcp_prompt failed for %s: %s", name, exc)
+            return None
+
+        return {
+            "description": getattr(result, "description", "") or "",
+            "messages": [
+                {
+                    "role": str(m.role),
+                    "text": getattr(m.content, "text", "") or "",
+                }
+                for m in getattr(result, "messages", None) or []
+            ],
+        }
 
 
 # ── module-level singleton managed by lifespan ─────────────────────────────

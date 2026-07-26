@@ -43,12 +43,12 @@ function baseDash(over: Record<string, unknown> = {}) {
   };
 }
 
-function renderList() {
+function renderList(onOpenDetail?: (service: string, jobId: string) => void) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <JobsList />
+        <JobsList onOpenDetail={onOpenDetail} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -86,5 +86,18 @@ describe('JobsList', () => {
     renderList();
     fireEvent.click(screen.getByText('summary.failed'));
     expect(selectQuick).toHaveBeenCalledWith('failed');
+  });
+
+  // docs/standards/dockable-gui.md U3 — onOpenDetail threads through unchanged to every row
+  // (the studio JobsListPanel wiring); omitted, rows keep the plain <Link> (asserted above).
+  it('forwards onOpenDetail to JobRow — a History row renders a button, not a <Link>', () => {
+    const onOpenDetail = vi.fn();
+    dashMock.mockReturnValue(
+      baseDash({ history: { data: { items: [job], total: 1, next_cursor: null }, isLoading: false, error: null } }),
+    );
+    renderList(onOpenDetail);
+    const btn = screen.getByRole('button', { name: 'Translate book X' });
+    fireEvent.click(btn);
+    expect(onOpenDetail).toHaveBeenCalledWith('translation', 't1');
   });
 });

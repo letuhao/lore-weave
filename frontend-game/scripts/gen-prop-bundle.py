@@ -27,9 +27,20 @@ from typing import Callable
 from PIL import Image, ImageDraw
 
 # ── Paths ────────────────────────────────────────────────────────────
+# EXTERNAL input (another service's output), so it cannot be derived from __file__ —
+# but it must not be a silent one-machine constant either. Env-overridable, and it fails
+# LOUDLY when absent instead of half-running against a path that does not exist.
 SRC_BUNDLE = Path(
-    "G:/Works/local-image-generator-service/outputs/homm3-bundle/pass-full-001"
+    os.environ.get(
+        "PROP_BUNDLE_SRC",
+        "G:/Works/local-image-generator-service/outputs/homm3-bundle/pass-full-001",
+    )
 )
+if not SRC_BUNDLE.is_dir():
+    raise SystemExit(
+        f"prop-bundle source not found: {SRC_BUNDLE}. "
+        "Set PROP_BUNDLE_SRC to the image-generator output directory."
+    )
 OUT_BASE = Path(__file__).resolve().parents[1] / "public" / "assets" / "sprites"
 
 # ── Tier sizes (display px, then source res = 2× for crisp zoom) ─────

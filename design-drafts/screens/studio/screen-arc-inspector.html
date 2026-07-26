@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Arc Inspector (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     ARC INSPECTOR (`arc-inspector`) — category `editor`
+     Spec: docs/specs/2026-07-01-writing-studio/32_arc_inspector.md
+     Closes: G-ARC-SPEC-CRUD (plan-30 §5.1, Wave 2) = 23-C3 = DBT-06
+
+     WHY THIS EXISTS
+     `structure_node` — the saga→arc→sub-arc SPEC TREE — is not decoration.
+     It is read into EVERY generation prompt:
+       composition-service/app/packer/lenses.py:257 · gather_arc(...)
+         "the ARC lens: the durable spec layer reaching the prompt … the D2
+          effect test asserts this frame CHANGES when the arc's `tracks` change"
+
+     WHICH FIELDS ACTUALLY REACH THE PROMPT (read from gather_arc, not assumed —
+     this is the line between an editor and a WRITE-ONLY editor):
+       ✅ title           — every node of the chain
+       ✅ goal            — the LEAF node's only (lenses.py:303; a saga's is dropped)
+       ✅ tracks (merged) — resolve_tracks
+       ✅ roster_BINDINGS — resolve_roster_bindings → "Cast bindings: …"
+       ✅ span / open_promises (derived)
+       ❌ roster (the SLOT list) — resolve_roster is NEVER called by the packer.
+          Its real consumer is extract_template_from_arc (arc_apply.py:564); it is
+          the SCHEMA the bindings fill. Ship the editor — label it honestly.
+       ❌ summary — NO engine consumer. A human-read label (picker, Hub drawer).
+       ❌ status  — no engine branches on it (an author's label).
+     Saying "roster reaches the prompt" is the motif-packer-lens bug class in UI
+     COPY. The mock says `roster_bindings`, and never promises `summary` steers a
+     draft. Only the ✅ rows get a pack-effect proof (DoD #5). And a human cannot
+     write ANY of them:
+
+       list tree        agent ✅  human ✅ (plan-hub)
+       READ ONE ARC     agent ✅  human ❌   ← 5 routes, grant-gated,
+       CREATE           agent ✅  human ❌      OCC'd, and with ZERO
+       UPDATE           agent ✅  human ❌      frontend consumers.
+       ARCHIVE          agent ✅  human ❌      The FE consumes 3 of 8
+       RESTORE          agent ✅  human ❌      tools, 3 of 8 routes.
+       move / assign    agent ✅  human ✅ (plan-hub)
+
+     The product that ships today: *the agent can author the object that
+     steers your prose; you can only drag it around.* The Hub ADMITS IT in the
+     UI — PlanDrawer.tsx:351 renders a visible `plan-drawer-arc-gap` note
+     saying this inspector "is not built yet". Rendered below, struck.
+     THIS IS A BUILD, NOT A PORT: `grep -rn "arc-inspector\|ArcInspector"
+     frontend/src` → nothing. No legacy component exists to move.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+     ► A DETAIL-PANE-OVER-A-SELECTION, exactly like `scene-inspector` — so it
+       is palette-openable by BARE ID (enum 57→58 on all three drift-locks)
+       and needs NO `params` arg on `ui_open_studio_panel`. Subject resolves:
+       props.params.arcId → a NEW `bus.activeArcId` slice → an in-panel PICKER,
+       so a bare-id open is never a dead panel. This REFUTES plan-30's X-12
+       ("an id-needing panel must be hiddenFromPalette") — `scene-inspector`
+       (bus) and `quality-canon` (props.params) are both already in the enum.
+     ► THE CASCADE IS RENDERED AS A CASCADE. `GET /arcs/{id}` returns
+       `resolved` (the root→leaf merge) AND the node's OWN arrays, separately.
+       Every entry is color-coded:  amber = own (PATCH writes it) ·
+       teal = inherited (PATCH would FORK a copy) · sky = derived (read-only).
+       Flatten it and a user "edits" an inherited track → the PATCH writes
+       THIS node's `tracks` → a silent copy of the saga's track that then stops
+       tracking the saga. Inherited rows are read-only with ONE action:
+       **Override here**. This is the shadow-copy bug class in a new costume.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front — the audit recorded
+     "BE: NONE" for this gap. Verified against source: it is wrong 3 times.)
+       • BE-A1 MUST-FIX (S) — `span` is the SAME KEY NAME with a DIFFERENT
+         SHAPE **and a different UNIT** across the two routes. `GET /arcs/{id}`
+         (arc.py:455) returns raw STRIDED story_order (STRIDE=1000); the list
+         route (arc.py:429) returns dense-ranked ORDINALS, and its own SQL
+         comment (structure.py:270-277) says why: *"raw min/max would report a
+         3-chapter arc as span 1000..3000 … every arc would read
+         non-contiguous"*. The detail route never got that fix — an inspector
+         built off it prints **"Chapters 41000–58000"**. Rendered below, struck.
+         The MCP door has the SAME defect (server.py:4255) — fix BOTH.
+         🔴 FIX THE ROUTES, NOT THE REPO. StructureRepo.span() has a THIRD
+         caller: the PACKER (lenses.py:322 → _arc_position, lenses.py:241-254),
+         which compares the scene's RAW strided story_order against span's
+         min/max. Dense-rank span() and every scene reads "~100% through arc X"
+         in EVERY prompt — or the Pacing line vanishes (gather_arc's degrade-safe
+         posture swallows it) — with a green unit suite. The two detail doors
+         serve derived_blocks(book_id)[node_id] instead; span() is untouched, and
+         a pacing test PINS its raw keys so the "obvious cleanup" reds.
+       • BE-A2 MUST-FIX (XS) — `PATCH /arcs/{id}`'s `If-Match` is OPTIONAL
+         (arc.py:495 `Header(default=None)`) ⇒ expected_version=None ⇒ the
+         version clause is skipped ⇒ **a blind clobber is a legal request**.
+         The MCP tool REQUIRES it (server.py:4333) — the REST door is weaker
+         than the MCP door on the object that steers generation. Absent ⇒ 428.
+       • BE-A3 MUST-BUILD (S) — assign-chapters is ADD-ONLY at all three layers
+         (REST arc.py:364 · MCP server.py:4508 · repo structure.py:540 — all
+         non-null `structure_node_id`). There is NO unassign — yet the children
+         route READS `?unassigned=true` (plan-hub/api.ts:35) and the Hub renders
+         that tray. **We can read a state no writer can produce.** Allow
+         `UUID|null` on BOTH doors; a GUI-only unassign is an INVERSE gap (GG-2).
+       • Nothing else. Create/read/update/delete/restore/move, the cascade merge,
+         the derived span, the promise rollup, the grant gate, the 412 body and
+         the depth/cycle trigger ALL EXIST. No migration, no schema change.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① EDIT — a sub-arc with a live cascade (own ⊕ inherited ⊕ derived)
+       ② CREATE — the new-arc form (tracks/roster are edited AFTER create) +
+          the 400 STRUCTURE_CONSTRAINT, rendered VERBATIM from the server
+       ③ OCC 412 — "changed elsewhere — reloaded", user's text PRESERVED
+       ④ ARCHIVED — dimmed body + restore; derived block renders "—", never a
+          computed 0; the archive confirm's CLIENT-derived blast radius, and its
+          honest note that the chapters do NOT return to the unassigned pool
+       ⑤ LOADING · NO SELECTION · EMPTY BOOK · 404 · error — never a blank pane
+       ⑥ 403 VIEW-only — controls UNMOUNTED, never rendered-then-403'd
+       ⑦ BEFORE — PlanDrawer's ArcFacets + the `plan-drawer-arc-gap` note,
+          struck, beside the AFTER (the SAME body component — DOCK-2)
+
+     SCALE — a 1,842-chapter book. Chapters are keyset-paged, virtualized above
+     ~200. The picker reads the shell tree already in the
+     `['plan-hub','arcs',bookId]` cache — no second fetch. Cold open: 2 requests.
+
+     COST — $0. Every action is deterministic CRUD, no LLM, no propose→confirm.
+     Adding one would be a defect (§8). The "suggest an arc" button is Wave 4.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain tokens — derived (server-computed, read-only) + promise severity */
+    --derived: #8ab6e8; --promise: #b89ee8; --promise-muted: #2e2440;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Cascade legend ───────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.o { background: var(--primary); } .swatch.h { background: var(--accent); } .swatch.d { background: var(--derived); }
+
+  .prov { position: relative; padding-left: 8px; }
+  .prov::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2px; height: 11px; border-radius: 1px; }
+  .prov-o::before { background: var(--primary); } .prov-h::before { background: var(--accent); } .prov-d::before { background: var(--derived); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  /* Width is true dock scale (480px, same as scene-inspector's 470). HEIGHT is expanded to the
+     content so every section is VISIBLE in this draft — at a real dock height (~700px) the body
+     scrolls, which is exactly what `.insp-body { flex:1; min-height:0; overflow-y:auto }` is for.
+     A mock that hides its own Chapters/Promises/Provenance sections below a scroll fold is a mock
+     that hand-waved them. */
+  .inspector { width: 480px; max-width: 100%; height: 1760px; flex-shrink: 0; }
+  .creator   { width: 420px; max-width: 100%; height: 720px; flex-shrink: 0; }
+
+  /* ── Picker header (subject resolution: params → bus → picker) ─────────── */
+  .subject { padding: 9px 12px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; }
+  .select-wrap { position: relative; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .crumb { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted-fg); font-weight: 500; letter-spacing: .03em; text-transform: uppercase; }
+  .crumb .sep { opacity: .5; }
+  .crumb .cur { color: var(--foreground); }
+  .meta-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .ver { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .b-empty    { background: var(--secondary); color: var(--muted-fg); }
+  .b-outline  { background: #23303f; color: #8ab6e8; }
+  .b-drafting { background: var(--primary-muted); color: var(--primary); }
+  .b-done     { background: #16301f; color: var(--success); }
+  .b-dirty    { background: var(--destructive-muted); color: var(--destructive); }
+  .b-arch     { background: var(--secondary); color: var(--muted-fg); }
+  .badge svg { width: 11px; height: 11px; }
+
+  /* ── Sections ─────────────────────────────────────────────────────────── */
+  .insp-body { flex: 1; min-height: 0; overflow-y: auto; }   /* min-height:0 is load-bearing */
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 9px 12px 7px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .swatch { width: 3px; height: 11px; }
+  .sect-head .src { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; opacity: .7; text-transform: none; letter-spacing: 0; }
+  .sect-body { padding: 0 12px 11px; display: flex; flex-direction: column; gap: 9px; }
+
+  .field { display: grid; grid-template-columns: 78px 1fr; gap: 10px; align-items: center; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .inp.dirty { border-color: var(--primary); }
+  textarea.inp { resize: vertical; min-height: 40px; line-height: 1.45; }
+  .hint { font-size: 10px; color: var(--muted-fg); line-height: 1.5; padding-left: 88px; margin-top: -4px; }
+  .hint code, .sect-body code { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--accent-fg); }
+
+  /* ── Cascade rows (tracks + roster) ───────────────────────────────────── */
+  .casc { display: flex; flex-direction: column; }
+  .crow { display: flex; align-items: center; gap: 8px; padding: 6px 0 6px 8px; border-bottom: 1px solid var(--border); position: relative; font-size: 11.5px; }
+  .crow:last-of-type { border-bottom: none; }
+  .crow::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; border-radius: 1px; }
+  .crow.own::before { background: var(--primary); }
+  .crow.inherited::before { background: var(--accent); }
+  .crow.inherited .k, .crow.inherited .lab { opacity: .62; }
+  .crow .k { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--primary); width: 84px; flex-shrink: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crow.inherited .k { color: var(--accent); }
+  .crow .lab { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crow .from { font-size: 9.5px; color: var(--accent); white-space: nowrap; }
+  .crow .acts2 { display: flex; gap: 2px; flex-shrink: 0; }
+  .lnk { background: none; border: none; color: var(--muted-fg); font: inherit; font-size: 10px; font-weight: 500;
+    text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding: 0 2px; white-space: nowrap; }
+  .lnk:hover { color: var(--foreground); }
+  .lnk.warn { color: var(--warning); }
+  .token-add { height: 22px; padding: 0 8px; border-radius: 100px; background: transparent; border: 1px dashed var(--border-hover);
+    color: var(--muted-fg); font-size: 11px; cursor: pointer; align-self: flex-start; margin-top: 7px; }
+  .token-add:hover { color: var(--foreground); border-color: var(--foreground); }
+  .eff { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; opacity: .8; text-transform: none; letter-spacing: 0; }
+
+  /* roster binding */
+  .bind { display: flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 11px; }
+  .av { width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 8.5px; font-weight: 700; color: #141010; }
+  .unbound { color: var(--border-hover); font-size: 11px; }
+
+  /* AI-3 key validation */
+  .keyerr { display: flex; align-items: flex-start; gap: 6px; margin-top: 7px; padding: 7px 8px; border-radius: 6px;
+    background: var(--destructive-muted); border: 1px solid var(--destructive); color: var(--destructive); font-size: 10.5px; line-height: 1.5; }
+  .keyerr svg { width: 12px; height: 12px; flex-shrink: 0; margin-top: 1px; }
+  .keyerr b { color: var(--foreground); }
+
+  /* ── Chapters ─────────────────────────────────────────────────────────── */
+  .span-line { display: flex; align-items: center; gap: 8px; font-size: 11.5px; flex-wrap: wrap; }
+  .span-line .n { font-family: 'JetBrains Mono', monospace; color: var(--foreground); }
+  .warnrow { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--warning); }
+  .warnrow svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .bugline { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); line-height: 1.6;
+    padding: 6px 8px; border-radius: 6px; background: var(--background); border: 1px dashed var(--destructive); }
+  .bugline .bad { color: var(--destructive); }
+  .chrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+  .chrow:last-of-type { border-bottom: none; }
+  .chrow .no { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted-fg); width: 24px; flex-shrink: 0; }
+  .chrow .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chrow .w { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); flex-shrink: 0; }
+  .gaprow { padding: 4px 0; font-size: 10.5px; color: var(--warning); font-style: italic; border-bottom: 1px solid var(--border); }
+  .virt { padding: 5px 0; font-size: 10px; color: var(--border-hover); }
+
+  /* ── Promises ─────────────────────────────────────────────────────────── */
+  .prow { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+  .prow:last-of-type { border-bottom: none; }
+  .prow .sev { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; width: 26px; text-align: right; flex-shrink: 0; }
+  .prow .kind { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; padding: 1px 5px; border-radius: 3px;
+    background: var(--promise-muted); color: var(--promise); flex-shrink: 0; }
+  .prow .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .go { color: var(--muted-fg); flex-shrink: 0; }
+  .prow .go svg { width: 12px; height: 12px; }
+
+  /* ── Provenance ───────────────────────────────────────────────────────── */
+  .prov-line { display: flex; align-items: center; gap: 7px; font-size: 11.5px; flex-wrap: wrap; }
+  .prov-line .tpl { color: var(--foreground); font-weight: 500; }
+
+  /* ── Danger ───────────────────────────────────────────────────────────── */
+  .danger-zone { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .btn { height: 27px; padding: 0 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); }
+  .btn:hover { border-color: var(--border-hover); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.danger { color: var(--destructive); border-color: var(--destructive-muted); }
+  .btn.danger:hover { border-color: var(--destructive); }
+  .btn.sm { height: 23px; padding: 0 9px; font-size: 11px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .blast { font-size: 10.5px; color: var(--warning); display: flex; align-items: center; gap: 5px; }
+  .blast svg { width: 12px; height: 12px; flex-shrink: 0; }
+
+  .insp-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
+  .insp-foot .ver { margin-right: auto; }
+
+  /* ── Banners (412 / archived / 403) ───────────────────────────────────── */
+  .banner { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; font-size: 11.5px; line-height: 1.5; flex-shrink: 0;
+    border-bottom: 1px solid var(--border); }
+  .banner svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+  .banner b { color: var(--foreground); font-weight: 600; }
+  .banner.conflict { background: var(--destructive-muted); color: var(--destructive); }
+  .banner.arch { background: var(--secondary); color: var(--muted-fg); }
+  .banner.ro { background: var(--accent-muted); color: var(--accent-fg); }
+  .banner .grow { flex: 1; }
+  .dimmed { opacity: .42; pointer-events: none; filter: saturate(.4); }
+
+  /* ── Empty / picker states ────────────────────────────────────────────── */
+  .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    padding: 24px 20px; text-align: center; }
+  .empty svg { width: 26px; height: 26px; color: var(--border-hover); }
+  .empty p { font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; max-width: 300px; }
+  .empty p b { color: var(--foreground); font-weight: 600; }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--accent-fg); }
+
+  .mini { width: 300px; height: 430px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .mini .sect-body { padding: 0 10px 9px; gap: 6px; }
+  .mini .field { grid-template-columns: 66px 1fr; gap: 8px; }
+  .drawer-f { display: flex; gap: 8px; padding: 3px 0; font-size: 11px; }
+  .drawer-f .l { width: 74px; flex-shrink: 0; color: var(--muted-fg); }
+  .drawer-f .v { flex: 1; min-width: 0; color: var(--foreground); word-break: break-all; }
+  .gapnote { padding: 10px; font-size: 10.5px; font-style: italic; color: var(--muted-fg); line-height: 1.6; }
+  .strike { text-decoration: line-through; opacity: .5; }
+  /* loading skeleton — the header keeps the picker LIVE while the body waits */
+  .sk { height: 9px; border-radius: 4px; background: var(--secondary); }
+</style>
+</head>
+<body>
+
+<h1>Arc Inspector <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panel, draft</span></h1>
+<p class="sub">
+  Spec: <b>32_arc_inspector.md</b> (Wave 2 · closes <b>G-ARC-SPEC-CRUD</b> = 23-C3 = DBT-06). The saga→arc→sub-arc spec tree
+  (<code>structure_node</code>) is read into <b>every generation prompt</b> — <code>packer/lenses.py:257 gather_arc</code> explicitly resolves
+  <code>tracks</code>, and the D2 effect test asserts the frame <i>changes</i> when they do. The agent has <b>8 MCP tools</b> over it. The frontend
+  consumes <b>3</b>. Create, read-detail, update, archive and restore all exist as grant-gated, OCC'd REST routes with <b>zero frontend consumers</b> —
+  and <code>PlanDrawer.tsx:351</code> renders a note in the UI admitting it. This is a <b>build</b>, not a port: no arc-inspector component has ever existed.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch o"></span><b>Own</b> · this node's <code class="mono" style="font-size:10px">tracks[]</code>/<code class="mono" style="font-size:10px">roster[]</code> — <b>PATCH writes these</b></div>
+  <div class="item"><span class="swatch h"></span><b>Inherited</b> · merged from an ancestor (<code class="mono" style="font-size:10px">resolved</code>) — read-only, <b>Override</b> copies it down</div>
+  <div class="item"><span class="swatch d"></span><b>Derived</b> · server-computed, never written (<code class="mono" style="font-size:10px">span</code>, <code class="mono" style="font-size:10px">open_promises</code>)</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Flatten the cascade and an "edit" of an inherited track silently <b>forks</b> the saga's copy.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① EDIT — the populated panel, with a live cascade
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Edit an arc <span class="tag">arc-inspector</span> <span class="tag">category: editor</span> — sub-arc, cascade resolved</h2>
+
+<div class="stack">
+<div class="panel inspector">
+  <div class="panel-head">
+    <span>Arc Inspector</span>
+    <div class="acts">
+      <div class="ico" title="New arc / saga"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div>
+      <div class="ico" title="Reload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Open in Plan Hub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <!-- subject resolution: props.params.arcId → bus.activeArcId → this picker -->
+  <div class="subject">
+    <div class="select-wrap">
+      <select style="width:100%">
+        <option>Nghịch thiên — the whole book</option>
+        <option>&nbsp;&nbsp;Saga · Quyển I · Tro tàn Hàn Cảng</option>
+        <option>&nbsp;&nbsp;&nbsp;&nbsp;Arc · Sự phản bội ở Hàn Cảng ✓</option>
+        <option>&nbsp;&nbsp;&nbsp;&nbsp;Arc · Đường về Thanh Vân</option>
+        <option>&nbsp;&nbsp;Saga · Quyển II · 山海遺聞</option>
+        <option>&nbsp;&nbsp;&nbsp;&nbsp;— show archived (2) —</option>
+      </select>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <div class="crumb">
+      <span>Quyển I · Tro tàn Hàn Cảng</span><span class="sep">›</span>
+      <span class="cur">Sự phản bội ở Hàn Cảng</span>
+    </div>
+    <div class="meta-row">
+      <div class="select-wrap">
+        <select><option>drafting</option><option>empty</option><option>outline</option><option>done</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <span class="ver">v7</span>
+      <span class="badge b-dirty" title="useConformanceStatus — arcs[].dirty_reasons">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+        dirty · 4 stale chapters</span>
+      <span class="ver" style="margin-left:auto">by Thu Hà · 2 days ago</span>
+    </div>
+  </div>
+
+  <div class="insp-body">
+    <!-- IDENTITY -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch o"></span>Identity <span class="src mono">GET /arcs/{id} · PATCH If-Match: 7</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Kind</label><div><span class="badge b-outline">arc</span>
+          <span class="mono" style="font-size:9.5px;color:var(--muted-fg)">depth 1 · 2 sub-arcs</span></div></div>
+        <div class="field"><label>Title</label><input class="inp dirty" value="Sự phản bội ở Hàn Cảng" /></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Goal</label>
+          <textarea class="inp" style="min-height:36px">Thẩm Mặc phải chọn giữa lời thề với sư phụ và mạng sống của muội muội.</textarea></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Summary</label>
+          <textarea class="inp">Hàn Cảng thất thủ trong một đêm. Người mở cổng thành là kẻ đã dạy nàng cầm kiếm.</textarea></div>
+        <div class="hint">Committed on blur, <b style="color:var(--foreground)">serialized</b> — two rapid edits must not both send <code>If-Match: v7</code>
+          (<code>useSceneInspector.ts:43-45</code>). ③ below is what happens when they do.<br />
+          <b style="color:var(--foreground)">Prompt provenance, per field:</b>
+          <b style="color:var(--primary)">Title</b> → every node of the chain ·
+          <b style="color:var(--primary)">Goal</b> → <b style="color:var(--foreground)">this leaf's only</b> (a saga's <code>goal</code> is dropped, <code>lenses.py:303</code>) ·
+          <b style="color:var(--muted-fg)">Summary</b> + <b style="color:var(--muted-fg)">Status</b> → <b style="color:var(--foreground)">not in the prompt</b>, human-read labels.
+          The panel never dresses a label as a generation knob.</div>
+      </div>
+    </div>
+
+    <!-- TRACKS — the cascade -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch o"></span><span class="swatch h" style="margin-left:-3px"></span>Tracks
+        <span class="eff mono">effective 3 · own 2 ⊕ inherited 1</span></div>
+      <div class="sect-body">
+        <div class="casc">
+          <div class="crow own"><span class="k">revenge</span><span class="lab">Đường báo thù — she is the blade, not the hand</span>
+            <div class="acts2"><button class="lnk">edit</button><button class="lnk">remove</button></div></div>
+          <div class="crow own"><span class="k">mentor_lie</span><span class="lab">The lie the mentor told, kept alive one chapter too long</span>
+            <div class="acts2"><button class="lnk">edit</button><button class="lnk">remove</button></div></div>
+          <div class="crow inherited"><span class="k">romance</span><span class="lab">The Cold Harbor girl</span>
+            <span class="from">← from saga <b>Quyển I</b></span>
+            <div class="acts2"><button class="lnk warn" id="ovr">Override here</button></div></div>
+        </div>
+        <button class="token-add">+ track</button>
+        <div class="keyerr">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div><b>A track key is required, non-empty and unique in this node (AI-3).</b> <code>StructureRepo._merge_by</code> keys on
+            <code>it.get(key, id(it))</code>: a <b>missing</b> key can never be shadowed (permanent un-overridable garbage); an <b>empty</b> key
+            collides on <code>""</code> across the whole ancestor chain and the leaf silently eats the root's. Neither door validates it —
+            <b>the panel is the only thing standing between the user and a corrupt cascade.</b></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROSTER + BINDINGS -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch o"></span><span class="swatch h" style="margin-left:-3px"></span>Roster
+        <span class="eff mono">effective 4 · bound 3 / 4</span></div>
+      <div class="sect-body">
+        <div class="casc">
+          <div class="crow own"><span class="k">protagonist</span><span class="lab" style="flex:0 1 auto">Actant: hero</span>
+            <div class="bind" style="margin-left:auto"><span class="av" style="background:#e8a832">沈</span><span>沈墨 · Thẩm Mặc</span></div>
+            <div class="acts2"><button class="lnk">change</button><button class="lnk">unbind</button></div></div>
+          <div class="crow own"><span class="k">traitor</span><span class="lab" style="flex:0 1 auto">Actant: shifter</span>
+            <div class="bind" style="margin-left:auto"><span class="unbound">— not bound —</span></div>
+            <div class="acts2"><button class="lnk">bind…</button><button class="lnk">remove</button></div></div>
+          <div class="crow inherited"><span class="k">mentor</span><span class="lab" style="flex:0 1 auto">Actant: sender</span>
+            <div class="bind" style="margin-left:auto"><span class="av" style="background:#3da692">柳</span><span>柳鶴年</span></div>
+            <span class="from">← saga</span><div class="acts2"><button class="lnk warn">Override here</button></div></div>
+          <div class="crow inherited"><span class="k">rival</span><span class="lab" style="flex:0 1 auto">Actant: opponent</span>
+            <div class="bind" style="margin-left:auto"><span class="av" style="background:#5496e8">霍</span><span>霍青</span></div>
+            <span class="from">← saga</span><div class="acts2"><button class="lnk warn">Override here</button></div></div>
+        </div>
+        <button class="token-add">+ role</button>
+        <div class="hint" style="padding-left:0">Binding = <code>roster_bindings[role_key] → glossary_entity_id</code>; names resolve through
+          <code>useGlossaryRoster</code> (shared cache with <code>scene-inspector</code> — zero new backend).<br />
+          <b style="color:var(--foreground)">The two halves have different consumers, and the panel says so.</b>
+          The <b style="color:var(--foreground)">bindings</b> ARE a prompt input — <code>gather_arc</code> emits
+          <i>"Cast bindings: protagonist → 沈墨"</i> (<code>lenses.py:337-344</code>). The <b style="color:var(--foreground)">slots</b>
+          (<code>roster[]</code> — key/actant/label/constraints) are <b style="color:var(--foreground)">NOT</b>:
+          <code>resolve_roster</code> is never called by the packer. Their consumer is
+          <code>extract_template_from_arc</code> (<code>arc_apply.py:564</code>) — they are the <b style="color:var(--foreground)">schema the bindings fill</b>.
+          Real feature, honest label. Claiming otherwise would be the motif-packer-lens bug in UI copy.</div>
+      </div>
+    </div>
+
+    <!-- CHAPTERS -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch d"></span>Chapters <span class="src mono">span · assign-chapters</span></div>
+      <div class="sect-body">
+        <div class="span-line">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--derived)"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+          Chapters <span class="n">41–58</span> · <span class="n">18</span> of 1,842
+        </div>
+        <div class="warnrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          Non-contiguous — 3 gaps in the reading order (<code class="mono">is_contiguous:false</code> · warn-only, BA6)
+        </div>
+        <div class="bugline">
+          <span class="strike">span 41000–58000 · is_contiguous: false</span><br />
+          <span class="bad">↑ what <b>GET /arcs/{id}</b> returns TODAY (arc.py:455 — raw STRIDED story_order, STRIDE=1000).</span>
+          The list route already dense-ranks (structure.py:270-277: <i>"raw min/max would report a 3-chapter arc as span 1000..3000"</i>).
+          Same key name, different shape <b>and unit</b>. <b class="bad">BE-A1 — must fix, or this panel ships "Chapters 41000–58000".</b>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <div class="chrow"><span class="no">41</span><span class="t">Bình minh trên Hàn Cảng</span><span class="w">3,204</span><button class="lnk">remove</button></div>
+          <div class="chrow"><span class="no">42</span><span class="t">Kẻ giữ cổng</span><span class="w">2,880</span><button class="lnk">remove</button></div>
+          <div class="gaprow">— gap: 43–44 unassigned —</div>
+          <div class="chrow"><span class="no">45</span><span class="t">Lời thề thứ hai</span><span class="w">3,517</span><button class="lnk">remove</button></div>
+          <div class="virt">… 15 more · virtualized above ~200 · keyset-paged</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button class="token-add" style="margin-top:0">+ assign chapters…</button>
+          <span class="hint" style="padding-left:0;margin-top:0">
+            <b style="color:var(--destructive)">[remove] needs BE-A3.</b> assign-chapters is <b style="color:var(--foreground)">add-only</b> at REST,
+            MCP <i>and</i> repo — yet the children route already <b style="color:var(--foreground)">reads</b> <code>?unassigned=true</code>.
+            We can read a state no writer can produce.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPEN PROMISES -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch d"></span>Open promises <span class="eff mono">5 · rollup</span>
+        <span class="src mono">open_promises</span></div>
+      <div class="sect-body" style="gap:0">
+        <div class="prow"><span class="sev" style="color:var(--destructive)">90</span><span class="kind">promise</span><span class="txt">the sword's true owner is never named</span>
+          <span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span></div>
+        <div class="prow"><span class="sev" style="color:var(--warning)">72</span><span class="kind">setup</span><span class="txt">柳鶴年's limp — introduced ch. 44, never paid</span>
+          <span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span></div>
+        <div class="prow"><span class="sev" style="color:var(--muted-fg)">41</span><span class="kind">question</span><span class="txt">who opened the harbour gate?</span>
+          <span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span></div>
+        <div class="hint" style="padding-left:0;margin-top:8px">Read-only rollup — deep-links to <code>quality-promises</code>. Nothing here is writable from this panel.</div>
+      </div>
+    </div>
+
+    <!-- PROVENANCE -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch d"></span>Provenance <span class="src mono">arc_template_id · template_version</span></div>
+      <div class="sect-body">
+        <div class="prov-line">
+          From template <span class="tpl">复仇双线</span>
+          <span style="color:var(--muted-fg)">(Twin Revenge)</span>
+          <span class="mono" style="font-size:10px;color:var(--muted-fg)">· v3</span>
+          <button class="btn sm">open</button>
+        </div>
+        <div class="hint" style="padding-left:0">Title resolved via <code>arcApi.get</code>. <b style="color:var(--foreground)">Today <code>PlanDrawer.tsx:346</code> renders the raw
+          <code>arc_template_id</code> UUID</b> — <span class="mono strike" style="font-size:9.5px">7c1f8e2a-4b93-4d0e-9a11-6f2c8d3b5e07</span> — an unclickable
+          36-char hex string, shown to a novelist. A <b style="color:var(--foreground)">null</b> provenance is NORMAL (BA13: authored from conversation), and renders
+          <i>"Authored from conversation (no template)"</i> — not an error.</div>
+      </div>
+    </div>
+
+    <!-- DANGER -->
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head" style="color:var(--destructive)">Danger</div>
+      <div class="sect-body">
+        <div class="danger-zone">
+          <button class="btn danger"><svg style="width:12px;height:12px;display:inline-block;vertical-align:-2px;margin-right:5px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Archive arc</button>
+          <span class="blast">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            also archives <b style="color:var(--foreground)">2 sub-arcs</b></span>
+        </div>
+        <div class="hint" style="padding-left:0">The blast radius is derived <b style="color:var(--foreground)">client-side</b> from the shell tree we already hold.
+          <code>DELETE</code> cascades to the subtree (<code>structure.py:404</code>) but its response <code>{id, archived:true}</code>
+          <b style="color:var(--foreground)">does not say how many nodes it took</b> — so we never trust it for the count.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="insp-foot">
+    <span class="ver">v7 · saved 2m ago</span>
+    <button class="btn">Revert</button>
+    <button class="btn primary">Save</button>
+  </div>
+</div>
+
+<!-- ② CREATE ───────────────────────────────────────────────────────────── -->
+<div>
+<h2 style="margin-top:0">② Create <span class="tag">POST /books/{bid}/arcs</span></h2>
+<div class="panel creator">
+  <div class="panel-head"><span>New arc</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="insp-body">
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head"><span class="swatch o"></span>Identity <span class="src mono">201 · created_by server-stamped</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Kind</label><div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>arc</option><option>saga</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <div class="hint" style="padding-left:0;margin-top:-2px">
+          <b style="color:var(--foreground)">Two kinds, not three.</b> There is <b style="color:var(--foreground)">no <code>sub_arc</code></b> —
+          the DB CHECK is <code>kind IN ('saga','arc')</code> (<code>migrate.py:1102</code>) and the body is <code>Literal["saga","arc"]</code>
+          (<code>arc.py:333</code>). A <b style="color:var(--foreground)">sub-arc is an <code>arc</code> whose parent is an <code>arc</code></b>
+          (<code>depth 2</code>) — a depth label, not a kind. A picker offering <span class="strike"><code>sub_arc</code></span> <b class="mono" style="color:var(--destructive)">422</b>s.
+        </div>
+        <div class="field"><label>Parent</label><div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>Quyển I · Tro tàn Hàn Cảng</option><option>Quyển II · 山海遺聞</option><option>— none (a top-level saga) —</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <div class="field"><label>Title</label><input class="inp" placeholder="Đường về Thanh Vân" /></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Goal</label>
+          <textarea class="inp" style="min-height:36px" placeholder="What must change by the end of this arc? — reaches the prompt"></textarea></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Summary</label>
+          <textarea class="inp" style="min-height:36px" placeholder="Two or three sentences. For you and the Hub — not the prompt."></textarea></div>
+        <div class="field"><label>Status</label><div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>empty</option><option>outline</option><option>drafting</option><option>done</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <!-- STATE: structure conflict (400) — RENDERED, not described. The most likely
+             create failure (a saga with a parent) and the one the client must NOT re-derive. -->
+        <div class="keyerr">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div><b>400 · STRUCTURE_CONSTRAINT</b> — “a saga cannot have a parent, nesting is capped at
+            saga→arc→sub-arc (depth 2), no cycles, and a parent must be in the same book.”<br />
+            <span style="color:var(--muted-fg)">The server's message (<code>arc.py:397</code>), rendered
+            <b style="color:var(--foreground)">verbatim</b>. The client does <b style="color:var(--foreground)">not</b> re-implement the rules —
+            they live in the <code>structure_node_depth_guard</code> trigger and the <code>structure_saga_is_root</code> CHECK.</span></div>
+        </div>
+        <div class="hint" style="padding-left:0">
+          <b style="color:var(--foreground)">Tracks and roster are edited AFTER create</b>, in ①. A create form with a nested cascade editor is a form nobody finishes.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="insp-foot">
+    <span class="ver">$0 · deterministic · no LLM</span>
+    <button class="btn">Cancel</button>
+    <button class="btn primary">Create arc</button>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="callout">
+  <b>Why this panel is palette-openable by a bare id — and X-12 is refuted.</b> Plan-30 §8.2 says a panel needing <code>params</code> is
+  structurally outside the agent enum and must be <code>hiddenFromPalette</code>, and it names <code>arc-inspector</code>. But
+  <code>scene-inspector</code> takes its subject from the <b>studio bus</b> (<code>useSceneInspector.ts:24</code>) and is in the enum, and
+  <code>quality-canon</code> is in the enum <b>and</b> accepts <code>props.params.focusRuleId</code>. So: subject resolves
+  <code>props.params.arcId</code> → a <b>new</b> <code>bus.activeArcId</code> slice → the <b>picker</b>. Enum 57→58 on all three drift-locks.
+  <b>Do NOT add a <code>params</code> arg to <code>ui_open_studio_panel</code></b> — that is a Frontend-Tool-Contract change with a real free-string hazard,
+  and this panel does not need it.
+</div>
+
+<div class="callout warn">
+  <b>The cascade is the whole design (AI-2).</b> <code>GET /arcs/{id}</code> returns <code>resolved</code> — the root→leaf merge, leaf shadowing by
+  <code>key</code> — <i>and</i> the node's <b>own</b> arrays as separate fields. Render only <code>resolved</code> and the user edits an inherited track;
+  the PATCH writes <b>this node's</b> <code>tracks</code>, forking a silent copy of the saga's track that then stops tracking the saga. That is the
+  shadow-copy bug class in a new costume. Inherited rows are read-only with exactly one action: <b>Override here</b>, which copies the entry down
+  (same <code>key</code> ⇒ it shadows) <i>and says so</i>. The section header counts the <b>effective</b> set — what <code>gather_arc</code> actually injects.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ OCC 412
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ OCC conflict <span class="tag">412 STRUCTURE_VERSION_CONFLICT</span> — seed-and-say, never clobber</h2>
+<p class="sub">
+  The agent ran <code>composition_arc_update</code> on the same node while the title field was open. The 412 body <b>carries the current row</b>
+  (<code>arc.py:505-508</code>) — so we seed it straight into the cache, <b>keep the user's in-progress text in the field</b>, and ask for one click.
+  We never silently clobber, and we never blame the user for a phantom collaborator.
+</p>
+
+<div class="panel inspector" style="height:508px">
+  <div class="panel-head"><span>Arc Inspector</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="banner conflict">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+    <div class="grow"><b>This arc changed elsewhere — reloaded.</b> Re-apply your edit.
+      <span style="color:var(--muted-fg)">Your text is still in the field below; the rest of the panel now shows <b>v8</b>.</span></div>
+    <button class="btn sm">Re-apply</button>
+  </div>
+  <div class="subject">
+    <div class="crumb"><span>Quyển I · Tro tàn Hàn Cảng</span><span class="sep">›</span><span class="cur">Sự phản bội ở Hàn Cảng</span></div>
+    <div class="meta-row">
+      <span class="ver"><span class="strike">v7</span> → <b style="color:var(--foreground)">v8</b></span>
+      <span class="badge b-drafting">drafting</span>
+      <span class="ver" style="margin-left:auto">changed by <b style="color:var(--primary)">the agent</b> · just now</span>
+    </div>
+  </div>
+  <div class="insp-body">
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head"><span class="swatch o"></span>Identity</div>
+      <div class="sect-body">
+        <div class="field"><label>Title</label><input class="inp dirty" value="Sự phản bội ở Hàn Cảng — đêm cuối" /></div>
+        <div class="hint">your edit, <b style="color:var(--foreground)">preserved</b> · server now holds <i>"Sự phản bội ở Hàn Cảng"</i></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Goal</label>
+          <textarea class="inp" style="min-height:36px">Thẩm Mặc phải chọn giữa lời thề với sư phụ và mạng sống của muội muội.</textarea></div>
+        <div class="bugline" style="border-color:var(--destructive)">
+          PATCH /v1/composition/arcs/{node_id}<br />
+          <span class="strike">If-Match: (absent)   → expected_version=None → version clause SKIPPED → 200 OK</span><br />
+          <span class="bad">↑ a <b>blind clobber is a legal request TODAY</b> (arc.py:495 <code>Header(default=None)</code>).</span>
+          The <b>MCP tool requires</b> <code>expected_version</code> (server.py:4333). The REST door is weaker than the MCP door on the same repo method,
+          on the object that steers generation. <b class="bad">BE-A2 — make it required; absent ⇒ 428. Zero existing callers.</b>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="insp-foot">
+    <span class="ver">If-Match: 8</span>
+    <button class="btn">Discard mine</button>
+    <button class="btn primary">Save (retry)</button>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>Two rapid edits must not manufacture this state.</b> A status <code>&lt;select&gt;</code> and a roster chip both commit instantly; unserialized,
+  both send <code>If-Match: v7</code>, the second 412s, and we blame a collaborator for the user's own keystroke
+  (<code>instant-commit-control-over-occ-entity-needs-write-serialization</code>). <b>Chain the writes</b> (<code>useSceneInspector.ts:43-45</code>)
+  <b>and re-seed the fresh row synchronously</b> on success (<code>usePlanNodeWrites.ts:73-75</code>). Both fixes are already shipped in sibling hooks —
+  mirror them, don't re-derive them. <code>move</code> / <code>archive</code> / <code>restore</code> / <code>assign-chapters</code> carry no version and need none.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ ARCHIVED / RESTORE
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ Archived <span class="tag">is_archived</span> — restore, and the derived block that must render “—”</h2>
+
+<div class="stack">
+<div class="panel inspector" style="height:400px">
+  <div class="panel-head"><span>Arc Inspector — archived</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="banner arch">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9M10 13h4"/></svg>
+    <div class="grow"><b>Archived — restore to edit.</b> Restoring brings back the <b>whole subtree</b> and reconnects the archived
+      <b>ancestor chain</b> (<code class="mono" style="font-size:10px">structure.py:426</code>).</div>
+    <button class="btn sm primary">Restore</button>
+  </div>
+  <div class="subject dimmed">
+    <div class="crumb"><span>Quyển II · 山海遺聞</span><span class="sep">›</span><span class="cur">Chương mất tích</span></div>
+    <div class="meta-row">
+      <span class="badge b-arch">archived</span><span class="ver">v3</span>
+      <span class="ver" style="margin-left:auto">archived 11 days ago</span>
+    </div>
+  </div>
+  <div class="insp-body dimmed">
+    <div class="sect">
+      <div class="sect-head"><span class="swatch o"></span>Identity</div>
+      <div class="sect-body">
+        <div class="field"><label>Title</label><input class="inp" value="Chương mất tích" disabled /></div>
+        <div class="field"><label>Status</label><div><span class="badge b-empty">empty</span></div></div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="sect-head"><span class="swatch d"></span>Chapters <span class="src mono">derived · live nodes only</span></div>
+      <div class="sect-body">
+        <div class="span-line" style="color:var(--muted-fg)">Chapters <span class="n" style="color:var(--muted-fg)">—</span> · <span class="n" style="color:var(--muted-fg)">—</span> assigned</div>
+      </div>
+    </div>
+  </div>
+  <div class="insp-foot"><span class="ver">read-only while archived</span></div>
+</div>
+
+<div>
+  <!-- the archive confirm — the blast radius the API does not give us -->
+  <div class="panel mini" style="height:290px">
+    <div class="panel-head"><span style="color:var(--destructive)">Confirm archive</span></div>
+    <div class="sect-body" style="padding:12px 12px 0;gap:10px">
+      <div style="font-size:12px;line-height:1.6">Archive <b>Quyển I · Tro tàn Hàn Cảng</b> and its <b style="color:var(--warning)">2 sub-arcs</b>?</div>
+      <div class="warnrow" style="align-items:flex-start">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top:2px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <span style="line-height:1.55">Its <b style="color:var(--foreground)">18 chapters keep their text and stay bound to this arc</b> —
+          they do <b style="color:var(--foreground)">not</b> return to the unassigned pool.</span>
+      </div>
+      <div class="hint" style="padding-left:0;margin-top:0">Unassign them first if you want them back in the Hub's tray.
+        Restorable from the picker's <i>Show archived</i>.</div>
+    </div>
+    <div class="insp-foot" style="margin-top:auto">
+      <button class="btn" style="margin-left:auto">Cancel</button>
+      <button class="btn danger">Archive 3 nodes</button>
+    </div>
+  </div>
+
+  <div class="callout" style="max-width:300px;margin-top:14px">
+    <b>The count is ours, not the server's.</b> <code>DELETE</code> returns <code>{id, archived:true}</code> — a
+    <b>silent blast radius</b> (OUT-5). We derive <b>2 sub-arcs</b> from the shell tree we already hold and put it in the
+    confirm. We never trust the response for the count, and we never say "archived" without naming what went with it.
+  </div>
+
+  <div class="callout bad" style="max-width:300px;margin-top:12px">
+    <b>And we do not promise a pool return that no writer performs.</b> <code>archive()</code> (<code>structure.py:404</code>)
+    flips <code>is_archived</code> on <code>structure_node</code> <b>only</b> — <code>outline_node.structure_node_id</code> is untouched, and
+    <code>?unassigned=true</code> is <code>structure_node_id IS NULL</code> (<code>outline.py:849</code>). So an archived arc's chapters sit in
+    <b>neither</b> the arc lane <b>nor</b> the unassigned tray. <b>BE-A3's unassign is their only escape hatch</b> — which is a second
+    reason it is MUST-BUILD, not nice-to-have. (Whether <code>archive()</code> should cascade an unassign is
+    <code>D-ARC-ARCHIVE-CHAPTER-STRANDING</code> — it would change <code>restore()</code>'s contract, so it needs its own decision.)
+  </div>
+</div>
+</div>
+
+<div class="callout warn">
+  <b>An archived arc has no derived block — so render “—”, never a computed 0.</b> <code>derived_blocks</code> returns rows for
+  <b>live nodes only</b> (<code>structure.py:255</code>). A panel that COALESCEs the missing block to <code>0</code> tells the user this arc has <i>zero chapters</i>
+  when it has <b>18</b>. Same shape as the <code>chapter-blocks-null-nontext-COALESCE</code> scar: a null that means <i>not computed</i> is not a zero.
+  <b>Two traps ride on this.</b> (1) The <b>detail</b> route does not behave this way <i>today</i> — it calls <code>span()</code>, which happily computes a
+  span for an archived node; the “—” only becomes true <b>under BE-A1</b>, whose fix must emit <code>span:null, chapter_count:null</code> for an archived
+  node and <b>not</b> reuse the list route's <code>empty</code> block (whose <code>chapter_count: 0</code> <i>is</i> the computed zero). (2) The panel therefore
+  gates the “—” on <code>is_archived</code>, <b>not on falsiness</b> — <code>0</code> and <code>null</code> must never collapse into one branch.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ NO SELECTION / EMPTY   ⑥ 403 VIEW-ONLY
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Loading · no selection · empty book &nbsp;·&nbsp; ⑥ VIEW-only grant <span class="tag">never a dead panel</span></h2>
+<p class="sub">
+  A bare-id open (palette, <code>ui_open_studio_panel</code>, the User Guide) arrives with <b>no arc</b>. That is not an error — it is the picker.
+  And a collaborator with <b>VIEW but not EDIT</b> gets the controls <b>unmounted</b>, never rendered-then-403'd
+  (mirrors <code>PlanDrawer</code>'s <code>writes</code>-omitted contract, <code>PlanDrawer.tsx:47-55</code>).
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span>⑤0 Loading</span>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div></div>
+    </div>
+    <!-- the header stays LIVE: the picker is fed by the shell cache, not the in-flight detail fetch -->
+    <div class="subject">
+      <div class="select-wrap">
+        <select style="width:100%"><option>Sự phản bội ở Hàn Cảng</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="crumb"><span>Quyển I · Tro tàn Hàn Cảng</span><span class="sep">›</span><span class="cur">Sự phản bội ở Hàn Cảng</span></div>
+    </div>
+    <div class="insp-body">
+      <div class="sect">
+        <div class="sect-head"><span class="swatch o"></span>Identity</div>
+        <div class="sect-body"><div class="sk" style="width:70%"></div><div class="sk" style="width:92%"></div><div class="sk" style="width:55%"></div></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><span class="swatch o"></span><span class="swatch h" style="margin-left:-3px"></span>Tracks</div>
+        <div class="sect-body"><div class="sk" style="width:84%"></div><div class="sk" style="width:64%"></div></div>
+      </div>
+      <div class="sect" style="border-bottom:none">
+        <div class="sect-head"><span class="swatch d"></span>Chapters</div>
+        <div class="sect-body"><div class="sk" style="width:48%"></div></div>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">GET /arcs/{id} — in flight</span></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>⑤a No selection</span></div>
+    <div class="subject">
+      <div class="select-wrap">
+        <select style="width:100%"><option>— pick an arc or saga —</option><option>Quyển I · Tro tàn Hàn Cảng</option><option>&nbsp;&nbsp;Sự phản bội ở Hàn Cảng</option><option>Quyển II · 山海遺聞</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16V9M12 16V5M17 16v-4"/></svg>
+      <p>Pick an arc to inspect. <b>13 arcs</b> across 2 sagas.</p>
+      <p style="font-size:10.5px">The picker is fed by the shell tree already in the <code class="mono" style="font-size:9.5px">['plan-hub','arcs',bookId]</code> cache — <b>no second fetch</b>.</p>
+    </div>
+    <div class="panel-foot"><span class="mono">bus.activeArcId: null</span></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>⑤b Empty book</span></div>
+    <div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/></svg>
+      <p><b>No arcs yet.</b> The spec tree is what steers generation — an unplanned book drafts from the chapter alone.</p>
+      <button class="btn primary">Create the first saga</button>
+      <p style="font-size:10.5px">…or <span style="color:var(--info);text-decoration:underline">decompile an outline</span> in the Plan Hub.</p>
+    </div>
+    <div class="panel-foot"><span class="mono">0 arcs · 1,842 chapters unassigned</span></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>⑥ VIEW-only (403)</span></div>
+    <div class="banner ro" style="padding:7px 10px;font-size:11px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      <div class="grow">You have <b>view access</b> to this book.</div>
+    </div>
+    <div class="insp-body">
+      <div class="sect">
+        <div class="sect-head"><span class="swatch o"></span>Identity</div>
+        <div class="sect-body">
+          <div class="drawer-f"><span class="l">Title</span><span class="v">Sự phản bội ở Hàn Cảng</span></div>
+          <div class="drawer-f"><span class="l">Status</span><span class="v">drafting</span></div>
+          <div class="drawer-f"><span class="l">Goal</span><span class="v">Thẩm Mặc phải chọn…</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><span class="swatch h"></span>Tracks <span class="eff mono">3 effective</span></div>
+        <div class="sect-body" style="gap:0">
+          <div class="crow own" style="border-bottom:none"><span class="k">revenge</span><span class="lab">Đường báo thù</span></div>
+          <div class="crow inherited"><span class="k">romance</span><span class="lab">The Cold Harbor girl</span></div>
+        </div>
+      </div>
+      <div class="gapnote" style="font-style:normal">
+        No <b style="color:var(--foreground)">Save</b>. No <b style="color:var(--foreground)">+ track</b>. No <b style="color:var(--foreground)">Archive</b>.
+        No <b style="color:var(--foreground)">Override</b>. The controls are <b style="color:var(--foreground)">not rendered</b> —
+        <span class="strike">rendered-then-403'd</span>.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">grant: VIEW</span></div>
+  </div>
+
+  <div class="panel mini" style="height:430px">
+    <div class="panel-head"><span>404 / error — for completeness</span></div>
+    <div class="empty" style="flex:0;padding:18px 14px;border-bottom:1px solid var(--border)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--muted-fg)"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <p><b>This arc is no longer accessible.</b></p>
+      <p style="font-size:10.5px">Archived, deleted, or the grant was revoked. The <b>uniform 404</b> (no existence oracle) means we
+        <b>cannot</b> distinguish gone-from-denied — and we must not guess. The bus slice is cleared.</p>
+      <button class="btn sm">Back to the picker</button>
+    </div>
+    <div class="empty" style="padding:18px 14px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--destructive)"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <p><b>Couldn't load this arc.</b> <span style="font-size:10.5px">502 from composition-service.</span></p>
+      <p style="font-size:10.5px">Never an <b>empty inspector</b> that reads like an empty arc — <span class="strike">a blank pane is a lie</span>.</p>
+      <button class="btn sm">Retry</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ BEFORE — the PlanDrawer note that admits the gap
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ Before / After <span class="tag">PlanDrawer.tsx</span> <span class="tag">24-H3.1 · DOCK-2</span></h2>
+<p class="sub">
+  The Plan Hub's drawer already renders an arc — a <b>minimal summary</b> — and then <b>tells the user the real thing does not exist</b>
+  (<code>data-testid="plan-drawer-arc-gap"</code>). The embed is a <b>deletion</b>: <code>ArcFacets</code> (~50 lines) + <code>rosterKeysOf</code> + the gap note
+  come out; a 4-line mount of the <b>same</b> <code>&lt;ArcInspectorBody&gt;</code> goes in. One implementation, two hosts (DOCK-2) —
+  a second arc renderer inside the drawer would be exactly the fork DOCK-2 forbids. Revert-safe if the Book-Package track re-opens.
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="height:556px">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — today (PlanDrawer)</span></div>
+    <div class="insp-body">
+      <div class="sect">
+        <div class="sect-head">Overview</div>
+        <div class="sect-body" style="gap:2px">
+          <div class="drawer-f"><span class="l">Status</span><span class="v">drafting</span></div>
+          <div class="drawer-f"><span class="l">Goal</span><span class="v">Thẩm Mặc phải chọn…</span></div>
+          <div class="drawer-f"><span class="l">Summary</span><span class="v">Hàn Cảng thất thủ…</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head">Structure</div>
+        <div class="sect-body" style="gap:2px">
+          <div class="drawer-f"><span class="l">Kind</span><span class="v">arc</span></div>
+          <div class="drawer-f"><span class="l">Span</span><span class="v">41–58</span></div>
+          <div class="drawer-f"><span class="l">Chapters</span><span class="v">18</span></div>
+          <div class="drawer-f"><span class="l">Tracks</span><span class="v">revenge, mentor_lie</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head">Roster</div>
+        <div class="sect-body" style="gap:4px">
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <span class="badge b-empty">protagonist</span><span class="badge b-empty">traitor</span><span class="badge b-empty">mentor</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted-fg);line-height:1.5">
+            keys only — <span class="strike">no bindings</span>, <span class="strike">no own-vs-inherited</span>
+          </div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head">Provenance</div>
+        <div class="sect-body" style="gap:2px">
+          <div class="drawer-f"><span class="l">Arc template</span>
+            <span class="v mono" style="font-size:9.5px;color:var(--destructive)">7c1f8e2a-4b93-4d0e-9a11-6f2c8d3b5e07</span></div>
+          <div style="font-size:10px;color:var(--destructive);line-height:1.5">↑ a raw UUID, shown to a novelist (<code class="mono" style="font-size:9px">:346</code>)</div>
+        </div>
+      </div>
+      <div class="gapnote" style="color:var(--destructive);border-top:1px dashed var(--destructive)">
+        “The full arc inspector (Structure · Roster · Chapters · Conformance · Provenance — 23 C3) <b style="color:var(--destructive)">is not built yet</b>;
+        this is a minimal summary.”
+        <div style="margin-top:6px;font-style:normal;font-size:9.5px" class="mono">data-testid="plan-drawer-arc-gap" · PlanDrawer.tsx:351</div>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">read-only · 4 fields · no writes</span></div>
+  </div>
+
+  <div class="panel mini" style="height:556px">
+    <div class="panel-head"><span style="color:var(--muted-fg)">Before — what it CAN'T reach</span></div>
+    <div class="sect-body" style="padding:12px 12px 0;gap:0">
+      <div style="font-size:10.5px;color:var(--muted-fg);line-height:1.9">
+        <span class="strike">create an arc</span> — <span class="mono" style="font-size:9.5px">POST /books/{bid}/arcs</span><br />
+        <span class="strike">read one arc, enriched</span> — <span class="mono" style="font-size:9.5px">GET /arcs/{id}</span><br />
+        <span class="strike">edit title / goal / summary</span> — <span class="mono" style="font-size:9.5px">PATCH /arcs/{id}</span><br />
+        <span class="strike">edit status</span><br />
+        <span class="strike">edit tracks</span> — <b style="color:var(--destructive)">and these reach the prompt</b><br />
+        <span class="strike">edit roster + bindings</span><br />
+        <span class="strike">archive an arc</span> — <span class="mono" style="font-size:9.5px">DELETE /arcs/{id}</span><br />
+        <span class="strike">restore an arc</span> — <span class="mono" style="font-size:9.5px">POST /arcs/{id}/restore</span><br />
+        <span class="strike">remove a chapter from an arc</span> — <b style="color:var(--destructive)">no writer exists (BE-A3)</b><br />
+        <span class="strike">see own vs inherited</span><br />
+        <span class="strike">see open promises</span><br />
+        <span class="strike">see the template's title</span>
+      </div>
+      <div style="margin-top:12px;padding:8px 9px;border-radius:6px;background:var(--destructive-muted);font-size:10.5px;line-height:1.6;color:var(--foreground)">
+        <b>The agent can do all twelve.</b><br />
+        <span style="color:var(--muted-fg)">8 MCP tools · <code class="mono" style="font-size:9.5px">server.py:4191-4543</code>. The FE consumes 3.
+        That is GG-1's law violated on the sharpest possible object: the one that steers the prose.</span>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">5 routes · 0 consumers</span></div>
+  </div>
+
+  <div class="panel mini" style="height:556px">
+    <div class="panel-head"><span style="color:var(--success)">After — the same body component</span></div>
+    <div class="insp-body">
+      <div class="sect">
+        <div class="sect-head"><span class="swatch o"></span>Identity</div>
+        <div class="sect-body">
+          <div class="field"><label>Title</label><input class="inp" value="Sự phản bội ở Hàn Cảng" /></div>
+          <div class="field" style="align-items:start"><label style="padding-top:4px">Goal</label>
+            <textarea class="inp" style="min-height:32px">Thẩm Mặc phải chọn giữa lời thề…</textarea></div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><span class="swatch o"></span><span class="swatch h" style="margin-left:-3px"></span>Tracks <span class="eff mono">3 eff.</span></div>
+        <div class="sect-body" style="gap:0">
+          <div class="crow own"><span class="k">revenge</span><span class="lab">Đường báo thù</span><button class="lnk">edit</button></div>
+          <div class="crow inherited"><span class="k">romance</span><span class="lab">Cold Harbor girl</span><span class="from">← saga</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><span class="swatch d"></span>Chapters</div>
+        <div class="sect-body">
+          <div class="span-line" style="font-size:11px">41–58 · 18 chapters · <span style="color:var(--warning)">3 gaps</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><span class="swatch d"></span>Provenance</div>
+        <div class="sect-body">
+          <div class="prov-line" style="font-size:11px">复仇双线 · v3 <button class="btn sm">open</button></div>
+        </div>
+      </div>
+      <div class="gapnote" style="font-style:normal;color:var(--success)">
+        <b style="color:var(--success)">No gap note.</b>
+        <span style="color:var(--muted-fg)">The drawer supplies <code class="mono" style="font-size:9px">arcId</code> + <code class="mono" style="font-size:9px">writes</code>;
+        <code class="mono" style="font-size:9px">&lt;ArcInspectorBody&gt;</code> is the same component the dock panel renders (no chrome, no picker).</span>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">grep "plan-drawer-arc-gap" → 0 hits</span></div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b>
+  <b>(1) No LLM, anywhere.</b> Every action here is deterministic CRUD, <b>$0</b>, no propose→confirm — and adding one would be a defect. The
+  <i>"suggest an arc for this premise"</i> button (<code>composition_arc_suggest</code>) is <b>Wave 4</b>: it has <b>no REST route</b>, so the browser gets a
+  403 from the BFF's <code>FE_BRIDGE_TOOL_ALLOWLIST</code> and fails closed at integration time. Its landing site is this header — but it lands
+  <i>with its backend</i>. If a later agent adds a paid action here, it goes through the <b>generic</b>
+  <code>/actions/preview</code> → <code>/actions/confirm</code> spine; three bespoke per-action estimate routes <b>404 in production today</b> for exactly this reason.
+  <b>(2) No server-side schema for <code>tracks</code>/<code>roster</code>.</b> They are <code>list[dict[str, Any]]</code> at <b>both</b> doors; tightening them
+  would reject writes <b>the agent already makes</b>. AI-3 makes the <i>panel</i> safe today; the schema is deferred as
+  <code>D-ARC-TRACKS-ROSTER-SCHEMA</code> (gate #2 — structural).
+  <b>(3) Do not derive <code>status</code> from member chapters.</b> No engine branches on it (grep found none) — it is an author's label. Recorded here so the
+  next agent does not "helpfully" auto-compute it.
+</div>
+
+<div class="callout">
+  <b>The Lane-B effect handler is mandatory, not conditional (X-4).</b>
+  <code>registerEffectHandler(/^composition_arc_(create|update|delete|restore|move|assign_chapters)/, …)</code> →
+  <code>invalidateQueries(['plan-hub'])</code>. Without it the agent edits an arc, the open inspector keeps showing the <b>stale</b> row, and the user's next
+  save 412s against a version <b>they were never shown</b>. This handler is the difference between <i>"the agent and the human share one object"</i> and
+  <i>"they fight over it."</i> MCP parity needs nothing new: all 8 tools exist — <b>the human side was the hole</b>, and after this ships there is
+  <b>no INVERSE gap for arcs</b> (which is why BE-A3 must land on <b>both</b> doors — a GUI-only unassign would just invert the bug).
+</div>
+
+<div class="callout warn">
+  <b>DoD #5 — the assertions that prove this panel matters, one per prompt-bearing write.</b>
+  <b>(a)</b> Set an arc's <code>tracks</code> → run a draft on a member chapter → assert the <b>prompt changed</b>
+  (<code>test_pack_arc_wired.py</code>'s BA12/D2 shape). <b>(b) Do it again for <code>roster_bindings</code></b> — bind a role to a glossary entity and
+  assert the <i>"Cast bindings: …"</i> line appears (<code>lenses.py:337-344</code>). These are the panel's <b>only two</b> prompt-bearing writes; a
+  <code>tracks</code>-only test leaves the entire Roster/binding editor unproven, which is the <b>write-only-behavior</b> bug this repo bans wearing the
+  costume of a green suite. <b>Do NOT</b> write a pack-effect test for <code>roster</code> (slots) or <code>summary</code> — <b>the packer does not read them</b>;
+  assert <code>roster</code> through <code>extract_template_from_arc</code> instead, and let <code>summary</code>/<code>status</code> be proven by the Hub rendering them.
+  Plus the mandatory live browser smoke (8 steps): the agent's <code>ui_open_studio_panel {panel_id:"arc-inspector"}</code> leg is verified
+  <b>by EFFECT — a mounted dock tab</b>, not a <code>shown:true</code> in the raw stream.
+</div>
+
+<script>
+  /* The one interaction worth making real: Override here — an inherited track
+     becomes an OWN track (same key ⇒ it shadows), and SAYS so. This is AI-2. */
+  document.getElementById('ovr').addEventListener('click', function (e) {
+    var row = e.target.closest('.crow');
+    row.classList.remove('inherited');
+    row.classList.add('own');
+    row.querySelector('.from').textContent = '↳ overridden here (shadows the saga)';
+    row.querySelector('.from').style.color = 'var(--primary)';
+    row.querySelector('.acts2').innerHTML =
+      '<button class="lnk">edit</button><button class="lnk">revert to inherited</button>';
+    var eff = row.closest('.sect').querySelector('.eff');
+    eff.textContent = 'effective 3 · own 3 ⊕ inherited 0';
+  });
+</script>
+</body>
+</html>

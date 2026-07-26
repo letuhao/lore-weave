@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Narrative Motif Library — Design Drafts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    motif: '#d97706', sys: '#64748b', user: '#6366f1', book: '#0ea5e9', pub: '#059669' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .tier-system { background:#64748b1a; color:#475569; border:1px solid #64748b40; }
+  .tier-user   { background:#6366f11a; color:#4f46e5; border:1px solid #6366f140; }
+  .tier-book   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .tier-public { background:#0596691a; color:#047857; border:1px solid #05966940; }
+  .k { font-family:ui-monospace,monospace; }
+  .beat { display:inline-flex; align-items:center; gap:.3rem; border-radius:.375rem; padding:.1rem .5rem; font-size:11px; font-weight:600; background:#d977061a; color:#b45309; border:1px solid #d9770633; }
+  .role { display:inline-flex; align-items:center; gap:.25rem; border-radius:999px; padding:.05rem .45rem; font-size:10px; font-weight:600; background:#7c3aed12; color:#6d28d9; border:1px solid #7c3aed33; }
+  .arrow { color:#d97706; font-weight:700; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold">Narrative Motif Library — Design Drafts</h1>
+        <p class="text-xs text-slate-500">The <b>meso layer</b> between structure templates (macro) and scenes (micro). Static mockups to agree UX + data model before any code — <span class="k">docs/specs/2026-06-26-narrative-motif-library.md</span>.</p>
+      </div>
+      <span class="chip tier-user">DRAFT v0.1 · 2026-06-26</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md bg-motif px-3 py-1.5 font-medium text-white">Model</a>
+      <a href="01-library.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Library &amp; Catalog</a>
+      <a href="02-motif-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Motif editor</a>
+      <a href="03-planner-binding.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Planner binding ★</a>
+      <a href="04-mining.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Mine → template</a>
+      <a href="05-arc-template.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Arc template ★</a>
+      <a href="06-manual-build.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Manual build</a>
+      <a href="07-trace-conformance.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Trace &amp; conformance ★</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl space-y-10 px-6 py-8">
+
+  <!-- WHY -->
+  <section class="rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <h2 class="text-sm font-bold text-amber-900">⚠ The gap this fills (why the planner feels bland)</h2>
+    <p class="mt-1 text-[13px] text-amber-900/80">
+      The A3 planner asks the LLM to <b>invent</b> scenes from a blank macro-beat (<span class="k">"Midpoint"</span> + premise + cast). An uninstructed model under-weights plot
+      <b>1.67×</b> vs style (<i>Style over Story</i>, arXiv:2510.02025) — so a weak self-host produces plot-thin scenes. A motif supplies the missing
+      <b>plot structure</b> as a reusable, role-bearing event chain — the planner shifts from <b>"invent"</b> to <b>"select + bind"</b>, which a small model can do.
+    </p>
+  </section>
+
+  <!-- ALTITUDE STACK -->
+  <section>
+    <h2 class="text-base font-bold">Where it sits — the altitude stack</h2>
+    <p class="mt-1 text-[13px] text-slate-600">The library is the <b>meso</b> layer. The planner consumes top-down; each layer constrains the next.</p>
+    <div class="mt-4 grid gap-3 md:grid-cols-4">
+      <div class="rounded-lg border bg-white p-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Macro · HAVE</div>
+        <div class="mt-1 text-sm font-semibold">Structure template</div>
+        <div class="mt-1 text-[12px] text-slate-600"><span class="k">structure_template.beats[]</span> — Save the Cat, Hero's Journey. Abstract <i>when</i>, content-free.</div>
+      </div>
+      <div class="rounded-lg border-2 border-motif bg-amber-50/40 p-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-motif">Meso · NEW ★</div>
+        <div class="mt-1 text-sm font-semibold">Motif</div>
+        <div class="mt-1 text-[12px] text-slate-600">Reusable event chain w/ role slots + conditions. The <i>what happens</i> — "fall → legacy → breakthrough".</div>
+      </div>
+      <div class="rounded-lg border bg-white p-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Micro · HAVE</div>
+        <div class="mt-1 text-sm font-semibold">Scene / outline node</div>
+        <div class="mt-1 text-[12px] text-slate-600"><span class="k">outline_node</span> — tension, present_entities, beat_role. The bound, book-specific instance.</div>
+      </div>
+      <div class="rounded-lg border bg-white p-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fine · PARTIAL</div>
+        <div class="mt-1 text-sm font-semibold">Constraint tags</div>
+        <div class="mt-1 text-[12px] text-slate-600"><span class="k">canon_rule</span> · <span class="k">style_profile</span> · <span class="k">voice_profile</span>. Prose/voice steering.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT A MOTIF IS -->
+  <section class="rounded-lg border bg-white p-5">
+    <h2 class="text-base font-bold">What a motif <i>is</i> (the schema, visualized)</h2>
+    <p class="mt-1 text-[13px] text-slate-600">Grounded in narratology — not invented. Roles = Greimas/Propp · ordered beats = Propp functions · conditions = MEXICA/plot-graph.</p>
+
+    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50/30 p-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="chip" style="background:#d977061a;color:#b45309;border:1px solid #d9770633">sequence</span>
+          <span class="ml-1 text-sm font-bold">Fortuitous Encounter → Hidden Legacy</span>
+          <span class="ml-1 k text-[11px] text-slate-400">cultivation.fortuitous_encounter</span>
+        </div>
+        <div class="flex gap-1">
+          <span class="chip" style="background:#f59e0b1a;color:#b45309">tu-tiên</span>
+          <span class="chip" style="background:#f59e0b1a;color:#b45309">xianxia</span>
+        </div>
+      </div>
+      <p class="mt-2 text-[12px] italic text-slate-600">A weak/humiliated protagonist is isolated by disaster, encounters a dying master in a sealed place, and receives a legacy that inverts their power — at the cost of a debt or secret.</p>
+
+      <!-- the chain -->
+      <div class="mt-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Ordered beats (the chain)</div>
+        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+          <span class="beat">① Isolation by disaster <span class="text-[9px] text-amber-500">T2</span></span><span class="arrow">→</span>
+          <span class="beat">② Encounter the dying master <span class="text-[9px] text-amber-500">T3</span></span><span class="arrow">→</span>
+          <span class="beat">③ Trial of worthiness <span class="text-[9px] text-amber-500">T4</span></span><span class="arrow">→</span>
+          <span class="beat">④ Receipt of legacy <span class="text-[9px] text-amber-500">T4</span></span><span class="arrow">→</span>
+          <span class="beat">⑤ Secret debt incurred <span class="text-[9px] text-amber-500">T2</span></span>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 md:grid-cols-3">
+        <div>
+          <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Role slots → bind to cast</div>
+          <div class="mt-1.5 space-y-1 text-[12px]">
+            <div><span class="role">subject</span> protagonist <span class="text-[10px] text-slate-400">· weak/humiliated</span></div>
+            <div><span class="role">sender</span> dying master <span class="text-[10px] text-slate-400">· mentor, near death</span></div>
+            <div><span class="role">object</span> the legacy <span class="text-[10px] text-slate-400">· technique/bloodline</span></div>
+            <div><span class="role">opponent</span> <span class="text-[10px] text-slate-400">(optional) the one who caused the fall</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Preconditions</div>
+          <ul class="mt-1.5 space-y-1 text-[12px] text-slate-600 list-disc pl-4">
+            <li>protagonist is weak / low-status</li>
+            <li>an isolated or sealed locale exists</li>
+            <li>protagonist recently suffered a loss</li>
+          </ul>
+        </div>
+        <div>
+          <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Effects (→ next motif's pre)</div>
+          <ul class="mt-1.5 space-y-1 text-[12px] text-slate-600 list-disc pl-4">
+            <li>protagonist power ↑ (hidden)</li>
+            <li>a debt / secret to the sender</li>
+            <li>a long-term goal is seeded</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-3 flex items-center gap-3 border-t pt-3 text-[11px] text-slate-500">
+        <span>Overall tension target <b class="text-motif">▲ 3/5</b></span>
+        <span class="text-slate-300">·</span>
+        <span>Emotion target <b class="text-slate-700">vindication / hope</b></span>
+        <span class="text-slate-300">·</span>
+        <span>Composes into → <span class="k">pattern: Rise-from-Trash Revenge Arc</span></span>
+      </div>
+    </div>
+    <p class="mt-2 text-[11px] text-slate-500">⟶ <b>Gap surfaced by this view:</b> the schema needs an <b>examples[]</b> field (a concrete instantiation helps the author <i>and</i> the model) and an <b>anti-pattern / overuse cap</b> note. Folded into spec §9 risks.</p>
+  </section>
+
+  <!-- TENANCY -->
+  <section>
+    <h2 class="text-base font-bold">Tiering &amp; publish — same model as books</h2>
+    <p class="mt-1 text-[13px] text-slate-600">Three tiers resolve <b>System → User → Book</b> (higher shadows lower by <span class="k">code</span>). Publish &amp; adopt mirror the book flow.</p>
+    <div class="mt-4 overflow-hidden rounded-lg border bg-white">
+      <table class="w-full text-left text-[13px]">
+        <thead class="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-2.5 font-semibold">Tier</th>
+            <th class="px-4 py-2.5 font-semibold">Scope key</th>
+            <th class="px-4 py-2.5 font-semibold">Who writes</th>
+            <th class="px-4 py-2.5 font-semibold">Use</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          <tr>
+            <td class="px-4 py-3"><span class="chip tier-book">Book</span></td>
+            <td class="px-4 py-3 k text-[12px]">book_id + code</td>
+            <td class="px-4 py-3 text-[12px]">owner + manage-grant</td>
+            <td class="px-4 py-3 text-[12px]">motifs mined/authored for this book; planner reads these first</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3"><span class="chip tier-user">User</span></td>
+            <td class="px-4 py-3 k text-[12px]">owner_user_id + code</td>
+            <td class="px-4 py-3 text-[12px]">that user</td>
+            <td class="px-4 py-3 text-[12px]">my reusable library across all my books</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3"><span class="chip tier-system">System</span></td>
+            <td class="px-4 py-3 k text-[12px]">code (both NULL)</td>
+            <td class="px-4 py-3 text-[12px]">admin / seed only</td>
+            <td class="px-4 py-3 text-[12px]">the seeded tu-tiên / báo-thù packs (read-only to users)</td>
+          </tr>
+          <tr class="bg-emerald-50/40">
+            <td class="px-4 py-3"><span class="chip tier-public">Public</span></td>
+            <td class="px-4 py-3 k text-[12px]">visibility='public'</td>
+            <td class="px-4 py-3 text-[12px]">owner (instant, no review)</td>
+            <td class="px-4 py-3 text-[12px]">discoverable in the catalog; others <b>adopt</b> (clone) into their tier</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+      <span class="chip tier-book">Book draft</span><span class="arrow">→ promote →</span>
+      <span class="chip tier-user">My library</span><span class="arrow">→ publish →</span>
+      <span class="chip tier-public">Public catalog</span><span class="arrow">→ adopt (clone) →</span>
+      <span class="chip tier-book">Someone's book</span>
+    </div>
+    <p class="mt-2 text-[11px] text-slate-500">Adopt = <b>copy-on-adopt</b> with provenance (<span class="k">source_ref</span>); your edits never touch the shared original (glossary-tiering D8 precedent). Upstream edits pull <b>on demand</b>, never auto-push.</p>
+  </section>
+
+  <!-- FLYWHEEL -->
+  <section class="rounded-lg border border-sky-200 bg-sky-50/40 p-5">
+    <h2 class="text-sm font-bold">Self-enrichment flywheel — the library grows itself (mandatory)</h2>
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+      <span class="rounded-md border bg-white px-2 py-1">chapters</span><span class="arrow">→</span>
+      <span class="rounded-md border bg-white px-2 py-1">knowledge-svc extraction → Neo4j <span class="k">(:Event)</span> chains <span class="chip tier-system">prod</span></span><span class="arrow">→</span>
+      <span class="rounded-md border bg-white px-2 py-1">frequent-sequence mining</span><span class="arrow">→</span>
+      <span class="rounded-md border bg-white px-2 py-1">LLM abstraction (concrete→roles)</span><span class="arrow">→</span>
+      <span class="rounded-md border bg-white px-2 py-1">judge gate <span class="chip tier-system">prod</span></span><span class="arrow">→</span>
+      <span class="rounded-md border-2 border-motif bg-white px-2 py-1">motif draft</span>
+    </div>
+    <p class="mt-2 text-[11px] text-slate-500">Reuses the entire existing extraction + eval stack — only mining + abstraction are new. Cold-start: Phase 1 hand-seeds; mining is Phase 3. See <a class="text-motif underline" href="04-mining.html">Mine → template</a>.</p>
+  </section>
+
+  <footer class="border-t pt-4 text-[11px] text-slate-400">
+    Throwaway HTML mockups to agree the UX + data model before any React/Python is written. Each screen's footer lists the <b>spec deltas</b> it surfaced.
+  </footer>
+</main>
+</body>
+</html>

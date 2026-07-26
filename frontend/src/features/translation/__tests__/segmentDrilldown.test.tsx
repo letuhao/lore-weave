@@ -65,6 +65,18 @@ describe('SegmentDrilldownModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it('S2: surfaces a re-translate failure instead of swallowing it', async () => {
+    getSegmentStatus.mockResolvedValue({
+      chapter_id: 'ch', target_language: 'vi',
+      segments: [seg(0, { dirty: true, needs: true })], dirty_count: 1, needs_count: 1,
+    });
+    retranslateDirty.mockRejectedValue(new Error('503 boom'));
+    wrap(<SegmentDrilldownModal bookId="b" target={{ chapterId: 'ch', lang: 'vi' }} onClose={() => {}} />);
+    const btn = (await screen.findByText('segments.retranslate_changed:1')).closest('button') as HTMLButtonElement;
+    fireEvent.click(btn);
+    expect(await screen.findByTestId('segment-retranslate-error')).toBeInTheDocument();
+  });
+
   it('disables re-translate when nothing needs work', async () => {
     getSegmentStatus.mockResolvedValue({
       chapter_id: 'ch', target_language: 'vi', segments: [seg(0)], dirty_count: 0, needs_count: 0,

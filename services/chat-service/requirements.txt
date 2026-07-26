@@ -1,18 +1,37 @@
-fastapi>=0.111
-uvicorn[standard]>=0.29
+fastapi>=0.139.2
+uvicorn[standard]>=0.51.0
 python-multipart>=0.0.9
-asyncpg>=0.29
-pydantic>=2.6
-pydantic-settings>=2.2
+asyncpg>=0.31.0
+pydantic>=2.13.4
+pydantic-settings>=2.14.2
 httpx>=0.27
-PyJWT>=2.8
-python-dotenv>=1.0
+PyJWT>=2.13.0
+python-dotenv>=1.2.2
 # litellm dropped in Phase 1c-ii — chat-service now routes all LLM calls
 # through provider-registry's /internal/llm/stream via the local
 # loreweave_llm SDK (installed via Dockerfile COPY of sdks/python).
-boto3>=1.34
+boto3>=1.43.51
 redis>=5.0
-aiofiles>=23.0
+aiofiles>=25.1.0
 # ARCH-2 C2 — MCP client (mcp.client.streamable_http) for the USE_MCP_TOOLS
 # dual-run path in stream_service. Base package only (no CLI tools needed).
-mcp>=1.9,<2
+# Frontend-tools→MCP migration SP-0 (2026-07-19): pinned to 1.28.1 (latest STABLE),
+# which already ships native elicitation (Context.elicit/ServerSession.elicit) + the
+# Tasks extension (experimental: TASK_STATUS_INPUT_REQUIRED, tasks/get) — the primitives
+# Phases 1-2 build the human gate on. NOTE: a beta v2 DOES exist (mcp==2.0.0b2, `pip
+# install --pre`), but v2 is a major rework that REMOVES mcp.server.fastmcp (which the
+# loreweave_mcp kit + 6 services depend on) and renames the client streamable-http import.
+# Staying on stable 1.x (FastMCP intact) is deliberate: zero capability gain from v2 today,
+# and stable v2 lands 2026-07-28. A future v2 adoption goes through a FastMCP→MCPServer
+# ADAPTER in the loreweave_mcp kit (the single chokepoint), keeping the 6 services untouched.
+mcp==1.28.1
+# K35 (2026-07-24) — app/services/frontend_tools.py does a DIRECT top-level
+# `from jsonschema import Draft202012Validator` (the frontend-tool contract validator,
+# added by the Phase-0 frontend-tools→MCP work eb86bb33e). It resolved only because
+# `mcp` happens to pull jsonschema transitively — the exact undeclared-direct-import class
+# that once crashed every service on startup (see the python-json-logger note in
+# sdks/python/pyproject.toml). Declared here so a future mcp re-pin/removal can't crash chat.
+jsonschema>=4.18
+# D-TOOLCALL-GEMMA-TOKEN-LEAK — generic JSON-repair fallback for malformed
+# tool-call arguments some local models emit (see _parse_tool_args).
+json-repair>=0.30

@@ -68,7 +68,7 @@ class _Repo:
         self._raise = raise_error
         self.limit_seen = None
 
-    async def list_open(self, user_id, project_id, *, limit=100):
+    async def list_open(self, project_id, *, limit=100):
         self.limit_seen = limit
         if self._raise:
             raise RuntimeError("boom")
@@ -82,7 +82,7 @@ def _t(kind, summary):
 @pytest.mark.asyncio
 async def test_gather_maps_and_passes_cap_as_limit():
     repo = _Repo([_t("promise", f"p{i}") for i in range(20)])
-    out = await gather_open_promises(repo, uuid4(), uuid4(), cap=5)
+    out = await gather_open_promises(repo, uuid4(), cap=5)
     assert repo.limit_seen == 5 and len(out) == 5
     assert out[0] == {"kind": "promise", "summary": "p0"}
 
@@ -90,14 +90,14 @@ async def test_gather_maps_and_passes_cap_as_limit():
 @pytest.mark.asyncio
 async def test_gather_filters_blank_summary():
     repo = _Repo([_t("promise", "ok"), _t("foreshadow", "   ")])
-    out = await gather_open_promises(repo, uuid4(), uuid4(), cap=10)
+    out = await gather_open_promises(repo, uuid4(), cap=10)
     assert out == [{"kind": "promise", "summary": "ok"}]
 
 
 @pytest.mark.asyncio
 async def test_gather_degrades_to_empty_on_repo_error():
     repo = _Repo(raise_error=True)
-    assert await gather_open_promises(repo, uuid4(), uuid4(), cap=5) == []
+    assert await gather_open_promises(repo, uuid4(), cap=5) == []
 
 
 # ── review-impl MED#1: the re-injected summary is sanitized (SEC3) ──
@@ -119,7 +119,11 @@ def test_open_promises_summary_is_sanitized():
 
 
 def _profile():
-    return SimpleNamespace(source_language="auto", voice="")
+    # density/pace/character_voices are part of the BookProfile contract that
+    # style_directive (T3.5) consumes — the stub must carry them or build_messages
+    # raises AttributeError (pre-existing stale-fixture fix, folded into T3.6).
+    return SimpleNamespace(source_language="auto", voice="", density_level=50,
+                           pace_level=50, character_voices=())
 
 
 def test_build_messages_steers_when_open_promises_present():

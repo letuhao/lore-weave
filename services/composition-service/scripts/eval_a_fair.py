@@ -19,11 +19,14 @@ fair granularity → rethink decompose.
 Reuses eval_a_validate's helpers + the internal pairwise-judge endpoint. Eval-only.
 Usage: python eval_a_fair.py [n_premises]
 """
+import pathlib
 import statistics
 import sys
 import time
 
-sys.path.insert(0, "D:/Works/source/lore-weave/services/composition-service/scripts")
+# The sibling module lives NEXT TO this file — say that, rather than an absolute host path
+# that only resolves on one machine.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import eval_a_validate as E  # noqa: E402
 
 

@@ -220,3 +220,31 @@ def test_segment_coverage_empty(client, fake_pool):
     fake_pool.fetch.return_value = []
     resp = client.get(f"/v1/translation/books/{BOOK_ID}/segment-coverage?target_language=vi")
     assert resp.json()["chapters"] == []
+
+
+# ── D-S05: untranslated chapters must be VISIBLE (not derived from translations only) ──
+
+def test_coverage_surfaces_untranslated_book_chapters():
+    """A chapter that exists in the BOOK but has no translation row was structurally invisible
+    (the coverage SQL derives its chapter list from chapter_translations). Given the book's real
+    chapter list, coverage must surface the untranslated one — the whole point of a
+    'translate what's new' pass (D-S05-COVERAGE-MISMATCH)."""
+    from app.mcp.server import _coverage_payload
+    rows = [_coverage_row(CHAPTER_ID_1, "en", active_ct_id=_ACTIVE_CT_ID, active_version_num=1)]
+    payload = _coverage_payload(rows, UUID(BOOK_ID), all_chapter_ids=[CHAPTER_ID_1, CHAPTER_ID_2])
+    # the never-translated ch2 is flagged...
+    assert CHAPTER_ID_2 in payload["untranslated_chapter_ids"]
+    assert CHAPTER_ID_1 not in payload["untranslated_chapter_ids"]
+    # ...and it APPEARS in coverage (with no language coverage), not omitted
+    ids = [c["chapter_id"] for c in payload["coverage"]]
+    assert CHAPTER_ID_1 in ids and CHAPTER_ID_2 in ids
+
+
+def test_coverage_degrades_to_translated_only_without_book_list():
+    """No book chapter list (book-service unreachable) → behave EXACTLY as before: translated-only,
+    empty untranslated list. A read must never break the turn."""
+    from app.mcp.server import _coverage_payload
+    rows = [_coverage_row(CHAPTER_ID_1, "en", active_ct_id=_ACTIVE_CT_ID, active_version_num=1)]
+    payload = _coverage_payload(rows, UUID(BOOK_ID), all_chapter_ids=None)
+    assert payload["untranslated_chapter_ids"] == []
+    assert [c["chapter_id"] for c in payload["coverage"]] == [CHAPTER_ID_1]

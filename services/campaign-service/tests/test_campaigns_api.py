@@ -55,7 +55,7 @@ def _book_stub(mocker, *, owner=TEST_USER, chapters=None, owner_exc=None, chapte
     inst = MagicMock()
     inst.get_owner_user_id = AsyncMock(
         return_value=owner, side_effect=owner_exc)
-    inst.list_published_chapters = AsyncMock(
+    inst.list_indexed_chapters = AsyncMock(
         return_value=chapters if chapters is not None else [ChapterRef(C1, 0)],
         side_effect=chapters_exc)
     inst.aclose = AsyncMock()
@@ -90,6 +90,17 @@ def test_create_success(client, mocker):
     assert resp.status_code == 201, resp.text
     assert resp.json()["campaign_id"] == CAMP
     assert resp.json()["status"] == "created"
+
+
+def test_create_on_a_diary_is_refused_403(client, mocker):
+    # P-1 / D-R19 — a private diary can NEVER be batch-translated into a campaign (it would ship
+    # the user's diary to a translation provider). The book_client raises BookIsDiary at owner
+    # resolution → 403 CAMPAIGN_DIARY_NOT_ALLOWED, before any chapters are enumerated.
+    from app.clients.book_client import BookIsDiary
+    _book_stub(mocker, owner_exc=BookIsDiary(str(BOOK)))
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_DIARY_NOT_ALLOWED"
 
 
 def test_create_project_not_owned_400(client, mocker):

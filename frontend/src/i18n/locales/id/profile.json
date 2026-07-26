@@ -1,0 +1,49 @@
+{
+  "anonymous": "Anonim",
+  "joined": "Bergabung {{date}}",
+  "followers": "pengikut",
+  "following": "mengikuti",
+  "follow": "Ikuti",
+  "unfollow": "Mengikuti",
+  "editProfile": "Edit Profil",
+  "loading": "Memuat...",
+  "noBooks": "Belum ada buku yang diterbitkan.",
+  "noTranslations": "Belum ada terjemahan.",
+  "errorLoading": "Gagal memuat profil.",
+  "followError": "Gagal mengikuti pengguna.",
+  "unfollowError": "Gagal berhenti mengikuti pengguna.",
+  "userNotFound": "Pengguna tidak ditemukan.",
+  "achievements": "Pencapaian",
+  "chapters": "bab",
+  "readers": "pembaca",
+  "recentActivity": "Aktivitas Terkini",
+  "last7d": "7 hari terakhir",
+  "last30d": "30 hari terakhir",
+  "translationLanguages": "Bahasa Terjemahan",
+  "stats": {
+    "books": "Buku",
+    "chaptersTranslated": "Bab diterjemahkan",
+    "totalReaders": "Total pembaca",
+    "followers": "Pengikut",
+    "totalTranslations": "Total terjemahan",
+    "languages": "Bahasa"
+  },
+  "achievement": {
+    "booksPublished": "{{count}} Buku Diterbitkan",
+    "booksPublished_other": "{{count}} Buku Diterbitkan",
+    "kReaders": "{{count}}K+ Pembaca",
+    "hundredReaders": "100+ Pembaca",
+    "followers": "{{count}} Pengikut",
+    "multiLangTranslator": "Penerjemah {{count}}-Bahasa",
+    "fiftyChapters": "50+ Bab Diterjemahkan"
+  },
+  "loadError": "Gagal memuat buku.",
+  "noWiki": "Belum ada kontribusi wiki.",
+  "wikiError": "Gagal memuat kontribusi wiki.",
+  "untitled": "Tanpa Judul",
+  "tabs": {
+    "books": "Buku",
+    "translations": "Terjemahan",
+    "wiki": "Kontribusi Wiki"
+  }
+}

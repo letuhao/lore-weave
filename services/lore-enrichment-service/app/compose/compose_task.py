@@ -566,6 +566,7 @@ async def compute_intent_resolve(
     client = GlossaryClient(
         base_url=settings.glossary_service_url,
         internal_token=settings.internal_service_token,
+        kal_base_url=settings.knowledge_gateway_url,  # X2: cast via KAL roster (INV-KAL)
     )
     try:
         ents = await client.list_entities(book_id=UUID(book_id), limit=200)

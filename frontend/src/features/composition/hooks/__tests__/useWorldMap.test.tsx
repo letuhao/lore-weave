@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { useWorldMap } from '../useWorldMap';
+import { knowledgeApi } from '../../../knowledge/api';
 import type { Work } from '../../types';
 
 // /review-impl regression-lock for the two-writer clobber fix: positions and
@@ -19,7 +20,8 @@ vi.mock('../useWork', () => ({ useSetWorkSettings: () => ({ mutate: setSettingsM
 vi.mock('../../../knowledge/api', () => ({
   knowledgeApi: {
     listEntities: vi.fn().mockResolvedValue({ entities: [], total: 0 }),
-    getEntityDetail: vi.fn(),
+    getEntityDetail: vi.fn().mockResolvedValue({ entity: null, relations: [], relations_truncated: false, total_relations: 0 }),
+    archiveMyEntity: vi.fn().mockResolvedValue(undefined),
   },
 }));
 vi.mock('../../../books/api', () => ({ booksApi: { uploadChapterMedia: uploadMedia } }));
@@ -61,5 +63,37 @@ describe('useWorldMap persist (T2.5 /review-impl clobber lock)', () => {
         }),
       );
     });
+  });
+});
+
+describe('useWorldMap deletePlace (place-graph delete)', () => {
+  beforeEach(() => {
+    (knowledgeApi.listEntities as Mock).mockReset();
+    (knowledgeApi.archiveMyEntity as Mock).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('archives the location entity, then the node drops out on the invalidated refetch', async () => {
+    const p = { id: 'a', name: 'Doomed Hold', kind: 'location' };
+    (knowledgeApi.listEntities as Mock)
+      .mockResolvedValueOnce({ entities: [p], total: 1 }) // initial load: one place
+      .mockResolvedValue({ entities: [], total: 0 });     // after archive+invalidate: gone
+
+    const { result } = renderHook(() => useWorldMap(work, 'b', 'ch', 't'), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toEqual(['a']));
+
+    await act(async () => { await result.current.deletePlace.mutateAsync('a'); });
+
+    expect(knowledgeApi.archiveMyEntity).toHaveBeenCalledWith('a', 't');
+    await waitFor(() => expect(result.current.nodes).toHaveLength(0));
+  });
+
+  it('treats a 404 (already gone / cross-user) as idempotent success, not a throw', async () => {
+    (knowledgeApi.listEntities as Mock).mockResolvedValue({ entities: [], total: 0 });
+    (knowledgeApi.archiveMyEntity as Mock).mockRejectedValue(Object.assign(new Error('nope'), { status: 404 }));
+
+    const { result } = renderHook(() => useWorldMap(work, 'b', 'ch', 't'), { wrapper: makeWrapper() });
+    await expect(
+      act(async () => { await result.current.deletePlace.mutateAsync('gone'); }),
+    ).resolves.toBeUndefined();
   });
 });

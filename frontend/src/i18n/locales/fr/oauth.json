@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "Autoriser l'accès",
+    "subtitle": "Une application souhaite agir en votre nom sur LoreWeave.",
+    "client_named": "{{client}} demande l'accès à votre compte.",
+    "client_unnamed": "Une application demande l'accès à votre compte.",
+    "signed_in_as": "Connecté en tant que {{email}}",
+    "redirect_to": "Redirection vers",
+    "unverified": "Cette application n'est pas vérifiée par LoreWeave. Ne continuez que si vous la reconnaissez et lui faites confiance — vérifiez l'adresse de redirection ci-dessus.",
+    "permissions_heading": "Permissions demandées",
+    "permissions_hint": "Désactivez tout ce que vous ne souhaitez pas accorder. Vous pouvez accorder moins que ce qui est demandé, mais jamais plus.",
+    "actions_heading": "Actions",
+    "areas_heading": "Zones",
+    "resource_label": "Ressource",
+    "allow": "Autoriser l'accès",
+    "allowing": "Autorisation en cours…",
+    "deny": "Refuser",
+    "sign_in": "Connectez-vous pour continuer",
+    "no_scopes": "Sélectionnez au moins une permission pour continuer.",
+    "invalid_request": "Cette demande d'autorisation est incomplète ou contient des informations invalides. Retournez à l'application et réessayez.",
+    "error": "Impossible de finaliser l'autorisation. Veuillez réessayer.",
+    "scope": {
+      "read": "Lire votre contenu",
+      "paid_read": "Effectuer des opérations de lecture payantes",
+      "write_auto": "Apporter des modifications automatiquement",
+      "write_confirm": "Apporter des modifications (avec confirmation)"
+    },
+    "domain": {
+      "book": "Livres",
+      "glossary": "Glossaire",
+      "knowledge": "Connaissances",
+      "translation": "Traduction",
+      "composition": "Composition",
+      "jobs": "Tâches",
+      "settings": "Paramètres",
+      "lore_enrichment": "Enrichissement de l'univers",
+      "catalog": "Catalogue"
+    }
+  }
+}

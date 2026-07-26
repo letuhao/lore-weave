@@ -10,9 +10,16 @@ export type CompareViewMode = 'side-by-side' | 'inline';
 
 const PAGE = 100;
 
-export function useRevisionCompare(token: string | null, bookId: string, chapterId: string) {
-  const [leftId, setLeftId] = useState('');
-  const [rightId, setRightId] = useState('');
+export function useRevisionCompare(
+  token: string | null, bookId: string, chapterId: string,
+  initial?: { leftId?: string; rightId?: string },
+) {
+  // #20_agent_mode.md D2 — an explicit initial pair (e.g. a unit's
+  // pre_revision_id/post_revision_id from Agent Mode's diff panel) overrides
+  // the "two newest revisions" default below. An explicit pick (setLeftId/
+  // setRightId) always overrides both.
+  const [leftId, setLeftId] = useState(initial?.leftId ?? '');
+  const [rightId, setRightId] = useState(initial?.rightId ?? '');
   const [viewMode, setViewMode] = useState<CompareViewMode>('side-by-side');
 
   // Paginated so the picker can reach ANY revision, not just the newest 100

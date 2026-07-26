@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Structure Templates (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     STRUCTURE TEMPLATES (`structure-templates`) — category `storyBible`
+     Spec: docs/specs/2026-07-17-studio-completeness-build/S-01_structure-template-authoring.md
+
+     WHY THIS EXISTS
+     `structure_template` (migrate.py:179) is READ-ONLY at HEAD — the repo has
+     only list_for_user + get; the only INSERT is the 6 built-in seeds
+     (owner_user_id NULL). The schema provisions a per-user tier (owner_user_id
+     col + index) that NO code can populate. This panel is the write side.
+
+     THE TWO TIERS (User-Boundaries — the design axis of this screen)
+       ● System / built-in  (owner_user_id NULL)  → read-only, badged, CLONE-able
+       ● Per-user           (owner_user_id = me)  → full edit / archive / restore
+     A user NEVER edits a built-in in place — they CLONE it into their own tier.
+     This is the same System→User clone pattern glossary kinds use.
+
+     BEAT SHAPE (verified against the "Save the Cat" seed, migrate.py:1775):
+       { key, label, purpose, order }
+     ────────────────────────────────────────────────────────────────────── */
+  :root {
+    --bg: #0f1115; --panel: #161a21; --panel-2: #1c2129; --border: #262c36;
+    --text: #e6e9ee; --muted: #8b93a1; --primary: #6ea8fe; --primary-dim: #2b3a55;
+    --ok: #56d364; --warning: #e8a832; --destructive: #d9584f; --badge-sys: #7c6cf2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 Inter, sans-serif; }
+  .panel { display: flex; flex-direction: column; height: 100vh; background: var(--panel); }
+  .titlebar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .titlebar .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--badge-sys); }
+  .titlebar .spacer { flex: 1; }
+  .btn { font: 500 11px Inter; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); cursor: pointer; }
+  .btn.primary { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: var(--destructive); border-color: #47262a; }
+  .body { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+  .list { border-right: 1px solid var(--border); overflow-y: auto; }
+  .group-label { padding: 8px 12px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-left: 2px solid transparent; }
+  .row:hover { background: var(--panel-2); }
+  .row.active { background: var(--panel-2); border-left-color: var(--primary); }
+  .row .name { flex: 1; font-weight: 500; }
+  .row .kind { font: 500 10px 'JetBrains Mono', monospace; color: var(--muted); }
+  .badge { font: 600 9px Inter; padding: 1px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
+  .badge.sys { background: #241f3d; color: var(--badge-sys); }
+  .badge.mine { background: #10281a; color: var(--ok); }
+  .badge.arch { background: #2a2320; color: var(--warning); }
+  .detail { overflow-y: auto; padding: 14px 18px; }
+  .detail h2 { margin: 0 0 2px; font-size: 15px; }
+  .detail .sub { color: var(--muted); font-size: 11px; margin-bottom: 14px; }
+  .readonly-note { background: #1a1730; border: 1px solid #2c2650; color: #b9aef4; padding: 8px 10px; border-radius: 8px; font-size: 11px; margin-bottom: 14px; color: #b9aef4; }
+  .beat { display: grid; grid-template-columns: 22px 120px 1fr auto; gap: 8px; align-items: start; padding: 8px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: var(--panel-2); }
+  .beat .ord { color: var(--muted); font: 500 11px 'JetBrains Mono'; padding-top: 6px; }
+  .beat input, .beat textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 7px; font: 400 12px Inter; resize: vertical; }
+  .beat .key { font: 500 11px 'JetBrains Mono'; }
+  .beat .drag { color: var(--muted); cursor: grab; padding-top: 6px; }
+  .beat.ro input, .beat.ro textarea { opacity: .7; pointer-events: none; }
+  .rm { color: var(--destructive); background: none; border: none; cursor: pointer; padding-top: 4px; }
+  .add-beat { width: 100%; padding: 8px; border: 1px dashed var(--border); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+  .footer { border-top: 1px solid var(--border); padding: 10px 18px; display: flex; gap: 8px; align-items: center; }
+  .footer .spacer { flex: 1; }
+  .dl { color: var(--primary); font-size: 11px; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="titlebar">
+    <span class="dot"></span><strong>Structure Templates</strong>
+    <span style="color:var(--muted)">— story structures you decompose chapters against</span>
+    <span class="spacer"></span>
+    <button class="btn primary">+ New structure</button>
+  </div>
+
+  <div class="body">
+    <!-- ── LIST: two tiers, built-ins badged read-only, own editable ── -->
+    <div class="list">
+      <div class="group-label">Built-in (read-only)</div>
+      <div class="row"><span class="name">Save the Cat</span><span class="badge sys">system</span></div>
+      <div class="row"><span class="name">Hero's Journey</span><span class="badge sys">system</span></div>
+      <div class="row"><span class="name">Kishōtenketsu</span><span class="badge sys">system</span></div>
+      <div class="row"><span class="name">Three-Act</span><span class="badge sys">system</span></div>
+      <div class="row"><span class="name">Story Circle</span><span class="badge sys">system</span></div>
+      <div class="row"><span class="name">Web-Novel Arc</span><span class="badge sys">system</span></div>
+
+      <div class="group-label">Mine</div>
+      <div class="row active"><span class="name">My Xianxia Ascension</span><span class="badge mine">mine</span></div>
+      <div class="row"><span class="name">Slow-burn Romance (v2)</span><span class="badge mine">mine</span></div>
+      <div class="row"><span class="name" style="opacity:.6">Draft I abandoned</span><span class="badge arch">archived</span></div>
+    </div>
+
+    <!-- ── DETAIL: the beat-list editor ── -->
+    <div class="detail">
+      <h2>My Xianxia Ascension</h2>
+      <div class="sub">kind: <code style="font-family:'JetBrains Mono'">web_novel_arc</code> · 7 beats · yours · v3</div>
+
+      <!-- the beat editor: add / reorder (drag) / relabel / remove -->
+      <div class="beat">
+        <span class="drag">⋮⋮</span><span class="ord">1</span>
+        <div><input class="key" value="humble_origin" /><div style="height:6px"></div><input value="Humble Origin" /></div>
+        <textarea rows="2">MC is scorned/weak; establish the injustice that fuels the climb.</textarea>
+        <button class="rm">✕</button>
+      </div>
+      <div class="beat">
+        <span class="drag">⋮⋮</span><span class="ord">2</span>
+        <div><input class="key" value="fortuitous_encounter" /><div style="height:6px"></div><input value="Fortuitous Encounter" /></div>
+        <textarea rows="2">The cheat/master/artifact that breaks the ceiling.</textarea>
+        <button class="rm">✕</button>
+      </div>
+      <div class="beat">
+        <span class="drag">⋮⋮</span><span class="ord">3</span>
+        <div><input class="key" value="face_slap" /><div style="height:6px"></div><input value="Face-Slap" /></div>
+        <textarea rows="2">The arrogant antagonist is humiliated; the reader's 爽点 payoff.</textarea>
+        <button class="rm">✕</button>
+      </div>
+      <button class="add-beat">+ Add beat</button>
+
+      <div class="footer" style="padding-left:0; padding-right:0; margin-top:14px;">
+        <a class="dl" href="#">Use in decompose →</a>
+        <span class="spacer"></span>
+        <button class="btn ghost">Duplicate</button>
+        <button class="btn danger">Archive</button>
+        <button class="btn primary">Save (v3 → v4)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!--
+  ALTERNATE STATE — a built-in is selected (read-only + clone CTA).
+  The detail pane would instead show:
+    <div class="readonly-note">
+      This is a built-in structure. To customise it, <b>Clone to my structures</b>
+      — you edit your copy, the original stays intact for everyone.
+    </div>
+    (beats render with class "beat ro" — inputs disabled)
+    footer: [ Clone to my structures ]   [ Use in decompose → ]
+  This is the System→User clone gate from S-01 §3; a user never writes an
+  owner-NULL row.
+
+  ARCHIVED STATE — footer shows [ Restore ] instead of [ Archive ]/[ Save ];
+  beats read-only until restored (S-01 §5 soft-delete symmetry).
+-->
+</body>
+</html>

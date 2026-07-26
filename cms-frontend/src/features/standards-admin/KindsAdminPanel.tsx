@@ -1,9 +1,11 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useKindsAdmin } from './hooks/useKindsAdmin';
 import { Modal } from './components/Modal';
 import { StatusBanner } from './components/StatusBanner';
 import { Field, ModalActions, inputCls } from './components/FormBits';
+import { SearchInput, matchesQuery } from './components/SearchInput';
+import { ColorField, IconField } from './components/IconColorPickers';
 import type { SystemKind } from './types';
 
 type Draft = {
@@ -43,8 +45,14 @@ export function KindsAdminPanel() {
   const [editing, setEditing] = useState<SystemKind | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [query, setQuery] = useState('');
 
   const submitting = create.isPending || update.isPending;
+
+  const filtered = useMemo(
+    () => (list.data ?? []).filter((k) => matchesQuery(query, k.name, k.code)),
+    [list.data, query],
+  );
 
   function openCreate() {
     setDraft(EMPTY);
@@ -121,6 +129,10 @@ export function KindsAdminPanel() {
 
       <StatusBanner status={status} onDismiss={clearStatus} />
 
+      {list.data && list.data.length > 0 && (
+        <SearchInput value={query} onChange={setQuery} placeholder="Search kinds…" />
+      )}
+
       {list.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
       {list.isError && <p className="text-sm text-destructive">Failed to load kinds.</p>}
 
@@ -138,14 +150,14 @@ export function KindsAdminPanel() {
               </tr>
             </thead>
             <tbody>
-              {list.data.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">
-                    No system kinds.
+                    {list.data.length === 0 ? 'No system kinds.' : 'No kinds match your search.'}
                   </td>
                 </tr>
               )}
-              {list.data.map((k) => (
+              {filtered.map((k) => (
                 <tr key={k.kind_id} className="border-t border-border">
                   <td className="px-3 py-2">{k.icon || '—'}</td>
                   <td className="px-3 py-2 font-medium text-foreground">{k.name}</td>
@@ -209,18 +221,15 @@ export function KindsAdminPanel() {
               />
             </Field>
             <Field label="Icon (optional)">
-              <input
+              <IconField
                 value={draft.icon}
-                onChange={(e) => setDraft({ ...draft, icon: e.target.value })}
-                className={inputCls}
+                onChange={(icon) => setDraft({ ...draft, icon })}
               />
             </Field>
             <Field label="Color (optional)">
-              <input
+              <ColorField
                 value={draft.color}
-                onChange={(e) => setDraft({ ...draft, color: e.target.value })}
-                placeholder="#7c3aed"
-                className={inputCls}
+                onChange={(color) => setDraft({ ...draft, color })}
               />
             </Field>
             <Field label="Sort order (optional)">

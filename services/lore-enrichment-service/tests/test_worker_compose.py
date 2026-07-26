@@ -101,7 +101,7 @@ async def test_redrive_threads_seed_text_and_expand_mode(monkeypatch):
         "technique": "compose_draft",
         "top_k": 5,
         "eval_reserve_fraction": 0.15,
-        "max_spend_usd": None,
+        "max_spend_tokens": None,
         "entity_kind": "generic",
         "targets": [
             {"canonical_name": "新天地", "target_ref": None, "entity_kind": "generic",

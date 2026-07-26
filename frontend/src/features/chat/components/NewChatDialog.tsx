@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, MessageSquare, Search, X } from 'lucide-react';
+import { PROMPT_PRESETS } from '../prompts/presets';
+import { MessageSquare, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
-import type { CreateSessionPayload, GenerationParams } from '../types';
+import { defaultModelsApi, CHAT_CAPABILITY } from '@/features/settings/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
+import type { GenerationParams } from '../types';
 
 // `key` → i18n label; `prompt` stays English (it is an LLM system directive).
-const PRESETS: { key: string; prompt: string; icon: string }[] = [
-  { key: 'novel', icon: '📖', prompt: 'You are a creative writing assistant specializing in novels. Analyze character arcs, plot structure, and worldbuilding. Provide concrete scene rewrites when suggesting changes.' },
-  { key: 'translator', icon: '🌐', prompt: 'You are a literary translator. Preserve tone, style, and nuance. Explain translation choices involving cultural adaptation or idioms.' },
-  { key: 'worldbuilder', icon: '🗺️', prompt: 'You are a worldbuilding consultant. Help create consistent magic systems, politics, geography, and cultures. Flag inconsistencies.' },
-  { key: 'editor', icon: '✏️', prompt: 'You are a professional book editor. Focus on pacing, dialogue, show-vs-tell, and narrative voice. Be specific and constructive.' },
-];
+// The ONE preset list (../prompts/presets). This file used to declare its own 4 presets
+// with lowercase keys and slightly different prompt TEXT than SessionSettingsPanel's 6 —
+// so the prompt a new chat was seeded with was not the prompt the settings panel showed
+// you under that name, and re-picking it there silently rewrote your system prompt.
+const PRESETS = PROMPT_PRESETS;
 
 interface NewChatDialogProps {
   open: boolean;
@@ -23,66 +24,49 @@ interface NewChatDialogProps {
 export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
-  const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
-  const [modelSearch, setModelSearch] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open || !accessToken) return;
-    setLoading(true);
-    void aiModelsApi
-      .listUserModels(accessToken, { include_inactive: false })
-      .then((res) => {
-        setUserModels(res.items);
-        if (res.items.length > 0 && !selectedModel) {
-          // Pre-select favorite or first
-          const fav = res.items.find((m) => m.is_favorite);
-          setSelectedModel((fav ?? res.items[0]).user_model_id);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [open, accessToken]);
+  // W5: the shared picker owns fetch/search/grouping — capability="chat" fixes
+  // the old "rerankers offered in the chat picker" bug (server-side filter).
+  const { models: userModels, loading } = useUserModels({
+    capability: CHAT_CAPABILITY,
+    enabled: open,
+  });
 
-  // Auto-focus search input when dialog opens
+  // Pre-select: the user's default chat model (Settings → Default models) when
+  // set and still listed, else the first model (server order = favorites first).
   useEffect(() => {
-    if (!open) return;
-    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
-    return () => clearTimeout(timer);
-  }, [open]);
+    if (!open || !accessToken || selectedModel || !userModels || userModels.length === 0) return;
+    let cancelled = false;
+    void defaultModelsApi
+      .get(accessToken)
+      .catch(() => ({ defaults: {} as Record<string, string> }))
+      .then(({ defaults }) => {
+        if (cancelled) return;
+        const preferred = defaults[CHAT_CAPABILITY];
+        const match = preferred && userModels.some((m) => m.user_model_id === preferred);
+        setSelectedModel(match ? preferred : userModels[0].user_model_id);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, accessToken, userModels, selectedModel]);
 
   // Reset on close
   useEffect(() => {
     if (!open) {
-      setModelSearch('');
       setSystemPrompt('');
       setSelectedPreset(null);
       setShowPrompt(false);
     }
   }, [open]);
 
-  // Group + filter models
-  const groupedModels = useMemo(() => {
-    const q = modelSearch.toLowerCase();
-    const filtered = q
-      ? userModels.filter((m) => (m.alias ?? m.provider_model_name).toLowerCase().includes(q) || m.provider_kind.toLowerCase().includes(q))
-      : userModels;
-    return filtered.reduce<Record<string, UserModel[]>>((acc, m) => {
-      const key = m.provider_kind;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(m);
-      return acc;
-    }, {});
-  }, [userModels, modelSearch]);
-
   // Selected model info
-  const selectedModelInfo = userModels.find((m) => m.user_model_id === selectedModel);
+  const selectedModelInfo = (userModels ?? []).find((m) => m.user_model_id === selectedModel);
 
   function handlePresetClick(index: number) {
     if (selectedPreset === index) {
@@ -115,60 +99,30 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} data-testid="new-chat-dialog">
       <div
         className="w-full max-w-md rounded-lg border bg-card p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold">{t('new.title')}</h3>
-          <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <button type="button" onClick={onClose} data-testid="new-chat-dismiss" className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="space-y-4">
-          {/* Model selector with search */}
+          {/* Model selector — shared ModelPicker (search / favorites / recents) */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">{t('new.model')}</label>
-            {loading ? (
-              <div className="h-9 animate-pulse rounded-md bg-muted" />
-            ) : userModels.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t('new.no_models')}
-              </p>
-            ) : (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={modelSearch}
-                    onChange={(e) => setModelSearch(e.target.value)}
-                    placeholder={t('new.search_models')}
-                    aria-label={t('new.search_models')}
-                    className="w-full rounded-t-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
-                  />
-                </div>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  size={Math.min(Object.values(groupedModels).flat().length + Object.keys(groupedModels).length, 6)}
-                  className="w-full rounded-b-md border border-t-0 border-border bg-background px-1 py-1 text-sm text-foreground outline-none focus:border-ring"
-                >
-                  {Object.entries(groupedModels).map(([provider, models]) => (
-                    <optgroup key={provider} label={provider}>
-                      {models.map((m) => (
-                        <option key={m.user_model_id} value={m.user_model_id}>
-                          {m.alias ?? m.provider_model_name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </>
-            )}
+            <ModelPicker
+              capability={CHAT_CAPABILITY}
+              value={selectedModel || null}
+              onChange={(id) => setSelectedModel(id ?? '')}
+              ariaLabel={t('new.model')}
+              placeholder={t('new.search_models')}
+              emptyState={<p className="text-xs text-muted-foreground">{t('new.no_models')}</p>}
+            />
 
             {/* Capability badges */}
             {selectedModelInfo && (
@@ -207,7 +161,12 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                   }`}
                 >
                   <span className="text-base">{p.icon}</span>
-                  <p className="mt-0.5 text-[11px] font-medium text-foreground">{t(`new.preset.${p.key}`)}</p>
+                  {/* The shared registry renamed `novel`→`novelist` and added `analyst`, so a locale
+                      that predates it has no key — fall back to the registry's English label
+                      rather than rendering the raw key at the user. */}
+                  <p className="mt-0.5 text-[11px] font-medium text-foreground">
+                    {t(`presets.${p.key}`, { defaultValue: p.label })}
+                  </p>
                 </button>
               ))}
             </div>

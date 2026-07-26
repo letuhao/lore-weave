@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Flywheel: the canon-growth home (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     FLYWHEEL — the canon-growth home  (`flywheel`, category: knowledge — OQ-F1)
+       The 5th S6 capability, and the ONE the companion draft
+       (screen-quality-completion.html) does NOT cover. This is its draft.
+     Charter: S6 "homes flywheel" (2026-07-16-studio-completeness-8-session-orchestration §4).
+     Spec: to be written (32_flywheel.md) — this draft is its acceptance target.
+
+     WHAT IT IS — role-play the user
+       "I published a chapter. Did my world actually GROW? Show me what the
+        extraction pass ADDED to canon — the new people, places, ties, events —
+        so the loop pays me back for publishing, and let me jump straight to
+        each new thing."
+       It is the ONLY panel that CLOSES the loop visually: publish → extract →
+       "+7 entities, +3 relations, +2 events" → click a chip → land in Cast on
+       that character. Without it, publishing is a write with no felt reward.
+
+     THE ARCHITECTURE THIS MOCK RENDERS — a PORT, zero backend build
+       Every byte below EXISTS and is tested today. What is new is: the
+       registration (catalog + enum + contract + guide), the deep-link
+       RETARGET (Lane-A in-page selectTab → Studio host.openPanel), the
+       Lane-B refresh, and a contract-row fix. No route, no column, no schema.
+         • FlywheelPanel.tsx (render + states)                     EXISTS ✓ tested
+         • useFlywheel.ts → knowledgeApi.getFlywheel               EXISTS ✓
+         • GET /projects/{project_id}/flywheel  (knowledge-service)EXISTS ✓ tested
+           extraction.py:1926 · FlywheelDeltaResponse:1909
+         • the WRITE side (publish → extraction → delta) —
+           composition approve.py + engine/delta_flywheel.py       EXISTS ✓
+           so "+N added" is a REAL produced delta, not a stub.
+
+     ► SOURCE TICK, same convention as the companion draft. This panel is an
+       outlier: it is ALL teal. A single amber tick appears exactly once — the
+       one genuinely-new line (the compositionEffects Lane-B handler, shared
+       with the quality wave's X-4). If a reviewer finds a second amber tick
+       here, the scope grew and someone must say why.
+         teal  = EXISTS today (route + column + test)
+         amber = MUST-BUILD (does not exist yet)
+
+     THREE THINGS THIS DRAFT MUST SETTLE (each rendered / called out below)
+       ① THE DEEP-LINKS POINT AT TABS THE DOCK DOES NOT HAVE. Lane-A wires
+          onOpenCast/Timeline/Relations to CompositionPanel.selectTab('cast'…).
+          In the dock there is no "cast tab" — there are dock PANELS. Porting
+          the render without retargeting the callbacks ships three dead chips.
+          (state ②, the RETARGET table)
+       ② THE CONTRACT CONFLATES FLYWHEEL WITH CORRECTIONS.
+          legacyParityContract.test.ts maps  flywheel → 'quality-corrections'
+          (marked `unported`). Flywheel is NOT corrections — different data
+          source (knowledge-service vs composition correction-stats), different
+          question (did canon grow? vs how good are my drafts?). The port gives
+          flywheel its OWN id and fixes that row. (state ⑤)
+       ③ WHERE DOES IT LIVE, AND WHEN DOES THE USER SEE IT? A post-publish
+          reward the user never opens is worthless. Category + the loop
+          hand-off (publish-complete → open/flash flywheel) is OQ-F1/OQ-F2.
+
+     SCALE — the delta is ONE publish's growth (single digits to low dozens),
+     computed server-side; the chip list is `new_items`, already bounded by the
+     route. No book-scale list here — the scale surface is the DEEP-LINK TARGET
+     (Cast/Timeline/Relations at 10k chapters), which those panels own, not this.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    --grow: #3dba6a; --grow-muted: #16301f;   /* the canon-growth green */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.new { color: var(--primary); border-color: var(--primary-muted); background: var(--primary-muted); }
+  h2 .tag.bug { color: var(--destructive); border-color: var(--destructive-muted); background: var(--destructive-muted); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code, code.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.e { background: var(--accent); } .swatch.b { background: var(--primary); }
+
+  .prov { position: relative; padding-left: 8px; }
+  .prov::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2px; height: 12px; border-radius: 1px; }
+  .prov-e::before { background: var(--accent); } .prov-b::before { background: var(--primary); }
+
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); gap: 10px; }
+  .panel-foot .occ { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); opacity: .85; }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .fly  { width: 440px; max-width: 100%; height: 430px; }
+  .mini { width: 320px; height: 330px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+
+  /* ── Growth stats ─────────────────────────────────────────────────────── */
+  .lede { padding: 12px 14px 4px; font-size: 11.5px; color: var(--muted-fg); line-height: 1.55; }
+  .lede b { color: var(--foreground); }
+  .gstats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 8px 14px 4px; }
+  .gstat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px; border-radius: 9px;
+    border: 1px solid var(--grow-muted); background: rgba(61,186,106,.06); cursor: pointer; }
+  .gstat:hover { background: rgba(61,186,106,.13); border-color: var(--grow); }
+  .gstat .gn { font-family: 'JetBrains Mono'; font-size: 22px; font-weight: 500; color: var(--grow); }
+  .gstat .gl { font-size: 10.5px; color: var(--muted-fg); }
+  .gstat[disabled] { opacity: .4; cursor: not-allowed; }
+  .gstat[disabled]:hover { background: rgba(61,186,106,.06); border-color: var(--grow-muted); }
+
+  /* ── Highlight chips ──────────────────────────────────────────────────── */
+  .hh { padding: 10px 14px 4px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 9px 3px 4px; border-radius: 100px;
+    border: 1px solid var(--border); background: var(--card); font-size: 11px; cursor: pointer; }
+  .chip:hover { background: var(--card-hover); border-color: var(--border-hover); }
+  .chip .av { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; color: #141010; }
+  .chip .kd { width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted-fg); }
+  .chip .kd svg { width: 12px; height: 12px; }
+  .chip .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .empty { padding: 30px 20px; text-align: center; font-size: 11.5px; color: var(--muted-fg); line-height: 1.65; }
+  .empty .em { font-size: 22px; margin-bottom: 8px; }
+  .empty b { color: var(--foreground); display: block; margin-bottom: 4px; font-size: 12px; }
+
+  /* ── Retarget table ───────────────────────────────────────────────────── */
+  .rt { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .rt th { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 9.5px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .rt td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+  .rt td .mono { font-size: 10px; }
+  .rt .lanea { color: var(--muted-fg); }
+  .rt .arrow { color: var(--grow); }
+  .rt .laneb { color: var(--foreground); }
+
+  .card { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 11px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); position: relative; }
+  .card.fresh { border-color: var(--primary-muted); }
+  .card .emo { font-size: 15px; line-height: 1; margin-bottom: 2px; }
+  .card .ct { font-size: 12px; font-weight: 600; }
+  .card .cd { font-size: 10.5px; color: var(--muted-fg); line-height: 1.45; }
+  .card .cid { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); opacity: .75; margin-top: 3px; }
+  .card .new { position: absolute; top: 8px; right: 8px; font-family: 'JetBrains Mono'; font-size: 8.5px; font-weight: 500;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--primary); background: var(--primary-muted); border-radius: 3px; padding: 1px 4px; }
+
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout.good { border-left-color: var(--grow); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .strike { text-decoration: line-through; opacity: .5; }
+  .oq { max-width: 1180px; margin-top: 12px; padding: 11px 14px; border-radius: 8px; background: var(--background-alt);
+    border: 1px solid var(--border); }
+  .oq h3 { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--primary); margin-bottom: 8px; }
+  .oq .q { font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; padding: 6px 0; border-top: 1px solid var(--border); }
+  .oq .q:first-of-type { border-top: none; }
+  .oq .q b { color: var(--foreground); }
+  .oq .q .id { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--primary); margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Flywheel <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— the canon-growth home · studio dock panel, draft (S6, the 5th capability)</span></h1>
+<p class="sub">
+  The companion draft <code class="mono">screen-quality-completion.html</code> covers <b>four</b> of S6's five capabilities
+  (canon-rules · corrections · self-heal · progress). This is the fifth. <b>Flywheel is the panel that makes the loop feel closed:</b> you
+  publish a chapter, an extraction pass grows your canon, and this panel says <b>"+7 entities · +3 relations · +2 events"</b> with a chip you can
+  click to land on that new character in Cast. It is a <b>pure PORT</b> — <code class="mono">FlywheelPanel</code>, <code class="mono">useFlywheel</code>
+  and <code class="mono">GET /projects/{id}/flywheel</code> all exist and are tested. Nothing here needs a route, a column, or a migration. What is
+  new is <b>registration</b>, the <b>deep-link retarget</b>, one <b>Lane-B handler</b> (shared with the quality wave), and one <b>contract-row fix</b>.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch e"></span><b>EXISTS</b> — route + component + test, verified at HEAD <span class="mono" style="font-size:10.5px">d3599d832</span></div>
+  <div class="item"><span class="swatch b"></span><b>MUST-BUILD</b> — appears exactly once (the Lane-B handler, X-4)</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    All teal but one line — this is a port, not a feature.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① THE PANEL — populated
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Flywheel <span class="tag">flywheel</span> — the post-publish reward, live</h2>
+<p class="sub">
+  Data is one publish's delta from <code class="mono">GET /projects/{id}/flywheel</code> — <code class="mono">entities_added</code> /
+  <code class="mono">relations_added</code> / <code class="mono">events_added</code> + <code class="mono">new_items[]</code> highlights
+  (<code class="mono">FlywheelDeltaResponse</code>, knowledge-service). Each stat and chip is a <b>deep-link</b>; a zero stat is
+  <b>disabled, not hidden</b> (<code class="mono">FlywheelPanel.tsx:53</code>).
+</p>
+
+<div class="stack">
+<div class="panel fly">
+  <div class="panel-head">
+    <span>Flywheel</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="lede">Your latest publish — <b>Ch. 88 · Tro tàn của Nghịch thiên</b> — grew the canon:</div>
+
+    <div class="gstats">
+      <div class="gstat prov prov-e" title="Open Cast"><span class="gn">+7</span><span class="gl">entities</span></div>
+      <div class="gstat prov prov-e" title="Open Relations"><span class="gn">+3</span><span class="gl">relations</span></div>
+      <div class="gstat prov prov-e" title="Open Timeline"><span class="gn">+2</span><span class="gl">events</span></div>
+    </div>
+
+    <div class="hh">New highlights</div>
+    <div class="chips">
+      <div class="chip" title="Focus in Cast">
+        <span class="av" style="background:#e8a832">MT</span><span class="nm">Mộ Thanh</span></div>
+      <div class="chip" title="Focus in Cast">
+        <span class="av" style="background:#5496e8">TP</span><span class="nm">Tần Phong</span></div>
+      <div class="chip" title="Focus in Cast">
+        <span class="av" style="background:#3da692">HL</span><span class="nm">Hắc Lang bang</span></div>
+      <div class="chip" title="Open in Relations">
+        <span class="kd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5 15.5 15.5"/></svg></span>
+        <span class="nm">Mộ Thanh — sư đồ — Lâm Phong</span></div>
+      <div class="chip" title="Open in Timeline">
+        <span class="kd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+        <span class="nm">Salt Court ambush</span></div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Advisory · a click opens the target panel, never mutates
+    </div>
+    <span class="occ">GET …/flywheel · has_delta=true</span>
+  </div>
+</div>
+
+<div class="panel mini" style="height:430px">
+  <div class="panel-head"><span>States — all three exist today</span></div>
+  <div class="body">
+    <div style="border-bottom:1px solid var(--border)">
+      <div style="padding:8px 12px 4px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg)">loading</div>
+      <div style="padding:0 12px 10px;font-size:11px;color:var(--muted-fg)"><code class="mono" style="font-size:9.5px">flywheel-loading</code> — a skeleton line, not a spinner-of-doom.</div>
+    </div>
+    <div style="border-bottom:1px solid var(--border)">
+      <div style="padding:8px 12px 4px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg)">cold / no delta</div>
+      <div class="empty" style="padding:16px 14px">
+        <div class="em">🌱</div>
+        <b>Nothing to grow yet</b>
+        Publish a chapter to grow your canon — new entities, relations and events show up here.
+        <span class="mono" style="display:block;margin-top:6px;font-size:10px;color:var(--border-hover)">has_delta=false · not an error</span>
+      </div>
+    </div>
+    <div>
+      <div style="padding:8px 12px 4px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg)">error (knowledge down)</div>
+      <div style="padding:0 12px 12px;font-size:11px;color:var(--muted-fg);line-height:1.5">
+        Today it collapses into the same empty copy (<code class="mono" style="font-size:9.5px">isError || !has_delta</code>,
+        <code class="mono" style="font-size:9.5px">:33</code>). <b style="color:var(--warning)">QC-F3:</b> "we could not look" is
+        <b>not</b> "nothing grew" — the port distinguishes them, exactly like the quality panels' <code class="mono" style="font-size:9.5px">unavailable ≠ empty</code> gate.
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="callout good">
+  <b>Why it earns a home, not a toast.</b> A one-shot "canon grew" notification vanishes; the flywheel is a <b>persistent dock panel</b> you can
+  re-open after any publish to see what your last chapter added and walk into it. It is the visual proof that <b>publishing pays you back</b> —
+  the emotional close of the <code>import → plan → draft → revise → translate → publish</code> loop the whole 8-session build exists to close.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② THE DEEP-LINK RETARGET — the one real porting decision
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② The deep-link retarget <span class="tag bug">3 dead chips if skipped</span></h2>
+<p class="sub">
+  Lane-A wires the callbacks to <code class="mono">CompositionPanel.selectTab(...)</code> — an in-page tab switch. <b>The dock has no tabs — it has
+  panels.</b> Port the render verbatim and the chips fire a <code class="mono">selectTab</code> that does nothing. The port replaces the three
+  callbacks with <code class="mono">host.openPanel(...)</code>, passing the entity name as the focus param the target panel already accepts.
+</p>
+
+<div class="panel" style="width:900px;max-width:100%">
+  <div class="panel-head"><span>onOpen* callbacks — Lane-A → Studio dock</span></div>
+  <div class="body">
+    <table class="rt">
+      <thead><tr><th style="width:150px">callback</th><th style="width:230px">Lane-A (CompositionPanel)</th><th></th><th>Studio port (host.openPanel)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="mono">onOpenCast(name?)</span><br><span style="color:var(--muted-fg);font-size:10px">entity chips + the +entities stat</span></td>
+          <td class="lanea"><span class="mono">selectTab('cast')</span> then focus by name in-page</td>
+          <td class="arrow">→</td>
+          <td class="laneb"><span class="mono">host.openPanel('cast', { focusName })</span><br><span style="color:var(--muted-fg);font-size:10px">the codex panel S7 homes — a cross-session hand-off (mount, don't fork)</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">onOpenRelations()</span><br><span style="color:var(--muted-fg);font-size:10px">relation chips + the +relations stat</span></td>
+          <td class="lanea"><span class="mono">selectTab('relations')</span></td>
+          <td class="arrow">→</td>
+          <td class="laneb"><span class="mono">host.openPanel('kg-graph')</span> <span style="color:var(--warning)">— OQ-F4: kg-graph vs a relations view</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">onOpenTimeline()</span><br><span style="color:var(--muted-fg);font-size:10px">event chips + the +events stat</span></td>
+          <td class="lanea"><span class="mono">selectTab('timeline')</span></td>
+          <td class="arrow">→</td>
+          <td class="laneb"><span class="mono">host.openPanel('kg-timeline')</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      The targets are S7's panels (cast · kg-timeline · kg-graph) — this port DEPENDS on S7 registering them.
+    </div>
+    <span class="occ">loop-connected (bar §2 #6)</span>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>Cross-session dependency, stated up front.</b> Flywheel's whole value is handing off <i>into</i> Cast/Timeline/Relations — which
+  <b>S7 owns</b>. If S7 has not yet registered <code>cast</code> / <code>kg-timeline</code> / <code>kg-graph</code>, the port either (a) waits on
+  S7, or (b) ships with the targets that DO exist and defers the rest with a tracked row. <b>It must NOT ship three chips that open nothing</b> —
+  a dead deep-link is the exact "cho có" failure. A chip whose target panel is not yet registered is <b>disabled with a reason</b>, never silently inert.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ REACHABILITY — the registration
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ Reachability <span class="tag">catalog</span> <span class="tag">enum</span> <span class="tag">contract</span> <span class="tag">guide</span></h2>
+<p class="sub">
+  Today <code class="mono">FlywheelPanel</code> is mounted <b>only</b> inside <code class="mono">CompositionPanel</code> (Lane-A) — there is
+  <b>no</b> <code class="mono">flywheel</code> row in <code class="mono">catalog.ts</code>, no <code class="mono">panel_id</code> enum entry, no
+  palette command, no <code class="mono">guideBodyKey</code>. The port registers it in all four, so both the user (palette) and the agent
+  (<code class="mono">ui_open_studio_panel</code>) can open it.
+</p>
+
+<div class="stack">
+  <div class="panel" style="width:440px;height:210px">
+    <div class="panel-head"><span style="color:var(--success)">After — the row</span></div>
+    <div class="body" style="padding:12px">
+      <div class="card fresh"><span class="new">new</span>
+        <span class="emo">⚙️</span>
+        <span class="ct">Flywheel</span>
+        <span class="cd">What your last publish added to canon — new people, ties and events, one click from each.</span>
+        <span class="cid">flywheel · category: knowledge (OQ-F1)</span>
+      </div>
+      <div style="margin-top:10px;font-size:10.5px;color:var(--muted-fg);line-height:1.6">
+        Sits with the <code class="mono" style="font-size:9.5px">kg-*</code> panels it deep-links into. One gate, one name — the registration
+        is done only when the row is in the catalog AND the enum AND the regenerated contract AND has an <code class="mono" style="font-size:9.5px">en</code> guideBody.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:210px;width:440px">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — the contract conflates it</span></div>
+    <div class="body" style="padding:12px;font-size:10.5px;color:var(--muted-fg);line-height:1.7">
+      <code class="mono" style="font-size:9.5px;color:var(--destructive)">legacyParityContract.test.ts:44</code> maps<br>
+      <span class="mono" style="font-size:10px">flywheel → 'quality-corrections'</span> &nbsp;(<span class="mono" style="font-size:9.5px">unported</span>).<br><br>
+      That is <b style="color:var(--foreground)">wrong on the merits</b>: flywheel reads <b>knowledge-service</b> canon growth; corrections reads
+      <b>composition</b> draft accept/edit rates. Two data sources, two questions.<br><br>
+      The port gives flywheel its <b style="color:var(--foreground)">own id</b> and rewrites that row to
+      <span class="mono" style="font-size:10px">flywheel → 'flywheel'</span>. Same edit closes the parity gate honestly instead of hiding a
+      panel under another panel's name.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ AGENT PARITY — the one amber line
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ Agent parity <span class="tag new">the only MUST-BUILD here</span></h2>
+<p class="sub">
+  The delta is produced by the extraction that follows a <b>publish</b>. If the agent drives the publish, the open flywheel panel must refresh —
+  otherwise it shows a stale "nothing grew". This is the <b>same</b> <code class="mono">handlers/compositionEffects.ts</code> the quality wave's
+  X-4 introduces; flywheel adds one predicate to it. There is <b>no MCP tool to build</b> — flywheel is read-only; the agent never "writes a
+  flywheel", it publishes, and this handler reacts.
+</p>
+
+<div class="panel" style="width:900px;max-width:100%;height:auto">
+  <div class="panel-head"><span>handlers/compositionEffects.ts — flywheel's one row</span></div>
+  <div class="body" style="padding:12px 14px;font-size:11.5px;color:var(--muted-fg);line-height:1.7">
+    <span class="prov prov-b" style="color:var(--foreground)">MUST-BUILD (X-4, shared):</span> on effect matching
+    <code class="mono" style="font-size:10px">^composition_publish$</code> (the publish that triggers extraction) → invalidate
+    <code class="mono" style="font-size:10px">['composition','flywheel',projectId]</code> so the panel refetches the new delta.<br><br>
+    This composes with the quality wave's rows in the same file (<code class="mono" style="font-size:10px">^composition_canon_rule_</code>,
+    <code class="mono" style="font-size:10px">^composition_record_correction$</code>) — one handler, several predicates. Registering it is what
+    proves <code class="mono" style="font-size:10px">useStudioEffectReconciler</code>'s "no composition consumer to go stale" comment false; delete
+    the comment in the same edit. ⚠ The 3-schema-source FastMCP caveat does <b>not</b> apply (no new tool) — this is a pure client-side effect handler.
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Agent parity (bar §2 #5) — an agent publish refreshes the human's open panel
+    </div>
+    <span class="occ">no route · no column · no tool</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ VERDICT + OPEN QUESTIONS
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Verdict — PORT, and the open questions to close in CLARIFY</h2>
+<p class="sub">
+  <b>PORT, zero backend build.</b> The render, the hook, the read route and the write pipeline all exist and are tested. The work is:
+  register (catalog+enum+contract+guide), retarget three deep-links to <code class="mono">host.openPanel</code>, add one predicate to the shared
+  <code class="mono">compositionEffects</code> handler, fix the parity-contract row, distinguish error-from-empty (QC-F3), and drive a live-browser
+  smoke. The genuine unknowns are product decisions, filed below — none is a code blocker.
+</p>
+
+<div class="oq">
+  <h3>Open questions — flywheel</h3>
+  <div class="q"><span class="id">OQ-F1</span><b>Category.</b> <code class="mono">knowledge</code> (sits with the kg-* panels it links into) vs
+    <code class="mono">editor</code> (it's part of the write loop) vs <code class="mono">quality</code>? Draft proposes <b>knowledge</b>. PO to confirm.</div>
+  <div class="q"><span class="id">OQ-F2</span><b>The loop hand-off — when does the user SEE it?</b> A post-publish reward nobody opens is worthless. Should
+    <b>publish-complete</b> auto-open (or flash) the flywheel panel, or add a "canon grew (+12) →" line to the publish result / progress panel that
+    opens it? Or is palette-only enough for v1? This is the difference between "reachable" and "felt".</div>
+  <div class="q"><span class="id">OQ-F3</span><b>Whose delta — last publish, or a range?</b> The route returns the <i>latest</i> delta. Is "your last publish"
+    the right scope, or does the user want "everything this week / this arc"? v1 proposes last-publish (matches the route); a range is a BE ask, deferred.</div>
+  <div class="q"><span class="id">OQ-F4</span><b>Relations target.</b> <code class="mono">onOpenRelations</code> → <code class="mono">kg-graph</code> (the whole graph) or a
+    dedicated relations view? Depends on what S7 registers. Resolve against S7's panel set, not in isolation.</div>
+  <div class="q"><span class="id">OQ-F5</span><b>Sequencing vs S7.</b> The three deep-link targets are S7's. Does flywheel port <i>after</i> S7 registers cast/kg-timeline/kg-graph,
+    or port now with disabled-with-reason chips for any not-yet-registered target? Draft leans: port now, degrade gracefully, track the tail.</div>
+</div>
+
+<div class="callout">
+  <b>What this draft deliberately does NOT propose.</b>
+  <b>(a)</b> No MCP <code>flywheel</code> tool — it is a read-only reward view; the agent grows canon by <i>publishing</i>, not by "writing a flywheel".
+  <b>(b)</b> No new backend — every claim above carries a teal tick except the one shared Lane-B predicate.
+  <b>(c)</b> No merge with <code>quality-corrections</code> — the parity contract's conflation is a bug this port fixes, not a design to honor.
+  <b>(d)</b> No book-scale list — the delta is one publish's growth; the scale surface lives in the deep-link targets, which own it.
+</div>
+
+</body>
+</html>

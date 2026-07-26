@@ -4,10 +4,129 @@
     "tabs_aria": "設定タブ",
     "tab": {
       "account": "アカウント",
+      "chat-ai": "チャットとAI",
       "providers": "モデルプロバイダー",
       "translation": "翻訳",
       "reading": "読書",
-      "language": "言語"
+      "language": "言語",
+      "mcp": "MCPアクセス",
+      "workflow-bindings": "ワークフローの自動設定"
+    }
+  },
+  "mcp": {
+    "heading": "MCPアクセスキー",
+    "subtitle": "外部エージェントがUIを介さずMCP経由でプラットフォームを利用できるAPIキーを作成します。各キーは、あなたが設定したスコープと制限の範囲であなたとして動作します。",
+    "create_key": "キーを作成",
+    "loading": "キーを読み込み中…",
+    "empty": "MCPキーはまだありません。外部エージェントを接続するにはキーを作成してください。",
+    "scopes_label": "スコープ: {{scopes}}",
+    "domains_label": "領域: {{domains}}",
+    "last_used": "最終使用: {{date}}",
+    "expires_label": "有効期限: {{date}}",
+    "revoke_aria": "キー {{name}} を取り消す",
+    "revoke_title": "キーを取り消す",
+    "edit_aria": "キー {{name}} を編集",
+    "edit_title": "上限を編集",
+    "status": {
+      "active": "有効",
+      "revoked": "取り消し済み"
+    },
+    "scope": {
+      "read": "読み取り",
+      "paid_read": "有料読み取り",
+      "write_auto": "自動書き込み",
+      "write_confirm": "確認付き書き込み"
+    },
+    "domain": {
+      "book": "書籍",
+      "glossary": "用語集",
+      "knowledge": "ナレッジ",
+      "translation": "翻訳",
+      "composition": "創作",
+      "jobs": "ジョブ",
+      "settings": "設定",
+      "lore_enrichment": "ロア拡充",
+      "catalog": "カタログ"
+    },
+    "create": {
+      "title": "MCPキーを作成",
+      "subtitle": "シークレットは一度だけ表示されます。安全な場所に保管してください。",
+      "name": "名前",
+      "name_ph": "例: my-research-agent",
+      "scopes": "スコープ",
+      "scopes_hint": "キーで何ができるか。まずは読み取りのみで始め、必要に応じて追加してください。",
+      "domains": "領域",
+      "domains_hint": "キーがアクセスできる領域。領域を選択しないキーは何も呼び出せません。",
+      "rate_limit": "レート制限（リクエスト/分）",
+      "spend_cap": "支出上限（USD）",
+      "spend_cap_ph": "上限なし",
+      "expires": "有効期限（任意）",
+      "self_confirm": "書き込み操作の自己確認を許可",
+      "self_confirm_hint": "オフの場合、確認が必要な書き込み操作はあなたの承認が必要です。信頼できる自動エージェントでない限りオフのままにしてください。",
+      "cancel": "キャンセル",
+      "submit": "キーを作成",
+      "creating": "作成中…",
+      "secret_note": "シークレットキーは作成時に自動生成されます（自分で設定するものではありません）。直後に一度だけ表示されます。"
+    },
+    "edit": {
+      "title": "「{{name}}」を編集",
+      "subtitle": "このキーの上限を調整します。シークレットとアクセス範囲は変わりません。",
+      "scopes_locked": "スコープとドメインは作成時に固定されます。アクセス範囲を変更するには、取り消して新しいキーを作成してください。",
+      "expires_hint": "有効期限なしの場合は空欄にします。",
+      "cancel": "キャンセル",
+      "submit": "変更を保存",
+      "saving": "保存中…"
+    },
+    "reveal": {
+      "title": "キーを作成しました",
+      "subtitle": "今すぐこのシークレットをコピーしてください。二度と表示されません。",
+      "copy": "キーをコピー",
+      "warning": "一度だけ表示",
+      "done": "完了"
+    },
+    "revoke": {
+      "title": "{{name}} を取り消しますか？",
+      "desc": "キーは直ちに（約60秒以内に）無効になります。使用中のエージェントはアクセスを失います。元に戻せません。",
+      "confirm": "取り消す"
+    },
+    "audit": {
+      "toggle_aria": "{{name}} の最近の呼び出し",
+      "toggle_title": "呼び出し履歴",
+      "loading": "最近の呼び出しを読み込み中…",
+      "empty": "まだ呼び出しは記録されていません。",
+      "outcome": {
+        "relayed": "中継",
+        "denied_scope": "拒否（スコープ）",
+        "rate_limited": "レート制限",
+        "unauthorized": "未認可",
+        "upstream_error": "上流エラー",
+        "tool_error": "ツールエラー"
+      }
+    },
+    "approvals": {
+      "heading": "承認待ちのエージェント操作 ({{count}})",
+      "subtitle": "あなたのキーを使うエージェントがこれらの操作を要求しました。承認すると実行され（費用はそのキーに請求）、拒否すると破棄されます。",
+      "key_label": "キー {{key}}…",
+      "cost_label": "概算 ${{cost}}",
+      "approve": "承認",
+      "deny": "拒否",
+      "toast": {
+        "approved": "操作を承認し実行しました",
+        "denied": "操作を拒否しました",
+        "reprice": "費用が変わりました — エージェントに再度提案させてください",
+        "approve_failed": "操作を承認できませんでした",
+        "deny_failed": "操作を拒否できませんでした"
+      }
+    },
+    "toast": {
+      "load_failed": "MCPキーの読み込みに失敗しました",
+      "created": "キー「{{name}}」を作成しました",
+      "create_failed": "キーの作成に失敗しました",
+      "revoked": "キーを取り消しました",
+      "revoke_failed": "キーの取り消しに失敗しました",
+      "updated": "キーを更新しました",
+      "update_failed": "キーの更新に失敗しました",
+      "audit_failed": "呼び出し履歴の読み込みに失敗しました"
     }
   },
   "account": {
@@ -124,6 +243,9 @@
       "api_key_ph_keep": "••••••••  （現在のキーを保持する場合は空欄）",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "既存のキーを保持する場合は空欄にしてください。",
+      "max_concurrency": "最大同時リクエスト数",
+      "max_concurrency_ph": "無制限",
+      "max_concurrency_hint": "このプロバイダーが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合（例：ローカルGPU）のみ数値を設定してください。",
       "cancel": "キャンセル",
       "saving": "保存中...",
       "submit": "変更を保存"
@@ -251,6 +373,71 @@
       "moderation": "モデレーション"
     }
   },
+  "services": {
+    "heading": "外部サービス",
+    "subtitle": "モデル以外の持ち込み（BYOK）AIサービス — 例: ウェブ検索。モデルと同様に provider-registry 経由で接続します。",
+    "add": "サービスを追加",
+    "empty": "外部サービスがまだありません。ディープリサーチを有効にするには追加してください（例: ウェブ検索）。",
+    "keyless": "キー不要",
+    "no_endpoint": "エンドポイントなし",
+    "no_model": "モデルなし",
+    "test": "テスト",
+    "activate_aria": "サービスを有効化",
+    "deactivate_aria": "サービスを無効化",
+    "delete_aria": "{{name}} を削除",
+    "edit_aria": "{{name}} を編集",
+    "type": {
+      "web_search": {
+        "label": "ウェブ検索",
+        "desc": "ディープリサーチの根拠をウェブから検索（例: SearXNG、Tavily）。"
+      }
+    },
+    "add_dialog": {
+      "aria": "外部サービスを追加",
+      "title": "外部サービスを追加",
+      "type": "サービス",
+      "endpoint": "エンドポイントURL",
+      "endpoint_hint": "サービスのベースURL — provider-registry がサーバー側で呼び出します。ホストマシン上のサービスには localhost ではなく host.docker.internal を使用してください（コンテナ内では localhost はコンテナ自身を指します）。",
+      "key": "APIキー",
+      "key_ph": "ベアラートークン",
+      "key_ph_keyless": "キー不要のローカルサービスは空のまま",
+      "key_hint": "サービスのベアラーシークレット。",
+      "key_hint_keyless": "任意 — キー不要のローカルバックエンド（例: SearXNG）は空のまま。",
+      "label": "ラベル",
+      "label_ph": "例: searxng-default",
+      "alias": "エイリアス",
+      "alias_ph": "表示名（任意）",
+      "cancel": "キャンセル",
+      "submit": "サービスを追加",
+      "adding": "追加中…"
+    },
+    "edit_dialog": {
+      "aria": "外部サービスを編集",
+      "title": "{{name}} を編集",
+      "endpoint": "エンドポイントURL",
+      "key": "APIキー",
+      "key_ph_keep": "現在のキーを保持するには空のまま",
+      "key_keep_hint": "空のままにすると既存のキーを保持します。",
+      "max_concurrency": "最大同時リクエスト数",
+      "max_concurrency_ph": "無制限",
+      "max_concurrency_hint": "このサービスが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合のみ数値を設定してください。",
+      "cancel": "キャンセル",
+      "submit": "保存",
+      "saving": "保存中…"
+    },
+    "toast": {
+      "added": "{{name}} を追加しました",
+      "add_failed": "サービスの追加に失敗しました",
+      "updated": "サービスを更新しました",
+      "update_failed": "サービスの更新に失敗しました",
+      "removed": "サービスを削除しました",
+      "remove_failed": "サービスの削除に失敗しました",
+      "toggle_failed": "サービスの切り替えに失敗しました",
+      "verify_ok": "サービスに到達できました（{{ms}}ms）",
+      "verify_failed": "検証に失敗しました: {{error}}",
+      "unknown_error": "不明なエラー"
+    }
+  },
   "tags": {
     "label": "タグ",
     "placeholder": "タグを追加...（例: 翻訳、チャット）",
@@ -306,6 +493,18 @@
       "testing": "テスト中...",
       "reverify": "再検証",
       "verify": "検証",
+      "pricing_title": "料金 (100万トークンあたりのUSD)",
+      "pricing_input": "入力",
+      "pricing_output": "出力",
+      "pricing_free_local": "無料 — ローカル環境で実行",
+      "pricing_hint": "作成時に自動入力されます。プロバイダーの公開料金が変更された場合は編集するか、OpenRouterで最新の推定値を確認してください。",
+      "pricing_check": "OpenRouterを確認",
+      "pricing_checking": "確認中...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 入力 ${{input}} / 出力 ${{output}}",
+      "pricing_apply": "適用",
+      "pricing_not_found": "OpenRouterに一致するモデルが見つかりません。このソースからは料金を取得できません。",
+      "pricing_check_failed": "OpenRouterの料金確認に失敗しました",
+      "pricing_negative_error": "料金は0以上である必要があります",
       "delete_model": "モデルを削除",
       "confirm_delete": "削除を確認",
       "deleting": "削除中...",

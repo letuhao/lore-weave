@@ -23,6 +23,11 @@ members = [
     "services/tilemap-service",
     "services/world-service",
     "services/travel-service",
+    # roleplay-service (2026-06-24) — first user-facing Rust service (scripts +
+    # actor-memory + start-orchestration; the MMO roleplay-service seed). Built
+    # on `crates/service-http` (the shared axum/auth/health/trace/db kit).
+    "services/roleplay-service",
+    "crates/service-http",
     "crates/world-gen",
     "crates/meta-rs",
     # S6 / H1-loom — tokio-free CircuitBreaker sync core extracted from
@@ -71,6 +76,10 @@ members = [
     # Q-L6-1 the gateway WS impl lives in NestJS api-gateway-bff; this
     # crate is server-LIB types only (no Rust WS server).
     "crates/contracts-ws",
+    # ACP A3 (2026-07-16) — typed Rust mirror of the Agent Control Plane contracts
+    # (working-memory/charter). roleplay-service produces its seed via these structs
+    # instead of hand-rolled JSON; a schema-conformance test proves both-sides agreement.
+    "crates/contracts-agent-control",
     # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
     # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
     # from the L2.A event log into the cycle-13 projection tables. Used by
@@ -107,25 +116,25 @@ tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 
 # HTTP server (tilemap-service `serve` subcommand — POST /internal/v1/tilemaps/render)
-axum = "0.7"
+axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["timeout", "trace", "cors"] }
+tower-http = { version = "0.7", features = ["timeout", "trace", "cors"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "1.1"
 
 # TMP-A4 deterministic seed
 blake3 = "1.5"
 
 # Deterministic procedural RNG — ChaCha8 streams sub-seeded from the blake3
 # TilemapSeed (TMP_002 §8). rand provides the SeedableRng/Rng traits.
-rand = "0.8"
-rand_chacha = "0.3"
+rand = "0.9"
+rand_chacha = "0.9"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 # UUIDs (gateway StreamRequest.model_ref + user_id query param).
@@ -136,7 +145,15 @@ uuid = { version = "1.10", features = ["serde", "v4", "v5"] }
 
 # Structured logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# "json" added 2026-06-24 for crates/service-http::init_tracing (platform JSON
+# logs w/ service + trace_id). Additive — tilemap/world `fmt()` unaffected.
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# User-facing JWT auth (crates/service-http::require_user; roleplay-service is
+# the first consumer). HS256, `sub` claim → user_id — mirrors book-service.
+jsonwebtoken = "10"
+# Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
+chrono = { version = "0.4", features = ["serde"] }
 
 # HTTP mock server for offline SSE-parser / gateway integration tests (dev-only)
 wiremock = "0.6"
@@ -153,6 +170,11 @@ sqlx = { version = "0.8", default-features = false, features = [
     "uuid",
     "json",
     "macros",
+    # 2026-06-24 (roleplay-service / crates/service-http::db::init):
+    #   "migrate" — sqlx::migrate!() + Migrator for startup migrations.
+    #   "chrono"  — TIMESTAMPTZ <-> chrono::DateTime<Utc> in models.
+    "migrate",
+    "chrono",
 ] }
 
 # Cycle 16 / DEFERRED-059 — embedding-queue live wiring (world-service).
@@ -164,10 +186,10 @@ sqlx = { version = "0.8", default-features = false, features = [
 #   endpoint; mirrors the Go workers' prometheus/client_golang surface).
 async-trait = "0.1"
 pgvector = { version = "0.4", default-features = false, features = ["sqlx"] }
-prometheus = "0.13"
+prometheus = "0.14"
 
 # Cycle 17 (L4.B) — proc-macro toolkit for `#[derive(Aggregate)]`.
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 # trybuild is used by L4.B macros' tests to assert compile-error messages stay

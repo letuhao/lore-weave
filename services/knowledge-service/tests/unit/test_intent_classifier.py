@@ -118,6 +118,51 @@ def test_general_fallback():
     assert r.intent is Intent.GENERAL
 
 
+# ── A1 (ML-1): per-language routing supersedes the P0-7 blanket degrade ──
+
+
+def test_chinese_relational_routes_via_keyword_not_degrade():
+    # Post-A1: a zh relational query matches its OWN vocabulary (是什么关系) and
+    # routes RELATIONAL through the real cascade — no longer the blanket net.
+    r = classify("凯和林大师之间是什么关系？")  # relationship between Kai and Master Lin
+    assert r.intent is Intent.RELATIONAL
+    assert r.hop_count == 2
+    assert "multilingual_degrade_open" not in r.signals  # a REAL signal won
+    assert any(s.startswith("relational") for s in r.signals)
+
+
+def test_vietnamese_recent_routes_via_keyword_not_degrade():
+    # Post-A1: "chương này" (this chapter) is a Vietnamese RECENT anchor, so this
+    # routes RECENT_EVENT — real routing, not the pre-A1 blanket RELATIONAL.
+    r = classify("Chuyện gì đã xảy ra ở chương này?")  # what happened in this chapter
+    assert r.intent is Intent.RECENT_EVENT
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_general_unchanged_by_degrade_open():
+    # Pure-ASCII English never enters the degrade-open branch — byte-identical.
+    r = classify("What is love?")
+    assert r.intent is Intent.GENERAL
+    assert r.hop_count == 1
+    assert r.recency_weight == 1.0
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_with_punctuation_dash_not_treated_as_non_english():
+    # A non-ASCII em-dash / ellipsis is PUNCTUATION, not a letter — must NOT
+    # trip the multilingual rule; this stays GENERAL.
+    r = classify("What is love — really…?")
+    assert r.intent is Intent.GENERAL
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_cascade_still_wins_for_ascii_queries():
+    # Degrade-open must not shadow the English cascade. A clear English
+    # relational/recent query keeps its normal routing.
+    assert classify("How does Kai know Master Lin?").intent is Intent.RELATIONAL
+    assert classify("What is Kai doing right now?").intent is Intent.RECENT_EVENT
+
+
 # ── golden-set accuracy (the real bar) ────────────────────────────────
 
 
@@ -179,15 +224,45 @@ def test_latency_p95_under_15ms(golden_queries):
 # ── signals / debuggability ───────────────────────────────────────────
 
 
-def test_long_input_still_classifies_under_budget():
-    # R8 regression: a pathological 10k-char message must not blow the
-    # latency budget. Priority cascade uses simple regex scans; no
-    # quadratic behavior expected, but assert it.
-    msg = "Tell me about Kai " + ("and his sword " * 1000) + " please."
-    t0 = time.perf_counter()
-    r = classify(msg)
-    elapsed_ms = (time.perf_counter() - t0) * 1000.0
-    assert elapsed_ms < 15.0, f"Long-input latency {elapsed_ms:.2f}ms exceeds budget"
+def test_long_input_still_classifies_without_quadratic_blowup():
+    # R8 regression: a pathological 10k-char message must not blow up the
+    # classifier. The property under test is ALGORITHMIC — the priority
+    # cascade is simple regex scans, so cost must grow ~linearly with input.
+    #
+    # This deliberately asserts a SCALING RATIO, not an absolute wall-clock
+    # budget. An absolute `elapsed < 15ms` on one sample measures the machine,
+    # not the code: it false-REDs whenever the CPU is contended (this suite's
+    # own `-n auto` workers, a parallel vitest run, a busy CI box) while a real
+    # quadratic regression on a fast box could still sneak under it. Doubling
+    # the input must roughly double the work (linear ≈ 2x, quadratic ≈ 4x);
+    # both samples absorb the same contention, so the ratio stays meaningful.
+    def median_ms(msg: str, runs: int = 7) -> float:
+        samples = []
+        for _ in range(runs):
+            t0 = time.perf_counter()
+            classify(msg)
+            samples.append((time.perf_counter() - t0) * 1000.0)
+        return sorted(samples)[len(samples) // 2]
+
+    def message(repeats: int) -> str:
+        return "Tell me about Kai " + ("and his sword " * repeats) + " please."
+
+    classify(message(50))  # warm up any lazy imports / regex compilation
+
+    half = median_ms(message(500))    # ~7k chars
+    full = median_ms(message(1000))   # ~14k chars — double the input
+
+    # Guard against a degenerate baseline: if `half` rounds to ~0 the ratio is
+    # noise, and a sub-millisecond 14k-char classify is proof enough of linearity.
+    if half > 0.05:
+        ratio = full / half
+        assert ratio < 3.0, (
+            f"classify() scales super-linearly: {half:.3f}ms at 7k chars vs "
+            f"{full:.3f}ms at 14k chars (ratio {ratio:.2f}x, expected ~2x for a "
+            f"linear scan; ~4x indicates quadratic backtracking)"
+        )
+
+    r = classify(message(1000))
     assert r.intent is Intent.SPECIFIC_ENTITY
     assert "Kai" in r.entities
 
@@ -200,3 +275,66 @@ def test_signals_record_all_hits_not_just_winner():
     joined = " ".join(r.signals)
     assert "relational_strong" in joined
     assert "recent" in joined
+
+
+# ── A1 (ML-1) — per-language routing ──────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def multilingual_queries() -> list[tuple[str, Intent]]:
+    path = Path(__file__).parent / "fixtures" / "intent_queries_multilingual.yaml"
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    out: list[tuple[str, Intent]] = []
+    for label, queries in raw.items():
+        intent = Intent(label)
+        for q in queries:
+            out.append((q, intent))
+    return out
+
+
+def test_multilingual_queries_route_to_real_intent(multilingual_queries):
+    """zh/ja/ko/vi queries route to their correct intent via per-language
+    keywords — NOT the old blanket-RELATIONAL degrade. Requires 100% here
+    (a small hand-verified set), and specifically that non-relational cases
+    are NOT swept into RELATIONAL."""
+    misses = []
+    for q, expected in multilingual_queries:
+        got = classify(q).intent
+        if got is not expected:
+            misses.append((q, expected.value, got.value))
+    assert not misses, f"multilingual routing misses: {misses}"
+
+
+def test_non_relational_multilingual_not_swept_to_relational(multilingual_queries):
+    # The whole point of A1: a CJK/vi query that isn't relational must not be
+    # blanket-routed to RELATIONAL (the pre-A1 degrade behavior).
+    for q, expected in multilingual_queries:
+        if expected is not Intent.RELATIONAL:
+            assert classify(q).intent is not Intent.RELATIONAL, (
+                f"{q!r} (expected {expected.value}) was swept to RELATIONAL"
+            )
+
+
+def test_english_routing_byte_identical_after_multilingual_union():
+    # Union-compiling the CJK/vi keywords must not change English outcomes
+    # (disjoint scripts). Spot-check one per class.
+    assert classify("Tell me about Kai").intent is Intent.SPECIFIC_ENTITY
+    assert classify("What just happened to Kai?").intent is Intent.RECENT_EVENT
+    assert classify("Long ago, who ruled?").intent is Intent.HISTORICAL
+    assert classify("How does Kai know Master Lin?").intent is Intent.RELATIONAL
+
+
+def test_uncovered_script_degrades_open_to_relational():
+    # An uncovered non-ASCII script (Arabic) with no keyword + no entity still
+    # degrades OPEN to RELATIONAL/2-hop (the retained net), not narrow GENERAL.
+    r = classify("مرحبا بالعالم")
+    assert r.intent is Intent.RELATIONAL
+    assert r.hop_count == 2
+    assert "multilingual_degrade_open" in r.signals
+
+
+def test_english_no_signal_stays_general_not_degraded():
+    # Pure-ASCII with no signal must stay GENERAL (never enters the net).
+    r = classify("the weather is nice today and everything feels calm")
+    assert r.intent is Intent.GENERAL
+    assert "multilingual_degrade_open" not in r.signals

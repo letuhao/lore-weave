@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LoreWeave">
+  <!-- Maskable-safe: the mark sits inside the inner 80% safe zone so a circular/rounded OS mask
+       never clips it. Brand: warm near-black ground, amber mark (matches the app tokens). -->
+  <rect width="512" height="512" fill="#141210"/>
+  <text x="256" y="256" fill="#f0a83a" font-family="Iowan Old Style, Georgia, 'Times New Roman', serif"
+        font-size="300" font-weight="700" text-anchor="middle" dominant-baseline="central">L</text>
+</svg>

@@ -29,6 +29,7 @@ paths = [
   '''docs/audit/findings-.*\.md''',     # adversary findings may quote patterns
   '''docs/plans/.*\.md''',              # plan docs may show example secrets in fenced blocks
   '''scripts/raid/test/.*''',           # test-only helpers may use fake creds
+  '''services/mcp-public-gateway/test/.*''',  # public-MCP edge test fixtures (fake lw_pk_ keys)
 ]
 regexes = [
   '''<REDACTED-FAKE-SECRET>''',

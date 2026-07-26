@@ -14,6 +14,7 @@ import pytest
 from loreweave_llm.models import DoneEvent, TokenEvent, UsageEvent
 
 from app.engine.canon_reflect import run_canon_reflect
+from app.packer.profile import BookProfile
 
 
 class _FakeKnowledge:
@@ -71,7 +72,7 @@ async def test_reflect_repairs_seeded_contradiction():
         knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
         cast_glossary_ids=["g-kai"], scene_sort_order=5,
         draft="Kai drew his sword and charged the gate.",
-        packed_prompt="<canon>...</canon>", profile=SimpleNamespace(source_language="en", voice=""),
+        packed_prompt="<canon>...</canon>", profile=BookProfile(source_language="en"),
         drafter_source="user_model", drafter_ref=drafter,
         judge_source="user_model", judge_ref=critic,  # distinct → judge runs
         prompt_estimate=100, max_output_tokens=512, max_iters=1,
@@ -101,7 +102,7 @@ async def test_reflect_surfaces_truncated_revise_pass():
         knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
         cast_glossary_ids=["g-kai"], scene_sort_order=5,
         draft="Kai drew his sword and charged the gate.",
-        packed_prompt="<canon>...</canon>", profile=SimpleNamespace(source_language="en", voice=""),
+        packed_prompt="<canon>...</canon>", profile=BookProfile(source_language="en"),
         drafter_source="user_model", drafter_ref=str(uuid4()),
         judge_source="user_model", judge_ref=str(uuid4()),  # distinct → judge runs
         prompt_estimate=100, max_output_tokens=512, max_iters=1,
@@ -118,7 +119,7 @@ async def test_reflect_skips_without_position():
     final, result, revise_tokens = await run_canon_reflect(
         knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
         cast_glossary_ids=["g-kai"], scene_sort_order=None,
-        draft="Kai acts.", packed_prompt="", profile=SimpleNamespace(source_language="en", voice=""),
+        draft="Kai acts.", packed_prompt="", profile=BookProfile(source_language="en"),
         drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="c",
         prompt_estimate=10, max_output_tokens=128, max_iters=1,
     )
@@ -134,7 +135,7 @@ async def test_reflect_no_cast_is_skipped_no_cast():
     final, result, _ = await run_canon_reflect(
         knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
         cast_glossary_ids=[], scene_sort_order=5,  # cast empty
-        draft="A quiet scene.", packed_prompt="", profile=SimpleNamespace(source_language="en", voice=""),
+        draft="A quiet scene.", packed_prompt="", profile=BookProfile(source_language="en"),
         drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="c",
         prompt_estimate=10, max_output_tokens=128, max_iters=1,
     )
@@ -149,7 +150,7 @@ async def test_reflect_degraded_when_knowledge_unavailable():
     final, result, _ = await run_canon_reflect(
         knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
         cast_glossary_ids=["g-kai"], scene_sort_order=5,
-        draft="Kai charged.", packed_prompt="", profile=SimpleNamespace(source_language="en", voice=""),
+        draft="Kai charged.", packed_prompt="", profile=BookProfile(source_language="en"),
         drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="c",
         prompt_estimate=10, max_output_tokens=128, max_iters=1,
     )
@@ -165,7 +166,7 @@ async def test_reflect_symbolic_only_when_judge_not_distinct():
     final, result, revise_tokens = await run_canon_reflect(
         knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
         cast_glossary_ids=["g-kai"], scene_sort_order=5,
-        draft="Kai charged.", packed_prompt="", profile=SimpleNamespace(source_language="en", voice=""),
+        draft="Kai charged.", packed_prompt="", profile=BookProfile(source_language="en"),
         drafter_source="user_model", drafter_ref="same",
         judge_source="user_model", judge_ref="same",  # NOT distinct
         prompt_estimate=10, max_output_tokens=128, max_iters=1,

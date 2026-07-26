@@ -11,8 +11,19 @@ import dataclasses
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from app.worker import job_consumer as jc
-from app.worker.operations import run_decompose
+from app.worker.operations import run_decompose, run_plan_pipeline, run_selection_edit
+
+
+def _llm_stub():
+    """A bare `object()` used to stand in for the LLM client no longer suffices once
+    an operation resolves model-context-aware budgets — give it the one method those
+    call, returning "unresolved" so the flat default budget applies."""
+    async def _resolve_context_length(model_source, model_ref):
+        return None
+    return SimpleNamespace(resolve_context_length=_resolve_context_length)
 
 
 class _FakeRepo:
@@ -20,17 +31,18 @@ class _FakeRepo:
         self._job = job
         self.updates: list = []
 
-    async def get(self, uid, jid):
+    async def get(self, jid):
         return self._job
 
-    async def update_status(self, uid, jid, status, *, result=None, **kw):
+    async def update_status(self, jid, status, *, result=None, **kw):
         self.updates.append((status, result))
         return self._job
 
 
 def _job(operation="decompose_preview", status="pending", input=None):
+    _uid = uuid4()
     return SimpleNamespace(
-        id=uuid4(), user_id=uuid4(), project_id=uuid4(), operation=operation,
+        id=uuid4(), created_by=_uid, user_id=_uid, project_id=uuid4(), operation=operation,
         status=status, input=input if input is not None else {},
     )
 
@@ -38,7 +50,7 @@ def _job(operation="decompose_preview", status="pending", input=None):
 def _patch_run_job(monkeypatch, repo, *, result=None, raises=None):
     monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
 
-    async def _rd(llm, *, user_id, input):
+    async def _rd(llm, *, user_id, input, cancel_check=None):
         if raises is not None:
             raise raises
         return result if result is not None else {"tree": []}
@@ -76,6 +88,46 @@ async def test_run_job_business_error_marks_failed(monkeypatch):
     assert "bad plan output" in repo.updates[-1][1]["error"]
 
 
+async def test_run_selection_edit_errored_no_content_raises(monkeypatch):
+    # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED (worker path): stream_draft always yields a
+    # terminal frame even after an LLMError, so `final is not None` — the errored-empty
+    # case must RAISE (→ job failed via the business-error path above), never return an
+    # empty completed edit.
+    async def errored_stream(sdk, **kw):
+        yield {"type": "error", "error": "model_ref could not be resolved"}
+        yield {"type": "usage", "text": "", "metering": SimpleNamespace(
+            input_tokens=10, output_tokens=0, measured=False, finish_reason=None),
+            "capped": False, "error": "model_ref could not be resolved"}
+
+    monkeypatch.setattr("app.engine.cowrite.stream_draft", errored_stream)
+    with pytest.raises(ValueError, match="model_ref could not be resolved"):
+        await run_selection_edit(SimpleNamespace(sdk=object()), input={
+            "user_id": "u", "messages": [{"role": "user", "content": "x"}],
+            "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
+            "model_ref": str(uuid4())})
+
+
+async def test_run_selection_edit_error_after_content_succeeds(monkeypatch):
+    # The taxonomy boundary: partial content then error keeps the prose (not a failure).
+    async def partial_then_error(sdk, **kw):
+        yield {"type": "token", "delta": "partial"}
+        yield {"type": "error", "error": "dropped"}
+        yield {"type": "usage", "text": "partial", "metering": SimpleNamespace(
+            input_tokens=10, output_tokens=2, measured=True, finish_reason=None),
+            "capped": False, "error": "dropped"}
+
+    monkeypatch.setattr("app.engine.cowrite.stream_draft", partial_then_error)
+    out = await run_selection_edit(SimpleNamespace(sdk=object()), input={
+        "user_id": "u", "messages": [{"role": "user", "content": "x"}],
+        "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
+        "model_ref": str(uuid4())})
+    assert out["text"] == "partial"
+    # review MED: the worker path doesn't stream, so this result is the ONLY interruption signal —
+    # it must flag truncated + carry the error, not look like a clean edit.
+    assert out["truncated"] is True
+    assert out["error"] == "dropped"
+
+
 async def test_run_job_unknown_operation_fails(monkeypatch):
     job = _job(operation="totally_unknown")
     repo = _FakeRepo(job)
@@ -111,7 +163,7 @@ async def test_run_job_dispatches_stitch_and_stores_result(monkeypatch):
 
     captured: dict = {}
 
-    async def _rs(pool, llm, knowledge, *, input):
+    async def _rs(pool, llm, knowledge, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "stitched chapter", "persisted": False}
 
@@ -135,15 +187,19 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={"source_language": "en"})
 
     class _FakeJobsRepo:
         def __init__(self, pool): ...
-        async def chapter_scene_drafts(self, uid, pid, cid):
-            return ["scene 1 draft", "scene 2 draft"]
+        async def chapter_scene_drafts(self, pid, cid):
+            return [{"title": "Scene One", "text": "scene 1 draft"},
+                    {"title": "Scene Two", "text": "scene 2 draft"}]
+
+    stitch_inputs: dict = {}
 
     async def _fake_stitch(llm, **kw):
+        stitch_inputs.update(kw)
         return ("STITCHED PROSE", "stop")
 
     reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
@@ -165,11 +221,14 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
         "reasoning_effort": None, "reflect_max_iters": 1,
         "critic_source": None, "critic_ref": None,
     }
-    out = await run_stitch(object(), object(), object(), input=inp)
+    out = await run_stitch(object(), _llm_stub(), object(), input=inp)
     assert out["text"] == "STITCHED PROSE"
     assert out["stitched"] is True
     assert out["persisted"] is False  # Option A — persist is the separate bearer step
     assert out["canon"]["status"] == "ok"
+    # F4 — each stitch input draft opens with its `### <scene title>` line
+    assert stitch_inputs["scene_drafts"] == [
+        "### Scene One\n\nscene 1 draft", "### Scene Two\n\nscene 2 draft"]
 
 
 async def test_run_stitch_raises_when_no_drafts(monkeypatch):
@@ -181,12 +240,12 @@ async def test_run_stitch_raises_when_no_drafts(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})
 
     class _FakeJobsRepo:
         def __init__(self, pool): ...
-        async def chapter_scene_drafts(self, uid, pid, cid):
+        async def chapter_scene_drafts(self, pid, cid):
             return []  # nothing to stitch
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
@@ -207,7 +266,7 @@ async def test_run_job_dispatches_generate_via_worker_op(monkeypatch):
 
     captured: dict = {}
 
-    async def _rg(pool, llm, knowledge, *, input):
+    async def _rg(pool, llm, knowledge, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "auto winner", "persisted": False}
 
@@ -231,7 +290,7 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={"source_language": "en"})
 
     seen: dict = {}
@@ -283,7 +342,7 @@ async def test_run_generate_select_failure_is_terminal(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})
 
     async def _boom(llm, judge, **kw):
@@ -308,7 +367,7 @@ async def test_run_job_dispatches_chapter_generate_via_worker_op(monkeypatch):
 
     captured: dict = {}
 
-    async def _rcg(pool, llm, knowledge, *, input):
+    async def _rcg(pool, llm, knowledge, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "chapter draft", "persisted": False, "chapter_id": "c9"}
 
@@ -331,7 +390,7 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})  # narrative_thread off
 
     seen: dict = {}
@@ -378,7 +437,7 @@ async def test_run_job_dispatches_selection_edit_via_worker_op(monkeypatch):
 
     captured: dict = {}
 
-    async def _rse(llm, *, input):
+    async def _rse(llm, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "edited prose", "persisted": False, "selection_edit": True}
 
@@ -457,3 +516,158 @@ async def test_run_decompose_reconstructs_chapterplans_from_input(monkeypatch):
     # the chapter dict was reconstructed into a ChapterPlan dataclass
     assert captured["chapters"][0].chapter_id == "c1"
     assert captured["chapters"][0].title == "Ch1"
+
+
+async def test_run_job_dispatches_plan_pipeline(monkeypatch):
+    job = _job(operation="plan_pipeline", input={"worker_op": "plan_pipeline"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rpp(pool, llm, *, user_id, input, cancel_check=None):
+        return {"decompose": {"arc_title": "A"}, "heal_report": {"edits_applied": 3}}
+
+    monkeypatch.setattr(jc, "run_plan_pipeline", _rpp)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["heal_report"]["edits_applied"] == 3
+
+
+async def test_run_plan_pipeline_reconstructs_and_serializes(monkeypatch):
+    import app.engine.planning_pipeline as pp_mod
+    from app.engine.plan import ChapterPlan, ChapterScenes, DecomposeResult
+    from app.engine.plan_heal import PlanHealReport
+    from app.engine.planning_pipeline import PipelineResult
+
+    captured: dict = {}
+
+    async def _fake(llm, retriever, glossary, kal, **kw):
+        captured.update(kw)
+        dr = DecomposeResult(arc_title="A", chapters=[ChapterScenes(
+            chapter=ChapterPlan("c1", "Ch1", 1, "hook", "i"), scenes=[])])
+        return PipelineResult(decompose=dr, cast=[{"name": "Lâm Uyển"}], motifs=[],
+                              char_arcs=[], heal_report=PlanHealReport(edits_applied=2))
+
+    monkeypatch.setattr(pp_mod, "run_planning_pipeline", _fake)
+    inp = {
+        "model_source": "user_model", "model_ref": "m", "premise": "a hero falls",
+        "beats": [{"key": "hook", "purpose": "establish"}],
+        "chapters": [{"chapter_id": "c1", "title": "Ch1", "sort_order": 1,
+                      "beat_role": None, "intent": ""}],
+        "genre_tags": ["xianxia"], "book_id": "019f1783-ebb4-78de-ac9d-0dfba6539b7c",
+        "project_id": "019f1783-ecca-7331-afab-9543762a8b68",
+        "k_ceiling": 3, "high_threshold": 70, "min_scenes": 2, "max_scenes": 4,
+        "source_language": "vi", "self_heal": True,
+    }
+    out = await run_plan_pipeline(object(), object(), user_id="u", input=inp)
+    # serialized (asdict) — nested dataclasses flattened
+    assert out["decompose"]["arc_title"] == "A"
+    assert out["heal_report"]["edits_applied"] == 2 and out["cast"][0]["name"] == "Lâm Uyển"
+    # inputs reconstructed + threaded
+    assert captured["premise"] == "a hero falls" and captured["genre_tags"] == ["xianxia"]
+    assert captured["chapters"][0].chapter_id == "c1"   # dict → ChapterPlan
+
+
+async def test_run_job_dispatches_self_heal_propose(monkeypatch):
+    job = _job(operation="self_heal_propose", input={"worker_op": "self_heal_propose"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rshp(llm, *, user_id, input, cancel_check=None):
+        return {"proposals": [{"id": "e0"}], "stats": {"edits": 1}}
+
+    monkeypatch.setattr(jc, "run_self_heal_propose", _rshp)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["stats"]["edits"] == 1
+
+
+async def test_run_self_heal_propose_serializes(monkeypatch):
+    import app.engine.self_heal as sh
+    from app.engine.self_heal import EditProposal, Finding, SelfHealReport
+    from app.worker.operations import run_self_heal_propose
+
+    async def _fake_propose(llm, *, user_id, model_source, model_ref, chapter, source_language,
+                            canon, prefilter, rerank, cancel_check=None):
+        props = [EditProposal(id="e0", type="xưng hô (code)", tier="deterministic", start=0,
+                              end=3, before="ông", after="lão", issue="i", fix="f")]
+        rep = SelfHealReport(
+            findings=[Finding(type="t", span="s", issue="i", fix="f", skip_reason="refuted")],
+            located=1, edits_applied=1, rejudge_before=2)
+        return props, rep
+
+    monkeypatch.setattr(sh, "propose_self_heal", _fake_propose)
+    out = await run_self_heal_propose(
+        object(), user_id="u",
+        input={"chapter_text": "ông đi.", "model_source": "user_model", "model_ref": "m",
+               "chapter_id": "c1", "draft_version": 7, "source_language": "vi"})
+    assert out["proposals"][0]["after"] == "lão"
+    assert out["proposals"][0]["tier"] == "deterministic"
+    assert out["source_text"] == "ông đi." and out["draft_version"] == 7
+    assert out["stats"] == {"findings": 2, "located": 1, "edits": 1, "refuted": 1}
+
+
+async def test_run_job_dispatches_quality_report(monkeypatch):
+    job = _job(operation="quality_report", input={"worker_op": "quality_report"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rqr(llm, *, user_id, input, cancel_check=None):
+        return {"report": {"critic": {"coherence": 4}, "promises": {"dropped": []}}}
+
+    monkeypatch.setattr(jc, "run_quality_report", _rqr)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["report"]["critic"]["coherence"] == 4
+
+
+async def test_run_quality_report_serializes(monkeypatch):
+    import app.engine.quality_report as qr
+    from app.worker.operations import run_quality_report
+
+    async def _fake_report(llm, *, user_id, model_source, model_ref, chapter, source_language,
+                           canon, cancel_check=None):
+        return {"critic": {"coherence": 5, "violations": []},
+                "threads": {"raised": ["the debt"], "raised_count": 1}}
+
+    monkeypatch.setattr(qr, "build_quality_report", _fake_report)
+    out = await run_quality_report(
+        object(), user_id="u",
+        input={"chapter_text": "prose.", "model_source": "user_model", "model_ref": "m",
+               "chapter_id": "c1", "draft_version": 7, "source_language": "vi",
+               "canon": "CANON"})
+    assert out["report"]["critic"]["coherence"] == 5
+    assert out["report"]["threads"]["raised"] == ["the debt"]
+    assert out["chapter_id"] == "c1" and out["draft_version"] == 7
+
+
+async def test_run_job_dispatches_promise_coverage(monkeypatch):
+    job = _job(operation="promise_coverage", input={"worker_op": "promise_coverage"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rpc(llm, *, user_id, input, cancel_check=None):
+        return {"coverage": {"tracked_count": 3, "abandoned_count": 1}, "chapters": 12}
+
+    monkeypatch.setattr(jc, "run_promise_coverage", _rpc)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["coverage"]["tracked_count"] == 3
+
+
+async def test_run_promise_coverage_serializes(monkeypatch):
+    import app.engine.quality_report as qr
+    from app.worker.operations import run_promise_coverage
+
+    async def _fake_cov(llm, *, user_id, model_source, model_ref, premise, plan_text,
+                        book_text, source_language, window_chars=None, cancel_check=None):
+        assert premise == "" and "Ch1" in plan_text and book_text
+        return {"tracked_count": 2, "paid_count": 1, "abandoned_count": 1, "abandon_rate": 0.5}
+
+    monkeypatch.setattr(qr, "build_promise_coverage", _fake_cov)
+    out = await run_promise_coverage(
+        _llm_stub(), user_id="u",
+        input={"premise": "", "plan_text": "## Ch1: a debt", "book_text": "the book prose",
+               "chapters": 12, "model_source": "user_model", "model_ref": "m",
+               "source_language": "vi"})
+    assert out["coverage"]["abandon_rate"] == 0.5
+    assert out["chapters"] == 12

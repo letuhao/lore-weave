@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Style &amp; Voice + Reference Shelf (studio dock panels, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     STYLE & VOICE (`style-voice`) + REFERENCE SHELF (`reference-shelf`)
+     Spec: docs/specs/2026-07-01-writing-studio/36_editor_craft_ports.md
+     Wave 6 of 30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md · closes G-STYLE-VOICE, G-REFERENCES-SHELF
+
+     WHY THESE EXIST
+     These are the two knobs that most directly shape the prose the model
+     emits. packer/pack.py:262-285 folds BOTH into every draft prompt:
+       • style_profile_repo.resolve(project, scene, chapter) → density/pace
+         are `_replace`d into the pack profile (most-specific scope wins).
+       • voice_profile_repo.list_for_entities(present_ids) → the present
+         characters' voice tags become `profile.character_voices`.
+     A reference corpus is folded in the same pack by cosine top-K.
+     All three are reachable ONLY from `ChapterEditorPage` → CompositionPanel
+     — the page carrying an 18-line DO NOT EDIT banner. A Studio user cannot
+     reach any of them, and the AGENT cannot reach them at all: the 62-tool
+     census (`grep '^ *name="composition_' mcp/server.py`) has NO
+     composition_style_* and NO composition_voice_*. The model cannot set the
+     two dials that steer its own output. That is the INVERSE gap.
+
+     ► AND THE SHIPPED PANEL LIES ABOUT THE EFFECTIVE VALUE (F-EC1).
+       StyleProfileRepo.resolve() picks scene > chapter > work, and `None`
+       means the packer stays NEUTRAL (no density directive at all).
+       StyleVoicePanel.tsx:131 renders `density={row?.density ?? 50}`. So a
+       scene with NO row and a scene explicitly set to 50/50 look IDENTICAL —
+       and a scene INHERITING 80/20 from its chapter renders as 50/50, a value
+       the packer will never use. That is SET-1 (effective value + source tier,
+       no silent hidden default) breached in the one place a user can see it —
+       the same class as the "grounding always-on / reasoning silently-off"
+       bug. And `useDeleteStyleProfile` exists (useStyleVoice.ts:30) and the
+       panel NEVER CALLS IT: the DELETE route is live, tested and unreachable,
+       so an override, once made, can never be cleared.
+
+     THE ARCHITECTURE THIS MOCK RENDERS (spec 36 · EC-1, EC-2, EC-2a)
+       The panel renders the CASCADE, not a slider pair. Every row carries its
+       EFFECTIVE VALUE + the SOURCE TIER that supplied it, as a TierChip —
+       EXTENDED, not forked (one chip, one vocabulary, no second copy):
+            ● scene   — overridden right here      ⇒ [Clear override] appears
+            ● chapter — inherited                  ⇒ numbers GREYED, no Clear
+            ● work    — inherited                  ⇒ numbers GREYED, no Clear
+            ● neutral (unset) — NO row anywhere    ⇒ "the packer adds no
+              density/pace directive." NOT "50/50".
+       Clear override IS the unreachable useDeleteStyleProfile; it appears only
+       where a row exists at THIS scope — never on an inherited row, where it
+       would delete the parent's value.
+
+       The shelf is `reference-shelf`, NOT `references` (EC-2, amending plan 30
+       §5.2): Wave 7 ships a `find-references` lens (entity backlinks — a
+       different thing that shares a word), and two enum members disambiguated
+       only by an LLM's guess IS the silent-no-op class the panel_id enum was
+       added to kill. One name, one concept.
+
+     ► THE ONE FE PREREQUISITE, FLAGGED BECAUSE IT LOOKS FREE AND IS NOT.
+       TierChip (chat-ai-settings/components/TierChip.tsx) is `tier: string`
+       with CLS/LABEL/TITLE maps (:13-38) that know ONLY session / book /
+       account / system / unavailable / no_model_configured. It DOES NOT THROW
+       on `scene`/`chapter`/`work`/`neutral` — it falls through to the raw
+       string in muted grey with no tooltip. That is WORSE than a crash: the
+       panel ships looking finished while every chip reads a lowercase slug.
+       ⇒ ADD FOUR ROWS to all three maps (neutral → label "unset", title "No
+       row at any scope — the packer adds no density/pace directive"). The
+       chips drawn below are what those rows must produce. Extending the ONE
+       chip is the point; a second chip component is the defect.
+       Its SIBLING in the same file, `ClearOverride` (:60), is also shipped and
+       already renders "clear · inherit <the value you'd get>" — REUSE IT. A
+       clear button that does not name the fallback is, in its own words, "a
+       dare, not an affordance." The mock's Clear rows say what you fall back TO.
+
+     BACKEND WORK THESE SCREENS IMPLY (flagged up front, not silently)
+       • ZERO for the panels themselves. routers/style_voice.py already ships
+         6 routes (GET|PUT|DELETE style-profile(s), GET|PUT|DELETE
+         voice-profiles; PUT is an ON CONFLICT upsert = complete CRUD), and
+         routers/references.py ships 4 (LIST, ADD+embed, DELETE, per-scene
+         top-K). Both panels are pure ports.
+       • BE-10 (S) — 6 NEW MCP tools, Tier-A: composition_style_{list,upsert,
+         delete} + composition_voice_{list,upsert,delete}, with
+         _meta.undo_hint (the prior row, or None if it was unset). This is the
+         INVERSE gap and it is the point of the wave.
+       • BE-17 (S) — DEFERRED to v2: PATCH /references/{rid} + widen LIST to
+         return reference_embed_model_ref/_source. Rendered honestly below as
+         a constraint, NOT as a disabled mystery button.
+       • NO migration. NO gateway change (every /v1/composition path is
+         auto-proxied, gateway-setup.ts:354). NO new env flag.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① scene INHERITING from chapter — greyed numbers + ● chapter chip,
+          no Clear button, and the inherit sentence.
+       ② overridden at scene · unset everywhere (neutral) · no Work (CTA) —
+          three mini panels, side by side.
+       ③ BEFORE — today's legacy panel rendering 50/50 for a scene the packer
+          will draft at 80/20, with `Clear override` struck through because
+          the call site does not exist.
+       ④ reference shelf: library + per-scene retrieved top-K (the exact rows
+          pack() injects), with the embed model read-only.
+       ⑤ no embed model set · embed provider down · no active scene · empty
+          library — four mini panels.
+
+     SCALE — style/voice are per-(project, scope) rows: a 1,842-chapter book
+     with a per-chapter override is 1,842 rows, and the panel only ever loads
+     THREE (work + the active chapter + the active scene) because resolve()
+     is a server-side most-specific-wins query, not a client-side merge over
+     a list. The reference corpus is small by nature (tens, not thousands —
+     OQ-4 says MEASURE IT before writing the "re-embeds all N" copy) but the
+     per-scene retrieval is a vector top-K and is paged, never "all hits".
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: the three scope tiers of the style cascade + the "no row anywhere" tier */
+    --tier-scene: #b89ee8; --tier-chapter: #5496e8; --tier-work: #e8b87e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Tier legend (the cascade vocabulary) ─────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+
+  /* TierChip — the SHIPPED chat-ai-settings component (EC-1), with FOUR NEW ROWS in its
+     CLS/LABEL/TITLE maps. It has no `scene`/`chapter`/`work`/`neutral` today and degrades
+     to an unstyled raw slug. Extend the one chip; never fork a second. */
+  .tier { display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 7px; border-radius: 100px;
+          font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 500; white-space: nowrap;
+          border: 1px solid transparent; background: var(--secondary); color: var(--muted-fg); }
+  .tier::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .tier.scene   { color: var(--tier-scene);   border-color: #3a2e4d; background: #251d33; }
+  .tier.chapter { color: var(--tier-chapter); border-color: #23303f; background: #1a2432; }
+  .tier.work    { color: var(--tier-work);    border-color: #3d3226; background: #2b2318; }
+  .tier.neutral { color: var(--muted-fg);     border-color: var(--border); background: var(--secondary); }
+  .tier.account { color: var(--accent);       border-color: var(--accent-muted); background: var(--accent-muted); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); gap: 10px; }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .style-panel { width: 430px; max-width: 100%; height: 620px; flex-shrink: 0; }
+  .shelf-panel { width: 560px; max-width: 100%; height: 620px; flex-shrink: 0; }
+
+  /* ── Toolbar (scope switcher) ─────────────────────────────────────────── */
+  .toolbar { padding: 9px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+  .segs { display: flex; background: var(--background); border: 1px solid var(--border); border-radius: 7px; padding: 2px; gap: 2px; }
+  .seg { height: 22px; padding: 0 9px; display: flex; align-items: center; border-radius: 5px; font-size: 11px; font-weight: 500;
+         color: var(--muted-fg); cursor: pointer; white-space: nowrap; }
+  .seg:hover:not(.on):not(.off) { color: var(--foreground); }
+  .seg.on { background: var(--primary-muted); color: var(--primary); font-weight: 600; }
+  .seg.off { opacity: .35; cursor: not-allowed; }        /* no active chapter/scene on the bus */
+  .seg .dot { width: 5px; height: 5px; border-radius: 50%; margin-right: 5px; }
+
+  .search-box { flex: 1; display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 7px; min-width: 0;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12px; }
+  .search-box svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .search-box input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12px; }
+
+  /* ── Sections inside a panel ──────────────────────────────────────────── */
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 10px 12px 7px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .src { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; opacity: .75; text-transform: none; letter-spacing: 0; }
+  .sect-head svg { width: 12px; height: 12px; }
+  .sect-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── The cascade row: value + tier + clear ────────────────────────────── */
+  .knob { display: flex; flex-direction: column; gap: 5px; }
+  .knob .top { display: flex; align-items: center; gap: 8px; }
+  .knob .name { font-size: 11.5px; font-weight: 500; width: 52px; flex-shrink: 0; }
+  .knob .val { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; width: 26px; text-align: right; }
+  .knob .clear { margin-left: auto; background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--muted-fg);
+    font-size: 10px; font-weight: 500; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+  .knob .clear:hover { border-color: var(--destructive); color: var(--destructive); }
+  .slider { position: relative; height: 18px; display: flex; align-items: center; }
+  .slider .track { width: 100%; height: 4px; border-radius: 2px; background: var(--secondary); }
+  .slider .fill { position: absolute; height: 4px; border-radius: 2px; }
+  .slider .knob-dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--foreground); border: 2px solid var(--background-alt); }
+  .ends { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted-fg); margin-top: -3px; }
+
+  /* INHERITED rows: the numbers are real (the packer WILL use them) but they are
+     not YOURS — so they read greyed, and there is no Clear button, because Clear
+     at this scope would delete the PARENT's row. */
+  .knob.inherit .val { color: var(--muted-fg); }
+  .knob.inherit .fill { opacity: .5; }
+  .knob.inherit .knob-dot { background: var(--muted-fg); }
+  .knob.unset .val { color: var(--border-hover); }
+  .knob.unset .track { border: 1px dashed var(--border-hover); background: transparent; }
+
+  .inherit-note { display: flex; gap: 7px; align-items: flex-start; padding: 8px 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); font-size: 10.5px; line-height: 1.55; color: var(--muted-fg); }
+  .inherit-note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; margin-top: 1px; }
+  .inherit-note b { color: var(--foreground); font-weight: 600; }
+  .inherit-note.neutral svg { color: var(--muted-fg); }
+
+  /* ── Voice rows ───────────────────────────────────────────────────────── */
+  .voice-row { border: 1px solid var(--border); border-radius: 8px; background: var(--background); padding: 7px 9px; display: flex; flex-direction: column; gap: 6px; }
+  .voice-row .who { display: flex; align-items: center; gap: 7px; }
+  .voice-row .who .nm { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .av { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 8.5px; font-weight: 700; color: #141010; }
+  .present { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--accent-muted); color: var(--accent); }
+  .tokens { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .token { display: flex; align-items: center; gap: 5px; height: 21px; padding: 0 5px 0 8px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid var(--border); font-size: 10.5px; }
+  .token .x { color: var(--muted-fg); cursor: pointer; }
+  .token .x:hover { color: var(--destructive); }
+  .token-add { height: 21px; padding: 0 8px; border-radius: 100px; background: transparent; border: 1px dashed var(--border-hover);
+    color: var(--muted-fg); font-size: 10.5px; cursor: pointer; }
+  .token-add:hover { color: var(--foreground); border-color: var(--foreground); }
+
+  /* ── Reference shelf ──────────────────────────────────────────────────── */
+  .model-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--background);
+    border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); flex-shrink: 0; }
+  .model-bar svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted-fg); }
+  .model-bar .m { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--foreground); }
+  .model-bar .lock { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 10px; }
+  .model-bar .lock svg { width: 11px; height: 11px; color: var(--warning); }
+
+  .add-form { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .inp::placeholder { color: var(--muted-fg); }
+  textarea.inp { resize: vertical; min-height: 44px; line-height: 1.45; font-size: 11.5px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .btn { height: 27px; padding: 0 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { border-color: var(--border-hover); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.primary:hover { border-color: var(--primary); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .btn svg { width: 13px; height: 13px; }
+
+  .ref-row { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 9px; align-items: flex-start; }
+  .ref-row:hover { background: var(--card-hover); }
+  .ref-row .meta { flex: 1; min-width: 0; }
+  .ref-row .t { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ref-row .a { font-size: 10.5px; color: var(--muted-fg); margin-top: 1px; }
+  .ref-row .snippet { font-size: 10.5px; color: var(--muted-fg); line-height: 1.5; margin-top: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ref-row .del { color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ref-row .del:hover { color: var(--destructive); }
+  .ref-row .del svg { width: 13px; height: 13px; }
+  .score { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); flex-shrink: 0; width: 34px; text-align: right; }
+
+  .hit-acts { display: flex; gap: 4px; flex-shrink: 0; }
+  .hit-acts .mini-btn { height: 20px; padding: 0 7px; border-radius: 4px; font-size: 9.5px; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; border: 1px solid var(--border); background: var(--background); color: var(--muted-fg); cursor: pointer; }
+  .hit-acts .mini-btn.pin:hover { border-color: var(--accent); color: var(--accent); }
+  .hit-acts .mini-btn.ex:hover { border-color: var(--destructive); color: var(--destructive); }
+  .hit-acts .mini-btn.on { background: var(--accent-muted); border-color: var(--accent); color: var(--accent); }
+
+  .empty { padding: 26px 18px; text-align: center; font-size: 11px; color: var(--muted-fg); line-height: 1.65; }
+  .empty svg { width: 22px; height: 22px; margin: 0 auto 8px; color: var(--border-hover); }
+  .empty b { color: var(--foreground); font-weight: 600; }
+
+  .warn-strip { display: flex; gap: 8px; align-items: flex-start; margin: 10px 12px; padding: 8px 10px; border-radius: 7px;
+    background: var(--destructive-muted); border: 1px solid #4c2a26; font-size: 10.5px; line-height: 1.55; color: #e8b0aa; }
+  .warn-strip svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+  .warn-strip b { color: var(--foreground); font-weight: 600; }
+  .warn-strip.info { background: var(--accent-muted); border-color: #245049; color: var(--accent-fg); }
+  .warn-strip.amber { background: var(--primary-muted); border-color: #5a441c; color: #e8c88a; }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1010px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--accent-fg); }
+
+  .mini { width: 258px; height: 330px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .mini .sect-body { padding: 0 10px 10px; gap: 8px; }
+  .mini .sect-head { padding: 9px 10px 6px; }
+  .strike { text-decoration: line-through; opacity: .5; }
+</style>
+</head>
+<body>
+
+<h1>Style &amp; Voice + Reference Shelf <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panels, draft</span></h1>
+<p class="sub">
+  Spec: <b>36_editor_craft_ports.md</b> (Wave 6). The two dials that most directly shape the prose — <b>density/pace</b> and
+  <b>per-character voice tags</b> — plus the <b>reference corpus</b> they are packed alongside.
+  <code>pack()</code> folds all three into every draft prompt (<code>packer/pack.py:262-285</code>), and today all three are reachable only from
+  <code>ChapterEditorPage</code> — the page that says <b>DO NOT EDIT</b>. The agent cannot reach them <b>at all</b>: there is no
+  <code>composition_style_*</code> and no <code>composition_voice_*</code> in the 62-tool census. And the panel that <i>does</i> exist
+  <b>lies about the effective value</b>: it renders <code>density ?? 50</code>, so a scene inheriting <b>80/20</b> from its chapter shows <b>50/50</b>.
+</p>
+
+<div class="legend">
+  <div class="item"><b>The cascade</b> — <code class="mono" style="font-size:10.5px">StyleProfileRepo.resolve()</code> picks most-specific-wins:</div>
+  <div class="item"><span class="tier scene">scene</span> overridden here</div>
+  <div class="item"><span class="tier chapter">chapter</span> inherited</div>
+  <div class="item"><span class="tier work">work</span> inherited</div>
+  <div class="item"><span class="tier neutral">neutral (unset)</span> no row anywhere ⇒ the packer emits <b>no directive</b></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① + ④ — the two panels, side by side, in their primary state
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① + ④ Style &amp; Voice <span class="tag">style-voice</span> · Reference Shelf <span class="tag">reference-shelf</span> — the primary states</h2>
+<p class="sub">
+  Scope <b>Scene 3</b> is selected and has <b>no row of its own</b>. The numbers shown (<b>78 / 24</b>) are the ones the packer will actually use —
+  they come from <b>Chapter 41</b>. So they render <b>greyed</b>, carry a <span class="tier chapter">chapter</span> chip, and there is
+  <b>no Clear override button</b> — clearing here would delete the <i>chapter's</i> row, which is not what the button says.
+</p>
+
+<div class="stack">
+<div class="panel style-panel">
+  <div class="panel-head">
+    <span>Style &amp; Voice</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <span class="lbl">Scope</span>
+      <!-- Work / Chapter / Scene. A seg goes `.off` (disabled) when the bus has no
+           activeChapterId / activeSceneId — the panel is openable by a BARE id, so
+           "no scene selected" is a first-class state, not a crash. -->
+      <div class="segs">
+        <div class="seg">Work</div><div class="seg">Ch. 41</div>
+        <div class="seg on"><span class="dot" style="background:var(--primary)"></span>Scene 3</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- PROSE STYLE -->
+    <div class="sect">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 16l6-12 6 12M8.5 12h7"/></svg>
+        Prose style <span class="src mono">style_profile · scene &gt; chapter &gt; work</span>
+      </div>
+      <div class="sect-body">
+        <div class="knob inherit">
+          <div class="top"><span class="name">Density</span><span class="val">78</span><span class="tier chapter">chapter</span></div>
+          <div class="slider"><div class="track"></div><div class="fill" style="width:78%;background:var(--tier-chapter)"></div><div class="knob-dot" style="left:calc(78% - 6px)"></div></div>
+          <div class="ends"><span>sparse</span><span>lush</span></div>
+        </div>
+
+        <div class="knob inherit">
+          <div class="top"><span class="name">Pace</span><span class="val">24</span><span class="tier chapter">chapter</span></div>
+          <div class="slider"><div class="track"></div><div class="fill" style="width:24%;background:var(--tier-chapter)"></div><div class="knob-dot" style="left:calc(24% - 6px)"></div></div>
+          <div class="ends"><span>lingering</span><span>driving</span></div>
+        </div>
+
+        <div class="inherit-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span>This scene <b>inherits from Chapter 41</b> — a lush, lingering register. Moving a slider here
+            <b>creates a scene-level override</b>; it does not change the chapter.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHARACTER VOICE -->
+    <div class="sect">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zM19 10a7 7 0 0 1-14 0M12 17v5"/></svg>
+        Character voice <span class="src mono">voice_profile · per entity</span>
+      </div>
+      <div class="sect-body">
+        <div class="voice-row">
+          <div class="who"><span class="av" style="background:#e8a832">LV</span><span class="nm">Lam Vũ</span><span class="present">present</span>
+            <span class="ico" title="Remove voice profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+          <div class="tokens">
+            <span class="token">terse<span class="x">✕</span></span><span class="token">ironic<span class="x">✕</span></span><span class="token">no metaphors<span class="x">✕</span></span>
+            <button class="token-add">+ tag</button>
+          </div>
+        </div>
+
+        <div class="voice-row">
+          <div class="who"><span class="av" style="background:#5496e8">DT</span><span class="nm">Diệp Thanh</span><span class="present">present</span>
+            <span class="ico" title="Remove voice profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+          <div class="tokens">
+            <span class="token">formal<span class="x">✕</span></span><span class="token">archaic<span class="x">✕</span></span><span class="token">chữ Hán idiom<span class="x">✕</span></span>
+            <button class="token-add">+ tag</button>
+          </div>
+        </div>
+
+        <div class="voice-row" style="opacity:.72">
+          <div class="who"><span class="av" style="background:#3da692">HG</span><span class="nm">Hàn Giác</span>
+            <span class="ico" title="Remove voice profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+          <div class="tokens"><span class="token">clipped<span class="x">✕</span></span><button class="token-add">+ tag</button></div>
+        </div>
+
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input placeholder="Search the cast to add a voice…" />
+        </div>
+
+        <div class="inherit-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span>Only the <b>present</b> characters' tags are packed. <code class="mono" style="font-size:9.5px">pack.py:281</code> calls
+            <code class="mono" style="font-size:9.5px">list_for_entities(present_ids)</code> — <b>Hàn Giác</b> has a profile but is not in this
+            scene's <code class="mono" style="font-size:9.5px">present_entity_ids</code>, so his tags do <b>not</b> reach the prompt.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Commits on pointer-up · <b style="color:var(--muted-fg);font-weight:400">no version column ⇒ last-writer-wins by design</b>
+    </div>
+    <span class="mono">3 voices</span>
+  </div>
+</div>
+
+<!-- ── PANEL 2 — the Reference Shelf ─────────────────────────────────────── -->
+<div class="panel shelf-panel">
+  <div class="panel-head">
+    <span>Reference Shelf</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="model-bar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    Embedding model <span class="m">bge-m3</span> <span class="tier account">user_model</span>
+    <span class="lock" title="Set on the first add; a differing value is ignored (references.py:54-57)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      set on first add · read-only
+    </span>
+  </div>
+
+  <div class="add-form">
+    <input class="inp" value="Kim Dung — Tiếu ngạo giang hồ (ch. 12, the wine-tasting)" />
+    <div class="two">
+      <input class="inp" placeholder="Author" value="Kim Dung" />
+      <input class="inp" placeholder="Source URL (optional)" value="" />
+    </div>
+    <textarea class="inp" placeholder="Paste the passage you want the model to write like…">令狐冲把碗中酒喝干，忽觉一股暖气自丹田缓缓升起。他不动声色，只将空碗放回桌上，指尖在碗沿轻轻一叩。</textarea>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Add reference
+      </button>
+      <span style="font-size:10.5px;color:var(--muted-fg)">embeds one passage · <span class="mono">1 provider call</span> · one at a time</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- Retrieval for the active scene — EXACTLY what pack() injects -->
+    <div class="sect">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        Retrieved for Scene 3 <span class="src mono">top-K · cosine · what pack() injects</span>
+      </div>
+      <div style="padding:0 0 4px">
+        <div class="ref-row">
+          <span class="score">0.81</span>
+          <div class="meta"><div class="t">Kim Dung — Tiếu ngạo giang hồ (ch. 12, the wine-tasting)</div>
+            <div class="snippet">令狐冲把碗中酒喝干，忽觉一股暖气自丹田缓缓升起。他不动声色，只将空碗放回桌上…</div></div>
+          <div class="hit-acts"><button class="mini-btn pin on">pinned</button><button class="mini-btn ex">exclude</button></div>
+        </div>
+        <div class="ref-row">
+          <span class="score">0.74</span>
+          <div class="meta"><div class="t">Nguyễn Huy Thiệp — Tướng về hưu (opening)</div>
+            <div class="snippet">Cha tôi về hưu. Ông ngồi im lặng rất lâu bên cửa sổ, như thể ngoài kia còn một trận đánh chưa tàn.</div></div>
+          <div class="hit-acts"><button class="mini-btn pin">pin</button><button class="mini-btn ex">exclude</button></div>
+        </div>
+        <div class="ref-row">
+          <span class="score">0.68</span>
+          <div class="meta"><div class="t">Ursula K. Le Guin — A Wizard of Earthsea (the naming)</div>
+            <div class="snippet">He who would be Archmage must know the true name of every thing, and the cost of speaking it.</div></div>
+          <div class="hit-acts"><button class="mini-btn pin">pin</button><button class="mini-btn ex">exclude</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The library -->
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Library <span class="src mono">reference_source · 14 passages</span>
+      </div>
+      <div style="padding:0 0 4px">
+        <div class="ref-row">
+          <div class="meta"><div class="t">Kim Dung — Tiếu ngạo giang hồ (ch. 12, the wine-tasting)</div>
+            <div class="a">Kim Dung · added 2 days ago · <span class="mono">1,024 dims</span></div></div>
+          <span class="del" title="Delete — the embedding is gone, no undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </div>
+        <div class="ref-row">
+          <div class="meta"><div class="t">Nguyễn Huy Thiệp — Tướng về hưu (opening)</div>
+            <div class="a">Nguyễn Huy Thiệp · added 2 days ago · <span class="mono">1,024 dims</span></div></div>
+          <span class="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </div>
+        <div class="ref-row">
+          <div class="meta"><div class="t">山海遺聞 — 卷三 · 潮生</div>
+            <div class="a">佚名 · added 5 days ago · <span class="mono">1,024 dims</span></div></div>
+          <span class="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </div>
+        <div class="ref-row">
+          <div class="meta"><div class="t">Ursula K. Le Guin — A Wizard of Earthsea (the naming)</div>
+            <div class="a">Le Guin · added 3 weeks ago · <span class="mono">1,024 dims</span></div></div>
+          <span class="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="warn-strip amber">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <span><b>There is no PATCH route.</b> Fixing the typo in a title means <b>delete + re-add</b> — and re-adding
+          <b>re-embeds</b> (a paid provider call, to fix a typo). v1 says so out loud instead of shipping an edit
+          pencil that 405s. <code class="mono" style="font-size:9.5px">BE-17</code>, deferred.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      14 passages · retrieval scoped to <b style="color:var(--muted-fg);font-weight:400">Scene 3 · Ch. 41</b>
+    </div>
+    <span class="mono">top-K = 3</span>
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>The cascade IS the panel.</b> A slider that reads 50 when the packer will draft at 78 is a lying control (SET-1), and it is the same
+  <code>dirty-signal-computed-but-not-surfaced</code> class this repo has shipped before. So every row carries its
+  <b>effective value</b> and the <b>tier that supplied it</b>, using the shipped <code>TierChip</code> from <code>chat-ai-settings</code> —
+  one chip, one vocabulary, <b>no second copy</b>. The <code>Clear override</code> button is exactly the live-but-unreachable
+  <code>useDeleteStyleProfile</code> (<code>useStyleVoice.ts:30</code>), rendered through the chip's shipped sibling
+  <code>ClearOverride</code> (same file, <code>:60</code>), and it appears <b>only</b> when a row exists at <i>this exact</i> scope.
+</div>
+
+<div class="callout warn">
+  <b>⚠ The chip is shipped; these four tiers are not.</b> <code>TierChip</code>'s <code>CLS</code>/<code>LABEL</code>/<code>TITLE</code> maps
+  (<code>TierChip.tsx:13-38</code>) carry <code>session · book · account · system · unavailable · no_model_configured</code> — and
+  <b>no <code>scene</code>, <code>chapter</code>, <code>work</code> or <code>neutral</code></b>. The component <b>does not throw</b> on an unknown tier;
+  <code>CLS[tier] ?? 'bg-muted…'</code> and <code>LABEL[tier] ?? tier</code> render the <b>raw slug in grey, with no tooltip</b>. So the panel would
+  ship <i>looking</i> done, with every chip reading a lowercase string — a <b>quieter</b> failure than the bug it replaces. <b>M1 adds the four
+  rows.</b> The chips above are the acceptance criterion for them. (Note the vocabulary is deliberately distinct: the model cascade's
+  <code>book</code> tier ≠ the style cascade's <code>work</code> tier — <b>one name for one concept</b>, in both directions.)
+</div>
+
+<div class="callout warn">
+  <b>These two tables have no <code>version</code> column — and that is deliberate.</b> The <code>PUT</code> is an
+  <code>ON CONFLICT (project_id, scope_type, scope_id) DO UPDATE</code> upsert: <b>last-writer-wins by design</b>. The memory
+  <code>instant-commit-control-over-occ-entity-needs-write-serialization</code> does <b>not</b> apply — there is no version to self-412 against.
+  But the second half of it still does: rapid slider commits are <b>debounced and chained</b>, never raced, so two in-flight PUTs cannot land out of order.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② The other three cascade states — all rendered, none hand-waved
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② The rest of the cascade <span class="tag">style-voice</span> — overridden · neutral · Work-less</h2>
+<p class="sub">
+  Three states the shipped panel cannot distinguish. <b>Overridden</b> and <b>unset</b> currently render <i>identically</i> (both as 50/50);
+  <b>Work-less</b> currently renders as a panel that never resolves.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--tier-scene)">Overridden at this scope</span></div>
+    <div class="toolbar" style="padding:7px 10px">
+      <div class="segs" style="width:100%">
+        <div class="seg" style="flex:1;justify-content:center">Work</div>
+        <div class="seg" style="flex:1;justify-content:center">Ch. 41</div>
+        <div class="seg on" style="flex:1;justify-content:center">Scene 7</div>
+      </div>
+    </div>
+    <div class="sect-head">Prose style</div>
+    <div class="sect-body">
+      <div class="knob">
+        <div class="top"><span class="name" style="width:44px">Density</span><span class="val">31</span><span class="tier scene">scene</span></div>
+        <div class="slider"><div class="track"></div><div class="fill" style="width:31%;background:var(--tier-scene)"></div><div class="knob-dot" style="left:calc(31% - 6px)"></div></div>
+      </div>
+      <div class="knob">
+        <div class="top"><span class="name" style="width:44px">Pace</span><span class="val">88</span><span class="tier scene">scene</span></div>
+        <div class="slider"><div class="track"></div><div class="fill" style="width:88%;background:var(--tier-scene)"></div><div class="knob-dot" style="left:calc(88% - 6px)"></div></div>
+      </div>
+      <button class="clear" style="align-self:flex-start;background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted-fg);font-size:10px;font-weight:500;padding:3px 8px;cursor:pointer;font-family:inherit">
+        Clear override → falls back to <b style="color:var(--tier-chapter)">chapter</b>
+      </button>
+      <div class="inherit-note" style="font-size:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span>The chase scene: <b>sparse and driving</b>, against a lush chapter. <b>Clear</b> is the only state where it shows.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Unset everywhere · no scene open</span></div>
+    <div class="toolbar" style="padding:7px 10px">
+      <!-- Scene is `.off`: the bus has no activeSceneId (the editor is on a chapter,
+           not a scene). A disabled scope, not a hidden one — the user can SEE that a
+           scene override is possible, and why it is not available right now. -->
+      <div class="segs" style="width:100%">
+        <div class="seg" style="flex:1;justify-content:center">Work</div>
+        <div class="seg on" style="flex:1;justify-content:center">Ch. 8</div>
+        <div class="seg off" style="flex:1;justify-content:center" title="No scene selected">Scene</div>
+      </div>
+    </div>
+    <div class="sect-head">Prose style</div>
+    <div class="sect-body">
+      <div class="knob unset">
+        <div class="top"><span class="name" style="width:44px">Density</span><span class="val">—</span><span class="tier neutral">neutral (unset)</span></div>
+        <div class="slider"><div class="track"></div></div>
+      </div>
+      <div class="knob unset">
+        <div class="top"><span class="name" style="width:44px">Pace</span><span class="val">—</span><span class="tier neutral">neutral (unset)</span></div>
+        <div class="slider"><div class="track"></div></div>
+      </div>
+      <div class="inherit-note neutral" style="font-size:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+        <span><b>The packer adds no density/pace directive at all.</b> <code class="mono" style="font-size:9px">resolve()</code> returned
+          <code class="mono" style="font-size:9px">None</code>, so <code class="mono" style="font-size:9px">profile</code> is untouched.
+          <b>This is not 50/50.</b> 50/50 is a directive; this is silence.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>No composition Work</span></div>
+    <div class="empty" style="flex:1;display:flex;flex-direction:column;justify-content:center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      <b>山海遺聞</b> has no co-writer yet.<br />
+      Style and voice are <b>Work-scoped</b> — there is nowhere to put them until one exists.
+      <div style="margin-top:12px">
+        <button class="btn primary" style="margin:0 auto">Set up the co-writer for this book</button>
+      </div>
+      <div style="margin-top:12px;font-size:10px;line-height:1.6">
+        The <b>same CTA the legacy panel shows</b> — never a spinner,<br />never a crash, never an empty list that reads as “you have none.”
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ BEFORE — the bug being replaced
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ Before — today's <span class="tag">legacy CompositionPanel → style</span> — the panel lies</h2>
+<p class="sub">
+  Same scene as ①. The chapter says <b>78 / 24</b> and the packer will draft at <b>78 / 24</b>.
+  The panel renders <code>density={row?.density ?? 50}</code> (<code>StyleVoicePanel.tsx:131</code>) and shows <b>50 / 50</b> —
+  a value that exists nowhere in the database and will never reach a prompt.
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — today</span></div>
+    <div class="sect-head">Prose style · scene 3</div>
+    <div class="sect-body">
+      <div class="knob">
+        <div class="top"><span class="name" style="width:44px">Density</span><span class="val" style="color:var(--destructive)">50</span></div>
+        <div class="slider"><div class="track"></div><div class="fill" style="width:50%;background:var(--destructive)"></div><div class="knob-dot" style="left:calc(50% - 6px)"></div></div>
+      </div>
+      <div class="knob">
+        <div class="top"><span class="name" style="width:44px">Pace</span><span class="val" style="color:var(--destructive)">50</span></div>
+        <div class="slider"><div class="track"></div><div class="fill" style="width:50%;background:var(--destructive)"></div><div class="knob-dot" style="left:calc(50% - 6px)"></div></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.7;margin-top:2px">
+        <span class="strike">source tier</span> — never rendered.<br />
+        <span class="strike">Clear override</span> — <code class="mono" style="font-size:9px">useDeleteStyleProfile</code> exists;<br />
+        <span style="padding-left:8px">the panel <b style="color:var(--destructive)">never calls it</b>. Once set, forever.</span><br />
+        <span class="strike">inherited vs. explicit</span> — indistinguishable.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — the agent</span></div>
+    <div class="empty" style="flex:1;display:flex;flex-direction:column;justify-content:center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zM19 10a7 7 0 0 1-14 0M12 17v5"/><path d="M2 2l20 20" stroke="var(--destructive)"/></svg>
+      <b style="color:var(--destructive)">No tool exists.</b><br />
+      <span class="mono" style="font-size:10px">grep '^ *name="composition_' mcp/server.py</span><br />
+      → 62 tools, <b>zero</b> <code class="mono" style="font-size:10px">composition_style_*</code><br />
+      → <b>zero</b> <code class="mono" style="font-size:10px">composition_voice_*</code>
+      <div style="margin-top:12px;font-size:10px;line-height:1.6;color:var(--destructive)">
+        The model cannot set the two dials<br />that steer its own output.<br />
+        <span style="color:var(--muted-fg)">That is the INVERSE gap. <b style="color:var(--foreground)">BE-10</b> closes it.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span style="color:var(--success)">After</span></div>
+    <div class="sect-head">Prose style · scene 3</div>
+    <div class="sect-body">
+      <div class="knob inherit">
+        <div class="top"><span class="name" style="width:44px">Density</span><span class="val">78</span><span class="tier chapter">chapter</span></div>
+        <div class="slider"><div class="track"></div><div class="fill" style="width:78%;background:var(--tier-chapter)"></div><div class="knob-dot" style="left:calc(78% - 6px)"></div></div>
+      </div>
+      <div class="knob inherit">
+        <div class="top"><span class="name" style="width:44px">Pace</span><span class="val">24</span><span class="tier chapter">chapter</span></div>
+        <div class="slider"><div class="track"></div><div class="fill" style="width:24%;background:var(--tier-chapter)"></div><div class="knob-dot" style="left:calc(24% - 6px)"></div></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.7;margin-top:2px">
+        The numbers are <b style="color:var(--foreground)">the ones the packer will use</b>.<br />
+        The chip says <b style="color:var(--tier-chapter)">where they came from</b>.<br />
+        No Clear button, because <b style="color:var(--foreground)">there is nothing here to clear</b>.<br />
+        And <span class="mono" style="font-size:9px">composition_style_upsert</span> can set it too.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ Reference shelf — the other four states
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Reference Shelf <span class="tag">reference-shelf</span> — the four states that are not “it works”</h2>
+<p class="sub">
+  Every one of these is a real branch in <code>references.py</code> today. The last one is the <b>honest</b> version of a permanent choice the
+  current panel makes <i>silently, on a first click</i>.
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span>No embed model set</span></div>
+    <div class="sect-body" style="padding:12px 10px">
+      <div class="lbl">Embedding model</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;background:var(--background);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px;color:var(--muted-fg);display:flex;justify-content:space-between">
+          Choose a model…
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+      </div>
+      <div class="warn-strip amber" style="margin:2px 0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <span><b>This choice is permanent for this book.</b> The Work's model is written through on the
+          <b>first successful add</b> and is authoritative thereafter — <i>"a differing value here is ignored"</i>
+          (<code class="mono" style="font-size:9px">references.py:54-57</code>). One Work = one vector space.</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.6">
+        The empty state is the panel's <b style="color:var(--foreground)">own warning div</b>
+        (<code class="mono" style="font-size:9px">references-no-embed-model</code>) — <b style="color:var(--destructive)">not</b>
+        <code class="mono" style="font-size:9px">AddModelCta</code>, and <b style="color:var(--destructive)">not</b> a raw
+        <code class="mono" style="font-size:9px">&lt;Link&gt;</code>: a route change from inside the dock <b>tears the dock down</b>.
+        It deep-links via <code class="mono" style="font-size:9px">host.openPanel('settings', {tab:'providers'})</code>.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span>Embed provider down</span></div>
+    <div class="sect-head">Retrieved for Scene 3</div>
+    <div class="empty" data-testid="references-unavailable" style="padding:16px 12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 3.5-2.2M1.4 9.3a15 15 0 0 1 5.6-3.4M19 12.9a10 10 0 0 0-4.6-2.6M22.6 9.3A15 15 0 0 0 12 5"/><path d="M12 20h.01"/></svg>
+      <b>Retrieval unavailable</b><br />(embedding provider down)
+      <div style="margin-top:12px;font-size:10px;line-height:1.6;text-align:left">
+        The BE already returns a <b style="color:var(--foreground)">neutral empty</b> with
+        <code class="mono" style="font-size:9px">unavailable: true</code>
+        (<code class="mono" style="font-size:9px">references.py:208-211</code>) — <b>not a 500</b>.
+        The library below still renders; only the <i>retrieval</i> block is down.
+        A pack in this state still succeeds, just without reference grounding.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span>No active scene</span></div>
+    <div class="sect-head">Library <span class="src mono">14 passages</span></div>
+    <div style="flex:1;overflow:auto">
+      <div class="ref-row" style="padding:6px 10px"><div class="meta"><div class="t" style="font-size:11px">Kim Dung — Tiếu ngạo giang hồ</div><div class="a" style="font-size:9.5px">added 2 days ago</div></div></div>
+      <div class="ref-row" style="padding:6px 10px"><div class="meta"><div class="t" style="font-size:11px">山海遺聞 — 卷三 · 潮生</div><div class="a" style="font-size:9.5px">added 5 days ago</div></div></div>
+      <div class="ref-row" style="padding:6px 10px"><div class="meta"><div class="t" style="font-size:11px">Le Guin — A Wizard of Earthsea</div><div class="a" style="font-size:9.5px">added 3 weeks ago</div></div></div>
+      <div style="padding:10px;font-size:10px;color:var(--muted-fg);line-height:1.6">
+        The <b style="color:var(--foreground)">Retrieved</b> block is <b>ABSENT</b>, not empty. An empty top-K list reads as
+        <i>“nothing matched”</i>; the truth is <i>“no scene is selected, so nothing was asked.”</i>
+        In its place: <b style="color:var(--foreground)">“Select a scene to see what it retrieves.”</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span>Empty library</span></div>
+    <div class="empty" style="flex:1;display:flex;flex-direction:column;justify-content:center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <b>No references yet</b><br />Add the influences you want this book to sound like.
+      <div style="margin-top:14px;font-size:10px;line-height:1.6;text-align:left;color:var(--muted-fg)">
+        <b style="color:var(--foreground)">Delete has no undo</b> — the row's embedding is gone with it.
+        The <code class="mono" style="font-size:9px">ConfirmDialog</code> (DOCK-9) says exactly that, and names the
+        <b>re-embed</b> cost of putting it back.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>The one-way door, rendered honestly (EC-2a).</b> The Work's embedding model is write-through on the <i>first successful add</i> and immutable
+  afterwards. That is <b>correct engineering</b> — one Work, one vector space — <b>reported dishonestly</b>: LIST returns only
+  <code>embed_model_set: bool</code> (<code>references.py:92</code>), never the ref, so a user can neither see which model owns their vectors nor change it.
+  v1 renders it <b>read-only, with the ref, its tier, and one sentence</b>. <b>Silence about a permanent choice is worse than a disabled
+  control that explains itself.</b> ⚠ <code>OQ-4</code>: the "re-embeds all N" copy needs a <b>real N</b> — measure it on the dev DB before writing it.
+</div>
+
+<div class="callout bad">
+  <b>What these mocks do NOT propose.</b> <span style="color:var(--foreground)">(1)</span> No <b>reference edit pencil</b>. There is no
+  <code>PATCH /references/{rid}</code>; shipping a control that 405s, or one that silently re-embeds to fix a typo, is worse than the honest strip above
+  (<code>BE-17</code>, deferred to v2). <span style="color:var(--foreground)">(2)</span> No <b>model switcher</b> once the vector space is set — changing it
+  re-embeds every passage and is a migration, not a select. <span style="color:var(--foreground)">(3)</span> Neither panel mounts
+  <code>&lt;CompositionPanel soloPanel="style" /&gt;</code>. It <i>looks</i> like free DOCK-2 reuse; its body calls ~20 hooks before it reaches the slot table and
+  depends on <code>WorkspaceLayoutContext</code>. <b>Reuse the leaves, not the shell (EC-6).</b>
+  <span style="color:var(--foreground)">(4)</span> The shelf is <b>not</b> the <code>GroundingPanel</code>. The shelf is the <b>corpus</b>; grounding is
+  <b>what this scene actually used</b>. The split stands (OQ-6); the two deep-link to each other.
+</div>
+
+<div class="callout">
+  <b>MCP parity is the point of the wave, not a footnote (MCP-first invariant).</b> <code>BE-10</code> ships six Tier-A tools —
+  <code>composition_style_{list,upsert,delete}</code> · <code>composition_voice_{list,upsert,delete}</code> — each returning
+  <code>_meta.undo_hint</code> (on delete: the prior values; on upsert: the prior row, or <code>None</code> if it was unset — because "unset" and
+  "50/50" are <b>different states</b>, and an undo that restores 50/50 to a row that never existed is a new bug).
+  <code>scope_type</code> is an <b>enum</b>, registered in <code>CLOSED_SET_ARGS</code>. A Lane-B effect handler
+  (<code>compositionEffects.ts</code>) invalidates <code>['composition','style-profiles',pid]</code> <b>and</b>
+  <code>['composition','grounding',pid]</code> on every agent write — the human path already does this
+  (<code>useStyleVoice.ts:24-25</code>); the agent path must not be the one that goes stale.
+</div>
+
+<script>
+  /* Scope switcher — the only interactive bit. Switching scope re-renders the cascade,
+     which is the whole argument of this draft, so it had better be clickable. */
+  /* `falls` = what you'd INHERIT if you cleared. The shipped ClearOverride
+     (TierChip.tsx:60) always names it — "a clear button that doesn't say what
+     you'd get is a dare, not an affordance". Clearing the WORK row falls all the
+     way to neutral (no directive at all), which is not "50/50" and must say so. */
+  const SCOPES = {
+    Work:      { d: 55, p: 40, tier: 'work',    label: 'work',    clear: true,  falls: 'neutral (no directive)',
+                 note: 'This is the <b>book-wide baseline</b>. Every chapter and scene inherits it unless it overrides.' },
+    'Ch. 41':  { d: 78, p: 24, tier: 'chapter', label: 'chapter', clear: true,  falls: 'work (55/40)',
+                 note: 'Chapter 41 overrides the Work baseline: <b>lush and lingering</b>. Its scenes inherit this.' },
+    'Scene 3': { d: 78, p: 24, tier: 'chapter', label: 'chapter', clear: false, falls: null,
+                 note: 'This scene <b>inherits from Chapter 41</b> — a lush, lingering register. Moving a slider here <b>creates a scene-level override</b>; it does not change the chapter.' },
+  };
+  const panel = document.querySelector('.style-panel');
+  const knobs = panel.querySelectorAll('.sect-body .knob');
+  const note  = panel.querySelector('.inherit-note span');
+  panel.querySelectorAll('.toolbar .seg').forEach((seg) => {
+    seg.addEventListener('click', () => {
+      const s = SCOPES[seg.textContent.trim()];
+      if (!s) return;
+      panel.querySelectorAll('.toolbar .seg').forEach((x) => x.classList.remove('on'));
+      seg.classList.add('on');
+      [['Density', s.d], ['Pace', s.p]].forEach(([, v], i) => {
+        const k = knobs[i];
+        k.classList.toggle('inherit', !s.clear);
+        k.querySelector('.val').textContent = v;
+        const chip = k.querySelector('.tier');
+        chip.className = 'tier ' + s.tier;
+        chip.textContent = s.label;
+        k.querySelector('.fill').style.width = v + '%';
+        k.querySelector('.fill').style.background = 'var(--tier-' + s.tier + ')';
+        k.querySelector('.knob-dot').style.left = 'calc(' + v + '% - 6px)';
+        const old = k.querySelector('.clear');
+        if (old) old.remove();
+        if (s.clear) {   /* Clear override appears ONLY where a row exists at THIS scope,
+                            and it ALWAYS names the value it would fall back to. */
+          const b = document.createElement('button');
+          b.className = 'clear';
+          b.textContent = 'clear · inherit ' + s.falls;
+          k.querySelector('.top').appendChild(b);
+        }
+      });
+      note.innerHTML = s.note;
+    });
+  });
+</script>
+</body>
+</html>

@@ -6,20 +6,185 @@ repeated introductions / echoed descriptions and smoothing transitions, while
 changing NO plot facts. Degrade-safe: any failure returns "" so the caller falls
 back to the raw concatenation (never blocks). The stitched output is re-checked
 by the chapter-level canon guard (a rewrite can re-introduce a gone character).
+
+W-STITCH (§17.2, R2.7) layers five seam-quality deltas on top of that single
+pass, all of them ADVISORY (the stitch only ever *proposes* — it never silently
+rewrites committed prose, and any failure still degrades to the raw concat):
+
+  1. **Cross-scene repetition signal** — a pure, in-code n-gram (word-shingle)
+     overlap detector run over *adjacent scene boundaries* (each seam's tail↔head
+     region). Findings are fed into the revise prompt so the model de-dups the
+     specific echoed imagery/phrasing — NOT a per-pair LLM call.
+  2. **Dial-respect** — the `voice`/`style_directive` profile is threaded through
+     with an explicit over-stitching guard (§17.4): smooth seams, do NOT flatten
+     voice or deliberate motifs.
+  3. **≤2-scene over-resolve** — a local-window heuristic flags a scene that
+     closed a beat the very next scene must still do.
+  4. **Overlapping-window** — boundaries are analysed pairwise (each interior
+     scene participates in two seams), keeping every join in a coherent local span
+     (the §17.1 lost-in-the-middle rationale).
+  5. **Eval-gate** — `tests/unit/test_stitch_motif.py` proves seams improve
+     (repetition reduced) WITHOUT flattening (deliberate motif/voice preserved).
 """
 
 from __future__ import annotations
 
 import logging
+import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.engine.prose_doc import ATX_HEADING_RE
 from app.engine.select import _NO_THINK
 from app.packer.profile import BookProfile
 
 logger = logging.getLogger(__name__)
+
+
+def prepend_scene_headings(rows: list[dict[str, str]]) -> list[str]:
+    """F4 (D-SCENEMARKER-EMIT) — turn `{title, text}` scene-draft rows into stitch
+    input texts, each opening with a `### <scene title>` ATX heading line. The
+    persist path (prose_doc.text_to_tiptap_doc) lifts those lines into heading
+    nodes and unique-title-matches them to scenes → `attrs.sceneId` markers, so a
+    generated chapter lands pre-anchored in the editor. A draft that ALREADY
+    starts with a heading keeps its own (no double heading); an untitled scene
+    gets no heading (never an empty `### `)."""
+    out: list[str] = []
+    for row in rows:
+        title = (row.get("title") or "").strip()
+        text = row.get("text") or ""
+        first_line = text.lstrip("\n").split("\n", 1)[0].strip()
+        if title and not ATX_HEADING_RE.match(first_line):
+            out.append(f"### {title}\n\n{text}")
+        else:
+            out.append(text)
+    return out
+
+# ── W-STITCH (§17.2, R2.7) tunables — kept local to this module so the stitch
+# behaviour stays self-contained (no new config.py knob). ──
+_SHINGLE_K = 4          # word-shingle length for cross-boundary repetition
+_BOUNDARY_CHARS = 600   # chars of each scene's tail/head examined at a seam
+_MAX_FINDINGS = 6       # cap injected findings so the revise prompt stays focused
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)  # unicode-aware word tokens
+
+# Lightweight lexicons for the ≤2-scene over-resolve heuristic (§17.2 "fixes
+# over-resolving"): a scene that CLOSES a beat the next scene must still do.
+_RESOLVE_CUES = (
+    "finally forgave", "forgave", "the feud was over", "was over at last",
+    "made peace", "reconciled", "let it go", "found closure", "at peace",
+    "settled it", "put it to rest", "was over",
+)
+_REOPEN_CUES = (
+    "could not forgive", "couldn't forgive", "still gnawed", "still festered",
+    "unresolved", "not over", "wasn't over", "still raged", "still burned",
+    "could not let", "couldn't let",
+)
+
+
+@dataclass(frozen=True)
+class _RepetitionFinding:
+    """A repeated phrase detected at the seam between two adjacent scenes.
+    `left_scene`/`right_scene` are 1-based (matching the [SCENE n] prompt blocks)."""
+
+    left_scene: int
+    right_scene: int
+    phrase: str
+
+
+@dataclass(frozen=True)
+class _OverResolveFinding:
+    """A scene that resolved a beat its adjacent successor re-opens (1-based)."""
+
+    left_scene: int
+    right_scene: int
+
+
+def boundary_windows(n: int) -> list[tuple[int, int]]:
+    """Overlapping adjacent-scene windows (0-based) for ``n`` scenes. Each seam is
+    ``(i, i+1)`` so every interior scene appears in two windows (with its
+    predecessor and its successor) — the overlapping-window pass of R2.7."""
+    return [(i, i + 1) for i in range(max(0, n - 1))]
+
+
+def _words(text: str) -> list[str]:
+    return _WORD_RE.findall(text.lower())
+
+
+def _shingles(words: list[str], k: int) -> set[tuple[str, ...]]:
+    if len(words) < k:
+        return set()
+    return {tuple(words[i:i + k]) for i in range(len(words) - k + 1)}
+
+
+def repetition_findings(
+    scene_drafts: list[str], shingle_k: int = _SHINGLE_K,
+) -> list[_RepetitionFinding]:
+    """Cross-scene repetition signal (§17.2 dedup). For each ADJACENT boundary,
+    compare the tail region of the left scene against the head region of the right
+    scene via word k-shingles; a shared shingle ⇒ echoed imagery/phrasing at that
+    seam. Pure + in-code (no LLM). Only the seam regions are compared, so a phrase
+    that merely recurs elsewhere in two scenes is NOT flagged — we target the
+    re-introduction/echo that shows up where two scenes are joined."""
+    drafts = [d for d in scene_drafts if d and d.strip()]
+    out: list[_RepetitionFinding] = []
+    seen: set[str] = set()
+    for left, right in boundary_windows(len(drafts)):
+        tail = _words(drafts[left][-_BOUNDARY_CHARS:])
+        head = _words(drafts[right][:_BOUNDARY_CHARS])
+        shared = _shingles(tail, shingle_k) & _shingles(head, shingle_k)
+        if not shared:
+            continue
+        # Pick the longest contiguous shared run as the representative phrase.
+        phrase = _longest_run_phrase(tail, head, shared, shingle_k)
+        if not phrase or phrase in seen:
+            continue
+        seen.add(phrase)
+        out.append(_RepetitionFinding(left + 1, right + 1, phrase))
+        if len(out) >= _MAX_FINDINGS:
+            break
+    return out
+
+
+def _longest_run_phrase(
+    tail: list[str], head: list[str], shared: set[tuple[str, ...]], k: int,
+) -> str:
+    """Reconstruct the longest contiguous phrase in `head` whose k-shingles are all
+    in `shared` (a human-readable fragment for the revise prompt)."""
+    shingle_set = shared
+    best: list[str] = []
+    i = 0
+    while i <= len(head) - k:
+        if tuple(head[i:i + k]) in shingle_set:
+            run = list(head[i:i + k])
+            j = i + 1
+            while j <= len(head) - k and tuple(head[j:j + k]) in shingle_set:
+                run.append(head[j + k - 1])
+                j += 1
+            if len(run) > len(best):
+                best = run
+            i = j
+        else:
+            i += 1
+    return " ".join(best)
+
+
+def detect_over_resolve(scene_drafts: list[str]) -> list[_OverResolveFinding]:
+    """≤2-scene over-resolve detection (§17.2). Heuristic: a scene whose tail
+    voices a beat-completion cue while the adjacent successor's head re-opens the
+    same beat ⇒ the earlier scene over-resolved what the next still needs to do.
+    Scoped strictly to the local (i, i+1) window — never cross-chapter."""
+    drafts = [d for d in scene_drafts if d and d.strip()]
+    out: list[_OverResolveFinding] = []
+    for left, right in boundary_windows(len(drafts)):
+        tail = drafts[left][-_BOUNDARY_CHARS:].lower()
+        head = drafts[right][:_BOUNDARY_CHARS].lower()
+        if any(c in tail for c in _RESOLVE_CUES) and any(c in head for c in _REOPEN_CUES):
+            out.append(_OverResolveFinding(left + 1, right + 1))
+    return out
 
 
 def cap_scene_drafts(drafts: list[str], max_chars: int) -> tuple[list[str], int]:
@@ -53,11 +218,38 @@ def cap_scene_drafts(drafts: list[str], max_chars: int) -> tuple[list[str], int]
     return kept, len(drafts) - len(kept)
 
 
+def _format_seam_notes(
+    rep: list[_RepetitionFinding], over: list[_OverResolveFinding],
+) -> str:
+    """Render the in-code seam findings into an advisory block prepended to the
+    revise prompt. Empty string when nothing was detected (no wasted tokens)."""
+    if not rep and not over:
+        return ""
+    lines = [
+        "SEAM NOTES (apply these de-duplications; preserve voice and deliberate "
+        "motifs, but DO remove the flagged cross-boundary repetition):"
+    ]
+    for f in rep:
+        lines.append(
+            f"- Scenes {f.left_scene}→{f.right_scene} repeat/echo this phrasing at "
+            f'their join: "{f.phrase}". De-duplicate it across the boundary, keeping '
+            "one natural occurrence."
+        )
+    for o in over:
+        lines.append(
+            f"- Scene {o.left_scene} appears to over-resolve a beat that scene "
+            f"{o.right_scene} still needs to play out. Soften scene {o.left_scene}'s "
+            "closure so the next scene's continuation reads naturally."
+        )
+    return "\n".join(lines) + "\n\n"
+
+
 async def stitch_chapter(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     scene_drafts: list[str], chapter_intent: str, profile: BookProfile,
     max_tokens: int, max_input_chars: int,
     reasoning_effort: str | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, str | None]:
     """Merge the chapter's scene drafts into one seamless chapter. Returns
     ``(stitched_prose, finish_reason)`` — prose is "" on empty input / LLM failure
@@ -75,17 +267,57 @@ async def stitch_chapter(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    # Length-preservation + no-new-content. Stitch is a STRUCTURAL merge, NOT a
+    # rewrite: without this guard a capable model elaborates a fuller chapter (a
+    # measured +68% length while dedup did NOT happen). The density/pace `style`
+    # directive is deliberately NOT applied here — it's a DRAFTING dial ("write lush,
+    # richly textured prose") that actively drove the inflation; a merge adds no prose.
+    length_guard = (
+        " Keep the merged chapter CLOSE TO the combined length of the input scenes and "
+        "NEVER longer — add NO new events, characters, descriptions, or dialogue. Only "
+        "join the existing scenes and remove duplication, so the result is the SAME "
+        "content read as one chapter (typically a little SHORTER after de-duplication, "
+        "never padded or expanded)."
+    )
+    # Dial-respect / over-stitching guard (§17.4): preserve voice + deliberate motifs,
+    # but de-duplication MAY (and should) shorten — the old one-sided 'do not shorten /
+    # blandify' guard drove the length inflation, so it is rebalanced here.
+    dial_guard = (
+        " Preserve the established voice, tone, and any deliberate repeated imagery or "
+        "motif — do NOT flatten or homogenize the prose. But DO cut repeated "
+        "introductions, echoed descriptions, and re-explained facts even though that "
+        "shortens the chapter; smooth only the seams between scenes."
+    )
+    # F4 (D-SCENEMARKER-EMIT): the drafts open with `### <scene title>` lines the
+    # persist path converts into sceneId-anchored heading nodes — the merge must
+    # carry them through verbatim. Only injected when a heading is actually present.
+    heading_guard = (
+        " Each scene draft may open with a '### <scene title>' heading line — keep "
+        "every such heading line EXACTLY as written (verbatim, on its own line) at "
+        "the start of that scene's prose in the merged chapter; never remove, "
+        "reword, translate, or renumber them."
+        if any(ATX_HEADING_RE.match(d.lstrip("\n").split("\n", 1)[0].strip()) for d in kept)
+        else ""
+    )
     system = (
         "You are a fiction editor merging consecutive scene drafts of ONE chapter "
         "into a single seamless chapter. Remove repeated introductions and echoed "
         "descriptions, smooth the transitions between scenes, and keep one "
         "continuous narrative. Change NO plot facts, events, or dialogue meaning — "
         "only restructure and de-duplicate the prose. Output ONLY the chapter prose."
-        + lang + voice
+        + lang + voice + length_guard + dial_guard + heading_guard
     )
+    # Cross-scene repetition + over-resolve signals computed over `kept` so the
+    # 1-based scene indices line up with the [SCENE n] blocks below. Advisory: a
+    # found echo is *pointed at*, not auto-deleted (§14.6 / §17.2 stitch proposes).
+    rep = repetition_findings(kept)
+    over = detect_over_resolve(kept)
+    seam_notes = _format_seam_notes(rep, over)
     intent = (chapter_intent or "").strip()
-    user = (f"Chapter intent: {intent}\n\n" if intent else "") + "\n\n".join(
-        f"[SCENE {i + 1}]\n{d}" for i, d in enumerate(kept)
+    user = (
+        (f"Chapter intent: {intent}\n\n" if intent else "")
+        + seam_notes
+        + "\n\n".join(f"[SCENE {i + 1}]\n{d}" for i, d in enumerate(kept))
     )
     try:
         job = await llm.submit_and_wait(
@@ -97,7 +329,8 @@ async def stitch_chapter(
                 "response_format": {"type": "text"},
                 **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
             },
-            job_meta={"extractor": "stitch_chapter"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_stitch", "extractor": "stitch_chapter"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("stitch LLM error: %s → degrade to raw concat", exc)

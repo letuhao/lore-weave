@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Quality Completion: canon rules · progress · corrections · self-heal (studio dock panels, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     QUALITY COMPLETION — the `quality` hub row + 4 new sibling panels
+       `quality-canon-rules` · `quality-corrections` · `quality-heal` (category quality)
+       `progress`                                                     (category editor — QC-2)
+     Spec: docs/specs/2026-07-01-writing-studio/31_quality_completion.md
+     Wave: 30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md — Wave 1
+
+     WHY THIS EXISTS — four bugs, named
+       ① THE STUDIO JUDGES YOU AGAINST RULES YOU CANNOT WRITE.
+          `quality-canon` merges three READ lenses and has ZERO writes
+          (QualityCanonPanel.tsx:105-129). The complete CRUD component —
+          CanonRulesPanel + CanonRuleForm + useCanonRules, 6 passing tests —
+          is mounted ONLY at CompositionPanel.tsx:836, on the legacy page
+          spec-16 slates for DELETION. The REST surface is 100% built and
+          100% consumed by the page we are killing.
+       ② PROGRESS IS A WRITE-ONLY LOOP WAITING TO HAPPEN. The hoist reports
+          a word-count snapshot on EVERY save (ManuscriptUnitProvider:209,239)
+          and NO Studio panel reads it. GG-4: retiring the page before this
+          ports is data-generation with no reader.
+       ③ THE CORRECTION FLYWHEEL IS DARK FOR EVERY STUDIO USER. `generation_
+          correction` — the human-gate learning signal that feeds learning-
+          service through the outbox — is written only from the legacy
+          ComposeView/CandidatesView. `grep record_correction …/mcp/server.py`
+          → 0 hits. The model's taste signal accrues ONLY for users still on
+          the page we are deleting.
+       ④ 🔴 QualityCriticPanel.tsx:80 MOUNTS THE CONSUMER OF A PRODUCER IT
+          DOES NOT HAVE — <QualityReportSection …/> WITHOUT `proposals`. It
+          defaults to [], so _hasProposedFix() can never return true and the
+          `violation-has-fix` badge is unreachable dead code in the Studio.
+          Its producer (PolishPanel, which DOES pass proposals) is on the
+          legacy page. D-QUALITY-CRITIC-HEAL-LINK shipped a consumer without
+          a producer.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       It is a PORT, not a rewrite — every component below EXISTS and passes
+       tests today. What is new is: the registration, the Work gate, four
+       backend holes the audit under-called, and ONE genuinely new seam.
+       Three corrections to plan-30, each verified against code:
+         • F-Q2 — BE-9's "No schema change" is WRONG. `authoring_run_units`
+           has NO job_id (migrate.py:1493); DraftOutcome is {ok,cost_usd,error};
+           EngineDraftingSeam READS payload["job_id"] at :377 and THROWS IT
+           AWAY at :391/:408. At reject_unit there is nothing to attach a
+           correction to. ⇒ a DDL column + a seam change ⇒ this wave is L.
+         • F-Q3 — `correction_stats` groups by `j.mode` over EVERY generation_
+           job, and mode='auto' is the default for self_heal_propose,
+           quality_report, promise_coverage, decompose_preview, plan_pipeline,
+           plan_forge_propose/_refine, plan_pass — NONE correctable. Every
+           PlanForge pass inflates the `auto` denominator, so accept_rate reads
+           HIGH and edit/regen/reject read LOW. The panel would ship a
+           reassuring FALSE number. Rendered below, side by side (state ⑥).
+         • F-Q4 — `propose_edit` carries no job_id and its prose comes from a
+           chat-service turn, not a composition generation_job. BE-9's second
+           capture leg is NOT BUILDABLE as written. Scoped out → OQ-1.
+       ► THE MOCK COLOR-CODES THE FIELD SOURCE. Every panel field carries a
+         left tick:  teal = EXISTS today (route + column + test)
+                     amber = MUST-BUILD (a route/column that does not exist)
+         This is not decoration. A field on the wrong side is a wave that
+         ships a GUI for a backend it does not have — bug ④, again.
+
+     BACKEND WORK THESE SCREENS IMPLY (flagged up front, not silently)
+       • BE-11a  POST /v1/composition/canon-rules/{id}/restore        (XS)
+       • BE-11b  GET  …/canon-rules?include_archived=true             (XS, widen)
+       • BE-11c  MCP composition_canon_rule_restore + an undo_hint on
+                 composition_canon_rule_delete (MCP-first parity)     (XS)
+       • BE-9a   🔴 ALTER TABLE authoring_run_units ADD COLUMN job_id UUID
+                 (nullable — NEVER backfill a guess) + DraftOutcome.job_id
+                 + the driver persist                                  (S)
+       • BE-9b   MCP composition_record_correction + a generation_correction
+                 write inside accept_unit / reject_unit (fire-and-forget)(M)
+       • BE-9c   🔴 correction_stats — an OPERATION ALLOWLIST on the
+                 denominator. Ships in the SAME milestone as the panel or the
+                 panel renders a lie with a chart on it.                (S)
+                 ⚠ THE ALLOWLIST IS EXACTLY THREE OPS, AND `NOT selection_edit`
+                   STAYS (it is ADDED to, never replaced):
+                     CORRECTABLE_OPERATIONS =
+                       ("draft_scene", "draft_chapter", "stitch_chapter")
+                   THERE IS NO SUCH THING AS "a cowrite op". `mode` is a
+                   PER-REQUEST Literal["cowrite","auto"] over the SAME op
+                   (engine.py:98-99), so `draft_scene`+cowrite IS the Stream
+                   column and is ALREADY in the list. The only exclusively-
+                   cowrite ops are rewrite/expand/describe = SELECTION EDITS —
+                   the exact jobs the existing /review-impl exclusion removes.
+                   An agent told to "enumerate the cowrite ops from engine.py"
+                   greps, finds that Literal, adds all three, and SILENTLY
+                   REVERTS the documented fix. Stated here because that is the
+                   mistake the next agent to open this file will make. (F-Q3a)
+       • BE-9c′  close `operation` to a Literal on BOTH draft bodies
+                 (engine.py:98,141 — today `operation: str`, a CLIENT-SETTABLE
+                 FREE STRING, while mode/reasoning/assembly_mode and
+                 SelectionEditBody.operation are all Literals). Until it is
+                 closed, the allowlist is a filter, not a guarantee.     (XS)
+       • BE-P1   GET …/progress — widen with by_chapter[]  (S, DROPPABLE)
+       • BE-P2   🔴 PUT …/progress/goal + a NEW per-user table
+                 composition_progress_goal(user_id, project_id, daily_goal,
+                 updated_at, PK(user_id, project_id)) — NO book_id column:
+                 neither sibling (composition_daily_progress / _baseline) has
+                 one, the book grant is gated at the router by _require_work
+                 BEFORE the repo, and a book_id here would be WRITTEN AND NEVER
+                 READ — the write-only bug class this whole spec exists to kill.
+                 `work.settings.daily_goal` is a SHARED per-book row while the
+                 word counts are PER-USER — Alice's goal becomes Bob's. That is
+                 a tenancy defect by CLAUDE.md's own User Boundaries, and the
+                 fix also DELETES the panel's patchWork full-blob caller.  (S)
+       • BE-Q4   a self_heal_propose descriptor on the GENERIC /actions/preview
+                 + /actions/confirm spine — v2 / OQ-3. Do NOT invent a fourth
+                 per-action /estimate route; three already 404 in production.
+       Gateway: ZERO changes (generic /v1/composition/* pathFilter, no rewrite).
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① the `quality` hub row — 4 cards today → 7 (progress is NOT a card, QC-2)
+       ② `quality-canon-rules` — list + inline form (scope · entity · from_order ·
+          until_order · kind · active), the archived section with ↺ restore, and
+          the ⚠ N broken deep-link back into `quality-canon`
+       ③ the OCC 412 conflict — `current` shown, THE USER'S DRAFT KEPT, never a
+          bare toast (today's onError → toast.error is the thing being fixed)
+       ④ BEFORE — `quality-canon` today: three read lenses, zero writes, and the
+          "A rule that no longer exists" row you can SEE and never reach (F-Q5)
+       ⑤ `progress` — today · streak · goal · sparkline · by-chapter + the goal's
+          SOURCE TIER (SET-1), plus the legacy-goal and cold-start states
+       ⑥ `quality-corrections` — the same data on TODAY's mode-grouped denominator
+          (93% accept — false) and on BE-9c's allowlist (71% — true), side by side
+       ⑦ `quality-heal` — the accept/reject proposal gate, and the
+          `violation-has-fix` badge that could never fire
+       ⑧ the three STALE guards (chapter · version · dirty) + no-editor. Rendered,
+          because `usePolishProposals` has carried `draftVersion` since it was
+          written and NOTHING has ever read it — in a persistent dock tab beside a
+          live dirty editor, not reading it is a DATA-LOSS bug.
+
+     SCALE — the rules are dozens, not thousands; the stats aggregate server-side.
+     The scale surface here is the CHAPTER PICKER: this repo targets 10k+ chapter
+     books, so `quality-heal`'s picker inherits `quality-critic`'s keyset page +
+     the `chaptersTruncated` NO-SILENT-CAP notice verbatim (QC-10). One
+     convention, not two — a reviewer finding a new one here has found a defect.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain tokens (appended, core never edited) */
+    --heal: #b89ee8; --heal-muted: #2e2440; --streak: #e8b87e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.new { color: var(--primary); border-color: var(--primary-muted); background: var(--primary-muted); }
+  h2 .tag.bug { color: var(--destructive); border-color: var(--destructive-muted); background: var(--destructive-muted); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Source legend (exists vs must-build) ─────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.e { background: var(--accent); } .swatch.b { background: var(--primary); }
+
+  .prov { position: relative; padding-left: 8px; }
+  .prov::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2px; height: 12px; border-radius: 1px; }
+  .prov-e::before { background: var(--accent); } .prov-b::before { background: var(--primary); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); gap: 10px; }
+  .panel-foot .occ { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); opacity: .85; }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .hub      { width: 640px; max-width: 100%; height: 386px; }
+  .rules    { width: 640px; max-width: 100%; height: 470px; }
+  .progress { width: 470px; max-width: 100%; height: 470px; }
+  .corr     { width: 470px; max-width: 100%; height: 430px; }
+  .heal     { width: 560px; max-width: 100%; height: 560px; }
+  .mini     { width: 300px; height: 330px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 9px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .btn { height: 27px; padding: 0 11px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.heal { background: var(--heal-muted); border-color: var(--heal); color: var(--heal); }
+  .btn.danger { color: var(--destructive); }
+  .btn.sm { height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 500; }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted-fg); }
+  .btn.ghost:hover { color: var(--foreground); background: var(--secondary); }
+
+  .toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-fg); cursor: pointer; }
+  .sw { width: 26px; height: 15px; border-radius: 100px; background: var(--secondary); border: 1px solid var(--border); position: relative; flex-shrink: 0; }
+  .sw i { position: absolute; top: 1px; left: 1px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted-fg); transition: none; }
+  .sw.on { background: var(--primary-muted); border-color: var(--primary); }
+  .sw.on i { left: 12px; background: var(--primary); }
+  .sw.busy { opacity: .45; }
+
+  /* ── Hub cards (DOCK-8) ───────────────────────────────────────────────── */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+  .card { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 11px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); cursor: pointer; position: relative; }
+  .card:hover { background: var(--card-hover); border-color: var(--border-hover); }
+  .card .emo { font-size: 15px; line-height: 1; margin-bottom: 2px; }
+  .card .ct { font-size: 12px; font-weight: 600; }
+  .card .cd { font-size: 10.5px; color: var(--muted-fg); line-height: 1.45; }
+  .card.fresh { border-color: var(--primary-muted); }
+  .card .new { position: absolute; top: 8px; right: 8px; font-family: 'JetBrains Mono'; font-size: 8.5px; font-weight: 500;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--primary); background: var(--primary-muted); border-radius: 3px; padding: 1px 4px; }
+  .card .cid { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); opacity: .75; margin-top: 3px; }
+
+  /* ── Rule rows ────────────────────────────────────────────────────────── */
+  .rrow { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 5px; }
+  .rrow:hover { background: var(--card-hover); }
+  .rrow.dim { opacity: .5; }
+  .rrow .top { display: flex; align-items: center; gap: 7px; }
+  .rrow .rt { flex: 1; font-size: 12px; min-width: 0; }
+  .rrow .rt b { font-weight: 500; }
+  .rrow .meta { display: flex; align-items: center; gap: 6px; padding-left: 2px; }
+  .rrow .acts { display: flex; gap: 2px; opacity: .75; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 4px;
+    font-size: 9.5px; font-weight: 600; letter-spacing: .03em; white-space: nowrap; text-transform: uppercase; }
+  .b-world  { background: var(--accent-muted); color: var(--accent-fg); }
+  .b-entity { background: #23303f; color: #8ab6e8; }
+  .b-reveal { background: var(--heal-muted); color: #c0a8e8; }
+  .b-magic  { background: #16301f; color: var(--success); }
+  .b-off    { background: var(--secondary); color: var(--muted-fg); }
+  .b-arch   { background: var(--secondary); color: var(--muted-fg); }
+  .range { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); background: var(--secondary); border-radius: 3px; padding: 1px 5px; }
+  .broke { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; color: var(--destructive);
+    background: var(--destructive-muted); border-radius: 4px; padding: 2px 6px; cursor: pointer; }
+  .broke svg { width: 11px; height: 11px; }
+  .ent { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+  .av { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; color: #141010; }
+  .sect-sep { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--background);
+    border-bottom: 1px solid var(--border); font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted-fg); position: sticky; top: 0; z-index: 1; }
+  .sect-sep .n { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9.5px; letter-spacing: 0; text-transform: none; }
+
+  /* ── Inline form ──────────────────────────────────────────────────────── */
+  .form { border-bottom: 1px solid var(--border); background: var(--background); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .form .fh { display: flex; align-items: center; gap: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--primary); }
+  .form .fh .src { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9px; letter-spacing: 0; text-transform: none; color: var(--muted-fg); }
+  .field { display: grid; grid-template-columns: 84px 1fr; gap: 9px; align-items: center; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .inp { background: var(--background-alt); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  textarea.inp { resize: vertical; min-height: 40px; line-height: 1.45; }
+  .inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .hint { font-size: 10px; color: var(--muted-fg); line-height: 1.5; padding-left: 93px; margin-top: -3px; }
+  .hint b { color: var(--foreground); font-weight: 600; }
+  .form-foot { display: flex; align-items: center; gap: 7px; padding-top: 2px; }
+  .form-foot .ver { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); margin-right: auto; }
+
+  /* ── Conflict banner (412) ────────────────────────────────────────────── */
+  .conflict { border-bottom: 1px solid var(--border); background: var(--destructive-muted); padding: 9px 12px;
+    display: flex; flex-direction: column; gap: 6px; }
+  .conflict .ch { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; color: var(--destructive); }
+  .conflict .ch svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .conflict .cb2 { font-size: 11px; color: var(--foreground); line-height: 1.55; }
+  .conflict .cb2 code { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--accent-fg); }
+  .diff { display: grid; grid-template-columns: 60px 1fr; gap: 6px 8px; font-size: 11px; align-items: start; }
+  .diff .dl { font-family: 'JetBrains Mono'; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; padding-top: 2px; }
+  .diff .dl.theirs { color: var(--muted-fg); }
+  .diff .dl.mine { color: var(--primary); }
+  .diff .dv { background: var(--background); border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; line-height: 1.45; }
+  .diff .dv.mine { border-color: var(--primary-muted); }
+
+  /* ── Stat blocks (progress) ───────────────────────────────────────────── */
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px 12px 4px; }
+  .stat { padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+  .stat .sl { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .stat .sv { font-family: 'JetBrains Mono'; font-size: 19px; font-weight: 500; margin-top: 3px; }
+  .stat .sm { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+  .stat.hot .sv { color: var(--streak); }
+  .goalbar { margin: 10px 12px 0; }
+  .goalbar .gl { display: flex; align-items: baseline; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); margin-bottom: 5px; }
+  .goalbar .gl b { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--foreground); font-weight: 500; }
+  .track { height: 7px; border-radius: 4px; background: var(--secondary); overflow: hidden; }
+  .track i { display: block; height: 100%; border-radius: 4px; background: var(--primary); }
+  .spark { margin: 14px 12px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--background); padding: 8px 10px 6px; }
+  .spark .sh { display: flex; align-items: center; justify-content: space-between; font-size: 9.5px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 8px; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 56px; position: relative; }
+  .bars .goalline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border-hover); }
+  .bars .bar { flex: 1; border-radius: 3px 3px 0 0; background: var(--primary-muted); position: relative; }
+  .bars .bar.hit { background: var(--primary); }
+  .bars .bar.miss { background: var(--secondary); }
+  .xax { display: flex; gap: 6px; margin-top: 4px; }
+  .xax span { flex: 1; text-align: center; font-family: 'JetBrains Mono'; font-size: 8.5px; color: var(--muted-fg); }
+  .bychap { margin: 12px 12px 0; }
+  .bychap .bh { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }
+  .crow { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+  .crow .cn { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crow .cw { font-family: 'JetBrains Mono'; font-size: 11px; }
+  .goalset { margin: 12px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); }
+  .goalset .gs-row { display: flex; align-items: center; gap: 7px; }
+  .srcnote { margin-top: 6px; font-size: 10px; color: var(--muted-fg); line-height: 1.5; display: flex; align-items: center; gap: 5px; }
+  .srcnote svg { width: 11px; height: 11px; color: var(--accent); flex-shrink: 0; }
+  .srcnote.legacy svg { color: var(--warning); }
+
+  /* ── Corrections table ────────────────────────────────────────────────── */
+  .ctbl { padding: 4px 12px 10px; }
+  .ctbl .lede { font-size: 11px; color: var(--muted-fg); line-height: 1.55; padding: 8px 0 10px; }
+  .ctbl .lede b { color: var(--foreground); }
+  .ct-cols { display: grid; grid-template-columns: 1fr 74px 74px; gap: 8px; align-items: center; }
+  .ct-head { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 9.5px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .ct-head .v { text-align: right; }
+  .ct-row { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+  .ct-row .v { text-align: right; font-family: 'JetBrains Mono'; font-size: 12px; }
+  .ct-row .k { display: flex; align-items: center; gap: 5px; }
+  .ct-row .k .dir { font-size: 10px; color: var(--muted-fg); }
+  .ct-row.head-metric { font-weight: 600; }
+  .ct-row .v.good { color: var(--success); }
+  .ct-row .v.bad { color: var(--warning); }
+  .ct-row .v.lie { color: var(--destructive); }
+  .ct-row .v.dash { color: var(--border-hover); }
+  .ct-note { margin-top: 9px; padding: 7px 9px; border-radius: 6px; background: var(--background); border: 1px solid var(--border);
+    font-size: 10.5px; color: var(--muted-fg); line-height: 1.55; }
+  .ct-note b { color: var(--foreground); }
+
+  /* ── Self-heal proposals ──────────────────────────────────────────────── */
+  .prop { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .prop:hover { background: var(--card-hover); }
+  .cb { width: 14px; height: 14px; border: 1px solid var(--border-hover); border-radius: 3px; flex-shrink: 0; margin-top: 2px;
+    display: flex; align-items: center; justify-content: center; }
+  .cb.on { background: var(--heal); border-color: var(--heal); color: #141010; }
+  .cb svg { width: 10px; height: 10px; }
+  .prop .pb { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .prop .pl { display: flex; align-items: center; gap: 6px; }
+  .b-auto { background: var(--accent-muted); color: var(--accent-fg); }
+  .b-sem  { background: var(--heal-muted); color: #c0a8e8; }
+  .kind { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .edit { font-size: 12px; line-height: 1.5; }
+  .edit del { color: var(--destructive); text-decoration: line-through; opacity: .8; }
+  .edit ins { color: var(--success); text-decoration: none; }
+  .edit .arrow { color: var(--muted-fg); margin: 0 4px; }
+  .why { font-size: 10.5px; color: var(--muted-fg); line-height: 1.5; }
+  .applybar { padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--background); display: flex; align-items: center; gap: 8px; }
+  .applybar .n { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); margin-right: auto; }
+  .qsect { border-top: 1px solid var(--border); }
+  .qsect .qh { display: flex; align-items: center; gap: 7px; padding: 9px 12px 6px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .qsect .qh .btn { margin-left: auto; }
+  .scores { display: flex; gap: 12px; padding: 0 12px 8px; flex-wrap: wrap; }
+  .score { font-size: 11px; color: var(--muted-fg); }
+  .score b { font-family: 'JetBrains Mono'; font-size: 11.5px; color: var(--foreground); font-weight: 500; }
+  .score b.low { color: var(--destructive); }
+  .viol { display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-top: 1px solid var(--border); font-size: 11.5px; }
+  .viol .vi { color: var(--warning); flex-shrink: 0; }
+  .viol .vi svg { width: 13px; height: 13px; }
+  .viol .vt { flex: 1; min-width: 0; }
+  .viol .vt em { color: var(--muted-fg); font-style: normal; }
+  .hasfix { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--heal);
+    background: var(--heal-muted); border: 1px solid var(--heal); border-radius: 4px; padding: 2px 6px; white-space: nowrap; cursor: pointer; }
+  .hasfix svg { width: 11px; height: 11px; }
+
+  /* ── Stale guards ─────────────────────────────────────────────────────── */
+  .guard { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; }
+  .guard.stale { background: var(--destructive-muted); }
+  .guard.noed  { background: var(--secondary); }
+  .guard .gi { flex-shrink: 0; margin-top: 1px; }
+  .guard .gi svg { width: 14px; height: 14px; }
+  .guard.stale .gi { color: var(--destructive); }
+  .guard.noed .gi { color: var(--muted-fg); }
+  .guard .gb { flex: 1; font-size: 11px; line-height: 1.55; color: var(--foreground); }
+  .guard .gb b { font-weight: 600; }
+  .guard .gk { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); display: block; margin-top: 3px; }
+  .guard .btn { margin-top: 6px; }
+
+  .empty { padding: 26px 18px; text-align: center; font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; }
+  .empty b { color: var(--foreground); display: block; margin-bottom: 4px; font-size: 12px; }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .strike { text-decoration: line-through; opacity: .5; }
+</style>
+</head>
+<body>
+
+<h1>Quality Completion <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— canon rules · progress · corrections · self-heal · studio dock panels, draft</span></h1>
+<p class="sub">
+  Spec: <b>31_quality_completion.md</b> (Wave 1). Four panels, and <b>three of them are PORTS</b> — the components exist, are tested, and
+  are mounted on the legacy page <code>16_chapter_editor_retirement.md</code> slates for deletion. The fourth is worse than a gap:
+  <code>QualityCriticPanel.tsx:80</code> already ships the <b>consumer</b> of a producer it does not have, so the <code>violation-has-fix</code>
+  badge is unreachable dead code in the Studio. Today the Studio <b>judges you against canon rules and gives you no way to write one</b>,
+  reports a word count <b>nothing reads</b>, and lets the correction flywheel — the model's taste signal — accrue <b>only for users still on
+  the page we are deleting</b>.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch e"></span><b>EXISTS</b> — route + column + test, verified at HEAD <span class="mono" style="font-size:10.5px">9262ed53e</span></div>
+  <div class="item"><span class="swatch b"></span><b>MUST-BUILD</b> — BE-9a/b/c · BE-11a/b/c · BE-P1/P2</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Every field carries its tick. Plan-30 said <i>"no schema change"</i>; two of these are DDL.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① THE HUB ROW — DOCK-8 launcher, 4 cards → 7
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Quality hub <span class="tag">quality</span> — 4 cards today → <b style="color:var(--primary)">7</b> <span class="tag new">3 new</span></h2>
+<p class="sub">
+  The hub is a launcher for <b>one domain's capability set</b>, not a monolithic tabbed panel. Three cards land here.
+  <b><code>progress</code> is deliberately NOT one of them</b> (QC-2): a word-count streak is not a quality judgment, so it takes category
+  <code>editor</code> and sits with <code>editor</code> / <code>chapter-browser</code> / <code>scene-browser</code>, pairing with the
+  <code>WordCountStatusItem</code> the status bar already contributes. It still uses <code>useQualityWork</code> as its gate — one gate, one name.
+</p>
+
+<div class="stack">
+<div class="panel hub">
+  <div class="panel-head">
+    <span>Quality</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="cards">
+      <div class="card"><span class="emo">🔓</span><span class="ct">Promises</span><span class="cd">Open questions the story has raised and not yet paid off.</span><span class="cid">quality-promises</span></div>
+      <div class="card"><span class="emo">🎯</span><span class="ct">Critic</span><span class="cd">Coherence · voice · pacing · canon, per chapter.</span><span class="cid">quality-critic</span></div>
+      <div class="card"><span class="emo">📖</span><span class="ct">Coverage</span><span class="cd">Which promises the book actually pays, book-wide.</span><span class="cid">quality-coverage</span></div>
+      <div class="card"><span class="emo">⚠️</span><span class="ct">Canon issues</span><span class="cd">Violations of the rules the critic enforces.</span><span class="cid">quality-canon</span></div>
+
+      <div class="card fresh"><span class="new">new</span><span class="emo">⚖️</span><span class="ct">Canon rules</span><span class="cd">Author the invariants the critic enforces. Create · edit · archive · restore.</span><span class="cid">quality-canon-rules</span></div>
+      <div class="card fresh"><span class="new">new</span><span class="emo">📈</span><span class="ct">Corrections</span><span class="cd">Your accept / edit / regenerate / reject rates on AI drafts — the quality signal.</span><span class="cid">quality-corrections</span></div>
+      <div class="card fresh"><span class="new">new</span><span class="emo">✨</span><span class="ct">Self-heal</span><span class="cd">Run Polish on a chapter and accept each fix before it touches your prose.</span><span class="cid">quality-heal</span></div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      7 cards · <span class="mono">progress</span> is category <span class="mono">editor</span>, not a card (QC-2)
+    </div>
+    <span class="occ">catalog 57 → 61 · contract 61 · openable 61</span>
+  </div>
+</div>
+
+<div class="panel mini" style="height:386px">
+  <div class="panel-head"><span style="color:var(--destructive)">Before — X-2, the gate that bites first</span></div>
+  <div class="body" style="padding:12px;font-size:11px;line-height:1.7;color:var(--muted-fg)">
+    <code class="mono" style="font-size:10px;color:var(--accent-fg)">useStudioCommands.ts:20-22</code> lists <b style="color:var(--foreground)">9</b> categories.<br />
+    <code class="mono" style="font-size:10px;color:var(--accent-fg)">catalog.ts:81-91</code> defines <b style="color:var(--foreground)">10</b>.<br /><br />
+    <span class="strike">'quality'</span> is <b style="color:var(--destructive)">missing from CATEGORY_ORDER</b>, so
+    <code class="mono" style="font-size:10px">indexOf('quality')</code> → <b style="color:var(--destructive)">−1</b> and the Quality group
+    sorts <i>above</i> <code class="mono" style="font-size:10px">editor</code> in the palette.<br /><br />
+    This wave adds <b style="color:var(--foreground)">three more rows</b> to that category.<br /><br />
+    <b style="color:var(--foreground)">X-2 lands before M1</b> — and it ships with the membership assertion
+    (<code class="mono" style="font-size:10px">every(p =&gt; CATEGORY_ORDER.includes(p.category))</code>), because a checklist item is done
+    only when a test asserts its effect.
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>The hub grows; the panels are siblings, not tabs.</b> Each card is <code>host.openPanel(id)</code> into its own dock panel — critic scores,
+  the promise ledger, coverage, canon issues, canon rules, corrections and self-heal are seven genuinely distinct data sources, exactly the
+  <code>kg-overview</code>/<code>kg-entities</code> shape. All four new ids are openable by a <b>bare id</b> (<code>focusRuleId</code> is an
+  <i>optional</i> deep-link param with a defined no-param behavior), so none is <code>hiddenFromPalette</code> — all four go into the enum, the
+  palette and the User Guide.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② CANON RULES — the write half
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② Canon rules <span class="tag">quality-canon-rules</span> — the write half of <span class="tag">quality-canon</span></h2>
+<p class="sub">
+  <b>The pair is the point.</b> <code>quality-canon</code> says <i>what is broken</i>; <code>quality-canon-rules</code> says <i>what the rules
+  are</i>; each deep-links into the other by rule id. The list, the form and the OCC are <b>already built</b> — this panel is
+  <code>CanonRulesPanel</code> + <code>CanonRuleForm</code> + <code>useCanonRules</code> mounted in the dock behind a
+  <code>QualityWorkGate</code>, with two additive props (<code>showArchived</code>, <code>onRestore</code>) and one new field
+  (<code>kind</code> — F-Q10: the <b>agent</b> can set it today, the human cannot).
+</p>
+
+<div class="stack">
+<div class="panel rules">
+  <div class="panel-head">
+    <span>Canon rules — Nghịch thiên</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Add rule</button>
+      <span class="lbl prov prov-e">Kind</span>
+      <div class="select-wrap">
+        <select><option>All kinds</option><option>world</option><option>entity</option><option>reveal</option><option>magic_system</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="toggle prov prov-b" style="margin-left:auto"><span class="sw on"><i></i></span> Show archived (1)</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="rrow">
+      <div class="top">
+        <span class="badge b-world">world</span>
+        <span class="rt"><b>Cultivation ranks never skip a tier.</b></span>
+        <span class="acts">
+          <span class="ico" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+          <span class="ico" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </span>
+      </div>
+      <div class="meta">
+        <span class="range">ch 1–∞</span>
+        <span class="badge b-off">whole book</span>
+        <span class="mono" style="font-size:9.5px;color:var(--muted-fg);margin-left:auto">v3</span>
+      </div>
+    </div>
+
+    <div class="rrow">
+      <div class="top">
+        <span class="badge b-entity">entity</span>
+        <span class="rt"><b>Lâm Phong has one arm</b> — every physical action must account for it.</span>
+        <span class="acts">
+          <span class="ico" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+          <span class="ico" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </span>
+      </div>
+      <div class="meta">
+        <span class="ent"><span class="av" style="background:#e8a832">LP</span> Lâm Phong</span>
+        <span class="range">ch 41–∞</span>
+        <span class="broke" title="Open quality-canon focused on this rule">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          2 broken →
+        </span>
+        <span class="mono" style="font-size:9.5px;color:var(--muted-fg);margin-left:auto">v7</span>
+      </div>
+    </div>
+
+    <div class="rrow">
+      <div class="top">
+        <span class="badge b-reveal">reveal</span>
+        <span class="rt"><b>The Sect Master's identity stays hidden</b> until the Salt Court arc.</span>
+        <span class="acts">
+          <span class="ico" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+          <span class="ico" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </span>
+      </div>
+      <div class="meta">
+        <span class="range">ch 1–88</span>
+        <span class="toggle" title="Chips over an OCC entity SERIALIZE their writes"><span class="sw"><i></i></span> active</span>
+        <span class="badge b-off">inactive</span>
+        <span class="mono" style="font-size:9.5px;color:var(--muted-fg);margin-left:auto">v2</span>
+      </div>
+    </div>
+
+    <div class="rrow">
+      <div class="top">
+        <span class="badge b-magic">magic_system</span>
+        <span class="rt"><b>Spirit stones are consumed, never returned.</b></span>
+        <span class="acts">
+          <span class="ico" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+          <span class="ico" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+        </span>
+      </div>
+      <div class="meta">
+        <span class="range">ch 12–∞</span>
+        <span class="toggle" style="opacity:.6"><span class="sw on busy"><i></i></span> saving…</span>
+        <span class="mono" style="font-size:9.5px;color:var(--muted-fg);margin-left:auto">v11</span>
+      </div>
+    </div>
+
+    <div class="sect-sep">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>
+      Archived <span class="n">1 rule · BE-11b <code class="mono" style="color:var(--primary)">?include_archived=true</code></span>
+    </div>
+
+    <div class="rrow dim">
+      <div class="top">
+        <span class="badge b-arch">world · archived</span>
+        <span class="rt"><b>Spirit stones are fungible across sects.</b></span>
+        <span class="acts">
+          <button class="btn sm prov prov-b" style="color:var(--accent)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M3 12a9 9 0 1 0 2.6-6.4M3 3v6h6"/></svg> restore</button>
+        </span>
+      </div>
+      <div class="meta">
+        <span class="range">ch 1–∞</span>
+        <span class="broke" title="You can SEE it break and could never reach it — F-Q5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          1 broken
+        </span>
+        <span class="mono" style="font-size:9.5px;color:var(--muted-fg);margin-left:auto">archived 6 days ago</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span>5 rules · <b style="color:var(--foreground);font-weight:500">3 active</b> · 1 archived</span>
+    <span class="occ">PATCH If-Match · 412 CANON_VERSION_CONFLICT</span>
+  </div>
+</div>
+
+<!-- ── The inline form (create / edit) ─────────────────────────────────── -->
+<div class="panel rules" style="width:470px">
+  <div class="panel-head"><span>Edit rule — Lâm Phong has one arm</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="body">
+    <div class="form">
+      <div class="fh">CanonRuleForm <span class="src mono">exists · +kind (F-Q10)</span></div>
+
+      <div class="field"><label class="prov prov-b">Kind</label>
+        <div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>entity</option><option>world</option><option>reveal</option><option>magic_system</option><option>timeline</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div></div>
+      <div class="hint">
+        The column and <code class="mono" style="font-size:9.5px">CanonRuleCreate.kind</code> <b>exist</b> (migrate.py:254, canon.py).
+        <code class="mono" style="font-size:9.5px">types.ts:345</code> omits it — so <b>the agent can set it and the human cannot.</b>
+        A one-line inverse gap, fixed in the same edit.
+      </div>
+
+      <div class="field"><label class="prov prov-e">Scope</label>
+        <div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>entity</option><option>book</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div></div>
+
+      <div class="field"><label class="prov prov-e">Entity</label>
+        <div class="inline">
+          <span class="ent" style="background:var(--secondary);border:1px solid var(--border);border-radius:100px;padding:2px 8px 2px 3px">
+            <span class="av" style="background:#e8a832">LP</span> Lâm Phong
+            <span style="color:var(--muted-fg);cursor:pointer">✕</span></span>
+        </div></div>
+      <div class="hint">Roster from <code class="mono" style="font-size:9.5px">useGlossaryRoster</code>. <b>Empty glossary ⇒ <code class="mono" style="font-size:9.5px">scope=entity</code> is disabled with a reason</b>, never silently broken.</div>
+
+      <div class="field"><label class="prov prov-e">Applies</label>
+        <div class="inline">
+          <span style="font-size:11px;color:var(--muted-fg)">from ch.</span>
+          <input class="inp mono" style="width:56px" value="41" />
+          <span style="font-size:11px;color:var(--muted-fg)">until ch.</span>
+          <input class="inp mono" style="width:56px" placeholder="∞" value="" />
+        </div></div>
+      <div class="hint"><code class="mono" style="font-size:9.5px">from_order</code> / <code class="mono" style="font-size:9.5px">until_order</code> — empty <code class="mono" style="font-size:9.5px">until</code> = still true. The critic only enforces a rule inside its window.</div>
+
+      <div class="field" style="align-items:start"><label class="prov prov-e" style="padding-top:5px">Rule</label>
+        <textarea class="inp">Lâm Phong has one arm after ch. 41. Every physical action must account for it — no two-handed grips, no gestures with the left hand.</textarea></div>
+
+      <div class="field"><label class="prov prov-e">Active</label>
+        <div class="toggle"><span class="sw on"><i></i></span> <span>the critic enforces this rule</span></div></div>
+      <div class="hint">⚠ <b>An instant-commit chip over an OCC entity.</b> Two rapid toggles self-412 and the second is dropped, so writes
+        <b>chain</b> (<code class="mono" style="font-size:9.5px">mutateAsync</code> serialized per rule id) and the control is
+        <b>disabled while its own write is in flight</b> — the <span class="mono" style="font-size:9.5px">saving…</span> chip on the left.</div>
+
+      <div class="form-foot">
+        <span class="ver">v7 · If-Match: 7</span>
+        <button class="btn">Cancel</button>
+        <button class="btn primary">Save rule</button>
+      </div>
+    </div>
+
+    <div class="empty" style="padding:18px 14px;text-align:left">
+      <b>No canon rules yet?</b>
+      A canon rule is an <b style="display:inline;font-size:11.5px">invariant the critic enforces on every generation</b> — not a note to
+      yourself. The empty state renders this copy <i>and the Add form</i>, because an empty list that reads as success is the failure mode
+      <code class="mono" style="font-size:10px;color:var(--accent-fg)">quality-canon</code> already guards against.
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span>Free — canon CRUD triggers no LLM call</span>
+    <span class="occ">MCP parity: composition_canon_rule_create/_update/_delete/_restore</span>
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>Deep-links, both directions — extend the seam, do not rebuild it.</b>
+  <b>IN:</b> <code>quality-canon</code>'s <code>RuleRow</code> gains <i>"Edit rule"</i> → <code>openPanel('quality-canon-rules', {focusRuleId})</code>,
+  completing the chain <code>plan-hub → quality-canon → quality-canon-rules</code> whose <i>first hop already ships</i>
+  (<code>PlanHubPanel.tsx:74</code>, commit <code>d662bd97d</code>).
+  <b>OUT:</b> the <b>⚠ 2 broken</b> badge → <code>openPanel('quality-canon', {focusRuleId})</code> — the panel and the param that already exist.
+  A focused rule that resolves to nothing says <i>"anchored here, nothing has broken it"</i>; a focused id that resolves to no rule at all says
+  <i>"that rule was archived — [show archived]"</i>. It never renders an empty list that reads as success.
+</div>
+
+<div class="callout warn">
+  <b>Restore is not a nicety — it is what makes Delete shippable.</b> <code>CanonRulesRepo.list_all</code> filters <code>NOT is_archived</code>,
+  <code>archive</code> is soft, and <b>there is no restore at any layer</b> — no repo method, no route, no MCP tool — while every sibling
+  soft-delete (<code>outline_node</code>, <code>motif</code>, <code>structure_node</code>, <code>arc_template</code>) has one. Meanwhile
+  <code>QualityCanonPanel.tsx:174</code> already renders violations of unresolvable rules as <b>"A rule that no longer exists"</b>: the user can
+  <b>see</b> an archived rule being broken and has no surface that lists it. So <b>BE-11 is TWO things</b> — <code>restore</code> <i>and</i>
+  <code>include_archived</code> — and <b>BE-11c gives the agent the same verb in the same milestone</b>. Shipping the human half alone is the
+  GG-2 inverse defect, immediately.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ THE 412
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ The <span class="tag bug">412</span> conflict — <code style="font-family:'JetBrains Mono';font-size:12px">current</code> shown, <b>the user's draft kept</b></h2>
+<p class="sub">
+  The OCC exists and works: <code>PATCH /canon-rules/{id}</code> with <code>If-Match</code> returns
+  <code>412 {code:"CANON_VERSION_CONFLICT", current}</code>. What does <i>not</i> exist is a decent response to it —
+  <code>CanonRulesPanel.tsx:20</code>'s <code>onError → toast.error</code> throws the conflict body away <b>and the user's typing with it</b>.
+  That is the thing being fixed.
+</p>
+
+<div class="panel rules" style="width:640px;height:340px">
+  <div class="panel-head"><span>Canon rules — Nghịch thiên</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="conflict">
+    <div class="ch">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      This rule changed elsewhere — showing the current version. Re-apply your edit?
+    </div>
+    <div class="cb2">
+      <code>412 CANON_VERSION_CONFLICT</code> · you sent <code>If-Match: 7</code>, the server is at <code>v8</code>.
+      A collaborator (or the agent, via <code>composition_canon_rule_update</code>) wrote it 40s ago.
+      <b>Your draft is still below.</b> Nothing was overwritten in either direction.
+    </div>
+  </div>
+  <div class="body">
+    <div class="form" style="border-bottom:none">
+      <div class="diff">
+        <span class="dl theirs">v8 · theirs</span>
+        <span class="dv">Lâm Phong has one arm after ch. 41. Every physical action must account for it. <b style="color:var(--foreground)">The prosthesis in ch. 96 does not restore two-handed technique.</b></span>
+        <span class="dl mine">your draft</span>
+        <span class="dv mine">Lâm Phong has one arm after ch. 41. Every physical action must account for it — <b style="color:var(--primary)">no two-handed grips, no gestures with the left hand.</b></span>
+      </div>
+      <div class="form-foot" style="padding-top:8px">
+        <span class="ver">If-Match will resend as 8</span>
+        <button class="btn ghost">Discard mine</button>
+        <button class="btn">Keep theirs</button>
+        <button class="btn primary">Re-apply my edit onto v8</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Never a silent overwrite · never a bare toast
+    </span>
+    <span class="occ">412 · current carried in the body</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ BEFORE — quality-canon today
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ Before — <span class="tag">quality-canon</span> today: three read lenses, <b style="color:var(--destructive)">zero writes</b></h2>
+<p class="sub">
+  This is the bug being replaced. The Studio <b>judges</b> you against canon rules and offers no surface that creates, edits, archives or
+  restores one — the CRUD component exists and is mounted only at <code>CompositionPanel.tsx:836</code>, on the legacy page.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — quality-canon</span></div>
+    <div class="body">
+      <div class="rrow" style="padding:7px 9px">
+        <div class="top"><span class="badge b-entity" style="height:16px;font-size:9px">entity</span>
+          <span class="rt" style="font-size:11px">Lâm Phong has one arm</span></div>
+        <div class="meta"><span class="broke" style="font-size:9.5px;padding:1px 5px">⚠ 2 broken</span></div>
+      </div>
+      <div class="rrow" style="padding:7px 9px">
+        <div class="top"><span class="badge b-arch" style="height:16px;font-size:9px">?</span>
+          <span class="rt" style="font-size:11px;color:var(--destructive)">A rule that no longer exists</span></div>
+        <div class="meta"><span class="broke" style="font-size:9.5px;padding:1px 5px">⚠ 1 broken</span></div>
+      </div>
+      <div style="padding:10px 9px;font-size:10px;color:var(--muted-fg);line-height:1.7">
+        <b style="color:var(--destructive)">QualityCanonPanel.tsx:174</b> — you can <b style="color:var(--foreground)">SEE</b> an archived rule
+        being broken, and there is <b style="color:var(--foreground)">no surface that lists it</b> and no way to bring it back.
+        <code class="mono" style="font-size:9.5px">list_all</code> filters <code class="mono" style="font-size:9.5px">NOT is_archived</code>.
+        <b style="color:var(--destructive)">F-Q5.</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Before — what you cannot reach</span></div>
+    <div class="body" style="padding:11px 10px;font-size:10.5px;color:var(--muted-fg);line-height:1.85">
+      Readable: <b style="color:var(--foreground)">canon issues</b>, <b style="color:var(--foreground)">rule violations</b>,
+      <b style="color:var(--foreground)">critic canon score</b>.<br /><br />
+      <span class="strike">create rule</span> — the form exists, on the page we delete.<br />
+      <span class="strike">edit rule</span> — <code class="mono" style="font-size:9.5px">PATCH</code> + OCC, built, unreachable.<br />
+      <span class="strike">archive</span> — built, unreachable.<br />
+      <span class="strike">restore</span> — <b style="color:var(--destructive)">does not exist at any layer.</b><br />
+      <span class="strike">kind</span> — agent-writable, absent from the FE type.<br />
+      <span class="strike">dismiss violation</span> — <code class="mono" style="font-size:9.5px">POST /jobs/{id}/dismiss-violation</code>
+      exists; the only caller is the legacy <code class="mono" style="font-size:9.5px">CriticPanel</code>.<br /><br />
+      <b style="color:var(--foreground)">The REST surface is 100% built</b> and 100% consumed <i>by the page we are deleting</i>.
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--success)">After</span></div>
+    <div class="body">
+      <div class="rrow" style="padding:7px 9px">
+        <div class="top"><span class="badge b-entity" style="height:16px;font-size:9px">entity</span>
+          <span class="rt" style="font-size:11px">Lâm Phong has one arm</span>
+          <span class="ico" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+        </div>
+        <div class="meta">
+          <span class="broke" style="font-size:9.5px;padding:1px 5px">⚠ 2 broken</span>
+          <button class="btn sm ghost" style="font-size:9.5px">dismiss</button>
+        </div>
+      </div>
+      <div class="rrow dim" style="padding:7px 9px">
+        <div class="top"><span class="badge b-arch" style="height:16px;font-size:9px">archived</span>
+          <span class="rt" style="font-size:11px">Spirit stones are fungible</span>
+          <button class="btn sm" style="font-size:9.5px;color:var(--accent)">↺ restore</button>
+        </div>
+        <div class="meta"><span class="broke" style="font-size:9.5px;padding:1px 5px">⚠ 1 broken</span></div>
+      </div>
+      <div style="padding:10px 9px;font-size:10px;color:var(--muted-fg);line-height:1.7">
+        <b style="color:var(--foreground)">QC-9</b> — the Dismiss button costs <b style="color:var(--foreground)">zero backend</b>:
+        <code class="mono" style="font-size:9.5px">RuleRow</code> already has <code class="mono" style="font-size:9.5px">job_id</code> and
+        <code class="mono" style="font-size:9.5px">rule_id</code> in hand (<code class="mono" style="font-size:9.5px">:108</code>).<br /><br />
+        The agent still cannot dismiss → <b style="color:var(--foreground)">OQ-4</b>, filed as an inverse gap, not hidden.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ PROGRESS
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Progress <span class="tag">progress</span> <span class="tag">category: editor</span> — the write-only loop closes here</h2>
+<p class="sub">
+  <code>ManuscriptUnitProvider</code> reports a word-count snapshot on <b>every save</b> (<code>:209,239</code>) and <b>no Studio panel reads
+  it</b>. This is that reader. <b>GG-4: <code>ChapterEditorPage</code> may not be retired until this ships</b> — retiring first leaves
+  data-generation with no consumer.
+</p>
+
+<div class="stack">
+<div class="panel progress">
+  <div class="panel-head"><span>Progress</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="stats">
+      <div class="stat"><div class="sl prov prov-e">Today</div><div class="sv">1,847</div><div class="sm">of 2,000 · 92%</div></div>
+      <div class="stat hot"><div class="sl prov prov-e">Streak</div><div class="sv">12</div><div class="sm">days</div></div>
+      <div class="stat"><div class="sl prov prov-e">Book total</div><div class="sv">214,309</div><div class="sm">1,842 chapters</div></div>
+    </div>
+
+    <div class="goalbar">
+      <div class="gl"><span>Daily goal</span><span><b>1,847</b> / <b>2,000</b></span></div>
+      <div class="track"><i style="width:92%"></i></div>
+    </div>
+
+    <div class="spark">
+      <div class="sh"><span>Last 7 days</span>
+        <span style="display:flex;gap:4px"><button class="btn sm" style="background:var(--primary-muted);border-color:var(--primary);color:var(--primary)">7d</button><button class="btn sm">30d</button></span>
+      </div>
+      <div class="bars">
+        <div class="goalline" style="bottom:38px"></div>
+        <div class="bar miss" style="height:22%"></div>
+        <div class="bar hit"  style="height:74%"></div>
+        <div class="bar hit"  style="height:96%"></div>
+        <div class="bar miss" style="height:41%"></div>
+        <div class="bar hit"  style="height:80%"></div>
+        <div class="bar hit"  style="height:100%"></div>
+        <div class="bar hit"  style="height:92%"></div>
+      </div>
+      <div class="xax"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+    </div>
+
+    <div class="bychap">
+      <div class="bh prov prov-b">By chapter (today) <span class="mono" style="font-size:9px;letter-spacing:0;text-transform:none;color:var(--primary)">BE-P1 · droppable</span></div>
+      <div class="crow"><span class="cn">Ch. 88 · Tro tàn của Nghịch thiên</span><span class="cw">1,204</span></div>
+      <div class="crow"><span class="cn">Ch. 89 · Muối và sắt</span><span class="cw">643</span></div>
+    </div>
+
+    <div class="goalset">
+      <div class="gs-row">
+        <span class="lbl prov prov-b">Goal</span>
+        <input class="inp mono" style="width:74px" value="2000" />
+        <button class="btn">Set goal</button>
+      </div>
+      <div class="srcnote">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+        <span><b style="color:var(--foreground)">your goal</b> · not shared with collaborators — <span class="mono" style="font-size:9.5px">daily_goal_source: "user"</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span>Anchored to <span class="mono">2026-07-13</span> (your local date)</span>
+    <span class="occ">PUT …/progress/goal · per-user</span>
+  </div>
+</div>
+
+<div class="panel mini" style="height:470px">
+  <div class="panel-head"><span style="color:var(--destructive)">Before — a shared goal, per-user words</span></div>
+  <div class="body" style="padding:11px 10px;font-size:10.5px;color:var(--muted-fg);line-height:1.75">
+    <code class="mono" style="font-size:9.5px;color:var(--accent-fg)">composition_daily_progress</code> PK is
+    <b style="color:var(--foreground)">(user_id, project_id, chapter_id, snapshot_date)</b> — <b style="color:var(--foreground)">per-user</b>,
+    and <code class="mono" style="font-size:9.5px">progress.py</code>'s own docstring says <i>"the stat is the caller's OWN authoring"</i>.<br /><br />
+    The <b style="color:var(--destructive)">goal</b> is read from
+    <code class="mono" style="font-size:9.5px;color:var(--destructive)">work.settings["daily_goal"]</code> — a
+    <b style="color:var(--destructive)">shared per-book package row every EDIT grantee can write.</b><br /><br />
+    ⇒ <b style="color:var(--foreground)">Alice sets 2,000; Bob's panel now shows Alice's goal</b>, and Bob's counter is measured against it.
+    <i>"Would two users want different values? yes ⇒ user setting."</i> A <b style="color:var(--destructive)">tenancy defect</b>, not a preference.<br /><br />
+    And it carries <b style="color:var(--foreground)">BE-18</b> live: <code class="mono" style="font-size:9.5px">useSetDailyGoal</code>
+    hand-merges <code class="mono" style="font-size:9.5px">{...settings, daily_goal}</code> into a
+    <span class="strike">PATCH /works/{pid}</span> that <b style="color:var(--destructive)">REPLACES the whole blob</b>
+    (<code class="mono" style="font-size:9.5px">works.py:311</code>) with <b>no If-Match</b>. Two concurrent settings writes lose one.<br /><br />
+    <b style="color:var(--success)">BE-P2 deletes this caller entirely</b> and closes the window without waiting on BE-18.
+  </div>
+</div>
+</div>
+
+<div class="stack" style="margin-top:12px">
+  <div class="panel mini" style="height:200px;width:300px">
+    <div class="panel-head"><span>State — legacy goal</span></div>
+    <div class="body" style="padding:11px 10px">
+      <div class="goalbar" style="margin:0 0 10px">
+        <div class="gl"><span>Daily goal</span><span><b>1,847</b> / <b>2,000</b></span></div>
+        <div class="track"><i style="width:92%"></i></div>
+      </div>
+      <div class="srcnote legacy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <span>This goal came from the book's <b style="color:var(--foreground)">shared settings</b>. Setting it now makes it yours.
+          <span class="mono" style="font-size:9.5px">source: "work_legacy"</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:200px;width:300px">
+    <div class="panel-head"><span>State — cold start</span></div>
+    <div class="body">
+      <div class="empty" style="padding:20px 14px">
+        <b>No words yet</b>
+        Save a chapter and your first day lands here.<br />
+        <span class="mono" style="font-size:10px;color:var(--border-hover)">not an error · not an empty chart</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:200px;width:300px">
+    <div class="panel-head"><span>State — no goal set</span></div>
+    <div class="body" style="padding:11px 10px">
+      <div class="stats" style="grid-template-columns:1fr 1fr;padding:0 0 8px;gap:6px">
+        <div class="stat"><div class="sl">Today</div><div class="sv" style="font-size:16px">1,847</div></div>
+        <div class="stat hot"><div class="sl">Streak</div><div class="sv" style="font-size:16px">12</div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted-fg);line-height:1.6">
+        <b style="color:var(--foreground)">The bar and the goal line are simply ABSENT</b> — already handled at
+        <code class="mono" style="font-size:9.5px">ProgressPanel.tsx:65,104</code>.
+        <span class="mono" style="font-size:9.5px">source: "none"</span>. No fabricated 2,000 default.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>SET-1: the effective value AND its source tier, both rendered.</b> <code>GET /progress</code> returns
+  <code>daily_goal_source: 'user' | 'work_legacy' | 'none'</code> and the panel <i>shows</i> it. The goal lives in
+  <code>composition_progress_goal(user_id, project_id, …)</code> — <b>one home, one name</b> (SET-3) — and the writer <b>only ever writes the
+  new table</b>: the legacy window is closed <i>in the writer</i>, not by rewriting base schema. A read-through fallback to
+  <code>work.settings.daily_goal</code> means no existing user loses a goal. <b>No new env flag</b> — a per-user choice behind a global
+  <code>*_ENABLED</code> is exactly the abuse CLAUDE.md names.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑥ CORRECTIONS — the false number vs the true one
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑥ Corrections <span class="tag">quality-corrections</span> — the <b style="color:var(--destructive)">same data</b>, two denominators <span class="tag bug">F-Q3</span></h2>
+<p class="sub">
+  <code>GET /works/{pid}/correction-stats</code> <b>exists</b> — and its numbers are <b>wrong</b>.
+  <code>GenerationCorrectionsRepo.correction_stats</code> groups by <code>j.mode</code> over <b>every</b> <code>generation_job</code> in the
+  project, and <code>mode='auto'</code> is the default for <code>self_heal_propose</code>, <code>quality_report</code>,
+  <code>promise_coverage</code>, <code>decompose_preview</code>, <code>plan_pipeline</code>, <code>plan_forge_propose/_refine</code>,
+  <code>plan_pass</code> — <b>none of them correctable</b>. Every PlanForge pass inflates the denominator.
+  <b>Ship BE-9c and the panel in the same milestone, or ship a lie with a chart on it.</b>
+</p>
+
+<div class="stack">
+<div class="panel corr">
+  <div class="panel-head"><span style="color:var(--destructive)">Today's query — mode-grouped</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="body">
+    <div class="ctbl">
+      <div class="lede" style="color:var(--destructive)">
+        <b style="color:var(--destructive)">This author is delighted with everything.</b> They are not — the denominator is full of jobs that
+        were never a draft and could never be corrected.
+      </div>
+      <div class="ct-cols ct-head"><span>Metric</span><span class="v">Diverge</span><span class="v">Stream</span></div>
+      <div class="ct-cols ct-row head-metric"><span class="k">Generations</span><span class="v lie">297</span><span class="v">18</span></div>
+      <div class="ct-cols ct-row"><span class="k">Accept as-is <span class="dir">↑</span></span><span class="v lie">93%</span><span class="v">56%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Edited <span class="dir">↓</span></span><span class="v lie">2%</span><span class="v">28%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Picked other <span class="dir">↓</span></span><span class="v lie">1%</span><span class="v dash">—</span></div>
+      <div class="ct-cols ct-row"><span class="k">Regenerated <span class="dir">↓</span></span><span class="v lie">1%</span><span class="v">11%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Rejected <span class="dir">↓</span></span><span class="v lie">0%</span><span class="v">6%</span></div>
+      <div class="ct-note" style="border-color:var(--destructive-muted)">
+        <b style="color:var(--destructive)">256 of those 297 are not drafts.</b> They are 214 PlanForge passes, 27 quality reports, 9 Polish
+        runs, 4 coverage passes, 2 decompose previews. <code class="mono">accept_rate = (generations − corrected) / generations</code>,
+        so the panel whose <i>entire purpose</i> is to be the quality signal reports the opposite of the truth.
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot"><span class="occ" style="color:var(--destructive)">GROUP BY j.mode · one exclusion: NOT selection_edit</span></div>
+</div>
+
+<div class="panel corr">
+  <div class="panel-head"><span>Corrections — BE-9c allowlist</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="ctbl">
+      <div class="lede">
+        <b>Your corrections are the quality signal.</b> Lower edit / regenerate / reject (and higher accept-as-is) in <b>Diverge</b> means the
+        K-option reranker is earning its latency.
+      </div>
+      <div class="ct-cols ct-head"><span class="prov prov-b">Metric</span><span class="v">Diverge</span><span class="v">Stream</span></div>
+      <div class="ct-cols ct-row head-metric"><span class="k">Generations</span><span class="v">41</span><span class="v">18</span></div>
+      <div class="ct-cols ct-row"><span class="k">Accept as-is <span class="dir">↑</span></span><span class="v good">71%</span><span class="v">56%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Edited <span class="dir">↓</span></span><span class="v bad">17%</span><span class="v bad">28%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Picked other <span class="dir">↓</span></span><span class="v">7%</span><span class="v dash">—</span></div>
+      <div class="ct-cols ct-row"><span class="k">Regenerated <span class="dir">↓</span></span><span class="v">5%</span><span class="v bad">11%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Rejected <span class="dir">↓</span></span><span class="v">0%</span><span class="v bad">6%</span></div>
+      <div class="ct-cols ct-row"><span class="k">Avg edit (blocks) <span class="dir">↓</span></span><span class="v">1.4</span><span class="v">2.1</span></div>
+      <div class="ct-note">
+        <b>Counts DRAFT generations only</b> — plan passes, quality reports and Polish runs are not corrections.
+        <span class="mono" style="font-size:9.5px;color:var(--accent-fg)">j.operation = ANY(CORRECTABLE_OPERATIONS) AND NOT selection_edit</span> —
+        one named constant <span class="mono" style="font-size:9.5px">("draft_scene","draft_chapter","stitch_chapter")</span>, never a literal at the
+        call site, and the <span class="mono" style="font-size:9.5px">selection_edit</span> exclusion is <b>ADDED to, never replaced</b> (F-Q3a).
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span>59 draft generations · <b style="color:var(--foreground);font-weight:500">21 corrected</b></span>
+    <span class="occ">no LLM call · free</span>
+  </div>
+</div>
+</div>
+
+<div class="stack" style="margin-top:12px">
+  <div class="panel mini" style="height:210px;width:300px">
+    <div class="panel-head"><span>State — cold start</span></div>
+    <div class="body"><div class="empty" style="padding:22px 14px">
+      <b>No AI drafts yet</b>
+      Generate a chapter and your accept / edit / reject rates land here.
+      <span class="mono" style="display:block;margin-top:6px;font-size:10px;color:var(--border-hover)">composition-quality-coldstart</span>
+    </div></div>
+  </div>
+
+  <div class="panel mini" style="height:210px;width:300px">
+    <div class="panel-head"><span>State — one mode only</span></div>
+    <div class="body"><div class="ctbl" style="padding-top:8px">
+      <div class="ct-cols ct-head"><span>Metric</span><span class="v">Diverge</span><span class="v">Stream</span></div>
+      <div class="ct-cols ct-row head-metric"><span class="k">Generations</span><span class="v">41</span><span class="v dash">—</span></div>
+      <div class="ct-cols ct-row"><span class="k">Accept as-is</span><span class="v good">71%</span><span class="v dash">—</span></div>
+      <div class="ct-note" style="margin-top:8px">A Work that never used Stream shows <b>—</b>, <b>not 0%</b>. A zero is a measurement; a dash
+        is an absence. Rendering one as the other is the same class of lie as the denominator above.</div>
+    </div></div>
+  </div>
+
+  <div class="panel mini" style="height:210px;width:560px">
+    <div class="panel-head"><span style="color:var(--primary)">The load-bearing half is NOT this panel — it is the capture seam</span></div>
+    <div class="body" style="padding:11px 12px;font-size:10.5px;color:var(--muted-fg);line-height:1.75">
+      <code class="mono" style="font-size:9.5px;color:var(--accent-fg)">POST …/authoring-runs/{run_id}/units/{i}/reject</code> already
+      <b style="color:var(--foreground)">restores the pre-run revision</b> — a textbook <code class="mono" style="font-size:9.5px">kind='reject'</code>
+      correction being <b style="color:var(--destructive)">thrown away every single time</b>. And
+      <code class="mono" style="font-size:9.5px">…/accept</code> after the human edited the drafted chapter is a textbook
+      <code class="mono" style="font-size:9.5px">kind='edit'</code>.<br /><br />
+      🔴 <b style="color:var(--foreground)">But there is nothing to attach it to.</b>
+      <code class="mono" style="font-size:9.5px">generation_correction.job_id</code> is <b style="color:var(--foreground)">UUID NOT NULL
+      REFERENCES generation_job(id)</b>, and <code class="mono" style="font-size:9.5px">authoring_run_units</code> has
+      <b style="color:var(--destructive)">no job_id column</b>. <code class="mono" style="font-size:9.5px">EngineDraftingSeam</code>
+      <i>reads</i> <code class="mono" style="font-size:9.5px">payload["job_id"]</code> at <code class="mono" style="font-size:9.5px">:377</code>
+      and <b style="color:var(--destructive)">throws it away</b> at <code class="mono" style="font-size:9.5px">:391/:408</code>.<br /><br />
+      ⇒ <b style="color:var(--foreground)">BE-9a is a DDL column + a DraftOutcome field + a driver persist.</b> Plan-30's
+      <i>"No schema change"</i> is wrong, and it is why this wave is <b style="color:var(--foreground)">L, not M</b>.
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What this panel does NOT propose.</b> <b>(a)</b> <i>Accept-as-is is not a correction.</i> H2 is inherited, not re-derived — only
+  accept-<b>after-edit</b> is (<code>kind='edit'</code>, <code>changed_blocks</code> from the existing <code>count_changed_blocks</code>). The
+  <code>accept</code> kind does not exist and <b>must not be invented</b>: the CHECK constraint is closed on
+  <code>('edit','pick_different','regenerate','reject')</code>.
+  <b>(b)</b> <i>A unit with <code>job_id IS NULL</code> (pre-migration) records NOTHING and the run report says so</i> — <b>never backfill a
+  guess</b>. A wrong <code>job_id</code> attributes the author's rejection to someone else's generation.
+  <b>(c)</b> <i>The capture is fire-and-forget telemetry and must never block the review</i> — the legacy FE's own rule
+  (<code>CandidatesView.tsx:9</code>).
+  <b>(d)</b> <i><code>propose_edit</code> Apply/Dismiss does NOT record a correction in v1</i> — it has no <code>job_id</code> and its prose came
+  from a <b>chat-service</b> turn, not a composition <code>generation_job</code>. Plan-30's BE-9 named it as if it were free. It is a
+  cross-service design decision → <b>OQ-1</b>.
+  <b>(e)</b> 🔴 <i>The allowlist does NOT contain "the cowrite ops" — there are none.</i> <code>mode</code> is a per-request
+  <code>Literal["cowrite","auto"]</code> over the <b>same</b> op (<code>engine.py:98-99</code>), so <code>draft_scene</code>+cowrite <b>is</b> the
+  Stream column and is already listed. The only exclusively-cowrite ops are <code>rewrite</code>/<code>expand</code>/<code>describe</code> =
+  <b>selection edits</b> — the exact jobs the existing <code>/review-impl</code> exclusion removes. Adding them would <b>silently revert that
+  fix</b> and corrupt the very column this panel charts. The list is three ops; <code>NOT selection_edit</code> <b>stays</b>. (F-Q3a)
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ SELF-HEAL
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ Self-heal <span class="tag">quality-heal</span> — the accept/reject gate, and the badge that could never fire</h2>
+<p class="sub">
+  The M6 Polish review gate: <b>apply the AI's fix to my prose — a subset I chose, never silently.</b>
+  <code>POST /works/{pid}/self-heal/propose</code> exists (202 + poll) and <code>PolishPanel</code> exists — but its <code>onApply</code> is a
+  <b>whole-document replace</b> and <code>ManuscriptUnitApi</code> has <b>no chokepoint for one</b>
+  (<code>applyProposedEdit</code> only does <code>insert_at_cursor</code> / <code>replace_selection</code>). So <code>quality-heal</code>
+  <b>extends</b> the chokepoint — QC-4's <code>applyHealedDocument({text, chapterId, expectedDraftVersion})</code>, returning a discriminated
+  <code>applied</code> / <code>no-editor</code> / <code>stale</code>, never a bare <code>false</code>.
+</p>
+
+<div class="stack">
+<div class="panel heal">
+  <div class="panel-head"><span>Self-heal</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="select-wrap">
+        <select><option>Ch. 88 · Tro tàn</option><option>Ch. 89 · Muối và sắt</option><option>Ch. 90 · 山海遺聞</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="select-wrap">
+        <select><option>Qwen3 35B (local)</option><option>Gemma-4 26B (local)</option><option>gpt-4o</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <button class="btn heal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9ZM19 17l.9 2.1L22 20l-2.1.9L19 23l-.9-2.1L16 20l2.1-.9Z"/></svg> Re-run Polish</button>
+      <label class="toggle" style="margin-left:auto"><span class="sw"><i></i></span> rerank (AI, costs more)</label>
+    </div>
+  </div>
+
+  <div class="applybar">
+    <span class="n">6 edits · 2 dropped by verify · 2 ticked</span>
+    <button class="btn sm">all</button>
+    <button class="btn sm">all deterministic</button>
+    <button class="btn sm ghost">clear</button>
+  </div>
+
+  <div class="body">
+    <div class="prop">
+      <span class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>
+      <div class="pb">
+        <div class="pl"><span class="badge b-auto">auto</span><span class="kind">pronoun</span></div>
+        <div class="edit"><del>hắn</del><span class="arrow">→</span><ins>y</ins></div>
+        <div class="why">Chapter voice uses <b style="color:var(--foreground)">y</b> for Lâm Phong after ch. 41; <b style="color:var(--foreground)">hắn</b> is the antagonist's pronoun.</div>
+      </div>
+    </div>
+
+    <div class="prop">
+      <span class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></span>
+      <div class="pb">
+        <div class="pl"><span class="badge b-auto">auto</span><span class="kind">typo</span></div>
+        <div class="edit"><del>Lâm Phog</del><span class="arrow">→</span><ins>Lâm Phong</ins></div>
+        <div class="why">Glossary entity, 3 occurrences in this chapter.</div>
+      </div>
+    </div>
+
+    <div class="prop">
+      <span class="cb"></span>
+      <div class="pb">
+        <div class="pl"><span class="badge b-sem">semantic</span><span class="kind">canon</span></div>
+        <div class="edit"><del>raised his left arm</del><span class="arrow">→</span><ins>reached out</ins></div>
+        <div class="why">⚠ Canon rule <b style="color:var(--foreground)">“Lâm Phong has one arm after ch. 41.”</b> — a semantic rewrite, so it is
+          <b style="color:var(--foreground)">not ticked by default</b>. You decide.</div>
+      </div>
+    </div>
+
+    <div class="prop">
+      <span class="cb"></span>
+      <div class="pb">
+        <div class="pl"><span class="badge b-sem">semantic</span><span class="kind">pacing</span></div>
+        <div class="edit"><del>Ánh trăng lạnh lẽo trải dài trên mặt hồ tĩnh lặng, phản chiếu…</del><span class="arrow">→</span><ins>Trăng lạnh trên mặt hồ.</ins></div>
+        <div class="why">Compresses a 34-word descriptive beat inside a chase. Flagged, never auto-applied.</div>
+      </div>
+    </div>
+
+    <div style="padding:8px 12px;font-size:10.5px;color:var(--muted-fg);line-height:1.55;border-bottom:1px solid var(--border);background:var(--background)">
+      <b style="color:var(--foreground)">2 dropped by verify</b> — the propose pass suggested them and the verify pass could not confirm the
+      anchor still matched. They are <b>not shown as edits you declined</b>; they are shown as edits that did not survive.
+    </div>
+
+    <div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <button class="btn heal" style="height:30px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Apply 2 selected</button>
+      <span style="font-size:10.5px;color:var(--muted-fg);line-height:1.5">Replaces the document <b style="color:var(--foreground)">through the hoist</b>, marks it dirty, and <b style="color:var(--foreground)">waits for your ⌘S</b>. The heal never persists behind the author's back.</span>
+    </div>
+
+    <!-- The critic link, closed -->
+    <div class="qsect">
+      <div class="qh">Quality report <span class="mono" style="font-size:9px;letter-spacing:0;text-transform:none">quality-critic · same chapter</span>
+        <button class="btn sm">Re-analyze</button>
+      </div>
+      <div class="scores">
+        <span class="score">coherence <b>4</b>/5</span>
+        <span class="score">voice <b>5</b>/5</span>
+        <span class="score">pacing <b>3</b>/5</span>
+        <span class="score">canon <b class="low">2</b>/5</span>
+      </div>
+      <div class="viol">
+        <span class="vi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+        <span class="vt">Lâm Phong's left arm — <em>“raised his left arm”</em></span>
+        <span class="hasfix" data-testid="violation-has-fix">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/></svg>
+          fix proposed ↓
+        </span>
+      </div>
+      <div class="viol">
+        <span class="vi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+        <span class="vt">Spirit stones returned to the pouch — <em>ch. 12 rule</em></span>
+        <span class="mono" style="font-size:9.5px;color:var(--muted-fg)">no fix</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Paid action · no cost estimate today (OQ-3) — <b style="color:var(--muted-fg);font-weight:400">the fix is a descriptor on the GENERIC action spine, not a 4th /estimate route</b>
+    </span>
+    <span class="occ">draft v14</span>
+  </div>
+</div>
+
+<div class="panel mini" style="height:560px;width:340px">
+  <div class="panel-head"><span style="color:var(--destructive)">Before — the badge is dead code</span></div>
+  <div class="body" style="padding:11px 10px;font-size:10.5px;color:var(--muted-fg);line-height:1.75">
+    <code class="mono" style="font-size:9.5px;color:var(--destructive)">QualityCriticPanel.tsx:80</code> renders<br />
+    <code class="mono" style="font-size:9.5px">&lt;QualityReportSection projectId chapterId token modelRef /&gt;</code><br />
+    — <b style="color:var(--destructive)">without <code class="mono" style="font-size:9.5px">proposals</code>.</b><br /><br />
+    <code class="mono" style="font-size:9.5px">QualityReportSection.tsx:39</code> defaults it to
+    <code class="mono" style="font-size:9.5px">[]</code>, so <code class="mono" style="font-size:9.5px">_hasProposedFix()</code>
+    <b style="color:var(--foreground)">can never return true</b> and
+    <span class="strike"><span class="hasfix" style="cursor:default">fix proposed ↓</span></span>
+    at <code class="mono" style="font-size:9.5px">:95</code> is <b style="color:var(--destructive)">unreachable dead code in the Studio.</b><br /><br />
+    <b style="color:var(--foreground)">And the fix is NOT a prop.</b> On the legacy page <code class="mono" style="font-size:9.5px">PolishPanel</code>
+    <i>owns</i> the proposals and passes them down <b>in the same subtree</b>. In the Studio,
+    <code class="mono" style="font-size:9.5px">quality-critic</code> and <code class="mono" style="font-size:9.5px">quality-heal</code> are
+    <b style="color:var(--foreground)">two sibling dock panels with no common React ancestor</b> other than the app root.
+    <b>There is no prop to drill.</b><br /><br />
+    <b style="color:var(--success)">QC-8</b> — <code class="mono" style="font-size:9.5px">usePolishProposals</code> moves
+    <code class="mono" style="font-size:9.5px">useState</code> → the <b style="color:var(--foreground)">react-query cache</b> under
+    <code class="mono" style="font-size:9.5px">['composition','self-heal',pid,chapterId]</code>
+    (<code class="mono" style="font-size:9.5px">staleTime: Infinity</code>, no <code class="mono" style="font-size:9.5px">queryFn</code> — the paid
+    run is a <code class="mono" style="font-size:9.5px">useMutation</code> that <code class="mono" style="font-size:9.5px">setQueryData</code>s).
+    <code class="mono" style="font-size:9.5px">quality-critic</code> reads the same key with
+    <code class="mono" style="font-size:9.5px">enabled:false</code>.<br /><br />
+    <b style="color:var(--foreground)">Cache miss ⇒ [] ⇒ no badge.</b> A false badge is <i>impossible by construction</i>. The return shape is
+    unchanged, so the legacy panel keeps working.
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑧ THE STALE GUARDS
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑧ The stale guards <span class="tag bug">data loss</span> — three of them, each rendered, each disabling Apply</h2>
+<p class="sub">
+  <code>usePolishProposals</code> has stored <code>draftVersion</code> since the day it was written (<code>:24</code>), returns it
+  (<code>:97</code>), and <b>no caller has ever read it.</b> <code>healedText</code> is a splice of <code>sourceText</code> <i>as it was when
+  Polish ran</i> — so applying it <b>silently reverts anything typed since</b>. On the legacy page this is masked: <code>PolishPanel</code> is
+  <code>key={chapterId}</code>-remounted and sits inches from the editor. <b>In a persistent dock tab beside a live, dirty editor the window is
+  wide open by construction.</b>
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="width:360px;height:200px">
+    <div class="panel-head"><span style="color:var(--destructive)">stale · chapter</span></div>
+    <div class="body">
+      <div class="guard stale">
+        <span class="gi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+        <div class="gb">
+          These fixes were proposed for <b>Chapter 88</b>; the editor is on <b>Chapter 89</b>. Open Chapter 88, or re-run Polish.
+          <span class="gk">{kind:'stale', reason:'chapter'}</span>
+          <button class="btn sm" style="margin-top:6px">Open Chapter 88</button>
+        </div>
+      </div>
+      <div style="padding:10px 12px">
+        <button class="btn heal" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Apply 2 selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="width:360px;height:200px">
+    <div class="panel-head"><span style="color:var(--destructive)">stale · version</span></div>
+    <div class="body">
+      <div class="guard stale">
+        <span class="gi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+        <div class="gb">
+          The chapter changed since Polish ran — these fixes are against an <b>older draft</b> and would <b>revert your edits</b>.
+          <span class="gk">proposal v12 · editor v14</span>
+          <button class="btn sm heal" style="margin-top:6px">Re-run Polish</button>
+        </div>
+      </div>
+      <div style="padding:10px 12px">
+        <button class="btn heal" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Apply 2 selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="width:360px;height:200px">
+    <div class="panel-head"><span style="color:var(--destructive)">stale · dirty</span></div>
+    <div class="body">
+      <div class="guard stale">
+        <span class="gi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+        <div class="gb">
+          You have <b>unsaved edits</b>. By definition they are not in the text Polish read. Save (⌘S) and re-run, or discard.
+          <span class="gk">{kind:'stale', reason:'dirty'}</span>
+        </div>
+      </div>
+      <div style="padding:10px 12px">
+        <button class="btn heal" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Apply 2 selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="width:360px;height:200px">
+    <div class="panel-head"><span>no-editor</span></div>
+    <div class="body">
+      <div class="guard noed">
+        <span class="gi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4zM9 9h6v6H9z"/></svg></span>
+        <div class="gb">
+          <b>Open the editor to apply.</b> The Rich/Raw panel is closed, so there is no document to write into.
+          <span class="gk">{kind:'no-editor'}</span>
+        </div>
+      </div>
+      <div style="padding:10px 12px">
+        <button class="btn heal" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Apply 2 selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="width:360px;height:200px">
+    <div class="panel-head"><span style="color:var(--success)">clean</span></div>
+    <div class="body"><div class="empty" style="padding:24px 14px">
+      <b>No issues found</b>
+      The prose is clean. <span class="mono" style="font-size:10px;color:var(--border-hover)">0 proposals · not an error</span>
+    </div></div>
+  </div>
+
+  <div class="panel mini" style="width:360px;height:200px">
+    <div class="panel-head"><span style="color:var(--warning)">DOCK-7 · X-1 dependency</span></div>
+    <div class="body" style="padding:11px 10px;font-size:10.5px;color:var(--muted-fg);line-height:1.7">
+      <code class="mono" style="font-size:9.5px">quality-heal</code> mounts a
+      <code class="mono" style="font-size:9.5px">ModelPicker</code>, whose <b style="color:var(--foreground)">empty state renders
+      <code class="mono" style="font-size:9.5px">AddModelCta</code></b> — today a raw
+      <code class="mono" style="font-size:9.5px">&lt;Link to="/settings/providers"&gt;</code> that
+      <b style="color:var(--destructive)">tears down the whole dock.</b><br /><br />
+      ⚠ <b style="color:var(--foreground)">M3 is BLOCKED on Wave-0 X-1.</b> This is the panel that introduces the new call site, so it is the
+      panel the DOCK-7 regression test runs on.
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>Two gates, because they answer two different questions.</b> <code>expectedDraftVersion</code> is checked <b>client-side at the hoist</b>,
+  before the document is replaced — that gate is about <i>the proposals being stale</i>. The subsequent save still carries the draft's
+  <code>If-Match</code> — that gate is about <i>the save racing</i>. Neither substitutes for the other, and neither may be a
+  <b>silent no-op</b>: <code>applyHealedDocument</code> returns a discriminated result, never a bare <code>false</code>. <i>A success status
+  with no work done is a bug, not a UI state.</i>
+</div>
+
+<div class="callout bad">
+  <b>What this wave does NOT propose.</b>
+  <b>(a)</b> <b><code>QualityPanel</code> is NOT ported whole.</b> It is <code>CorrectionStatsTable</code> <b>+
+  <code>BookPromiseCoverageSection</code></b>, and the Studio already ships the second as <code>quality-coverage</code> — an on-demand
+  <b>paid LLM</b> pass. Mounting it whole puts <b>one paid button on screen twice</b>. <i>Extract</i> <code>CorrectionStatsTable</code> into its
+  own file; do not mount its parent (F-Q11).
+  <b>(b)</b> <b>No MCP tool for <code>progress</code>, and none is proposed.</b> Progress is a <i>personal stat</i>, not a capability the agent
+  should write — recording words on the user's behalf would corrupt their own signal. <b>A deliberate non-gap; do not "fix" it.</b>
+  <b>(c)</b> <b>Self-heal accept/reject is not a <code>generation_correction</code> in v1</b> (QC-5/OQ-2). It <i>does</i> have a
+  <code>job_id</code> — but that job's <code>operation='self_heal_propose'</code>, so a correction on it lands either <b>outside</b> BE-9c's
+  allowlist and means nothing, or <b>inside</b> it and corrupts the very denominator we are fixing. Correcting <i>a fix</i> is a different
+  signal from correcting <i>a draft</i>.
+  <b>(d)</b> <b>No bespoke <code>/self-heal/estimate</code> route.</b> Three invented per-action estimate routes already 404 in production.
+</div>
+
+<div class="callout">
+  <b>MCP parity is not optional, and Lane-B is mandatory this wave (X-4).</b> The human gains <b>restore</b> ⇒ so does the agent
+  (<code>composition_canon_rule_restore</code>, + the <code>undo_hint</code> on <code>composition_canon_rule_delete</code>, which today honestly
+  reports none <i>because no un-archive existed</i>). The review seam gains <b>correction capture</b> ⇒ so does the agent
+  (<code>composition_record_correction</code>). And a new <code>handlers/compositionEffects.ts</code> registers
+  <code>^composition_canon_rule_</code> → invalidate the canon + violations keys, and <code>^composition_record_correction$</code> → invalidate
+  <code>['composition','correction-stats',pid]</code> — <b>the first handler that proves
+  <code>useStudioEffectReconciler.ts:8-9</code>'s comment false</b> (<i>"authoring_run has no MCP tools at all … no Studio consumer to go
+  stale"</i> — it has both). Delete the comment in the same edit. ⚠ The <b>3-schema-source FastMCP caveat</b> applies to every new tool.
+</div>
+
+<script>
+  /* Make the archived section actually toggle, and the proposal checkboxes actually tick —
+     the two interactions a reviewer will reach for first. Vanilla, no framework. */
+  document.querySelectorAll('.toggle .sw').forEach(function (sw) {
+    sw.parentElement.addEventListener('click', function () {
+      if (sw.classList.contains('busy')) return;   /* a write is in flight — the control is disabled */
+      sw.classList.toggle('on');
+    });
+  });
+  document.querySelectorAll('.prop .cb').forEach(function (cb) {
+    cb.addEventListener('click', function () {
+      cb.classList.toggle('on');
+      cb.innerHTML = cb.classList.contains('on')
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg>'
+        : '';
+    });
+  });
+</script>
+</body>
+</html>

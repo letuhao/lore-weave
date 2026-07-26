@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/shared/Button';
+import type { JSX } from 'react';
 
 // Login placeholder. Session E wires real auth handshake against
 // auth-service via api-gateway-bff. Single-domain + path-routing per

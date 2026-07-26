@@ -1,0 +1,55 @@
+{
+  "common": {
+    "dismiss": "Dismiss",
+    "deprecate": "Deprecate",
+    "deprecated": "deprecated"
+  },
+  "adopt": {
+    "chooseTemplate": "Choose a graph template",
+    "select": "Adopt",
+    "selected": "Selected ✓",
+    "noTemplates": "No templates available to adopt.",
+    "adoptButton": "Adopt template",
+    "adopting": "Adopting…",
+    "blockedTitle": "Adopt blocked (M1 adopt-gate).",
+    "blockedHelp": "This template needs node kinds your glossary is missing. There are no hidden cross-service writes — add the kinds in glossary first, then return to adopt.",
+    "blockedButton": "Adopt template ({{count}} blockers)",
+    "missing": "✗ missing",
+    "openGlossary": "Add kinds in glossary"
+  },
+  "schema": {
+    "edgeTypes": "Edge types",
+    "factTypes": "Fact types",
+    "nodeKinds": "Node kinds (← glossary)",
+    "vocabSet": "Vocab set",
+    "closed": "closed — extractor may only assign",
+    "temporal": "⏱ temporal",
+    "noEdges": "No edge types yet.",
+    "addEdgeType": "Add edge type",
+    "code": "Code",
+    "label": "Label",
+    "temporalField": "temporal (valid_from + provenance)",
+    "cardinality": "Cardinality",
+    "addButton": "Add edge type"
+  },
+  "sync": {
+    "upToDate": "Up to date — no upstream changes.",
+    "updatesAvailable": "{{count}} updates available from upstream",
+    "keepAllMine": "Keep all mine",
+    "takeAllTheirs": "Take all theirs",
+    "added": "ADDED",
+    "modified": "MODIFIED",
+    "removed": "REMOVED UPSTREAM",
+    "keepMine": "Keep mine",
+    "takeTheirs": "Take theirs",
+    "applyButton": "Apply {{count}} decisions"
+  },
+  "views": {
+    "name": "View name",
+    "edgeTypes": "Edge types in this view",
+    "nodeKinds": "Node kinds shown",
+    "createButton": "Create view",
+    "saveButton": "Save view",
+    "perUser": "per-user"
+  }
+}

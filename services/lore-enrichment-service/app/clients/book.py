@@ -13,8 +13,10 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError, build_internal_client
 
 from app.clients.sanitize import neutralize_injection
+from app.logging_config import trace_id_var
 
 __all__ = [
     "BookProjection",
@@ -25,11 +27,11 @@ __all__ = [
 ]
 
 
-class BookServiceError(Exception):
-    def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-        self.status_code = status_code
+# P3 SDK-first: subclass the shared InternalClientError so `.retryable` is derived
+# uniformly from `.status_code` (429/502/503) instead of re-computed per raise site.
+# Name kept so `except BookServiceError` call sites are unchanged.
+class BookServiceError(InternalClientError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -70,8 +72,13 @@ class ChapterHierarchy:
 class BookClient:
     def __init__(self, *, base_url: str, internal_token: str, timeout_s: float = 10.0) -> None:
         self._base = base_url.rstrip("/")
-        self._internal_token = internal_token
-        self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=5.0))
+        # W3 trace-uniformity: the shared factory bakes X-Internal-Token + JSON and
+        # injects X-Trace-Id per request (this client had NO trace before).
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, connect_timeout_s=5.0,
+            trace_id_provider=trace_id_var.get,
+        )
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -82,18 +89,15 @@ class BookClient:
         Author-prose fields are injection-neutralized (M4). 404 → typed not-found."""
         url = f"{self._base}/internal/books/{book_id}/projection"
         try:
-            resp = await self._http.get(
-                url, headers={"X-Internal-Token": self._internal_token}
-            )
+            resp = await self._http.get(url)
         except httpx.TimeoutException as exc:
             raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
         except httpx.HTTPError as exc:
             raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable, status_code=resp.status_code,
+                status_code=resp.status_code,
             )
         data = resp.json()
         tags = data.get("genre_tags") or []
@@ -117,19 +121,15 @@ class BookClient:
         (M4). Returns (items, total). 404 → typed not-found."""
         url = f"{self._base}/internal/books/{book_id}/chapters"
         try:
-            resp = await self._http.get(
-                url, headers={"X-Internal-Token": self._internal_token},
-                params={"limit": limit, "offset": offset},
-            )
+            resp = await self._http.get(url, params={"limit": limit, "offset": offset})
         except httpx.TimeoutException as exc:
             raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
         except httpx.HTTPError as exc:
             raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable, status_code=resp.status_code,
+                status_code=resp.status_code,
             )
         data = resp.json()
         items: list[ChapterMeta] = []
@@ -153,9 +153,7 @@ class BookClient:
         an empty/missing chapter (the caller skips it)."""
         url = f"{self._base}/internal/books/{book_id}/chapters/{chapter_id}/draft-text"
         try:
-            resp = await self._http.get(
-                url, headers={"X-Internal-Token": self._internal_token}
-            )
+            resp = await self._http.get(url)
         except httpx.TimeoutException as exc:
             raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
         except httpx.HTTPError as exc:
@@ -163,10 +161,9 @@ class BookClient:
         if resp.status_code == 404:
             return ""
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable, status_code=resp.status_code,
+                status_code=resp.status_code,
             )
         data = resp.json()
         raw = data.get("text") or data.get("content") or data.get("draft") or ""
@@ -177,18 +174,14 @@ class BookClient:
     ) -> ChapterHierarchy:
         url = f"{self._base}/internal/books/{book_id}/chapters/{chapter_id}/hierarchy"
         try:
-            resp = await self._http.get(
-                url, headers={"X-Internal-Token": self._internal_token}
-            )
+            resp = await self._http.get(url)
         except httpx.TimeoutException as exc:
             raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
         except httpx.HTTPError as exc:
             raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable,
                 status_code=resp.status_code,
             )
         data = resp.json()

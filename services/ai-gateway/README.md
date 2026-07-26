@@ -35,7 +35,7 @@ Spec: [`docs/specs/2026-06-10-glossary-assistant-architecture.md`](../../docs/sp
 |---|---|
 | `POST /mcp` | the federated MCP endpoint — initialize / **list-tools** (consumers fetch tool defs here) / call-tool |
 | `GET /health` · `/health/ready` | liveness / readiness |
-| `GET /health/catalog` | federated catalog `{version, tools, providers, partial}` (H10) |
+| `GET /health/catalog` | federated catalog `{version, tools, providerCount, providers:[{name,available}], partial}` (H10) |
 
 Consumers are **pure MCP**: they fetch tool definitions via MCP `list-tools` and
 execute via `call-tool` — there is no bespoke HTTP tool endpoint.
@@ -43,6 +43,19 @@ execute via `call-tool` — there is no bespoke HTTP tool endpoint.
 ## Config
 
 See `.env.example`. `INTERNAL_SERVICE_TOKEN` is required (fail-fast).
+
+**Provider registry (C-GW).** Providers are env-driven via `AI_GATEWAY_PROVIDERS`
+(comma-separated `name=url`) so **adding a provider is an env entry, not a code
+edit**. Unset/empty falls back to the knowledge+glossary defaults. Each provider
+has a required tool-name **prefix** (`knowledge→memory_`, `glossary→glossary_`,
+`book→book_`, …; override inline with `name|prefix_=url`). At catalog assembly any
+tool whose name doesn't match its provider's prefix is **dropped + warned**,
+killing silent cross-provider name collisions.
+
+**Per-provider availability (H10).** `GET /health/catalog` returns
+`providers: [{name, available}]`; a down provider reads `available:false`. A
+consumer's `find_tools` uses this to tell "no such tool" from "owning provider
+temporarily down" (→ say "try again", not "I can't").
 
 ## Dev
 

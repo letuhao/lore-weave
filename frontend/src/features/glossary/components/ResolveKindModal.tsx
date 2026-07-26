@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { FormDialog } from '@/components/shared';
 import type { EntityKind, UnknownEntity } from '../types';
 
 export type ResolveResult =
@@ -30,11 +30,8 @@ export function ResolveKindModal({ entity, kinds, sameCodeCount, onResolve, onCl
   const code = entity.source_kind_code;
   const canMergeAll = !!code && sameCodeCount > 1;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, saving]);
+  // Radix Dialog.Root (inside FormDialog) handles Escape/outside-click → onOpenChange(false);
+  // the `!saving` guard (block dismissal mid-submit) moves into that callback below.
 
   const handleSubmit = async () => {
     setError('');
@@ -60,26 +57,34 @@ export function ResolveKindModal({ entity, kinds, sameCodeCount, onResolve, onCl
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md rounded-xl border bg-background shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          {/* Header */}
-          <div className="flex items-center justify-between border-b bg-card px-5 py-4">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{t('unknown.resolve_title')}</div>
-              <div className="truncate text-[11px] text-muted-foreground">
-                {entity.name || t('unknown.unnamed')}
-                {code && <span className="ml-1.5 rounded bg-secondary px-1.5 py-px font-mono text-[10px]">{code}</span>}
-              </div>
-            </div>
-            <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div className="flex flex-col gap-4 p-5">
+    <FormDialog
+      open
+      onOpenChange={(nextOpen) => { if (!nextOpen && !saving) onClose(); }}
+      title={t('unknown.resolve_title')}
+      description={entity.name || t('unknown.unnamed')}
+      size="md"
+      footer={
+        <>
+          <button onClick={onClose} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary transition-colors">
+            {t('unknown.cancel')}
+          </button>
+          <button
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+            data-testid="resolve-apply"
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? t('unknown.saving') : t('unknown.apply')}
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+            {/* Visual echo of the source kind code (FormDialog's `description` above stays plain
+                text for a11y — this keeps the monospace badge FormDialog's template can't hold). */}
+            {code && (
+              <span className="-mt-2 inline-block w-fit rounded bg-secondary px-1.5 py-px font-mono text-[10px] text-muted-foreground">{code}</span>
+            )}
             {/* Strategy toggle */}
             <div className="flex gap-1.5">
               {(['existing', 'new'] as const).map((s) => (
@@ -150,24 +155,7 @@ export function ResolveKindModal({ entity, kinds, sameCodeCount, onResolve, onCl
             )}
 
             {error && <p className="text-xs text-destructive">{error}</p>}
-
-            {/* Footer */}
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <button onClick={onClose} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary transition-colors">
-                {t('unknown.cancel')}
-              </button>
-              <button
-                onClick={() => void handleSubmit()}
-                disabled={saving}
-                data-testid="resolve-apply"
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                {saving ? t('unknown.saving') : t('unknown.apply')}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
-    </>
+    </FormDialog>
   );
 }

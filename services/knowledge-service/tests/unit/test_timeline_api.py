@@ -70,7 +70,13 @@ def _stub_book_client(chapter_titles: dict | None = None):
 
 def _make_client(book_client=None):
     from app.main import app
-    from app.deps import get_book_client
+    from app.deps import (
+        get_book_client,
+        get_event_text_translations_repo,
+        get_glossary_client,
+        get_projects_repo,
+        get_translation_client,
+    )
     from app.middleware.jwt_auth import get_current_user
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
@@ -80,6 +86,15 @@ def _make_client(book_client=None):
     app.dependency_overrides[get_book_client] = (
         lambda: book_client if book_client is not None else _stub_book_client()
     )
+    # KG-TL — the localization deps are resolved eagerly by FastAPI even on the
+    # canonical (no reader language) path. Stub them so the unit suite never
+    # touches the (uninitialised) Postgres pool / live glossary / translation.
+    # With no ?language= + no stored pref these are never CALLED — they only need
+    # to construct.
+    app.dependency_overrides[get_projects_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_glossary_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_translation_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_event_text_translations_repo] = lambda: AsyncMock()
     return TestClient(app, raise_server_exceptions=False)
 
 

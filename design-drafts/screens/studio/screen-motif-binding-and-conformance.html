@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Motif Binding lens + Conformance (studio surfaces, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     MOTIF BINDING LENS (no new panel id) + QUALITY-CONFORMANCE (`quality-conformance`)
+     Spec: docs/specs/2026-07-01-writing-studio/33_motif_studio.md  (Waves 3b + 3c)
+
+     WHY THESE EXIST
+     (a) BINDING. Spec 21 classifies motifs as a CROSS-REF LENS, and spec
+         24-PH19 already specs this surface verbatim — but only the READ half
+         shipped. `NodeBadges.tsx:124-145` renders `case 'motif'` as a
+         NON-INTERACTIVE <span> with a title= tooltip and NO onClick. The
+         author can SEE that 打脸 is bound to chapter 41 and can do NOTHING
+         about it: no bind, no unbind, no re-role, no swap, no chain — and no
+         way to act on the pinned-vs-live version DRIFT the chip already
+         computes and already displays.
+     (b) CONFORMANCE. The Studio's answer to "did the prose actually realize
+         the plan?" is currently ONE RED/GREEN DOT (`useConformanceStatus`, a
+         book-level rollup). The beat-by-beat trace exists, is tested, and is
+         reachable only from ChapterEditorPage.
+
+     🔴 THE DATA UNDERNEATH IS FRAGILE — BUT NOT WRONG. READ THIS BEFORE YOU
+     "FIX" ANYTHING. FOUR predicates answer "which motif is bound to this
+     node," in FOUR different SHAPES:
+       • MotifApplicationRepo.by_nodes()          (motif_application.py:94)
+         → a LIST, ORDER BY created_at ASC — docstring says "the bound motif
+         per node" (SINGULAR language over a PLURAL return)
+       • ConformanceTraceReader.apps_by_nodes()   (conformance.py:95 — a
+         router-PRIVATE duplicate) → a DICT, DISTINCT ON … DESC
+       • plan.py:1035 → `bound[0]`
+       • _MOTIF_CHIPS_SQL (plan_overlay.py:112) → every row, no DISTINCT ON
+
+     ⚠ ALL FOUR ARE CORRECT TODAY — and only because of an invariant that
+       NOTHING ENFORCES:
+         AN outline_node_id HOLDS AT MOST ONE motif_application ROW.
+       Every writer maintains it: _bind_scene_motif (plan.py:843), the chapter
+       swap apply_motif_swap (motif_select.py:470) and arc_apply (:438) all
+       delete_for_nodes BEFORE they insert; every other insert_many writes onto
+       scene nodes CREATED IN THE SAME TRANSACTION. There is NO append-only
+       re-bind path anywhere. motif_application is therefore NOT a per-node
+       ledger — it is a per-node CURRENT-BINDING TABLE with a ledger-shaped API
+       bolted on. And the schema does not say so: migrate.py:882 is a plain
+       INDEX on outline_node_id, NOT a UNIQUE one.
+
+     M-BUG-1 (CONFIRMED — the real one)
+       The invariant lives in 5 writers and nowhere else. The day a 6th writer
+       appends instead of replacing, the four readers break in FOUR DIFFERENT
+       DIRECTIONS, and two of them (`bound[0]`, the chips) fail SILENTLY and
+       WRONGLY. Fix = the DDL (a partial UNIQUE index) + ONE predicate. See
+       BE-M1 below.
+
+     🚫 M-BUG-2 and M-BUG-3 ARE REFUTED. An earlier draft of this file asserted
+        both as LIVE bugs and drew "before" states for them. They are NOT live,
+        and those states CANNOT OCCUR:
+       M-BUG-2  "bound[0] of an ASC ledger reads the OLDEST binding, so the
+                re-role guard validates against the SUPERSEDED motif." — NO.
+                by_nodes(project_id,[node_id]) returns ≤ 1 ROW, so bound[0] IS
+                the current binding. set_role_binding's un-id-filtered UPDATE
+                hits EXACTLY ONE ROW. The re-role guard is CORRECT.
+       M-BUG-3  "a node re-bound twice renders the TWO DEAD motifs and
+                truncates the LIVE one away." — NO. node_ref is
+                COALESCE(outline_node_id, structure_node_id), and every row with
+                a structure_node_id ALSO carries an outline_node_id
+                (arc_apply.py:485 sets both) ⇒ ≤ 1 chip row per node. A
+                re-bound node renders ONE chip, the current one, TODAY.
+       ⇒ NO regression test can red on either. A builder who budgets one will
+         spend a day failing to make it fail. THE MOCK BELOW RENDERS THE
+         REFUTATION, not the fictional bug — a mock must draw states that EXIST.
+
+     M-BUG-4  (CONFIRMED — and this one DOES red on the old code)
+                Spec 23's BA4 renamed arc_template_id → arc_id (a
+                structure_node.id) on BOTH transports. The FE still sends the
+                old name: _ConformanceRunArgs is ForbidExtra (server.py:3104)
+                ⇒ 422 on every propose; the REST GET (conformance.py:339)
+                silently DROPS the unknown query param ⇒ 422 ARC_ID_REQUIRED.
+                Arc-conformance is DEAD ON BOTH PATHS. A
+                cross-service-normalization bug.
+     3 × 404  (CONFIRMED) /actions/conformance_run/{estimate,confirm} and
+                /scenes/{nid}/regenerate-to-beat — routes nobody ever wrote.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       • Binding is a LENS, not a panel: a Motifs section in `scene-inspector`
+         + a Motifs facet on PlanDrawer's chapter variant + the NodeBadges
+         chip gaining an onClick. ZERO new panel ids for 3b.
+       • Suggest is a BUTTON, not a panel (spec 21) — 2 of them.
+       • Conformance IS a panel — and it registers as the 5th CARD in
+         QualityHubPanel (DOCK-8). A hub sibling that is not on the hub is
+         UNREACHABLE (`built-mounted-unreachable-duplicated-nav-list`).
+
+     BACKEND WORK THESE SCREENS IMPLY (flagged up front, not silently)
+       • BE-M1 🔴 ENFORCE THE INVARIANT, THEN COLLAPSE THE PREDICATES.
+         (a) THE DDL IS THE FIX — a partial UNIQUE index:
+             CREATE UNIQUE INDEX uq_motif_application_node
+               ON motif_application(outline_node_id)
+               WHERE outline_node_id IS NOT NULL;
+             ⚠ BACK-FILL PROBE FIRST — it will not build if any node already
+             holds >1 row. Run the GROUP BY … HAVING count(*)>1 and PASTE THE
+             OUTPUT in VERIFY. Non-empty ⇒ the invariant is FALSE, M-BUG-2/3
+             are REAL after all, and this draft is WRONG. Stop and re-plan.
+         (b) ONE predicate: current_for_nodes() = DISTINCT ON (outline_node_id)
+             … ORDER BY created_at DESC. Repoint the call sites; DELETE the
+             router-private duplicate; RENAME by_nodes → history_by_nodes.
+         (c) DISTINCT ON in _MOTIF_CHIPS_SQL — belt-and-braces. CHANGES NOTHING
+             A USER CAN SEE (M-BUG-3 is refuted). Do not sell it as a fix.
+       • BE-M4 GET /works/{pid}/motifs/suggest  (REST mirror of the tool)
+       • BE-M5 GET /books/{bid}/arcs/suggest
+       • M-BUG-4 FIX: arc_template_id → arc_id on the GET *and* the propose.
+       • 🔴 BE-5 `regenerate-to-beat` — DO NOT BUILD IT. REFUTED, see below.
+       • 🔴 LANE-B IS NOT FREE. `useConformanceStatus` is a hand-rolled useState
+         loader and EffectContext has NO refresh() on it — "call its refresh()"
+         is NOT IMPLEMENTABLE as the registry stands. Add
+         `refreshConformance?: () => void` to EffectContext (mirroring the
+         shipped reloadChapter/reloadScenes bridges), or migrate the hook to
+         react-query. See the final callout.
+       • 3c has ZERO NEW ROUTES. No allowlist, no gateway. (Lane-B above is FE.)
+
+     🔴 BE-5 REFUTED — Regenerate points at a route THAT ALREADY EXISTS.
+       The audit said "mirror POST /scenes/{nid}/prose (engine.py:1522)". That
+       route is `persist_scene_prose` — a WS-B3 divergence-promote PERSIST. It
+       GENERATES NOTHING. Meanwhile POST /works/{pid}/generate (engine.py:326)
+       ALREADY takes `outline_node_id` (GenerateBody:91-105) and ALREADY
+       receives `structures: StructureRepo` (:334) — it is the production
+       caller that feeds the ARC lens, and the same one gather_motifs rides.
+       ⇒ once BE-M2 lands, THAT ROUTE *IS* "regenerate to beat." The "to-beat"
+       semantics are the PACKER LENS, not a route. Re-point; don't build.
+
+     ⚠ AND REGENERATE SPENDS WITH NO CONFIRM GATE — SAY IT, DON'T HIDE IT.
+       POST /works/{pid}/generate has NO /actions preview/confirm, NO estimate,
+       NO spend guardrail. The cost-gated path is the MCP TOOL's confirm effect
+       (actions.py:388); the REST TWIN BYPASSES IT. That is PRE-EXISTING — it is
+       the route the shipped ComposePanel already drives — so Regenerate wears
+       EXACTLY what Compose wears: nothing. DO NOT bolt a private gate onto one
+       button: spec 28 AN-8 says a new confirmation convention IS the defect.
+       Filed as D-COMPOSE-GENERATE-UNGATED; fix it at the route, for both.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① BEFORE — the non-interactive chip, struck through
+       ② scene-inspector Motifs section: bound + STALE PIN (v3 vs v5) + Re-pin
+       ③ roles half-bound (target unset) · Swap · Chain · Unbind
+       ④ Suggest — ranked with match_reason, vs the flat 100-row fallback
+       ⑤ undo_token: OFFERED on a chapter node, ABSENT on a scene node
+       ⑥ the chips: ONE current chip TODAY (M-BUG-3 refuted) → the SAME chip,
+         now CLICKABLE. The only thing 3b changes here is the onClick.
+       ⑦ quality-conformance: the beat trace, advisory-unverified, dirty/stale
+       ⑧ conformance arc scope: the 422 today → a report
+       ⑨ empty · error · run-in-flight (no fake Cancel) · no BYOK model
+
+     SCALE — a chapter has 3–8 scenes; an arc spans 20–60 chapters and its
+     trace is the union of its chapters' beats. Conformance is READ per scope,
+     never book-wide: a book-wide beat trace over 1,842 chapters is not a
+     panel, it is a report.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    --motif: #b482e0; --motif-muted: #2a1f38; --stale: #e8b87e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.bug { color: var(--destructive); border-color: var(--destructive); }
+  h2 .tag.ok { color: var(--success); border-color: var(--success); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; gap: 10px; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .inspector   { width: 470px; height: 720px; flex-shrink: 0; }
+  .conformance { width: 900px; max-width: 100%; height: 560px; }
+  .mini        { width: 300px; height: 330px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .midi        { width: 400px; }
+
+  /* ── Inspector sections ───────────────────────────────────────────────── */
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 9px 12px 7px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .src { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9px; opacity: .75; text-transform: none; letter-spacing: 0; }
+  .sect-body { padding: 0 12px 11px; display: flex; flex-direction: column; gap: 9px; }
+  .sect.folded .sect-body { display: none; }
+  .sect.folded .sect-head { opacity: .55; }
+  .sect.hot .sect-head { color: var(--motif); }
+
+  /* ── Motif binding card ───────────────────────────────────────────────── */
+  .bindcard { border: 1px solid var(--motif); border-radius: 8px; background: var(--motif-muted); padding: 9px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .bindcard .top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .bindcard .nm { font-size: 12.5px; font-weight: 600; }
+  .bindcard .nm .en { color: var(--muted-fg); font-weight: 400; font-size: 11.5px; }
+  .tier { display: inline-flex; align-items: center; gap: 4px; height: 17px; padding: 0 6px; border-radius: 100px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .03em; border: 1px solid var(--border-hover); background: var(--secondary); color: var(--muted-fg); }
+  .pin { font-family: 'JetBrains Mono'; font-size: 9.5px; padding: 1px 5px; border-radius: 3px; background: var(--background); color: var(--muted-fg); border: 1px solid var(--border); }
+  .pin.drift { color: var(--stale); border-color: var(--stale); background: #2e2519; }
+  .beatline { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; background: var(--background); border: 1px solid var(--border); font-size: 11.5px; }
+  .beatline .b { font-family: 'JetBrains Mono'; font-size: 9.5px; padding: 1px 5px; border-radius: 3px; background: var(--motif-muted); color: var(--motif); flex-shrink: 0; }
+  .beatline .t { flex: 1; }
+  .tt { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  .tt i { width: 5px; height: 5px; border-radius: 50%; background: var(--border-hover); display: block; }
+  .tt i.on { background: var(--motif); }
+  .tt .lb { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); margin-left: 3px; }
+
+  .rolerow { display: grid; grid-template-columns: 84px 1fr; gap: 8px; align-items: center; font-size: 11.5px; }
+  .rolerow > label { font-size: 11px; color: var(--muted-fg); font-family: 'JetBrains Mono'; font-size: 10px; }
+  .cast { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px 0 3px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid var(--border); font-size: 11px; width: fit-content; }
+  .av { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: #141010; }
+  .unset { height: 22px; padding: 0 8px; border-radius: 100px; background: transparent; border: 1px dashed var(--border-hover);
+    color: var(--muted-fg); font-size: 11px; cursor: pointer; width: fit-content; }
+  .unset:hover { color: var(--foreground); border-color: var(--foreground); }
+  .unset.warn { border-color: var(--warning); color: var(--warning); }
+
+  .btnrow { display: flex; gap: 5px; flex-wrap: wrap; }
+  .btn { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 6px; white-space: nowrap;
+    font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); }
+  .btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .btn svg { width: 12px; height: 12px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.motif { background: var(--motif-muted); border-color: var(--motif); color: var(--motif); }
+  .btn.stale { background: #2e2519; border-color: var(--stale); color: var(--stale); }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: var(--destructive); }
+  .btn.sm { height: 22px; padding: 0 7px; font-size: 10.5px; }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+
+  .ro-note { font-size: 10px; color: var(--muted-fg); line-height: 1.55; }
+  .ro-note b { color: var(--foreground); font-weight: 600; }
+  .ro-note code { font-family: 'JetBrains Mono'; font-size: 9.5px; }
+  .strike { text-decoration: line-through; opacity: .5; }
+
+  /* ── Suggest popover ──────────────────────────────────────────────────── */
+  .pop { width: 400px; border: 1px solid var(--border-hover); border-radius: 9px; background: var(--background-alt); overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .pop-head { display: flex; align-items: center; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); }
+  .ptab { height: 26px; padding: 0 9px; font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer; border-bottom: 2px solid transparent; }
+  .ptab.active { color: var(--foreground); font-weight: 600; border-bottom-color: var(--motif); }
+  .cand { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .cand:hover { background: var(--card-hover); }
+  .cand .top { display: flex; align-items: center; gap: 7px; }
+  .cand .nm { font-size: 12px; font-weight: 600; }
+  .cand .nm .en { color: var(--muted-fg); font-weight: 400; font-size: 11px; }
+  .score { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--motif); font-weight: 500; }
+  .reasons { display: flex; gap: 4px; flex-wrap: wrap; }
+  .mr { display: flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 100px;
+    font-size: 9.5px; font-weight: 600; background: var(--secondary); color: var(--muted-fg); border: 1px solid var(--border); }
+  .mr.hit { background: var(--accent-muted); color: var(--accent-fg); border-color: var(--accent); }
+  .mr .v { font-family: 'JetBrains Mono'; font-size: 9px; opacity: .85; }
+  .flatrow { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+  .flatrow .c { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); margin-left: auto; }
+
+  /* ── Conformance trace ────────────────────────────────────────────────── */
+  .toolbar { padding: 9px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+  .seg span { height: 26px; display: flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer; }
+  .seg span.on { background: var(--secondary); color: var(--foreground); font-weight: 600; }
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 22px 6px 9px; border-radius: 6px; cursor: pointer; }
+  .select-wrap > svg { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+
+  .banner { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; font-size: 11px; line-height: 1.5; flex-shrink: 0; }
+  .banner svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+  .banner b { color: var(--foreground); }
+  .banner code { font-family: 'JetBrains Mono'; font-size: 10px; }
+  .banner.warn { background: var(--primary-muted); border-bottom: 1px solid var(--primary); color: #f0dcb0; }
+  .banner.warn svg { color: var(--warning); }
+  .banner.bad { background: var(--destructive-muted); border-bottom: 1px solid var(--destructive); color: #f0c4c0; }
+  .banner.bad svg { color: var(--destructive); }
+  .banner.stale { background: #2e2519; border-bottom: 1px solid var(--stale); color: #f0dcb0; }
+  .banner.stale svg { color: var(--stale); }
+
+  .cols { display: grid; grid-template-columns: 22px 96px 132px 1fr 116px 92px; gap: 10px; align-items: center; }
+  .thead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  /* `.thead` is a SIBLING of `.body`, so the scrollport top IS 0 — a non-zero sticky
+     offset on `.group-head` would shove it over the first row of its own group. */
+  .group-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; background: var(--background);
+    border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--muted-fg); position: sticky; top: 0; z-index: 1; }
+  .group-head b { color: var(--foreground); font-weight: 600; }
+  .group-head .n { margin-left: auto; font-size: 10px; }
+  .trow { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .trow:hover { background: var(--card-hover); }
+  .trow.miss { background: rgba(217,88,79,.07); }
+  .st { width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .st svg { width: 10px; height: 10px; }
+  .st.ok { background: #16301f; color: var(--success); }
+  .st.warnst { background: var(--primary-muted); color: var(--warning); }
+  .st.no { background: var(--destructive-muted); color: var(--destructive); }
+  .scene { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bk { font-family: 'JetBrains Mono'; font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--motif-muted); color: var(--motif); width: fit-content; }
+  .verdict { font-size: 11.5px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .verdict.no { color: var(--destructive); }
+  .tension { display: flex; align-items: center; gap: 5px; font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .tension .d { color: var(--destructive); }
+  .tension .u { color: var(--success); }
+  .rowact { display: flex; justify-content: flex-end; }
+
+  .prog { height: 4px; border-radius: 2px; background: var(--secondary); overflow: hidden; margin-top: 6px; }
+  .prog i { display: block; height: 100%; background: var(--primary); border-radius: 2px; }
+  .empty { padding: 46px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .empty svg { width: 28px; height: 28px; color: var(--border-hover); }
+  .empty .t { font-size: 12.5px; font-weight: 600; }
+  .empty .d { font-size: 11px; color: var(--muted-fg); line-height: 1.55; max-width: 280px; }
+
+  /* ── Chips (the plan-hub node badges) ─────────────────────────────────── */
+  .node { width: 260px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; }
+  .node .ttl { font-size: 12px; font-weight: 600; }
+  .node .ch { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .mchip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 100px;
+    font-size: 10.5px; font-weight: 600; background: var(--motif-muted); color: var(--motif); border: 1px solid var(--motif); }
+  .mchip.dead { opacity: .5; border-style: dashed; }
+  .mchip.clickable { cursor: pointer; }
+  .mchip.clickable:hover { background: var(--motif); color: #141010; }
+  .chiprow { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .more { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1400px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .callout ul { margin: 6px 0 0 16px; }
+  .callout li { margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<h1>Motif Binding lens &amp; Conformance <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio surfaces, draft</span></h1>
+<p class="sub">
+  Spec: <b>33_motif_studio.md</b> · Waves <b>3b</b> (binding lens + suggest — <b>zero new panel ids</b>) and <b>3c</b>
+  (<code>quality-conformance</code>, a DOCK-8 sibling on the Quality hub). Today the Studio's entire motif surface is a
+  <b>non-interactive <code>&lt;span&gt;</code></b> (<code>NodeBadges.tsx:124</code>) and its entire conformance surface is <b>one red/green dot</b>.
+  Both halves are built, tested, and reachable only from the page spec 16 deletes.
+  <b>And the data underneath is wrong:</b> four predicates answer <i>"which motif is bound to this node"</i> and they disagree —
+  which is fine while nothing can write, and <b>not fine the moment these screens ship</b>.
+</p>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① ② ③ — BEFORE, and the Motifs section in scene-inspector
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>①②③ The binding lens <span class="tag">scene-inspector</span> <span class="tag">no new panel id</span> — BEFORE vs AFTER</h2>
+
+<div class="stack">
+  <!-- ① BEFORE -->
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">① BEFORE — NodeBadges.tsx:124</span></div>
+    <div class="body" style="padding:12px">
+      <div class="node">
+        <div class="ttl">Ch. 41 · 反目</div>
+        <div class="ch">chapter · outline_node</div>
+        <div class="chiprow">
+          <span class="mchip" title="打脸 — pinned v3">打脸</span>
+          <span class="more">title= tooltip only</span>
+        </div>
+      </div>
+      <div class="ro-note" style="margin-top:12px;line-height:1.75">
+        <code>case 'motif': return &lt;span …&gt;</code><br />
+        <span class="strike">onClick</span> · <span class="strike">bind</span> · <span class="strike">unbind</span> ·
+        <span class="strike">re-role</span> · <span class="strike">swap</span> · <span class="strike">chain</span><br /><br />
+        The chip <b>already computes</b> pinned-vs-live drift and <b>already shows it</b> —
+        and there has never been a way to <b>act</b> on it.<br /><br />
+        <b style="color:var(--destructive)">This span is the sum total of motif in the Writing Studio.</b>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono" style="color:var(--destructive)">read-only · 86 files unreachable</span></div>
+  </div>
+
+  <!-- ② ③ AFTER — the scene-inspector Motifs section -->
+  <div class="panel inspector">
+    <div class="panel-head">
+      <span>Scene — 反目 · 3 · 剑断</span>
+      <div class="acts">
+        <div class="ico" title="Jump to prose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+        <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="sect folded"><div class="sect-head">Identity <span class="src mono">book-service.scenes</span></div><div class="sect-body"></div></div>
+      <div class="sect folded"><div class="sect-head">Intent <span class="src mono">outline_node</span></div><div class="sect-body"></div></div>
+      <div class="sect folded"><div class="sect-head">Cast &amp; Setting <span class="src mono">outline_node</span></div><div class="sect-body"></div></div>
+      <div class="sect folded"><div class="sect-head">Craft <span class="src mono">outline_node</span></div><div class="sect-body"></div></div>
+
+      <!-- ── THE NEW SECTION ── -->
+      <div class="sect hot">
+        <div class="sect-head">◆ Motifs <span class="src mono">motif_application · NEW · 24-PH19</span></div>
+        <div class="sect-body">
+
+          <div class="bindcard">
+            <div class="top">
+              <span class="nm">打脸 <span class="en">· Face-slap</span></span>
+              <span class="tier">system</span>
+              <span class="pin drift" title="pinned_version 3 · live_version 5">pin v3 ↑ live v5</span>
+            </div>
+
+            <div class="beatline">
+              <span class="b">beat 2 · turn</span>
+              <span class="t">the gap in strength is revealed, not claimed</span>
+              <span class="tt"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span class="lb">4/5</span></span>
+            </div>
+
+            <div class="rolerow"><label>aggressor</label>
+              <span class="cast"><span class="av" style="background:#e8a832">李</span>李慕白</span></div>
+            <div class="rolerow"><label>target</label>
+              <button class="unset warn">+ pick a cast member — unset</button></div>
+
+            <div class="ro-note">
+              An unset role reaches <code>gather_motifs</code> as a hole: the drafter is told the <i>shape</i> of the beat and not
+              <b>who it lands on</b>. <code>RoleBindingRow</code> is the entity picker that fills it.
+            </div>
+
+            <div class="btnrow">
+              <button class="btn stale"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> Re-pin to v5</button>
+              <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg> Swap…</button>
+              <button class="btn motif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg> Suggest</button>
+              <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg> Chain →</button>
+              <button class="btn ghost danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> Unbind</button>
+            </div>
+
+            <div class="ro-note" style="border-top:1px solid var(--border);padding-top:7px">
+              ⚠ <b>No Undo button on this card.</b> <code>undo_token</code> is <b>CHAPTER-scope only</b> — a <b>scene</b> bind returns
+              <b>none</b>. The scene's inverse is a re-bind, and it is offered as one.
+              Advertising token-undo here would ship a button that <b>silently does nothing</b>.
+            </div>
+          </div>
+
+          <div class="ro-note" style="display:flex;gap:6px;align-items:flex-start;padding:7px 9px;border:1px solid var(--stale);border-radius:6px;background:#2e2519;color:#f0dcb0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;margin-top:1px;color:var(--stale)"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div><b style="color:var(--foreground)">The stale pin is the drift NodeBadges already shows and no one could act on.</b>
+              You pinned <b style="color:var(--foreground)">v3</b>; the motif is now <b style="color:var(--foreground)">v5</b> — beat 3's intent changed.
+              <b style="color:var(--foreground)">Re-pin</b> re-binds to the live version. The pin is deliberate: a motif moving under a bound scene must not
+              silently change what the drafter was told.</div>
+          </div>
+
+          <button class="btn ghost" style="align-self:flex-start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Bind another motif</button>
+        </div>
+      </div>
+
+      <div class="sect folded"><div class="sect-head">Links <span class="src mono">scene_link</span></div><div class="sect-body"></div></div>
+      <div class="sect folded"><div class="sect-head">Grounding <span class="src mono">scene_grounding_pins</span></div><div class="sect-body"></div></div>
+    </div>
+
+    <div class="panel-foot">
+      <span class="mono">v12 · saved 4m ago</span>
+      <span class="mono" style="color:var(--motif)">1 motif bound · current_for_nodes()</span>
+    </div>
+  </div>
+
+  <!-- ④ Suggest popover -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="pop">
+      <div class="pop-head">
+        <span class="ptab active">✨ Suggested <span class="mono" style="font-size:9px">ranked</span></span>
+        <span class="ptab">Browse all <span class="mono" style="font-size:9px">42</span></span>
+      </div>
+      <div class="cand">
+        <div class="top"><span class="nm">打脸 <span class="en">· Face-slap</span></span><span class="score">0.91</span></div>
+        <div class="reasons">
+          <span class="mr hit">tension <span class="v">4/5 ≈ 4/5</span></span>
+          <span class="mr hit">genre <span class="v">xianxia</span></span>
+          <span class="mr hit">precondition <span class="v">met</span></span>
+          <span class="mr hit">semantic <span class="v">.88</span></span>
+        </div>
+      </div>
+      <div class="cand">
+        <div class="top"><span class="nm">扮猪吃老虎 <span class="en">· Play the pig</span></span><span class="score">0.74</span></div>
+        <div class="reasons">
+          <span class="mr hit">tension <span class="v">3/5</span></span>
+          <span class="mr hit">genre <span class="v">xianxia</span></span>
+          <span class="mr">precondition <span class="v">strength already revealed</span></span>
+          <span class="mr hit">semantic <span class="v">.71</span></span>
+        </div>
+      </div>
+      <div class="cand">
+        <div class="top"><span class="nm">未婚妻退婚 <span class="en">· Broken engagement</span></span><span class="score">0.38</span></div>
+        <div class="reasons">
+          <span class="mr">tension <span class="v">2/5</span></span>
+          <span class="mr hit">genre <span class="v">xianxia</span></span>
+          <span class="mr">precondition <span class="v">arc already past inciting</span></span>
+          <span class="mr">semantic <span class="v">.41</span></span>
+        </div>
+      </div>
+      <div style="padding:7px 10px;font-size:10px;color:var(--muted-fg);line-height:1.55">
+        <b style="color:var(--foreground)">BE-M4</b> · <code class="mono" style="font-size:9.5px">GET /works/{pid}/motifs/suggest?chapter_id=</code> —
+        a REST mirror of <code class="mono" style="font-size:9.5px">composition_motif_suggest_for_chapter</code>. The engine
+        (<code class="mono" style="font-size:9.5px">MotifRetriever</code>, <code class="mono" style="font-size:9.5px">deps.py:205</code>) already computes this.
+      </div>
+    </div>
+
+    <div class="pop">
+      <div class="pop-head">
+        <span class="ptab">✨ Suggested</span>
+        <span class="ptab active" style="border-bottom-color:var(--destructive);color:var(--destructive)">TODAY — <code class="mono" style="font-size:10px">useMotifCandidates</code></span>
+      </div>
+      <div class="flatrow"><span>打脸</span><span class="c">face_slap</span></div>
+      <div class="flatrow"><span>灵根测试</span><span class="c">root_test</span></div>
+      <div class="flatrow"><span>未婚妻退婚</span><span class="c">engagement_broken</span></div>
+      <div class="flatrow"><span>Lời thề Hàn Giang</span><span class="c">han_oath</span></div>
+      <div class="flatrow" style="color:var(--muted-fg)"><span>… 96 more, unranked, unexplained</span></div>
+      <div style="padding:8px 10px;font-size:10px;color:#f0c4c0;background:var(--destructive-muted);line-height:1.6">
+        <b style="color:var(--foreground)">The shipped hook is <code class="mono" style="font-size:9.5px">motifApi.list({ scope:'all', limit:100 })</code></b> —
+        a flat, unranked list of 100 motifs behind the <code class="mono" style="font-size:9.5px">SwapMotifPopover</code>.
+        The ranked, <code class="mono" style="font-size:9.5px">match_reason</code>-explained suggest the backend <b style="color:var(--foreground)">already computes</b>
+        is reachable <b style="color:var(--foreground)">only by asking the chat agent for it by name</b>. That is GG-1's Determinism + Discoverability failure,
+        in one hook. <b style="color:var(--foreground)">Keep the flat list as the "Browse all" tab</b> — it is a fine fallback and a terrible default.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>🔴 BE-M1 — and the fix is in the DDL, not the repo.</b> Four predicates answer <i>"which motif is bound to this node"</i>, in four
+  different shapes: <code>MotifApplicationRepo.by_nodes</code> returns a <b>list</b>, <b>ASC</b> (docstring: <i>"the bound motif per node"</i> —
+  <b>singular language over a plural return</b>); <code>ConformanceTraceReader.apps_by_nodes</code> (a <b>router-private duplicate</b>) returns a
+  <b>dict</b>, <code>DISTINCT ON … DESC</code>; <code>plan.py:1035</code> takes <code>bound[0]</code>; <code>_MOTIF_CHIPS_SQL</code> takes them all.
+  <b style="color:var(--foreground)">All four are CORRECT TODAY — and only because an <code>outline_node_id</code> holds at most ONE row.</b>
+  That invariant lives in <b>five writers</b> and <b>nowhere else</b>: <code>migrate.py:882</code> is a plain
+  <code>INDEX idx_motif_application_node</code>, <b>not a UNIQUE one</b>. The day a sixth writer appends instead of replacing, the four readers
+  break in <b>four different directions</b>, and two of them fail <b>silently</b>.
+  <b style="color:var(--foreground)">⇒ BE-M1 = a partial UNIQUE index (the schema finally states the rule) + ONE <code>current_for_nodes()</code>
+  + delete the duplicate + rename <code>by_nodes</code> → <code>history_by_nodes</code></b> so autocomplete cannot pick the wrong one.
+  ⚠ <b>Run the back-fill probe first</b> — <code>GROUP BY outline_node_id HAVING count(*) &gt; 1</code>. If it returns rows, the invariant is
+  <b>false</b>, M-BUG-2/3 are <b>real after all</b>, and this draft is wrong. <b>Paste that output in VERIFY.</b>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ ⑥ — undo_token scope, and the chips M-BUG-3 breaks
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤⑥ <code style="font-size:11px" class="mono">undo_token</code> is chapter-scope only <span class="tag bug">the trap</span> · and the chips are already correct <span class="tag ok">M-BUG-3 REFUTED</span></h2>
+
+<div class="stack">
+  <!-- ⑤a chapter node — undo offered -->
+  <div class="panel mini" style="width:340px">
+    <div class="panel-head"><span style="color:var(--success)">⑤a PlanDrawer — CHAPTER node</span></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="bindcard">
+        <div class="top"><span class="nm">打脸</span><span class="tier">system</span><span class="pin">pin v5</span></div>
+        <div class="beatline"><span class="b">chapter</span><span class="t">Ch. 41 · 反目</span></div>
+        <div class="btnrow">
+          <button class="btn motif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg> Suggest</button>
+          <button class="btn ghost danger">Unbind</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:flex-start;padding:8px 10px;border:1px solid var(--success);border-radius:7px;background:#16301f;font-size:11px;line-height:1.55;color:#bfe8cd">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;margin-top:1px;color:var(--success)"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 3v6h6"/></svg>
+        <div><b style="color:var(--foreground)">Unbound 打脸 from Ch. 41.</b>
+          <span style="text-decoration:underline;cursor:pointer">Undo</span>
+          <div class="mono" style="font-size:9px;margin-top:4px;opacity:.8">undo_token: ub_7a12f0c9…</div></div>
+      </div>
+      <div class="ro-note"><b>Offered here, and only here.</b> <code>composition_motif_unbind</code> returns an <code>undo_token</code> —
+        the exact inverse — for a <b>chapter</b> bind. It has <b>zero frontend consumers today</b>.</div>
+    </div>
+  </div>
+
+  <!-- ⑤b scene node — NO undo -->
+  <div class="panel mini" style="width:340px">
+    <div class="panel-head"><span style="color:var(--destructive)">⑤b scene-inspector — SCENE node</span></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="bindcard">
+        <div class="top"><span class="nm">打脸</span><span class="tier">system</span><span class="pin">pin v5</span></div>
+        <div class="beatline"><span class="b">scene</span><span class="t">41.3 · 剑断</span></div>
+        <div class="btnrow">
+          <button class="btn motif"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg> Suggest</button>
+          <button class="btn ghost danger">Unbind</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:7px;background:var(--background);font-size:11px;line-height:1.55;color:var(--muted-fg)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b style="color:var(--foreground)">Unbound 打脸 from scene 41.3.</b>
+          <span class="strike">Undo</span> — <b style="color:var(--destructive)">not offered</b>.
+          <div style="margin-top:4px">Re-bind from Suggest, or press <span class="mono">⌘Z</span> in the outline.</div></div>
+      </div>
+      <div class="ro-note"><b style="color:var(--destructive)">A scene bind returns NO <code>undo_token</code>.</b>
+        Render an Undo here and you ship a button that <b>silently does nothing</b> — <code>silent-success-is-a-bug</code>,
+        the exact class this repo has shipped before. The scene's inverse is a re-bind, and the mock says so.</div>
+    </div>
+  </div>
+
+  <!-- ⑥ the chips — the REFUTATION, drawn. The bug an earlier draft claimed here CANNOT OCCUR. -->
+  <div class="panel mini" style="width:340px;height:auto">
+    <div class="panel-head"><span>⑥ Plan-hub node chips <span style="color:var(--success)">M-BUG-3 REFUTED</span></span></div>
+    <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div class="ro-note" style="margin-bottom:6px"><b>TODAY</b> — node re-bound twice (打脸 → 扮猪吃老虎 → 越级战斗):</div>
+        <div class="node" style="width:100%">
+          <div class="ttl">Ch. 41 · 反目</div>
+          <div class="chiprow">
+            <span class="mchip">越级战斗</span>
+            <span class="more">title= tooltip only</span>
+          </div>
+          <div class="ro-note">
+            <b style="color:var(--success)">ONE chip. The current one. Already correct.</b>
+            The two prior bindings were <b>DELETED</b> by the re-bind — they were never rows to render.
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="ro-note" style="margin-bottom:6px;color:var(--success)"><b style="color:var(--success)">AFTER 3b</b> — the same chip. The <b style="color:var(--foreground)">only</b> change is the onClick:</div>
+        <div class="node" style="width:100%;border-color:var(--success)">
+          <div class="ttl">Ch. 41 · 反目</div>
+          <div class="chiprow">
+            <span class="mchip clickable">越级战斗</span>
+            <span class="more">→ opens scene-inspector</span>
+          </div>
+        </div>
+      </div>
+      <div class="ro-note" style="border-top:1px solid var(--destructive);padding-top:7px;color:#f0c4c0">
+        🚫 <b style="color:var(--destructive)">WHY AN EARLIER DRAFT DREW TWO DEAD CHIPS HERE — and why that state cannot exist.</b>
+        The SQL <i>looks</i> damning: <code>_MOTIF_CHIPS_SQL</code> (<code>plan_overlay.py:112</code>) selects <b>every</b>
+        <code>motif_application</code> row — no <code>DISTINCT ON</code> — and <code>motifChipsFor()</code>
+        (<code>nodePresentation.ts:152</code>) is a bare <code>.filter</code> with <code>MOTIF_CHIP_CAP = 2</code>.
+        <b style="color:var(--foreground)">But there are no superseded rows to select.</b> Every re-bind path
+        (<code>_bind_scene_motif</code> <code>plan.py:843</code> · <code>apply_motif_swap</code> <code>motif_select.py:470</code> ·
+        <code>arc_apply.py:438</code>) runs <code>delete_for_nodes</code> <b style="color:var(--foreground)">before</b> it inserts.
+        <b style="color:var(--foreground)">An <code>outline_node_id</code> holds at most ONE row.</b>
+        <b style="color:var(--destructive)">Do not write a regression test for this — it cannot red.</b>
+      </div>
+      <div class="ro-note">
+        The real defect is <b>M-BUG-1</b>: that invariant is enforced by <b>convention across 5 writers</b> and by
+        <b>nothing else</b> — <code>migrate.py:882</code> is a plain <code>INDEX</code>, not a <code>UNIQUE</code> one.
+        <b style="color:var(--foreground)">BE-M1 makes it a partial UNIQUE index</b>, so the four readers stop
+        depending on a promise the schema never made. The <code>DISTINCT ON</code> goes in too — as
+        <i>belt-and-braces</i>, not as a fix, and <b>it changes nothing a user can see</b>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>🚫 M-BUG-2 is REFUTED too — and it is the more seductive of the two, so here is the trap in full.</b>
+  <code>plan.py:1035</code> really does do <code>bound = await apps.by_nodes(…); app = bound[0]</code>, <code>by_nodes</code> really is
+  <code>ORDER BY created_at</code> <b>ASC</b>, and the same file really does comment 160 lines later
+  (<code>:1196</code>) that <i>"by_nodes is created_at ASC → <b>last</b> wins on a re-bind"</i> and then build a dict so the last wins.
+  <b>The file genuinely disagrees with itself.</b> Every instinct says: the re-role guard validates against the <i>oldest</i> motif.
+  <b style="color:var(--foreground)">It does not.</b> <code>by_nodes(project_id, [node_id])</code> on <b>one</b> node returns
+  <b>≤ 1 row</b>, so <code>bound[0]</code> <b>IS</b> the current binding — and <code>set_role_binding</code>'s
+  <code>UPDATE … WHERE project_id AND outline_node_id</code> with <b>no id filter</b> therefore updates <b>exactly one row</b>.
+  <b>The behavior is correct. No test can red on it.</b> What is <i>wrong</i> is that four readers survive on an
+  unenforced invariant and a singular docstring over a plural return — <b>which is M-BUG-1, and BE-M1 is its fix.</b>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ — quality-conformance, the panel
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ Conformance <span class="tag">quality-conformance</span> <span class="tag">quality</span> <span class="tag">DOCK-8 · 5th hub card</span> — chapter scope, dirty</h2>
+<p class="sub">
+  Registers as the <b>5th card</b> in <code>QualityHubPanel</code>'s <code>CARDS</code> (<code>:14-19</code>) beside
+  <code>quality-canon</code> / <code>-critic</code> / <code>-coverage</code> / <code>-promises</code>. <b>A DOCK-8 sibling that is not on the hub is
+  unreachable</b> — that is a shipped bug class in this repo, not a hypothetical. <b>Do not build a 6th tab in a monolith.</b>
+</p>
+
+<div class="panel conformance">
+  <div class="panel-head">
+    <span>Conformance — Nghịch thiên</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <span class="lbl">Scope</span>
+    <div class="seg"><span class="on">Chapter</span><span>Arc</span></div>
+    <div class="select-wrap"><select><option>Ch. 41 · 反目</option><option>Ch. 42 · 断剑</option><option>Ch. 43 · 归途</option></select>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+    <div style="flex:1"></div>
+    <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> Re-run…</button>
+  </div>
+
+  <!-- honesty is a required render -->
+  <div class="banner warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div><b>Advisory — unverified.</b> <code>calibrated: false</code>. This signal is <b>coarse and not causally verified</b>, and it
+      <b>gates nothing</b>. The engine says so; the GUI must not imply otherwise.</div>
+  </div>
+
+  <!-- freshness -->
+  <div class="banner stale">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="10"/></svg>
+    <div><b>Canon moved since this run.</b> <code>dirty_reasons: ["arc_edited", "glossary_entity_renamed"]</code> ·
+      <code>stale_chapters: [41, 42, 47]</code> — this chapter is one of them.
+      <b style="color:var(--foreground)">Re-run to trust the trace below.</b>
+      <span style="margin-left:6px;font-size:10px;opacity:.85">freshness comes from <code>useConformanceStatus</code> — the shipped predicate, <b style="color:var(--foreground)">not recomputed here</b></span></div>
+  </div>
+
+  <div class="thead cols">
+    <div></div><div>Scene</div><div>Beat</div><div>Verdict</div><div>Tension</div><div></div>
+  </div>
+
+  <div class="body">
+    <div class="group-head">打脸 · <b>Face-slap</b> — bound to Ch. 41 <span class="n">pin v5 · 3 beats</span></div>
+
+    <div class="trow cols">
+      <div><span class="st ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+      <div class="scene">41.1 · 讥讽</div>
+      <div><span class="bk">1 · setup</span></div>
+      <div class="verdict">realized — the mockery is public, and named</div>
+      <div class="tension">3 → 3 <span style="opacity:.6">·</span> target 2</div>
+      <div class="rowact"></div>
+    </div>
+
+    <div class="trow cols">
+      <div><span class="st warnst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span></div>
+      <div class="scene">41.2 · 逼问</div>
+      <div><span class="bk">2 · turn</span></div>
+      <div class="verdict">realized — but the reveal is <i>claimed</i>, not shown</div>
+      <div class="tension">4 → <span class="d">2 ↓</span> <span style="opacity:.6">·</span> target 4</div>
+      <div class="rowact"><button class="btn sm ghost">Open</button></div>
+    </div>
+
+    <div class="trow cols miss">
+      <div><span class="st no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+      <div class="scene">41.3 · 剑断</div>
+      <div><span class="bk">3 · land</span></div>
+      <div class="verdict no">NOT realized — no witness; the humiliation is private</div>
+      <div class="tension">— <span style="opacity:.6">·</span> target 5</div>
+      <div class="rowact"><button class="btn sm primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> Regenerate</button></div>
+    </div>
+
+    <div class="trow cols">
+      <div><span class="st ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+      <div class="scene">41.4 · 余波</div>
+      <div><span class="bk">— aftermath</span></div>
+      <div class="verdict">realized — unbound scene, graded against the chapter</div>
+      <div class="tension">2 → 2</div>
+      <div class="rowact"></div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span class="mono">3 / 4 beats realized</span> · last run <b style="color:var(--muted-fg);font-weight:400">2 days ago</b> ·
+      <span style="color:var(--stale)">dirty ⚠</span>
+    </div>
+    <span class="mono" style="font-size:10px">GET /works/{pid}/conformance?scope=chapter&amp;chapter_id=</span>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Regenerate points at a route that has existed all along — that is the whole of decision BE-5.</b>
+  The audit said <i>"mirror <code>POST /scenes/{nid}/prose</code> (<code>engine.py:1522</code>)"</i>. <b>That route is
+  <code>persist_scene_prose</code></b> — a WS-B3 divergence-promote <b>PERSIST</b>. It <b>generates nothing</b>. Meanwhile
+  <code>POST /works/{pid}/generate</code> (<code>engine.py:326</code>) <b>already takes <code>outline_node_id</code></b>
+  (<code>GenerateBody:91-105</code>), already receives <code>structures: StructureRepo</code> (<code>:334</code>) — it is the production
+  caller that feeds the <b>arc</b> lens, and the same one <code>gather_motifs</code> will ride.
+  <b>⇒ once BE-M2 lands, that route <i>is</i> "regenerate to beat."</b> The to-beat semantics are the <b>packer lens</b>, not a route.
+  So: <code>{outline_node_id, model_ref, model_source, operation:'draft_scene', mode:'auto'}</code>, and it wears
+  <b>whatever cost UX ComposePanel already wears</b> — spec 28 <b>AN-8</b>: <i>a reviewer finding a new confirmation convention here has
+  found a defect</i>. <b>Zero new routes in 3c.</b>
+</div>
+
+<div class="callout warn">
+  <b>⚠ And what ComposePanel wears is NOTHING — so Regenerate spends with no confirm gate. Say it out loud.</b>
+  <code>POST /works/{pid}/generate</code> has <b>no <code>/actions</code> preview/confirm, no estimate, no spend guardrail</b> in the route.
+  The confirm-gated path is the <b>MCP tool's</b> effect (<code>actions.py:388</code> <code>_execute_generate</code>) — and the
+  <b>REST twin bypasses it entirely</b>. That asymmetry is <b>pre-existing</b>: it is the route the shipped ComposePanel already drives.
+  <b style="color:var(--foreground)">Do NOT bolt a private confirm gate onto this one button.</b> One button spending differently from the
+  Compose panel that drives the same route <i>is</i> the AN-8 defect. It is filed as <b>D-COMPOSE-GENERATE-UNGATED</b> and belongs to the
+  compose path — fix it <b>at the route</b>, and Regenerate inherits the fix for free. <i>(This closed OQ-5, which the first draft left
+  UNVERIFIED. The mock's Regenerate button is drawn as what it will actually be: a direct spend, exactly like Compose.)</i>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑧ ⑨ — arc scope (M-BUG-4), and the remaining states
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑧⑨ Arc scope is DEAD on both transports <span class="tag bug">M-BUG-4</span> · plus empty · error · run-in-flight</h2>
+
+<div class="stack">
+  <!-- ⑧ BEFORE arc scope -->
+  <div class="panel mini" style="width:390px">
+    <div class="panel-head"><span style="color:var(--destructive)">⑧ BEFORE — Scope: Arc</span></div>
+    <div class="banner bad">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div><b>422 · ARC_ID_REQUIRED</b><br /><code>arc_id</code> is <code>None</code> — <code>_resolve_book_arc</code> raised (<code>conformance.py:326</code>)</div>
+    </div>
+    <div class="body" style="padding:12px">
+      <div class="ro-note" style="line-height:1.8">
+        Spec 23's <b>BA4</b> renamed <code>arc_template_id</code> → <code>arc_id</code> (<b>a <code>structure_node.id</code></b>) on
+        <b>both</b> transports. The FE still sends the old name — on <b>both</b>:<br /><br />
+        <b>REST GET</b> (<code>conformance.py:339</code>) — FastAPI <b>silently drops</b> the unknown query param ⇒
+        <code>arc_id=None</code> ⇒ <b style="color:var(--destructive)">422 ARC_ID_REQUIRED</b>.<br /><br />
+        <b>MCP propose</b> — <code>_ConformanceRunArgs</code> is <b>ForbidExtra</b> (<code>server.py:3105</code>) ⇒
+        <b style="color:var(--destructive)">422 on every call</b>.<br /><br />
+        And <code>ArcConformancePanel</code> passes <code>arcTemplateId={openArc.id}</code> — <b style="color:var(--destructive)">an
+        arc_template id, which is the wrong entity class entirely</b>. The old template comparison moved to
+        <code>scope=arc_template_drift</code>.<br /><br />
+        <b style="color:var(--destructive)">A cross-service-normalization bug: a value crossing a boundary was renamed on one side.</b>
+        Not in the audit.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono" style="color:var(--destructive)">dead on both paths</span></div>
+  </div>
+
+  <!-- ⑧ AFTER arc scope -->
+  <div class="panel mini" style="width:390px">
+    <div class="panel-head"><span style="color:var(--success)">⑧ AFTER — Scope: Arc</span></div>
+    <div class="toolbar" style="padding:7px 10px">
+      <div class="seg"><span>Chapter</span><span class="on">Arc</span></div>
+      <div class="select-wrap" style="flex:1"><select style="width:100%"><option>Arc 3 · 剑冢之下 (Ch. 38–52)</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+    <div class="body">
+      <div class="trow cols" style="grid-template-columns:22px 1fr 92px;padding:7px 10px">
+        <div><span class="st ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+        <div class="scene">Ch. 38 · 入冢 <span class="mono" style="font-size:9.5px;color:var(--muted-fg)">setup</span></div>
+        <div class="tension">2 → 3</div>
+      </div>
+      <div class="trow cols" style="grid-template-columns:22px 1fr 92px;padding:7px 10px">
+        <div><span class="st warnst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg></span></div>
+        <div class="scene">Ch. 41 · 反目 <span class="mono" style="font-size:9.5px;color:var(--muted-fg)">turn</span></div>
+        <div class="tension">4 → <span class="d">2 ↓</span></div>
+      </div>
+      <div class="trow cols miss" style="grid-template-columns:22px 1fr 92px;padding:7px 10px">
+        <div><span class="st no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+        <div class="scene">Ch. 47 · 断剑 <span class="mono" style="font-size:9.5px;color:var(--muted-fg)">climax</span></div>
+        <div class="tension">—</div>
+      </div>
+      <div style="padding:10px 12px" class="ro-note">
+        <code>?scope=arc&amp;arc_id=&lt;structure_node.id&gt;</code> — <b>the arg name is the whole fix.</b>
+        The route, the engine and the report have been there the entire time.
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">9 / 14 beats realized across Arc 3</span></div>
+  </div>
+
+  <!-- ⑨ empty / error / in-flight -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="panel" style="width:390px">
+      <div class="panel-head"><span>⑨a Empty — no bindings on Ch. 44</span></div>
+      <div class="body">
+        <div class="empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>
+          <div class="t">Nothing to trace yet</div>
+          <div class="d">Conformance grades the prose against the <b style="color:var(--foreground)">motifs you bound</b>. Bind one to a scene and its beats appear here.</div>
+          <button class="btn sm motif">Open scene-inspector →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="width:390px">
+      <div class="panel-head"><span style="color:var(--destructive)">⑨b Error</span></div>
+      <div class="body">
+        <div class="empty" style="padding:26px 20px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--destructive)"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div class="t">Couldn't load the trace</div>
+          <div class="d mono" style="font-size:10px">503 · composition-service unreachable</div>
+          <button class="btn sm">Retry</button>
+        </div>
+        <div class="ro-note" style="padding:0 12px 12px">
+          <code>MotifPanelBoundary</code>. <b>Never render an error as "0 beats realized"</b> — a red dot the author trusts is worse than no dot.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="width:390px">
+      <div class="panel-head"><span>⑨c Re-run — in flight</span></div>
+      <div class="body" style="padding:12px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:center;gap:7px;font-size:11.5px">
+          <span class="tier">BYOK</span><span class="mono" style="font-size:11px">gemma-4-26b-a4b-qat · lm_studio</span>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:7px;background:var(--background);padding:9px 10px">
+          <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:600">
+            <span>Grading scene 2 of 4</span><span class="mono" style="color:var(--primary)">running</span></div>
+          <div class="prog"><i style="width:50%"></i></div>
+          <div class="ro-note" style="margin-top:7px">
+            <code>composition_conformance_run</code> → <code>/actions/preview</code> → <code>/actions/confirm?token=</code> → poll.<br />
+            <b>No Cancel — the worker is not cancellable.</b> Say so; a Cancel that does nothing is a lie with a button on it.
+          </div>
+        </div>
+        <div class="ro-note">
+          <b style="color:var(--destructive)">DELETE</b> <code>conformanceRunEstimate</code> / <code>conformanceRunConfirm</code>
+          (<code>api.ts:223-235</code>) — two hand-rolled URLs against routes <b>nobody ever wrote</b>. The file
+          <b>contains its own fix</b>: <code>arcConformanceRunPropose</code> (<code>:245-273</code>) already does it correctly.
+          <b>Mirror the sibling.</b>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>The three live 404s this wave deletes — they are a shipped bug, not a design choice.</b>
+  <ul>
+    <li><code>POST /v1/composition/actions/conformance_run/estimate</code> ← <code>api.ts:224</code> / <code>useConformanceTrace.ts:32</code> — <b>no such route</b></li>
+    <li><code>POST /v1/composition/actions/conformance_run/confirm</code> ← <code>api.ts:230</code> / <code>useConformanceTrace.ts:36</code> — <b>no such route</b></li>
+    <li><code>POST …/scenes/{node_id}/regenerate-to-beat</code> ← <code>api.ts:301</code> / <code>useMotifBinding.ts:66</code> — <b>appears nowhere in <code>services/**/*.py</code></b></li>
+  </ul>
+  The first two are a <b>pure FE invented-URL bug</b>: someone hand-rolled a <b>per-action</b> estimate/confirm pair for a Tier-W op
+  instead of using the generic <code>/actions/preview</code> + <code>/actions/confirm</code> spine — the exact violation plan 30 §8.1 forbids.
+  <b>Delete both; mirror the sibling in the same file.</b> The third is refuted above: re-point, don't build.
+  <b>DoD makes this a network-tab assertion, not a grep</b> — the panels must be watched making the calls, and the calls must be 200s.
+</div>
+
+<div class="callout warn">
+  <b>What this panel does NOT answer.</b> <code>scope=arc_template_drift</code> — <i>"how far has my arc drifted from the template it came
+  from?"</i> — is a <b>different question</b>: <i>spec vs template</i>, not <i>spec vs prose</i>. It has a route and no surface, and it belongs to
+  <b>Wave 4</b>'s <code>arc-templates</code> panel (<code>D-ARC-TEMPLATE-DRIFT-VIEW</code>). Adding a third radio here would put two unrelated
+  questions behind one control and guarantee the wrong one gets answered. <b>Do not add it.</b>
+</div>
+
+<div class="callout bad">
+  <b>🔴 Lane-B (X-4) is not optional for the conformance panel — and "call its <code>refresh()</code>" is NOT IMPLEMENTABLE. This is real work.</b>
+  <code>/^composition_motif_(bind|unbind)/</code> must invalidate <code>['composition','motif-bindings', projectId, chapterId]</code>,
+  <code>['composition','conformance', projectId, chapterId]</code> <b>and the plan-hub OVERLAY key</b> (the chips are overlay-sourced —
+  <code>plan-hub/api.ts:61</code>, not a bindings key). So far, so mechanical.
+  <b style="color:var(--foreground)">Then <code>/^composition_conformance_run/</code> has to reach <code>useConformanceStatus</code></b>
+  (<code>studio/panels/useConformanceStatus.ts:22</code>) — a <b>hand-rolled <code>useState</code> loader</b> whose own comment says
+  <i>"no cache to invalidate"</i>, exposing a <b>component-scoped <code>refresh()</code></b>. And a handler registered through
+  <code>registerEffectHandler</code> receives only
+  <code>EffectContext = {tool, result, bookId, host, queryClient, isChapterDirty?, reloadChapter?, reloadScenes?}</code>
+  (<code>effectRegistry.ts:10-26</code>). <b style="color:var(--destructive)">There is no <code>refresh()</code> on it, and
+  <code>queryClient.invalidateQueries</code> cannot touch a <code>useState</code> hook</b>
+  (<code>invalidatequeries-cannot-reach-hand-rolled-state</code>). <b>Pick one and BUILD it:</b>
+  <ul>
+    <li><b>(A) — recommended.</b> Add <code>refreshConformance?: () =&gt; void</code> to <code>EffectContext</code>, supplied by
+      <code>useStudioEffectReconciler</code> — <b>exactly how the shipped <code>reloadChapter</code> / <code>reloadScenes</code> already bridge
+      to hand-rolled Tier-4 state.</b> XS.</li>
+    <li><b>(B)</b> Migrate <code>useConformanceStatus</code> to react-query. S — but it touches <b>two shipped panels</b>
+      (<code>SceneBrowserPanel:110</code>, <code>SceneInspectorPanel:86</code>) ⇒ re-smoke both.</li>
+  </ul>
+  Skip it and an agent runs a conformance check while the dirty chip on <b>every scene surface</b> keeps showing the old answer —
+  the exact staleness X-4 exists to kill, <b>shipped in the one panel this wave is about</b>.
+</div>
+
+<script>
+  /* Two real toggles, because a mock that claims "scope is a control" should let you press it. */
+  document.querySelectorAll('.seg').forEach(function (seg) {
+    seg.querySelectorAll('span').forEach(function (s) {
+      s.addEventListener('click', function () {
+        seg.querySelectorAll('span').forEach(function (x) { x.classList.remove('on'); });
+        s.classList.add('on');
+      });
+    });
+  });
+  document.querySelectorAll('.ptab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      var head = t.parentElement;
+      head.querySelectorAll('.ptab').forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,2521 @@
+[
+  {
+    "tool": "composition_create_work",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "plan_propose_spec",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "source_markdown": "# Arc One\n\nA hero answers the call and sets out."
+    }
+  },
+  {
+    "tool": "composition_outline_node_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "kind": "chapter",
+        "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66",
+        "title": "TLE node"
+      }
+    }
+  },
+  {
+    "tool": "composition_canon_rule_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "text": "TLE canon rule: the sky is green."
+      }
+    }
+  },
+  {
+    "tool": "plan_apply_revision",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "run_id": "019f4f6b-0cb1-7216-8325-fc00fd15c49f"
+    }
+  },
+  {
+    "tool": "plan_handoff_autofix",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "run_id": "019f4f6b-0cb1-7216-8325-fc00fd15c49f"
+    }
+  },
+  {
+    "tool": "plan_interpret_feedback",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "run_id": "019f4f6b-0cb1-7216-8325-fc00fd15c49f",
+      "user_message": "tighten the pacing"
+    }
+  },
+  {
+    "tool": "composition_get_outline_node",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "node_id": "019f4f6b-0d0a-7215-8965-6d2549510aff"
+    }
+  },
+  {
+    "tool": "composition_outline_node_update",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "node_id": "019f4f6b-0d0a-7215-8965-6d2549510aff",
+        "title": "TLE node v2",
+        "expected_version": 1
+      }
+    }
+  },
+  {
+    "tool": "composition_motif_suggest_for_chapter",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "node_id": "019f4f6b-0d0a-7215-8965-6d2549510aff"
+    }
+  },
+  {
+    "tool": "composition_canon_rule_update",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "rule_id": "019f4f6b-0d4b-73ff-bd48-1f2c71ef8b12",
+        "text": "TLE canon rule v2.",
+        "expected_version": 1
+      }
+    }
+  },
+  {
+    "tool": "book_list_revisions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_chapter_restore_revision",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66",
+      "revision_id": "019f4f6b-08e5-710e-a210-b9455095693a"
+    }
+  },
+  {
+    "tool": "glossary_ontology_upsert",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "scope": "book",
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "items": [
+        {
+          "level": "kind",
+          "code": "tle_upsert_kind",
+          "name": "TLE Upsert Kind"
+        }
+      ]
+    }
+  },
+  {
+    "tool": "glossary_ontology_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "scope": "book",
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "items": [
+        {
+          "level": "kind",
+          "code": "tle_upsert_kind"
+        }
+      ]
+    }
+  },
+  {
+    "tool": "composition_authoring_run_get",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+        "run_id": "75c03c77-6142-4ff0-bd49-a5b4348a7250"
+      }
+    }
+  },
+  {
+    "tool": "composition_authoring_run_gate",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+        "run_id": "75c03c77-6142-4ff0-bd49-a5b4348a7250"
+      }
+    }
+  },
+  {
+    "tool": "composition_authoring_run_close",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+        "run_id": "75c03c77-6142-4ff0-bd49-a5b4348a7250"
+      }
+    }
+  },
+  {
+    "tool": "memory_remember",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "fact_text": "TLE probe fact",
+      "fact_type": "preference",
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "memory_forget",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "fact_id": "df59fb5c7f80f3a7c53b68a5f4a64342"
+    }
+  },
+  {
+    "tool": "composition_canon_rule_delete",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "rule_id": "019f4f6b-0d4b-73ff-bd48-1f2c71ef8b12"
+    }
+  },
+  {
+    "tool": "composition_outline_node_delete",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "node_id": "019f4f6b-0d0a-7215-8965-6d2549510aff"
+    }
+  },
+  {
+    "tool": "book_audio_generate",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_chapter_bulk_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapters": [
+        {
+          "title": "TLE Bulk Chapter",
+          "content": "TLE body"
+        }
+      ]
+    }
+  },
+  {
+    "tool": "book_chapter_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "original_language": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_chapter_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_chapter_publish",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_chapter_purge",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_chapter_save_draft",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "book_chapter_unpublish",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_chapter_update_meta",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66",
+      "title": "TLE chapter v2"
+    }
+  },
+  {
+    "tool": "book_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "title": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_get",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_get_chapter",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "book_list_chapters",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_media_generate",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "book_purge",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_scene_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "book_scene_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "q": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_set_cover",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_steering_delete",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "provide name or id to delete",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_steering_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_steering_set",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "name": "tle-sweep",
+      "body": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_update_meta",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "description": "TLE sweep touched this"
+    }
+  },
+  {
+    "tool": "catalog_get_book",
+    "tier": "R",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "book not found",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "catalog_list_public_books",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "composition_arc_apply",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_assign_chapters",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+      }
+    }
+  },
+  {
+    "tool": "composition_arc_delete",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_extract_template",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_import_analyze",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "composition_arc_move",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_restore",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_suggest",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "composition_arc_template_drift",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_update",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_accept_unit",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_create",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+      }
+    }
+  },
+  {
+    "tool": "composition_authoring_run_pause",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_reject_unit",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_resume",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_revert_all",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+        "run_id": "75c03c77-6142-4ff0-bd49-a5b4348a7250"
+      }
+    }
+  },
+  {
+    "tool": "composition_authoring_run_start",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_conformance_run",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "scope": "chapter"
+      }
+    }
+  },
+  {
+    "tool": "composition_conformance_status",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "composition_generate",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "model_source": "user_model",
+        "model_ref": "tle-sweep"
+      }
+    }
+  },
+  {
+    "tool": "composition_get_generation_job",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_get_mine_job",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_get_prose",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "composition_get_work",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "composition_list_canon_rules",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "composition_list_outline",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "composition_motif_adopt",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_bind",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_book_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "composition_motif_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_link_list",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_mine",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+        "scope": "book"
+      }
+    }
+  },
+  {
+    "tool": "composition_motif_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {}
+    }
+  },
+  {
+    "tool": "composition_motif_unbind",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_outline_node_move",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_outline_node_restore",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_publish",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "composition_scene_link_create",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_scene_link_delete",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_write_prose",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+        "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66",
+        "body": {},
+        "expected_draft_version": 1
+      }
+    }
+  },
+  {
+    "tool": "find_tools",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "intent": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_adopt_standards",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_book_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "level": "genre",
+      "name": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_book_delete",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_ontology_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_book_patch",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_revert",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_set_active_genres",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_book_set_kind_genres",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "kind_code": "character",
+      "add": [
+        "universal"
+      ]
+    }
+  },
+  {
+    "tool": "glossary_book_sync_apply",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_sync_available",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_create_chapter_link",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "glossary_create_evidence",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_entity_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_entity_get_genres",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_entity_rename",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+      "name": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_entity_restore",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_entity_set_attributes",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+      "scope_label": "TLE swept"
+    }
+  },
+  {
+    "tool": "glossary_entity_set_genres",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_get_entity",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_get_entity_evidence",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_list_ai_suggestions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_list_chapter_links",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_list_entity_revisions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777"
+    }
+  },
+  {
+    "tool": "glossary_list_merge_candidates",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_list_system_standards",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "glossary_list_unknown_entities",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "glossary_propose_aliases",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "language_code": "en",
+      "items": [
+        {
+          "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+          "aliases": [
+            "Aldric",
+            "Vane"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "tool": "glossary_propose_batch",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "goal": "probe",
+      "ops": [
+        {
+          "type": "create_kinds",
+          "params": {
+            "kinds": [
+              {
+                "code": "tle_batch_kind",
+                "name": "TLE Batch Kind"
+              }
+            ]
+          },
+          "rationale": "probe"
+        }
+      ]
+    }
+  },
+  {
+    "tool": "glossary_propose_entities",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_kinds",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "kinds": [
+        {
+          "code": "tle_kinds_kind",
+          "name": "TLE Kinds Kind"
+        }
+      ]
+    }
+  },
+  {
+    "tool": "glossary_propose_merge",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "winner_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+      "loser_ids": [
+        "019f4f6b-096f-7c66-bf3b-dec1418edb74"
+      ]
+    }
+  },
+  {
+    "tool": "glossary_propose_new_attribute",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "kind_code": "character",
+      "code": "tle_probe_attr",
+      "name": "TLE Probe Attr"
+    }
+  },
+  {
+    "tool": "glossary_propose_new_entity",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_new_kind",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "code": "tle_probe_kind",
+      "name": "TLE Probe Kind"
+    }
+  },
+  {
+    "tool": "glossary_propose_reassign_kind",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+      "kind_code": "location"
+    }
+  },
+  {
+    "tool": "glossary_propose_restore_revision",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_status_change",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "status": "active",
+      "entity_ids": [
+        "019f4f6b-0969-7033-bd0a-ef24b416b777"
+      ]
+    }
+  },
+  {
+    "tool": "glossary_propose_translation",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "language_code": "vi",
+      "items": [
+        {
+          "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+          "value": "Aldric Vane"
+        }
+      ]
+    }
+  },
+  {
+    "tool": "glossary_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_user_standards_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "jobs_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "jobs_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "jobs_summary",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_adopt_template",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_build_graph",
+    "tier": "W",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_build_graph: {\"message\": \"this project has no embedding model configured \\u2014 call kg_project_set_embedding_model first (pick one of your embedding models with settings_list_models), then kg_run_benchmark, then retry this build\"}",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "llm_model": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_build_wiki",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "model_ref": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_entity_edge_timeline",
+    "tier": "R",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_entity_edge_timeline: {\"message\": \"entity not found\"}",
+    "args": {
+      "entity_id": "019f4f6b-0969-7033-bd0a-ef24b416b777",
+      "edge_type": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_graph_query",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_list_templates",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_multi_query",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_ids": [
+        "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+      ]
+    }
+  },
+  {
+    "tool": "kg_project_entities_to_nodes",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_project_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_project_set_embedding_model",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_project_set_embedding_model: {\"message\": \"embedding model probe failed: embedding failed (400): {\\\"code\\\":\\\"EMBED_VALIDATION\\\",\\\"message\\\":\\\"invalid model_ref\\\"}\\n \\u2014 check the model_ref is one of your own embedding models (settings_list_models)\"}",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "embedding_model": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_propose_edge",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_propose_fact",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "fact_text": "tle-sweep",
+      "fact_type": "decision"
+    }
+  },
+  {
+    "tool": "kg_run_benchmark",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_run_benchmark: {\"message\": \"this project has no embedding model configured \\u2014 set one first\"}",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_schema_edit",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_schema_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_sync_apply",
+    "tier": "W",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_sync_apply: {\"message\": \"this project has no adopted ontology to sync \\u2014 adopt a template first\"}",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "base_source_hash": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_sync_available",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_triage_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_triage_place_edge",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_triage_resolve",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_triage_resolve: {\"message\": \"no pending triage items for this signature\"}",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "signature": "tle-sweep",
+      "action": "map"
+    }
+  },
+  {
+    "tool": "kg_triage_schema_write",
+    "tier": "W",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_triage_schema_write: {\"message\": \"this project has no adopted ontology to edit \\u2014 adopt a project schema first (the System template is read-only and admin-managed)\"}",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "signature": "tle-sweep",
+      "action": "add_to_vocab"
+    }
+  },
+  {
+    "tool": "kg_view_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "kg_world_query",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "lore_enrichment_auto_enrich",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "args": {
+        "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+        "embedding_model_ref": "tle-sweep",
+        "generation_model_ref": "tle-sweep"
+      }
+    }
+  },
+  {
+    "tool": "memory_recall_entity",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "entity_name": "tle-sweep"
+    }
+  },
+  {
+    "tool": "memory_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "memory_timeline",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a"
+    }
+  },
+  {
+    "tool": "plan_compile",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_review_checkpoint",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_self_check",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_validate",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "registry_get_skill",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "registry_get_workflow",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "registry_list_skills",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "registry_list_workflows",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_get_defaults",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_get_profile",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_list_models",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_list_providers",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_model_delete",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "settings_provider_inventory",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "story_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-0a89-76f8-9489-35e57bb77d4a",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "tool_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "tool_load",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "translation_coverage",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "translation_job_control",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_job_status",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_list_versions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+    }
+  },
+  {
+    "tool": "translation_patch_block",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_retranslate_dirty",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66",
+      "target_language": "tle-sweep"
+    }
+  },
+  {
+    "tool": "translation_save_edited_version",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_segment_status",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_id": "019f4f6b-08e3-7d60-a169-6b6742f90f66",
+      "target_language": "tle-sweep"
+    }
+  },
+  {
+    "tool": "translation_set_active_version",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_start_extraction",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_ids": [
+        "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+      ]
+    }
+  },
+  {
+    "tool": "translation_start_job",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407",
+      "chapter_ids": [
+        "019f4f6b-08e3-7d60-a169-6b6742f90f66"
+      ]
+    }
+  },
+  {
+    "tool": "translation_update_settings",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4f6b-0810-7753-aaeb-48f5f412e407"
+    }
+  },
+  {
+    "tool": "book_get",
+    "source": "critical",
+    "executes": true,
+    "effect_verified": true,
+    "why": "returned the fixture book_id (019f4f6b-0810-7753-aaeb-48f5f412e407)"
+  },
+  {
+    "tool": "glossary_adopt_standards",
+    "source": "critical",
+    "executes": true,
+    "effect_verified": true,
+    "why": "minted a confirm_token"
+  },
+  {
+    "tool": "glossary_extract_entities_from_doc",
+    "source": "critical",
+    "executes": null,
+    "effect_verified": null,
+    "why": "paid or not authorable — effect not verified at $0"
+  },
+  {
+    "tool": "glossary_propose_entities",
+    "source": "critical",
+    "executes": true,
+    "effect_verified": true,
+    "why": "entity 019f4f6b-4d76-764a-b950-3d5ec3139142 is in glossary_entities"
+  },
+  {
+    "tool": "settings_update_profile",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "display_name": "TLE Sweep e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "kg_project_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "name": "TLE-user-sweep-e4522d17",
+      "project_type": "general"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "kg_view_upsert",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-7866-7f7a-9796-7cfae681c48d",
+      "code": "tle_e4522d17",
+      "name": "TLE view"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "kg_view_delete",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4f6b-7866-7f7a-9796-7cfae681c48d",
+      "code": "tle_e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "glossary_user_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "level": "kind",
+      "name": "TLE Kind e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "glossary_user_patch",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "level": "kind",
+      "code": "tle_kind_e4522d17",
+      "description": "patched by TLE sweep",
+      "base_version": "2026-07-11T04:24:31.249119Z"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "glossary_user_delete",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "level": "kind",
+      "code": "tle_kind_e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "glossary_user_restore",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "level": "kind",
+      "code": "tle_kind_e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_provider_inventory",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "provider_credential_id": "3f7ecfd3-949f-4681-8535-bf12ad6139fd"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_model_register",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "provider_credential_id": "3f7ecfd3-949f-4681-8535-bf12ad6139fd",
+      "provider_model_name": "tle-sweep-registered-e4522d17",
+      "context_length": 8192
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_model_update",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "user_model_id": "c1e96aea-84b4-4bb3-83a0-885c9d86c3a0",
+      "alias": "TLE renamed e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_model_set_favorite",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "user_model_id": "c1e96aea-84b4-4bb3-83a0-885c9d86c3a0",
+      "value": true
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_model_set_active",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "user_model_id": "c1e96aea-84b4-4bb3-83a0-885c9d86c3a0",
+      "value": true
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_model_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "user_model_id": "c1e96aea-84b4-4bb3-83a0-885c9d86c3a0"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "code": "tle-motif-e4522d17",
+        "name": "TLE Motif e4522d17"
+      }
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_get",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "motif_id": "019f4f6b-7b37-7960-92e1-9ae4b86a4806"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_link_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "motif_id": "019f4f6b-7b37-7960-92e1-9ae4b86a4806"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_patch",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "motif_id": "019f4f6b-7b37-7960-92e1-9ae4b86a4806",
+        "summary": "patched by TLE sweep",
+        "expected_version": 1
+      }
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_adopt",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "motif_id": "019f4f6b-7b37-7960-92e1-9ae4b86a4806"
+      }
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_archive",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "motif_id": "019f4f6b-7b37-7960-92e1-9ae4b86a4806"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_propose_skill",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-sweep-e4522d17",
+      "description": "Throwaway skill proposed by the TLE capability sweep.",
+      "body_md": "# TLE sweep\nThis proposal is deleted with its owner."
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_propose_workflow",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-wf-e4522d17",
+      "title": "TLE sweep workflow",
+      "description": "Throwaway workflow proposed by the TLE capability sweep.",
+      "surfaces": [
+        "chat"
+      ],
+      "steps": [
+        {
+          "id": "step-one",
+          "tool": "book_list",
+          "gate": "none"
+        }
+      ]
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_get_skill",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-skill-e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_update_skill",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-skill-e4522d17",
+      "body_md": "# TLE\nupdated by the sweep"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_set_skill_enabled",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-skill-e4522d17",
+      "enabled": true
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_get_workflow",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-wf-seed-e4522d17"
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "registry_update_workflow",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "slug": "tle-wf-seed-e4522d17",
+      "title": "TLE workflow v2",
+      "description": "Updated by the TLE capability sweep.",
+      "steps": [
+        {
+          "id": "step-one",
+          "tool": "book_list",
+          "gate": "none"
+        }
+      ]
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_link_create",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input",
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_link_delete",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input",
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "jobs_cancel",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input",
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "jobs_pause",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input",
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "settings_model_set_default",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "capability": "embedding"
+    },
+    "as_throwaway_user": true
+  }
+]

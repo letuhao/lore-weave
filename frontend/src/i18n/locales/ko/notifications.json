@@ -1,0 +1,60 @@
+{
+  "title": "알림",
+  "markAllRead": "모두 읽음 처리",
+  "markRead": "읽음 처리",
+  "delete": "삭제",
+  "empty": "알림이 없습니다",
+  "loading": "로딩 중...",
+  "justNow": "방금 전",
+  "minsAgo": "{{count}}분 전",
+  "hrsAgo": "{{count}}시간 전",
+  "daysAgo": "{{count}}일 전",
+  "viewAll": "모든 알림 보기",
+  "loadMore": "더 보기",
+  "pageTitle": "알림",
+  "notif": {
+    "translation": {
+      "completed": "\"{{book}}\" 번역 완료 — {{count}}개 챕터",
+      "partial": "번역 일부 완료 — 성공: {{done}}, 실패: {{failed}}",
+      "failed": "번역 실패 — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}}님이 팔로우하기 시작했습니다"
+    },
+    "llm_job": {
+      "completed": "{{operation}} 완료",
+      "failed": "{{operation}} 실패",
+      "cancelled": "{{operation}} 취소됨",
+      "unknown": "{{operation}}"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "채팅",
+      "completion": "완료",
+      "embedding": "임베딩",
+      "entity_extraction": "개체 추출",
+      "fact_extraction": "사실 추출",
+      "relation_extraction": "관계 추출",
+      "event_extraction": "이벤트 추출",
+      "translation": "번역",
+      "image_gen": "이미지 생성",
+      "video_gen": "비디오 생성"
+    },
+    "status": {
+      "completed": "완료됨",
+      "failed": "실패함",
+      "cancelled": "취소됨",
+      "running": "진행 중",
+      "pending": "대기 중"
+    }
+  },
+  "category": {
+    "all": "전체",
+    "translation": "번역",
+    "social": "소셜",
+    "wiki": "위키",
+    "system": "시스템"
+  }
+}

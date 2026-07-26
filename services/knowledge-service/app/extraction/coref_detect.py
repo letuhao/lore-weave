@@ -283,7 +283,7 @@ async def _verify_pair(
                 "temperature": 0.0,
                 "max_tokens": 200,
             },
-            job_meta={"extractor": "coref_verify"},
+            job_meta={"usage_purpose": "coref_detect", "extractor": "coref_verify"},
             transient_retry_budget=1,
         )
     except Exception as exc:  # noqa: BLE001 — degrade to score-only on any LLM error

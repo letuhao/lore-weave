@@ -1,0 +1,79 @@
+# Dependabot — SEC-11 / audit P1.
+#
+# Opens dependency-bump PRs for every ecosystem the monorepo ships, so the CVE
+# findings reported by `.github/workflows/dep-vuln.yml` have a remediation path.
+# Uses the `directories` (glob) form so multi-module trees (Go, per-service
+# Python/npm) are covered without one block per manifest. Dependabot only acts
+# where a manifest actually exists, so broad globs are safe.
+#
+# Updates are GROUPED (minor+patch together per ecosystem) to keep PR volume low;
+# majors still come as individual PRs so breaking bumps stay reviewable.
+
+version: 2
+updates:
+  # --- Go modules (services + contracts + sdks/go + clients + pkg + infra + tests + tools) ---
+  - package-ecosystem: gomod
+    directories:
+      - "/services/*"
+      - "/contracts/**"
+      - "/sdks/go/*"
+      - "/clients/go/*"
+      - "/pkg/*"
+      - "/infra/**"
+      - "/tests/**"
+      - "/tools/*"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- Python (per-service requirements*.txt + the shared python SDK) ---
+  - package-ecosystem: pip
+    directories:
+      - "/services/*"
+      - "/sdks/python"
+      - "/infra/*"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      pip-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- JS/TS (frontend + gateways + cms-frontend + root pnpm workspace) ---
+  - package-ecosystem: npm
+    directories:
+      - "/"            # root pnpm workspace (frontend-game + packages/*)
+      - "/frontend"
+      - "/cms-frontend"
+      - "/services/*"  # ai-gateway, api-gateway-bff, game-server, knowledge-gateway, mcp-public-gateway
+      - "/poc/*"
+      - "/tests/perf/k6"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- Rust (root Cargo workspace) ---
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- GitHub Actions (keep the CI workflows' own actions patched) ---
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      actions-all:
+        patterns: ["*"]

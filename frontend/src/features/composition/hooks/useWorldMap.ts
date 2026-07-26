@@ -134,6 +134,22 @@ export function useWorldMap(work: Work, bookId: string, chapterId: string, token
       knowledgeApi.createRelation({ subject_id: v.subjectId, object_id: v.objectId, predicate: v.predicate }, token!),
     onSuccess: invalidatePlaces,
   });
+  // Remove a place = soft-archive the location entity (mirror KG authoring's
+  // useArchiveEntity). The node's `id` IS the createEntity id IS the id the
+  // DELETE /me/entities/{id} route accepts (id-equivalence proven live). 404 is
+  // idempotent success (already gone / cross-user typo), never a hard failure.
+  const deletePlace = useMutation({
+    mutationFn: async (entityId: string) => {
+      try {
+        await knowledgeApi.archiveMyEntity(entityId, token!);
+      } catch (err) {
+        const status = (err as Error & { status?: number }).status;
+        if (status === 404) return; // idempotent: already hidden == success
+        throw err;
+      }
+    },
+    onSuccess: invalidatePlaces,
+  });
   const uploadBackdrop = useMutation({
     mutationFn: async (file: File) => (await booksApi.uploadChapterMedia(token!, bookId, chapterId, file)).url,
     onSuccess: (url) => persistWorldMap({ backdrop_url: url }),
@@ -146,6 +162,6 @@ export function useWorldMap(work: Work, bookId: string, chapterId: string, token
     nodes, edges, positions,
     backdropUrl: wm.backdrop_url ?? null,
     applyLocal, localRef, persistPositions,
-    createPlace, linkPlaces, uploadBackdrop,
+    createPlace, linkPlaces, deletePlace, uploadBackdrop,
   };
 }

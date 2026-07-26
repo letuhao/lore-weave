@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -6,28 +7,41 @@ import { chatApi } from '../api';
 import { useChatSession } from '../providers';
 import { useChatStream } from '../providers';
 import { ChatHeader } from './ChatHeader';
-import { ChatInputBar } from './ChatInputBar';
+import { ChatInputBar, effortLevelFromGenerationParams, reasoningEffortForLevel, type EffortLevel } from './ChatInputBar';
 import { MessageList } from './MessageList';
 import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
 import { VoiceChatOverlay } from './VoiceChatOverlay';
-import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
+import { useUiToolExecutor } from '../hooks/useUiToolExecutor';
+import { useCompactSession } from '../hooks/useCompactSession';
 import { usePanelState } from '../hooks/usePanelState';
+import { AgentContextRack } from './AgentContextRack';
+import { AgentRuntimeInspector } from './AgentRuntimeInspector';
 import { loadVoicePrefs, saveVoicePrefs } from '../voicePrefs';
 
 interface ChatViewProps {
   className?: string;
+  /** Editor compose mode — hides tool rack (disable_tools). */
+  composeMode?: boolean;
   /** Optional host-supplied slot rendered between the message list and the input
    *  bar (inside the chat providers, so it can read useChatStream/useChatSession).
    *  T3.1 mounts the co-writer Insert/Use-as-guide bar + starter chips here. */
   footerSlot?: React.ReactNode;
+  /** Optional host-supplied header slot (bug #17): the embedded chat passes a
+   *  SessionSwitcher here so the workspace can switch/create sessions. */
+  headerSlot?: React.ReactNode;
 }
 
-export function ChatView({ className, footerSlot }: ChatViewProps) {
+export function ChatView({ className, composeMode, footerSlot, headerSlot }: ChatViewProps) {
   const { t } = useTranslation('chat');
+  const navigate = useNavigate();
   const { accessToken } = useAuth();
+  // Embedded surfaces (editor/studio) pass a headerSlot; there, opening the
+  // standalone inspector would navigate away and tear down the host, so the
+  // header inspector affordance is offered only on the full chat page.
+  const embedded = !!headerSlot;
   const {
     activeSession,
     modelNameMap,
@@ -41,9 +55,28 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
     setMobileSidebarOpen,
   } = useChatSession();
   const chat = useChatStream();
+  const rackHidden = !!composeMode;
+  const rack = chat.rack;
 
   const { settingsOpen, setSettingsOpen, voiceSettingsOpen, setVoiceSettingsOpen } = usePanelState();
+  // W3 — the "Compact now" controller for the context breakdown panel.
+  const compactControls = useCompactSession();
   const isArchived = activeSession?.status === 'archived';
+  // WS-4.5 — voice affordance gate. A voice turn in an assistant session does NOT
+  // fire canon capture yet (the WS-4.1 gap), so capturing the user's spoken diary
+  // would silently drop it. Hide ALL voice controls for assistant sessions until
+  // WS-4.1 lands; ordinary chat sessions keep voice.
+  const voiceEnabled = activeSession?.session_kind !== 'assistant';
+  // W2: the context breakdown panel's tool rows open the rack's add modal.
+  const [rackAddOpen, setRackAddOpen] = useState(false);
+  // W6: the rack's summary chip opens the header's context breakdown panel.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  // MCP fan-out (C-NAV): resolve any suspended `ui_*` nav tool the agent calls —
+  // perform the router action + POST the resolve immediately (no human gate).
+  // Mounted here (inside the providers, under the router) so it runs for both
+  // the chat page and the embedded dock/editor surfaces.
+  useUiToolExecutor();
 
   // Voice Assist mode — user toggle (persisted in prefs)
   const [voiceAssistOn, setVoiceAssistOn] = useState(() => loadVoicePrefs().voiceAssistEnabled);
@@ -98,8 +131,8 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
     );
   }
 
-  function handleSend(content: string, thinking?: boolean) {
-    resolveAndSend(content, chat.send, thinking);
+  function handleSend(content: string, thinking?: boolean, reasoningEffort?: EffortLevel) {
+    resolveAndSend(content, chat.send, thinking, reasoningEffort);
   }
 
   function handleEdit(content: string, sequenceNum: number) {
@@ -128,16 +161,37 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
         session={activeSession}
         modelNameMap={modelNameMap}
         messageCount={chat.messages.length}
+        contextBudget={chat.contextBudget}
+        onManageContextTools={!rackHidden ? () => setRackAddOpen(true) : undefined}
+        compactControls={!isArchived ? compactControls : undefined}
+        breakdownOpen={breakdownOpen}
+        onBreakdownClose={() => setBreakdownOpen(false)}
+        onOpenInspector={
+          !embedded
+            ? () => navigate(`/context-inspector?session=${activeSession.session_id}`)
+            : undefined
+        }
+        sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}
         isVoiceModeActive={voiceChat.isActive}
-        onToggleVoiceMode={() => {
+        onToggleVoiceMode={voiceEnabled ? () => {
           if (voiceChat.isActive) voiceChat.deactivate();
           else voiceChat.activate();
-        }}
-        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
+        } : undefined}
+        onOpenVoiceSettings={voiceEnabled ? () => setVoiceSettingsOpen(true) : undefined}
       />
+
+      {!rackHidden && (
+        <AgentRuntimeInspector
+          state={chat.agentSurface.state}
+          expanded={chat.agentSurface.expanded}
+          onToggle={chat.agentSurface.toggleExpanded}
+          isStreaming={chat.isStreaming}
+          trail={chat.agentSurface.trail}
+        />
+      )}
 
       <MessageList
         messages={chat.messages}
@@ -168,21 +222,53 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
 
       {footerSlot}
 
+      {!rackHidden && (
+        <AgentContextRack
+          enabledTools={rack.enabledTools}
+          enabledSkills={rack.enabledSkills}
+          activatedTools={rack.activatedTools}
+          pinnedLegacyTools={rack.pinnedLegacyTools}
+          surface={chat.agentSurface.state}
+          onOpenBreakdown={chat.contextBudget ? () => setBreakdownOpen(true) : undefined}
+          token={accessToken}
+          onAddTool={rack.addTool}
+          onAddSkill={rack.addSkill}
+          onRemoveTool={rack.removeTool}
+          onRemoveSkill={rack.removeSkill}
+          onAddLegacyTool={rack.addPinnedLegacyTool}
+          onRemoveLegacyTool={rack.removePinnedLegacyTool}
+          onClearDiscovered={rack.clearDiscovered}
+          disabled={!!isArchived || chat.isStreaming}
+          externalAddOpen={rackAddOpen}
+          onExternalAddClose={() => setRackAddOpen(false)}
+        />
+      )}
+
       <ChatInputBar
         onSend={handleSend}
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={!!isArchived}
+        placeholder={activeSession.session_kind === 'assistant' ? t('input.assistant_placeholder') : undefined}
         voiceModeActive={voiceChat.isActive}
+        voiceEnabled={voiceEnabled}
         voiceAssistOn={voiceAssistOn}
-        onToggleVoiceAssist={toggleVoiceAssist}
+        onToggleVoiceAssist={voiceEnabled ? toggleVoiceAssist : undefined}
         ttsPlaying={autoTTS.isPlaying}
         onStopTTS={autoTTS.stop}
+        permissionMode={chat.permissionMode}
+        onPermissionModeChange={chat.setPermissionMode}
         supportsThinking={true}
-        thinkingDefault={activeSession.generation_params?.thinking ?? false}
-        onThinkingModeChange={(thinking) => {
+        effortDefault={effortLevelFromGenerationParams(activeSession.generation_params)}
+        onEffortChange={(level) => {
           if (!accessToken) return;
-          chatApi.patchSession(accessToken, activeSession.session_id, { generation_params: { thinking } })
+          // Persist the GRANULAR knob + clear the legacy boolean — the same
+          // {reasoning_effort, thinking:null} contract SessionSettingsPanel
+          // writes, so a stale reasoning_effort can never shadow the dropdown
+          // (and Deep survives a reload instead of downgrading to Standard).
+          chatApi.patchSession(accessToken, activeSession.session_id, {
+            generation_params: { reasoning_effort: reasoningEffortForLevel(level), thinking: null },
+          })
             .then((updated) => updateActiveSession(updated))
             .catch(() => {});
         }}
@@ -192,11 +278,15 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
         onClearContext={clearContext}
       />
 
-      {settingsOpen && (
+      {/* ONE session settings surface (spec §8). Voice is a section inside it, not a
+          rival slide-over: the mic button deep-links to that section instead of opening
+          a second panel that fought this one for the right edge. */}
+      {(settingsOpen || voiceSettingsOpen) && (
         <SessionSettingsPanel
           session={activeSession}
           onSessionUpdate={updateActiveSession}
-          onClose={() => setSettingsOpen(false)}
+          initialSection={voiceSettingsOpen ? 'voice' : undefined}
+          onClose={() => { setSettingsOpen(false); setVoiceSettingsOpen(false); }}
         />
       )}
 
@@ -237,10 +327,6 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
         </div>
       )}
 
-      <VoiceSettingsPanel
-        open={voiceSettingsOpen}
-        onClose={() => setVoiceSettingsOpen(false)}
-      />
     </div>
   );
 }

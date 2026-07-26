@@ -52,7 +52,7 @@ async def test_mark_job_status_cas_applies_and_noops(pool):
 
 
 async def test_record_actual_cost_guarded_no_status_change(pool):
-    """record_actual_cost writes actual_cost_usd WITHOUT changing status, guarded on
+    """record_actual_cost writes actual_cost_tokens WITHOUT changing status, guarded on
     only_if_status (the M2 interrupt path's cost-preservation, LOW-3)."""
     store = PgProposalStore(pool)
     job_id = await _new_job(store, "cancelled")
@@ -63,7 +63,7 @@ async def test_record_actual_cost_guarded_no_status_change(pool):
     assert await store.read_job_status(job_id=job_id) == "cancelled"  # status untouched
     async with pool.acquire() as conn:
         cost = await conn.fetchval(
-            "SELECT actual_cost_usd FROM enrichment_job WHERE job_id=$1", uuid.UUID(job_id)
+            "SELECT actual_cost_tokens FROM enrichment_job WHERE job_id=$1", uuid.UUID(job_id)
         )
     assert float(cost) == pytest.approx(1.25)
 
@@ -73,7 +73,7 @@ async def test_record_actual_cost_guarded_no_status_change(pool):
     )
     async with pool.acquire() as conn:
         cost = await conn.fetchval(
-            "SELECT actual_cost_usd FROM enrichment_job WHERE job_id=$1", uuid.UUID(job_id)
+            "SELECT actual_cost_tokens FROM enrichment_job WHERE job_id=$1", uuid.UUID(job_id)
         )
     assert float(cost) == pytest.approx(1.25)  # unchanged
 

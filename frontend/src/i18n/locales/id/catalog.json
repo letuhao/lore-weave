@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Temukan Cerita",
+    "subtitle": "Jelajahi novel publik dari komunitas LoreWeave. Baca, terjemahkan, dan jelajahi cerita dalam berbagai bahasa.",
+    "search_placeholder": "Cari berdasarkan judul, penulis, atau bahasa...",
+    "search_aria": "Cari katalog",
+    "no_books": "Buku tidak ditemukan. Coba pencarian atau filter lain.",
+    "load_failed": "Gagal memuat katalog"
+  },
+  "filter": {
+    "lang_all": "Semua",
+    "clear_genres": "Hapus genre",
+    "books_found": "{{count}} buku ditemukan",
+    "sort_aria": "Urutkan buku berdasarkan",
+    "sort": {
+      "recent": "Terbaru",
+      "popular": "Terpopuler",
+      "chapters": "Bab terbanyak",
+      "alpha": "Alfabetis"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} bab"
+  },
+  "detail": {
+    "breadcrumb_browse": "Jelajahi",
+    "public_badge": "Publik",
+    "unlisted_badge": "Tidak terdaftar",
+    "chapters_count": "{{count}} bab",
+    "available_languages": "Bahasa yang tersedia",
+    "original": "Asli",
+    "start_reading": "Mulai Membaca",
+    "no_chapters_yet": "Belum ada bab",
+    "share": "Bagikan",
+    "copy_link": "Salin Tautan",
+    "loading": "Memuat...",
+    "chapters_heading": "Bab",
+    "no_chapters_available": "Tidak ada bab yang tersedia.",
+    "untitled": "Tanpa Judul",
+    "words": "{{count}} kata",
+    "showing_chapters": "Menampilkan {{from}}–{{to}} dari {{total}} bab",
+    "stat_chapters": "Bab",
+    "stat_languages": "Bahasa",
+    "stat_original": "Asli",
+    "stat_published": "Diterbitkan",
+    "na": "N/A",
+    "book_not_found": "Buku tidak ditemukan",
+    "back_to_browse": "Kembali ke Jelajahi",
+    "link_copied": "Tautan disalin",
+    "copy_failed": "Gagal menyalin",
+    "load_chapters_failed": "Gagal memuat bab"
+  },
+  "shared": {
+    "indicator": "Anda sedang melihat tautan yang dibagikan. Buku ini tidak terdaftar secara publik.",
+    "invalid": "Tautan yang dibagikan ini tidak valid atau telah kedaluwarsa.",
+    "not_found": "Tautan yang dibagikan tidak ditemukan atau kedaluwarsa",
+    "browse_instead": "Jelajahi buku publik saja",
+    "back_to_chapters": "Kembali ke bab",
+    "ch_short": "Bab {{n}}",
+    "load_chapter_failed": "Gagal memuat bab: {{error}}"
+  }
+}

@@ -3,6 +3,11 @@ package migrate
 // D-WIKI-SEED-ROBUSTNESS — Seed must be PER-KIND idempotent: a pre-existing kind
 // (e.g. the system 'unknown' inserted in Up, or a leftover kind on a shared test DB)
 // must NOT make the 12 default kinds skip seeding. Needs GLOSSARY_TEST_DB_URL.
+//
+// db-safety-gate: file-ok — TestUp_RenamesLegacyEntityKindsPreservingData runs on a
+// THROWAWAY ephemeral DB it CREATEs itself (its DROP DATABASE targets only that ephemeral,
+// never the DB in GLOSSARY_TEST_DB_URL); the other tests' cleanups are code-scoped
+// (DELETE … WHERE code=…).
 
 import (
 	"context"

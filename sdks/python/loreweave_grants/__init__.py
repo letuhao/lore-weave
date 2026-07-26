@@ -105,8 +105,8 @@ class GrantClient:
             timeout=httpx.Timeout(timeout_s),
             headers={"X-Internal-Token": internal_token},
         )
-        # key "user_id:book_id" -> (GrantLevel, lifecycle, expiry_monotonic)
-        self._cache: dict[str, tuple[GrantLevel, str, float]] = {}
+        # key "user_id:book_id" -> (GrantLevel, lifecycle, owner_user_id|None, expiry_monotonic)
+        self._cache: dict[str, tuple[GrantLevel, str, UUID | None, float]] = {}
         self._now = time.monotonic  # injectable for tests
         self._revoke_task: asyncio.Task | None = None
 
@@ -121,12 +121,12 @@ class GrantClient:
         key = _cache_key(user_id, book_id)
         hit = self._cache.get(key)
         if hit is not None:
-            lvl, lifecycle, exp = hit
+            lvl, lifecycle, _owner, exp = hit
             if self._now() < exp:
                 return lvl, lifecycle
-        lvl, lifecycle = await self._fetch(book_id, user_id)
+        lvl, lifecycle, owner = await self._fetch(book_id, user_id)
         if lvl > GrantLevel.NONE:
-            self._cache[key] = (lvl, lifecycle, self._now() + self._ttl)
+            self._cache[key] = (lvl, lifecycle, owner, self._now() + self._ttl)
         return lvl, lifecycle
 
     async def resolve_grant(self, book_id: UUID, user_id: UUID) -> GrantLevel:
@@ -219,7 +219,7 @@ class GrantClient:
         if self.invalidate(book_id, user_id):
             logger.debug("grant-revoke: invalidated grant user=%s book=%s", user_id, book_id)
 
-    async def _fetch(self, book_id: UUID, user_id: UUID) -> tuple[GrantLevel, str]:
+    async def _fetch(self, book_id: UUID, user_id: UUID) -> tuple[GrantLevel, str, UUID | None]:
         url = f"{self._base_url}/internal/books/{book_id}/access"
         tid = self._trace_id_provider() if self._trace_id_provider else None
         try:
@@ -233,11 +233,36 @@ class GrantClient:
                     "grant authority %s returned %d (fail-closed deny), trace_id=%s",
                     url, resp.status_code, tid,
                 )
-                return GrantLevel.NONE, ""
+                return GrantLevel.NONE, "", None
             data = resp.json()
-            return parse_grant_level(data.get("grant_level")), data.get("lifecycle_state", "") or ""
+            # owner_user_id is returned by book-service ONLY to a grantee (grant != none),
+            # so a consumer can resolve a cross-tenant read of the owner's per-(user,book)
+            # rows. Absent/malformed → None (never raises into the caller).
+            owner_raw = data.get("owner_user_id")
+            try:
+                owner = UUID(str(owner_raw)) if owner_raw else None
+            except (ValueError, TypeError):
+                owner = None
+            return parse_grant_level(data.get("grant_level")), data.get("lifecycle_state", "") or "", owner
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning(
                 "grant authority unavailable (fail-closed deny): %s, trace_id=%s", exc, tid,
             )
-            return GrantLevel.NONE, ""
+            return GrantLevel.NONE, "", None
+
+    async def resolve_owner(self, book_id: UUID, user_id: UUID) -> UUID | None:
+        """Return the book-OWNER's user_id when `user_id` holds a grant on the book,
+        else None. Powers a grant-gated cross-tenant read of the owner's
+        per-(user,book) rows (e.g. the book-tier model settings). Serves from the
+        same cache as resolve_access; fail-closed (None) on any error."""
+        key = _cache_key(user_id, book_id)
+        hit = self._cache.get(key)
+        if hit is not None:
+            lvl, _lifecycle, owner, exp = hit
+            if self._now() < exp:
+                return owner if lvl > GrantLevel.NONE else None
+        lvl, lifecycle, owner = await self._fetch(book_id, user_id)
+        if lvl > GrantLevel.NONE:
+            self._cache[key] = (lvl, lifecycle, owner, self._now() + self._ttl)
+            return owner
+        return None

@@ -147,6 +147,38 @@ async def test_happy_path_runs_all_four_extractors(
 @patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
 @patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
 @patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_context_budget_threaded_to_all_four_extractors(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """A caller-supplied context_budget must reach entity AND all three trio
+    extractors — omitting it (None, the default) is the exact bug class that let
+    a fixed window silently override every model's real context (see budget.py)."""
+    from loreweave_extraction.context_budget import ContextBudget
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    budget = ContextBudget(model_context=1_000_000)
+
+    await extract_pass2(
+        text="Kai met Zhao.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        context_budget=budget,
+    )
+
+    for mock in (mock_entities, mock_relations, mock_events, mock_facts):
+        assert mock.call_args.kwargs["context_budget"] is budget
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
 async def test_known_entities_merged_with_extracted(
     mock_entities, mock_relations, mock_events, mock_facts,
 ):
@@ -172,6 +204,63 @@ async def test_known_entities_merged_with_extracted(
         known = kwargs["known_entities"]
         assert "Zhao" in known
         assert "Kai" in known
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_cancel_check_forwarded_to_all_extractors(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """bug #34 — extract_pass2 threads cancel_check to entity + R/E/F so an
+    in-flight LLM call aborts on job cancellation."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    async def _cancel() -> bool:
+        return False
+
+    await extract_pass2(
+        text="Kai met Zhao.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        cancel_check=_cancel,
+    )
+
+    for mock in (mock_entities, mock_relations, mock_events, mock_facts):
+        assert mock.call_args.kwargs["cancel_check"] is _cancel
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_cancel_check_defaults_none(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """bug #34 — omitting cancel_check forwards None (back-compat)."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    await extract_pass2(
+        text="Kai met Zhao.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+    )
+
+    for mock in (mock_entities, mock_relations, mock_events, mock_facts):
+        assert mock.call_args.kwargs["cancel_check"] is None
 
 
 @pytest.mark.asyncio

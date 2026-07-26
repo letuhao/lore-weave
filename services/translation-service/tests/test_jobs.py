@@ -1,7 +1,7 @@
 """Integration tests for job endpoints using mocked DB pool + mocked HTTP."""
 import datetime
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -209,14 +209,35 @@ def test_create_job_qa_config_overrides_flow_to_broker(client, fake_pool):
     # Also guard the INSERT positional args — a column/value swap would persist wrong
     # data yet still pass the message assertion above (built from eff). Trailing order:
     # …, qa_depth, max_qa_rounds, verifier_source, verifier_ref, cold_start_mode,
-    # campaign_id, eval_judge_source, eval_judge_ref, block_index_filter, seed_version_id
-    # (S4a + S5b-eval + T2-M2). So the qa/verifier/cold tuple is [-10:-5], campaign_id
-    # is [-5], the eval-judge pair is [-4:-2], and the T2-M2 pair is the trailing [-2:].
+    # campaign_id, eval_judge_source, eval_judge_ref, block_index_filter, seed_version_id,
+    # thinking_enabled, mcp_key_id, spend_cap_usd (S4a + S5b-eval + T2-M2 +
+    # D-TRANSLATE-REASONING-TOGGLE + D-PMCP-WORKER-CARRIER — the 2 new trailing args shift
+    # every prior index two more negative). qa/verifier/cold tuple [-13:-8], campaign_id
+    # [-8], eval-judge pair [-7:-5], T2-M2 pair [-5:-3], thinking_enabled [-3],
+    # public-MCP carrier (mcp_key_id, spend_cap_usd) [-2:].
     insert_args = fake_pool.fetchrow.call_args_list[1].args  # [0]=resolve, [1]=INSERT
-    assert insert_args[-10:-5] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
-    assert insert_args[-5] is None  # campaign_id — public job is not campaign-owned
-    assert insert_args[-4:-2] == (None, None)  # eval_judge source/ref — none for a public job
-    assert insert_args[-2:] == (None, None)  # block_index_filter / seed_version_id — whole-chapter job
+    assert insert_args[-13:-8] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
+    assert insert_args[-8] is None  # campaign_id — public job is not campaign-owned
+    assert insert_args[-7:-5] == (None, None)  # eval_judge source/ref — none for a public job
+    assert insert_args[-5:-3] == (None, None)  # block_index_filter / seed_version_id — whole-chapter job
+    assert insert_args[-3] is False  # thinking_enabled default OFF
+    assert insert_args[-2:] == (None, None)  # mcp_key_id / spend_cap_usd — first-party job, no public key
+
+
+def test_create_job_thinking_enabled_flows_to_broker(client, fake_pool):
+    """D-TRANSLATE-REASONING-TOGGLE: a per-job thinking_enabled=true is PERSISTED on the
+    job row (last INSERT positional, so resume rebuilds it from the row) AND carried in
+    the broker message so the worker enables the model's hidden thinking."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID], "thinking_enabled": True},
+        )
+    assert resp.status_code == 201
+    assert mock_publish.call_args.args[1]["thinking_enabled"] is True
+    assert fake_pool.fetchrow.call_args_list[1].args[-3] is True  # persisted (thinking_enabled, now 3rd-from-last after the mcp carrier pair)
 
 
 def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
@@ -250,10 +271,34 @@ async def test_resolve_and_create_job_threads_campaign_id(fake_pool):
             CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]),
             USER_ID, campaign_id=camp,
         )
-    # persisted (campaign_id is [-5]: trailing eval-judge pair + T2-M2 block-filter pair)
-    # + published on the "translation.job" message
-    assert fake_pool.fetchrow.call_args_list[1].args[-5] == camp
+    # persisted (campaign_id is [-8]: trailing eval-judge pair + T2-M2 block-filter pair
+    # + thinking_enabled + the mcp_key_id/spend_cap_usd carrier pair) + published on the message
+    assert fake_pool.fetchrow.call_args_list[1].args[-8] == camp
     assert mock_publish.call_args.args[1]["campaign_id"] == str(camp)
+
+
+@pytest.mark.asyncio
+async def test_resolve_and_create_job_threads_public_mcp_carrier(fake_pool):
+    """D-PMCP-WORKER-CARRIER: a public-MCP key + spend cap (set only by the
+    confirm-route replay) are PERSISTED on the job INSERT [-2:] AND published on the
+    "translation.job" message, so the background chapter worker re-sets the
+    attribution contextvar across the process boundary."""
+    from app.routers.jobs import _resolve_and_create_job
+    from app.models import CreateJobPayload
+    key_id = "mk_live_abc123"
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        await _resolve_and_create_job(
+            fake_pool, UUID(BOOK_ID),
+            CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]),
+            USER_ID, mcp_key_id=key_id, spend_cap_usd=2.5,
+        )
+    insert_args = fake_pool.fetchrow.call_args_list[1].args
+    assert insert_args[-2:] == (key_id, 2.5)  # mcp_key_id, spend_cap_usd persisted
+    msg = mock_publish.call_args.args[1]
+    assert msg["mcp_key_id"] == key_id
+    assert msg["spend_cap_usd"] == 2.5
 
 
 @pytest.mark.asyncio
@@ -314,7 +359,7 @@ def test_public_create_job_ignores_campaign_id_in_body(client, fake_pool):
         )
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["campaign_id"] is None  # not honoured
-    assert fake_pool.fetchrow.call_args_list[1].args[-5] is None  # campaign_id NULL persisted ([-5] post S5b-eval + T2-M2)
+    assert fake_pool.fetchrow.call_args_list[1].args[-6] is None  # campaign_id NULL persisted ([-6] post S5b-eval + T2-M2 + thinking_enabled)
 
 
 def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
@@ -328,11 +373,12 @@ def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["cold_start_mode"] == "two_pass"
     insert_args = fake_pool.fetchrow.call_args_list[1].args
-    # Trailing INSERT positionals: …, cold_start_mode[-6], campaign_id[-5],
-    # eval_judge_model_source[-4], eval_judge_model_ref[-3],
-    # block_index_filter[-2], seed_version_id[-1] (S4a + S5b-eval + T2-M2).
-    assert insert_args[-6] == "two_pass"  # cold_start_mode
-    assert insert_args[-5] is None  # campaign_id — public job is not campaign-owned
+    # Trailing INSERT positionals: …, cold_start_mode[-9], campaign_id[-8],
+    # eval_judge_model_source[-7], eval_judge_model_ref[-6], block_index_filter[-5],
+    # seed_version_id[-4], thinking_enabled[-3], mcp_key_id[-2], spend_cap_usd[-1]
+    # (S4a + S5b-eval + T2-M2 + D-TRANSLATE-REASONING-TOGGLE + D-PMCP-WORKER-CARRIER).
+    assert insert_args[-9] == "two_pass"  # cold_start_mode
+    assert insert_args[-8] is None  # campaign_id — public job is not campaign-owned
 
 
 def test_create_job_rejects_invalid_cold_start_mode(client):
@@ -554,6 +600,50 @@ def test_cancel_job_sets_cancelled_status(client, fake_pool):
     emit.assert_awaited_once()
     assert emit.await_args.kwargs["status"] == "cancelled"
     assert emit.await_args.kwargs["service"] == "translation"
+
+
+def test_cancel_aborts_inflight_provider_jobs(client, fake_pool):
+    # bug #34 (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED): cancelling a job whose decoupled
+    # chapters have in-flight provider jobs DELETEs each one via the SDK so provider-registry
+    # aborts the upstream call NOW (not at the next batch boundary).
+    fake_pool.fetchrow.return_value = FakeRecord({
+        "book_id": UUID(BOOK_ID),
+        "status": "running",
+        "owner_user_id": UUID(USER_ID),
+    })
+    pj1, pj2 = uuid4(), uuid4()
+    # two non-terminal chapters each carrying an in-flight provider_job_id
+    fake_pool.fetch.return_value = [
+        {"provider_job_id": pj1, "owner_user_id": UUID(USER_ID)},
+        {"provider_job_id": pj2, "owner_user_id": UUID(USER_ID)},
+    ]
+    sdk = AsyncMock()
+    llm = MagicMock()
+    llm.sdk = sdk
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock), \
+         patch("app.routers.jobs.get_llm_client", return_value=llm):
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    assert resp.status_code == 204
+    # one DELETE (cancel_job) per in-flight provider job, scoped to the owner
+    assert sdk.cancel_job.await_count == 2
+    aborted = {call.args[0] for call in sdk.cancel_job.await_args_list}
+    assert aborted == {str(pj1), str(pj2)}
+    assert all(call.kwargs["user_id"] == USER_ID for call in sdk.cancel_job.await_args_list)
+
+
+def test_cancel_abort_is_best_effort_on_sdk_failure(client, fake_pool):
+    # A failing DELETE must NOT 500 the cancel — the consumer cancel-gate is the backstop.
+    fake_pool.fetchrow.return_value = FakeRecord({
+        "book_id": UUID(BOOK_ID), "status": "running", "owner_user_id": UUID(USER_ID),
+    })
+    fake_pool.fetch.return_value = [{"provider_job_id": uuid4(), "owner_user_id": UUID(USER_ID)}]
+    sdk = AsyncMock()
+    sdk.cancel_job = AsyncMock(side_effect=RuntimeError("provider-registry down"))
+    llm = MagicMock(); llm.sdk = sdk
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock), \
+         patch("app.routers.jobs.get_llm_client", return_value=llm):
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    assert resp.status_code == 204  # cancel still succeeds despite the abort fault
 
 
 def test_cancel_job_returns_409_when_already_completed(client, fake_pool):

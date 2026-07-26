@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Terokai Cerita",
+    "subtitle": "Terokai novel awam daripada komuniti LoreWeave. Baca, terjemah, dan terokai cerita dalam pelbagai bahasa.",
+    "search_placeholder": "Cari mengikut tajuk, penulis, atau bahasa...",
+    "search_aria": "Cari katalog",
+    "no_books": "Tiada buku ditemui. Cuba carian atau penapis lain.",
+    "load_failed": "Gagal memuatkan katalog"
+  },
+  "filter": {
+    "lang_all": "Semua",
+    "clear_genres": "Kosongkan genre",
+    "books_found": "{{count}} buku ditemui",
+    "sort_aria": "Susun buku mengikut",
+    "sort": {
+      "recent": "Terbaharu",
+      "popular": "Paling popular",
+      "chapters": "Bab terbanyak",
+      "alpha": "Abjad"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} bab"
+  },
+  "detail": {
+    "breadcrumb_browse": "Teroka",
+    "public_badge": "Awam",
+    "unlisted_badge": "Tidak disenaraikan",
+    "chapters_count": "{{count}} bab",
+    "available_languages": "Bahasa yang tersedia",
+    "original": "Asal",
+    "start_reading": "Mula Membaca",
+    "no_chapters_yet": "Belum ada bab",
+    "share": "Kongsi",
+    "copy_link": "Salin Pautan",
+    "loading": "Memuatkan...",
+    "chapters_heading": "Bab",
+    "no_chapters_available": "Tiada bab tersedia.",
+    "untitled": "Tanpa Tajuk",
+    "words": "{{count}} patah perkataan",
+    "showing_chapters": "Menunjukkan {{from}}–{{to}} daripada {{total}} bab",
+    "stat_chapters": "Bab",
+    "stat_languages": "Bahasa",
+    "stat_original": "Asal",
+    "stat_published": "Diterbitkan",
+    "na": "N/A",
+    "book_not_found": "Buku tidak ditemui",
+    "back_to_browse": "Kembali ke Teroka",
+    "link_copied": "Pautan disalin",
+    "copy_failed": "Gagal menyalin",
+    "load_chapters_failed": "Gagal memuatkan bab"
+  },
+  "shared": {
+    "indicator": "Anda sedang melihat pautan kongsi. Buku ini tidak disenaraikan secara awam.",
+    "invalid": "Pautan kongsi ini tidak sah atau telah tamat tempoh.",
+    "not_found": "Pautan kongsi tidak ditemui atau telah tamat tempoh",
+    "browse_instead": "Teroka buku awam sebagai ganti",
+    "back_to_chapters": "Kembali ke bab",
+    "ch_short": "Bab {{n}}",
+    "load_chapter_failed": "Gagal memuatkan bab: {{error}}"
+  }
+}

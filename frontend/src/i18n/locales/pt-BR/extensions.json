@@ -1,0 +1,258 @@
+{
+  "title": "Extensões",
+  "tabs": {
+    "skills": "Habilidades",
+    "mcp": "Servidores MCP",
+    "commands": "Comandos e Hooks",
+    "subagents": "Subagentes",
+    "plugins": "Plugins",
+    "permissions": "Permissões de ferramentas",
+    "proposals": "Propostas",
+    "activity": "Log de atividade",
+    "ingest": "Fontes do registro"
+  },
+  "quota": {
+    "unavailable": "Uso indisponível",
+    "skills": "Habilidades",
+    "mcp": "Servidores MCP",
+    "proposals": "Propostas"
+  },
+  "scope": {
+    "label": "Escopo:",
+    "mine": "Minhas extensões",
+    "orBook": "ou um livro:",
+    "bookPlaceholder": "limitado ao livro…",
+    "bookHint": "limitado ao livro — novos itens aplicam-se apenas a este livro"
+  },
+  "common": {
+    "loading": "Carregando…",
+    "delete": "Excluir",
+    "add": "Adicionar",
+    "cancel": "Cancelar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "of": "de",
+    "system": "sistema",
+    "book": "livro"
+  },
+  "skills": {
+    "search": "Buscar habilidades…",
+    "tier": {
+      "all": "Nível: Todos",
+      "system": "Sistema",
+      "user": "Usuário",
+      "book": "Livro"
+    },
+    "sort": {
+      "updated": "Ordenar: Atualizados",
+      "name": "Nome A→Z",
+      "lastTriggered": "Última vez ativado"
+    },
+    "empty": "Nenhuma habilidade ainda. O agente pode propor uma ou criá-la no editor.",
+    "draft": "rascunho"
+  },
+  "mcp": {
+    "status": {
+      "active": "ativo",
+      "pending": "escaneando…",
+      "suspended": "em quarentena",
+      "error": "inalcançável"
+    },
+    "search": "Buscar servidores…",
+    "filter": {
+      "all": "Status: Todos",
+      "active": "Ativo",
+      "pending": "Escaneando",
+      "suspended": "Em quarentena",
+      "error": "Inalcançável"
+    },
+    "add": "+ Adicionar servidor",
+    "empty": "Ainda não há servidores MCP. Adicione um para dar ferramentas extras ao agente.",
+    "review": "⚠ revisão",
+    "detail": {
+      "back": "‹ Voltar",
+      "connection": "Conexão",
+      "auth": "Autenticação",
+      "prefix": "Prefixo",
+      "egress": "Lista de permissões de saída",
+      "health": "Status",
+      "lastScanned": "Última varredura",
+      "credentialStored": "credencial armazenada",
+      "healthOk": "ok · {{count}} ferramentas · {{latency}}ms",
+      "healthError": "erro: {{error}}",
+      "unreachable": "inalcançável",
+      "scanning": "Escaneando…",
+      "rescan": "Reescanear",
+      "reconnect": "Reconectar OAuth",
+      "acceptRisk": "Aceitar risco e ativar"
+    },
+    "scan": {
+      "label": "Escaneamento de cadeia de suprimentos:",
+      "clean": "limpo",
+      "findings": "{{count}} achado(s)",
+      "tools": "Ferramentas ({{count}})",
+      "flagged": "sinalizado"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Conexão",
+        "auth": "Autenticação",
+        "scan": "Saúde e Varredura",
+        "review": "Revisão"
+      },
+      "displayName": "Nome de exibição",
+      "displayNamePlaceholder": "Meu servidor de ferramentas",
+      "url": "URL do servidor (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Autenticação",
+      "authNone": "Nenhuma",
+      "authBearer": "Token Bearer",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "Sem autenticação — este servidor está aberto. Continue para registrá-lo e fazer a varredura.",
+      "bearerLabel": "Token Bearer (armazenado no cofre; nunca será exibido novamente)",
+      "bearerPlaceholder": "cole o token",
+      "authzEndpoint": "Endpoint de autorização",
+      "tokenEndpoint": "Endpoint de token",
+      "clientId": "ID do cliente",
+      "scopes": "Escopos (separados por espaço)",
+      "registering": "Registrando…",
+      "registerScan": "Registrar e escanear",
+      "statusLabel": "Status:",
+      "connectOauth": "Conectar com OAuth →",
+      "runScan": "Verificar integridade e escanear",
+      "refresh": "Atualizar",
+      "continue": "Continuar",
+      "authKind": "auth: {{kind}}",
+      "enable": "Ativar para minhas sessões",
+      "done": "Concluído"
+    }
+  },
+  "commands": {
+    "title": "Comandos de barra",
+    "description": "Digite <code>/nome</code> no chat para expandir um template. Use <code>{{args}}</code> ou <code>{{key}}</code> para argumentos.",
+    "namePlaceholder": "nome (ex: planejar-cena)",
+    "templatePlaceholder": "Template: Planejar uma cena sobre {{topic}}…",
+    "empty": "Nenhum comando ainda."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Regras declarativas que são acionadas em pontos de transição do loop do agente. Sem código — apenas um evento, uma correspondência de ferramenta opcional e uma ação.",
+    "matchPlaceholder": "correspondência de ferramenta (ex: glossario_deletar_*)",
+    "textPlaceholder": "texto para injetar / anotar",
+    "empty": "Nenhum hook até o momento."
+  },
+  "subagents": {
+    "title": "Subagentes",
+    "description": "Uma persona nomeada para a qual o agente pode delegar uma sub-tarefa delimitada via <code>run_subagent</code>. Ela é executada em um turno isolado com APENAS suas ferramentas de escopo. Deixe o escopo vazio para uma persona de raciocínio/resumo puro.",
+    "namePlaceholder": "nome (ex: explorador-lore)",
+    "scopePlaceholder": "escopo de ferramentas: glossary_*, kg_*",
+    "modelPlaceholder": "modelo (opcional, id do user_model)",
+    "promptPlaceholder": "Prompt do sistema — quem é esta persona e como ela funciona...",
+    "create": "Criar subagente",
+    "empty": "Nenhum subagente até o momento.",
+    "reasoningOnly": "apenas raciocínio (sem ferramentas)",
+    "modelPinned": "modelo fixado"
+  },
+  "plugins": {
+    "description": "Um plugin agrupa habilidades, comandos e hooks — exporte para compartilhar, importe para instalar.",
+    "importing": "Importando…",
+    "import": "Importar pacote",
+    "invalidJson": "Este arquivo não é um JSON válido.",
+    "notBundle": "Não é um pacote LoreWeave (falta o manifest.name).",
+    "empty": "Nenhum plugin ainda. Importe um pacote para instalar um.",
+    "export": "Exportar"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Pendente",
+      "approved": "Aprovado",
+      "rejected": "Rejeitado",
+      "expired": "Expirado",
+      "all": "Todos"
+    },
+    "total": "{{count}} no total",
+    "empty": "Nenhuma proposta. As habilidades que o agente propõe aparecerão aqui para sua aprovação.",
+    "approve": "Aprovar",
+    "reject": "Rejeitar",
+    "reason": "Motivo: {{reason}}"
+  },
+  "activity": {
+    "title": "Log de atividades",
+    "allKinds": "Todos os tipos",
+    "range": {
+      "all": "Todo o período",
+      "7d": "Últimos 7 dias",
+      "30d": "Últimos 30 dias"
+    },
+    "empty": "Nenhuma atividade neste período.",
+    "secondsAgo": "há {{count}}s",
+    "minutesAgo": "há {{count}}min",
+    "hoursAgo": "há {{count}}h",
+    "daysAgo": "há {{count}}d"
+  },
+  "ingest": {
+    "title": "Fontes do Registro (admin)",
+    "description": "Curadoria do catálogo do Sistema a partir do MCP Registry oficial. verificação ≠ segurança — cada aprovação executa novamente o SSRF guard + varredura de supply-chain antes da federação.",
+    "all": "Tudo",
+    "pulling": "Puxando…",
+    "pull": "Puxar registro",
+    "pullResult": "Puxado: {{fetched}} buscados · {{new}} novos · {{updated}} atualizados · {{skipped}} sem remoto",
+    "truncated": "· parcial (truncado)",
+    "empty": "Nenhum item nesta visualização. Puxe o registro para preencher a fila.",
+    "approve": "Aprovar",
+    "reject": "Rejeitar"
+  },
+  "permissions": {
+    "blurb": "Ferramentas que você deu permissão permanente para o assistente usar — e ferramentas que você bloqueou. «Sempre permitir» em um cartão de aprovação adiciona uma linha aqui. Revogar uma permissão significa que o assistente perguntará novamente na próxima vez que quiser usar essa ferramenta.",
+    "loading": "Carregando…",
+    "allowedTitle": "Sempre permitido",
+    "deniedTitle": "Bloqueado",
+    "blockTitle": "Bloquear uma ferramenta",
+    "emptyAllowed": "Você não deu permissão permanente a nenhuma ferramenta. O assistente perguntará todas as vezes.",
+    "emptyDenied": "Nenhuma ferramenta está bloqueada.",
+    "toolPlaceholder": "Nome da ferramenta (ex: chapter_delete)",
+    "unknownTool": "Esta não é uma das ferramentas do assistente. Escolha um nome da lista.",
+    "kind": {
+      "mutation": "Pode alterar meu trabalho",
+      "spend": "Pode gastar dinheiro"
+    },
+    "decision": {
+      "allow": "Executa sem perguntar",
+      "deny": "Nunca executar"
+    },
+    "actions": {
+      "revoke": "Perguntar novamente",
+      "deny": "Nunca permitir",
+      "allow": "Permitir",
+      "block": "Bloquear"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} fluxos de trabalho",
+    "empty": "Nenhum fluxo de trabalho ainda. Aprove uma proposta de fluxo de trabalho para adicionar um.",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
+    "delete": "Excluir",
+    "proposalsEmpty": "Sem propostas de fluxo de trabalho. Quando o agente propõe um fluxo de trabalho, ele aparece aqui para sua aprovação.",
+    "view": "Visualizar",
+    "hide": "Ocultar",
+    "noSteps": "Nenhuma etapa definida."
+  },
+  "bindings": {
+    "loading": "Carregando…",
+    "autoSetupDesc": "Receitas que o assistente configura automaticamente neste modo.",
+    "none": "Nada é configurado automaticamente aqui.",
+    "turnOff": "Desativar",
+    "turnBackOn": "Reativar",
+    "mode": {
+      "ask": "Leitura e perguntas",
+      "write": "Escrita",
+      "plan": "Planejamento"
+    },
+    "tier": {
+      "system": "Nativo",
+      "user": "Você define isso",
+      "book": "Este livro"
+    }
+  }
+}

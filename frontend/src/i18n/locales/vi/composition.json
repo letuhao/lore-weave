@@ -1,4 +1,18 @@
 {
+  "mobile": {
+    "switchPanel": "Đổi bảng",
+    "panels": "Bảng",
+    "close": "Đóng"
+  },
+  "groundingPins": {
+    "present": "Nhân vật trong cảnh",
+    "canon": "Luật canon",
+    "lore": "Tri thức",
+    "pin": "Ghim — luôn giữ lại",
+    "unpin": "Bỏ ghim",
+    "exclude": "Loại trừ — bỏ khỏi grounding",
+    "restore": "Khôi phục"
+  },
   "assemble": "Ghép chương",
   "assemblyMode": "Chế độ ghép",
   "assemblyMode_per_scene": "Theo cảnh",
@@ -110,6 +124,31 @@
     "open": "Mở cảnh",
     "empty": "Chưa có cảnh nào — hãy lập kế hoạch cảnh trong dàn ý để xem sơ đồ."
   },
+  "whatif": {
+    "start": "Giả định từ đây",
+    "active": "Nhánh giả định (chưa lưu)",
+    "addAlt": "phương án",
+    "discard": "Bỏ giả định",
+    "removeAlt": "Xóa phương án",
+    "altHint": "Phác thảo một phương án (xem trước) — chưa lưu cho đến khi bạn thăng cấp.",
+    "generate": "Tạo bản",
+    "generating": "Đang tạo…",
+    "retry": "Thất bại — thử lại",
+    "view": "Xem",
+    "judging": "đang chấm…",
+    "coherence": "Mạch lạc",
+    "voice": "Giọng văn",
+    "pacing": "Nhịp độ",
+    "model": "Mô hình tạo bản",
+    "noModel": "Không có mô hình",
+    "closePreview": "Đóng",
+    "promote": "Thăng cấp",
+    "promoting": "Đang thăng cấp…",
+    "promoted": "Đã thăng cấp thành dị bản giả định.",
+    "promotedPartial": "Đã thăng cấp, nhưng {{n}} bản không thể thêm được.",
+    "promotedProsePartial": "Đã thăng cấp, nhưng không lưu được nội dung của {{n}} bản — thăng cấp lại để thử lại.",
+    "promoteHint": "Tạo ít nhất một bản để thăng cấp"
+  },
   "cast": "Nhân vật",
   "codex": {
     "title": "Nhân vật & Từ điển",
@@ -132,7 +171,19 @@
     "kind_character": "Nhân vật",
     "kind_location": "Địa điểm",
     "kind_faction": "Phe phái",
-    "kind_concept": "Khái niệm"
+    "kind_concept": "Khái niệm",
+    "rename": "Đổi tên",
+    "renameConflict": "Đã thay đổi ở nơi khác — đã tải lại.",
+    "editEntity": "Chỉnh sửa biệt danh & loại",
+    "archive": "Lưu trữ thực thể",
+    "archiveConfirm": "Lưu trữ «{{name}}»? Các mối quan hệ và mỏ neo thuật ngữ sẽ được giữ lại; thực thể này sẽ xuất hiện lại nếu cuốn sách nhắc đến nó lần nữa (không có nút khôi phục).",
+    "archived": "Đã lưu trữ — thực thể sẽ xuất hiện lại nếu cuốn sách nhắc đến nó lần nữa.",
+    "newEntity": "Mới",
+    "editFailed": "Chỉnh sửa thất bại: {{error}}",
+    "truncated": "Đang hiển thị 200 mục đầu tiên — hãy tinh chỉnh tìm kiếm để thu hẹp danh sách.",
+    "showingOf": "Đang hiển thị {{loaded}} trên tổng số {{total}}.",
+    "loadMore": "Tải thêm",
+    "loadingMore": "Đang tải…"
   },
   "relmap": "Quan hệ",
   "relations": {
@@ -175,7 +226,10 @@
     "gone": "đã rời truyện",
     "loading": "Đang tải cung nhân vật…",
     "noProject": "Chưa có đồ thị tri thức — trích xuất cuốn sách này để vẽ cung nhân vật.",
-    "empty": "Nhân vật này chưa có sự kiện nào."
+    "empty": "Nhân vật này chưa có sự kiện nào.",
+    "edit": "Chỉnh sửa",
+    "linkEntity": "+ liên kết thực thể",
+    "addEvent": "+ Thêm sự kiện"
   },
   "worldmap": "Bản đồ",
   "wmap": {
@@ -197,12 +251,113 @@
     "loading": "Đang tải bản đồ thế giới…",
     "addFailed": "Không thể thêm địa điểm.",
     "linkFailed": "Không thể liên kết các địa điểm.",
-    "linkMissing": "Một trong các địa điểm đó không còn tồn tại."
+    "linkMissing": "Một trong các địa điểm đó không còn tồn tại.",
+    "delete": "Xóa {{name}}",
+    "deleteConfirm": "Xóa «{{name}}» khỏi bản đồ thế giới? Thao tác này sẽ đưa địa điểm vào kho lưu trữ.",
+    "deleteFailed": "Không thể xóa địa điểm này."
   },
   "grounding": "Căn cứ",
   "canon": "Canon",
+  "progress": "Tiến độ",
+  "style": "Văn phong",
   "quality": "Chất lượng",
+  "polish": "Tinh chỉnh",
   "settings": "Cài đặt",
+  "styleVoice": {
+    "proseStyle": "Văn phong",
+    "density": "Độ dày",
+    "densityRange": "súc tích ◂▸ giàu hình ảnh",
+    "pace": "Nhịp độ",
+    "paceRange": "chậm ◂▸ nhanh",
+    "scope": {
+      "work": "Sách",
+      "chapter": "Chương",
+      "scene": "Cảnh"
+    },
+    "scopeHint": "Phạm vi cụ thể nhất được ưu tiên (cảnh › chương › sách). Giá trị giữa là cân bằng — không định hướng.",
+    "voices": "Giọng nhân vật",
+    "noVoices": "Chưa có giọng nhân vật nào.",
+    "addCharacter": "Thêm nhân vật…",
+    "addTag": "+ thẻ",
+    "remove": "Xóa"
+  },
+  "heatmap": {
+    "title": "Bản đồ nhiệt nhắc đến",
+    "inProse": "Trong văn bản"
+  },
+  "provenance": {
+    "title": "Nguồn gốc AI",
+    "unreviewedCount": "{{n}} chưa duyệt",
+    "show": "Hiện",
+    "hide": "Ẩn",
+    "markAllReviewed": "Đánh dấu tất cả đã duyệt",
+    "ai": "AI",
+    "reviewed": "đã duyệt",
+    "unreviewed": "chưa duyệt",
+    "clickToReview": "(nhấp để duyệt)"
+  },
+  "flywheel": "Bánh đà",
+  "flywheelPanel": {
+    "loading": "Đang tải…",
+    "empty": "Xuất bản một chương để mở rộng kho tri thức — thực thể, quan hệ và sự kiện mới sẽ hiện ở đây.",
+    "subtitle": "Lần xuất bản gần nhất đã mở rộng kho tri thức:",
+    "entities": "thực thể",
+    "relations": "quan hệ",
+    "events": "sự kiện",
+    "highlights": "Điểm nổi bật mới",
+    "kind": {
+      "entity": "Thực thể",
+      "event": "Sự kiện",
+      "relation": "Quan hệ"
+    }
+  },
+  "view": {
+    "power_view": "Chế độ toàn cảnh",
+    "back_to_editor": "Quay lại trình soạn thảo"
+  },
+  "dock": {
+    "addPanel": "Thêm bảng",
+    "float": "Cửa sổ nổi",
+    "dock": "Gắn lại",
+    "popout": "Tách cửa sổ"
+  },
+  "popout": {
+    "invalid": "Liên kết cửa sổ tách này không hợp lệ."
+  },
+  "references": "Tài liệu tham khảo",
+  "referencesPanel": {
+    "title": "Tiêu đề",
+    "author": "Tác giả",
+    "contentPlaceholder": "Dán một đoạn tham khảo / nguồn ảnh hưởng…",
+    "pickEmbedModel": "Mô hình embedding (đặt một lần cho tác phẩm này)",
+    "noEmbedModel": "Thêm một mô hình embedding (vd: bge-m3) trong cài đặt AI để bật truy xuất tham khảo.",
+    "add": "Thêm tham khảo",
+    "adding": "Đang thêm…",
+    "relevant": "Cho cảnh này",
+    "searchPlaceholder": "Tìm…",
+    "unavailable": "Truy xuất không khả dụng (nhà cung cấp embedding ngừng hoạt động).",
+    "noHits": "Chưa có tài liệu tham khảo phù hợp.",
+    "library": "Thư viện",
+    "delete": "Xóa",
+    "empty": "Chưa có tài liệu tham khảo — thêm nguồn ảnh hưởng ở trên."
+  },
+  "progressPanel": {
+    "loading": "Đang tải tiến độ…",
+    "error": "Không tải được tiến độ.",
+    "today": "Hôm nay",
+    "ofGoal": "{{pct}}% của {{goal}}",
+    "noGoal": "chưa đặt mục tiêu",
+    "streak": "Chuỗi ngày",
+    "streakDays": "{{count}} ngày liên tiếp",
+    "bookTotal": "Tổng sách",
+    "dailyGoal": "Mục tiêu mỗi ngày",
+    "sparkTitle": "Số từ mỗi ngày",
+    "lastDays": "{{count}} ngày",
+    "words": "từ",
+    "goalPlaceholder": "từ/ngày",
+    "setGoal": "Đặt mục tiêu",
+    "goalHint": "0 để xóa mục tiêu"
+  },
   "workSettings": {
     "defaultModel": "Mô hình soạn mặc định",
     "defaultModelHint": "Dùng làm mô hình khởi đầu cho sách này. Mô hình mạnh hơn là đòn bẩy chất lượng văn lớn nhất.",
@@ -229,6 +384,9 @@
   "statDiverge": "Phân nhánh (K)",
   "statStream": "Luồng",
   "guidePlaceholder": "Hướng dẫn tùy chọn cho trợ lý đồng sáng tác…",
+  "correction": {
+    "capturedToast": "Đã ghi nhận — cộng sự của bạn sẽ học hỏi từ điều này"
+  },
   "reasoning": "Suy luận",
   "reasoningHint": "Tự động = máy chủ quyết định theo từng mô hình. Tắt sẽ vô hiệu hóa suy nghĩ; Thấp/Vừa/Cao thì bắt buộc bật.",
   "reasoningAuto": "Suy nghĩ: tự động",
@@ -262,12 +420,14 @@
   "discard": "Bỏ",
   "critic": "Phê bình (tham khảo)",
   "criticUnavailable": "Phê bình không khả dụng.",
+  "criticRecheck": "Kiểm tra lại bản nháp hiện tại",
+  "criticRechecking": "Đang kiểm tra lại…",
+  "criticPanelEmpty": "Chưa có đánh giá — tạo một cảnh (hoặc kiểm tra lại bản nháp hiện tại) để xem phê bình tính liên tục.",
   "coherence": "mạch lạc",
   "voice_match": "giọng văn",
   "pacing": "nhịp độ",
   "canon_consistency": "nhất quán canon",
   "dismiss": "bỏ qua",
-  "overrideSlipBlocked": "Đã chặn chấp nhận: một ghi đè dị bản đã trượt về giá trị nguyên tác. Hãy tạo lại trước khi chấp nhận.",
   "overrideSlipExhausted": "Ghi đè vẫn trượt sau khi đạt giới hạn tạo lại — hiển thị để bạn xem xét (không còn chặn chấp nhận).",
   "overrideSlipDetail": "{{name}} ({{field}}): mong đợi “{{expected}}”, tìm thấy “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: mâu thuẫn với quy tắc delta “{{rule}}”",
@@ -290,6 +450,12 @@
   "canonUntil": "Đến (thứ tự đọc)",
   "canonActive": "đang bật",
   "canonInactive": "đã tắt",
+  "canonArchivedTag": "đã lưu trữ",
+  "canonShowArchived": "Hiển thị đã lưu trữ",
+  "canonRuleArchived": "Quy tắc đã lưu trữ",
+  "canonRuleRestored": "Quy tắc đã khôi phục",
+  "restore": "Khôi phục",
+  "undo": "Hoàn tác",
   "canonWindowInverted": "'Từ' phải ≤ 'Đến'.",
   "archive": "Lưu trữ",
   "noRules": "Chưa có quy tắc canon.",
@@ -378,6 +544,12 @@
     "noSynopsis": "Chưa có tóm tắt"
   },
   "derive": {
+    "adapt": {
+      "action": "Phỏng theo bản gốc",
+      "hint": "Viết lại cảnh gốc thừa hưởng để phù hợp với nhánh này (một bản nháp bạn xem lại và chấp nhận).",
+      "empty": "Không có gì để phỏng theo",
+      "emptyHint": "Chương gốc không có nội dung để phỏng theo — hãy tạo bản nháp mới thay thế."
+    },
     "launch": "Tạo dị bản",
     "launchHint": "Tạo một dị bản giả định rẽ nhánh từ chính truyện",
     "title": "Tạo dị bản (bản phái sinh)",
@@ -396,6 +568,9 @@
     "overridden": "Đã ghi đè",
     "overridePlaceholder": "Ghi đè thực thể này (vd: nay là nữ, nay là phản diện)…",
     "unanchoredHint": "Thực thể này chưa có trong từ điển — hãy đưa nó vào (tab Thực thể) trước khi ghi đè ở đây.",
+    "anchorAndOverride": "Neo & ghi đè",
+    "anchoring": "Đang neo…",
+    "anchorFailed": "Không thể neo: {{error}}",
     "noEntities": "Chưa có thực thể chính truyện — ghi đè sau trong studio.",
     "canonRules": "Quy tắc chính truyện thêm (mỗi dòng một quy tắc)",
     "canonRulesPlaceholder": "vd: Phép thuật không còn tồn tại trong nhánh này.",
@@ -421,7 +596,22 @@
     "noCanonEntities": "Chưa có thực thể chính truyện để kế thừa.",
     "referenceSpine": "Trục tham khảo (chỉ đọc)",
     "referenceSpineHint": "Các chương gốc tới điểm rẽ nhánh — phỏng tác thủ công. Chúng không được chèn vào bản nháp.",
-    "openReference": "Mở"
+    "openReference": "Mở",
+    "deltaNow": "nay",
+    "taxonomy": {
+      "pov_shift": "Đổi ngôi kể",
+      "character_transform": "Biến đổi nhân vật",
+      "au": "Vũ trụ thay thế (AU)"
+    },
+    "chipPov": "Ngôi kể · {{id}}",
+    "chipOverrides": "{{n}} ghi đè",
+    "specPopover": "Đặc tả rẽ nhánh",
+    "specBranch": "Rẽ nhánh",
+    "specBranchStart": "từ đầu",
+    "specTaxonomy": "Loại",
+    "specPov": "Mỏ neo ngôi kể",
+    "specOverrides": "Ghi đè",
+    "specCanonRules": "Luật chính sử"
   },
   "promote": {
     "ephemeral": "Giả định (đang thử)",
@@ -431,5 +621,477 @@
     "needsName": "Đặt tên cho giả định để nâng cấp.",
     "namePlaceholder": "Đặt tên một giả định…",
     "nameLabel": "Tên giả định"
-  }
+  },
+  "motifs": "Motifs",
+  "conformance": "Conformance",
+  "motif": {
+    "tier": {
+      "system": "System",
+      "user": "Mine",
+      "public": "Public"
+    },
+    "mode": {
+      "simple": "Simple",
+      "expert": "Expert"
+    },
+    "scope": {
+      "label": "Motif scope",
+      "my": "My library",
+      "catalog": "Public catalog",
+      "book": "Sách",
+      "shared": "Đã chia sẻ",
+      "system": "Hệ thống",
+      "drafts": "Bản nháp",
+      "needsBook": "Mở một cuốn sách để xem các motif của nó"
+    },
+    "search": "Search motifs",
+    "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
+    "list": {
+      "noMatch": "No motifs match — clear filters.",
+      "truncated": "Đang hiển thị 100 mục đầu tiên — hãy thu hẹp phạm vi bằng tìm kiếm hoặc bộ lọc để xem các mục còn lại."
+    },
+    "error": {
+      "load": "Couldn't load — please retry."
+    },
+    "permission": {
+      "readOnly": "This is a shared template — clone it to make your own editable copy."
+    },
+    "action": {
+      "open": "Open",
+      "adopt": "Adopt",
+      "newMotif": "New motif",
+      "cloneToEdit": "Clone to edit",
+      "close": "Close",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "swap": "Swap",
+      "clear": "Free-form"
+    },
+    "card": {
+      "draft": "Mined draft",
+      "tension": "Intensity"
+    },
+    "empty": {
+      "title": "Your motif library is ready",
+      "body": "Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.",
+      "browseSystem": "Browse the 12 starters",
+      "hint": "No tokens needed — building a motif by hand is free."
+    },
+    "facet": {
+      "tier": "Tier",
+      "kind": "Kind",
+      "genre": "Genre",
+      "tension": "Intensity",
+      "clear": "Clear filters",
+      "filters": "Filters"
+    },
+    "detail": {
+      "title": "Motif",
+      "roles": "Roles",
+      "beats": "Beats",
+      "none": "—"
+    },
+    "create": {
+      "title": "New motif",
+      "name": "Name",
+      "code": "Code (a short id, e.g. cultivation.fortuitous_encounter)",
+      "kind": "Kind",
+      "summary": "Summary (this is what the planner matches on)",
+      "genres": "Genres (comma-separated)",
+      "beats": "Beats (the ordered shape)",
+      "beat": "beat",
+      "beatLabel": "Beat label",
+      "removeBeat": "Remove beat",
+      "save": "Create motif",
+      "saving": "Saving…",
+      "err": {
+        "name": "A name is required",
+        "code": "A code is required",
+        "save": "Couldn't save — check the code isn't already used."
+      }
+    },
+    "adopt": {
+      "title": "Adopt motif",
+      "body": "Adopt makes your own private editable copy. Choose where it goes.",
+      "targetLabel": "Adopt into",
+      "toUser": "My library",
+      "whatItDoes": "Copy this motif into your library (a private, editable clone).",
+      "continue": "Continue",
+      "estimating": "Estimating…"
+    },
+    "quota": {
+      "adopt": "You've adopted {{used}}/{{limit}} this period — archive some or wait."
+    },
+    "cost": {
+      "title": "Confirm cost",
+      "usd": "Est. cost",
+      "tokens": "Est. tokens",
+      "quota": "Quota left",
+      "confirm": "Confirm",
+      "confirming": "Working…"
+    },
+    "match": {
+      "why": "Why this motif?",
+      "tension": "Tension fit",
+      "genre": "Genre",
+      "precond": "Setup",
+      "cosine": "Similarity"
+    },
+    "role": {
+      "pickFor": "Pick cast for {{role}}",
+      "unresolved": "⚠ pick…"
+    },
+    "binding": {
+      "freeForm": "No motif matched — this scene is free-form.",
+      "commitGenerate": "Commit + write this scene →",
+      "noWork": "Tạo kế hoạch để liên kết các mô-típ với các cảnh trong cuốn sách này."
+    },
+    "swap": {
+      "title": "Swap motif",
+      "none": "No other matches."
+    },
+    "chain": {
+      "hint": "Next: \"{{name}}\" follows naturally.",
+      "action": "Chain it"
+    },
+    "conf": {
+      "title": "Conformance",
+      "planned": "Planned",
+      "realized": "Realized",
+      "conformance": "Conformance",
+      "advisory": "Advisory — unverified self-report",
+      "regenerate": "Regenerate to beat",
+      "rerun": "Re-run",
+      "rerunWhat": "Re-check every scene in this chapter against its planned beat.",
+      "empty": "Not generated yet — generate scenes to see conformance.",
+      "tone": {
+        "ok": "On beat",
+        "warn": "Tension drift",
+        "bad": "Beat missed"
+      },
+      "rerunNeedsModel": "Chọn một mô hình để chạy lại kiểm tra sự phù hợp"
+    },
+    "arc": {
+      "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
+      "place": "place",
+      "chapters": "ch {{from}}-{{to}}",
+      "moveLeft": "Move earlier",
+      "moveRight": "Move later",
+      "grow": "Lengthen",
+      "shrink": "Shorten",
+      "remove": "Remove",
+      "libraryEmpty": "Chưa có mẫu cốt truyện nào. Hãy tạo một mẫu mới hoặc nhập một câu chuyện để phân tích cấu trúc.",
+      "templates": {
+        "tabLibrary": "Thư viện",
+        "tabCatalog": "Danh mục",
+        "tabDeconstruct": "Nhập & Phân tích",
+        "tier_all": "Tất cả",
+        "tier_mine": "Của tôi",
+        "tier_system": "Hệ thống",
+        "tier_book": "Sách",
+        "new": "+ Mới",
+        "loading": "Đang tải...",
+        "loadError": "Không thể tải các mẫu.",
+        "retry": "Thử lại",
+        "chapters": "{{count}} chương",
+        "chipSystem": "Hệ thống",
+        "chipMine": "Của tôi",
+        "chipPublic": "Công khai",
+        "archive": "lưu trữ",
+        "adopt": "áp dụng",
+        "createCode": "mã (duy nhất)",
+        "createName": "tên",
+        "createShare": "Chia sẻ với những người cộng tác của cuốn sách này (theo cấp độ sách)",
+        "create": "Tạo",
+        "cancel": "Hủy",
+        "catalogError": "Không thể tải danh mục.",
+        "catalogEmpty": "Chưa có mẫu cốt truyện công khai nào.",
+        "back": "← Tất cả các mẫu",
+        "driftTitle": "Độ lệch — được sử dụng bởi cuốn sách này",
+        "driftUnapplied": "Chưa được áp dụng cho cuốn sách này — hãy áp dụng ở trên để so sánh độ lệch.",
+        "driftNoProvenance": "Cốt truyện này được viết trực tiếp — không có mẫu để so sánh độ lệch.",
+        "driftGone": "Mẫu nguồn không còn khả dụng.",
+        "driftLoading": "Đang tải độ lệch...",
+        "driftClean": "Không có sai lệch — cấu trúc thực tế khớp với khuôn mẫu.",
+        "driftSummary": "Lỗ hổng bao phủ {{gaps}} · {{violations}} lỗi thứ tự · {{folded}} vị trí bị gấp",
+        "driftPacingOnly": "Cấu trúc khớp, nhưng nhịp độ bị lệch (tối đa {{drift}}).",
+        "driftThreads": "Độ bao phủ của các mạch truyện",
+        "driftNoThreads": "Khuôn mẫu không có mạch truyện để so sánh.",
+        "driftPacing": "Nhịp độ",
+        "driftMax": "sai lệch tối đa {{drift}}",
+        "driftPacingNC": "Chưa thể so sánh — khuôn mẫu không có đường cong căng thẳng.",
+        "driftSuccession": "Thứ tự",
+        "driftSuccessionOk": "Không có vi phạm thứ tự.",
+        "driftViolation": "{{label}}: {{n}} lỗi thứ tự",
+        "driftFolded": "Bị gấp (chưa bao giờ được liên kết)",
+        "untitledArc": "(cốt truyện chưa đặt tên)",
+        "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm.",
+        "tabSuggest": "Gợi ý"
+      },
+      "import": {
+        "privacy": "Văn bản gốc sẽ được giữ riêng tư và không bao giờ được chia sẻ. Chỉ có cấu trúc trừu tượng được trích xuất mới có thể được xuất bản — và việc xuất bản sẽ loại bỏ các tham chiếu nguồn.",
+        "sources": "Nguồn tham chiếu",
+        "loading": "Đang tải...",
+        "noSources": "Chưa có nguồn nào — hãy dán một nguồn vào bên dưới.",
+        "untitled": "(chưa đặt tên)",
+        "deleteConfirm": "Xóa nguồn này? Hành động này không thể hoàn tác.",
+        "deleteTitle": "Xóa (không thể khôi phục)",
+        "sourceError": "Không thể lưu nguồn — hãy thử lại.",
+        "what": "Phân tích tham chiếu thành một mẫu cốt truyện có thể tái sử dụng (tính phí theo LLM).",
+        "hint": "Gợi ý cốt truyện (tùy chọn)",
+        "useWeb": "Cho phép tra cứu web",
+        "model": "Mô hình phân tích",
+        "estimating": "Đang ước tính...",
+        "running": "Đang phân tích...",
+        "run": "Phân tích",
+        "selectFirst": "Hãy chọn một nguồn ở trên trước.",
+        "done": "Một mẫu cốt truyện mới đã được tạo — hãy tìm nó trong Thư viện.",
+        "pasteTitle": "tiêu đề",
+        "pasteBody": "dán văn bản tham chiếu...",
+        "tooLong": "Quá dài — hãy cắt bớt trước khi nhập.",
+        "addSource": "Thêm nguồn"
+      },
+      "extract": {
+        "blurb": "Lưu cấu trúc cốt truyện này thành một mẫu có thể tái sử dụng trong thư viện của bạn.",
+        "open": "Lưu thành mẫu…",
+        "namePlaceholder": "Tên mẫu",
+        "saving": "Đang lưu…",
+        "save": "Lưu",
+        "cancel": "Hủy",
+        "conflict": "Bạn đã có một mẫu với tên này — vui lòng đổi tên.",
+        "error": "Không thể lưu cốt truyện này thành một mẫu.",
+        "done": "Đã lưu «{{name}}» vào thư viện mẫu của bạn."
+      },
+      "suggest": {
+        "noProject": "Hãy mở một cuốn sách có tác phẩm để nhận các gợi ý cốt truyện dựa trên tiền đề.",
+        "premisePlaceholder": "Mô tả tiền đề — ví dụ: «người thừa kế miễn cưỡng phải giành lại gia tộc đã sụp đổ»",
+        "genrePlaceholder": "Thể loại (không bắt buộc)",
+        "running": "Đang xếp hạng…",
+        "run": "Gợi ý các hồi",
+        "error": "Không thể xếp hạng các gợi ý hồi.",
+        "empty": "Chưa có mẫu hồi nào phù hợp — hãy tạo một mẫu mới hoặc nhập một câu chuyện để phân tích.",
+        "mine": "của bạn",
+        "span": "{{count}} chương"
+      },
+      "decompile": {
+        "open": "Nhóm các chương thành các hồi",
+        "confirm": "Tự động nhóm các chương của cuốn sách này thành các hồi (mỗi hồi khoảng {{n}} chương). Có thể chạy lại — các hồi hiện có sẽ được tái sử dụng.",
+        "running": "Đang nhóm…",
+        "run": "Nhóm thành các hồi",
+        "cancel": "Hủy",
+        "error": "Không thể nhóm các chương thành các hồi.",
+        "done": "Đã nhóm {{chapters}} chương thành {{arcs}} hồi.",
+        "none": "Chưa có chương nào để nhóm thành hồi."
+      }
+    },
+    "simple": {
+      "actant": {
+        "subject": "the hero / who acts",
+        "sender": "who sets it in motion",
+        "object": "what's at stake",
+        "receiver": "who it's for",
+        "helper": "who lends a hand",
+        "opponent": "who stands in the way"
+      },
+      "kind": {
+        "sequence": "a plot shape",
+        "situation": "a setup",
+        "hook": "a hook",
+        "emotion_arc": "a feeling arc",
+        "trope": "a familiar move",
+        "pattern": "a pattern",
+        "scheme": "a plot / deception"
+      },
+      "field": {
+        "tension_target": "intensity",
+        "preconditions": "needs before",
+        "effects": "leaves after",
+        "info_asymmetry": "who's in the dark"
+      },
+      "infoAsymmetry": "Who's in the dark",
+      "infoKnows": "{{who}} knows the truth",
+      "infoDeceived": "{{who}} is fooled"
+    },
+    "expert": {
+      "actant": {
+        "subject": "subject",
+        "sender": "sender",
+        "object": "object",
+        "receiver": "receiver",
+        "helper": "helper",
+        "opponent": "opponent"
+      },
+      "kind": {
+        "sequence": "sequence",
+        "situation": "situation",
+        "hook": "hook",
+        "emotion_arc": "emotion arc",
+        "trope": "trope",
+        "pattern": "pattern",
+        "scheme": "scheme"
+      },
+      "field": {
+        "tension_target": "tension target",
+        "preconditions": "preconditions",
+        "effects": "effects",
+        "info_asymmetry": "information asymmetry"
+      },
+      "infoAsymmetry": "Information asymmetry",
+      "knows": "Knows",
+      "deceived": "Deceived",
+      "gap": "Gap"
+    },
+    "graph": {
+      "title": "Biểu đồ — bao gồm · đứng trước · biến thể của",
+      "loading": "Đang tải các liên kết…",
+      "error": "Không thể tải biểu đồ motif.",
+      "retry": "Thử lại",
+      "empty": "Chưa có mối quan hệ nào.",
+      "deleteEdge": "Xóa cạnh",
+      "addEdge": "Thêm mối quan hệ",
+      "pickNeighbor": "Chọn một motif…",
+      "add": "Thêm cạnh",
+      "cancel": "Hủy",
+      "kind": {
+        "composed_of": "Được cấu thành từ",
+        "precedes": "Trước",
+        "variant_of": "Biến thể của"
+      },
+      "truncated": "Đang hiển thị {{cap}} mô típ đầu tiên — hãy thu hẹp theo cấp độ hoặc tìm kiếm để xem thêm.",
+      "canvasLoading": "Đang tải biểu đồ mô típ…",
+      "canvasEmpty": "Chưa có mô típ nào để hiển thị biểu đồ — hãy tạo hoặc áp dụng mô típ, sau đó liên kết chúng."
+    },
+    "suggest": {
+      "button": "Gợi ý một mô-típ",
+      "loading": "Đang xếp hạng các mô-típ cho cảnh này…",
+      "error": "Không thể gợi ý mô-típ.",
+      "retry": "Thử lại",
+      "empty": "Chưa có mô-típ nào phù hợp với cảnh này — hãy thêm nhiều hơn vào thư viện của bạn.",
+      "bind": "Liên kết",
+      "degradedMine": "Các motif của bạn không được xếp hạng theo độ phù hợp — hãy thiết lập một mô hình embedding trong phần cài đặt để xếp hạng chúng theo ngữ nghĩa.",
+      "degradedLibrary": "Không được xếp hạng theo độ phù hợp — mô hình embedding của thư viện dùng chung chưa được cấu hình, vì vậy đây là các kết quả thay thế theo thể loại, không phải các kết quả khớp theo điểm số.",
+      "sectionMine": "Mô típ của bạn",
+      "sectionLibrary": "Từ thư viện"
+    }
+  },
+  "authoringRun": {
+    "navRuns": "Lượt chạy",
+    "navNewRun": "Lượt chạy mới",
+    "navMission": "Trung tâm điều khiển",
+    "list": {
+      "title": "Các lượt chạy cho sách này",
+      "newRun": "+ Lượt chạy mới",
+      "blockedBanner": "Đã có một lượt chạy đang {{status}} cho sách này — mỗi sách chỉ được phép có một lượt chạy đang hoạt động. Mở nó bên dưới, hoặc tạm dừng/đóng nó trước.",
+      "blockedTooltip": "Hãy tạm dừng hoặc đóng lượt chạy đang hoạt động trước.",
+      "colRun": "Lượt chạy",
+      "colScope": "Phạm vi",
+      "colStatus": "Trạng thái",
+      "colSpent": "Đã chi",
+      "colCreated": "Tạo lúc",
+      "scopeCount": "{{count}} chương",
+      "empty": "Chưa có lượt chạy tự động nào cho sách này.",
+      "loading": "Đang tải các lượt chạy…",
+      "error": "Không tải được các lượt chạy."
+    },
+    "newRun": {
+      "title": "Lượt chạy mới — cấu hình",
+      "planLabel": "Kế hoạch (bắt buộc — một lượt chạy soạn thảo theo các beat của một kế hoạch đã được duyệt)",
+      "planEmpty": "Chưa có lượt lập kế hoạch nào được duyệt cho sách này.",
+      "planEmptyCta": "Mở Planner để tạo →",
+      "chaptersLabel": "Các chương cần đưa vào (mục lục sách)",
+      "chaptersHint": "{{total}} chương trong sách · đã chọn {{selected}}",
+      "orderLabel": "Thứ tự chạy",
+      "budgetLabel": "Ngân sách (USD)",
+      "levelLabel": "Cấp độ",
+      "level3": "Cấp 3 — chỉnh sửa",
+      "level4": "Cấp 4 — soạn thảo",
+      "allowlistLabel": "Danh sách công cụ cho phép",
+      "allowlistAdd": "Thêm công cụ…",
+      "runGateCheck": "Kiểm tra điều kiện chạy →",
+      "gating": "Đang kiểm tra…",
+      "cancel": "Hủy"
+    },
+    "gate": {
+      "title": "Kiểm tra điều kiện",
+      "checkPlan": "Kế hoạch tồn tại và đã được duyệt",
+      "checkScope": "Các chương trong phạm vi tồn tại & có thể sắp xếp thứ tự",
+      "checkBudget": "Đã khai báo ngân sách (> $0)",
+      "checkAllowlist": "Đã cấu hình danh sách công cụ cho phép",
+      "startBlocked": "Hãy khắc phục (các) điều kiện chưa đạt bên dưới trước."
+    },
+    "header": {
+      "gate": "Kiểm tra →",
+      "start": "Bắt đầu",
+      "pause": "Tạm dừng",
+      "resume": "Tiếp tục",
+      "close": "Đóng",
+      "revertAll": "Hoàn tác tất cả",
+      "closedNote": "Lượt chạy đã đóng — trạng thái cuối, không còn thao tác nào khác.",
+      "breakerLabel": "cầu dao",
+      "breakerHealthy": "bình thường",
+      "breakerReason": {
+        "pauseAfterEachUnit": "tạm dừng để xem lại (sau mỗi chương)",
+        "budget": "đã hết ngân sách",
+        "criticSevere": "critic phát hiện vấn đề nghiêm trọng",
+        "unitFailed": "một chương bị lỗi",
+        "driverCrashed": "driver đã gặp sự cố"
+      },
+      "heartbeatLabel": "nhịp tim",
+      "heartbeatFresh": "mới",
+      "heartbeatStale": "CŨ — driver có thể đã chết",
+      "heartbeatNA": "không có",
+      "budgetLabel": "Ngân sách",
+      "budgetDanger": "gần đạt giới hạn",
+      "pollActive": "Đang poll mỗi {{secs}}s (REST — không có live stream)",
+      "pollLastRefreshed": "cập nhật lần cuối {{secs}}s trước",
+      "pollRefreshingNow": "đang làm mới…",
+      "pollSuspended": "Đã tạm dừng poll — run không còn active",
+      "pausePolicyLabel": "Tự động tạm dừng sau mỗi đơn vị",
+      "errorPrefix": "error_message:"
+    },
+    "queue": {
+      "title": "Hàng đợi đơn vị",
+      "hint": "Nhấp vào một chương để đọc bản nháp của nó bên dưới.",
+      "unitLabel": "Đơn vị {{index}}"
+    },
+    "diff": {
+      "title": "Xem lại bản nháp",
+      "prev": "← Trước",
+      "next": "Sau →",
+      "openFullDiff": "Mở diff đầy đủ trong trình soạn thảo",
+      "notDrafted": "Chưa có bản nháp — không có gì để xem.",
+      "notReached": "Lượt chạy đã dừng trước khi đến chương này.",
+      "failedUnit": "Đơn vị này thất bại:",
+      "verdictShow": "Hiện chi tiết ▾",
+      "verdictHide": "Ẩn chi tiết ▴",
+      "sev": {
+        "ok": "ổn",
+        "warn": "cảnh báo",
+        "severe": "nghiêm trọng"
+      },
+      "cascadeWarning": "{{count}} đơn vị phía sau đã được soạn/chấp nhận ({{chapters}}) — điều này chỉ mang tính tham khảo; từ chối đơn vị này KHÔNG tự động hoàn tác chúng.",
+      "accept": "Chấp nhận",
+      "reject": "Từ chối",
+      "alreadyReviewed": "Đã xem xét — hiện đang {{status}}.",
+      "blockedReview": "Chấp nhận/Từ chối bị chặn khi lượt chạy đang {{status}} — hệ thống chỉ cho phép xem xét khi lượt chạy đã dừng (report_ready / failed / paused). Hãy tạm dừng lượt chạy để xem xét chương này ngay bây giờ.",
+      "keyboardHint": "Phím tắt: a=chấp nhận · r=từ chối · ←/→ hoặc p/n = đơn vị trước/sau"
+    },
+    "revert": {
+      "title": "Hoàn tác tất cả đơn vị đã soạn/chấp nhận?",
+      "body": "Thao tác này từ chối mọi đơn vị đã soạn/chấp nhận theo thứ tự ngược lại và khôi phục mỗi chương về phiên bản trước khi chạy. Không thể hoàn tác lại từ giao diện này. Bị ảnh hưởng:",
+      "none": "Không có đơn vị đã soạn/chấp nhận nào để hoàn tác.",
+      "confirm": "Hoàn tác tất cả",
+      "cancel": "Hủy",
+      "reverting": "Đang hoàn tác…",
+      "partialTitle": "Hoàn tác dừng giữa chừng",
+      "partialBody": "Đơn vị {{index}} khôi phục thất bại ({{error}}). {{count}} đơn vị đã được hoàn tác thành công trước khi dừng; lượt chạy được để mở (giữ nguyên trạng thái như trước) để bạn có thể thử lại.",
+      "successBody": "Tất cả {{count}} đơn vị đã được hoàn tác; lượt chạy hiện đã đóng."
+    },
+    "mission": {
+      "empty": "Mở một lượt chạy từ danh sách Lượt chạy để xem trung tâm điều khiển của nó.",
+      "loading": "Đang tải lượt chạy…",
+      "back": "← Quay lại danh sách lượt chạy"
+    }
+  },
+  "overrideSlipBlocked": "Chấp nhận bản bị chặn: một phiên bản giả định đã bị trượt về giá trị chính thống. Hãy tạo lại trước khi chấp nhận."
 }

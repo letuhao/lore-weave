@@ -176,7 +176,8 @@ async def set_campaign_models(
     """S5b — apply a campaign's embedding/reranker model picks to its project.
 
     Embedding is the hazard: changing it invalidates the project's existing vector
-    space. We use `extraction_status == 'disabled'` as the 'no graph yet' signal:
+    space. The 'no graph yet' signal is a PASSAGE-EXISTENCE probe (it used to be
+    `extraction_status == 'disabled'`, which a graph-preserving disable defeats):
     a fresh project sets the model freely; a project WITH a graph requires
     `confirm_embedding_change` (→ probe dim, delete graph, set). Reranker is applied
     directly (no re-embed needed). The embedding dimension is probed BEFORE any
@@ -195,7 +196,12 @@ async def set_campaign_models(
     if payload.embedding_model_ref is not None:
         new_model = str(payload.embedding_model_ref)
         if new_model != (project.embedding_model or ""):
-            has_graph = project.extraction_status != "disabled"
+            # D-EMB-MODEL-REF-04 — passage existence, not `extraction_status`: that
+            # column cannot tell a graph DELETE apart from a graph-preserving
+            # `POST /extraction/disable`. See app/db/neo4j_repos/graph_state.py.
+            from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+
+            has_graph = await project_has_embedded_passages(payload.user_id, project_id)
             if has_graph and not payload.confirm_embedding_change:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -225,7 +231,12 @@ async def set_campaign_models(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         detail={"code": "KNOW_NEO4J_UNAVAILABLE", "message": "Neo4j not configured"},
                     )
-                await _delete_project_graph(payload.user_id, project_id)
+                # include_passages=True — same reason as the K16.10 route: this branch
+                # CHANGES the vector space, so every old-dimension passage must go or it
+                # is orphaned forever (D-EMB-MODEL-REF-04).
+                await _delete_project_graph(
+                    payload.user_id, project_id, include_passages=True
+                )
                 graph_deleted = True
             await projects_repo.set_extraction_state(
                 payload.user_id, project_id,

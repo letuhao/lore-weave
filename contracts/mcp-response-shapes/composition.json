@@ -1,0 +1,50 @@
+{
+  "_ARC_REF_FIELDS": [
+    "chapter_span",
+    "code",
+    "genre_tags",
+    "id",
+    "language",
+    "name",
+    "status",
+    "summary",
+    "version",
+    "visibility"
+  ],
+  "_MOTIF_BOOK_REF_FIELDS": [
+    "book_id",
+    "book_shared",
+    "code",
+    "genre_tags",
+    "id",
+    "kind",
+    "language",
+    "name",
+    "status",
+    "summary",
+    "version",
+    "visibility"
+  ],
+  "_MOTIF_REF_FIELDS": [
+    "code",
+    "genre_tags",
+    "id",
+    "kind",
+    "language",
+    "name",
+    "status",
+    "summary",
+    "version",
+    "visibility"
+  ],
+  "_OUTLINE_REF_FIELDS": [
+    "chapter_id",
+    "id",
+    "kind",
+    "parent_id",
+    "status",
+    "story_order",
+    "title",
+    "version"
+  ]
+}

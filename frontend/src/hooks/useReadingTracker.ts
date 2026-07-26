@@ -86,6 +86,12 @@ export function useReadingTracker({ bookId, chapterId, accessToken, minFlushMs =
       const { bookId, chapterId, accessToken, minFlushMs } = configRef.current;
       const timeSpent = Math.round(totalSpent.current);
       if (timeSpent < minFlushMs) return; // too short, skip
+      // /review-impl MED fix: a caller whose chapterId resolves asynchronously (e.g. the
+      // studio BookReaderPanel, opened with only {bookId} before its first-chapter lookup
+      // completes) can flush during that window — guard against posting a malformed
+      // `/chapters//progress` URL. No-op for every existing caller (ReaderPage's route always
+      // supplies both ids at mount).
+      if (!bookId || !chapterId) return;
 
       flushed.current = true;
       const payload = JSON.stringify({

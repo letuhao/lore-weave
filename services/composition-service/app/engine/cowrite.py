@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator, Callable
 from loreweave_llm.errors import LLMError
 from loreweave_llm.models import DoneEvent, ReasoningEvent, StreamRequest, TokenEvent, UsageEvent
 
-from app.packer.profile import BookProfile
+from app.packer.profile import BookProfile, style_directive
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,15 @@ _OPERATION_INSTRUCTIONS = {
     "expand": "Expand the current passage with more sensory and interior detail.",
     "rewrite": "Rewrite the current passage, keeping its events but improving the prose.",
     "describe": "Write a vivid description for the current moment.",
+    # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — per-scene "adapt from source" for a
+    # derivative Work. The packer's <source_scene> block carries the inherited
+    # SOURCE scene's prose (gathered ONLY for this op, spoiler-bounded ≤ the branch);
+    # the model rewrites it through the divergence + entity overrides. Plan-free
+    # (like continue/rewrite): it does NOT require a derivative scene node/plan.
+    "adapt_scene": "Adapt the SOURCE scene's prose (in the <source_scene> block) to "
+                   "this branch: keep its structural function, but rewrite it to "
+                   "honour the divergence and entity overrides. Do not copy the "
+                   "source verbatim.",
 }
 
 
@@ -61,15 +70,29 @@ def estimate_prompt_tokens(messages: list[dict[str, Any]], counter: Callable[[st
     return sum(counter(str(m.get("content", ""))) for m in messages)
 
 
+#: Default per-SCENE word target when the scene carries no `target_words` (2026-07-26). Without a
+#: length target the drafter free-runs SHORT — a local gemma drafted an 83-word "scene" for a
+#: 1400-token budget, nowhere near a readable ~1000-word scene (3 of which make a ~3000-word
+#: chapter). Tunable; the scene's own `target_words` (when the planner sets it) always wins.
+DEFAULT_SCENE_TARGET_WORDS = 1000
+
+
 def build_messages(
     packed_prompt: str, profile: BookProfile, operation: str, guide: str = "",
+    target_words: int | None = None,
 ) -> list[dict[str, str]]:
     """System + user messages for the drafter. The packer's structured blocks are
-    the grounding; the wrapper carries language + the operation steer."""
+    the grounding; the wrapper carries language + the operation steer.
+
+    ``target_words`` (scene-draft path only) appends an explicit LENGTH directive so the model
+    writes a full scene instead of a sketch — a max_output_tokens cap is a ceiling, not a target,
+    so with no directive a local model stops early. Callers that are NOT drafting a full scene
+    (selection ops, revise) pass None and the prompt is unchanged."""
     lang = "" if profile.source_language in ("", "auto") else (
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5 — density/pace + present-character voices
     system = (
         "You are a co-writer continuing a novel. Use the provided canon, present "
         "characters, threads, beat, recent prose, and lore as grounding; never "
@@ -86,7 +109,7 @@ def build_messages(
         "sentence-opening you have already used in this work (e.g. a recurring "
         "weather or colour motif, or a repeated opening line) — each passage should "
         "read freshly with its own sensory language."
-        + lang + voice
+        + lang + voice + style
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")
     # FD-1 S3 — only fires when open promises were re-injected (the <open_promises>
@@ -98,7 +121,16 @@ def build_messages(
         "reader is waiting on: advance or pay one off where it fits this scene; do "
         "NOT silently drop them, and do not contradict canon to force one."
     ) if "<open_promises>" in packed_prompt else ""
-    user = packed_prompt + "\n\n" + instruction + promise_steer + (
+    # LENGTH directive — a max_output_tokens cap is a CEILING, not a target; without an explicit
+    # word goal the model free-runs short (measured: 83 words). Only on the scene-draft path
+    # (target_words passed); selection/revise ops pass None and stay unchanged.
+    length_steer = (
+        f"\n\nLENGTH: write a FULL scene of approximately {target_words} words. Dramatise it "
+        "with concrete action, sensory detail, and dialogue where it fits — do NOT summarise, "
+        "compress, or stop early; a short sketch is a failure. Keep writing until the scene's "
+        "beat is fully played out at roughly that length."
+    ) if target_words and target_words > 0 else ""
+    user = packed_prompt + "\n\n" + instruction + promise_steer + length_steer + (
         f"\n\nAuthor guidance: {guide}" if guide else "")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -137,11 +169,12 @@ def build_selection_messages(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5
     system = (
         "You are a co-writer editing a specific passage of a novel. Use any provided "
         "canon, characters, and lore as grounding; never contradict the canon and "
         "never introduce facts beyond what is given. Output ONLY the revised passage "
-        "— no preamble, no quotation marks, no commentary." + lang + voice
+        "— no preamble, no quotation marks, no commentary." + lang + voice + style
     )
     parts: list[str] = []
     if grounding:
@@ -164,13 +197,14 @@ def build_revise_messages(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5
     system = (
         "You are a co-writer revising a passage to fix continuity errors. The "
         "listed characters are GONE (dead, destroyed, departed, or lost) before "
         "this passage and MUST NOT be portrayed as an active presence — not "
         "acting, speaking, perceiving, or bodily present. Rewrite the passage to "
         "remove these contradictions while preserving its events, intent, voice, "
-        "and length. Output ONLY the revised prose." + lang + voice
+        "and length. Output ONLY the revised prose." + lang + voice + style
     )
     listed = "\n".join(
         f'- {getattr(v, "name", None) or getattr(v, "entity_id", "?")}'
@@ -233,6 +267,7 @@ async def stream_draft(
     est_out = 0
     capped = False
     finish_reason: str | None = None
+    error: str | None = None
     try:
         async for ev in sdk.stream(req, user_id=user_id):
             if isinstance(ev, TokenEvent):
@@ -255,7 +290,8 @@ async def stream_draft(
                 finish_reason = ev.finish_reason
     except LLMError as exc:
         logger.warning("stream_draft LLM error: %s", exc)
-        yield {"type": "error", "error": str(exc)}
+        error = str(exc)
+        yield {"type": "error", "error": error}
 
     text = "".join(parts)
     # Gate OUTPUT metering on a non-zero output frame specifically: an absent OR
@@ -269,4 +305,11 @@ async def stream_draft(
         measured=out_measured,
         finish_reason=finish_reason,
     )
-    yield {"type": "usage", "text": text, "metering": metering, "capped": capped}
+    # `error` rides the terminal frame so the router can distinguish a real failure
+    # (an LLMError with NO content — a resolve failure metered at 0 → the job is marked
+    # FAILED) from a clean finish. A mid-stream error AFTER partial content keeps `text`
+    # non-empty: the router keeps the partial work as `completed` but sets truncated=True
+    # and carries `error` (finish_reason is None on an error interruption, so the error is
+    # what marks it incomplete — the consumers OR it into `truncated`).
+    yield {"type": "usage", "text": text, "metering": metering, "capped": capped,
+           "error": error}

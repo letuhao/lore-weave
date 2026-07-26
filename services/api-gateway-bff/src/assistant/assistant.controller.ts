@@ -1,0 +1,978 @@
+// WS-1.4 — the Work Assistant provisioning orchestrator (spec 02 §Q2).
+//
+// This is the FIRST fan-out handler in the BFF (everything else is reverse-proxy). It
+// provisions the assistant by calling the PUBLIC service APIs with the USER'S OWN JWT —
+// so every downstream route owner-keys/grant-checks the caller itself, and we invent no new
+// internal write surface (book-service /internal is read-only).
+//
+// Trust model (mirrors ToolsController): the FE presents its Bearer JWT; we validate it here
+// and derive the identity from `sub` (SEC-1 — identity is NEVER a client body field). We then
+// forward that SAME Bearer to the public endpoints.
+//
+// Partial-failure is a first-class outcome (T39): convergence-under-concurrency is not
+// atomicity-under-failure. We return a `provision_status` the home strip reads and re-drives
+// on every /assistant open, rather than pretending an all-or-nothing transaction across four
+// services. The diary book is the ANCHOR (everything binds to it); if it cannot be made,
+// nothing else is attempted.
+//
+// Scope note: this wires the two DURABLE cross-service resources whose idempotent get-or-create
+// endpoints exist today — the diary book (WS-1.4a) and the assistant knowledge project
+// (WS-1.4b). "Today's session" is created by the ChatView on first open (it, not the server,
+// knows the user's chosen model); the self-entity (WS-1.5), consent opt-in, and timezone
+// confirm (D9) are surfaced as explicit PENDING steps — never silently omitted, never
+// auto-enabled.
+
+import { Body, Controller, Delete, Get, Headers, HttpException, Logger, Post, Query } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
+
+interface ProvisionBody {
+  title?: string;
+}
+
+interface ProvisionStatus {
+  diary_book: string; // 'ok' | 'trashed' | 'error:<status>'
+  assistant_project: string; // 'ok' | 'skipped:no_diary' | 'error:<status>'
+  work_ontology: string; // 'ok' | 'skipped:no_diary' | 'error:<status>' (WS-1.5b — clone work kinds into the diary)
+  // Steps that depend on not-yet-built slices — surfaced, never silently dropped:
+  todays_session: string; // the ChatView creates it on first open (needs the user's model)
+  self_entity: string; // 'ok' | 'skipped:no_diary' | 'error:<status>' (WS-1.6 — seed the is_self identity)
+  consent: string; // user opt-in only — NEVER auto-enabled as a provisioning side effect
+  timezone: string; // D9 — explicit user confirm, never auto-set from the client zone
+}
+
+// WS-1.5 §Q2 — the System-tier work kinds cloned into the diary's book tier at provisioning.
+const WORK_KINDS = ['colleague', 'project', 'meeting', 'decision', 'task', 'jargon', 'org'];
+
+interface ProvisionResult {
+  provisioned: boolean; // the durable core (diary + assistant project) is ready
+  book_id?: string;
+  project_id?: string;
+  provision_status: ProvisionStatus;
+}
+
+// A1 / WS-1.10 — the public "End my day" trigger body. The FE supplies the diary book + the
+// distill model (Q8 server-side model resolution is a follow-up). `entry_date` is DELIBERATELY
+// NOT accepted here: the chat internal route stamps today server-side (D-R14 / internal.py LOW-4 —
+// a client-controlled calendar day could overwrite/mis-bucket a historical entry).
+interface EndDayBody {
+  book_id?: string;
+  model_source?: string;
+  model_ref?: string;
+  language?: string;
+  entry_zone?: string;
+}
+
+interface EndDayResult {
+  enqueued: boolean;
+  entry_date?: string;
+  message_id?: string;
+}
+
+// WS-2.6a / D17 — the "correct a memory" request. The user edits a diary day's entry text; the
+// gateway amends the PG entry (leg 1) then enqueues the graph reconcile (legs 2+3).
+interface CorrectBody {
+  book_id?: string;
+  chapter_id?: string;
+  body?: string;
+  title?: string;
+  model_source?: string;
+  model_ref?: string;
+  language?: string;
+}
+
+interface CorrectResult {
+  amended: boolean;
+  entry_date?: string;
+  kept_preserved?: boolean;
+  reextract_enqueued: boolean;
+  message_id?: string;
+  // Non-fatal: the amendment (the SSOT correction) landed but the reconcile enqueue failed; surfaced
+  // so the FE can show "correction saved; memory sync pending" and offer a retry.
+  reextract_error?: string;
+}
+
+// WS-2.6c / D17 — the "forget a person" request. Deletes the structured memory (KG entity + facts +
+// pending) AND redacts the name from the diary source text.
+// R1 (D-REFLECTION-PATTERNS-FEED) — one structured, dismissable reflection pattern for the FE card.
+interface ReflectionPatternDto {
+  detector_code: string;
+  summary: string;
+  pattern_key: string;
+  evidence_refs: string[];
+}
+
+// R2 (D-COACHING-SCORECARD-MOUNT) — one persisted coaching scorecard (the card JSON is passed through
+// verbatim; the BFF does not interpret or mutate `quarantine` — SD-7 is enforced at chat + the FE).
+interface ScorecardItemDto {
+  output_id: string;
+  session_id: string | null;
+  title: string | null;
+  created_at: string | null;
+  card: unknown;
+}
+
+interface ForgetBody {
+  book_id?: string;
+  name?: string;
+}
+
+interface ForgetResult {
+  forgotten: boolean;
+  name?: string;
+  entities_deleted?: number;
+  facts_deleted?: number;
+  pending_tombstoned?: number;
+  redacted_entries?: number;
+  // Non-fatal: the structured memory was erased but the source-text redaction failed; surfaced so the
+  // FE can retry the redaction (the name may still be in the diary prose until then).
+  redaction_error?: string;
+}
+
+// WS-2.10 / T18 — the "new employment epoch" request (a job change). Closes the current epoch's
+// knowledge (isolates the ex-employer's confidential facts) and provisions a fresh assistant project.
+interface NewEpochBody {
+  book_id?: string;
+}
+
+interface NewEpochResult {
+  epoch_closed: boolean;
+  closed_project_id?: string;
+  facts_invalidated?: number;
+  new_project_id?: string;
+  // The fresh diary VOLUME (a new diary book) is a follow-on gated on the E14 restore-vs-start-fresh
+  // diary-lifecycle decision; this epoch boundary isolates the confidential KNOWLEDGE (the actual T18
+  // concern) via a fresh assistant project on the existing diary book.
+  new_diary_volume: 'reused_book:fresh_project';
+}
+
+// WS-3.2 (review H2) — the opt-in schedule toggle body (FE → gateway → scheduler-service).
+interface ScheduleBody {
+  job_kind?: string;
+  cadence?: string;
+  fire_local_time?: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
+// A3 — the closed set of autonomous job_kinds, mirroring scheduler-service's own enum (a drift here vs
+// there is the classic weak-contract bug; both sides validate the same closed set). Fail-closed: a
+// job_kind with no schedule row is OFF, and every write defaults `enabled` false unless explicitly true.
+const ASSISTANT_JOB_KINDS = ['eod_distill', 'weekly_rollup', 'weekly_reflection', 'proactive_nudge', 'nudge'];
+
+// D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
+// the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
+interface EraseResult {
+  erased: boolean;
+  book_id?: string;
+  deleted: {
+    diary_book?: unknown;
+    chat_sessions?: unknown;
+    knowledge?: unknown;
+    glossary?: unknown;
+  };
+}
+
+const PROVISION_STEP_TIMEOUT_MS = 15_000;
+
+@Controller('v1/assistant')
+export class AssistantController {
+  private readonly logger = new Logger(AssistantController.name);
+
+  @Post('provision')
+  async provision(
+    @Body() body: ProvisionBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<ProvisionResult> {
+    // 1. Authenticate — validate the user's JWT; identity is server-derived from `sub` (SEC-1).
+    const { userId, token } = this.requireAuth(authorization);
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    if (!bookUrl || !knowledgeUrl) {
+      this.logger.error('assistant-provision rejected: BOOK/KNOWLEDGE service URL not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    const authHeader = `Bearer ${token}`;
+    const status: ProvisionStatus = {
+      diary_book: 'pending',
+      assistant_project: 'pending',
+      work_ontology: 'pending',
+      todays_session: 'deferred:created_on_first_open',
+      self_entity: 'pending:WS-1.5',
+      consent: 'pending:user_opt_in',
+      timezone: 'pending:user_confirm',
+    };
+
+    // 2. Diary book (the anchor) — idempotent get-or-create.
+    const diary = await this.postJson(`${bookUrl}/v1/books/diary`, authHeader, {
+      title: body?.title,
+    });
+    if (diary.ok && typeof diary.body?.book_id === 'string') {
+      status.diary_book = 'ok';
+    } else if (diary.status === 409 && diary.body?.code === 'BOOK_DIARY_TRASHED') {
+      // E14 — a trashed diary must be resolved by the user (restore vs start fresh) before
+      // we provision anything onto it. Surface it; do not fork or resurrect.
+      status.diary_book = 'trashed';
+      status.assistant_project = 'skipped:no_diary';
+      status.work_ontology = 'skipped:no_diary';
+      status.self_entity = 'skipped:no_diary';
+      return { provisioned: false, provision_status: status };
+    } else {
+      status.diary_book = `error:${diary.status}`;
+      status.assistant_project = 'skipped:no_diary';
+      status.work_ontology = 'skipped:no_diary';
+      status.self_entity = 'skipped:no_diary';
+      return { provisioned: false, provision_status: status };
+    }
+    const bookId: string = diary.body.book_id;
+
+    // 3. Assistant knowledge project — bound to the diary, idempotent.
+    const proj = await this.postJson(
+      `${knowledgeUrl}/v1/knowledge/projects/assistant`,
+      authHeader,
+      { book_id: bookId },
+    );
+    let projectId: string | undefined;
+    if (proj.ok && typeof proj.body?.project_id === 'string') {
+      status.assistant_project = 'ok';
+      projectId = proj.body.project_id;
+    } else {
+      // The diary exists but the project failed — a real, visible half-state (T39). The home
+      // strip re-drives on the next open; this get-or-create is idempotent, so the retry is safe.
+      status.assistant_project = `error:${proj.status}`;
+    }
+
+    // 4. Work ontology (WS-1.5 §Q2) — clone the System-tier work kinds into the diary's book
+    //    tier so capture has them. A token-gated INTERNAL glossary call (a system op, not a
+    //    user-authored write); ownership was already established when book-service created the
+    //    diary under the user's JWT above, which is why adopt-kinds needs no further grant check.
+    //    Idempotent + re-drivable, so a failure is a recorded half-state, never a hard error.
+    const glossaryUrl = process.env.GLOSSARY_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!glossaryUrl || !internalToken) {
+      status.work_ontology = 'error:not_configured';
+    } else {
+      const adopt = await this.postInternal(
+        `${glossaryUrl}/internal/books/${bookId}/ontology/adopt-kinds?user_id=${encodeURIComponent(userId)}`,
+        internalToken,
+        { kinds: WORK_KINDS },
+      );
+      status.work_ontology = adopt.ok ? 'ok' : `error:${adopt.status}`;
+    }
+
+    // 5. Self entity (WS-1.6 §Q5) — seed the user's OWN identity entity in the diary, marked
+    //    is_self, so capture dedups the user's name onto it (they are not a colleague) and the
+    //    detectors can exclude it. Needs the display name (from the auth profile). Best-effort +
+    //    re-drivable, like the ontology; it depends on the diary + the adopted 'colleague' kind.
+    const authUrl = process.env.AUTH_SERVICE_URL;
+    if (!glossaryUrl || !internalToken || !authUrl) {
+      status.self_entity = 'error:not_configured';
+    } else {
+      const profile = await this.getInternal(
+        `${authUrl}/internal/users/${encodeURIComponent(userId)}/profile`,
+        internalToken,
+      );
+      const name =
+        profile.ok && typeof profile.body?.display_name === 'string' ? profile.body.display_name : '';
+      // name may be '' (profile unreachable) — the glossary endpoint defaults it to "Me", so
+      // the self-entity is still seeded (the user can rename it); the flag is what matters.
+      const self = await this.postInternal(
+        `${glossaryUrl}/internal/books/${bookId}/self-entity?user_id=${encodeURIComponent(userId)}`,
+        internalToken,
+        { name },
+      );
+      status.self_entity = self.ok ? 'ok' : `error:${self.status}`;
+    }
+
+    return {
+      provisioned: status.diary_book === 'ok' && status.assistant_project === 'ok',
+      book_id: bookId,
+      project_id: projectId,
+      provision_status: status,
+    };
+  }
+
+  // A1 / WS-1.10 — the public "End my day" trigger. The FE cannot call chat-service's
+  // X-Internal-Token-only `/internal/chat/assistant/distill` directly, so the BFF fronts it:
+  // validate the user's JWT, derive `user_id` from `sub` (SEC-1 — never a body field), and forward
+  // to the internal distill enqueue with the platform token. entry_date is OMITTED so chat stamps
+  // today server-side (D-R14). Returns the 202 enqueue result (entry_date + message_id) so the FE
+  // can poll for the day's diary entry to review.
+  @Post('end-day')
+  async endDay(
+    @Body() body: EndDayBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<EndDayResult> {
+    const { userId } = this.requireAuth(authorization);
+
+    const bookId = (body?.book_id ?? '').trim();
+    const modelSource = (body?.model_source ?? '').trim();
+    const modelRef = (body?.model_ref ?? '').trim();
+    if (!bookId || !modelSource || !modelRef) {
+      throw new HttpException('book_id, model_source and model_ref are required', 400);
+    }
+
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('assistant-end-day rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // Forward with the SERVER-DERIVED user_id + the platform token. No entry_date → chat defaults
+    // to today in entry_zone (server-authoritative day bucketing, D-R14).
+    const distill = await this.postInternal(
+      `${chatUrl}/internal/chat/assistant/distill`,
+      internalToken,
+      {
+        user_id: userId,
+        book_id: bookId,
+        model_source: modelSource,
+        model_ref: modelRef,
+        language: (body?.language ?? 'en').trim() || 'en',
+        entry_zone: (body?.entry_zone ?? 'UTC').trim() || 'UTC',
+      },
+    );
+    if (!distill.ok) {
+      // Surface the real downstream status (400 bad model_ref, 503 enqueue failure) rather than a
+      // blanket 500, so the home strip can tell "retry" from "fix your model".
+      const detail =
+        (typeof distill.body?.detail === 'string' && distill.body.detail) ||
+        'failed to enqueue end-of-day distill';
+      throw new HttpException(detail, distill.status >= 400 ? distill.status : 502);
+    }
+    return {
+      enqueued: distill.body?.enqueued === true,
+      entry_date: distill.body?.entry_date,
+      message_id: distill.body?.message_id,
+    };
+  }
+
+  // C8 / SD-C8 (WS-5.6) — the FE dismisses a weekly-reflection pattern permanently. Fronts chat's
+  // X-Internal-Token-only PUT /internal/chat/assistant/reflection-dismiss with the SERVER-DERIVED
+  // user_id (the FE never sends owner_user_id). worker-ai then drops that pattern_key AT DETECTION
+  // (the tombstone is period-independent), so a dismissed pattern never resurfaces (C2).
+  @Post('reflection-dismiss')
+  async reflectionDismiss(
+    @Body() body: { pattern_key?: string },
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ dismissed: boolean; pattern_key: string }> {
+    const { userId } = this.requireAuth(authorization);
+    const patternKey = (body?.pattern_key ?? '').trim();
+    if (!patternKey) {
+      throw new HttpException('pattern_key is required', 400);
+    }
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('reflection-dismiss rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.postInternalMethod(
+      `${chatUrl}/internal/chat/assistant/reflection-dismiss`,
+      internalToken,
+      'PUT',
+      { owner_user_id: userId, pattern_key: patternKey },
+    );
+    if (!res.ok) {
+      throw new HttpException('failed to dismiss reflection pattern', res.status >= 400 ? res.status : 502);
+    }
+    return { dismissed: true, pattern_key: patternKey };
+  }
+
+  // R1 (D-REFLECTION-PATTERNS-FEED) — the FE reflection card's dismissable-chip feed. Fronts chat's
+  // X-Internal-Token-only GET /internal/chat/assistant/reflection-patterns with the SERVER-DERIVED
+  // user_id (never a client-supplied owner). chat returns the LATEST week's structured patterns already
+  // EXCLUDING the user's tombstoned ones, so a dismiss takes effect on the next fetch (server is SoT).
+  @Get('reflection-patterns')
+  async reflectionPatterns(
+    @Query('week_end') weekEnd?: string,
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ week_end: string | null; patterns: ReflectionPatternDto[] }> {
+    const { userId } = this.requireAuth(authorization);
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('reflection-patterns rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    // week_end pins the chips to the displayed draft's week (cold-review H1) — a calm week returns no
+    // chips instead of a stale prior week's set. Basic shape validation keeps a malformed value out.
+    const weekParam =
+      weekEnd && /^\d{4}-\d{2}-\d{2}$/.test(weekEnd) ? `&week_end=${encodeURIComponent(weekEnd)}` : '';
+    const res = await this.getInternal(
+      `${chatUrl}/internal/chat/assistant/reflection-patterns?user_id=${encodeURIComponent(userId)}${weekParam}`,
+      internalToken,
+    );
+    if (!res.ok) {
+      // Best-effort surface: the reflection DRAFT still renders without chips. Degrade to an empty
+      // set on a chat blip rather than failing the whole card.
+      this.logger.warn(`reflection-patterns fetch failed (status ${res.status}) — returning empty`);
+      return { week_end: null, patterns: [] };
+    }
+    return {
+      week_end: res.body?.week_end ?? null,
+      patterns: Array.isArray(res.body?.patterns) ? res.body.patterns : [],
+    };
+  }
+
+  // R2 (D-COACHING-SCORECARD-MOUNT) — the FE coaching scorecard feed. Fronts chat's X-Internal-Token-only
+  // GET /internal/chat/assistant/scorecards with the SERVER-DERIVED user_id. SD-7 is preserved: the stored
+  // card's `quarantine` flag rides through untouched; the FE trend logic (scorecardTrend) excludes it.
+  @Get('scorecards')
+  async scorecards(
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ scorecards: ScorecardItemDto[] }> {
+    const { userId } = this.requireAuth(authorization);
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('scorecards rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.getInternal(
+      `${chatUrl}/internal/chat/assistant/scorecards?user_id=${encodeURIComponent(userId)}`,
+      internalToken,
+    );
+    if (!res.ok) {
+      this.logger.warn(`scorecards fetch failed (status ${res.status}) — returning empty`);
+      return { scorecards: [] };
+    }
+    return { scorecards: Array.isArray(res.body?.scorecards) ? res.body.scorecards : [] };
+  }
+
+  // WS-2.6a / D17 — the public "correct a memory" trigger. Two legs behind one call: (1) amend the
+  // diary day's PG entry (book-service, user-JWT owner-gated — the SSOT correction), then (2) enqueue
+  // the graph reconcile (chat-service internal → worker-ai re-extract + invalidate). Identity is the
+  // JWT `sub` (SEC-1); the amend is forwarded with the caller's Bearer (owner-gated server-side), the
+  // reextract with the platform token + the server-derived user_id and the entry_date the amend
+  // RETURNED (never a client day). If the amendment fails, the whole call fails (nothing to reconcile).
+  // If only the reconcile enqueue fails, the correction still stands (amended:true) and the failure is
+  // surfaced non-fatally so the FE can retry the reconcile — the entry SSOT is already right.
+  @Post('correct')
+  async correct(
+    @Body() body: CorrectBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<CorrectResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookId = (body?.book_id ?? '').trim();
+    const chapterId = (body?.chapter_id ?? '').trim();
+    const correctedBody = (body?.body ?? '').trim();
+    const modelSource = (body?.model_source ?? '').trim();
+    const modelRef = (body?.model_ref ?? '').trim();
+    if (!bookId || !chapterId || !correctedBody || !modelSource || !modelRef) {
+      throw new HttpException('book_id, chapter_id, body, model_source and model_ref are required', 400);
+    }
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!bookUrl || !chatUrl || !internalToken) {
+      this.logger.error('assistant-correct rejected: BOOK/CHAT_SERVICE_URL or INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // leg 1 — amend the PG entry (owner-gated by the caller's Bearer, server-side). The amend returns
+    // the server-authoritative entry_date + whether `diary_kept_at` was preserved.
+    const amend = await this.postJson(
+      `${bookUrl}/v1/books/${encodeURIComponent(bookId)}/diary/entries/${encodeURIComponent(chapterId)}/amend`,
+      authHeader,
+      { body: correctedBody, title: (body?.title ?? '').trim() },
+    );
+    if (!amend.ok || amend.body?.amended !== true) {
+      const detail =
+        (typeof amend.body?.error === 'string' && amend.body.error) ||
+        (typeof amend.body?.message === 'string' && amend.body.message) ||
+        'failed to amend diary entry';
+      throw new HttpException(detail, amend.status >= 400 ? amend.status : 502);
+    }
+    const entryDate: string | undefined =
+      typeof amend.body?.entry_date === 'string' ? amend.body.entry_date : undefined;
+    const keptPreserved: boolean | undefined =
+      typeof amend.body?.kept_preserved === 'boolean' ? amend.body.kept_preserved : undefined;
+
+    // legs 2+3 — enqueue the graph reconcile with the SERVER-derived user_id + the amend's entry_date +
+    // the SAME corrected body (race-free). A reconcile-enqueue failure is NON-FATAL: the SSOT is already
+    // corrected; report it so the FE can retry the reconcile rather than re-amending (extra revisions).
+    const reextract = await this.postInternal(
+      `${chatUrl}/internal/chat/assistant/reextract`,
+      internalToken,
+      {
+        user_id: userId,
+        book_id: bookId,
+        entry_date: entryDate,
+        body: correctedBody,
+        model_source: modelSource,
+        model_ref: modelRef,
+        language: (body?.language ?? 'en').trim() || 'en',
+      },
+    );
+    if (!reextract.ok) {
+      const detail =
+        (typeof reextract.body?.detail === 'string' && reextract.body.detail) ||
+        'failed to enqueue memory reconcile';
+      this.logger.error(`assistant-correct: amendment landed but reconcile enqueue failed: ${detail}`);
+      return {
+        amended: true, entry_date: entryDate, kept_preserved: keptPreserved,
+        reextract_enqueued: false, reextract_error: detail,
+      };
+    }
+    return {
+      amended: true, entry_date: entryDate, kept_preserved: keptPreserved,
+      reextract_enqueued: reextract.body?.enqueued === true,
+      message_id: reextract.body?.message_id,
+    };
+  }
+
+  // WS-2.6c / D17 — the "forget a person" trigger (the scoped-erasure primitive @entity). Two legs: (1)
+  // knowledge deletes the STRUCTURED memory (KG :Entity + :Facts + pending-inbox tombstone + emits
+  // knowledge.entity_forgotten), then (2) book-service redacts the name from the diary SOURCE prose so a
+  // re-index can't resurface it. Identity is the JWT sub (SEC-1): the knowledge leg carries the platform
+  // token + server-derived user_id; the redact leg carries the caller's Bearer (owner-gated server-side).
+  // If the structured leg fails, the whole call fails (nothing consistent to report). If only the source
+  // redaction fails, the structured memory is already gone (forgotten:true) and the failure is surfaced
+  // non-fatally so the FE can retry the redaction.
+  @Post('forget')
+  async forget(
+    @Body() body: ForgetBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<ForgetResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookId = (body?.book_id ?? '').trim();
+    const name = (body?.name ?? '').trim();
+    if (!bookId || !name) {
+      throw new HttpException('book_id and name are required', 400);
+    }
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!bookUrl || !knowledgeUrl || !internalToken) {
+      this.logger.error('assistant-forget rejected: BOOK/KNOWLEDGE_SERVICE_URL or INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // leg 1 — the structured memory (KG entity + facts + pending tombstone + event). Internal token +
+    // server-derived user_id; the diary book is a body field but the knowledge leg resolves the user's
+    // assistant project by (user_id, book_id) and only deletes THAT project's graph (D16).
+    const forget = await this.postInternal(
+      `${knowledgeUrl}/internal/admin/assistant/forget-entity`,
+      internalToken,
+      { user_id: userId, book_id: bookId, name },
+    );
+    if (!forget.ok) {
+      const detail =
+        (typeof forget.body?.detail === 'string' && forget.body.detail) ||
+        'failed to forget the memory';
+      throw new HttpException(detail, forget.status >= 400 ? forget.status : 502);
+    }
+
+    // leg 2 — redact the name from the diary SOURCE prose (owner-gated by the caller's Bearer). Non-fatal:
+    // the structured memory is already erased; a redaction failure is surfaced for retry.
+    const redact = await this.postJson(
+      `${bookUrl}/v1/books/${encodeURIComponent(bookId)}/diary/redact`,
+      authHeader,
+      { name },
+    );
+    const base: ForgetResult = {
+      forgotten: forget.body?.forgotten === true,
+      name: forget.body?.name,
+      entities_deleted: forget.body?.entities_deleted,
+      facts_deleted: forget.body?.facts_deleted,
+      pending_tombstoned: forget.body?.pending_tombstoned,
+    };
+    if (!redact.ok) {
+      const detail =
+        (typeof redact.body?.error === 'string' && redact.body.error) ||
+        (typeof redact.body?.message === 'string' && redact.body.message) ||
+        'failed to redact the diary source text';
+      this.logger.error(`assistant-forget: structured memory erased but source redaction failed: ${detail}`);
+      return { ...base, redaction_error: detail };
+    }
+    return { ...base, redacted_entries: redact.body?.redacted_entries };
+  }
+
+  // WS-2.10 / T18 — the "new employment epoch" trigger (a job change). On a job change the ex-employer's
+  // confidential facts must not blend into the new job's recall. An epoch is the user's assistant-project
+  // generation; recall is project-scoped, so: (1) CLOSE the current epoch (knowledge bulk-invalidates its
+  // facts + archives the project — the ex-employer's memory can never be resolved by default recall
+  // again), then (2) provision a FRESH assistant project on the diary book (get-or-create mints a new one
+  // since the old is archived). The fresh diary VOLUME (a new book) is a follow-on gated on the E14
+  // diary-lifecycle decision; the confidential-facts isolation (the T18 concern) is delivered here.
+  @Post('new-epoch')
+  async newEpoch(
+    @Body() body: NewEpochBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<NewEpochResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookId = (body?.book_id ?? '').trim();
+    if (!bookId) {
+      throw new HttpException('book_id is required', 400);
+    }
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!knowledgeUrl || !internalToken) {
+      this.logger.error('assistant-new-epoch rejected: KNOWLEDGE_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // 1. Close the current epoch (internal token + server-derived user_id).
+    const close = await this.postInternal(
+      `${knowledgeUrl}/internal/admin/assistant/close-epoch`,
+      internalToken,
+      { user_id: userId, book_id: bookId },
+    );
+    if (!close.ok) {
+      const detail =
+        (typeof close.body?.detail === 'string' && close.body.detail) || 'failed to close the epoch';
+      throw new HttpException(detail, close.status >= 400 ? close.status : 502);
+    }
+
+    // 2. Provision a fresh assistant project on the diary book (idempotent get-or-create; the archived
+    //    old project is skipped, so this mints the new epoch). Caller Bearer — owner-gated server-side.
+    const proj = await this.postJson(
+      `${knowledgeUrl}/v1/knowledge/projects/assistant`,
+      authHeader,
+      { book_id: bookId },
+    );
+    return {
+      epoch_closed: close.body?.closed === true,
+      closed_project_id: close.body?.project_id,
+      facts_invalidated: close.body?.facts_invalidated,
+      new_project_id: proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined,
+      new_diary_volume: 'reused_book:fresh_project',
+    };
+  }
+
+  // WS-3.1/3.2 (review H2) — the opt-in SCHEDULE toggle. A user turning "auto end-of-day" / a weekly
+  // review on/off; the gateway derives the user_id from the JWT (SEC-1, never a body field) and proxies
+  // to scheduler-service with the platform token. Without this route the scheduler is dormant (no row is
+  // ever created) — the FE toggle that calls it is the remaining polish (DBT-14).
+  // A3 — the READ path for the autonomous-layer settings toggle. Returns the caller's schedule rows so
+  // the FE shows each job_kind's EFFECTIVE state (Settings-and-Config: a toggle must expose whether it is
+  // really ON + never a hidden default). Owner-scoped: user_id is the JWT sub, never a client field.
+  @Get('schedule')
+  async getSchedule(
+    @Headers('authorization') authorization?: string,
+  ): Promise<{ schedules: unknown[] }> {
+    const { userId } = this.requireAuth(authorization);
+    const schedUrl = process.env.SCHEDULER_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!schedUrl || !internalToken) {
+      this.logger.error('assistant-getSchedule rejected: SCHEDULER_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.getInternal(
+      `${schedUrl}/internal/schedules?user_id=${encodeURIComponent(userId)}`,
+      internalToken,
+    );
+    if (!res.ok) {
+      const detail = (typeof res.body?.error === 'string' && res.body.error) || 'failed to read schedules';
+      throw new HttpException(detail, res.status >= 400 ? res.status : 502);
+    }
+    return { schedules: Array.isArray(res.body?.schedules) ? res.body.schedules : [] };
+  }
+
+  @Post('schedule')
+  async schedule(
+    @Body() body: ScheduleBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<Record<string, unknown>> {
+    const { userId } = this.requireAuth(authorization);
+    const jobKind = (body?.job_kind ?? '').trim();
+    // A3 — the full autonomous closed set (aligned with the scheduler's own enum), so a user can opt into
+    // weekly reflection + proactive check-ins, not just distill/rollup/nudge. Fail-closed OFF per job_kind.
+    if (!ASSISTANT_JOB_KINDS.includes(jobKind)) {
+      throw new HttpException(`job_kind must be ${ASSISTANT_JOB_KINDS.join('|')}`, 400);
+    }
+    const schedUrl = process.env.SCHEDULER_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!schedUrl || !internalToken) {
+      this.logger.error('assistant-schedule rejected: SCHEDULER_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.postInternalMethod(
+      `${schedUrl}/internal/schedules`,
+      internalToken,
+      'PUT',
+      {
+        user_id: userId,
+        job_kind: jobKind,
+        cadence: (body?.cadence ?? 'daily').trim() || 'daily',
+        fire_local_time: (body?.fire_local_time ?? '21:00').trim() || '21:00',
+        timezone: (body?.timezone ?? '').trim(),
+        enabled: body?.enabled === true,
+      },
+    );
+    if (!res.ok) {
+      const detail = (typeof res.body?.error === 'string' && res.body.error) || 'failed to save the schedule';
+      throw new HttpException(detail, res.status >= 400 ? res.status : 502);
+    }
+    return res.body ?? { enabled: body?.enabled === true };
+  }
+
+  // D-R27 (human-authorized) — the ASSISTANT DATA ERASURE. Immediate ROW-DELETE (not soft-trash) of
+  // the user's whole diary footprint across four services, so the diary content is genuinely gone AND
+  // a re-index cannot resurrect it (the distiller's SOURCE — the assistant chat messages — is deleted,
+  // so a re-distill of any day finds nothing). Backup-resistant crypto-shred stays P-12.
+  //
+  // SEC-1: identity is server-derived from the JWT, and the diary book + assistant project are
+  // RESOLVED SERVER-SIDE from the user's own account (via the idempotent get-or-create, which just
+  // returns an existing diary) — never a client-supplied id, so a caller can only erase their OWN
+  // diary. The glossary erase deletes by book_id alone, which is why the book_id MUST be the
+  // server-resolved one, not a body field.
+  @Delete('data')
+  async eraseData(@Headers('authorization') authorization?: string): Promise<EraseResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    const glossaryUrl = process.env.GLOSSARY_SERVICE_URL;
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!bookUrl || !knowledgeUrl || !glossaryUrl || !chatUrl || !internalToken) {
+      this.logger.error('assistant-erase rejected: a service URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    const uid = encodeURIComponent(userId);
+    const deleted: EraseResult['deleted'] = {};
+    // Track EVERY attempted leg's success so `erased` means "all data actually gone", not "the book
+    // leg happened to succeed" (review MED-2 — a partial failure of the derived legs must NOT report
+    // erased:true for an irreversible privacy op).
+    let allOk = true;
+
+    // Resolve the user's diary for ANY lifecycle WITHOUT creating one (review MED-1 + LOW-7): the
+    // get-or-create endpoint 409s on a TRASHED diary, which made erasing it a silent no-op. This
+    // read-only resolver returns the trashed/active/purge_pending diary, or 404 if the user has none.
+    const diaryRes = await this.getInternal(`${bookUrl}/internal/books/diary?user_id=${uid}`, internalToken);
+    const bookId = diaryRes.ok && typeof diaryRes.body?.book_id === 'string' ? diaryRes.body.book_id : undefined;
+
+    // 1. SOURCE — the assistant chat sessions + messages (the distiller's source). Scope by user_id
+    //    ONLY (book_id=None deletes ALL assistant sessions, review MED-5) so a stray session with a
+    //    NULL/mismatched book_id can't survive. This is what makes "re-index can't resurrect", so it
+    //    runs regardless of whether a diary book was resolved.
+    const chat = await this.deleteInternal(`${chatUrl}/internal/chat/assistant/data?user_id=${uid}`, internalToken);
+    deleted.chat_sessions = chat.body;
+    allOk = allOk && chat.ok;
+
+    // 2. DERIVED — the KG assistant project(s) + passages + pending/rejected fact inboxes. Scope by
+    //    user_id ONLY (audit HIGH-2): knowledge-service resolves the user's assistant projects by the
+    //    `is_assistant` flag, so this ALWAYS runs and ALWAYS counts toward `allOk` — even if the diary
+    //    book was already gone (a book-keyed project resolution used to fail-open here, skipping the KG
+    //    delete while still reporting erased:true, leaving decryptable diary passages + fact text).
+    const kn = await this.deleteInternal(`${knowledgeUrl}/internal/admin/assistant/erase?user_id=${uid}`, internalToken);
+    deleted.knowledge = kn.body;
+    allOk = allOk && kn.ok;
+
+    let bookErased = false;
+    if (bookId) {
+      // 3. SOURCE + OWNERSHIP GATE — the diary book (owner+kind='diary' verified IN the DELETE).
+      //    `bookErased` proves the resolved book_id really is THIS user's diary, which is what lets
+      //    the un-owner-scoped glossary leg (below) run safely (review MED-4).
+      const bookErase = await this.deleteInternal(`${bookUrl}/internal/books/${bookId}/diary/erase?user_id=${uid}`, internalToken);
+      deleted.diary_book = bookErase.body;
+      bookErased = bookErase.ok && bookErase.body?.erased === true;
+      allOk = allOk && bookErase.ok;
+
+      // 4. DERIVED — the captured glossary entities. glossary_entities is book-scoped only (no owner
+      //    column), so we ONLY run it once the book erase above has PROVEN this book_id is the
+      //    caller's own diary — never trust a book_id the ownership gate didn't confirm (review MED-4).
+      if (bookErased) {
+        const gl = await this.deleteInternal(`${glossaryUrl}/internal/books/${bookId}/entities`, internalToken);
+        deleted.glossary = gl.body;
+        allOk = allOk && gl.ok;
+      }
+    }
+
+    return {
+      // erased == every attempted leg succeeded. The chat + knowledge legs (by user_id) always run; a
+      // diary book, when present, must also erase. A user with no diary still gets erased:true once the
+      // user_id-scoped legs succeed — there was genuinely nothing else.
+      erased: allOk && (!bookId || bookErased),
+      book_id: bookId,
+      deleted,
+    };
+  }
+
+  /** POST/PUT JSON to a token-gated /internal endpoint with a chosen method (WS-3.2 schedule uses PUT).
+   *  Never-throw, report-status contract, mirroring postInternal. */
+  private async postInternalMethod(
+    url: string,
+    internalToken: string,
+    method: 'POST' | 'PUT',
+    body: unknown,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+
+  /** DELETE a token-gated /internal endpoint (D-R27 erasure). Never-throw, report-status contract. */
+  private async deleteInternal(
+    url: string,
+    internalToken: string,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'x-internal-token': internalToken },
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+
+  /**
+   * Validate the caller's JWT and return the server-derived identity + the raw token to forward.
+   * Identity is NEVER a client body field (SEC-1). Mirrors the book-service/knowledge verifiers:
+   * pin HS256, require `exp` (jsonwebtoken has no built-in "require exp") AND a `sub`. Throws
+   * 401 (missing/invalid/exp-less) or 500 (JWT_SECRET unconfigured) — the exact contract the
+   * provisioning + end-day handlers depend on.
+   */
+  private requireAuth(authorization?: string): { userId: string; token: string } {
+    const token = (authorization ?? '').replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
+      throw new HttpException('missing bearer token', 401);
+    }
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      this.logger.error('assistant auth rejected: JWT_SECRET not configured');
+      throw new HttpException('server_error', 500);
+    }
+    let decoded: { exp?: number; sub?: string };
+    try {
+      decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { exp?: number; sub?: string };
+    } catch {
+      throw new HttpException('invalid_token', 401);
+    }
+    if (typeof decoded.exp !== 'number' || typeof decoded.sub !== 'string' || !decoded.sub) {
+      throw new HttpException('invalid_token', 401);
+    }
+    return { userId: decoded.sub, token };
+  }
+
+  /**
+   * POST JSON to a token-gated /internal endpoint with the platform INTERNAL_SERVICE_TOKEN
+   * (used for system operations like the ontology adopt — NOT a user-authored write, so it
+   * carries the service token + a server-derived user_id, never the caller's JWT). Same
+   * never-throw, report-status contract as postJson.
+   */
+  private async postInternal(
+    url: string,
+    internalToken: string,
+    body: unknown,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+
+  /** GET a token-gated /internal endpoint (e.g. the auth profile for the display name). Same
+   * never-throw, report-status contract as postInternal. */
+  private async getInternal(
+    url: string,
+    internalToken: string,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: { 'x-internal-token': internalToken },
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+
+  /**
+   * POST JSON to a public service endpoint, forwarding the user's Bearer. Never throws on an
+   * HTTP or transport error — provisioning treats a failed step as a recorded half-state, not
+   * an exception, so one service being down does not abort the whole orchestration. A transport
+   * failure is reported as status 0.
+   */
+  private async postJson(
+    url: string,
+    authHeader: string,
+    body: unknown,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: authHeader },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+}

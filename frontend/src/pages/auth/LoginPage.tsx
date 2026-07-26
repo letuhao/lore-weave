@@ -7,7 +7,27 @@ import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
+import { loadPrefFromServer } from '@/lib/syncPrefs';
+import { ONBOARDING_SEEN_PREF_KEY } from '@/features/onboarding/types';
 import { AuthCard } from './AuthCard';
+
+import type { To } from 'react-router-dom';
+
+// MB4 — resolve the post-login destination from RequireAuth's saved state. Accepts the full
+// location object (preferred — preserves search/hash), a legacy pathname string, or nothing
+// (→ /books). Exported so the deep-link-survives-login behaviour is unit-tested.
+export function resolveLoginRedirect(fromState: unknown): To {
+  // Defense-in-depth (cold-review LOW-1): only accept a SAME-ORIGIN in-app path — one leading slash,
+  // never protocol-relative (`//evil.com`). React-router state isn't attacker-controllable today, but
+  // this keeps the redirect safe regardless of who calls it.
+  const safe = (p: string | undefined): boolean => !!p && p.startsWith('/') && !p.startsWith('//');
+  if (typeof fromState === 'string' && safe(fromState)) return fromState;
+  if (fromState && typeof fromState === 'object' && 'pathname' in fromState) {
+    const f = fromState as { pathname?: string; search?: string; hash?: string };
+    if (safe(f.pathname)) return { pathname: f.pathname!, search: f.search ?? '', hash: f.hash ?? '' };
+  }
+  return '/books';
+}
 
 export function LoginPage() {
   const { t } = useTranslation('auth');
@@ -16,8 +36,13 @@ export function LoginPage() {
   const location = useLocation();
   const [error, setError] = useState('');
 
-  // Where to go after login — saved by RequireAuth, or default to /books
-  const from = (location.state as { from?: string })?.from || '/books';
+  // Where to go after login — saved by RequireAuth (MB4: the FULL location, so a deep-link's
+  // query/hash survive the round-trip). resolveLoginRedirect handles the location object, the
+  // legacy string form, and the no-state default.
+  const from = resolveLoginRedirect((location.state as { from?: unknown })?.from);
+  // A deep-link (RequireAuth saved the attempted route) means a returning user with intent —
+  // never route them through the first-run chooser. Only a PLAIN login is a candidate for it.
+  const hadDeepLink = !!(location.state as { from?: unknown })?.from;
 
   const schema = z.object({
     email: z.string().min(1, t('validation.email_required')).email(t('validation.email_invalid')),
@@ -36,6 +61,19 @@ export function LoginPage() {
         body: JSON.stringify(data),
       });
       setTokens(res.access_token, res.refresh_token);
+      // N3 (dogfood 2026-07-18 F5) — a first-run writer registers → verifies → logs in (register
+      // itself returns no tokens), so THIS is where first-run truly begins. On a PLAIN login (no
+      // deep-link) whose onboarding flag is still unseen, send them to the "What do you want to do?"
+      // chooser instead of the reading-catalog-adjacent /books list. A deep-link or an already-seen
+      // flag falls through to `from` (default /books) — returning users are never regressed. The
+      // pref fetch fails SAFE to "seen" so a hiccup can't trap a returning user on the chooser.
+      if (!hadDeepLink) {
+        const seen = await loadPrefFromServer<boolean>(ONBOARDING_SEEN_PREF_KEY, res.access_token).catch(() => true);
+        if (seen !== true) {
+          navigate('/onboarding', { replace: true });
+          return;
+        }
+      }
       navigate(from, { replace: true });
     } catch (err) {
       setError((err as Error).message);

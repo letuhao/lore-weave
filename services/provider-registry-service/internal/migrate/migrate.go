@@ -54,12 +54,28 @@ CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user
 ALTER TABLE user_models ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
 
 -- v3: support custom providers + api_standard
--- Drop CHECK constraints to allow any provider_kind string
+-- Drop CHECK constraints to allow any provider_kind string. platform_models is
+-- created further below in this same script (CREATE TABLE IF NOT EXISTS
+-- platform_models) — its DROP CONSTRAINT is deferred to right after that
+-- CREATE (not here) because this whole schemaSQL string replays in order on
+-- every startup with no per-statement version tracking (see the 'vision'
+-- CHECK note further down): on a genuinely fresh database this ALTER used to
+-- run before platform_models existed, aborting the entire migration with
+-- "relation platform_models does not exist" and leaving EVERY later
+-- CREATE TABLE in this script un-applied (found 2026-07-08 bootstrapping a
+-- throwaway test DB — every long-lived dev/prod DB masked this because
+-- platform_models has existed in them since before this ALTER was added).
 ALTER TABLE provider_credentials DROP CONSTRAINT IF EXISTS provider_credentials_provider_kind_check;
 ALTER TABLE user_models DROP CONSTRAINT IF EXISTS user_models_provider_kind_check;
-ALTER TABLE platform_models DROP CONSTRAINT IF EXISTS platform_models_provider_kind_check;
 -- api_standard: which API protocol this provider speaks (openai_compatible, anthropic, ollama, lm_studio)
 ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS api_standard TEXT NOT NULL DEFAULT 'openai_compatible';
+
+-- D-PROVIDER-CONCURRENCY-CONFIG: per-credential concurrency cap. NULL = unlimited
+-- (request-as-demand; the infra is the limiter). The user sets this ONLY when they
+-- know their own backend's limit (e.g. a local GPU that can run N calls at once).
+-- Replaces the old hardcoded per-kind cap (local→1, cloud→GOVERNOR_CLOUD_MAX): a
+-- provider's capacity is a property of THAT credential's backend, not its kind.
+ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS max_concurrency INT;
 
 CREATE TABLE IF NOT EXISTS user_model_tags (
   user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -82,6 +98,9 @@ CREATE TABLE IF NOT EXISTS platform_models (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(provider_kind, provider_model_name)
 );
+-- v3 (moved here, see the note above): now that platform_models exists, allow
+-- any provider_kind string on it too, matching provider_credentials/user_models.
+ALTER TABLE platform_models DROP CONSTRAINT IF EXISTS platform_models_provider_kind_check;
 
 -- Phase 2a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN): async LLM job state.
 -- Single source of truth for jobs submitted via POST /v1/llm/jobs;
@@ -167,7 +186,7 @@ ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN
   'chat','completion','embedding','stt','tts','image_gen',
   'video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- Phase 5d: drop + recreate operation CHECK to add video_gen.
@@ -177,7 +196,7 @@ ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN
   'chat','completion','embedding','stt','tts','image_gen','video_gen',
   'audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- Phase 5e-β.2: drop + recreate operation CHECK to add audio_gen.
@@ -186,7 +205,7 @@ ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
 ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
   'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- P3 (D-P3-EXTRACTION-CALLER-WIRE-UP): drop + recreate operation CHECK
@@ -197,7 +216,7 @@ ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
 ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
   'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- Phase 6a Subsystem A — USD spend guardrail. The estimator reads a per-model
@@ -235,6 +254,11 @@ CREATE TABLE IF NOT EXISTS usage_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_outbox_unpublished
   ON usage_outbox(id) WHERE published_at IS NULL;
+
+-- Public MCP P3 (H-C/PUB-11) — per-key spend attribution. A job that originated at
+-- the public MCP edge carries job_meta.mcp_key_id; FinalizeWithUsageOutbox stamps it
+-- here so it rides the usage stream → usage-billing usage_logs. NULL for first-party.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS mcp_key_id UUID;
 
 -- LLM re-arch Phase 1 — transactional terminal-event outbox. On EVERY terminal
 -- transition (completed|failed|cancelled) the worker (and the cancel handler)
@@ -275,6 +299,61 @@ CREATE TABLE IF NOT EXISTS user_default_models (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (owner_user_id, capability)
 );
+
+-- S-SETTINGS (MCP fan-out) — single-use ledger for the Tier-W settings.model_delete
+-- confirm token. The confirm route records the token's hash here on first redeem;
+-- a replay hits the PK (ON CONFLICT DO NOTHING → 0 rows) and is rejected. The
+-- stateless kit confirm token has no jti, so we key on the token-hash. exp lets a
+-- future sweeper prune expired rows.
+CREATE TABLE IF NOT EXISTS settings_consumed_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  descriptor  TEXT NOT NULL,
+  exp         TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_settings_consumed_tokens_exp ON settings_consumed_tokens(exp);
+
+-- #32 — full LLM-call logging. The usage_outbox now carries (1) request_status so the
+-- billing audit records EVERY terminal status (not just completed — failed/cancelled get
+-- a cost-0 audit row) and (2) the truncated request/response payloads so a call can be
+-- traced/reproduced. usage-billing's writeUsageLog already encrypts + audited-decrypts
+-- these (input_payload_ciphertext/output_payload_ciphertext); this carries them through
+-- the worker→outbox→relay→consumer plumbing. Nullable: legacy/unpopulated rows stay valid.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_status   TEXT;
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_payload  TEXT;
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS response_payload TEXT;
+
+-- (8)-residual — user-defined custom SORT ORDER for models, persisted so the
+-- shared ModelPicker's drag-reorder survives across devices (server SSOT, not
+-- localStorage). NULL = unordered: an explicit order wins, and un-ordered models
+-- sort AFTER the ordered ones (NULLS LAST), falling back to favorites-first. The
+-- PUT /user-models/reorder route assigns 0..N-1 to the provided ids and NULLs the
+-- rest so a partial reorder is well-defined.
+ALTER TABLE user_models ADD COLUMN IF NOT EXISTS sort_order INTEGER;
+
+-- PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5): drop +
+-- recreate operation CHECK to add 'vision'. Same idempotent pattern as the
+-- prior additions — the cross-cutting-enum lesson (validJobOperations map +
+-- this CHECK + openapi.yaml enum must all agree, or INSERT fails 23514
+-- despite the handler already accepting the operation).
+--
+-- /review-impl 2026-07-06 (fixed a self-inflicted instance of the exact
+-- crash-loop the invariant comment above (line 164) warns about): adding
+-- 'vision' ONLY to this final block and not backfilling it into the 4
+-- earlier blocks above crashed provider-registry on next restart the
+-- moment a real 'vision' row existed — Postgres validates each ADD
+-- CONSTRAINT against ALL EXISTING ROWS as the full schemaSQL string
+-- replays in order on every startup (no per-statement version tracking),
+-- so an earlier block whose list predates 'vision' fails outright once
+-- such a row exists. Fixed by adding 'vision' to all 5 blocks. The NEXT
+-- new operation added here MUST do the same to every block above it, not
+-- just append a new one at the end.
+ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
+ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
+  'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
+  'entity_extraction','relation_extraction','event_extraction',
+  'fact_extraction','summarize_level','translation','vision'
+));
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

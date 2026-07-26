@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "世界",
+    "subtitle": "从设定开始构建你的世界——角色、地点、派系——无需手稿即可开始。",
+    "loading": "正在加载世界…"
+  },
+  "empty": {
+    "title": "暂无世界",
+    "description": "创建你的第一个世界来开始编写设定——无需章节。"
+  },
+  "card": {
+    "books": "{{count}} 本书籍"
+  },
+  "create": {
+    "cta": "新建世界",
+    "title": "新建世界",
+    "description": "为你的世界命名。你可以立即开始编写设定。",
+    "nameLabel": "世界名称",
+    "namePlaceholder": "例如：破碎领域",
+    "descLabel": "描述（可选）",
+    "cancel": "取消",
+    "submit": "创建世界",
+    "creating": "正在创建…",
+    "error": "创建世界失败"
+  },
+  "workspace": {
+    "back": "所有世界",
+    "loading": "正在加载世界…",
+    "error": "未找到该世界。"
+  },
+  "lore": {
+    "title": "世界设定集",
+    "extractionOptional": "直接编写设定——角色、地点、派系。无需手稿。从正文中提取设定为可选操作；此世界设定集即为核心锚点。",
+    "anchorUnavailable": "此世界尚未建立设定集锚点——无法进行设定编写。",
+    "kindLabel": "类型",
+    "kindPlaceholder": "选择类型…",
+    "add": "添加设定",
+    "adding": "正在添加…",
+    "added": "设定已添加到你的世界设定集中。",
+    "error": "添加设定失败"
+  },
+  "graph": {
+    "title": "世界关系图",
+    "subtitle": "以只读视图展示世界设定的关联方式。",
+    "rollupSubtitle": "所有成员书籍正史图谱的只读汇总，按书籍独立呈现。",
+    "counts": "{{nodes}} 个节点 · {{edges}} 条关系",
+    "sources": "汇总自 {{count}} 本书籍",
+    "truncated": "显示前 {{n}} 项 —— 大部头书籍可能会挤占小书籍的显示空间",
+    "hint": "滚动缩放 · 拖动空白处平移 · 点击节点查看详情",
+    "loading": "正在加载世界关系图…",
+    "loadFailed": "加载世界关系图失败: {{error}}",
+    "empty": "暂无世界知识 —— 请构建设定集，或提取一本成员书籍以在此汇总其关系图。"
+  },
+  "timeline": {
+    "title": "世界时间线",
+    "subtitle": "所有成员书籍正史时间线的只读汇总，按叙事顺序排列。",
+    "counts": "{{count}} 个事件",
+    "sources": "跨越 {{count}} 本书籍",
+    "truncated": "显示前 {{n}} 项",
+    "chapterLabel": "章节",
+    "loading": "正在加载世界时间线…",
+    "loadFailed": "加载世界时间线失败: {{error}}",
+    "empty": "暂无时间线事件 —— 请提取一本成员书籍以在此汇总其时间线。"
+  },
+  "populate": {
+    "addBook": "添加书籍",
+    "createWhatIf": "创建“如果”分支",
+    "whatIfHint": "从正史作品中分支出一个“如果”故事",
+    "whatIfNeedsCanon": "请先添加一本正史书籍 —— “如果”故事是从正史中分支出去的。",
+    "pickCanon": "从以下内容分支出…",
+    "addBookTitle": "向此世界添加书籍",
+    "addBookDesc": "关联现有书籍或创建新书 —— 它将加入世界的时间线和关系图。",
+    "tabAttach": "关联现有书籍",
+    "tabCreate": "创建新书",
+    "pickBook": "书籍",
+    "bookTitle": "标题",
+    "bookTitlePlaceholder": "新书标题…",
+    "bookDesc": "描述（可选）",
+    "attach": "关联书籍",
+    "createAttach": "创建并添加",
+    "adding": "正在添加…",
+    "cancel": "取消",
+    "addFailed": "无法添加书籍: {{error}}"
+  },
+  "living": {
+    "heading": "动态世界",
+    "subtitle": "你的世界正史及其“如果”分支，以可导航时间线的形式呈现。点击作品即可打开。",
+    "title": "动态世界",
+    "counts": "{{canon}} 正史 · {{branches}} “如果”分支",
+    "hint": "滚动缩放 · 拖动空白处平移 · 点击作品即可打开",
+    "loading": "正在加载动态世界…",
+    "loadFailed": "加载动态世界失败: {{error}}",
+    "empty": "此世界暂无作品 —— 开始编写一本书或一个“如果”分支来扩展其时间线。",
+    "canonBadge": "正史",
+    "branchBadge": "“如果”分支",
+    "canonAria": "正史: {{title}}",
+    "branchAria": "在第 {{ch}} 章分支出“如果”故事: {{title}}",
+    "branchAt": "在第 {{ch}} 章分支出",
+    "orphan": "· 来源于此世界之外",
+    "edgeLabel": "第 {{ch}} 章"
+  }
+}

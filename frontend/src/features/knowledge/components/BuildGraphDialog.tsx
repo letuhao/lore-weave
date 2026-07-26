@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import { AddModelCta } from '@/components/shared/AddModelCta';
+import { ModelPicker } from '@/components/model-picker';
+import { SpendCapField, isValidSpend } from '@/components/ai-task';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import {
   knowledgeApi,
   type EstimateExtractionPayload,
@@ -72,7 +73,6 @@ interface Props {
 // check; this filter is UX so the user never offers an option the BE
 // would reject.
 const ALL_SCOPES: ExtractionJobScopeWire[] = ['chapters', 'chat', 'glossary_sync', 'all'];
-const DECIMAL_REGEX = /^\d+(\.\d{1,2})?$/;
 const ESTIMATE_DEBOUNCE_MS = 300;
 
 // review-impl F7 (K19a.6) — `readBackendError` moved to a shared
@@ -89,6 +89,7 @@ export function BuildGraphDialog({
 }: Props) {
   const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
 
   // Default scope: `chapters` if the project is linked to a book, else
   // `all`. Users can still switch freely.
@@ -115,6 +116,17 @@ export function BuildGraphDialog({
   const [llmModel, setLlmModel] = useState<string>(openLlm);
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(openEmbedding);
   const [maxSpend, setMaxSpend] = useState<string>(openMaxSpend);
+  // KG-EMB-PERSIST — the embedding model the project ACTUALLY has persisted.
+  // The benchmark-run + extract gates read the project's STORED model (not the
+  // dropdown's local value), so a model the user merely picks here is inert
+  // until it's written through. We track the committed model separately so we
+  // can (a) persist a FIRST-time selection immediately (non-destructive: no
+  // graph yet) and (b) refuse to silently switch an already-set model here
+  // (that wipes the graph — it stays in ChangeModelDialog's confirmed flow).
+  const [committedModel, setCommittedModel] = useState<string | null>(
+    project.embedding_model ?? null,
+  );
+  const [persistingEmbedding, setPersistingEmbedding] = useState(false);
   // C12a (D-K19a.5-04) — chapter-range picker. Shown only when
   // scope=='chapters'. Both inputs required together; BE 422s on
   // partial range. Empty inputs → no range filter (full scope).
@@ -127,6 +139,10 @@ export function BuildGraphDialog({
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [targets, setTargets] = useState<ExtractionTarget[]>([]);
   const [concurrency, setConcurrency] = useState<string>('');
+  // Reasoning enable/disable for the extraction LLM. Default OFF — extraction is a
+  // JSON pipeline and hidden thinking burns the output budget / can corrupt the
+  // array (see D-LLM-FAILURE-RATE). Enable only for hard content on a reasoning model.
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
   // C13 — glossary pinning controller (owns the pinned-set + stats query).
   // Stats fetch is gated on the dialog being open AND a linked book existing
   // (the BE 422s no_book otherwise; pinning has no meaning without a book).
@@ -153,7 +169,6 @@ export function BuildGraphDialog({
     if (!open) return;
     setScope(openScope);
     setLlmModel(openLlm);
-    setEmbeddingModel(openEmbedding);
     setMaxSpend(openMaxSpend);
     setChapterRangeFrom('');
     setChapterRangeTo('');
@@ -162,14 +177,31 @@ export function BuildGraphDialog({
     setWizardStep(1);
     setTargets([]);
     setConcurrency('');
+    setReasoningEnabled(false);
     // C13 — clear the pinned-set + filters per open.
     pinning.reset();
     setDebounced({ scope: openScope, llm: openLlm });
-    // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
-    // fold in both `project` + `initialValues` — listing them directly
-    // keeps the effect's dependency graph tight without introducing
-    // stale-closure risk on `initialValues` swaps mid-mount.
-  }, [open, openScope, openLlm, openEmbedding, openMaxSpend]);
+    // `openScope` / `openLlm` / `openMaxSpend` already fold in both `project`
+    // + `initialValues` — listing them directly keeps the effect's dependency
+    // graph tight without introducing stale-closure risk on `initialValues`
+    // swaps mid-mount. KG-EMB-PERSIST: `openEmbedding` is intentionally NOT a
+    // dep here — persisting a first-time embedding selection updates
+    // `project.embedding_model`, which would otherwise re-run this whole reset
+    // and clobber the LLM/scope the user already chose. The embedding value is
+    // reset by its own effect below.
+  }, [open, openScope, openLlm, openMaxSpend]);
+
+  // KG-EMB-PERSIST — reset/sync the embedding selection independently of the
+  // form reset above, so a persisted-model refetch doesn't wipe the LLM/scope.
+  useEffect(() => {
+    if (open) setEmbeddingModel(openEmbedding);
+  }, [open, openEmbedding]);
+
+  // Keep `committedModel` in lockstep with the project's stored model — on open
+  // and after a persist+refetch lands a fresh `project.embedding_model`.
+  useEffect(() => {
+    if (open) setCommittedModel(project.embedding_model ?? null);
+  }, [open, project.embedding_model]);
 
   // Debounce scope/llm changes into `debounced`.
   useEffect(() => {
@@ -180,15 +212,6 @@ export function BuildGraphDialog({
     );
     return () => window.clearTimeout(handle);
   }, [open, scope, llmModel]);
-
-  // Fetch the user's chat-capable models for the LLM dropdown.
-  const modelsQuery = useQuery<{ items: UserModel[] }>({
-    queryKey: ['ai-models', 'chat'],
-    queryFn: () =>
-      aiModelsApi.listUserModels(accessToken!, { capability: 'chat', include_inactive: false }),
-    enabled: open && !!accessToken,
-    staleTime: 60_000,
-  });
 
   // C12a — parse chapter-range inputs. Must be declared BEFORE the
   // estimate useQuery that references it. Both-empty = full scope
@@ -271,7 +294,7 @@ export function BuildGraphDialog({
     retry: false,
   });
 
-  const maxSpendValid = maxSpend === '' || DECIMAL_REGEX.test(maxSpend);
+  const maxSpendValid = isValidSpend(maxSpend);
   // C12 — concurrency: blank ⇒ omit (default). Else an integer in [1, 64]
   // (matches the BE Field(ge=1, le=64)).
   const concurrencyValid = (() => {
@@ -290,7 +313,6 @@ export function BuildGraphDialog({
   // C5 (KN-1/BL-16): the golden-set benchmark is a VISIBLE gate — extraction
   // stays disabled until a passing benchmark exists (the EmbeddingModelPicker
   // renders the status badge + Run-benchmark button for this same project/model).
-  const llmEmpty = !modelsQuery.isLoading && (modelsQuery.data?.items?.length ?? 0) === 0;
 
   const canConfirm =
     !starting &&
@@ -314,6 +336,59 @@ export function BuildGraphDialog({
     if (!concurrencyValid) return t('projects.buildDialog.disabled.fixConcurrency', { defaultValue: 'Parallel calls must be 1–64.' });
     return null;
   })();
+
+  // KG-EMB-PERSIST — persist a FIRST-time embedding selection to the project the
+  // moment it's chosen, so the benchmark-run + extract gates (which read the
+  // project's STORED model, never this dropdown's local value) line up. Without
+  // this, picking a model here was inert: Run-benchmark 409'd `no_embedding_model`
+  // and the extract gate never cleared (bugs 2.1 + 2.2). A model SWAP on an
+  // already-configured project is destructive (wipes the graph) and is refused
+  // here — it belongs in ChangeModelDialog's confirmed flow.
+  const handleEmbeddingChange = async (v: string | null) => {
+    setEmbeddingModel(v); // keep the dropdown responsive regardless
+    if (!accessToken) return;
+    if (!v || v === committedModel) return; // cleared or unchanged → nothing to persist
+    if (committedModel) {
+      // A different model is already persisted. Switching it deletes the graph,
+      // so don't do it silently — bounce back and point at the safe path.
+      setEmbeddingModel(committedModel);
+      toast.error(
+        t('projects.buildDialog.embedding.changeViaDialog', {
+          defaultValue:
+            'This project already has an embedding model. Use “Change model” to switch it — that rebuilds the graph.',
+        }),
+      );
+      return;
+    }
+    // First-time set on a project with no model yet → non-destructive (empty graph).
+    setPersistingEmbedding(true);
+    try {
+      await knowledgeApi.updateEmbeddingModel(project.project_id, v, accessToken, {
+        confirm: true,
+      });
+      setCommittedModel(v);
+      await queryClient.invalidateQueries({ queryKey: ['knowledge-projects'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge', 'benchmark-status', project.project_id],
+      });
+      toast.success(
+        t('projects.buildDialog.embedding.saved', {
+          defaultValue:
+            'Embedding model saved — run the benchmark below to enable extraction.',
+        }),
+      );
+    } catch (err) {
+      setEmbeddingModel(committedModel); // revert local pick on failure
+      toast.error(
+        t('projects.buildDialog.embedding.saveFailed', {
+          defaultValue: 'Could not save the embedding model: {{error}}',
+          error: readBackendError(err),
+        }),
+      );
+    } finally {
+      setPersistingEmbedding(false);
+    }
+  };
 
   const handleConfirm = async () => {
     if (!accessToken || !embeddingModel) return;
@@ -345,6 +420,8 @@ export function BuildGraphDialog({
         ...(concurrency.trim() !== ''
           ? { concurrency_level: Number(concurrency) }
           : {}),
+        // Reasoning enable/disable — only send when ON (BE default is 'none').
+        ...(reasoningEnabled ? { reasoning_effort: 'medium' as const } : {}),
         // C13 — pinned glossary entity ids (force-injected into every window's
         // known_entities). Only send when the user pinned at least one.
         ...(pinning.pinnedIdList.length > 0
@@ -368,7 +445,6 @@ export function BuildGraphDialog({
     }
   };
 
-  const chatModels = useMemo(() => modelsQuery.data?.items ?? [], [modelsQuery.data]);
   // review-impl F2 — BE estimate+start treat `chapters` scope as a
   // book-only code path; a project with `book_id=null` would run a
   // no-op job. Hide the radio option in that case so the UI can't
@@ -432,6 +508,48 @@ export function BuildGraphDialog({
           className={`flex flex-col gap-4 ${wizardStep === 1 ? '' : 'hidden'}`}
           data-testid="build-wizard-body-1"
         >
+        {/* R5 (KN-1/BL-16) — leading prerequisite checklist so the build chain
+            (LLM → embedding → passing benchmark) is visible up front with a
+            ✓/✗/⋯ per item, not just a disabled-Confirm reason at the bottom. */}
+        <ul
+          className="flex flex-col gap-1 rounded-md border border-border/60 bg-muted/30 p-2 text-[11px]"
+          data-testid="build-graph-prereqs"
+        >
+          <PrereqRow
+            ok={llmModel !== ''}
+            label={t('projects.buildDialog.prereq.llm', {
+              defaultValue: 'Extraction LLM model selected',
+            })}
+          />
+          <PrereqRow
+            ok={hasEmbedding}
+            label={t('projects.buildDialog.prereq.embedding', {
+              defaultValue: 'Embedding model selected',
+            })}
+          />
+          <PrereqRow
+            ok={!!(hasEmbedding && benchmarkOk && !benchmarkLoading)}
+            pending={benchmarkLoading}
+            label={
+              benchmarkLoading
+                ? t('projects.buildDialog.prereq.benchmarkChecking', {
+                    defaultValue: 'Checking the embedding benchmark…',
+                  })
+                : !hasEmbedding
+                  ? t('projects.buildDialog.prereq.benchmarkPending', {
+                      defaultValue: 'Embedding benchmark passing (pick a model first)',
+                    })
+                  : benchmarkOk
+                    ? t('projects.buildDialog.prereq.benchmarkPassed', {
+                        defaultValue: 'Embedding benchmark passing',
+                      })
+                    : t('projects.buildDialog.prereq.benchmarkRequired', {
+                        defaultValue:
+                          'Embedding benchmark passing — run it from the model picker below',
+                      })
+            }
+          />
+        </ul>
         {/* Scope selector */}
         <fieldset className="flex flex-col gap-1">
           <legend className="text-xs font-medium text-muted-foreground">
@@ -510,47 +628,35 @@ export function BuildGraphDialog({
           </fieldset>
         )}
 
-        {/* LLM model */}
-        <label className="flex flex-col gap-1">
+        {/* LLM model — W5 shared ModelPicker (capability=chat). */}
+        <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
             {t('projects.buildDialog.llmModel.label')}
           </span>
-          <select
-            value={llmModel}
-            onChange={(e) => setLlmModel(e.target.value)}
-            disabled={modelsQuery.isLoading}
-            className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-          >
-            <option value="">
-              {modelsQuery.isLoading
-                ? t('projects.buildDialog.llmModel.loading')
-                : t('projects.buildDialog.llmModel.placeholder')}
-            </option>
-            {chatModels.map((m) => {
-              const label = m.alias
-                ? `${m.alias} (${m.provider_model_name})`
-                : `${m.provider_kind}/${m.provider_model_name}`;
-              return (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-          {llmEmpty && (
-            // C5 (KN-1/BL-16): no chat model → in-flow AddModelCta (deep-link +
-            // return), not a dead-end. Resolved from provider-registry; no literal.
-            <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              {t('projects.buildDialog.llmModel.empty')}
-              <AddModelCta capability="chat" variant="link" />
-            </span>
-          )}
-        </label>
+          <ModelPicker
+            capability="chat"
+            value={llmModel || null}
+            onChange={(id) => setLlmModel(id ?? '')}
+            placeholder={t('projects.buildDialog.llmModel.placeholder')}
+            ariaLabel={t('projects.buildDialog.llmModel.label')}
+            emptyState={
+              // C5 (KN-1/BL-16): no chat model → in-flow AddModelCta (deep-link +
+              // return), not a dead-end. Resolved from provider-registry; no literal.
+              <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                {t('projects.buildDialog.llmModel.empty')}
+                <AddModelCta capability="chat" variant="link" />
+              </span>
+            }
+          />
+        </div>
 
-        {/* Embedding model (reuse K12.4 picker) */}
+        {/* Embedding model (reuse K12.4 picker). KG-EMB-PERSIST: persist a
+            first-time selection through `handleEmbeddingChange` so benchmark +
+            extract (which read the project's stored model) actually see it. */}
         <EmbeddingModelPicker
           value={embeddingModel}
-          onChange={setEmbeddingModel}
+          onChange={(v) => void handleEmbeddingChange(v)}
+          disabled={persistingEmbedding}
           projectId={project.project_id}
         />
 
@@ -578,6 +684,30 @@ export function BuildGraphDialog({
             {t('projects.buildDialog.concurrency.hint')}
           </span>
         </label>
+
+        {/* Reasoning enable/disable — default OFF (extraction is a JSON pipeline). */}
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={reasoningEnabled}
+            onChange={(e) => setReasoningEnabled(e.target.checked)}
+            className="mt-0.5"
+            data-testid="build-reasoning-toggle"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-xs font-medium">
+              {t('projects.buildDialog.reasoning.label', {
+                defaultValue: 'Enable model reasoning (thinking)',
+              })}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {t('projects.buildDialog.reasoning.hint', {
+                defaultValue:
+                  'Off by default — extraction returns JSON, and hidden thinking can burn the output budget. Enable only for hard content on a reasoning model.',
+              })}
+            </span>
+          </span>
+        </label>
         </div>
 
         {/* ── Step 2 — glossary pinning dual-list (C13) ── */}
@@ -599,23 +729,15 @@ export function BuildGraphDialog({
           className={`flex flex-col gap-4 ${wizardStep === 3 ? '' : 'hidden'}`}
           data-testid="build-wizard-body-3"
         >
-        {/* Max spend */}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">
-            {t('projects.buildDialog.maxSpend.label')}
-          </span>
-          <input
-            type="text"
-            inputMode="decimal"
+        {/* Max spend — shared AI-task SpendCapField (kills the local DECIMAL_REGEX) */}
+        <div className="flex flex-col gap-1">
+          <SpendCapField
             value={maxSpend}
-            onChange={(e) => setMaxSpend(e.target.value)}
-            placeholder="0.00"
-            aria-invalid={!maxSpendValid}
-            className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring aria-[invalid=true]:border-destructive"
+            onChange={setMaxSpend}
+            label={t('projects.buildDialog.maxSpend.label')}
+            hint={t('projects.buildDialog.maxSpend.hint')}
+            invalidLabel={t('projects.buildDialog.maxSpend.invalid')}
           />
-          <span className="text-[11px] text-muted-foreground">
-            {t('projects.buildDialog.maxSpend.hint')}
-          </span>
           {/* D-K19a.5-03: surface user-wide monthly remaining so the
               user can size this job's cap against their aggregate
               budget. Hidden when no user-wide cap is set (null). */}
@@ -629,12 +751,7 @@ export function BuildGraphDialog({
               })}
             </span>
           )}
-          {!maxSpendValid && (
-            <span className="text-[11px] text-destructive">
-              {t('projects.buildDialog.maxSpend.invalid')}
-            </span>
-          )}
-        </label>
+        </div>
 
         {/* Estimate preview */}
         <div className="rounded-md border border-dashed p-3">
@@ -695,5 +812,34 @@ export function BuildGraphDialog({
         </div>
       </BuildWizardSteps>
     </FormDialog>
+  );
+}
+
+/** One row of the R5 build-prerequisite checklist: ✓ (met) / ✗ (missing) /
+ * ⋯ (still checking). View-only — gating stays in `canConfirm`. */
+function PrereqRow({
+  ok,
+  pending,
+  label,
+}: {
+  ok: boolean;
+  pending?: boolean;
+  label: string;
+}) {
+  const mark = pending ? '⋯' : ok ? '✓' : '✗';
+  const color = pending
+    ? 'text-muted-foreground'
+    : ok
+      ? 'text-green-600 dark:text-green-400'
+      : 'text-destructive';
+  return (
+    <li className="flex items-center gap-1.5">
+      <span className={`font-semibold ${color}`} aria-hidden>
+        {mark}
+      </span>
+      <span className={ok || pending ? 'text-foreground' : 'text-muted-foreground'}>
+        {label}
+      </span>
+    </li>
   );
 }

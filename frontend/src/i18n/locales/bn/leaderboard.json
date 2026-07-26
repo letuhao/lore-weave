@@ -1,0 +1,35 @@
+{
+  "title": "লিডারবোর্ড",
+  "subtitle": "কমিউনিটির সেরা বই, লেখক এবং অনুবাদকদের খুঁজে নিন।",
+  "tabs": {
+    "books": "সেরা বই",
+    "authors": "লেখক",
+    "translators": "অনুবাদক",
+    "trending": "ট্রেন্ডিং"
+  },
+  "period": {
+    "7d": "এই সপ্তাহ",
+    "30d": "এই মাস",
+    "all": "সর্বকালের"
+  },
+  "filters": {
+    "allGenres": "সব জনরা",
+    "allLanguages": "সব ভাষা"
+  },
+  "ranking": {
+    "fullRankings": "সম্পূর্ণ র‍্যাঙ্কিং — সেরা বই",
+    "readers": "পাঠক",
+    "favorites": "প্রিয়",
+    "ratings": "রেটিং",
+    "chapters": "অধ্যায়",
+    "translations": "অনুবাদ",
+    "rating": "রেটিং",
+    "showMore": "আরও র‍্যাঙ্কিং দেখুন",
+    "noResults": "এখনও কোনো র‍্যাঙ্কিং নেই। পড়া এবং অনুবাদ করা শুরু করুন!"
+  },
+  "quickStats": {
+    "topAuthors": "সেরা লেখক",
+    "topTranslators": "সেরা অনুবাদক",
+    "viewAll": "সব দেখুন"
+  }
+}

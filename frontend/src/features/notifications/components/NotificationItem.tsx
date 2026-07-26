@@ -24,17 +24,26 @@ export function NotificationItem({ notification: n, onClick, onMarkRead, onDelet
   const { t } = useTranslation('notifications');
   const Icon = categoryIcon(n.category);
 
-  // i18n the title client-side from machine-readable metadata (the stored `title`
-  // is server-rendered English). Phase 1: LLM-job events carry operation + status.
-  // Phase 2 (emitters with interpolated titles) sets metadata.i18n_key + params.
+  // i18n the title client-side (the stored `title` is server-rendered English).
+  // Precedence: (1) the server's first-class `message_key` + `message_params`
+  // (D-NOTIF-I18N / NOTIF-1 — `notif.<category>.<status>` with an `operation`
+  // param), then the two legacy metadata conventions: (2) metadata.i18n_key
+  // + i18n_params, (3) metadata.operation + status. Any `operation` param is an
+  // enum token, so localize it via `event.operation.<op>` before interpolating.
   const meta = (n.metadata ?? {}) as Record<string, unknown>;
   const key = typeof meta.i18n_key === 'string' ? meta.i18n_key : null;
   const op = typeof meta.operation === 'string' ? meta.operation : null;
   const status = typeof meta.status === 'string' ? meta.status : null;
+  const localizeParams = (raw: Record<string, unknown>): Record<string, unknown> => {
+    if (typeof raw.operation !== 'string') return raw;
+    return { ...raw, operation: t(`event.operation.${raw.operation}`, { defaultValue: humanize(raw.operation) }) };
+  };
   let title = n.title; // fallback: stored English
-  if (key) {
-    const params = (meta.i18n_params as Record<string, unknown>) ?? {};
-    title = t(key, { defaultValue: n.title, ...params });
+  if (n.message_key) {
+    const params = localizeParams((n.message_params as Record<string, unknown>) ?? {});
+    title = t(n.message_key, { defaultValue: n.title, ...params });
+  } else if (key) {
+    title = t(key, { defaultValue: n.title, ...localizeParams((meta.i18n_params as Record<string, unknown>) ?? {}) });
   } else if (op) {
     title = t('event.title', {
       op: t(`event.operation.${op}`, { defaultValue: humanize(op) }),

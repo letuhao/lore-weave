@@ -16,15 +16,27 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.logging_config import trace_id_var
 from app.metrics import circuit_open as circuit_open_gauge
 
-__all__ = ["GlossaryClient", "GlossaryEntityForContext"]
+__all__ = [
+    "KNOWN_ENTITIES_MAX_PAGE",
+    "KNOWN_ENTITIES_MAX_PAGES",
+    "GlossaryClient",
+    "GlossaryEntityForContext",
+]
 
 logger = logging.getLogger(__name__)
+
+# The known-entities handler caps `limit` at 500 (its own default is a silent 50).
+KNOWN_ENTITIES_MAX_PAGE = 500
+# Runaway guard for the paging walk: 40 × 500 = 20k entities. Hitting it reports
+# `truncated=True` rather than silently under-reading (no silent caps).
+KNOWN_ENTITIES_MAX_PAGES = 40
 
 
 class GlossaryEntityForContext(BaseModel):
@@ -66,11 +78,13 @@ class GlossaryClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float, retries: int) -> None:
         self._base_url = base_url.rstrip("/")
         self._retries = max(0, retries)
-        # K4-I5: token is baked into the client headers — no need for
-        # a separate field.
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
+        # K4-I5: token is baked into the client headers — no need for a separate
+        # field. W3/W4: the shared factory also bakes JSON + injects X-Trace-Id per
+        # request (trace_id_var), replacing the hand-rolled per-method trace threading.
+        # The circuit-breaker state below is unchanged (transport-only swap).
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, trace_id_provider=trace_id_var.get,
         )
         self._cb_fail_count = 0
         self._cb_opened_at: float | None = None
@@ -159,11 +173,16 @@ class GlossaryClient:
         max_entities: int = 20,
         max_tokens: int = 800,
         exclude_ids: list[str] | None = None,
+        language: str | None = None,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/select-for-context.
 
         Returns an empty list on any failure — never raises. The caller
         treats missing glossary as "degrade silently".
+
+        `language` (S6, optional): when set, entity aliases are augmented with the
+        per-language alias set for that language (source ∪ target). Omitted →
+        source-language aliases only.
         """
         url = f"{self._base_url}/internal/books/{book_id}/select-for-context"
         body = {
@@ -173,6 +192,8 @@ class GlossaryClient:
             "max_tokens": int(max_tokens),
             "exclude_ids": exclude_ids or [],
         }
+        if language:
+            body["language"] = language
 
         # K6.4 — circuit breaker gate. `_cb_enter` returns one of three
         # states: "closed" (breaker healthy, proceed), "probe" (this
@@ -186,12 +207,9 @@ class GlossaryClient:
             return []
         probe_claimed = cb_state == "probe"
 
-        # K7e: forward the inbound trace id so glossary-service can
-        # stitch its logs to the originating chat turn. Empty string →
-        # no header, which lets glossary-service generate its own id.
-        tid = trace_id_var.get()
-        call_headers = {"X-Trace-Id": tid} if tid else None
-
+        # K7e: the inbound trace id is forwarded to glossary-service (so it can
+        # stitch its logs to the originating chat turn) by the client's baked
+        # X-Trace-Id request hook — no per-call header assembly needed.
         try:
             # K4-I4: log AT MOST one warning per call. Per-attempt
             # logging used to spam logs during outages (N candidates ×
@@ -202,7 +220,7 @@ class GlossaryClient:
             last_err_summary: str | None = None
             for _ in range(attempts):
                 try:
-                    resp = await self._http.post(url, json=body, headers=call_headers)
+                    resp = await self._http.post(url, json=body)
                 except httpx.TimeoutException:
                     last_err_summary = "timeout"
                     continue
@@ -278,16 +296,12 @@ class GlossaryClient:
         user-initiated and not on the chat hot path.
         """
         url = f"{self._base_url}/internal/books/{book_id}/entity-count"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
+                url,
             )
             if resp.status_code != 200:
-                logger.warning(
-                    "glossary entity-count %d, trace_id=%s",
-                    resp.status_code, tid,
-                )
+                logger.warning("glossary entity-count %d", resp.status_code)
                 return None
             return int(resp.json().get("count", 0))
         except (httpx.HTTPError, ValueError, KeyError) as exc:
@@ -303,10 +317,9 @@ class GlossaryClient:
         (the FE degrades to manual pinning — never blocks the wizard).
         """
         url = f"{self._base_url}/internal/books/{book_id}/entities/stats"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
+                url,
             )
             if resp.status_code != 200:
                 logger.warning("glossary entities/stats %d", resp.status_code)
@@ -319,21 +332,52 @@ class GlossaryClient:
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(
-        self, book_id: UUID, *, status_filter: str = "active",
+        self,
+        book_id: UUID,
+        *,
+        status_filter: str | None = None,
+        min_frequency: int = 2,
+        limit: int | None = None,
+        offset: int = 0,
+        include_dead: bool = False,
     ) -> list[dict] | None:
-        """GET /internal/books/{book_id}/known-entities.
+        """GET /internal/books/{book_id}/known-entities. One PAGE of entities.
 
-        Returns entity list for anchor pre-loading (K13.0).
-        Returns None on failure.
+        Returns None on failure. Prefer :meth:`list_all_entities` when "every
+        entity" is meant — this method returns at most one server page.
+
+        ``min_frequency`` gates on chapter-appearance count (the Go handler's
+        ``HAVING COUNT(cl.link_id) >= min_frequency``, default 2 — the
+        extraction-anchor semantics). Callers that want EVERY entity regardless of
+        chapter spread (e.g. wiki generation on a low-chapter book, or the WS-4B
+        prose-less graph projection) must pass **0**: the chapter join is a LEFT
+        JOIN, so an entity with no chapter links has COUNT=0 and even `1` excludes it.
+
+        ``limit`` maps to the handler's ``limit`` — whose default is **50** (capped
+        at 500). ``offset`` pages beyond it (the handler's ORDER BY carries a
+        deterministic ``e.entity_id`` tiebreak, so paging is stable).
+
+        ``include_dead``: the handler defaults to ``alive=true``, which filters out
+        narratively-DEAD entities (`alive` is a story flag, NOT a review status).
+        Pass True to include them — a dead character is still a graph node.
+
+        ``status_filter``: one of ``active|inactive|draft|rejected``; **None (the
+        default) applies no status filter** — which is what every caller has always
+        effectively gotten, because the handler historically ignored this parameter
+        (D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM, now fixed server-side).
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
-        tid = trace_id_var.get()
+        params: dict[str, str] = {"min_frequency": str(min_frequency)}
+        if status_filter:
+            params["status"] = status_filter
+        if limit is not None:
+            params["limit"] = str(limit)
+        if offset:
+            params["offset"] = str(offset)
+        if include_dead:
+            params["alive"] = "false"  # handler: alive != "false" ⇒ require alive
         try:
-            resp = await self._http.get(
-                url,
-                headers={"X-Trace-Id": tid} if tid else None,
-                params={"status": status_filter},
-            )
+            resp = await self._http.get(url, params=params)
             if resp.status_code != 200:
                 logger.warning("glossary list-entities %d", resp.status_code)
                 return None
@@ -341,6 +385,56 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary list-entities failed: %s", exc)
             return None
+
+    async def list_all_entities(
+        self,
+        book_id: UUID,
+        *,
+        status_filter: str | None = None,
+        min_frequency: int = 2,
+        include_dead: bool = False,
+        page_size: int = KNOWN_ENTITIES_MAX_PAGE,
+        max_pages: int = KNOWN_ENTITIES_MAX_PAGES,
+    ) -> tuple[list[dict], bool] | None:
+        """Walk EVERY page of `known-entities` (D-ANCHOR-PRELOAD-50-CAP).
+
+        The handler's `limit` defaults to 50 and is capped at 500, so any caller
+        that meant "all entities" and passed no limit was silently truncated at 50
+        — extraction's anchor pre-load included, which let the extractor mint
+        duplicate nodes for every entity past the 50th. This pages via `offset`
+        until a short page arrives.
+
+        Returns ``(rows, truncated)`` — `truncated` True only if `max_pages` was
+        exhausted with a full page still coming (a runaway guard; never a silent
+        cap). Returns None if the FIRST page fails; a later page failing stops the
+        walk and returns what was gathered with ``truncated=True`` (honest partial).
+        """
+        rows: list[dict] = []
+        for page in range(max_pages):
+            batch = await self.list_entities(
+                book_id,
+                status_filter=status_filter,
+                min_frequency=min_frequency,
+                include_dead=include_dead,
+                limit=page_size,
+                offset=page * page_size,
+            )
+            if batch is None:
+                if page == 0:
+                    return None
+                logger.warning(
+                    "glossary list_all_entities: page %d failed for book=%s — "
+                    "returning %d partial rows", page, book_id, len(rows),
+                )
+                return rows, True
+            rows.extend(batch)
+            if len(batch) < page_size:
+                return rows, False
+        logger.warning(
+            "glossary list_all_entities: hit max_pages=%d for book=%s (%d rows) — "
+            "more entities remain", max_pages, book_id, len(rows),
+        )
+        return rows, True
 
     async def list_known_entities_for_chapter(
         self,
@@ -364,7 +458,6 @@ class GlossaryClient:
             (retry budget applies upstream)
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
-        tid = trace_id_var.get()
         params = {
             "alive": "true",
             "min_frequency": str(min_frequency),
@@ -375,7 +468,6 @@ class GlossaryClient:
         try:
             resp = await self._http.get(
                 url,
-                headers={"X-Trace-Id": tid} if tid else None,
                 params=params,
             )
         except httpx.HTTPError as exc:
@@ -427,21 +519,25 @@ class GlossaryClient:
         *,
         book_id: UUID,
         entity_ids: list[str],
+        language: str | None = None,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/entities/by-ids (mui #4).
 
         Batch-fetch glossary entities by id so the semantic selector can
         enrich vector hits with canon detail. Best-effort: returns [] on any
         failure — the caller degrades to FTS.
+
+        `language` (S6, optional): augment aliases with the per-language set.
         """
         if not entity_ids:
             return []
         url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
-        tid = trace_id_var.get()
+        body: dict = {"entity_ids": entity_ids}
+        if language:
+            body["language"] = language
         try:
             resp = await self._http.post(
-                url, json={"entity_ids": entity_ids},
-                headers={"X-Trace-Id": tid} if tid else None,
+                url, json=body,
             )
             if resp.status_code != 200:
                 logger.warning("glossary entities/by-ids %d", resp.status_code)
@@ -454,6 +550,48 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
+
+    async def fetch_entity_display_names(
+        self,
+        *,
+        book_id: UUID,
+        entity_ids: list[str],
+        language: str,
+    ) -> dict[str, str]:
+        """POST /internal/books/{book_id}/entity-display-names (KG-ML M5 C9).
+
+        Resolve a set of glossary entity ids to their display name in
+        ``language``. Returns ``{entity_id: translated_name}`` for ONLY the
+        entities that actually had a translation in that language — an entity
+        whose name has no translation is omitted (the KG node then keeps its
+        canonical name, an honest source-fallback per AC1). Best-effort:
+        returns ``{}`` on any failure or an empty input, so the KG graph-view
+        degrades to canonical names rather than failing the read.
+        """
+        if not entity_ids or not language:
+            return {}
+        url = f"{self._base_url}/internal/books/{book_id}/entity-display-names"
+        try:
+            resp = await self._http.post(
+                url,
+                json={"language": language, "entity_ids": entity_ids},
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entity-display-names %d", resp.status_code)
+                return {}
+            data = resp.json()
+            out: dict[str, str] = {}
+            for it in data.get("items", []):
+                eid = it.get("entity_id")
+                name = it.get("display_name")
+                # Only genuinely-translated names override the canonical; an
+                # untranslated entity is omitted so name_label stays None.
+                if eid and name and it.get("translated"):
+                    out[str(eid)] = str(name)
+            return out
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entity-display-names failed: %s", exc)
+            return {}
 
     async def propose_entities(
         self,
@@ -479,7 +617,6 @@ class GlossaryClient:
         flood triage (mui #1).
         """
         url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
-        tid = trace_id_var.get()
         body: dict = {
             "source_language": source_language,
             "attribute_actions": attribute_actions or {},
@@ -492,7 +629,6 @@ class GlossaryClient:
         try:
             resp = await self._http.post(
                 url, json=body,
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary propose-entities %d", resp.status_code)
@@ -522,11 +658,9 @@ class GlossaryClient:
         if not candidates:
             return None
         url = f"{self._base_url}/internal/books/{book_id}/merge-candidates"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url, json={"candidates": candidates},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary propose-merge-candidates %d", resp.status_code)
@@ -551,11 +685,9 @@ class GlossaryClient:
         batch). `action` distinguishes a direct write from a filed suggestion
         (the human-edited-article guard)."""
         url = f"{self._base_url}/internal/books/{book_id}/wiki/articles"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url, json=body,
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("glossary wiki-writeback %d", resp.status_code)
@@ -577,11 +709,9 @@ class GlossaryClient:
         server-side) as `[{article_id, entity_id, ai_text, human_text}]`. Best-effort:
         returns [] on ANY failure — missing exemplars must never break generation."""
         url = f"{self._base_url}/internal/books/{book_id}/wiki/gold-pairs"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url, params={"limit": limit},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("glossary wiki-gold-pairs %d", resp.status_code)
@@ -606,12 +736,10 @@ class GlossaryClient:
         this route, or a dedicated /internal/ route is needed.
         """
         url = f"{self._base_url}/v1/glossary/books/{book_id}/wiki/generate"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url,
                 json={"entity_ids": entity_ids},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary wiki-generate %d", resp.status_code)

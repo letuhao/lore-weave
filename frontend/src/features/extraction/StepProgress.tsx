@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, X, AlertTriangle } from 'lucide-react';
+import { Loader2, X, AlertTriangle, Minimize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -10,9 +10,11 @@ import type { ExtractionJobStatus } from './types';
 interface StepProgressProps {
   jobId: string;
   onComplete: (finalStatus: ExtractionJobStatus) => void;
+  /** Dismiss the wizard while the job keeps running server-side (tracked in Jobs). */
+  onBackground?: () => void;
 }
 
-export function StepProgress({ jobId, onComplete }: StepProgressProps) {
+export function StepProgress({ jobId, onComplete, onBackground }: StepProgressProps) {
   const { t } = useTranslation('extraction');
   const { accessToken } = useAuth();
   const { status, isTerminal } = useExtractionPolling(jobId, accessToken);
@@ -69,14 +71,25 @@ export function StepProgress({ jobId, onComplete }: StepProgressProps) {
           </div>
         </div>
         {!isTerminal && (
-          <button
-            onClick={() => void handleCancel()}
-            disabled={cancelling}
-            className="inline-flex items-center gap-1 rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
-          >
-            {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
-            {t('progress.cancel')}
-          </button>
+          <div className="flex items-center gap-2">
+            {onBackground && (
+              <button
+                onClick={onBackground}
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                <Minimize2 className="h-3 w-3" />
+                {t('progress.background')}
+              </button>
+            )}
+            <button
+              onClick={() => void handleCancel()}
+              disabled={cancelling}
+              className="inline-flex items-center gap-1 rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+            >
+              {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+              {t('progress.cancel')}
+            </button>
+          </div>
         )}
       </div>
 

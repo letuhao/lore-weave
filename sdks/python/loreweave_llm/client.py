@@ -11,12 +11,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Literal
 from uuid import UUID
 
 import httpx
+from pydantic import ValidationError
 
+from loreweave_llm.attribution import merge_attribution_into_job_meta
 from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
@@ -63,7 +65,10 @@ AuthMode = Literal["jwt", "internal"]
 # Default per-event read timeout — only the IDLE wait for the next SSE
 # frame, NOT a wall-clock cap on the whole stream. The whole-stream
 # timeout is None (unbounded) by design (P1 — streaming chat must have
-# no wall-clock timeout).
+# no wall-clock timeout). A value <= 0 DISABLES the idle cap too (read=None,
+# fully unbounded) — for streaming a slow reasoning model that may think
+# silently (no frames) for minutes before emitting a token; an idle cap would
+# ReadTimeout mid-thought. Callers that want a cap pass a positive value.
 _DEFAULT_IDLE_READ_TIMEOUT_S = 120.0
 
 
@@ -106,12 +111,15 @@ class Client:
         self._internal_token = internal_token
         self._user_id = user_id
 
-        # Whole-stream timeout = None (unbounded). Connect timeout = 5s
-        # (fail fast if gateway is unreachable). Per-read timeout =
-        # idle_read_timeout_s (longest gap between SSE frames before we
-        # treat the stream as stalled — typical providers send at least a
-        # keep-alive comment every 30-60s).
-        timeout = httpx.Timeout(None, connect=5.0, read=idle_read_timeout_s)
+        # Whole-stream timeout = None (unbounded). Connect timeout = 5s (fail fast
+        # if the gateway is unreachable). Per-read (idle) timeout = idle_read_timeout_s
+        # (longest gap between SSE frames before we treat the stream as stalled). A
+        # value <= 0 sets read=None (no idle cap at all) so a slow reasoning model
+        # thinking silently for minutes is not cut off mid-thought.
+        read_timeout: float | None = (
+            idle_read_timeout_s if idle_read_timeout_s and idle_read_timeout_s > 0 else None
+        )
+        timeout = httpx.Timeout(None, connect=5.0, read=read_timeout)
         self._http = httpx.AsyncClient(timeout=timeout, transport=transport)
 
         # LLM re-arch Phase 1 (Commit 2) — optional event-driven resume source.
@@ -347,6 +355,14 @@ class Client:
                 f"model_ref must be a UUID-shaped string, got {request.model_ref!r}",
             ) from exc
 
+        # P4/Wave-C slice D — carrier bridge. A public MCP-key call lost the
+        # X-Mcp-Key-Id / cap headers on the hop into us; the contextvar set at the
+        # tool handler is the only surviving signal. Fold it into job_meta so
+        # provider-registry can per-key-cap (H-K) + attribute the spend (H-C).
+        merged_meta = merge_attribution_into_job_meta(request.job_meta)
+        if merged_meta is not request.job_meta:
+            request = request.model_copy(update={"job_meta": merged_meta})
+
         url, params, headers = self._jobs_endpoint("submit", user_id=user_id)
         body = request.to_request_body()
         try:
@@ -395,12 +411,24 @@ class Client:
         max_poll_interval_s: float = 5.0,
         poll_backoff: float = 1.5,
         transient_retry_budget: int = 1,
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> Job:
         """Poll get_job until status ∈ {completed, failed, cancelled}.
 
         Exponential backoff between polls (clamped to max_poll_interval_s).
         NO wall-clock timeout — polling continues until terminal or
         repeated HTTP failure.
+
+        bug #34 — immediate cancel: ``cancel_check`` is an optional async
+        predicate the caller passes to mean "is my PARENT job cancelled?".
+        Polled once per loop iteration; the first time it returns True the SDK
+        issues DELETE /v1/llm/jobs/{id} (``cancel_job``), which aborts the
+        in-flight provider call upstream so token spend stops NOW instead of
+        running to natural completion. The next get_job then returns
+        status=cancelled and we return it — the SAME terminal outcome a
+        UI-driven DELETE produces (see "Cancel-race" below), so callers need
+        no new handling. A cancel_check fault never breaks the wait (degrades
+        to a normal poll); a cancel_job fault is retried on the next poll.
 
         Per ADR §3.3 D3c — when the terminal job has status=failed AND
         error.code is transient (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR),
@@ -429,7 +457,30 @@ class Client:
         # any missed event, so there's no submit↔read gap to worry about.
         last_id = "$"
         event_driven = self._event_redis_url is not None
+        cancel_requested = False
         while True:
+            # bug #34 — immediate cancel: abort the in-flight provider call the
+            # moment the caller's parent job is cancelled, so we don't poll a
+            # token-burning call to completion. DELETE once on first fire; a fault
+            # in either the check or the DELETE must not break the wait.
+            if cancel_check is not None and not cancel_requested:
+                fire = False
+                try:
+                    fire = await cancel_check()
+                except Exception:  # noqa: BLE001 — a cancel_check fault degrades to normal poll
+                    logger.warning(
+                        "loreweave_llm: cancel_check raised for job %s — ignoring", job_id_str,
+                        exc_info=True,
+                    )
+                if fire:
+                    try:
+                        await self.cancel_job(job_id_str, user_id=user_id)
+                        cancel_requested = True  # DELETE accepted — just poll for the cancelled terminal
+                    except Exception:  # noqa: BLE001 — retry the DELETE on the next poll
+                        logger.warning(
+                            "loreweave_llm: cancel_job during wait failed for job %s — will retry",
+                            job_id_str, exc_info=True,
+                        )
             try:
                 job = await self.get_job(job_id_str, user_id=user_id)
             except LLMHttpError:
@@ -1172,7 +1223,24 @@ class Client:
         if kind == "done":
             return DoneEvent.model_validate(parsed)
         if kind == "error":
-            return ErrorEvent.model_validate(parsed)
+            try:
+                return ErrorEvent.model_validate(parsed)
+            except ValidationError:
+                # D-ERROREVENT-MASKS-UPSTREAM — a producer that emits an error
+                # event without the required `message` field (or any other
+                # schema drift) must not crash the SSE consumer with an opaque,
+                # unrelated pydantic ValidationError that hides the ACTUAL
+                # upstream failure. Found live 2026-07-08: an LM Studio
+                # tool-call-parser crash surfaced this way — the real cause
+                # was only recoverable from LM Studio's own server logs,
+                # not from this SDK's exception, because the ValidationError
+                # itself became the visible error. Degrade to a best-effort
+                # ErrorEvent carrying whatever fields ARE present instead.
+                return ErrorEvent(
+                    event="error",
+                    code=str(parsed.get("code") or "LLM_ERROR"),
+                    message=str(parsed.get("message") or json.dumps(parsed, ensure_ascii=False)),
+                )
         if kind == "audio-chunk":
             # Phase 5a — TTS streamed audio frame.
             return AudioChunkEvent.model_validate(parsed)

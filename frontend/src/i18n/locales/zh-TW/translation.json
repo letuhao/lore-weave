@@ -5,6 +5,14 @@
     "failed": "失敗",
     "pending": "等待中"
   },
+  "error": {
+    "retryable": "無法載入翻譯 — 翻譯服務可能暫時無法使用。請再試一次。",
+    "forbidden": "您沒有權限查看此書籍的翻譯。",
+    "notfound": "找不到這些翻譯內容。",
+    "retry": "重試",
+    "chapters_failed": "無法載入章節列表。",
+    "chapters_timeout": "載入章節列表逾時 — 服務可能反應緩慢或已停止運作。"
+  },
   "page": {
     "breadcrumb_book": "書籍",
     "breadcrumb_chapters": "章節",
@@ -81,7 +89,8 @@
     "original_label": "原文 — {{lang}}",
     "translation_label": "翻譯 — {{lang}}",
     "source_fallback": "來源",
-    "no_translated": "（沒有已翻譯的內容）"
+    "no_translated": "（沒有已翻譯的內容）",
+    "original_unavailable": "原文暫時無法使用。"
   },
   "block_review": {
     "unchanged": "未變更",
@@ -151,8 +160,18 @@
     "show_filter": "顯示篩選",
     "chapters_selected": "已選 {{count}} 章",
     "translate_selected": "翻譯所選",
+    "translate_cta": "翻譯…",
+    "select_all_chapters": "全選章節",
+    "orphan_footnote": "{{count}} 則翻譯屬於已失效的章節。",
+    "page": "頁碼",
+    "prev": "上一頁",
+    "next": "下一頁",
     "extract_glossary": "擷取詞彙",
-    "clear": "清除"
+    "clear": "清除",
+    "loading": "正在載入翻譯覆蓋範圍…",
+    "translate_no_edit": "您只有檢視權限——請向擁有者申請編輯權限以進行翻譯。",
+    "all_filtered_title": "已篩除所有語言",
+    "all_filtered_desc": "在篩選器中重新啟用某種語言以檢視其涵蓋情況。"
   },
   "segments": {
     "title": "段落狀態",
@@ -165,6 +184,7 @@
     "retranslate_changed": "重新翻譯已變更 ({{count}})",
     "retranslate_started": "已開始重新翻譯",
     "empty": "尚未建立段落。",
-    "close": "關閉"
+    "close": "關閉",
+    "retranslate_failed": "無法開始重新翻譯，請重試。"
   }
 }

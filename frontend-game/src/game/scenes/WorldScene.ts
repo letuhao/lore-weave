@@ -7,10 +7,7 @@ import { TERRAIN_TILESET_KEY } from './PreloaderScene';
 import { applyBlendFilterV2 } from '../render/foundation-blend';
 import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
 import { buildOverlayRt, type OverlayRtHandle } from '../render/overlay-rt';
-import {
-  buildZoneBoundaryOverlay,
-  type ZoneBoundaryHandle,
-} from '../render/zone-boundary-overlay';
+import { buildZoneBoundaryOverlay, type ZoneBoundaryHandle } from '../render/zone-boundary-overlay';
 import { useViewerStore } from '@/store/viewer-store';
 import type { TilemapView } from '@/types/tilemap';
 
@@ -109,23 +106,15 @@ export class WorldScene extends Phaser.Scene {
     // standard tilemap layer if the GPU layer fails (e.g. WebGL context
     // lost or extension missing).
     try {
-      const gpu = new Phaser.Tilemaps.TilemapGPULayer(
-        this,
-        this.foundationMap,
-        0,
-        tileset,
-        0,
-        0,
-      );
+      const gpu = new Phaser.Tilemaps.TilemapGPULayer(this, this.foundationMap, 0, tileset, 0, 0);
       this.add.existing(gpu);
       gpu.generateLayerDataTexture();
       this.foundationDisplay = gpu;
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn('TilemapGPULayer unavailable, falling back to TilemapLayer', err);
       const std = this.foundationMap.createLayer(0, tileset, 0, 0);
       if (!std) {
-        throw new Error('foundation tilemap layer creation failed');
+        throw new Error('foundation tilemap layer creation failed', { cause: err });
       }
       this.foundationDisplay = std;
     }
@@ -147,9 +136,7 @@ export class WorldScene extends Phaser.Scene {
     // Phaser types declare `filters: FiltersInternalExternal | null` —
     // narrower than our duck-typed surface. Cast via unknown because
     // we only call the optional members the helper actually invokes.
-    const target = this.foundationDisplay as unknown as Parameters<
-      typeof applyBlendFilterV2
-    >[0];
+    const target = this.foundationDisplay as unknown as Parameters<typeof applyBlendFilterV2>[0];
     // TMP-Q3 chunk C — read the currently-cached TilemapView so the
     // V2 helper can pick per-kind blend hints from the vocabulary.
     // Cached view may be undefined during the initial fallback render;
@@ -160,16 +147,13 @@ export class WorldScene extends Phaser.Scene {
     // and to V0 hard edges if Stage 1 also fails.
     const result = applyBlendFilterV2(target, enabled, this, view);
     if (!result.ok) {
-      // eslint-disable-next-line no-console
       console.warn('Blend filter pipeline unavailable; rendering V0 hard edges', result.error);
       return;
     }
     if (result.stage === 1) {
-      // eslint-disable-next-line no-console
       console.info('Stage-2 cross-tile blend unavailable; using Stage-1 Blur fallback');
     }
   }
-
 
   private renderTilemap(view: TilemapView): void {
     const w = view.grid_size.width;
@@ -403,4 +387,3 @@ export class WorldScene extends Phaser.Scene {
     this.foundationDisplay = null;
   }
 }
-

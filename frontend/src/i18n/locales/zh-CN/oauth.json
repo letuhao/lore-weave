@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "授权访问",
+    "subtitle": "应用程序希望代表您在 LoreWeave 中执行操作。",
+    "client_named": "{{client}} 正在请求访问您的账户。",
+    "client_unnamed": "应用程序正在请求访问您的账户。",
+    "signed_in_as": "当前登录账号：{{email}}",
+    "redirect_to": "重定向至",
+    "unverified": "此应用未经 LoreWeave 验证。请仅在您识别并信任该应用时继续——请检查上方的重定向地址。",
+    "permissions_heading": "请求的权限",
+    "permissions_hint": "关闭任何您不想授予的权限。您可以授予少于请求的权限，但绝不能超过。",
+    "actions_heading": "操作",
+    "areas_heading": "领域",
+    "resource_label": "资源",
+    "allow": "允许访问",
+    "allowing": "正在授权…",
+    "deny": "拒绝",
+    "sign_in": "登录以继续",
+    "no_scopes": "请至少选择一项权限以继续。",
+    "invalid_request": "此授权请求缺失或包含无效信息。请返回应用程序并重试。",
+    "error": "无法完成授权。请重试。",
+    "scope": {
+      "read": "读取您的内容",
+      "paid_read": "执行付费读取操作",
+      "write_auto": "自动进行更改",
+      "write_confirm": "进行更改（需确认）"
+    },
+    "domain": {
+      "book": "书籍",
+      "glossary": "术语表",
+      "knowledge": "知识库",
+      "translation": "翻译",
+      "composition": "创作",
+      "jobs": "任务",
+      "settings": "设置",
+      "lore_enrichment": "世界观丰富",
+      "catalog": "目录"
+    }
+  }
+}

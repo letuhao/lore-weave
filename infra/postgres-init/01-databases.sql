@@ -21,6 +21,10 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_book')\gexe
 SELECT 'CREATE DATABASE loreweave_sharing'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_sharing')\gexec
 
+-- Scheduler (WS-3.1 — the per-user tick driver's own DB, scheduled_agent_runs)
+SELECT 'CREATE DATABASE loreweave_scheduler'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_scheduler')\gexec
+
 -- Public Catalog
 SELECT 'CREATE DATABASE loreweave_catalog'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_catalog')\gexec
@@ -86,3 +90,13 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_video_gen')
 -- dead_letter_events; tables created by jobs-service migrate.py)
 SELECT 'CREATE DATABASE loreweave_jobs'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_jobs')\gexec
+
+-- Roleplay (Rust roleplay-service — scripts + actor-memory + start; tables
+-- created by roleplay-service sqlx::migrate! at startup, R1 onward)
+SELECT 'CREATE DATABASE loreweave_roleplay'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_roleplay')\gexec
+
+-- Agent Extensibility Registry (plugins/skills/MCP-server registrations; tables
+-- created by agent-registry-service migrate.go on startup)
+SELECT 'CREATE DATABASE loreweave_agent_registry'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_agent_registry')\gexec

@@ -15,7 +15,7 @@ interface StepProgressProps {
 export function StepProgress({ jobId, onComplete }: StepProgressProps) {
   const { t } = useTranslation('glossaryTranslate');
   const { accessToken } = useAuth();
-  const { status, isTerminal } = useGlossaryTranslatePolling(jobId, accessToken);
+  const { status, isTerminal, error } = useGlossaryTranslatePolling(jobId, accessToken);
   const [cancelling, setCancelling] = useState(false);
   const completedRef = useRef(false);
 
@@ -38,6 +38,17 @@ export function StepProgress({ jobId, onComplete }: StepProgressProps) {
     }
     setCancelling(false);
   };
+
+  // S1: a failing first poll used to leave `status` null forever → infinite spinner with the
+  // error invisible. Surface it (the hook keeps polling, so a transient error clears itself).
+  if (!status && error) {
+    return (
+      <div role="alert" data-testid="glossary-translate-poll-error" className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-xs text-destructive">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        {t('progress.pollFailed')}
+      </div>
+    );
+  }
 
   if (!status) {
     return (

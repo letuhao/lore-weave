@@ -1,0 +1,68 @@
+{
+  "title": "PDF 가져오기",
+  "description": "PDF를 페이지 범위별로 분할하여 책으로 가져옵니다",
+  "steps": {
+    "upload": "업로드",
+    "configure": "설정",
+    "confirm": "확인",
+    "progress": "진행 중",
+    "results": "결과"
+  },
+  "upload": {
+    "intro": "PDF를 책으로 가져옵니다 — 소설뿐만 아니라 설정집이나 기술 참조용 PDF도 가능합니다. 긴 PDF는 다음 단계에서 설정한 페이지 범위에 따라 장(Chapter)별로 분할됩니다.",
+    "choosePdf": "PDF 파일 선택",
+    "pdfOnly": ".pdf 파일만 가능",
+    "checking": "PDF 확인 중…",
+    "pageCount_one": "{{count}}페이지가 감지되었습니다.",
+    "pageCount_other": "{{count}}페이지가 감지되었습니다.",
+    "readError": "이 PDF를 읽을 수 없습니다."
+  },
+  "configure": {
+    "pagesPerChunk": "청크당 페이지 수",
+    "pagesPerChunkHint": "이 설정값만큼의 페이지가 하나의 챕터로 생성됩니다. PDF 가져오기 시 '제 N장'과 같은 제목을 별도로 감지하지 않으므로, 챕터 표시가 없는 참고서나 기술 서적에도 유용합니다.",
+    "willCreate_one": "{{pages}}페이지에서 {{count}}개의 챕터가 생성됩니다.",
+    "willCreate_other": "{{pages}}페이지에서 {{count}}개의 챕터가 생성됩니다.",
+    "highChapterWarning": "챕터 수가 너무 많습니다. 의도한 것이 아니라면 '청크당 페이지 수'를 더 크게 설정하는 것을 고려해 보세요. 설정과 관계없이 가져오기는 계속 진행됩니다.",
+    "captionImages": "AI로 이미지 캡션 생성",
+    "captionImagesHint": "차트와 이미지를 추출하고 비전 모델을 통해 캡션을 생성하여, 용어집 및 지식 그래프(KG) 추출 시 차트 내용을 인식할 수 있게 합니다. 이미지당 LLM 크레딧이 소모됩니다.",
+    "visionModel": "비전 모델",
+    "visionModelPlaceholder": "비전 기능이 있는 모델 선택 (예: gpt-4o)",
+    "visionModelAriaLabel": "이미지 캡션 생성을 위한 비전 모델",
+    "visionModelHint": "이미지 입력을 지원하는 모델을 선택하세요. 모든 채팅 모델이 이미지 입력을 지원하는 것은 아닙니다."
+  },
+  "confirm": {
+    "file": "파일",
+    "pages": "페이지",
+    "pagesPerChunk": "청크당 페이지 수",
+    "chaptersToCreate": "생성할 챕터 수",
+    "captionImages": "AI로 이미지 캡션 생성",
+    "yes": "예",
+    "no": "아니요",
+    "needModel": "시작하기 전에 비전 모델을 선택하세요. 캡션 생성 기능이 활성화되어 있지만 선택된 모델이 없습니다.",
+    "backgroundNote": "이 작업은 백그라운드에서 실행됩니다. 이 대화 상자를 닫고 언제든지 작업 패널에서 진행 상황을 확인할 수 있습니다.",
+    "startImport": "가져오기 시작",
+    "startFailed": "가져오기 시작 실패"
+  },
+  "progress": {
+    "importing": "PDF 가져오는 중…",
+    "chapterOf": "{{total}}장 중 {{current}}장",
+    "runInBackground": "백그라운드에서 실행",
+    "progress": "진행률",
+    "longNote": "PDF 파일이 길 경우 시간이 다소 걸릴 수 있습니다 — 특히 AI 캡션 기능이 활성화된 경우 더욱 그렇습니다. 대화 상자를 언제든지 닫아도 가져오기는 계속 진행되며, 작업 패널에서 진행 상황을 확인할 수 있습니다.",
+    "backgroundToast": "백그라운드에서 가져오기가 계속됩니다 — 진행 상황은 작업 패널에서 확인하세요."
+  },
+  "results": {
+    "complete": "가져오기 완료",
+    "failed": "가져오기 실패",
+    "chaptersCreated_one": "{{count}}개의 챕터가 생성되었습니다.",
+    "chaptersCreated_other": "{{count}}개의 챕터가 생성되었습니다.",
+    "genericError": "가져오기 중 오류가 발생했습니다.",
+    "importAnother": "다른 파일 가져오기",
+    "done": "완료"
+  },
+  "button": {
+    "back": "뒤로",
+    "cancel": "취소",
+    "next": "다음"
+  }
+}

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Place Graph (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     PLACE GRAPH (`place-graph`)
+     Spec: docs/specs/2026-07-01-writing-studio/38_kg_and_world.md  (S7 · World)
+
+     WHY THIS EXISTS — a PORT, not a build. The feature already works.
+       `composition/components/WorldMap.tsx` + `hooks/useWorldMap.ts` render the
+       book's PLACE entities (glossary `location` kind) and their location↔location
+       relations as a hand-rolled SVG node graph (reusing the shared <GraphCanvas>
+       + <RelationEdge>). It is FULLY operable today:
+         • "+ Place"   → knowledgeApi.createEntity({kind:'location'})   [api.ts:1607]
+         • "Link"      → knowledgeApi.createRelation({predicate})       [api.ts:1617]
+                         predicate picker: contains · borders · route_to
+         • drag        → positions persist SERVER-SIDE on work.settings.world_map
+                         (persistPositions → useSetWorkSettings — shared across devices)
+         • backdrop    → booksApi.uploadChapterMedia → work.settings.world_map.backdrop_url
+         • click node  → opens the place in the Cast codex (onViewCast)
+       This is the ONE operable authoring surface in the whole KG/World/Cast
+       family (S7-A1 audit): every OTHER panel is view-rich / author-poor.
+
+     THE PROBLEM IT HAS — it is STRANDED.
+       It lives only on the legacy `ChapterEditorPage` `worldmap` sub-tab. A
+       Studio user working in the dock cannot reach it: there is no dock panel,
+       no catalog entry, no command-palette route. A working feature that no one
+       in the new UI can open is, functionally, a dead feature. The port is:
+       wrap the SAME leaf component in a Studio dock panel `place-graph`,
+       register it in the catalog, done.
+
+     ► BACKEND WORK THIS SCREEN IMPLIES — NONE. Stated plainly because the
+       whole point of a port is that it adds no backend.
+         • createEntity / createRelation           — exist (knowledge api.ts)
+         • work.settings.world_map persistence      — exists (useSetWorkSettings)
+         • chapter-media upload (backdrop)          — exists (booksApi)
+       This draft asserts NO new route. If a reviewer sees a control here that
+       implies one, it is a bug in the draft, not a backend task. (Contrast the
+       sibling screen-world-map-editor.html, which is nearly ALL new backend.)
+
+     ⚠ DO NOT CONFLATE WITH THE WORLD-MAP EDITOR (plan 30 §10).
+       This is `work.settings.world_map` — a NODE GRAPH of place entities in
+       composition-service, per-(user,book) Work, private. The world-map editor
+       is book-service `world_maps` — a RASTER map with pixel-positioned pins,
+       per-world, owner-scoped. Different service, different data, different
+       shape. They share only the words "world map". A reader who merges them
+       reintroduces the exact confusion S7 exists to end.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① BEFORE — the feature works, but only on the legacy ChapterEditorPage
+          `worldmap` sub-tab; a Studio user cannot navigate to it.
+       ② AFTER — the same graph as a Studio dock panel, operating: add place,
+          link (predicate picker), drag-to-arrange (persisted), backdrop, and
+          a node mid-drag showing the server persist.
+       ③ SCOPE — it is LOCATION-only by construction (buildPlaceGraph drops any
+          place↔character edge). Authoring characters/factions/concepts and
+          non-location relations lives in the sibling kg-entity-authoring draft;
+          this panel deep-links to it.
+
+     SCALE — a book's `location` entities are tens, low hundreds at most; the
+       hand-rolled SVG handles that comfortably. Grid auto-layout seeds any
+       place without a saved position; drag overrides persist per-place.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: the 3 closed-set place-link predicates (PLACE_LINK_PREDICATES) */
+    --pred-contains: #b482e0; --pred-borders: #5496e8; --pred-route: #e8b87e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Legend ───────────────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .edge-key { width: 18px; height: 0; border-top: 2px solid; flex-shrink: 0; }
+  .edge-key.contains { border-color: var(--pred-contains); }
+  .edge-key.borders { border-color: var(--pred-borders); border-top-style: dashed; }
+  .edge-key.route { border-color: var(--pred-route); border-top-style: dotted; }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .graph { width: 1120px; max-width: 100%; height: 600px; }
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  /* ── Toolbar (mirrors WorldMap.tsx's real controls) ───────────────────── */
+  .toolbar { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+  .tlabel { font-size: 11px; color: var(--muted-fg); }
+  .field-in { display: flex; align-items: center; height: 28px; padding: 0 9px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 12px; width: 150px; }
+  .field-in input { background: transparent; border: none; outline: none; color: var(--foreground); font: inherit; font-size: 12px; width: 100%; }
+  .field-in input::placeholder { color: var(--muted-fg); }
+  .tbtn { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 11.5px; font-weight: 500; cursor: pointer; }
+  .tbtn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .tbtn.on { border-color: var(--primary); color: var(--primary); }
+  .tbtn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .tbtn svg { width: 13px; height: 13px; }
+  .select-wrap { position: relative; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .linkbar { display: flex; align-items: center; gap: 6px; padding: 0 4px; }
+  .linkbar .hint { font-size: 11px; color: var(--muted-fg); }
+  .spacer { margin-left: auto; }
+
+  /* ── Graph canvas ─────────────────────────────────────────────────────── */
+  .canvas-wrap { flex: 1; min-height: 0; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 50% 40%, #17130f, #120f0d); }
+  .gsvg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .backdrop { opacity: .28; }
+  .edge { fill: none; stroke-width: 1.6; }
+  .edge.contains { stroke: var(--pred-contains); }
+  .edge.borders { stroke: var(--pred-borders); stroke-dasharray: 6 4; }
+  .edge.route { stroke: var(--pred-route); stroke-dasharray: 2 4; }
+  .edge.pending { opacity: .5; }
+  .elabel { fill: var(--muted-fg); font-family: 'JetBrains Mono'; font-size: 8.5px; }
+
+  .node { cursor: grab; }
+  .node .box { fill: var(--card); stroke: var(--border-hover); stroke-width: 1; rx: 8; }
+  .node.sel .box { stroke: var(--primary); stroke-width: 2; }
+  .node.dragging .box { stroke: var(--primary); stroke-width: 2; filter: drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
+  .node .pin-ic { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+  .node .nm { fill: var(--foreground); font-family: 'Inter'; font-size: 12px; font-weight: 500; }
+  .node .kd { fill: var(--muted-fg); font-family: 'JetBrains Mono'; font-size: 8px; }
+  .node .cnt { fill: var(--muted-fg); font-family: 'JetBrains Mono'; font-size: 8px; }
+  .persist-flag { fill: var(--success); font-family: 'JetBrains Mono'; font-size: 8.5px; }
+
+  /* deep-link banner to the sibling entity-authoring draft */
+  .deeplink { display: flex; align-items: center; gap: 8px; }
+  .kinds-strip { display: flex; gap: 6px; flex-wrap: wrap; }
+  .kchip { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 100px; font-size: 10.5px;
+    background: var(--secondary); border: 1px solid var(--border); color: var(--muted-fg); }
+  .kchip.here { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+  .kchip.elsewhere { opacity: .7; }
+
+  /* ── BEFORE minis ─────────────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .mini { width: 340px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .breadcrumb { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border);
+    font-size: 10.5px; color: var(--muted-fg); flex-wrap: wrap; }
+  .breadcrumb .seg { padding: 2px 6px; border-radius: 4px; background: var(--secondary); }
+  .breadcrumb .seg.dead { color: var(--destructive); border: 1px dashed var(--destructive-muted); background: transparent; }
+  .breadcrumb svg { width: 11px; height: 11px; }
+  .mini-note { padding: 10px 12px; font-size: 10.5px; color: var(--muted-fg); line-height: 1.65; }
+  .mini-note b { color: var(--foreground); }
+  .strike { text-decoration: line-through; opacity: .5; }
+  .mini-canvas { height: 148px; position: relative; overflow: hidden; border-bottom: 1px solid var(--border);
+    background: radial-gradient(circle at 50% 40%, #17130f, #120f0d); }
+
+  /* ── Annotation ───────────────────────────────────────────────────────── */
+  .callout { max-width: 1120px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+</style>
+</head>
+<body>
+
+<h1>Place Graph <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panel, draft</span></h1>
+<p class="sub">
+  Spec: <b>38_kg_and_world.md</b>. The book's <b>place</b> entities (glossary <code>location</code> kind) and their location↔location relations,
+  as a hand-rolled SVG node graph. This already works — <code>WorldMap.tsx</code> + <code>useWorldMap.ts</code> add places, link them (predicate
+  picker), drag-to-arrange with <b>server-side persistence</b>, and set a backdrop — but it is <b>stranded on the legacy ChapterEditorPage</b>, so a
+  Studio user cannot reach it. The port wraps the same leaf in a dock panel. <b>No new backend.</b> Not to be confused with the raster
+  <code>world_maps</code> editor (see <code>screen-world-map-editor.html</code>).
+</p>
+
+<div class="legend">
+  <div class="item"><span class="edge-key contains"></span><b>contains</b></div>
+  <div class="item"><span class="edge-key borders"></span><b>borders</b></div>
+  <div class="item"><span class="edge-key route"></span><b>route_to</b></div>
+  <div class="item" style="color:var(--muted-fg)">the 3 values of <code style="font-family:'JetBrains Mono';font-size:10px;color:var(--accent-fg)">PLACE_LINK_PREDICATES</code> — a closed set</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="var(--info)" stroke-width="2" style="width:13px;height:13px"><path d="M12 22V8M5 12a7 7 0 0 0 14 0"/><circle cx="12" cy="5" r="3"/></svg>
+    <b>location</b> entities only</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATE ① — BEFORE. Works, but only on the legacy page.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Before — it works, but you can't get there <span class="tag">legacy ChapterEditorPage</span></h2>
+<p class="sub">
+  Nothing about the feature is broken. The problem is <b>reachability</b>: it is buried on the old chapter editor's <code>worldmap</code> sub-tab,
+  which the Studio dock never surfaces. A working authoring surface that the current UI cannot navigate to is a dead feature in practice.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — the only path in</span></div>
+    <div class="breadcrumb">
+      <span class="seg">ChapterEditorPage</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="seg">tabs</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="seg dead">worldmap</span>
+    </div>
+    <div class="mini-note">
+      Reachable <b>only</b> from the legacy chapter editor's tab strip.<br />
+      <span class="strike">Studio dock → Open panel…</span> — no catalog entry.<br />
+      <span class="strike">⌘K → "world map"</span> — not in the command palette.<br />
+      <span class="strike">Side Bar → World</span> — no link.
+      <div style="margin-top:8px;color:var(--destructive)">← a Studio user has no route to a feature that already does the job.</div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Before — what it can already do</span></div>
+    <div class="mini-note" style="line-height:1.9">
+      <b>+ Place</b> → <code class="mono" style="font-size:9.5px">createEntity(kind:'location')</code><br />
+      <b>Link places</b> → <code class="mono" style="font-size:9.5px">createRelation(predicate)</code><br />
+      <b>Drag</b> → persists on <code class="mono" style="font-size:9.5px">work.settings.world_map</code><br />
+      <b>Backdrop</b> → <code class="mono" style="font-size:9.5px">uploadChapterMedia</code><br />
+      <b>Click node</b> → opens it in the Cast codex
+      <div style="margin-top:8px;color:var(--success)">Every button works. It is genuinely operable — the one operable authoring surface in the whole KG/World/Cast family.</div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>The port — one move</span></div>
+    <div class="mini-note" style="line-height:1.85">
+      Wrap the <b>same</b> <code class="mono" style="font-size:9.5px">&lt;WorldMap&gt;</code> leaf in a dock panel.<br />
+      Register <code class="mono" style="font-size:9.5px">place-graph</code> in <code class="mono" style="font-size:9.5px">catalog.ts</code>.<br />
+      Feed it <code class="mono" style="font-size:9.5px">work</code>, <code class="mono" style="font-size:9.5px">bookId</code>, <code class="mono" style="font-size:9.5px">token</code> from Studio context.<br />
+      Route <code class="mono" style="font-size:9.5px">onViewCast</code> → open the <code class="mono" style="font-size:9.5px">cast</code> panel.
+      <div style="margin-top:8px;color:var(--foreground)">No new hook, no new route, no schema change. Reachability is the entire deliverable.</div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>"Missing infrastructure" this is not.</b> Every dependency exists and is proven (create/link/persist/upload). The gate this clears is
+  reachability, not capability — the leaf simply needs a dock home and a catalog row. The heavy lifting for this S7 slice lives in the
+  <i>sibling</i> panels (the raster world-map editor's new routes; general entity authoring), not here.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATE ② — AFTER. The dock panel operating.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② After — the Studio dock panel <span class="tag">place-graph</span> — same graph, now reachable</h2>
+<p class="sub">
+  The same controls as <code>WorldMap.tsx</code>, in a dock panel. Here the graph shows Hàn Lập's world: <b>link mode</b> is on with two places
+  selected and the predicate picker open (state of the real <code>worldmap-linkbar</code>), one node is mid-<b>drag</b> with its server-persist flag,
+  and a backdrop sits behind the nodes.
+</p>
+
+<div class="panel graph">
+  <div class="panel-head">
+    <span>Place Graph — 山海遺聞 · Sơn Hải Di Văn</span>
+    <div class="acts">
+      <div class="ico" title="Fit to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <span class="tlabel">World Map</span>
+    <div class="field-in"><input placeholder="New place…" value="Thất Huyền Môn" /></div>
+    <button class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Place</button>
+    <button class="tbtn on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg> Link places</button>
+    <div class="linkbar">
+      <div class="select-wrap">
+        <select><option>borders</option><option>contains</option><option>route_to</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <button class="tbtn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> link</button>
+      <span class="hint">2/2 selected</span>
+    </div>
+    <span class="spacer"></span>
+    <button class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg> Backdrop</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <svg class="gsvg" viewBox="0 0 1120 500" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="bd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#243026"/><stop offset="1" stop-color="#1b2530"/></linearGradient>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+        </marker>
+      </defs>
+
+      <!-- backdrop image (drawn inline; real panel loads work.settings.world_map.backdrop_url) -->
+      <g class="backdrop">
+        <rect x="0" y="0" width="1120" height="500" fill="url(#bd)"/>
+        <path d="M120,300 C260,220 420,260 560,200 C720,140 900,190 1040,150 C1080,138 1090,300 980,340 C820,400 520,410 340,380 C220,360 60,360 120,300 Z" fill="#2a3a2e" opacity=".5" stroke="#3a4a34" stroke-width="2"/>
+        <path d="M300,250 C460,270 640,230 820,270" stroke="#3f5138" stroke-width="2" fill="none" opacity=".5"/>
+      </g>
+
+      <!-- edges (predicate-colored). from/to are node centers below. -->
+      <path class="edge contains" d="M250,150 L250,300" marker-end="url(#arrow)"/>
+      <text class="elabel" x="258" y="228">contains</text>
+      <path class="edge borders" d="M340,140 L560,140" marker-end="url(#arrow)"/>
+      <text class="elabel" x="410" y="132">borders</text>
+      <path class="edge route" d="M330,315 L560,180" marker-end="url(#arrow)"/>
+      <text class="elabel" x="430" y="262">route_to</text>
+      <path class="edge route" d="M660,150 L860,300" marker-end="url(#arrow)"/>
+      <text class="elabel" x="770" y="216">route_to</text>
+      <path class="edge borders pending" d="M660,320 L850,330" marker-end="url(#arrow)"/>
+      <text class="elabel" x="710" y="316">borders · pending</text>
+
+      <!-- nodes -->
+      <!-- Thanh Vân Môn (selected in link mode) -->
+      <g class="node sel" transform="translate(180,110)">
+        <rect class="box" width="150" height="52" rx="8"/>
+        <path class="pin-ic" transform="translate(14,18)" d="M6,0 C2.7,0 0,2.7 0,6 C0,10.5 6,16 6,16 C6,16 12,10.5 12,6 C12,2.7 9.3,0 6,0 Z"/>
+        <circle cx="20" cy="24" r="2" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="nm" x="34" y="24">Thanh Vân Môn</text>
+        <text class="kd" x="34" y="38">青云门 · location</text>
+        <text class="cnt" x="130" y="14">4</text>
+      </g>
+      <!-- Hoàng Phong Cốc (selected in link mode) -->
+      <g class="node sel" transform="translate(490,110)">
+        <rect class="box" width="150" height="52" rx="8"/>
+        <path class="pin-ic" transform="translate(14,18)" d="M6,0 C2.7,0 0,2.7 0,6 C0,10.5 6,16 6,16 C6,16 12,10.5 12,6 C12,2.7 9.3,0 6,0 Z"/>
+        <circle cx="20" cy="24" r="2" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="nm" x="34" y="24">Hoàng Phong Cốc</text>
+        <text class="kd" x="34" y="38">黄枫谷 · location</text>
+      </g>
+      <!-- Ô Trạch phường thị -->
+      <g class="node" transform="translate(180,275)">
+        <rect class="box" width="150" height="52" rx="8"/>
+        <path class="pin-ic" transform="translate(14,18)" d="M6,0 C2.7,0 0,2.7 0,6 C0,10.5 6,16 6,16 C6,16 12,10.5 12,6 C12,2.7 9.3,0 6,0 Z"/>
+        <circle cx="20" cy="24" r="2" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="nm" x="34" y="24">Ô Trạch</text>
+        <text class="kd" x="34" y="38">乌泽坊市 · location</text>
+      </g>
+      <!-- Lạc Nhật Sơn Mạch — mid-drag, persist flag -->
+      <g class="node dragging" transform="translate(585,155)">
+        <rect class="box" width="150" height="52" rx="8"/>
+        <path class="pin-ic" transform="translate(14,18)" d="M6,0 C2.7,0 0,2.7 0,6 C0,10.5 6,16 6,16 C6,16 12,10.5 12,6 C12,2.7 9.3,0 6,0 Z"/>
+        <circle cx="20" cy="24" r="2" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="nm" x="34" y="24">Lạc Nhật Sơn</text>
+        <text class="kd" x="34" y="38">落日山脉 · location</text>
+        <text class="persist-flag" x="0" y="66">↳ onDragEnd → PATCH work.settings.world_map.positions</text>
+      </g>
+      <!-- Đại Tấn Vương Triều -->
+      <g class="node" transform="translate(785,275)">
+        <rect class="box" width="160" height="52" rx="8"/>
+        <path class="pin-ic" transform="translate(14,18)" d="M6,0 C2.7,0 0,2.7 0,6 C0,10.5 6,16 6,16 C6,16 12,10.5 12,6 C12,2.7 9.3,0 6,0 Z"/>
+        <circle cx="20" cy="24" r="2" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="nm" x="34" y="24">Đại Tấn</text>
+        <text class="kd" x="34" y="38">大晋王朝 · location</text>
+        <text class="cnt" x="140" y="14">7</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      5 places · 5 links · positions saved to <b style="color:var(--muted-fg);font-weight:400">work.settings.world_map</b> (shared across devices)
+    </div>
+    <span class="mono" style="font-size:10px">click a place → open in Cast codex</span>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>Location-only is a hard constraint, not an oversight.</b> <code>buildPlaceGraph</code> keeps a relation edge only when <b>both</b> endpoints are
+  <code>location</code> entities — a place↔character edge is dropped on purpose. The predicate picker is the closed set
+  <code>contains · borders · route_to</code> (<code>PLACE_LINK_PREDICATES</code>); the port preserves that enum exactly, so the FE resolver and the
+  MCP <code>createRelation</code> contract stay in agreement.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATE ③ — SCOPE. Where the other kinds live.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ Scope — this panel authors PLACES; other kinds live next door <span class="tag">deep-link</span></h2>
+<p class="sub">
+  A worldbuilder also needs characters, factions, concepts, items, events — and relations that are not location↔location
+  (<i>Hàn Lập</i> <code>member_of</code> <i>Thất Huyền Môn</i>). Those do not belong in a place graph. The general
+  Create-Entity / Create-Relation authoring surface is the sibling <code>kg-entity-authoring</code> draft; this panel links to it.
+</p>
+
+<div class="panel graph" style="height:auto">
+  <div class="panel-head"><span>Entity kinds — where each is authored</span></div>
+  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+    <div class="deeplink" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted-fg);width:130px">Here (place-graph):</span>
+      <div class="kinds-strip">
+        <span class="kchip here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> location</span>
+      </div>
+      <span style="font-size:10.5px;color:var(--muted-fg)">— as map nodes, with location↔location links</span>
+    </div>
+    <div class="deeplink" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted-fg);width:130px;padding-top:3px">Sibling (kg-entity-authoring):</span>
+      <div class="kinds-strip">
+        <span class="kchip elsewhere">character</span>
+        <span class="kchip elsewhere">faction</span>
+        <span class="kchip elsewhere">concept</span>
+        <span class="kchip elsewhere">item</span>
+        <span class="kchip elsewhere">event</span>
+        <span class="kchip elsewhere">skill</span>
+        <span class="kchip elsewhere">+ any custom kind</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding-top:4px">
+      <button class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg> Open Entity Authoring →</button>
+      <span style="font-size:10.5px;color:var(--muted-fg)">both call the same <code style="font-family:'JetBrains Mono';font-size:10px;color:var(--accent-fg)">createEntity</code> / <code style="font-family:'JetBrains Mono';font-size:10px;color:var(--accent-fg)">createRelation</code> — this panel is just the location-scoped, spatial view of it.</span>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Same API, two views.</b> Adding a place here and adding a character in the entity-authoring panel are the <i>same</i>
+  <code>knowledgeApi.createEntity</code> call with a different <code>kind</code>. The place graph is the spatial projection: it renders
+  <code>location</code> entities as draggable nodes and their spatial relations as edges. Nothing here is a second write path — the deep-link keeps one
+  concept with one home (no "authored in eight places" drift).
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b> (1) It adds <b>no backend</b> — if a control here implied a new route, that would be a defect in the draft.
+  (2) It is <b>not</b> the raster <code>world_maps</code> editor: no base image, no pixel pins, no polygons — those are book-service, per-world,
+  owner-scoped, and largely unbuilt (see <code>screen-world-map-editor.html</code>). (3) It does <b>not</b> author non-location kinds or non-spatial
+  relations; those deep-link to the entity-authoring panel. Keeping these three apart is the point — merging any two of them is the confusion S7 closes.
+</div>
+
+<script>
+  // vanilla, ~12 lines: toggle link mode + node selection, for feel only.
+  const linkBtn = document.querySelector('.tbtn.on');
+  if (linkBtn) linkBtn.addEventListener('click', () => linkBtn.classList.toggle('on'));
+  document.querySelectorAll('.node').forEach((n) => {
+    n.addEventListener('click', () => n.classList.toggle('sel'));
+  });
+</script>
+</body>
+</html>

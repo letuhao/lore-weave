@@ -13,8 +13,10 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -47,11 +49,20 @@ type streamGuard struct {
 
 	// chat-only running tally.
 	inputCostUSD float64 // fixed: estimated input tokens × input price
+	inputTokens  int     // P0-2: estimated input token count (the record's input_tokens when no final usage chunk arrives)
 	abortUSD     float64 // hard-abort threshold = caller's available budget
 	outChars     int     // accumulated output delta chars (token + reasoning)
 	outNonASCII  int
 	finalUsage   *provider.StreamChunk // last usage chunk seen, if any
 	aborted      bool                  // observe tripped the hard-abort
+
+	// P0-2 (B1/B2 — full request/response logging). requestPayload is the assembled
+	// provider request (post-injection, bounded); completion accumulates the visible
+	// streamed answer (token deltas only, capped) for the audit response payload;
+	// requestStatus is the terminal outcome set by finalizeOutcome at stream end.
+	requestPayload map[string]any
+	completion     strings.Builder
+	requestStatus  string
 }
 
 // preflightStream runs the streaming spend-guardrail pre-flight: estimate the
@@ -81,12 +92,49 @@ func (s *Server) preflightStream(
 		return nil, false
 	}
 
+	// ── Context-window gate (D-CHAT-CONTEXT-OVERFLOW) — DEFAULT-ON ────────────────
+	// The JOBS path (jobs_handler preflight) already rejects requests that overflow
+	// the model's window, but the STREAM path historically SKIPPED it (chat omits
+	// max_tokens, "server decides"). That gap poisons chat SPECIFICALLY: a bloated
+	// assembled prompt (every tool schema + grounding + re-sent history over a
+	// multi-pass tool loop) OVERFLOWS the window, and llama.cpp/LM Studio SILENTLY
+	// TRUNCATES it — so the model reasons over a CLIPPED prompt and degrades (loops,
+	// mis-routes tools, "gets dumb"). Pipelines never hit this (they ARE gated) —
+	// which matches the observed "loops only in chat, never in one-shot/pipeline"
+	// signature. Gate on INPUT + safety; also LOG the input size every turn so the
+	// bloat is monitorable (the metric that was missing). Skipped only when the
+	// model's context_length is unknown (NULL/legacy/platform rows).
+	if s.jobsRepo != nil {
+		if ctxLen, ctxFound, ctxErr := s.jobsRepo.ModelContextLength(r.Context(), modelSource, userID, modelRef); ctxErr == nil && ctxFound && ctxLen > 0 {
+			inTokens := s.estimator.InputTokens(inputMap, 1)
+			safety := ctxLen * 15 / 100 // mirror the jobs-path + Python ContextBudget 15%
+			if inTokens+safety > ctxLen {
+				slog.Warn("chat context overflow — assembled prompt exceeds model window",
+					"input_tokens", inTokens, "safety", safety, "context_length", ctxLen,
+					"model_ref", modelRef.String(), "op", op)
+				writeError(w, http.StatusBadRequest, "LLM_CONTEXT_OVERFLOW", fmt.Sprintf(
+					"the assembled prompt overflows this model's context window: input=%d + safety=%d = %d > context_length=%d — reduce injected context (tools/grounding/history) or use a larger-window model",
+					inTokens, safety, inTokens+safety, ctxLen))
+				return nil, false
+			}
+			// Metric — even when it FITS, record the real input size + headroom so a
+			// creeping bloat is visible before it overflows.
+			slog.Info("chat context preflight", "input_tokens", inTokens,
+				"context_length", ctxLen, "headroom", ctxLen-inTokens,
+				"pct_used", inTokens*100/ctxLen, "model_ref", modelRef.String())
+		}
+	}
+
 	jobID, err := uuid.NewV7() // synthetic — a stream has no llm_jobs row
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to allocate stream id")
 		return nil, false
 	}
-	res, err := s.guardrail.Reserve(r.Context(), userID, jobID, estimate, modelSource)
+	// The synchronous stream path is first-party only (public MCP keys reach
+	// priced capability via the async jobs path, where the per-key cap is
+	// enforced); pass nil cap here. If a public-key stream path is ever added,
+	// thread the carrier through like doSubmitJob.
+	res, err := s.guardrail.Reserve(r.Context(), userID, jobID, estimate, modelSource, nil, nil)
 	if err != nil {
 		// Fail closed — no stream opens on an unconfirmed reservation.
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")
@@ -111,7 +159,8 @@ func (s *Server) preflightStream(
 	if op == "chat" {
 		// EstimateUSD("chat") succeeded → both text price dimensions are
 		// present (textCost requires them), so the deref below is safe.
-		g.inputCostUSD = float64(s.estimator.InputTokens(inputMap, 1)) / 1e6 * (*pricing.InputPerMTok)
+		g.inputTokens = s.estimator.InputTokens(inputMap, 1)
+		g.inputCostUSD = float64(g.inputTokens) / 1e6 * (*pricing.InputPerMTok)
 	}
 	return g, true
 }
@@ -130,6 +179,13 @@ func (g *streamGuard) observe(chunk provider.StreamChunk) (abort bool) {
 		c, n := billing.CountScriptChars(chunk.Delta)
 		g.outChars += c
 		g.outNonASCII += n
+		// P0-2 (B1) — accumulate the VISIBLE completion (token deltas) for the audit
+		// response payload, capped at usagePayloadCapBytes so a runaway stream can't
+		// balloon the record. Reasoning deltas count toward billing but are hidden
+		// thinking, so they're not stored in the logged answer.
+		if chunk.Kind == provider.StreamChunkToken && g.completion.Len() < usagePayloadCapBytes {
+			g.completion.WriteString(chunk.Delta)
+		}
 		if g.tallyCostUSD() > g.abortUSD {
 			g.aborted = true
 		}
@@ -146,6 +202,34 @@ func (g *streamGuard) didAbort() bool {
 	return g != nil && g.aborted
 }
 
+// captureRequest stores the assembled provider request (post-injection) so settle
+// can log it as the audit input payload (P0-2 B1). Nil-safe. Bounded by the caller.
+func (g *streamGuard) captureRequest(payload map[string]any) {
+	if g != nil {
+		g.requestPayload = payload
+	}
+}
+
+// finalizeOutcome classifies the stream's terminal outcome from the streamChat
+// error so settle records the real request_status (P0-2 B2) — success on a clean
+// finish, aborted on a budget hard-abort, cancelled on client disconnect, and
+// provider_error on any other upstream failure. Nil-safe.
+func (g *streamGuard) finalizeOutcome(streamErr error) {
+	if g == nil {
+		return
+	}
+	switch {
+	case g.aborted:
+		g.requestStatus = "aborted"
+	case errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded):
+		g.requestStatus = "cancelled"
+	case streamErr != nil:
+		g.requestStatus = "provider_error"
+	default:
+		g.requestStatus = "success"
+	}
+}
+
 // settle reconciles the stream's spend reservation at stream end. Runs
 // unconditionally (deferred) — normal completion, hard-abort, upstream error,
 // and client disconnect all reach here. Best-effort: a usage-billing failure
@@ -160,8 +244,26 @@ func (g *streamGuard) settle(ctx context.Context) {
 	ctx, span := observability.Tracer("stream").Start(ctx, "llm.stream.settle")
 	defer span.End()
 
+	// D-BILL-NO-USAGE-ON-PREFLIGHT-ERROR — a chat provider_error that produced NEITHER a
+	// usage chunk NOR any output delta is a PRE-PROCESSING rejection (real OpenAI's 400
+	// "reasoning.effort unsupported_parameter", a context-overflow 400, a 401): the provider
+	// consumed no prefill and billed us NOTHING, so reconciling/recording the ESTIMATED
+	// input tokens (g.inputTokens, stamped up-front in preflight) fabricates cost the user
+	// never incurred — and the user-facing spend summary (server.go usage rollup) sums it
+	// unfiltered. Zero it. Scope is deliberately tight: a MID-STREAM provider_error
+	// (outChars>0) or one that carried a usage chunk (finalUsage!=nil) DID spend real
+	// tokens; an aborted stream (real output) and a client-cancelled stream (provider
+	// likely prefilled) keep their existing billing. Only "errored before producing
+	// anything" is refunded.
+	noProviderWork := g.op == "chat" && g.requestStatus == "provider_error" &&
+		g.finalUsage == nil && g.outChars == 0
+
 	var actual *float64
 	switch {
+	case noProviderWork:
+		// Provider did no work → reconcile the reservation to $0 (releases the hold).
+		zero := 0.0
+		actual = &zero
 	case g.op == "tts":
 		// tts cost is exact (text known up front) → reconcile at the
 		// reservation's stored estimate.
@@ -181,35 +283,63 @@ func (g *streamGuard) settle(ctx context.Context) {
 			"reservation_id", g.reservationID.String(), "err", err)
 	}
 
-	// D-PHASE6A-BETA-STREAM-RECORD. Mirror jobs.Worker.settleBilling step (2):
-	// after the reservation is reconciled, write a model-level `usage_logs`
-	// audit row via /internal/model-billing/record so streaming jobs appear
-	// in the same per-model spend ledger as non-streaming jobs. Only when:
-	//   - the stream is chat (tts has no token usage)
-	//   - the stream completed normally (no hard-abort — partial output
-	//     is not a successful billable unit; the reservation reconcile
-	//     already captured the spend, but the audit row is reserved for
-	//     successful requests like jobs.Worker.settleBilling does)
-	//   - the provider sent a final usage chunk (authoritative token
-	//     counts). Without it the estimate is too noisy for a billing
-	//     ledger entry; we skip rather than guess.
-	// Best-effort: a failure is logged, never propagated; the sweeper is
-	// the backstop. RequestID = jobID so a retry is idempotent on the
-	// usage-billing side (same pattern as the job path).
-	if g.op == "chat" && !g.aborted && g.finalUsage != nil {
-		reasoning := 0
-		if g.finalUsage.ReasoningTokens != nil {
-			reasoning = *g.finalUsage.ReasoningTokens
+	// P0-2 (B1/B2). Mirror jobs.Worker.settleBilling step (2): after the reservation
+	// is reconciled, write a model-level `usage_logs` audit row via
+	// /internal/model-billing/record so streaming chat appears in the same per-model
+	// spend ledger — AND carries the assembled request + accumulated completion so the
+	// highest-volume path is no longer audit-invisible.
+	//
+	// B2 fix: record on EVERY terminal status (success, provider_error, aborted,
+	// cancelled), not just a clean-finish-with-usage. An aborted/disconnected stream
+	// still spent real tokens + produced partial output; recording zero rows for it is
+	// the audit hole. When the provider sent a final usage chunk we use its
+	// authoritative token counts; otherwise we fall back to the delta-estimated tally
+	// (the same numbers reconcile already used). tts is exempt — its cost is per-char,
+	// not per-token, and it has no completion text to log.
+	//
+	// Best-effort: a failure is logged, never propagated; the sweeper is the backstop.
+	// RequestID = jobID so a retry is idempotent on the usage-billing side.
+	if g.op == "chat" {
+		status := g.requestStatus
+		if status == "" {
+			status = "success"
+		}
+		inTok, outTok := g.inputTokens, billing.EstimateTokens(g.outChars, g.outNonASCII)
+		if g.finalUsage != nil {
+			reasoning := 0
+			if g.finalUsage.ReasoningTokens != nil {
+				reasoning = *g.finalUsage.ReasoningTokens
+			}
+			inTok = g.finalUsage.InputTokens
+			outTok = g.finalUsage.OutputTokens + reasoning
+		}
+		if noProviderWork {
+			// Matches the $0 reconcile above: the provider did no work, so the audit row
+			// records 0 tokens (TotalCostUSD=actual is already 0). The row is still
+			// WRITTEN — a rejected turn stays visible in the ledger as an error, it just
+			// carries no fabricated spend.
+			inTok, outTok = 0, 0
+		}
+		// LOW-1: bound the completion the same way the input payload is bounded
+		// (stream_handler buildChatStreamInput → boundedPayload) so a very long
+		// generation is logged by reference, not shipped inline. Symmetric with the
+		// sync path (recordSyncUsage bounds both sides).
+		var outPayload map[string]any
+		if c := g.completion.String(); c != "" {
+			outPayload = boundedPayload(map[string]any{"content": c})
 		}
 		if err := g.guardrail.RecordUsage(ctx, billing.UsageRecord{
-			RequestID:    g.jobID,
-			OwnerUserID:  g.ownerUserID,
-			ModelSource:  g.modelSource,
-			ModelRef:     g.modelRef,
-			Operation:    g.op,
-			InputTokens:  g.finalUsage.InputTokens,
-			OutputTokens: g.finalUsage.OutputTokens + reasoning,
-			TotalCostUSD: actual, // authoritative per-model cost (matches reconcile)
+			RequestID:     g.jobID,
+			OwnerUserID:   g.ownerUserID,
+			ModelSource:   g.modelSource,
+			ModelRef:      g.modelRef,
+			Operation:     g.op,
+			InputTokens:   inTok,
+			OutputTokens:  outTok,
+			RequestStatus: status,
+			InputPayload:  g.requestPayload,
+			OutputPayload: outPayload,
+			TotalCostUSD:  actual, // authoritative per-model cost (matches reconcile)
 		}); err != nil {
 			slog.Warn("stream usage record failed",
 				"request_id", g.jobID.String(), "err", err)
@@ -241,7 +371,32 @@ func (g *streamGuard) usageCostUSD(u provider.StreamChunk) float64 {
 	if u.ReasoningTokens != nil {
 		out += *u.ReasoningTokens
 	}
-	return float64(u.InputTokens)/1e6*inPerMTok + float64(out)/1e6*outPerMTok
+	// Prompt-cache-aware INPUT pricing (2026 standard; the LiteLLM #19681 bug class:
+	// billing cached tokens at the full rate over-charges up to ~11× on a mostly-cached
+	// prompt). InputTokens is the FULL billed volume; the provider-normalized split lets us
+	// price each part correctly:
+	//   cache READ  (served from cache) → discounted (default 0.5×; GPT-5.x/Anthropic ~0.1×
+	//               via the configured CachedInputPerMTok),
+	//   cache WRITE (Anthropic cache_creation) → 1.25× premium,
+	//   UNCACHED    → full input rate.
+	// Providers reporting no cache activity (LM Studio) have read=creation=0, so this
+	// reduces EXACTLY to InputTokens×inPerMTok — zero behavior change on the local path.
+	read, creation := 0, 0
+	if u.CacheReadTokens != nil {
+		read = *u.CacheReadTokens
+	}
+	if u.CacheCreationTokens != nil {
+		creation = *u.CacheCreationTokens
+	}
+	uncached := max(0, u.InputTokens-read-creation)
+	cachedPerMTok := inPerMTok * 0.5 // conservative default (OpenAI floor; never over-discounts)
+	if g.pricing.CachedInputPerMTok != nil {
+		cachedPerMTok = *g.pricing.CachedInputPerMTok
+	}
+	inputCost := (float64(uncached)*inPerMTok +
+		float64(read)*cachedPerMTok +
+		float64(creation)*inPerMTok*1.25) / 1e6
+	return inputCost + float64(out)/1e6*outPerMTok
 }
 
 // minFloat returns the smaller of two float64s.

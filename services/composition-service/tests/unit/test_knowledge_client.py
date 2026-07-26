@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import httpx
@@ -49,6 +50,73 @@ async def test_non_200_returns_none():
         assert await c.list_projects_for_book(BOOK, "jwt") is None
     finally:
         await c.aclose()
+
+
+# ── D-W8-MOTIF-BEAT-LLM-EXTRACTOR — tag-beats client (mining pre-pass) ──────────
+
+TAG_BEATS_URL = f"{BASE}/internal/extraction/tag-beats"
+
+
+@respx.mock
+async def test_tag_beats_book_sends_internal_token_and_book_payload():
+    route = respx.post(TAG_BEATS_URL).mock(
+        return_value=httpx.Response(200, json={"tagged": 3, "events_seen": 5,
+                                               "motifs_assigned": {"cultivation.face_slap": 3}})
+    )
+    c = await _client()
+    try:
+        out = await c.tag_beats(
+            USER, book_id=BOOK,
+            motifs=[{"code": "cultivation.face_slap", "name": "Face-Slap"}],
+            model_source="user_model", model_ref="m1")
+    finally:
+        await c.aclose()
+    assert out["tagged"] == 3 and out["motifs_assigned"]["cultivation.face_slap"] == 3
+    sent = route.calls.last.request
+    # internal-token auth (NOT a user JWT — this is a service-to-service tagging call)
+    assert sent.headers["X-Internal-Token"] == "intok"
+    body = json.loads(sent.content)
+    assert body["book_id"] == str(BOOK) and "corpus" not in body
+    assert body["model_ref"] == "m1" and body["motifs"][0]["code"] == "cultivation.face_slap"
+
+
+@respx.mock
+async def test_tag_beats_corpus_sends_corpus_flag_not_book():
+    route = respx.post(TAG_BEATS_URL).mock(
+        return_value=httpx.Response(200, json={"tagged": 0, "events_seen": 0, "motifs_assigned": {}})
+    )
+    c = await _client()
+    try:
+        await c.tag_beats(USER, corpus=True, motifs=[{"code": "x.y"}],
+                          model_source="user_model", model_ref="m1")
+    finally:
+        await c.aclose()
+    body = json.loads(route.calls.last.request.content)
+    assert body["corpus"] is True and "book_id" not in body
+
+
+@respx.mock
+async def test_tag_beats_degrades_on_non_200():
+    respx.post(TAG_BEATS_URL).mock(return_value=httpx.Response(503, json={"detail": "down"}))
+    c = await _client()
+    try:
+        out = await c.tag_beats(USER, book_id=BOOK, motifs=[{"code": "x.y"}],
+                                model_source="user_model", model_ref="m1")
+    finally:
+        await c.aclose()
+    assert out == {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+
+
+@respx.mock
+async def test_tag_beats_degrades_on_transport_error():
+    respx.post(TAG_BEATS_URL).mock(side_effect=httpx.ConnectError("down"))
+    c = await _client()
+    try:
+        out = await c.tag_beats(USER, book_id=BOOK, motifs=[{"code": "x.y"}],
+                                model_source="user_model", model_ref="m1")
+    finally:
+        await c.aclose()
+    assert out["status"] == "unavailable" and out["tagged"] == 0
 
 
 # ── C27 (dị bản M4) extract_item — the delta flywheel dispatch ──────────

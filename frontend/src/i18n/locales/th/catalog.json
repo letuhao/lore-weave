@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "ค้นพบเรื่องราวใหม่ๆ",
+    "subtitle": "เลือกอ่านนิยายสาธารณะจากชุมชน LoreWeave อ่าน แปล และสำรวจเรื่องราวในภาษาต่างๆ",
+    "search_placeholder": "ค้นหาจากชื่อเรื่อง ผู้เขียน หรือภาษา...",
+    "search_aria": "ค้นหาแคตตาล็อก",
+    "no_books": "ไม่พบหนังสือ ลองใช้คำค้นหาหรือตัวกรองอื่น",
+    "load_failed": "โหลดแคตตาล็อกไม่สำเร็จ"
+  },
+  "filter": {
+    "lang_all": "ทั้งหมด",
+    "clear_genres": "ล้างประเภท",
+    "books_found": "พบ {{count}} เล่ม",
+    "sort_aria": "เรียงลำดับหนังสือตาม",
+    "sort": {
+      "recent": "ล่าสุด",
+      "popular": "ยอดนิยม",
+      "chapters": "จำนวนตอนมากที่สุด",
+      "alpha": "ตามตัวอักษร"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} ตอน"
+  },
+  "detail": {
+    "breadcrumb_browse": "เลือกอ่าน",
+    "public_badge": "สาธารณะ",
+    "unlisted_badge": "ไม่ได้ระบุรายการ",
+    "chapters_count": "{{count}} ตอน",
+    "available_languages": "ภาษาที่มีให้เลือก",
+    "original": "ต้นฉบับ",
+    "start_reading": "เริ่มอ่าน",
+    "no_chapters_yet": "ยังไม่มีตอน",
+    "share": "แชร์",
+    "copy_link": "คัดลอกลิงก์",
+    "loading": "กำลังโหลด...",
+    "chapters_heading": "ตอน",
+    "no_chapters_available": "ไม่มีตอนให้เลือก",
+    "untitled": "ไม่มีชื่อเรื่อง",
+    "words": "{{count}} คำ",
+    "showing_chapters": "แสดงตอนที่ {{from}}–{{to}} จากทั้งหมด {{total}} ตอน",
+    "stat_chapters": "ตอน",
+    "stat_languages": "ภาษา",
+    "stat_original": "ต้นฉบับ",
+    "stat_published": "เผยแพร่เมื่อ",
+    "na": "ไม่ระบุ",
+    "book_not_found": "ไม่พบหนังสือ",
+    "back_to_browse": "กลับไปหน้าเลือกอ่าน",
+    "link_copied": "คัดลอกลิงก์แล้ว",
+    "copy_failed": "คัดลอกไม่สำเร็จ",
+    "load_chapters_failed": "โหลดตอนไม่สำเร็จ"
+  },
+  "shared": {
+    "indicator": "คุณกำลังดูลิงก์ที่แชร์มา หนังสือเล่มนี้ไม่ได้แสดงในรายการสาธารณะ",
+    "invalid": "ลิงก์ที่แชร์นี้ไม่ถูกต้องหรือหมดอายุแล้ว",
+    "not_found": "ไม่พบลิงก์ที่แชร์หรือลิงก์หมดอายุแล้ว",
+    "browse_instead": "ไปเลือกอ่านหนังสือสาธารณะแทน",
+    "back_to_chapters": "กลับไปที่ตอน",
+    "ch_short": "ตอนที่ {{n}}",
+    "load_chapter_failed": "โหลดตอนไม่สำเร็จ: {{error}}"
+  }
+}

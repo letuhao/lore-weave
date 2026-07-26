@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Entdecke Geschichten",
+    "subtitle": "Durchstöbere öffentliche Romane aus der LoreWeave-Community. Lies, übersetze und entdecke Geschichten in verschiedenen Sprachen.",
+    "search_placeholder": "Suche nach Titel, Autor oder Sprache...",
+    "search_aria": "Katalog durchsuchen",
+    "no_books": "Keine Bücher gefunden. Versuche eine andere Suche oder einen anderen Filter.",
+    "load_failed": "Katalog konnte nicht geladen werden"
+  },
+  "filter": {
+    "lang_all": "Alle",
+    "clear_genres": "Genres löschen",
+    "books_found": "{{count}} Bücher gefunden",
+    "sort_aria": "Bücher sortieren nach",
+    "sort": {
+      "recent": "Neueste",
+      "popular": "Beliebteste",
+      "chapters": "Meiste Kapitel",
+      "alpha": "Alphabetisch"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} Kap."
+  },
+  "detail": {
+    "breadcrumb_browse": "Durchsuchen",
+    "public_badge": "Öffentlich",
+    "unlisted_badge": "Nicht gelistet",
+    "chapters_count": "{{count}} Kapitel",
+    "available_languages": "Verfügbare Sprachen",
+    "original": "Original",
+    "start_reading": "Lesen starten",
+    "no_chapters_yet": "Noch keine Kapitel",
+    "share": "Teilen",
+    "copy_link": "Link kopieren",
+    "loading": "Lädt...",
+    "chapters_heading": "Kapitel",
+    "no_chapters_available": "Keine Kapitel verfügbar.",
+    "untitled": "Unbetitelt",
+    "words": "{{count}} Wörter",
+    "showing_chapters": "Zeige {{from}}–{{to}} von {{total}} Kapiteln",
+    "stat_chapters": "Kapitel",
+    "stat_languages": "Sprachen",
+    "stat_original": "Original",
+    "stat_published": "Veröffentlicht",
+    "na": "N/A",
+    "book_not_found": "Buch nicht gefunden",
+    "back_to_browse": "Zurück zum Durchsuchen",
+    "link_copied": "Link kopiert",
+    "copy_failed": "Kopieren fehlgeschlagen",
+    "load_chapters_failed": "Kapitel konnten nicht geladen werden"
+  },
+  "shared": {
+    "indicator": "Du betrachtest einen geteilten Link. Dieses Buch ist nicht öffentlich gelistet.",
+    "invalid": "Dieser geteilte Link ist ungültig oder abgelaufen.",
+    "not_found": "Geteilter Link nicht gefunden oder abgelaufen",
+    "browse_instead": "Stattdessen öffentliche Bücher durchsuchen",
+    "back_to_chapters": "Zurück zu den Kapiteln",
+    "ch_short": "Kap. {{n}}",
+    "load_chapter_failed": "Kapitel konnte nicht geladen werden: {{error}}"
+  }
+}

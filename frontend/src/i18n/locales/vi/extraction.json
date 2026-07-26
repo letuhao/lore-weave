@@ -19,9 +19,13 @@
     "selectAllKinds": "Chọn tất cả",
     "deselectAllKinds": "Bỏ chọn tất cả",
     "attrsSelected": "{{count}} thuộc tính",
+    "actionDefault": "Mặc định (thông minh)",
+    "actionAppend": "Bổ sung",
     "actionFill": "Điền thiếu",
     "actionOverwrite": "Ghi đè",
     "actionSkip": "Bỏ qua",
+    "allDefault": "Tất cả mặc định",
+    "allAppend": "Tất cả bổ sung",
     "allFill": "Tất cả điền",
     "allOverwrite": "Tất cả ghi đè",
     "required": "bắt buộc",
@@ -76,7 +80,10 @@
     "activityLog": "Nhật ký hoạt động",
     "cancel": "Hủy",
     "cancelConfirm": "Hủy công việc trích xuất? Các chương đã xử lý sẽ giữ kết quả.",
-    "cancelRequested": "Đã yêu cầu hủy"
+    "cancelRequested": "Đã yêu cầu hủy",
+    "background": "Chạy nền",
+    "backgroundToast": "Quá trình trích xuất đang chạy ở chế độ nền.",
+    "viewInJobs": "Xem trong Tác vụ"
   },
   "results": {
     "title": "Trích xuất hoàn tất",

@@ -54,7 +54,7 @@ def main() -> int:
                 "悬于星河之畔，往来皆为修真练气之士。此宫不录于旧典，乃后人补述之地。"
             ),
             "expand_mode": "rewrite",
-            "max_spend_usd": 200000,  # cost-cap is denominated in TOKENS (C1)
+            "max_spend_tokens": 200000,  # cost-cap is denominated in TOKENS (C1)
             "top_k": 5,
         }
         r = c.post(f"{base}/v1/lore-enrichment/projects/{proj}/compose", headers=h, json=body)

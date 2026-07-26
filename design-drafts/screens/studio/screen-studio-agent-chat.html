@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Studio Agent Chat (#07)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       STUDIO AGENT CHAT (#07) — Compose dock panel with upgraded chat chrome
+
+       New components:
+         07b Agent Runtime Inspector — below chat header (state machine)
+         07a Agent Context Rack     — above input (pin skills + MCP tools)
+
+       Spec: docs/specs/2026-07-01-writing-studio/07_studio_agent_chat.md
+             07a_agent_context_rack.md · 07b_agent_runtime_inspector.md · 07c_studio_tool_registry.md
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    svg { display: block; flex-shrink: 0; }
+
+    h1 { font-size: 18px; font-weight: 600; padding: 24px 24px 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); padding: 0 24px 16px; line-height: 1.5; }
+
+    .tabs { display: flex; gap: 8px; padding: 0 24px 20px; flex-wrap: wrap; }
+    .tab {
+      height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); cursor: pointer;
+    }
+    .tab.active { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+
+    .stage { display: flex; gap: 28px; padding: 0 24px 24px; align-items: flex-start; }
+
+    /* Studio mini-frame */
+    .frame {
+      flex: 1; min-width: 640px; height: 580px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--background); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .frame-top { height: 40px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; font-size: 11px; color: var(--muted-fg); gap: 8px; }
+    .frame-body { flex: 1; display: flex; min-height: 0; }
+    .act { width: 48px; background: var(--card); border-right: 1px solid var(--border); }
+    .side { width: 200px; background: var(--background-alt); border-right: 1px solid var(--border); font-size: 10px; color: var(--border-hover); padding: 8px; }
+    .dock { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .tab-bar { height: 32px; display: flex; background: var(--card); border-bottom: 1px solid var(--border); }
+    .dock-tab { padding: 0 12px; font-size: 11px; display: flex; align-items: center; border-right: 1px solid var(--border); color: var(--muted-fg); }
+    .dock-tab.active { background: var(--background); color: var(--primary); border-bottom: 2px solid var(--primary); margin-bottom: -1px; }
+
+    /* Chat panel */
+    .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--background); }
+    .chat-hd { height: 36px; flex-shrink: 0; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 500; gap: 8px; }
+    .chat-hd .model { margin-left: auto; font-size: 10px; color: var(--muted-fg); font-weight: 400; }
+
+    /* 07b Inspector */
+    .inspector { flex-shrink: 0; border-bottom: 1px solid var(--border); background: var(--background-alt); font-size: 11px; }
+    .inspector.collapsed .insp-body { display: none; }
+    .insp-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; user-select: none; }
+    .insp-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--info); animation: pulse 1.2s infinite; }
+    .insp-bar .dot.idle { background: var(--muted-fg); animation: none; }
+    .insp-bar .counts { color: var(--muted-fg); font-family: 'JetBrains Mono'; font-size: 10px; }
+    .insp-bar .chev { margin-left: auto; color: var(--muted-fg); font-size: 10px; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .insp-body { padding: 8px 10px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .insp-col h4 { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-fg); margin-bottom: 5px; }
+    .insp-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .chip { font-size: 10px; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--border); background: var(--secondary); }
+    .chip.pin { border-color: var(--primary); color: var(--primary); }
+    .chip.hot { opacity: .65; }
+    .chip.act { border-color: var(--success); color: var(--success); }
+    .chip.skill { border-color: var(--accent); color: var(--accent-fg); background: var(--accent-muted); }
+    .insp-foot { grid-column: 1/-1; font-size: 10px; color: var(--muted-fg); font-family: 'JetBrains Mono'; padding-top: 4px; border-top: 1px dashed var(--border); }
+
+    /* Messages */
+    .msgs { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; line-height: 1.5; }
+    .msg { margin-bottom: 10px; max-width: 92%; }
+    .msg.user { margin-left: auto; background: var(--secondary); padding: 8px 10px; border-radius: 8px; font-size: 12px; }
+    .msg.asst { color: var(--muted-fg); }
+    .tool-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .tool-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); }
+
+    /* Context pills (existing ContextBar) */
+    .ctx-bar { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .ctx-pill { font-size: 10px; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--accent); background: var(--accent-muted); color: var(--accent-fg); }
+
+    /* 07a Rack */
+    .rack { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 6px 10px; background: var(--card); border-bottom: 1px solid var(--border); }
+    .rack-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: var(--border-hover); margin-right: 4px; }
+    .rack-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); }
+    .rack-chip.skill { border-color: var(--accent); background: var(--accent-muted); color: var(--accent-fg); }
+    .rack-chip.tool { border-color: var(--border-hover); }
+    .rack-chip .x { opacity: .5; cursor: pointer; }
+    .rack-add { font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px dashed var(--border-hover); color: var(--muted-fg); cursor: pointer; }
+    .rack-add:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* Input */
+    .input-wrap { flex-shrink: 0; padding: 8px 10px; border-top: 1px solid var(--border); }
+    .input-box { display: flex; align-items: flex-end; gap: 8px; min-height: 36px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--background-alt); font-size: 12px; color: var(--muted-fg); }
+
+    .frame-status { height: 20px; background: var(--primary); color: var(--primary-fg); font-size: 9px; font-family: 'JetBrains Mono'; display: flex; align-items: center; padding: 0 10px; gap: 10px; }
+
+    /* Registry diagram view */
+    .registry-view { display: none; flex: 1; padding: 16px; font-size: 11px; color: var(--muted-fg); }
+    .registry-view.show { display: block; }
+    .reg-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+    .reg-box h4 { font-size: 11px; color: var(--foreground); margin-bottom: 6px; }
+    .reg-row { display: flex; gap: 8px; font-family: 'JetBrains Mono'; font-size: 10px; }
+
+    .hidden { display: none !important; }
+
+    /* Notes */
+    .notes { flex: 1; max-width: 380px; }
+    .note { display: flex; gap: 10px; margin-bottom: 14px; }
+    .note .n { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+    .note h3 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .note p { font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 10px; background: var(--secondary); padding: 1px 4px; border-radius: 3px; color: var(--accent-fg); }
+    .why { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Studio Agent Chat <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #07</span></h1>
+  <p class="sub">Compose dock panel with <strong>Runtime Inspector</strong> (07b) + <strong>Context Rack</strong> (07a). Registry (07c) feeds palette + rack. Reuses existing <code>Chat.tsx</code>.</p>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-view="discovering">Inspector expanded · Discovering</button>
+    <button type="button" class="tab" data-view="collapsed">Inspector collapsed · Idle</button>
+    <button type="button" class="tab" data-view="registry">Registry diagram</button>
+  </div>
+
+  <div class="stage">
+    <div class="frame">
+      <div class="frame-top">
+        <span>Writing Studio / Ma Nữ Nghịch Thiên</span>
+        <span style="margin-left:auto" class="mono">⌘P · ⌘⇧P</span>
+      </div>
+      <div class="frame-body">
+        <div class="act"></div>
+        <div class="side">Manuscript navigator</div>
+        <div class="dock">
+          <div class="tab-bar">
+            <div class="dock-tab">Ch 0001 · Editor</div>
+            <div class="dock-tab active">Compose</div>
+            <div class="dock-tab">Quality</div>
+          </div>
+
+          <!-- Chat panel -->
+          <div class="chat" id="chat-view">
+            <div class="chat-hd">
+              <span>Session: Arc I planning</span>
+              <span class="model">Qwen3 35B</span>
+            </div>
+
+            <!-- 07b collapsed -->
+            <div class="inspector collapsed hidden" id="insp-collapsed">
+              <div class="insp-bar">
+                <span class="dot idle"></span>
+                <span>Agent surface</span>
+                <span class="counts">8 hot · 3 pinned · ready</span>
+                <span class="chev">▼</span>
+              </div>
+            </div>
+
+            <!-- 07b expanded -->
+            <div class="inspector" id="insp-expanded">
+              <div class="insp-bar">
+                <span class="dot"></span>
+                <span><strong style="color:var(--info)">Discovering…</strong></span>
+                <span class="counts">3 pinned · 8 hot · 12 active</span>
+                <span class="chev">▲</span>
+              </div>
+              <div class="insp-body">
+                <div class="insp-col">
+                  <h4>Pinned (07a)</h4>
+                  <div class="insp-chips">
+                    <span class="chip pin skill">glossary</span>
+                    <span class="chip pin">book_get_chapter</span>
+                    <span class="chip pin">composition_list_outline</span>
+                  </div>
+                </div>
+                <div class="insp-col">
+                  <h4>Hot seed</h4>
+                  <div class="insp-chips">
+                    <span class="chip hot">find_tools</span>
+                    <span class="chip hot">ui_*</span>
+                    <span class="chip hot">composition_*</span>
+                  </div>
+                </div>
+                <div class="insp-col">
+                  <h4>Activated this turn</h4>
+                  <div class="insp-chips">
+                    <span class="chip act">book_list_chapters</span>
+                    <span class="chip act">composition_get_work</span>
+                    <span class="chip act">+4</span>
+                  </div>
+                </div>
+                <div class="insp-col">
+                  <h4>Injected skills</h4>
+                  <div class="insp-chips">
+                    <span class="chip skill">glossary</span>
+                    <span class="chip skill">universal</span>
+                  </div>
+                </div>
+                <div class="insp-foot">find_tools("outline chapter scenes") · call ×1</div>
+              </div>
+            </div>
+
+            <div class="msgs">
+              <div class="msg user">Liệt kê các scene trong chương 1 và gợi ý chỉnh outline</div>
+              <div class="msg asst">
+                Đang tra cứu outline và bản nháp chương 1…
+                <div class="tool-row">
+                  <span class="tool-chip">⚙ composition_list_outline</span>
+                  <span class="tool-chip">⚙ book_get_chapter</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Existing ContextBar -->
+            <div class="ctx-bar">
+              <span class="ctx-pill">Ch 0001 · Nghịch thiên</span>
+              <span class="ctx-pill" style="border-color:var(--primary);background:var(--primary-muted);color:var(--primary)">Ma Nữ Nghịch Thiên</span>
+            </div>
+
+            <!-- 07a Rack -->
+            <div class="rack">
+              <span class="rack-lbl">Agent</span>
+              <span class="rack-chip skill">✦ Glossary <span class="x">×</span></span>
+              <span class="rack-chip tool">⚙ book_get_chapter <span class="x">×</span></span>
+              <span class="rack-chip tool">⚙ composition_list_outline <span class="x">×</span></span>
+              <span class="rack-add">+ Add tool or skill</span>
+            </div>
+
+            <div class="input-wrap">
+              <div class="input-box">Nhắn agent…</div>
+            </div>
+          </div>
+
+          <!-- Registry diagram -->
+          <div class="registry-view" id="registry-view">
+            <p style="margin-bottom:12px;color:var(--foreground);font-weight:600">StudioToolRegistry (07c) — mounted panels</p>
+            <div class="reg-box">
+              <h4>compose · registered</h4>
+              <div class="reg-row"><span>mcp:</span> composition_* · <span>skills:</span> universal</div>
+            </div>
+            <div class="reg-box">
+              <h4>editor · registered</h4>
+              <div class="reg-row"><span>mcp:</span> book_* · <span>bus:</span> activeChapterId → Ch 0001</div>
+            </div>
+            <div class="reg-box">
+              <h4>quality · registered</h4>
+              <div class="reg-row"><span>mcp:</span> composition_* · <span>bus:</span> qualityIssueRef</div>
+            </div>
+            <div class="reg-box" style="opacity:.5">
+              <h4>cast · not mounted</h4>
+              <div class="reg-row">— absent from palette &amp; rack until panel opens</div>
+            </div>
+            <p style="margin-top:12px;font-size:10px">StudioContextBus revision: <code>42</code> → sent as <code>studio_context.context_revision</code></p>
+          </div>
+        </div>
+      </div>
+      <div class="frame-status"><span>vi</span><span>Saved</span><span style="margin-left:auto">registry: 3 panels</span></div>
+    </div>
+
+    <div class="notes" id="notes-main">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>07b Runtime Inspector</h3>
+          <p>Below chat header. Shows lazy-load phases + counts. Read-only — pins live in rack.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>07a Context Rack</h3>
+          <p>Above input. User pins skills + MCP tools → <code>enabled_tools</code> / <code>enabled_skills</code> on session.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>ContextBar unchanged</h3>
+          <p>Book/chapter pills = turn <em>attachments</em>. Rack = agent <em>capabilities</em>.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">4</div>
+        <div>
+          <h3>07c Registry</h3>
+          <p>Each dock tool registers on mount. ⌘⇧P Panels group + rack browser list only registered tools.</p>
+        </div>
+      </div>
+      <div class="why">
+        <strong>Build order:</strong> #07c registry + #03 Compose shell → #07a/#07b UI → story 04 BE for <code>agentSurface</code> SSE + session fields.
+      </div>
+    </div>
+
+    <div class="notes hidden" id="notes-registry">
+      <div class="note">
+        <div class="n">↔</div>
+        <div>
+          <h3>Incremental tool use</h3>
+          <p>New studio panel calls <code>registerStudioTool()</code> on mount. Unregistered legacy tools stay invisible until ported.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">◎</div>
+        <div>
+          <h3>StudioContextBus</h3>
+          <p>Panels publish chapter/scene/selection/issue slices. Chat sends <code>studio_context</code> each turn.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const v = btn.dataset.view;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+        document.getElementById('chat-view').classList.toggle('hidden', v === 'registry');
+        document.getElementById('registry-view').classList.toggle('show', v === 'registry');
+        document.getElementById('insp-expanded').classList.toggle('hidden', v === 'collapsed');
+        document.getElementById('insp-collapsed').classList.toggle('hidden', v !== 'collapsed');
+        document.getElementById('notes-main').classList.toggle('hidden', v === 'registry');
+        document.getElementById('notes-registry').classList.toggle('hidden', v !== 'registry');
+      });
+    });
+  </script>
+</body>
+</html>

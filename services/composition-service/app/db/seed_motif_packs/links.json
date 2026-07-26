@@ -1,0 +1,25 @@
+[
+  {"from_code": "cultivation.fortuitous_encounter", "to_code": "cultivation.closed_door_breakthrough", "kind": "precedes", "ord": 1},
+  {"from_code": "cultivation.closed_door_breakthrough", "to_code": "cultivation.face_slap", "kind": "precedes", "ord": 2},
+  {"from_code": "cultivation.bottleneck_resource_hunt", "to_code": "cultivation.closed_door_breakthrough", "kind": "precedes", "ord": 1},
+  {"from_code": "cultivation.sect_entrance_trial", "to_code": "cultivation.life_and_death_duel", "kind": "precedes", "ord": 1},
+
+  {"from_code": "revenge.betrayal_to_exile", "to_code": "revenge.three_year_pact", "kind": "precedes", "ord": 1},
+  {"from_code": "revenge.three_year_pact", "to_code": "cultivation.face_slap", "kind": "precedes", "ord": 2},
+  {"from_code": "cultivation.face_slap", "to_code": "revenge.pyrrhic_victory", "kind": "precedes", "ord": 3},
+  {"from_code": "revenge.false_accusation", "to_code": "revenge.patient_infiltration", "kind": "precedes", "ord": 1},
+  {"from_code": "revenge.patient_infiltration", "to_code": "revenge.blood_debt_collection", "kind": "precedes", "ord": 2},
+
+  {"from_code": "intrigue.planted_evidence_scheme", "to_code": "intrigue.feigned_alliance", "kind": "precedes", "ord": 1},
+  {"from_code": "intrigue.feigned_alliance", "to_code": "intrigue.double_agent_reveal", "kind": "precedes", "ord": 2},
+  {"from_code": "intrigue.whisper_campaign", "to_code": "intrigue.scapegoat_substitution", "kind": "precedes", "ord": 1},
+
+  {"from_code": "revenge.three_year_pact", "to_code": "revenge.betrayal_to_exile", "kind": "composed_of", "ord": 1},
+  {"from_code": "revenge.three_year_pact", "to_code": "cultivation.fortuitous_encounter", "kind": "composed_of", "ord": 2},
+  {"from_code": "revenge.three_year_pact", "to_code": "cultivation.closed_door_breakthrough", "kind": "composed_of", "ord": 3},
+  {"from_code": "revenge.three_year_pact", "to_code": "cultivation.face_slap", "kind": "composed_of", "ord": 4},
+
+  {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.fortuitous_encounter", "kind": "composed_of", "ord": 1},
+  {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.closed_door_breakthrough", "kind": "composed_of", "ord": 2},
+  {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.face_slap", "kind": "composed_of", "ord": 3}
+]

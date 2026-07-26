@@ -78,7 +78,7 @@ const EMPTY: MergedSubgraph = { nodes: [], edges: [], truncated: false };
  * called from the node's click handler (NOT a useEffect reacting to
  * state — the FE event rule).
  */
-export function useProjectSubgraph(projectId: string | undefined) {
+export function useProjectSubgraph(projectId: string | undefined, enabled: boolean = true) {
   const { accessToken, user } = useAuth();
   const userId = user?.user_id ?? 'anon';
   const queryClient = useQueryClient();
@@ -91,7 +91,10 @@ export function useProjectSubgraph(projectId: string | undefined) {
         { limit: BASE_LIMIT },
         accessToken!,
       ),
-    enabled: !!accessToken && !!projectId,
+    // S-09 W3 — idle when the panel is in view/as-of lens mode (the sibling
+    // useProjectGraphSlice reads the filtered graph instead), so the two data
+    // sources never double-fetch.
+    enabled: enabled && !!accessToken && !!projectId,
     staleTime: 30_000,
   });
 

@@ -37,7 +37,7 @@ func (s *Server) verifyEntityInBook(w http.ResponseWriter, ctx context.Context, 
 // chapter_index NULLS LAST, then added_at.
 func (s *Server) queryChapterLinks(ctx context.Context, entityID uuid.UUID) ([]chapterLinkResp, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at
+		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count
 		FROM chapter_entity_links
 		WHERE entity_id = $1
 		ORDER BY chapter_index NULLS LAST, added_at`, entityID)
@@ -51,7 +51,7 @@ func (s *Server) queryChapterLinks(ctx context.Context, entityID uuid.UUID) ([]c
 		var cl chapterLinkResp
 		if err := rows.Scan(
 			&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-			&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+			&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 		); err != nil {
 			return nil, err
 		}
@@ -64,13 +64,13 @@ func (s *Server) queryChapterLinks(ctx context.Context, entityID uuid.UUID) ([]c
 func (s *Server) scanChapterLink(ctx context.Context, linkID, entityID uuid.UUID) (*chapterLinkResp, error) {
 	var cl chapterLinkResp
 	err := s.pool.QueryRow(ctx, `
-		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at
+		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count
 		FROM chapter_entity_links
 		WHERE link_id = $1 AND entity_id = $2`,
 		linkID, entityID,
 	).Scan(
 		&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 	)
 	if err != nil {
 		return nil, err
@@ -146,21 +146,37 @@ func (s *Server) createChapterLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "chapter_id must be a UUID")
 		return
 	}
-	switch in.Relevance {
-	case "major", "appears", "mentioned":
-	case "":
-		in.Relevance = "appears"
-	default:
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
-			"relevance must be major, appears, or mentioned")
+	cl, err := s.createChapterLinkCore(r.Context(), bookID, entityID, chapterID, in.Relevance, in.Note)
+	if err != nil {
+		writeChapterLinkErr(w, err)
 		return
 	}
+	writeJSON(w, http.StatusCreated, cl)
+}
 
-	// Validate chapter belongs to book via book-service
-	chapters, status := s.fetchBookChapters(r.Context(), bookID)
+// chapter-link create sentinels (shared by the HTTP handler + the MCP write tool).
+var (
+	errChapterRelevance = errors.New("relevance must be major, appears, or mentioned") // → 422
+	errChapterNotInBook = errors.New("chapter does not belong to this book")           // → 422
+	errChapterUpstream  = errors.New("book service unavailable")                       // → 503
+	errChapterLinkDup   = errors.New("entity is already linked to this chapter")       // → 409
+)
+
+// createChapterLinkCore validates the relevance + that the chapter belongs to the book
+// (via book-service) and inserts the link. The single source of truth for the HTTP
+// createChapterLink handler and the glossary_create_chapter_link MCP tool. Entity-in-book
+// + grant are checked by the CALLER.
+func (s *Server) createChapterLinkCore(ctx context.Context, bookID, entityID, chapterID uuid.UUID, relevance string, note *string) (*chapterLinkResp, error) {
+	switch relevance {
+	case "major", "appears", "mentioned":
+	case "":
+		relevance = "appears"
+	default:
+		return nil, errChapterRelevance
+	}
+	chapters, status := s.fetchBookChapters(ctx, bookID)
 	if status != http.StatusOK {
-		writeError(w, http.StatusServiceUnavailable, "GLOSS_UPSTREAM_UNAVAILABLE", "book service unavailable")
-		return
+		return nil, errChapterUpstream
 	}
 	var chapterTitle *string
 	var chapterIndex *int
@@ -175,34 +191,42 @@ func (s *Server) createChapterLink(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_CHAPTER_NOT_IN_BOOK",
-			"chapter does not belong to this book")
-		return
+		return nil, errChapterNotInBook
 	}
-
-	// Insert
-	ctx := r.Context()
 	var cl chapterLinkResp
-	err = s.pool.QueryRow(ctx, `
+	err := s.pool.QueryRow(ctx, `
 		INSERT INTO chapter_entity_links(entity_id, chapter_id, chapter_title, chapter_index, relevance, note)
 		VALUES($1,$2,$3,$4,$5,$6)
-		RETURNING link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at`,
-		entityID, chapterID, chapterTitle, chapterIndex, in.Relevance, in.Note,
+		RETURNING link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count`,
+		entityID, chapterID, chapterTitle, chapterIndex, relevance, note,
 	).Scan(
 		&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CHAPTER_LINK",
-				"entity is already linked to this chapter")
-			return
+			return nil, errChapterLinkDup
 		}
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
-		return
+		return nil, err
 	}
-	writeJSON(w, http.StatusCreated, cl)
+	return &cl, nil
+}
+
+// writeChapterLinkErr maps the core sentinels to HTTP for the createChapterLink handler.
+func writeChapterLinkErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errChapterRelevance):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", err.Error())
+	case errors.Is(err, errChapterNotInBook):
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_CHAPTER_NOT_IN_BOOK", err.Error())
+	case errors.Is(err, errChapterUpstream):
+		writeError(w, http.StatusServiceUnavailable, "GLOSS_UPSTREAM_UNAVAILABLE", err.Error())
+	case errors.Is(err, errChapterLinkDup):
+		writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_CHAPTER_LINK", err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
+	}
 }
 
 // ── PATCH /v1/glossary/books/{book_id}/entities/{entity_id}/chapter-links/{link_id}

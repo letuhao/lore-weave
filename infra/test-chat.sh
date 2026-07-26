@@ -46,6 +46,15 @@ assert_status() {
   fi
 }
 
+assert_gt() {
+  local label="$1" min="$2" actual="$3"
+  if [ "$actual" -gt "$min" ]; then
+    green "$label"; PASS=$((PASS+1))
+  else
+    red "$label (expected > $min, got: $actual)"; FAIL=$((FAIL+1))
+  fi
+}
+
 # JSON field extractor using node
 # Usage: echo '{"a":1}' | jget .a
 jget() {
@@ -167,6 +176,34 @@ header "T06: List messages (empty)"
 MSG_RESP=$(curl -s -H "$AUTH" "$GATEWAY/v1/chat/sessions/$SESSION_ID/messages")
 MSG_COUNT=$(echo "$MSG_RESP" | jlen .items)
 assert_eq "T06 no messages yet" "0" "$MSG_COUNT"
+
+# ── T06b: Tools + skills catalog ─────────────────────────────────────────────
+header "T06b: Tools and skills catalog"
+
+TOOLS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" "$GATEWAY/v1/chat/tools/catalog")
+assert_status "T06b tools catalog" "200" "$TOOLS_STATUS"
+TOOLS_COUNT=$(curl -s -H "$AUTH" "$GATEWAY/v1/chat/tools/catalog" | jlen .items)
+if [ "$TOOLS_COUNT" -lt 1 ]; then
+  echo "WARN: tools catalog empty (MCP may be down) — continuing"
+fi
+
+SKILLS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" "$GATEWAY/v1/chat/skills/catalog")
+assert_status "T06b skills catalog" "200" "$SKILLS_STATUS"
+SKILLS_COUNT=$(curl -s -H "$AUTH" "$GATEWAY/v1/chat/skills/catalog" | jlen .items)
+assert_gt "T06b skills catalog non-empty" "0" "$SKILLS_COUNT"
+
+# ── T06c: PATCH enabled_tools + GET verify ───────────────────────────────────
+header "T06c: PATCH enabled_tools round-trip"
+
+PATCH_TOOLS_RESP=$(curl -s -X PATCH "$GATEWAY/v1/chat/sessions/$SESSION_ID" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"enabled_tools":["find_tools"]}')
+PATCHED_TOOLS=$(echo "$PATCH_TOOLS_RESP" | jget '.enabled_tools | length')
+assert_eq "T06c PATCH returns enabled_tools" "1" "$PATCHED_TOOLS"
+
+GET_TOOLS_RESP=$(curl -s -H "$AUTH" "$GATEWAY/v1/chat/sessions/$SESSION_ID")
+GET_TOOLS=$(echo "$GET_TOOLS_RESP" | jget '.enabled_tools[0]')
+assert_eq "T06c GET round-trip enabled_tools" "find_tools" "$GET_TOOLS"
 
 # ── T07: List outputs (empty session) ─────────────────────────────────────────
 header "T07: List outputs (empty)"

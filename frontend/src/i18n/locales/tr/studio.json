@@ -1,0 +1,1663 @@
+{
+  "title": "Yazım Stüdyosu",
+  "back": "Kitaplara dön",
+  "settings": "Kitap ayarları",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Yükleniyor…",
+    "empty": "Henüz ark yok.",
+    "emptyGuided": "Henüz bir olay örgüsü yok — plan, kitabınıza yön veren teknik özelliktir. Başlamak için olay örgüsünü ve bölümleri düzenleyin.",
+    "planCta": "Bu kitabı planla"
+  },
+  "welcome": {
+    "tab": "Hoş Geldiniz",
+    "title": "Yazım Stüdyosu",
+    "body": "Bu kitap için sabitlenebilir bir çalışma alanı. Paneller (compose, planner, cast, quality…) buraya tek tek eklenecektir. Sekmeleri bölmek, üst üste dizmek, serbest bırakmak veya kendi penceresinde açmak için sürükleyin.",
+    "openUserGuide": "Kullanım Kılavuzunu Aç",
+    "startGuidedTour": "Rehberli Tura Başla",
+    "paletteHint": "⌘⇧P → Her an \"Odak Noktanızı Seçin\" veya \"Rehberli Tura Başlayın\""
+  },
+  "panels": {
+    "arc-templates": {
+      "title": "Ark Şablonları",
+      "desc": "Yeniden kullanılabilir çok bölümlü ark yapılarını —bölümler boyunca paralel olay örgüleri ve karakter rolleri— gözden geçirin, oluşturun, benimseyin ve uygulayın",
+      "guideBody": "Ark Şablonu kütüphanesi, bölümler boyunca motifler olarak düzenlenmiş paralel olay örgüleri (intikam hattı, romantizm, akıl hocasının yalanı) ve şablonu uyguladığınızda bağlanan karakter rollerini içeren yeniden kullanılabilir çok bölümlü yapılar barındırır. Katmanlara göre göz atın: kendi şablonlarınız, sistem tarafından sağlananlar ve (Katalog'da) başkalarının herkese açık olanları. Yeni bir şablon oluşturun, kendi kopyanızı özelleştirmek için sistem/kamu şablonlarından birini benimseyin veya akış × bölüm zaman çizelgesini görmek ve bu kitaba uygulamasını önizlemek için birini açın. Ayrıca, halihazırda yazdığınız bir arkı şablon olarak kaydedebilir veya referans bir hikayeyi içe aktarıp onu yeni bir şablona dönüştürebilirsiniz (拆文). Bir şablon uygulamak önce bir önizlemedir; siz onu somutlaştırmadığınız sürece bölümlerinizin üzerine asla yazılmaz."
+    },
+    "arc-inspector": {
+      "title": "Ark Denetçisi",
+      "desc": "TEK bir arkı veya destanı okuyun ve düzenleyin — hedefi, durumu, kademeli olarak çözülmüş olay örgüleri ve karakter kadrosu, bölüm aralığı, açık vaatler ve şablon kökeni",
+      "guideBody": "Ark Denetçisi, kitabınızın spesifikasyon ağacındaki bir düğümü —bir destanı, bir arkı veya bir alt arkı— açar. Bu ağaç sadece bir süs değildir: olay örgüleri ve karakter bağlamaları her üretim istemine (prompt) okunur, bu nedenle burada bir arkı düzenlemek, yapay zekanın bölümleri taslak haline getirme biçimini değiştirir. İzler ve kadro yuvaları bir kademeli akış olarak çözülür; bir üst destandan miras alınan bir girdi, bir «Geçersiz Kıl» (Override) işlemiyle gri renkte gösterilir (olduğu yerde düzenlemek sessizce bir kopya oluşturur). Bölüm aralığı, açık vaat özeti ve şablon kökeni salt okunurdur. Bir arkı arşivlemek, bölümlerini planlanmamış tepsiye geri döndürür; geri yüklemek ise onları tekrar bağlar. Plan Merkezi'nden (bir ark seçin), komut paletinden veya asistandan açabilirsiniz.",
+      "body": {
+        "loading": "Yükleniyor…",
+        "selectArc": "Planını görmek için bir ark seçin.",
+        "archivedBanner": "Arşivlendi — bölümler planlanmamış bölmelere geri döndü. Düzenlemek ve tekrar eklemek için geri yükleyin.",
+        "restore": "Geri Yükle",
+        "secIdentity": "Kimlik",
+        "fTitle": "Başlık",
+        "fGoal": "Hedef (komuta ulaşır)",
+        "fSummary": "Özet (bir etiket — komut değil)",
+        "fStatus": "Durum",
+        "status_empty": "boş",
+        "status_outline": "taslak",
+        "status_drafting": "yazım aşamasında",
+        "status_done": "tamamlandı",
+        "secTracks": "Kurgu İzleri (olay örgüsü → komut)",
+        "secRoster": "Kadro (karakter rolleri)",
+        "empty_track": "Henüz kurgu izi yok.",
+        "empty_role": "Henüz karakter rolü yok.",
+        "remove": "kaldır",
+        "overrideHere": "burada geçersiz kıl",
+        "add_track": "+ iz",
+        "add_role": "+ rol",
+        "keyPlaceholder": "anahtar",
+        "labelPlaceholder": "etiket (isteğe bağlı)",
+        "addBtn": "ekle",
+        "cancel": "iptal",
+        "keyExists": "anahtar mevcut",
+        "secChapters": "Bölümler",
+        "chaptersLabel": "Bölümler",
+        "noChapters": "Atanmış bölüm yok",
+        "nonContiguous": "kesintisiz değil",
+        "secPromises": "Açık vaatler",
+        "noPromises": "Burada açık bir vaat yok.",
+        "secProvenance": "Köken",
+        "fromTemplate": "Şablondan",
+        "authoredNoTemplate": "Sohbetten oluşturuldu (şablon yok).",
+        "secDanger": "Tehlike",
+        "archiveArc": "Arkı arşivle",
+        "blast": "ayrıca {{count}} alt arkı da arşivler",
+        "archivingNote": "Arşivleme, bölümleri planlanmamışlar tepsisine geri döndürür; geri yükleme ise onları tekrar bağlar.",
+        "secTemplate": "Şablon"
+      }
+    },
+    "compose": {
+      "title": "Yardımcı Yazar Sohbeti",
+      "desc": "Yapay zeka ile yazım sohbeti",
+      "guideBody": "Bu kitabın yapay zeka yazım ortağı — bir sahne hakkında onunla sohbet edin, bir pasaj taslağı oluşturmasını veya revize etmesini isteyin ya da bir sonraki adımda ne olacağını beyin fırtınası yaparak tartışın. Bu kitabın karakterlerini, sözlüğünü ve önceki bölümlerini zaten bilen bir sohbet ortağı istediğinizde açın."
+    },
+    "scene-compose": {
+      "title": "Sahne oluştur",
+      "desc": "Yapay zeka adaylarıyla bir sahne taslağı çıkarın",
+      "guideBody": "Yapay zeka eş-yazarıyla bir sahne taslağı çıkarın: bir sahne ve bir model seçin, ardından hayalet taslağı akıtmak için Oluştur'a basın — ya da karşılaştırıp düzenleyip kabul edebileceğiniz birkaç aday için Ayrış'ı açın. Kabul etmek metni bu bölümün Düzenleyicisine ekler ve yeniden-oluştur/reddet/düzenle seçimleriniz modeli eğitir. Bir sonraki sahneyi sadece konuşmak değil yazmak istediğinizde açın."
+    },
+    "chapter-assemble": {
+      "title": "Bölüm birleştir",
+      "desc": "Sahneleri bir bölüme birleştirin veya dikin",
+      "guideBody": "Bir bölümün sahnelerini tamamlanmış bölüm metnine dönüştürün: 'Bölüm oluştur' tek seferde taslağı çıkarır, 'Dik' ise tamamlanmış sahne taslaklarınızı tek ve akıcı bir bölümde birleştirir. Düzenlenebilir önizlemeyi inceleyin, ardından Düzenleyiciye eklemek için Kabul et'e basın — düzenle/yeniden-oluştur/reddet seçimleriniz modeli eğitir, Sahne oluştur ile aynı düzeltme çarkı. Bir bölümün sahneleri taslak hale geldiğinde ve onları birleştirmek istediğinizde açın."
+    },
+    "editor": {
+      "title": "Editör",
+      "desc": "Taslak editörü",
+      "guideBody": "Bölüm metinlerini doğrudan yazdığınız ve düzenlediğiniz ana taslak editörü. Yeni bir metin taslağı oluştururken veya doğrudan satır içi düzenlemeler yaparken açın — burası Compose, Planner ve Steering gibi tüm diğer araçların beslendiği ana tuvaldir."
+    },
+    "planner": {
+      "title": "Planner",
+      "desc": "Romanın kurgusunu planlayın",
+      "guideBody": "Yazarken veya yazmadan önce romanın yapısını — olay örgüsü arklarını, bölümleri, kırılma noktalarını ve bunların birbirine nasıl bağlandığını — kurgulayın. Sadece önünüzdeki cümleyi değil, hikayenin genel yapısını görmek veya yeniden düzenlemek istediğinizde açın."
+    },
+    "usage": {
+      "title": "Kullanım",
+      "desc": "Harcama, tokenlar ve istek günlüğü",
+      "guideBody": "Çeviri, zenginleştirme, sohbet ve compose gibi her bir yapay zeka destekli işlemde ne kadar harcama yaptığınızı, zaman içindeki token ve istek dökümüyle gösterir. Mevcut harcamanızı bütçenizle karşılaştırmak, hangi özelliğin en çok krediyi tükettiğini belirlemek veya belirli bir isteğin maliyetini sonradan incelemek istediğinizde açın."
+    },
+    "notifications": {
+      "title": "Bildirimler",
+      "desc": "İşlem tamamlamaları ve uyarılar",
+      "guideBody": "Uzun süren işleri sürekli kontrol etmek zorunda kalmamanız için işlem tamamlamalarını, çeviri süreçlerini, zenginleştirme aşamalarını ve sistem uyarılarını tek bir yerde toplar. Büyük bir iş başlattıktan (bir bölümü çevirmek veya zenginleştirme çalıştırmak gibi) sonra, işlemin bittiği anı öğrenmek veya başarısız olup dikkat gerektiren bir şey olup olmadığını görmek için açın."
+    },
+    "settings": {
+      "title": "Ayarlar",
+      "desc": "Hesap, sağlayıcılar ve çeviri",
+      "guideBody": "Hesabınızı yönetin, kendi yapay zeka sağlayıcılarınızı (OpenAI, yerel modeller vb.) bağlayın ve hedef dil ile sözlük davranışı gibi çeviri varsayılanlarını yapılandırın. Yeni bir projeye başlamadan önce kurulum yapmak için veya sağlayıcıları değiştirmek, kimlik bilgilerini güncellemek ya da çeviri davranışlarını varsayılan olarak değiştirmek istediğinizde açın."
+    },
+    "trash": {
+      "title": "Çöp Kutusu",
+      "desc": "Silinen kitapları, bölümleri ve daha fazlasını geri yükle",
+      "guideBody": "Silinen kitapları, bölümleri ve diğer öğeleri tamamen yok olmak yerine geri yüklenebilir şekilde saklar. Yanlışlıkla bir şey sildiğinizde ve geri yüklemeniz gerektiğinde veya artık ihtiyaç duymadığınız eski öğeleri kalıcı olarak temizlemek istediğinizde açın."
+    },
+    "steering": {
+      "title": "Steering",
+      "desc": "Yapay zekaya bu kitap için rehberlik eden yazar kuralları",
+      "guideBody": "Yapay zekanın bu özel kitap için nasıl yazacağını belirleyen kuralları ve tercihleri yazın — ton, bakış açısı (POV), kaçınılması gerekenler ve her sohbette tekrarlamak istemediğiniz yinelenen talimatlar. Başlangıçta bir kez yazın, ardından yapay zekanın çıktısı istediğinizden saptığında tekrar ziyaret edin."
+    },
+    "style-voice": {
+      "title": "Üslup ve Ses",
+      "desc": "Anlatım yoğunluğunu, tempoyu ve her karakterin kendine has sesini belirleyin — tüm taslak komutlarına dahil edilir",
+      "guideBody": "Üslup ve Ses, yapay zekanın nasıl yazacağını yönlendirir. Tüm kitabın (veya bir bölümün veya sahnenin) anlatım yoğunluğunu ve temposunu ayarlayın ve her karaktere kendine özgü bir konuşma sesi verin. Bu ayarlar her taslak komutuna dahil edilir, böylece talimatları tekrar etmenize gerek kalmadan yazım tutarlı kalır. Her kontrol, geçerli değerini ve bu değerin nereden geldiğini (kitap varsayılanı veya bölüm/sahne geçersiz kılma) gösterir. Genel üslubu belirlemek için ayarları erkenden yapın, ardından karakterlerin sesleri belirginleştikçe her biri için ince ayar yapın.",
+      "noWork": "Yazım ayarları bu kitap için henüz yapılandırılmadı — stil ve ses tonunu buradan yönetmek için yapılandırın."
+    },
+    "glossary": {
+      "title": "Sözlük",
+      "desc": "Bu kitap için varlıklar, arama ve toplu işlemler",
+      "guideBody": "Kitabınızın karakterler, yerler, eşyalar ve diğer özel isimlerden oluşan yaşayan sözlüğü — bunları tek bir yerden arayın, filtreleyin ve toplu olarak düzenleyin. Halihazırda neyin belirlendiğini kontrol etmeniz, bir ismi birçok girişte aynı anda düzeltmeniz veya varlıkları toplu olarak temizlemeniz gerektiğinde açın."
+    },
+    "glossary-ontology": {
+      "title": "Ontoloji",
+      "desc": "Bu kitap için türler, janrlar ve nitelikler",
+      "guideBody": "Bu kitaptaki varlıkları sınıflandırmak için kullanılabilir türleri (karakter, konum, eşya vb.), janrları ve özel nitelikleri tanımlar. Varlıkları etiketlemeye başlamadan önce veya mevcut sete uymayan yeni bir tür veya nitelik eklemeniz gerektiğinde açın."
+    },
+    "glossary-unknown": {
+      "title": "Tanımlanamayan varlıklar",
+      "desc": "Tanınmayan varlıkları bir türe yeniden ata",
+      "guideBody": "Sistemin metninizde tespit ettiği ancak bir türe kesin olarak sınıflandıramadığı varlıkları listeler. Bu tanımlanamayan isimleri doğru türe atamak, böylece Sözlük ve Wiki'de boşlukta kalmak yerine doğru şekilde görünmelerini sağlamak için periyodik olarak açın."
+    },
+    "glossary-ai-suggestions": {
+      "title": "Yapay zeka önerileri",
+      "desc": "Yapay zeka tarafından taslak olarak oluşturulan varlıkları incele",
+      "guideBody": "Yapay zekanın taslağınızdan otomatik olarak oluşturduğu ve incelemenizi bekleyen varlık girişlerini gösterir. Her bir öneri resmi sözlüğünüzün bir parçası olmadan önce kabul etmek, düzenlemek veya reddetmek için açın."
+    },
+    "glossary-merge-candidates": {
+      "title": "Birleştirme adayları",
+      "desc": "Muhtemel yinelenen varlıkları incele ve onayla",
+      "guideBody": "Sistemin yinelenen olabileceğini düşündüğü varlık çiftlerini (örneğin aynı karakterin adının iki farklı yazımı) işaretler. Sözlüğünüzü temiz tutmak için gerçek yinelenenleri onaylayıp birleştirmek veya hatalı eşleşmeleri reddetmek için açın."
+    },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "Bu kitabın oluşturulan wiki makalelerine göz atın ve okuyun",
+      "guideBody": "Sözlüğünüzden ve hikaye içeriğinizden oluşturulan, okunabilir makalelerden oluşan otomatik üretilmiş wiki — her ana varlık için bir makale. Ham sözlük alanları yerine bir karakter, yer veya grup hakkında anlatı tarzında bir genel bakış istediğinizde burayı açın."
+    },
+    "wiki-editor": {
+      "title": "Wiki Düzenleyici",
+      "desc": "Bir wiki makalesinin metnini, bilgi kutusunu, geçmişini ve önerilerini düzenleyin"
+    },
+    "knowledge": {
+      "title": "Bilgi",
+      "desc": "Bilgi grafiği projelerinizi gözden geçirin ve açın",
+      "guideBody": "Bilgi, bir kitabın bilgi grafiğine —AI ajanlarınızın çıkardığı ve düzenlediği varlıklar, olaylar ve efsanelere — giriş noktanızdır. Varlıklara, zaman çizelgelerine veya grafiğin kendisine dalmadan önce hangi proje (kitap) üzerinde çalışacağınızı seçmek için burayı açın."
+    },
+    "quality": {
+      "title": "Kalite",
+      "desc": "Açık vaatler, eleştirmen puanları, hikaye kapsamı ve kanon sorunları",
+      "guideBody": "Kalite, sizin teşhis panelinizdir — yalnızca bilgilendirme amaçlıdır, buradaki hiçbir şey metninizi değiştirmez. Açık vaat borcu defterini, bölüm bazlı eleştirmen puanlarını, kitap genelindeki vaat kapsamını veya onaylanmış kanon çelişkilerini görmek için bir kart seçin."
+    },
+    "quality-promises": {
+      "title": "Vaatler",
+      "desc": "Açık vaat borcu defteri (henüz sonuçlanmamış kurgusal hazırlıklar)",
+      "guideBody": "Vaatler, anlatısal borç defterinizdir — hikayenin oluşturduğu ve henüz ödenmemiş her bir kurulum. Bir vaat, onu yerleştirdiğiniz yerde (ima edilen bir ihanet, dolu bir silah, açıklanmamış bir yara) açılır ve taslak metin onu yerine getirdiğinde kapanır. Bir kitabı bitirmeden önce listeyi temizleyin; sonunda hala açık olan her şey, okuyucuların gözden kaçırdığınızı fark edeceği bir izdir."
+    },
+    "quality-critic": {
+      "title": "Eleştirmen",
+      "desc": "Bölüm bazlı tutarlılık, üslup, tempo ve kanon puanları",
+      "guideBody": "Eleştirmen; bir bölümü tutarlılık, ses, tempo ve kanon sadakati açısından puanlar ve her kararın arkasındaki gerekçeyi sunar. Bu tavsiye niteliğindedir; metninizi asla düzenlemez. Bir okuyucudan önce konudan sapan bölümleri tespit etmek için kullanın, optimize edilecek bir not olarak değil."
+    },
+    "quality-coverage": {
+      "title": "Hikaye kapsamı",
+      "desc": "Taslak vaatlerinin hangilerinin yerine getirildiğine dair kitap geneli denetim",
+      "guideBody": "Hikaye kapsamı, vaat defterinin kitap genelindeki görünümüdür: Hangi taslak aşamalarının taslağa gerçekten yansıdığını, hangilerinin hâlâ beklediğini ve ödüllerin nerede kümelendiğini gösterir. Bir taslak tamamlandığında, vaat ettiklerini yerine getirmeyen bölümleri bulmak için okuyın."
+    },
+    "quality-canon": {
+      "title": "Kanon sorunları",
+      "desc": "Üretim ve bilgi çıkarımından kaynaklanan onaylanmış çelişkiler",
+      "guideBody": "Kanon sorunları, metniniz ile yerleşik evreniniz arasındaki onaylanmış çelişkileri toplar — aynı anda iki yerde bulunan bir karakter, değişen bir göz rengi veya hikâyenin az önce çiğnediği bir büyü kuralı. Her sorun, metni düzeltmeniz veya kuralı değiştirmeniz için ilgili bölüme ve ihlal edilen kanon kuralına geri döner."
+    },
+    "quality-canon-rules": {
+      "title": "Kanon kuralları",
+      "desc": "Eleştirmenin uyguladığı değişmezleri belirleyin — oluşturun, düzenleyin, arşivleyin, geri yükleyin",
+      "guideBody": "Kanon kuralları, hikâyenizin asla çiğnememesi gereken değişmezleri beyan ettiğiniz yerdir — 41. bölümden sonra bir karakterin tek kolu olması, ruh taşlarının tüketilmesi ve asla geri verilmemesi, Tarikat Lideri'nin kimliğinin Tuz Mahkemesi arkına kadar gizli kalması gibi. Bunlar, eleştirmenin ve «kendi kendini iyileştirme» özelliğinin her üretimde uyguladığı kurallardır; bunları buraya yazmak, ortak yazara kanonunuzu öğretmenin yoludur. Kanon sorunlarının diğer yarısıdır: O panel neyin bozulduğunu gösterirken, bu panel kuralın düzeltildiği yerdir."
+    },
+    "quality-corrections": {
+      "title": "Düzeltmeler",
+      "desc": "Yapay zeka taslaklarındaki kabul / düzenleme / yeniden oluşturma / reddetme oranlarınız — kalite sinyali",
+      "guideBody": "Düzeltmeler, kendi düzenleme sürecinizin aynasıdır: Bir yapay zeka taslağını her kabul ettiğinizde, düzenlediğinizde, farklı bir aday seçtiğinizde, yeniden oluşturduğunuzda veya reddettiğinizde, bu seçim kaydedilir — bu panel ise Diverge (K-seçeneği) ve Stream ayrımıyla oranları gösterir. Diverge modunda daha düşük düzenleme/yeniden oluşturma/reddetme oranı (ve daha yüksek doğrudan kabul oranı), yeniden sıralayıcının (reranker) ek gecikme süresine değdiğini gösterir. Tavsiye niteliğindedir ve sadece okunabilir; metninizi asla değiştirmez — sadece ortak yazarın kitabınız konusunda gelişip gelişmediğini söyler."
+    },
+    "quality-heal": {
+      "title": "Kendi kendini iyileştirme",
+      "desc": "Bir bölüm üzerinde «Parlat» işlemini çalıştırın ve her düzeltmeyi metninize dokunmadan önce kabul edin",
+      "guideBody": "Self-heal, bir bölüm üzerinde hızlı bir düzelti turu yapar ve düzeltmeler önerir — zamir kaymaları, yazım hataları, kurgusal tutarsızlıklar, aşırı uzun betimleme anları gibi her bir öneri kabul/red satırı olarak gösterilir. Belirlenmiş düzeltmeler (yazım hataları, zamirler) önceden işaretlenmiş olarak gelir; anlamsal yeniden yazımlar ise sizin karar vermeniz için işaretsiz bırakılır. Siz Uygula düğmesine basana kadar metninize hiçbir müdahale yapılmaz; Uygula dediğinizde ise bir sürüm kontrolü yapılır: Eğer bölüm Polish çalıştırıldığından beri değiştiyse, yeni düzenlemelerinizi geri almak yerine uygulama işlemi reddedilir."
+    },
+    "progress": {
+      "title": "İlerleme",
+      "desc": "Bugünkü kelime sayısı, seriniz, kitabın toplamı, günlük hedef ve bir grafik çizgisi",
+      "guideBody": "İlerleme, yazma sürecinizi somut bir alışkanlığa dönüştürür: bugün yazılan kelimeler, mevcut gün seriniz, kitabın toplam kelime sayısı ve 7 veya 30 günlük bir grafik çizgisi. Kişisel bir günlük hedef belirleyin ve grafik üzerinde bir referans çizgisiyle işaretlensin — bu hedef sadece size özeldir, iş arkadaşlarınızla paylaşılmaz. Editörün siz kaydettikçe kaydettiği kelime sayılarını okur; metninize asla müdahale etmez."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Son yayınladığınız içeriğin kanona ekledikleri — yeni kişiler, bağlar ve olaylar",
+      "guideBody": "Flywheel, yayınlamanın ödülüdür: Bir bölüm yayınladığınızda, bir çıkarma işlemi dünyanın bilgisini büyütür ve bu panel ne eklediğini —yeni varlıklar, ilişkiler ve olaylar— Cast'taki o karaktere, grafikteki o bağlantıya veya zaman çizelgesindeki o ana doğrudan atlamanızı sağlayan tıklanabilir vurgularla gösterir. Döngüyü tamamlar: Yazmak kanonu besler, kanon ise bir sonraki bölümünüzü temellendirir."
+    },
+    "kg-overview": {
+      "title": "Genel Bakış",
+      "desc": "Proje özeti ve hızlı işlemler",
+      "guideBody": "Genel Bakış, bir projenin durumu hakkında size anlık bir özet sunar — varlık sayıları, son etkinlikler ve bekleyen işler. Belirli bir araca odaklanmadan önce neye dikkat edilmesi gerektiğini görmek için bir kitaba geri döndüğünüzde önce burayı açın."
+    },
+    "kg-entities": {
+      "title": "Varlıklar",
+      "desc": "Bilgi grafiği varlıklarını bir projeye özel veya tüm projeleriniz genelinde gözden geçirin ve arayın",
+      "guideBody": "Varlıklar, sistemin çıkardığı her karakteri, yeri, eşyayı ve kavramı türüne veya projesine göre daraltmak için arama ve filtrelerle birlikte listeler. Belirli bir varlığın ayrıntılarını bulmak veya bilgi grafiğinin dünyanız hakkında şu anda neler bildiğini denetlemek için kullanın."
+    },
+    "kg-timeline": {
+      "title": "Zaman Çizelgesi",
+      "desc": "Hikaye içi olayları kronolojik veya anlatı sırasına göre gözden geçirin",
+      "guideBody": "Zaman Çizelgesi, hikayenizin olaylarını sırasıyla sunar — ya dünya içindeki gerçekleşme sırasına göre (kronolojik) ya da okuyucuya açıklanma sırasına göre (anlatı). Kurgunuzun sıralamasındaki tutarlılığı kontrol etmek veya hikayenin herhangi bir noktasında şimdiye kadar neler olduğunu görmek için burayı açın."
+    },
+    "kg-evidence": {
+      "title": "Kanıtlar",
+      "desc": "Bölüm ve sohbet pasajlarını anlamsal benzerliğe göre arayın",
+      "guideBody": "Kanıtlar, bölümlerinizi ve sohbet geçmişinizi tam kelimeler yerine anlamlarına göre aramanıza olanak tanır; aynı ifadeyi kullanmasalar bile bir konuyu tartışan pasajları ortaya çıkarır. Bir şeyin nerede geçtiğini veya kurulduğunu bulmanız gerektiğinde ancak tam kelimeleri hatırlayamadığınızda kullanın."
+    },
+    "kg-gap": {
+      "title": "Boşluk Raporu",
+      "desc": "Sözlükte eksik olan, çokça geçen karakterleri, yerleri ve kavramları bulun",
+      "guideBody": "Boşluk Raporu, metninizde sıkça geçen ancak henüz sözlüğe eklenmemiş karakterleri, yerleri ve kavramları ortaya çıkarır. Uygun bir giriş yapılmadan gözden kaçan efsaneleri yakalamak için burayı periyodik olarak kontrol edin."
+    },
+    "kg-proposals": {
+      "title": "Öneriler",
+      "desc": "Bu kitap için bekleyen sözlük, wiki ve efsane zenginleştirme önerilerini inceleyin",
+      "guideBody": "Öneriler, sözlüğünüze, wikinize ve efsanelerinize yapılan AI tarafından önerilen eklemelerin ve değişikliklerin incelemeniz için beklediği yerdir. Her bir öneri kitabınızın kanonunun bir parçası haline gelmeden önce onaylamak, düzenlemek veya reddetmek için burayı açın."
+    },
+    "kg-schema": {
+      "title": "Şema",
+      "desc": "Kitabınızın bilgi grafiği şemasını benimseyin, oluşturun, görüntüleyin ve senkronize edin",
+      "guideBody": "Şema, kitabınızın bilgi grafiğinin yapısını —ne tür varlıkları ve ilişkileri tanıdığını— kontrol eder. Bir başlangıç şemasını benimsemek, dünyanız için özelleştirmek veya projenizdeki değişiklikleri senkronize etmek için kullanın."
+    },
+    "kg-graph": {
+      "title": "Bilgi Grafiği",
+      "desc": "Projenin varlık ilişki grafiğini keşfedin",
+      "guideBody": "Bilgi Grafiği, projenizdeki varlıkların birbirine nasıl bağlandığının görsel bir haritasını sunar — kim kimi tanıyor, ne nereye ait, hangi olay hangi karakterleri kapsıyor. İlişkileri bir liste olarak değil de mekansal olarak keşfetmek istediğinizde burayı açın."
+    },
+    "kg-insights": {
+      "title": "Madencilik Analizleri",
+      "desc": "Projeler genelinde çıkarma yapılandırma kalitesi, model performansı ve sonuç sapması",
+      "guideBody": "Madencilik Analizleri, projeleriniz genelinde çıkarmanın ne kadar iyi performans gösterdiğini raporlar — yapılandırma kalitesi, hangi modellerin iyi sonuçlar verdiği ve sonuçların beklentilerden nerede saptığı. Çıkarılan varlıklar veya olaylar yanlış görünüyorsa, sorunun modelden mı yoksa yapılandırmadan mı kaynaklandığını teşhis etmek için burayı kontrol edin."
+    },
+    "kg-jobs": {
+      "title": "Çıkarma İşleri",
+      "desc": "Tüm projelerinizdeki bilgi çıkarma işlerini izleyin",
+      "guideBody": "Çıkarma İşleri, tüm projelerinizdeki her bir bilgi çıkarma işleminin durumunu gösterir; böylece nelerin kuyrukta, devam eden, tamamlanan veya başarısız olduğunu görebilirsiniz. Uzun süren çıkarmaları kontrol etmek veya beklenen şekilde bitmeyen bir işlemi gidermek için burayı açın."
+    },
+    "kg-bio": {
+      "title": "Global Biyografi",
+      "desc": "AI yazımı ve analizini temellendirmek için kullanılan kitaplar arası yazar biyografiniz",
+      "guideBody": "Global Biyografi, AI yazım ve analiz araçlarına sesiniz ve geçmişiniz hakkında bağlam sağlamak için tüm kitaplarınızda paylaşılan kısa bir yazar biyografisi tutar. Bir kez doldurun ve her proje aynı temellendirmeden yararlansın."
+    },
+    "kg-privacy": {
+      "title": "Gizlilik ve Veri",
+      "desc": "Bilgi grafiği verilerinizi dışa aktarın veya kalıcı olarak silin",
+      "guideBody": "Gizlilik ve Veri, bilgi grafiği verilerinizin tam bir kopyasını dışa aktarmanıza veya bunları kalıcı olarak silmenize olanak tanır. Yedek almak istediğinizde, platformdan ayrılırken veya bir projenin verilerini tamamen kaldırmanız gerektiğinde kullanın."
+    },
+    "jobs-list": {
+      "title": "İşler",
+      "desc": "Arka plan işlerini ve görevleri izleyin",
+      "guideBody": "Bu kitap için çalışan arka plan işlerini — çeviri süreçleri, zenginleştirme aşamaları, dışa aktarmalar ve diğer uzun süreli görevler — mevcut durumları ve ilerlemeleriyle birlikte gösterir. Bir işin hâlâ çalışıp çalışmadığını kontrol etmek, hata verip vermediğini görmek veya bir görev tamamlanmadan önce ilerlemek için paneli açın."
+    },
+    "job-detail": {
+      "title": "İş",
+      "desc": "Bir işin canlı ilerlemesini izleyin",
+      "empty": "İzlemek için İşler panelinden bir iş açın."
+    },
+    "books": {
+      "title": "Kitaplar",
+      "desc": "Bu stüdyodan ayrılmadan diğer kitaplarınıza göz atın ve okuyun",
+      "guideBody": "Diğer kitaplarınızın hafifletilmiş bir kütüphane görünümünü doğrudan stüdyonun içinde açar; böylece mevcut düzenleme oturumunuzu kaybetmeden ayrıntıları kontrol edebilir, bir pasajı yeniden okuyabilir veya projeler arasında geçiş yapabilirsiniz. Yazdığınız şeyden uzaklaşmadan kitaplar arası hızlı referans almak istediğinizde kullanın."
+    },
+    "book-reader": {
+      "title": "Okuyucu",
+      "desc": "Bir bölüm için dikkat dağıtmayan okuma görünümü"
+    },
+    "leaderboard-books": {
+      "title": "Liderlik Tablosu: Kitaplar",
+      "desc": "Puanlama, okuyıcı sayısı ve favorilere göre en yüksek sıralamadaki kitaplar",
+      "guideBody": "Puanlama, okuyıcı sayısı ve favorilere göre sıralamada yükselen kitapları gösterir, böylece şu anda okuyıcıların nelerden etkilendiğini görebilirsiniz. Platform genelinde nelerin popüler olduğunu anlamak veya türünüzdeki benzer eserleri keşfetmek istediğinizde bu paneli kontrol edin."
+    },
+    "leaderboard-authors": {
+      "title": "Liderlik Tablosu: Yazarlar",
+      "desc": "Okuyıcı sayısı ve üretim miktarına göre en yüksek sıralamadaki yazarlar",
+      "guideBody": "Yazarları ulaştıkları okuyıcı sayısı ve yayınladıkları içerik miktarına göre sıralayarak, kimin aktif, kimin kitle oluşturmakta olduğunu anlamanızı sağlar. Kendi üretiminizin ve erişiminizin nasıl göründüğünü merak ediyorsanız veya takip etmek için üretken yazarlar arıyorsanız paneli açın."
+    },
+    "leaderboard-translators": {
+      "title": "Liderlik Tablosu: Çevirmenler",
+      "desc": "Tamamlanan bölümler ve diller sayısına göre en yüksek sıralamadaki çevirmenler",
+      "guideBody": "Çevirmenleri tamamlanan bölüm sayısı ve kapsanan dil sayısına göre sıralayarak platformun çeviri faaliyetlerine kimlerin yön verdiğini vurgular. İş birliği yapmak için aktif çevirmenler bulmak veya diller genelinde ne kadar çeviri işi yapıldığını ölçmek istediğinizde bu paneli açın."
+    },
+    "leaderboard-trending": {
+      "title": "Liderlik Tablosu: Trendler",
+      "desc": "Şu an trend olan kitaplar",
+      "guideBody": "Tüm zamanların toplamlarından ziyade, son okuyıcı faaliyetlerine dayanarak şu anda ivme kazanan kitapları öne çıkarır. Yükselen başlıkları erkenden yakalamak veya şu anda neler dikkat çekiyor görmek istediğinizde kontrol edin."
+    },
+    "context-inspector": {
+      "title": "Bağlam Denetçisi",
+      "desc": "Bağlam yönetiminin her adımda ne yaptığını izleyin — bütçe, tahsis, Planner→Compiler kararları",
+      "guideBody": "Belirli bir adım için yapay zekaya tam olarak hangi bağlamın gönderildiğini gösterir — token bütçesi, nelerin dahil edildiği veya çıkarıldığı ve işlemin hızlı bir geçiş mi yoksa tam bir planlama geçişiyle mi yapıldığı. Yapay zekanın yanıtı tuhaf göründüğünde ve aslında neyi \"gördüğünü\" görmek istediğinizde veya bağlam bütçenizin nasıl harcandığını merak ettiğinizde paneli açın."
+    },
+    "book-import": {
+      "title": "İçe Aktar",
+      "desc": "Metin, .docx veya .epub formatlarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın",
+      "intro": "Mevcut taslak içeriğini bu kitaba aktarın.",
+      "guideBody": "Düz metin, .docx veya .epub dosyalarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın (isteğe bağlı yapay zeka görsel altyazı desteği ile — görme modelini siz seçersiniz). Sıfırdan yazmak yerine, içeriği aktarmak istediğiniz her an bu özelliği kullanabilirsiniz.",
+      "text": {
+        "title": "Bölümleri içe aktar",
+        "desc": ".txt, .docx veya .epub — dosya başına bir bölüm"
+      },
+      "pdf": {
+        "title": "PDF'den içe aktar",
+        "desc": "Görseller için isteğe bağlı yapay zeka altyazı desteğiyle bir PDF'i bölümlere ayırın"
+      }
+    },
+    "scene-browser": {
+      "title": "Sahne Tarayıcı",
+      "desc": "Bu kitaptaki her sahneye göz atın — işlenmiş nesir ve yazılmış plan, yan yana",
+      "guideBody": "Sahne Tarayıcı, iki gerçeği birleştirerek tüm kitaptaki her sahneyi listeler: fiilen yazılmış nesir (book-service'den) ve yazılmış niyet/plan (composition'dan). Bir sahne; yazılmış-ve-planlanmış (normal), planlanmış-fakat-henüz-yazılmamış veya yazılmış-fakat-henüz-bir-plana-ayrıştırılmamış olabilir — bu nedenle, içe aktarılan bir kitabın sahneleri, siz bir plan oluşturmadan önce bile burada görünür.",
+      "noBook": "Sahnelerine göz atmak için bir kitap açın.",
+      "search": "Başlıkları ve nesri ara…",
+      "count": "{{n}} sahne",
+      "workless": "Henüz plan yok — bu kitap için bir plan oluşturana kadar sahne niyeti (durum, bakış açısı, gerilim) kullanılamaz.",
+      "intentUnavailable": "Sahne planı geçici olarak kullanılamıyor — sadece yazılmış nesir gösteriliyor.",
+      "dirty": "kanon taşındı",
+      "dirtyTitle": "Son uyumluluk çalışmasından bu yana kanon taşındı",
+      "anchorLost": "Çapa kayboldu",
+      "empty": "Eşleşen sahne bulunamadı.",
+      "loadMore": "Daha fazla yükle",
+      "loading": "Yükleniyor…",
+      "col": {
+        "num": "#",
+        "scene": "Sahne",
+        "status": "Durum",
+        "tension": "Gerilim",
+        "words": "Kelime"
+      },
+      "badge": {
+        "notWritten": "henüz yazılmadı",
+        "notPlanned": "planlanmadı",
+        "anchorLost": "çapa kayboldu"
+      },
+      "bulk": {
+        "count": "{{n}} seçildi",
+        "selectAll": "Tümünü seç",
+        "selectRow": "Sahneyi seç: {{title}}",
+        "setStatus": "Durumu ayarla…",
+        "words": "Hedef kelime sayısı",
+        "trash": "Çöp kutusu",
+        "clear": "Temizle",
+        "updated": "{{n}} güncellendi",
+        "conflicted": "{{n}} çakışma var",
+        "failed": "{{n}} başarısız oldu"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Merkezi",
+      "desc": "Kitabın tüm planı bir grafik tuvalinde — olay örgüsü şeritleri, bölümler, sahneler ve aralarındaki bağlantılar",
+      "guideBody": "Plan Merkezi, kitabınızın tüm yapısını bir grafik olarak sunar: her destan/ark/alt-ark bir şerittir, bölümler ve sahneler hikaye sırasına göre dizilmiş kartlardır ve sahne bağlantıları aralarındaki nedensel bağları çizer. Her arkı özet bir kart olarak görmek için paneli açın; bölümlerini yüklemek için bir arkı, sahnelerini görmek için bir bölümü genişletin. Gezinmek için kaydırın ve yakınlaştırın; kurgu veya vaatlerin dikkat gerektirdiği yerlerde sorun ve güncelliğini yitirme rozetleri görünür."
+    },
+    "decompose": {
+      "title": "Ayrıştır",
+      "desc": "Kitabınızı bir hikâye yapısına göre ayrıştırın — akış→bölüm→sahne ağacını önizleyin, düzenleyin ve onaylayın",
+      "guideBody": "Ayrıştır, bir hikâye yapısını kitabınızın taslağına dönüştürür. Yazdığınız yapılardan birini (veya yerleşik bir yapıyı) seçin, bir olay örgüsü ekleyin, bir model belirleyin ve ardından Önizle'ye tıklayın: Yapay zekâ, onaylamadan önce üzerinde düzenleme yapabileceğiniz bir akış→bölüm→sahne ağacı önerir. Onayla dediğinizde taslak oluşturulur ve Taslak ağacınız buna uyacak şekilde güncellenir. Komut Paleti'nden veya Yapı Şablonları panelindeki bir yapı üzerinden «Ayrıştırmada kullan» seçeneğiyle (bu seçenek yapıyı burada otomatik olarak seçer) açabilirsiniz. Henüz bir yapınız yok mu? Panel, önce bir yapı oluşturmanızı teklif eder.",
+      "loading": "Kitabınız çözümleniyor…",
+      "loadError": "Bu kitabın planı yüklenemedi — tekrar deneyin.",
+      "retry": "Tekrar Dene"
+    },
+    "plan-passes": {
+      "title": "Pass Rail",
+      "desc": "Adım adım bir plan oluşturun ve her kontrol noktasını onaylayın",
+      "guideBody": "Pass Rail, PlanForge'un 7 aşamalı derleyicisini — motifler, kadro, dünya, olay örgüsü, karakter arkları, sahneler ve self-heal — her seferinde bir aşama olacak şekilde yönetir. Her aşama, en son çalıştırıldığından bu yana girdilerin değişip değişmediğine bağlı olarak güncel mi yoksa bayat mı olduğunu gösterir; ray ise derleyicinin kendi başına ne kadar ilerleyebileceğini ve hangi aşamanın sizin onayınızı beklediğini söyler. Derleyici ilerlemeden önce onaylamanız gereken iki engelleyici kontrol noktası vardır: kadro (karakterlerinizin kim olduğu) ve olay örgüsü (hikayenin aldığı şekil). Bir aşamayı ne ürettiğini okumak, düzenlemek ve ardından onaylamak veya bekletmek için açın. Bir aşamayı düzenlemek, planın kendisiyle senkronizasyonunun bozulmaması için sonraki tüm aşamaları otomatik olarak bayatlatır."
+    },
+    "whatif-canvas": {
+      "title": "What-If Dallanmaları",
+      "desc": "Bir sahne için alternatif versiyonları kalıcı hale getirmeden keşfedin — dallan, alternatif bir versiyon oluştur, karşılaştır ve ardından kazananı ana metne dahil et",
+      "guideBody": "What-if tuvali, orijinal taslağa hiç dokunmadan bir sahneyi geçici bir dala ayırmanıza, alternatif bir versiyon oluşturmanıza ve eleştirmen yargı rozetlerini yan yana görmenize olanak tanır. Bir dal istediğiniz versiyon olduğunda onu yükseltin: artık üzerinde yazmaya devam edebileceğiniz gerçek bir türev eser haline gelir. Siz yükseltene kadar hiçbir şey kaydedilmez, bu sayede özgürce keşif yapabilirsiniz. Bu, Yükselt butonu arkasındaki düzenleme yüzeyidir; Plan Merkezi plan grafiğini gösterirken, burası o plan üzerindeki alternatifleri denediğiniz yerdir.",
+      "noPlan": "Bu kitabın henüz bir planı yok — önce olay örgüsünü ve bölümlerini belirleyin, ardından «ya şöyle olsaydı» dallanmalarını buradan keşfedin."
+    },
+    "divergence": {
+      "title": "Ya olursa versiyonları",
+      "desc": "Bir kitabın what-if türevlerini yönetin — kanon listesini ve her bir dalı listeleyin, tüm stüdyoyu birine geçirin, birini arşivleyin veya bir bölümden yeni bir dal türetin",
+      "guideBody": "Bir «ya olursa» versiyonu, kitabınızı bir bölümde dallara ayırır ve farklı bir evrene, bakış açısı değişimine veya değişmiş bir karaktere dönüşerek; kaynak metin salt okunur kanon olarak kalırken kendi bilgi bölümüne sahip türetilmiş bir esere dönüşür. Bu panel, kanonik çalışmanızı ve oluşturduğunuz tüm dalları listeler. «Şuna geç» seçeneği; editör, gezgin, kalite kontrol dahil tüm stüdyonuzu o dala taşır; bu seçim kitap bazında hatırlanır ve sayfa yenilense de korunur. «Arşivle» seçeneği, bir dalı yok etmeden gizler (bölümleri ve bilgileri korunur). «Yeni versiyon» seçeneği, yeni bir dal oluşturmak için 4 adımlı sihirbazı açar. Bir dalın özelliklerini (taksonomi, dallanma noktası, kanon kuralları, geçersiz kılmalar) okumak için bir dal seçin; bu özellikler oluşturma anında sabitlenir."
+    },
+    "reference-shelf": {
+      "title": "Referans rafı",
+      "desc": "Yazıma temel oluşturan referans pasajları (dış etkiler) burada düzenleyin — ekleyin, düzenleyin ve kaldırın; her sahne için ilgili olanlar getirilir ve temel paket içine sabitlenebilir.",
+      "guideBody": "Referans rafı, kitabınızın etki külliyatıdır — yapay zekanın taslak oluştururken yararlandığı pasajlar, kaynaklar ve üslup örnekleridir. Başlık, yazar, kaynak URL ve metin ile birlikte bir referans ekleyin; metin, stüdyonun her sahne için en alakalı olanları getirebilmesi için gömülür (embedded). Bir referansın ayrıntılarını (basit bir meta veri değişikliği) veya içeriğini (yeniden gömme işlemi gerektirir) düzenleyin. Büyük bir rafı arama kutusuyla filtreleyin. Sahneyle birlikte rafı açtığınızda sahne bazlı getirme ve sabitleme seçenekleri görünür; tek başına kullanıldığında ise kütüphaneyi yönetir. Getirme işleminin çalışması için bir gömme modeli (AI ayarlarından bir tane ekleyin) yapılandırılmalıdır.",
+      "noWork": "Yazım ayarları bu kitap için henüz yapılandırılmadı — referans rafını buradan düzenlemek için yapılandırın."
+    },
+    "canonview": {
+      "title": "Bölüm bazlı kanon",
+      "desc": "Odaklanılan bölüm itibarıyla kanonun bildikleri — mevcut/kurulmuş varlıklar, kanon durumu ve zaman çizelgesi",
+      "guideBody": "«Şu anki bölüm itibarıyla kanon ne biliyor?» sorusuna yanıt verir — mevcut bölümde yer alan ve mevcut bölüm tarafından kurulan varlıklar (sözlükten), artı kanon durumu (kaç varlığın aktif, kaçının gittiği) ve o noktaya kadar olan zaman çizelgesi olayları (bilgi grafiğinden). Taslakta odaklandığınız bölümü takip eder ve 'ya şöyle olsaydı' tuvalinin bir ayrım noktasında gösterdiği denetleyici ile aynıdır; böylece yoldan sapmadan önce nelerin halihazırda kurulduğunu kontrol edebilirsiniz. Bir sahneye veya bölüme odaklanmak için onu açın."
+    },
+    "scene-inspector": {
+      "title": "Sahne İnceleyici",
+      "desc": "Bir sahneye ait her alanı — niyet, kurgu, gerilim ve temellendirme — okuyun ve düzenleyin",
+      "guideBody": "Sahne Denetleyicisi, tek bir sahne için ayrıntı panelidir: bir sahne seçin (Sahne Tarayıcısı'nda veya taslakta) ve tam planı burada açılsın — durum, hedef, özet, vuruş rolü, gerilim ve kurgu alanları (çatışma, sonuç, riskler, hikaye süresi, değer değişimi, hedef kelimeler) — hepsi düzenlenebilir ve temellendirme iğneleri içine katlanmıştır. Düzenlemeler anında kaydedilir ve çakışan değişikliklere karşı korunur.",
+      "none": "Tam planını incelemek için bir sahne seçin.",
+      "loading": "Yükleniyor…",
+      "dirty": "Son uyumluluk kontrolünden bu yana kanon değişti — bu plan güncelliğini yitirmiş olabilir.",
+      "section": {
+        "identity": "Kimlik",
+        "intent": "Niyet",
+        "cast": "Kadro ve Mekân",
+        "craft": "Kurgu",
+        "links": "Bağlantılar",
+        "grounding": "Temellendirme",
+        "motifs": "Motifler"
+      },
+      "links": {
+        "empty": "Henüz nedensel bağlantı yok.",
+        "setup": "kurulum→sonuç",
+        "custom": "özel",
+        "remove": "Bağlantıyı kaldır",
+        "target": "Sahneye bağla",
+        "pick": "Bağla…",
+        "kind": "Bağlantı türü",
+        "label": "etiket",
+        "add": "bağlantı",
+        "dup": "Bu sahneler arasında bu türde bir bağlantı zaten mevcut.",
+        "failed": "Bağlantı oluşturulamadı."
+      },
+      "f": {
+        "title": "Başlık",
+        "status": "Durum",
+        "goal": "Hedef",
+        "synopsis": "Özet",
+        "beat": "Sahne rolü",
+        "tension": "Gerilim (0–100)",
+        "pov": "Bakış açısı karakteri",
+        "present": "Mevcut karakterler",
+        "location": "Mekan",
+        "conflict": "Çatışma",
+        "outcome": "Sonuç",
+        "stakes": "Riskler",
+        "storyTime": "Hikaye zamanı",
+        "valueShift": "Değer değişimi (−100…100)",
+        "targetWords": "Hedef kelimeler"
+      },
+      "ref": {
+        "none": "— hiçbiri yok —",
+        "add": "+ ekle",
+        "empty": "yok",
+        "loading": "(yükleniyor…)",
+        "remove": "{{name}} öğesini kaldır"
+      },
+      "status": {
+        "empty": "Boş",
+        "outline": "Taslak",
+        "drafting": "Yazılıyor",
+        "done": "Tamamlandı"
+      }
+    },
+    "chapter-browser": {
+      "title": "Bölüm Tarayıcı",
+      "desc": "Bu kitabın bölümleri üzerinde sıralama, filtreleme, arama ve toplu işlem yapın",
+      "mode_group": "Arama modu",
+      "mode_title": "Başlık ve dosya adı",
+      "mode_content": "İçerik (tam metin)",
+      "sort_chapter_num": "Sırala: Bölüm #",
+      "sort_updated": "Sırala: Son güncelleme",
+      "sort_word_count": "Sırala: Kelime sayısı",
+      "sort_status": "Sırala: Durum",
+      "view_flat": "Düz liste",
+      "view_grouped": "Akışa göre grupla",
+      "col_title": "Başlık",
+      "col_lang": "Dil",
+      "col_status": "Durum",
+      "col_words": "Kelime",
+      "col_updated": "Güncellendi",
+      "status_all": "Durum: Hepsi",
+      "status_draft": "Taslak",
+      "status_published": "Yayınlandı",
+      "status_trashed": "Çöp Kutusu",
+      "lang_all": "Dil: Hepsi",
+      "words_label": "Kelime",
+      "min": "dk",
+      "max": "dk",
+      "updated_within": "Şu sürede güncellenen",
+      "days": "gün",
+      "n_selected": "{{count}} seçildi",
+      "clear": "temizle",
+      "translate": "Çevir…",
+      "set_status": "Durumu ayarla…",
+      "set_status_hint": "Seçilen bölümleri aktif hale getir",
+      "export": "Dışa Aktar",
+      "trash": "Çöpe At",
+      "trash_confirm": "{{count}} bölüm çöp kutusuna taşınsın mı?",
+      "bulk_status_ok": "{{count}} bölüm güncellendi",
+      "bulk_status_partial": "{{okCount}} güncellendi, {{failCount}} başarısız",
+      "bulk_not_wired": "Yakında — bu toplu işlem henüz hazır değil",
+      "empty": "Bu filtrelere uygun bölüm bulunamadı",
+      "client_filtered_note": "Kelime sayısı/tarih filtreleri yalnızca o an yüklü olan sayfa için geçerlidir",
+      "chapter_count": "{{count}} bölüm",
+      "guideBody": "Kitaptaki her bölümün arama ve toplu işlem (birkaç bölümü aynı anda yeniden etiketleme veya yeniden sıralama gibi) özelliklerine sahip, sıralanabilir ve filtrelenebilir bir listesi. Hızlıca belirli bir bölümü bulmanız veya birçok bölümde aynı değişikliği aynı anda yapmanız gerektiğinde paneli açın."
+    },
+    "sharing": {
+      "title": "Paylaşım",
+      "desc": "Bu kitap için görünürlük, liste dışı bağlantı ve iş birlikçiler",
+      "guideBody": "Bu kitabı kimlerin görebileceğini ve düzenleyebileceğini kontrol edin — gizli olarak ayarlayın, URL'ye sahip herkes için liste dışı bir paylaşım bağlantısı oluşturun veya belirli iş birlikçileri davet edin. Taslağı geri bildirim için paylaşmak veya kitabı herkese açık hale getirmeden düzenleme erişimi devretmek istediğinizde burayı açın."
+    },
+    "book-settings": {
+      "title": "Kitap Ayarları",
+      "desc": "Bu kitap için başlık, kapak, tür etiketleri ve dünya bağlantısı",
+      "guideBody": "Bu kitabın temel kimliğini yönetin: başlığı, kapak görseli, tür etiketleri ve bağlı olduğu dünya. Yeni bir kitap kurarken veya paylaşmadan veya yayınlamadan önce etiketleme ve kategorizasyon bilgilerini güncellemeniz gerektiğinde burayı açın."
+    },
+    "translation": {
+      "title": "Çeviri",
+      "desc": "Bu kitap için kapsam matrisi, dil filtresi, toplu çeviri ve sözlük çıkarma",
+      "guideBody": "Kapsam matrisi ve dil filtreleri ile bu kitap için her dildeki çeviri ilerlemesini bir bakışta görün; böylece çevrilmemiş veya güncelliğini yitirmiş kısımları tespit edebilirsiniz. Toplu çeviri işlerini başlatmak veya çeviri sırasında keşfedilen sözlük terimlerini çıkarmak, diller arası terminoloji tutarlılığını sağlamak için burayı açın."
+    },
+    "translation-versions": {
+      "title": "Çeviri Versiyonları",
+      "desc": "Bölüm bazlı çeviri versiyon yönetimi (karşılaştır, aktif et, yeniden çevir)",
+      "empty": "Çeviri matrisinden bir bölümün çeviri versiyonlarını açın."
+    },
+    "translation-review": {
+      "title": "Çeviri İncelemesi",
+      "desc": "Blok hizalı, blok bazlı düzeltme imkanı sunan yan yana inceleme",
+      "empty": "Çeviri Versiyonları panelinden bir versiyonun İncelemesini açın."
+    },
+    "enrichment-compose": {
+      "title": "Zenginleştirme Oluştur",
+      "desc": "Yeni bir zenginleştirilmiş lore taslağı oluşturun (bir taslağı genişletin, bağlam yapıştırın, dosyalar yükleyin veya bir niyet belirtin)",
+      "guideBody": "Wiki veya sözlükte ihtiyacınız olan bir girdi eksik olduğunda yeni bir lore taslağı başlatmak için bu paneli kullanın — kaba bir taslağı genişletin, referans bağlamı yapıştırın, kaynak dosyaları yükleyin veya sadece niyetinizi tarif edin ve yapay zekanın ilk taslağı oluşturmasına izin verin. \"Bu karakter için bir biyografi gerekiyor\" ifadesini yapılandırılmış, düzenlenebilir bir öneriye dönüştürmenin başlangıç noktasıdır."
+    },
+    "enrichment-proposals": {
+      "title": "Zenginleştirme Önerileri",
+      "desc": "Yapay zeka tarafından önerilen lore'u inceleyin — onaylayın, reddedin veya kanona dahil edin",
+      "guideBody": "Oluşturulan her taslak (Compose ile oluşturulan veya bir zenginleştirme işiyle üretilen), kanon haline gelmeden önce inceleme için buraya düşer — her önerilen girdiyi okuyun, sözlüğe dahil etmek için onaylayın veya yanlış veya istenmeyen bir şeyse reddedin. Yapay zekanın taslakladığı ancak henüz kitabınızın resmi lore'una eklenmemiş olanları kontrol etmek istediğinizde bu paneli açın."
+    },
+    "enrichment-gaps": {
+      "title": "Zenginleştirme Boşlukları",
+      "desc": "Yetersiz tanımlanmış varlıkları tespit edin ve arka plan işi olarak otomatik olarak zenginleştirin",
+      "guideBody": "Bu panel kitabınızı tarayarak bahsedilen ancak yetersiz tanımlanmış varlıkları —sözlükte çok az detayı olan karakterler, yerler veya eşyalar— bulur ve bunları arka plan işi olarak otomatik zenginleştirme için sıraya alabilir. Eksik olanları manuel olarak aramak zorunda kalmadan lore boşluklarını bulmak ve doldurmak istediğinizde burayı açın."
+    },
+    "enrichment-sources": {
+      "title": "Zenginleştirme Kaynakları",
+      "desc": "Bilgi edinme ve yeniden pişirme (recook) temellendirmesi için lisans etiketli kaynak derlemleri",
+      "guideBody": "Zenginleştirme ve recook işlerinin temellendirme için yararlandığı kaynak derlemlerini (referans metinler, yüklenen belgeler, lisanslı materyaller) yönetin; her biri, neyin yeniden kullanıma uygun olduğunu bilmeniz için lisansıyla etiketlenmiştir. Yapay zeka tarafından oluşturulan taslaklarınızı hangi kaynak materyallerin beslediğini görmek veya yeni bir temellendirme materyali eklemek istediğinizde burayı kontrol edin."
+    },
+    "enrichment-jobs": {
+      "title": "Zenginleştirme İşleri",
+      "desc": "Maliyet sınırlandırmalı zenginleştirme işlerini izleyin ve devam ettirin",
+      "guideBody": "Başlattığınız zenginleştirme işlerinin durumunu takip edin — neyin çalıştığını, tamamlandığını veya duraklatıldığını görün, işin sınırına karşı biriken maliyeti izleyin ve erken duran herhangi bir işi yeniden başlatın. İlerlemeyi kontrol etmek veya maliyet sınırlandırmalı bir zenginleştirme sürecine devam etmek istediğinizde bu paneli açın."
+    },
+    "enrichment-settings": {
+      "title": "Zenginleştirme Profili",
+      "desc": "Bu kitabın tarafsızlık profilini oluşturun (dünya görüşü, dil, dönem, ses)",
+      "guideBody": "Bu kitabın tarafsızlık profilini buradan oluşturun — zenginleştirme ve compose taslaklarının genel bir varsayılan yerine kitabınızın tonuyla tutarlı olması için hedef dünya görüşünü, dil kurallarını, dönemi ve anlatı sesini ayarlayın. Oluşturulan lore'un en baştan kitabınızla eşleşmesi için bunu zenginleştirme işlerini çalıştırmadan önce, erkenden ayarlayın."
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Bir kaynağın ham JSON görünümü"
+    },
+    "media-version-history": {
+      "title": "Versiyon Geçmişi",
+      "desc": "Bir görsel veya video bloğunun geçmiş versiyonlarını karşılaştırın ve geri yükleyin",
+      "empty": "Seçili medya bloğu yok."
+    },
+    "original-source": {
+      "title": "Orijinal Kaynak",
+      "desc": "Bu bölümün çevrilmemiş orijinal metni",
+      "empty": "Orijinal kaynağı görüntülemek için Editör'den bir bölüm açın."
+    },
+    "extensions": {
+      "title": "Uzantılar",
+      "desc": "Eklentileri, yetenekleri, MCP sunucularını, komutları ve kancaları (hooks) yönetin",
+      "guideBody": "Ajanınıza yetenek kazandıran her şeyi yükleyin ve yönetin — eklentiler, yetenekler, MCP sunucu bağlantıları, özel komutlar ve kancalar. Ajanın kullanabileceği yeni bir araç eklemek, mevcut olarak nelerin etkin olduğunu incelemek veya hatalı çalışan bir şeyi devre dışı bırakmak istediğinizde burayı açın."
+    },
+    "proposals": {
+      "title": "Öneriler",
+      "desc": "Ajanın önerdiği yetenekleri inceleyin",
+      "guideBody": "Ajanın, çalışmalarınızdaki kalıpları fark ederek kendi başına oluşturmayı önerdiği yeteneklerin listesi; böylece bunlar araç setinizin bir parçası olmadan önce inceleyebilir ve onaylayabilirsiniz. Bir oturumda ajan bir şeyi otomatikleştirebileceğini belirttiğinde, öneriyi kabul edip etmeyeceğinize, düzenleyip düzenlemeyeceğinize veya reddedip etmeyeceğinize karar vermek için bu paneli açın."
+    },
+    "skill-editor": {
+      "title": "Yetenek",
+      "desc": "Bir SKILL.md dosyasını düzenle"
+    },
+    "user-guide": {
+      "title": "Kullanım Kılavuzu",
+      "desc": "Her biri alanlara göre gruplandırılmış, Komut Paleti ile aynı katalogdan oluşturulan her Studio aracı",
+      "guideBody": "Writing Studio'daki her bir aracın ve panelin alanlara göre gruplandırılmış, her birinin ne işe yarığının basit dille açıklandığı liste. Doğrudan Komut Paleti ve dock'u besleyen aynı katalogdan oluşturulduğu için yeni araçlar eklendikçe kılavuz otomatik olarak güncellenir; uygulama içindeki gerçek içerikle hiçbir zaman senkronizasyon kaybı yaşamaz."
+    },
+    "agent-mode": {
+      "title": "Ajan Modu",
+      "desc": "Otonom çok bölümlü yazım süreçleri — görev kontrol merkezi",
+      "guideBody": "Ajan Modu, otonom çok bölümlü süreçler için görev kontrol merkezidir: siz izlerken ajan, onaylanmış bir plan doğrultusunda doğrudan taslak oluşturur. Bir süreci buradan başlatın, duraklatın veya devam ettirin; her bölüm tamamlandığında farklarını ve eleştirmen kararını inceleyin; ardından kabul edin, reddedin veya geri alın. Siz kabul edene kadar yazdığı hiçbir şey nihai değildir."
+    },
+    "chapter-revision-compare": {
+      "title": "Bölüm Revizyon Karşılaştırma",
+      "desc": "Bir bölüm revizyon çifti için tam editör farkı",
+      "empty": "Ajan Modu'nun inceleme panelinden bir bölümün revizyon farkını açın."
+    },
+    "world-map": {
+      "title": "Dünya Haritası",
+      "desc": "Bir dünyanın referans haritalarını oluşturun ve düzenleyin — temel bir görsel yükleyin, konum iğnelerini sürükleyip bırakın, bölgeler çizin ve şekillendirin.",
+      "guideBody": "Bir dünyanın raster haritalarını oluşturun. Bir temel görsel yükleyin, ardından üzerine iğneler bırakın ve bölgeler çizin. Bir iğneyi taşımak için sürükleyin (sürükleme işlemi, sabit bir marker id üzerinde tek bir mutlak koordinat PATCH işlemidir; asla silip yeniden oluşturma işlemi değildir) ve bir bölgeyi yeniden şekillendirmek için çokgen köşesini sürükleyin. Bir iğneyi veya bölgeyi bir sözlük VEYA KG konum varlığına bağlayın (seçici kaynağı etiketler). Her değişiklik book-service'e kaydedilir; asistanın world_map_* araçları aynı haritayı canlı olarak düzenler. Bir haritayı iyimser eşzamanlılık (If-Match) ile yeniden adlandırın, böylece çakışan bir düzenleme veriyi ezmek yerine yeniden yüklenir."
+    },
+    "place-graph": {
+      "title": "Yer Grafiği",
+      "desc": "Kitaptaki yerlerin (konumların) sürüklenebilir bir düğüm grafiği olarak sunumu",
+      "guideBody": "Kitaptaki yerleri (konumları) bir düğüm grafiği olarak ekleyin ve birbirine bağlayın. Bir isim yazın ve konumu oluşturmak için + Yer'e basın; Yerleri Bağla seçeneğini açın, iki düğüm ve bir yüklem (içerir / sınırı / rota_to) seçerek onları birbirine bağlayın; düzenlemek için sürükleyin (sunucu tarafında kaydedilir, cihazlarınız arasında paylaşılır); bir arka plan görseli ayarlayın (açık bir bölüm gerektirir). Bir düğümü Cast kodeksinde açmak için tıklayın. Sadece Konumlar — karakterler, eşyalar ve diğer her şeyi eklemek için Diğer türleri Yaz seçeneğini kullanın.",
+      "noWork": "Yazım süreci bu kitap için henüz yapılandırılmadı — mekanları burada düzenlemek için kurulumu yapın.",
+      "openCompose": "Compose'u Aç",
+      "loading": "Dünya haritası yükleniyor...",
+      "authorOther": "Diğer türleri Yaz →"
+    },
+    "cast": {
+      "title": "Cast",
+      "desc": "Kitabın kadrosu — gruplandırılmış, aranabilir, spoiler korumalı; varlıkları oluşturun ve emekli edin",
+      "guideBody": "Bu kitabın bilgi grafiğindeki her karakter, yer, organizasyon ve kavram; türlerine göre gruplandırılmış ve aranabilir durumdadır; her biri okuma konumunuza göre spoiler korumalı hikaye durumuna (aktif/gitti) sahiptir. + Yeni ile yeni bir varlık oluşturun, satır içi olarak yeniden adlandırın, takma adları/türü düzenleyin veya birini emekli edin (soft-archive). Bir satırın yay sembolüne tıklayarak Karakter Arkını açın."
+    },
+    "character-arc": {
+      "title": "Karakter Arkı",
+      "desc": "Bir karakterin zaman çizelgesi üzerindeki olayları, aktif→geçmiş bandı ve 1-basamaklı ilişkileri",
+      "guideBody": "Bir karakterin olaylarının kompakt bir yay üzerinde sıralanmış hali; okuma konumunuza göre spoiler kesintili, aktif→geçmiş durumu bandı ve mevcut 1-basamaklı ilişkilerle birlikte. Bir karakter seçin, düzenleyin veya + link entity ile bir ilişki ekleyin."
+    },
+    "motif-library": {
+      "title": "Motif Kütüphanesi",
+      "desc": "Tropelar (套路/爽点/打脸) üzerine çalışın, onları benimseyin veya çıkarın ve motif ilişki grafiğini inceleyin",
+      "guideBody": "Motif Kütüphanesi, anlatı ustalığı tezgahınızdır. Motiflere katmanlarına göre göz atın — kendi motifleriniz, bu kitabın etiketleri, paylaşılan kitap katmanı, sistem tohumları, genel katalog ve çıkardığınız taslaklar. Satır içi bir motif oluşturun, katalogdan birini benimseyin veya tekrarlanan kalıpları keşfetmek için kendi külliyatınızdan veri çıkarın. Herhangi bir motifi vuruşlarını ve rollerini okumak için açın; neyden oluştuğunu, neyi takip ettiğini ve varyantlarını görmek için grafiğini genişletin. Taslağın gerçekten onlara yönelik yazılması için motifleri Sahne Denetleyicisi'nden sahnelere bağlayın."
+    },
+    "quality-conformance": {
+      "title": "Uyumluluk",
+      "desc": "Vuruş vuruş: anlatı planı gerçekleştirdi mi? Sahne başına gerçekleşen/gerçekleşmeyen + gerilim bandı",
+      "guideBody": "Uyumluluk, yazdığınız metnin bir bölüm için planladığınız motif vuruşlarını gerçekten sunup sunmadığını sahne sahne izler. Her sahne, gerçekleşen / gerçekleşmeyen durumunu ve geriliminin hedefe göre nasıl olduğunu gösterir. Şartname-metin kıyaslamasına yanıt verir (şartname-şablon kıyaslaması değil — bu, yay-şablon sapma görünümüdür). Veriler tavsiye niteliğindedir (nedensel olarak doğrulanmış değil, kaba veridir). Vuruşunu kaçıran bir sahneyi yeniden oluşturun veya tüm kontrolü seçtiğiniz bir modele göre yeniden çalıştırın."
+    },
+    "motif-graph": {
+      "title": "Motif Grafiği",
+      "desc": "Kitap genelindeki motif ilişkilerini sürükle-bırak özellikli bir tuval olarak görün — size ve kitaba özel motifler ile bunların 'oluşan' / 'öncesinde gelen' / 'varyantı' bağlantıları ve kendi kaydettiğiniz yerleşim düzeniniz.",
+      "guideBody": "Bu kitabın motiflerinin görsel bir DAG (Yönlü Döngüsüz Graf) yapısıdır. Düğümler, sizin motifleriniz ile kitabın ortak düzeydeki motiflerinden oluşur; kenarlar ise 'oluşan' / 'öncesinde gelen' / 'varyantı' bağlantılarıdır. Grafiği düzenlemek için bir düğümü sürükleyin — yerleşim düzeniniz kitap başına kaydedilir ve cihazlar arasında sizinle birlikte gelir (her iş birliği yapan kişinin kendi düzeni vardır). İlk yerleşim, 'öncesinde gelen' zincirleri boyunca soldan sağa otomatik olarak hesaplanır. Motif Kütüphanesi'ndeki bir motifin detaylarından kenarları oluşturun veya silin.",
+      "signedOut": "Motif grafiğini görmek için giriş yapın.",
+      "noBook": "Motif grafiğini görmek için bir kitap açın."
+    },
+    "structure-templates": {
+      "title": "Yapı Şablonları",
+      "desc": "Yazarın özel hikaye yapılarını (adlandırılmış sıralı bir olay örgüsü listesi) oluşturun ve kitabınızı bu yapılara göre çözümleyin — Save the Cat veya Hero's Journey gibi yerleşik yapılar gibi.",
+      "guideBody": "Hikaye yapıları, bir kitabın bölümlerini karşılaştırarak çözümlediğiniz sıralı olay örgüsü listeleridir. Bu panel, yerleşik yapıları (Save the Cat, Hero's Journey, Kishōtenketsu, Üç Perdelik Yapı, Hikaye Çemberi, Web-Roman Arkı — salt okunur) ve kendi oluşturduğunuz yapıları listeler. Düzenlenebilir bir kopya elde etmek için yerleşik bir yapıyı klonlayın; ardından olay örgüsünü ekleyin, yeniden sıralayın, yeniden adlandırın, kaldırın ve kaydedin. Çözümleme (Decompose) kısmında, olay örgüsünü bölümlerinize eşlemek için bir yapı kullanın. Özel yapılarınız size özeldir ve her kitapta yeniden kullanılabilir; bir yapıyı arşivleyerek gizleyebilir ve daha sonra geri yükleyebilirsiniz. Yerleşik yapılar herkes için bozulmadan kalır — siz her zaman kendi kopyanızı düzenlersiniz."
+    },
+    "kg-triage": {
+      "title": "Triyaj",
+      "desc": "Şemanızla eşleşmeyen çıkarılan öğeleri inceleyin ve bunları çözümleyin.",
+      "guideBody": "Çıkarım işlemi şemanızda henüz bulunmayan bir varlık türü, ilişki veya değer bulduğunda, tahmin yürütmek yerine onu buraya park eder. Her satır yalnızca o öğe için geçerli olan düzeltmeleri sunar — onu halihazırda sahip olduğunuz bir şeye eşleyin, şemanıza/kelime dağarcığınıza ekleyin, bir uç noktayı düzeltin veya reddedin."
+    },
+    "search": {
+      "title": "Ara",
+      "desc": "Kitabınızın düz metnini (metin) veya bilgi birikimini (anlamsal) arayın; bir sonuç, editörü doğrudan o noktada açar.",
+      "guideBody": "Arama işleminin iki modu vardır. Metin modu, taslağınızdaki kelime ve ifadeleri tam olarak bulur. Anlamsal mod ise bilgi birikiminizdeki (bölümler, sohbet, sözlük) pasajları anlamlarına göre bulur. Bir sonuca tıklayarak editörü o bölümde açabilirsiniz; arama bir liste değil, taslağınıza açılan bir kapıdır."
+    },
+    "workflows": {
+      "title": "İş Akışları",
+      "desc": "Kaydedilmiş iş akışı tariflerini yönetin",
+      "guideBody": "Aracınızın bir ray olarak çalıştırabileceği çok adımlı iş akışı tariflerini —yerleşik Sistem tarifleri ve size ait olanlar dahil— listeler. Bir tarifi kendiniz için etkinleştirmek veya devre dışı bırakmak ya da kendi tariflerinizden birini silmek için açın. Yeni tarifler doğrudan buradan oluşturulmaz; İş Akışı Teklifleri panelindeki bir teklifi onaylayarak eklenir."
+    },
+    "workflow-proposals": {
+      "title": "İş Akışı Teklifleri",
+      "desc": "Aracın önerdiği iş akışlarını inceleyin",
+      "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
+    }
+  },
+  "sceneRail": {
+    "title": "Sahneler",
+    "toggle": "Sahneler",
+    "empty": "Bu bölüm için sahne yok (taslağı oluşturucu kısmında oluşturun).",
+    "editTitle": "Sahneyi yeniden adlandır",
+    "synopsisPlaceholder": "Özet…",
+    "stale": "başka bir yerde değiştirildi — yeniden yüklendi",
+    "notAnchored": "Sahne henüz metne sabitlenmedi — başlıkları bağlamak için ⚓ kullanın.",
+    "anchored": "Sabitlenmiş {{count}} sahne, {{unmatched}} eşleşmemiş — kaydetmek için ⌘S.",
+    "anchorNoop": "{{count}} zaten sabitlenmiş, {{unmatched}} eşleşen başlığı olmayan.",
+    "anchorTitle": "Sahneleri metindeki başlıklarına bağlayın",
+    "add": "Sahne ekle",
+    "addDisabled": "Bölümün henüz taslağı yok (oluşturucu kısmında oluşturun)",
+    "newTitlePlaceholder": "Sahne başlığı…",
+    "create": "Ekle",
+    "deleted": "\"{{title}}\" silindi.",
+    "undo": "Geri Al",
+    "moveUp": "Yukarı Taşı",
+    "moveDown": "Aşağı Taşı",
+    "delete": "Sahneyi Sil",
+    "status": {
+      "empty": "boş",
+      "outline": "taslak",
+      "drafting": "taslak aşamasında",
+      "done": "tamamlandı"
+    }
+  },
+  "jsonEditor": {
+    "empty": "Bir kaynağı panelinden JSON olarak açın (\"JSON olarak aç\").",
+    "invalid": "geçersiz JSON",
+    "conflict": "çakışma: {{part}}",
+    "format": "Formatla",
+    "revert": "Geri Yükle",
+    "openAs": "JSON olarak aç"
+  },
+  "planPasses": {
+    "comingSoon": "7 aşamalı ray buraya yüklenecek.",
+    "noBook": "Planını derlemek için bir kitap açın.",
+    "noRun": "Henüz bir plan çalıştırılmadı — bir plan önermek ve derlemek için Planlayıcı'yı açın.",
+    "loading": "Aşamalar yükleniyor…",
+    "notCompiled": "Bu çalışmanın henüz derlenmiş bir paketi yok. Geçişleri çalıştırmadan önce Planner üzerinden derleyin.",
+    "openPlanner": "← Planner (öner / derle)",
+    "blocking": "engelleyici",
+    "advisory": "tavsiye niteliğinde",
+    "running": "çalışıyor…",
+    "done": "tamamlandı",
+    "failed": "başarısız",
+    "notRun": "— çalıştırılmadı",
+    "fresh": "güncel",
+    "stale": "bayat",
+    "run": "çalıştır…",
+    "rerun": "tekrar çalıştır…",
+    "review": "incele →",
+    "blocked": "engellendi",
+    "blockedBy": "{{blockers}} tarafından engellendi",
+    "runSpends": "{{pass}} çalıştır — bu 1 LLM çağrısı harcar",
+    "runNow": "{{pass}} çalıştır",
+    "cancel": "İptal et",
+    "approve": "Onayla",
+    "reject": "Reddet",
+    "edit": "Düzenle",
+    "saveEdits": "Düzenlemeleri kaydet",
+    "cursor": "{{total}} içinden {{done}}",
+    "blockedAt": "engellendi: ",
+    "reviewTitle": "{{pass}} İncelemesi",
+    "reviewLoading": "Yükleniyor…",
+    "reviewNoContent": "Gösterilecek içerik bulunamadı.",
+    "reviewPrompt": "{{pass}} onaylansın mı? Bu, derleyicinin bu aşamayı geçmesini sağlar.",
+    "seedUnavailable": "Sözlük tohumu önerisi mevcut değil.",
+    "seedApplied": "Sözlük tohumu uygulandı — kadro onaylanabilir.",
+    "seedGate": "Onaylayabilmeniz için önce kadronuzun karakterleri sözlüğe eklenmelidir. Eklemek için seed’i uygulayın.",
+    "applySeed": "Tohumu uygula",
+    "approveGated": "Önce sözlük tohumunu uygulayın (PF-7)",
+    "editAdd": "Ekle",
+    "editRemove": "Kaldır",
+    "editEmpty": "Burada henüz bir şey yok — bir satır ekleyin."
+  },
+  "planner": {
+    "sourcePlaceholder": "Roman sistemini markdown olarak yapıştırın…",
+    "proposeBlind": "Yalnızca bu beyin fırtınasından önerildi. Mevcut bölümler okunmadı.",
+    "propose": "Öner",
+    "model": "Model",
+    "empty": "Bir plan çalıştırması başlatmak için roman sistemini markdown olarak yapıştırın ve Öner'e tıklayın.",
+    "openAgentMode": "Otonom Ajan Çalışmaları →",
+    "tabList": "Çalışmalar",
+    "tabRun": "Çalışma",
+    "mode": {
+      "rules": "Kurallar",
+      "llm": "LLM"
+    },
+    "list": {
+      "title": "Bu kitap için çalışmalar",
+      "newRun": "+ Yeni öneri",
+      "loading": "Çalışmalar yükleniyor…",
+      "error": "Çalışmalar yüklenemedi.",
+      "empty": "Bu kitap için henüz bir plan çalışması yok.",
+      "colRun": "Çalışma",
+      "colMode": "Mod",
+      "colStatus": "Durum",
+      "colCreated": "Oluşturulma"
+    },
+    "grounded": "{{chapters}} mevcut bölüm(ler) + {{cast}} karakter(ler) üzerine temellendirildi; {{arcs}} mevcut kurgu(lar) devam ediyor.",
+    "groundOnExisting": "Bu kitabı devam ettir — mevcut karakterler, kurgular ve son bölümler üzerine temellendir"
+  },
+  "editor": {
+    "empty": "Düzenlemek için el yazması gezgininden bir bölüm seçin.",
+    "startFirstChapter": "İlk bölümünü oluştur",
+    "startingChapter": "Oluşturuluyor…",
+    "unsaved": "● kaydedilmemiş",
+    "save": "Kaydet",
+    "grammar": "Dil Bilgisi",
+    "heatmap": "Isı Haritası",
+    "glossary": "Sözlük",
+    "focus": "Odak",
+    "translate": "Çevir",
+    "derivativeForked": "Bir «ya olursa» versiyonunda — bu bölüm DALLANMIŞTIR, kanondan izole edilmiştir. Düzenlemeler dala kaydedilir; kanon olduğu gibi kalır.",
+    "derivativeInherit": "Bir «ya olursa» versiyonunda — bu bölüm hâlâ kanonu yansıtmaktadır. Burada yapılan düzenleme, bölümü dala ayırarak dallandırır (kanon olduğu gibi kalır).",
+    "mergeToCanon": "Kanona birleştir",
+    "mergeConfirm": "Onayla — ana metinle değiştir",
+    "merging": "Birleştiriliyor…",
+    "mergeDone": "Ana metne birleştirildi — dal kendi sürümünü korur.",
+    "mergeConflict": "Ana metin değişti — bölümü yeniden açın ve tekrar birleştirin.",
+    "mergeFailed": "Birleştirilemedi — tekrar deneyin."
+  },
+  "sceneCompose": {
+    "empty": "Sahnelerini burada taslak haline getirmek için taslak gezgininden bir bölüm seçin.",
+    "inserted": "Taslağa eklendi.",
+    "insertFailed": "Ekleme yapılamadı — Editör'deki bölüm metnine tıklayın, ardından tekrar Kabul Et'e basın.",
+    "openedEditor": "Bu bölüm için Editör açıldı — Taslağı buraya eklemek için tekrar Oluştur'a basın."
+  },
+  "chapterAssemble": {
+    "empty": "Burada birleştirmek için taslak gezgininden bir bölüm seçin."
+  },
+  "popout": {
+    "invalid": "Bu açılır pencere bağlantısı geçersiz.",
+    "open": "Aç",
+    "openTitle": "Compose'u ayrı bir pencerede aç",
+    "needChapter": "Önce bir bölüm açın — ayrıştırılmış pencere mevcut bölümü kendi penceresinde açar"
+  },
+  "dock": {
+    "dock": "Sabitle"
+  },
+  "steering": {
+    "heading": "Yönlendirme kuralları",
+    "subheading": "Bu kitap için yapay zeka etkileşimlerine dahil edilen kalıcı yazar rehberliği.",
+    "loading": "Yönlendirme kuralları yükleniyor…",
+    "loadError": "Yönlendirme kuralları yüklenemedi.",
+    "noBook": "Yönlendirme kurallarını yazmak için bir kitaptan bu paneli açın.",
+    "count": "{{n}} / {{max}} kural",
+    "add": "Kural ekle",
+    "capReached": "Kural sınırına ulaşıldı ({{max}}). Başka bir kural eklemek için bir kuralı silin.",
+    "empty": "Henüz yönlendirme kuralı yok. Yapay zekayı bu kitapta yönlendirmek için bir tane ekleyin.",
+    "enable": "Etkinleştir",
+    "disable": "Devre Dışı Bırak",
+    "confirmDelete": "Yönlendirme kuralı \"{{name}}\" silinsin mi?",
+    "autoNote": "Not: 'auto' şu anda 'manual' gibi davranır — yalnızca #name şeklinde referans verdiğinizde dahil edilir. Otomatik seçim daha sonra gelecek.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "İsim",
+      "namePlaceholder": "örn. Ton ve üslup",
+      "body": "Kural",
+      "bodyPlaceholder": "Yapay zekanın izlemesi gereken rehberliği yazın…",
+      "mode": "Ne zaman dahil edilsin",
+      "matchPattern": "Sahne eşleşme deseni",
+      "matchPatternPlaceholder": "örn. bölüm 3, savaş, romantizm…",
+      "enabled": "Etkin",
+      "save": "Kaydet",
+      "cancel": "İptal",
+      "edit": "Kuralı düzenle",
+      "delete": "Kuralı sil"
+    },
+    "mode": {
+      "always": "Her zaman",
+      "scene_match": "Sahne eşleşmesi",
+      "manual": "Manuel (#name)",
+      "auto": "Otomatik"
+    },
+    "error": {
+      "duplicate": "Bu kitapta bu isme sahip bir kural zaten mevcut.",
+      "cap": "Bu işlem bir sınırı aşıyor (gövde ≤ 8000 karakter, isim ≤ 200, ≤ 20 kural) veya geçersiz bir mod.",
+      "other": "Kural kaydedilemedi. Lütfen tekrar deneyin.",
+      "forbidden": "Bu kitabın yönlendirmelerini düzenleme yetkiniz yok."
+    }
+  },
+  "palette": {
+    "openPanel": "Studio: {{name}}'i Aç",
+    "placeholder": "Bölüme, sahneye, kurguya git…",
+    "quickOpenTitle": "Bölüme, sahneye, kurguya git",
+    "quickOpenPlaceholder": "Bölüme, sahneye, akışa git...",
+    "quickOpenHint": "Bölüm, sahne ve akışları aramak için yazın",
+    "commandPlaceholder": "Bir komut yazın...",
+    "noCommands": "Eşleşen komut bulunamadı.",
+    "group": {
+      "recent": "Son kullanılanlar",
+      "panels": "Paneller",
+      "navigate": "Gezinme",
+      "layout": "Düzen",
+      "editor": "Editör ve Bölümler",
+      "storyBible": "Hikaye İncili",
+      "knowledge": "Bilgi Grafiği",
+      "quality": "Kalite",
+      "translation": "Çeviri",
+      "enrichment": "Zenginleştirme",
+      "sharing": "Paylaşım ve Ayarlar",
+      "platform": "Platform",
+      "discovery": "Keşif",
+      "jobs": "İşler",
+      "help": "Yardım"
+    },
+    "cmd": {
+      "showManuscript": "Görünüm: Taslağı Göster",
+      "showBible": "Görünüm: Hikaye İncilini Göster",
+      "showSearch": "Görünüm: Aramayı Göster",
+      "showQuality": "Görünüm: Kaliteyi Göster",
+      "goToChapter": "Görünüm: Bölüme Git...",
+      "toggleSidebar": "Görünüm: Yan Çubuğu Aç/Kapat",
+      "toggleBottom": "Görünüm: Alt Paneli Aç/Kapat",
+      "chooseYourFocus": "Studio: Odağınızı Seçin",
+      "startGuidedTour": "Studio: Rehberli Tura Başla"
+    },
+    "desc": {
+      "showManuscript": "Bölümler ve sahneler",
+      "showBible": "Karakterler, dünya ve kanon",
+      "showSearch": "Tam metin ve anlamsal",
+      "showQuality": "Eleştirmen, vaatler ve kanon",
+      "goToChapter": "Hızlı Açılışı Aç",
+      "toggleSidebar": "Yan çubuğu göster veya gizle",
+      "toggleBottom": "İşler · Üretim · Sorunlar",
+      "chooseYourFocus": "Rol seçiciyi yeniden çalıştır",
+      "startGuidedTour": "Temel panellerin hızlı turu"
+    }
+  },
+  "activity": {
+    "manuscript": "Taslak",
+    "plan": "Plan",
+    "bible": "Hikaye İncili",
+    "search": "Arama",
+    "quality": "Kalite"
+  },
+  "navStub": {
+    "manuscript": {
+      "title": "Taslak",
+      "body": "Bölümler ve sahneler — dock'u yöneten gezgin. Yakında eklenecek."
+    },
+    "bible": {
+      "title": "Hikaye İncili",
+      "body": "Karakter, dünya ve kanon girişleri. Yakında."
+    },
+    "search": {
+      "title": "Arama",
+      "body": "Kitap genelinde tam metin ve anlamsal arama. Yakında."
+    },
+    "quality": {
+      "title": "Kalite",
+      "body": "Eleştirmen puanları, vaat dizileri ve kanon sorunları. Yakında."
+    }
+  },
+  "quality": {
+    "noWork": "Bu kitabın henüz bir ortak yazar oturumu yok — önce bir bölüm yazmaya başlayın, ardından kalite verileri burada görünecektir.",
+    "hubNoWorkHint": "Vaatler, eleştirmen puanları ve hikaye kapsamı için bir ortak yazar oturumu gerekir — önce bir bölüm yazmaya başlayın. Aşağıdaki kanon sorunları her iki durumda da çalışmaya devam eder.",
+    "setupWork": "Yazımı yapılandır",
+    "settingUpWork": "Kuruluyor…",
+    "setupWorkError": "Yazım ayarları yapılamadı. Tekrar deneyin.",
+    "setupWorkPending": "Yazım ayarları yapıldı ancak bilgi projesi hâlâ hazırlanıyor. Kısa süre sonra tekrar deneyin.",
+    "setupWorkRetry": "Tekrar Dene",
+    "pickModel": "Analiz için bir model seçin…",
+    "pickChapter": "Bir bölüm seçin",
+    "pickChapterHint": "Kalitesini analiz etmek için yukarıdan bir bölüm seçin.",
+    "chaptersTruncated": "{{total}} bölümün ilk {{shown}} tanesi gösteriliyor",
+    "canonIntro": "Uyarı — Kitabın önceki kısımlarında kaldırılmış/değiştirilmiş olarak işaretlenen içeriklerle onaylanmış çelişkiler bulundu. Burada belirtilenlerin hiçbiri otomatik olarak uygulanmaz.",
+    "canonEmpty": "Hiçbir kurgu hatası bulunamadı.",
+    "canonCompositionError": "Oluşturma işleminden kurgu sorunları yüklenemedi — tekrar deneyin.",
+    "canonExtractionError": "Bilgi çıkarımından kurgu bayrakları yüklenemedi — tekrar deneyin.",
+    "canonFromGeneration": "Oluşturmadan ({{n}})",
+    "canonFromExtraction": "Bilgi çıkarımından ({{n}})",
+    "untitledScene": "Başlıksız sahne",
+    "jumpToChapter": "Bölümü aç",
+    "promisesTitle": "Vaatler",
+    "promisesDesc": "Açık vaat borç defteri",
+    "criticTitle": "Eleştirmen",
+    "criticDesc": "Bölüm başına tutarlılık, üslup, tempo ve kanon puanları",
+    "coverageTitle": "Hikaye kapsamı",
+    "coverageDesc": "Kitap genelindeki vaatlerin kapsamı",
+    "canonTitle": "Kanon sorunları",
+    "canonDesc": "Onaylanmış çelişkiler",
+    "canonRulesTitle": "Kanon kuralları",
+    "canonRulesDesc": "Eleştirmenin uygulayacağı değişmez kuralları belirleyin",
+    "correctionsTitle": "Düzeltmeler",
+    "correctionsDesc": "Kabul / düzenle / yeniden oluştur / reddet oranlarınız",
+    "healTitle": "Kendi Kendini Onar",
+    "healDesc": "Düzeltmeler metninize dokunmadan önce Temizle işlemini çalıştırın ve her birini onaylayın",
+    "canonFromRules": "İhlal edilen kurallar ({{n}})",
+    "canonRuleError": "Kanon kuralı ihlalleri yüklenemedi — tekrar deneyin.",
+    "canonRuleGone": "Artık mevcut olmayan bir kural",
+    "canonRuleUnnamed": "o kural",
+    "canonRuleFocused": "Öncelikle geldiğiniz kuralın ihlalleri gösteriliyor ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Geldiğiniz kuralın açık bir ihlali bulunmuyor. Buraya sabitlenmiş durumda ancak kuralı bozan bir durum yok.",
+    "canonFocused": "Önce geldiğiniz bölümü gösteriliyor ({{n}} bulgu).",
+    "canonFocusedEmpty": "Geldiğiniz bölümde buraya dair herhangi bir kanon bulgusu yok.",
+    "canonUnavailable": "Ortak yazar servisine ulaşılamadı — oluşturma anındaki kanon bulguları aşağıya DAHİL EDİLMEMİŞTİR.",
+    "canonNoWork": "Bu kitabın henüz bir ortak yazar oturumu bulunmadığı için oluşturma süreci kanon kontrolleri çalıştırılmadı. Sadece bilgi çıkarma bulguları gösteriliyor.",
+    "canonRuleFocusUnknown": "Ortak yazar servisine ulaşılamadığı için geldiğiniz kural kontrol edilemedi. Kural bir yerde bozulmuş olabilir; bu bir sonuç değildir.",
+    "canonRulesCapped": "{{total}} ihlal edilen kuraldan en güncel {{shown}} tanesi gösteriliyor.",
+    "workUnavailable": "Ortak yazar servisine ulaşılamadı, bu nedenle kitabın kalite verileri yüklenemedi. Burada gösterilmeyen sorunlar mevcut olabilir. Lütfen kısa süre sonra tekrar deneyin.",
+    "hubUnavailable": "Ortak yazar servisine ulaşılamadı, bu nedenle vaatler, eleştirmen puanları ve hikaye kapsamı şu anda yüklenemiyor. Burada gösterilmeyen sorunlar mevcut olabilir.",
+    "conformanceTitle": "Uyumluluk",
+    "conformanceDesc": "Metin planı gerçekleştirdi mi? Sahne bazlı olay örgüsü takibi",
+    "pickModelRerun": "Yeniden çalıştırmak için bir model seçin…",
+    "pickChapterConformanceHint": "Metnin planı nasıl hayata geçirdiğini takip etmek için yukarıdan bir bölüm seçin."
+  },
+  "sidebar": {
+    "collapse": "Daralt",
+    "resize": "Kenar çubuğunu yeniden boyutlandır"
+  },
+  "layout": {
+    "title": "Panel düzeni",
+    "hint": "{{count}} açık paneli düzenler.",
+    "empty": "Düzenlemek için panelleri açın.",
+    "needPanels": "Önce en az iki panel açın",
+    "tooNarrow": "Daha geniş bir pencere gerekiyor",
+    "presets": {
+      "single": "Tekli",
+      "cols2": "İki sütun",
+      "cols3": "Üç sütun",
+      "cols4": "Dört sütun",
+      "grid2x2": "Izgara 2×2",
+      "grid3x2": "Izgara 3×2",
+      "grid4x2": "4×2 Izgara",
+      "cols6": "Altı sütun",
+      "cols8": "Sekiz sütun"
+    }
+  },
+  "bottom": {
+    "jobs": "İşler",
+    "generation": "Üretim",
+    "issues": "Sorunlar",
+    "collapse": "Paneli daralt",
+    "toggle": "Alt paneli aç/kapat",
+    "label": "Panel",
+    "launch": {
+      "jobs": "İş akışı kendi panelinde açılır.",
+      "generation": "Oluşturma akışı kendi panelinde açılır."
+    },
+    "openJobs": "İşler panelini aç",
+    "issuesLoading": "Sorunlar kontrol ediliyor…",
+    "issuesError": "Sorunlar paneli yüklenemedi.",
+    "issuesEmpty": "Bu kitapta sorun bulunamadı.",
+    "issuesCapped": "{{total}} içinden en üst satırlar gösteriliyor",
+    "sev": {
+      "error": "Hata",
+      "warn": "Uyarı",
+      "info": "Bilgi"
+    }
+  },
+  "status": {
+    "wordsPlaceholder": "— kelime",
+    "words": "{{count}} kelime",
+    "modelPlaceholder": "model yok",
+    "notifications": "Bildirimler",
+    "cost24h": "Harcama, son 24 saat",
+    "proposalsPending": "{{count}} onay bekleyen teklif"
+  },
+  "manuscript": {
+    "title": "Taslak",
+    "openPlan": "Bu kitabı planla",
+    "collapseAll": "Tümünü daralt",
+    "reload": "Yenile",
+    "arc": "AKIŞ",
+    "loading": "Yükleniyor...",
+    "filter": "Bölüme / sahneye atla...",
+    "searching": "Aranıyor...",
+    "noMatch": "Eşleşme bulunamadı.",
+    "empty": "Henüz bölüm yok.",
+    "loadingMore": "Daha fazlası yükleniyor...",
+    "count": "{{n}} bölüm",
+    "statArcs": "{{n}} akış",
+    "statActs": "{{n}} perdede",
+    "statChapters": "{{n}} böl",
+    "statScenes": "{{n}} sah",
+    "window": "penc. {{a}}–{{b}} / {{n}}",
+    "chapterN": "Bölüm {{number}}",
+    "newChapter": "Yeni bölüm",
+    "chapterShort": "Bölüm",
+    "startFirstChapter": "İlk bölümünü oluştur",
+    "creatingChapter": "Oluşturuluyor…",
+    "actShort": "Perde",
+    "actTag": "PERDE",
+    "newAct": "Yeni perde",
+    "newActPlaceholder": "Yeni perde adı…",
+    "renameAct": "Perdeyi yeniden adlandır",
+    "renameActPlaceholder": "Perde adı…",
+    "trashAct": "Perdeyi sil",
+    "moveActUp": "Perdeyi yukarı taşı",
+    "moveActDown": "Perdeyi aşağı taşı",
+    "untitledAct": "(isimsiz perde)",
+    "unassignedBucket": "Atanmamış",
+    "emptyActHint": "bölümleri buraya sürükleyin",
+    "trashedActs": "Çöp kutusundaki bölümler",
+    "restore": "Geri Yükle",
+    "restoreActHint": "Bu bölümü geri yükle (bölüm boş olarak gelir — bölümleri gerektiği gibi yeniden dosyala)",
+    "actTrashed": "«{{name}}» bölümü çöp kutusuna taşındı — bölümleri kitapta kaldı",
+    "partVsArc": "Bölümler taslağınızı gruplandırır. Arklar ise planınızdır.",
+    "undo": "Geri Al",
+    "lensParts": "Bölümler",
+    "lensOutline": "Taslak",
+    "lensToggle": "Görünüm",
+    "createFailed": "Bölüm oluşturulamadı",
+    "renameFailed": "Bölüm yeniden adlandırılamadı",
+    "trashFailed": "Bölüm çöp kutusuna atılamadı",
+    "restoreFailed": "Bölüm geri yüklenemedi",
+    "moveFailed": "Bölüm o kısma taşınamadı",
+    "reorderFailed": "Sıralama yapılamadı",
+    "partsUnavailable": "Bölümler geçici olarak kullanılamıyor — bölümler düz liste olarak gösteriliyor."
+  },
+  "intro": {
+    "title": "Writing Studio'ya Hoş Geldiniz",
+    "subtitle": "Burada ne yapmak istiyorsunuz? Bu, Karşılama panelinizi ve hızlı turunuzu kişiselleştirir — Komut Paleti'nden istediğiniz zaman değiştirebilirsiniz.",
+    "skip": "Atla, kendim keşfedeceğim",
+    "roles": {
+      "writer": {
+        "title": "Roman yaz",
+        "desc": "Yapay zeka ile birlikte bölümler oluşturun, sistemi planlayın, taslağı düzenleyin"
+      },
+      "worldbuilder": {
+        "title": "Dünya ve efsane oluştur",
+        "desc": "Sözlük öğeleri, wiki ve bilgi grafiği"
+      },
+      "translator": {
+        "title": "Çeviri yap",
+        "desc": "Kapsam matrisi, toplu çeviri, bölümlere özel versiyonlar"
+      },
+      "enricher": {
+        "title": "Mevcut metni zenginleştir",
+        "desc": "Boşlukları bul, az tanımlanmış öğeleri genişlet, kaynakları yönet"
+      },
+      "manager": {
+        "title": "Yönet ve paylaş",
+        "desc": "Görünürlük, iş birlikçiler, kitap ayarları"
+      }
+    },
+    "tour": {
+      "core": {
+        "manuscript": {
+          "title": "Taslağınız",
+          "body": "Taslak gezgini dock'u yönetir — açmak için buradan bir bölüm veya sahne seçin."
+        },
+        "palette": {
+          "title": "Her yere atla",
+          "body": "⌘P ile bir bölüme/sahneye/akışa atlayın; ⌘⇧P ile herhangi bir Studio aracını adıyla açın."
+        },
+        "compose": {
+          "title": "Oluştur",
+          "body": "Yapay zeka iş ortağınız — taslakları burada oluşturun, tartışın ve anlatı değişikliklerini uygulayın."
+        },
+        "editor": {
+          "title": "Editör",
+          "body": "Taslak editörü — dil bilgisi, sözlük ipuçları, odak modu ve otomatik kaydetme burada bulunur."
+        },
+        "grammar": {
+          "title": "Dilbilgisi ve yazım denetimi",
+          "body": "LanguageTool destekli, mevcut sahne üzerinde canlı dilbilgisi ve yazım denetimini açın veya kapatın."
+        },
+        "heatmap": {
+          "title": "Süreklilik ısı haritası",
+          "body": "Yayımlamadan önce kontrol edebilmeniz için yerleşik kurgudan sapabilecek satırları vurgular."
+        }
+      },
+      "actions": {
+        "skip": "Turu atla",
+        "back": "Geri",
+        "next": "Sonraki ({{current}}/{{total}})",
+        "done": "Bitti"
+      },
+      "writer": {
+        "compose": {
+          "title": "İş ortağınızla taslak oluşturun",
+          "body": "Bir yazar olarak vaktinizin çoğunu burada geçireceksiniz — ilk taslak, revizyon veya sonra ne olacağına dair fikir almak için ona danışın."
+        },
+        "editor": {
+          "title": "Anlatıyı parlatın",
+          "body": "Bir sahne kelimelerden oluştuğunda, burada geliştirin — dil bilgisi kontrolleri, sözlük ipuçları ve odak modu bu editörde yer alır."
+        },
+        "grammar": {
+          "title": "Yazarken yazım hatalarını yakalayın",
+          "body": "Sayfadan ayrılmadan canlı dilbilgisi ve yazım denetimini açın veya kapatın."
+        },
+        "heatmap": {
+          "title": "Süreklilik sapmalarını fark edin",
+          "body": "Yerleşik kurguyla çelişebilecek satırları vurgular — devam etmeden önce bir göz atmaya değer."
+        },
+        "planner": {
+          "title": "Hikayenin yapısını planlayın",
+          "body": "Yazma oturumlarından önce veya aralarında akışları, bölümleri ve vuruş noktalarını belirleyin; böylece Oluştur ve Editör yazılacak bir yapıya sahip olur."
+        }
+      },
+      "worldbuilder": {
+        "glossary": {
+          "title": "Dünyanızın sözlüğü",
+          "body": "Oluşturduğunuz her karakter, yer ve eşya burada yaşar — onları arayın, etiketleyin ve tutarlılığı koruyun."
+        },
+        "wiki": {
+          "title": "Okunabilir dünya maddeleri",
+          "body": "Wiki, sözlüğünüzü anlatı tarzında maddelere dönüştürür — dünyanıza hızlıca göz atmak için harika bir yol."
+        },
+        "knowledge": {
+          "title": "Bilgi grafiği",
+          "body": "Daha derinlemesine dünya inşası için bilgi grafiği; varlıklar, olaylar ve ilişkiler arasındaki tüm bağlantıları takip eder."
+        }
+      },
+      "translator": {
+        "translation": {
+          "title": "Çeviri kapsamını takip edin",
+          "body": "Hangi dillerin kapsandığını, hangi bölümlerin güncelliğini yitirdiğini görün ve toplu çeviri işlemlerini buradan başlatın."
+        },
+        "enrichmentCompose": {
+          "title": "Eksik bilgileri tamamlayın",
+          "body": "Bir çeviri az tanımlanmış bir varlığı ortaya çıkardığında, çeviriye devam etmeden önce eksik bilgileri taslak olarak hazırlamak için bu paneli kullanın."
+        }
+      },
+      "enricher": {
+        "gaps": {
+          "title": "Eksik olanı bulun",
+          "body": "Bu panel, sıkça adı geçen ancak pek tanımlanmamış varlıkları bulur; böylece bir sonraki adımda neyi zenginleştirmeniz gerektiğini tam olarak bilirsiniz."
+        },
+        "sources": {
+          "title": "Temel kaynaklarınızı yönetin",
+          "body": "Zenginleştirme taslakları, burada yönettiğiniz kaynak materyallerden beslenir — kaynaklarınızı düzenli ve lisans etiketli tutun."
+        }
+      },
+      "manager": {
+        "sharing": {
+          "title": "Bu kitabı kimlerin göreceğini kontrol edin",
+          "body": "Görünürlüğü ayarlayın, bir paylaşım bağlantısı oluşturun veya iş birliği yapacak kişileri davet edin — hepsi buradan."
+        },
+        "bookSettings": {
+          "title": "Kitap bilgilerini güncelleyin",
+          "body": "Başlık, kapak, tür etiketleri ve dünya bağlantısı Kitap Ayarları'nda bulunur — bunları dilediğiniz zaman güncelleyin."
+        }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Dilbilgisi ve yazım denetimi",
+          "body": "Mevcut sahne için canlı dilbilgisi ve yazım denetimini açın veya kapatın."
+        },
+        "heatmap": {
+          "title": "Süreklilik ısı haritası",
+          "body": "Yerleşik kurgudan sapabilecek satırları vurgular — devam etmeden önce bir göz atmaya değer."
+        },
+        "glossary": {
+          "title": "Sözlük süslemesi",
+          "body": "Üzerine gelindiğinde satır içi sözlük ipuçlarını ve yazarken `[[` otomatik tamamlama özelliğini açıp kapatır."
+        },
+        "focus": {
+          "title": "Odak modu",
+          "body": "Mevcut paragraf dışındaki her şeyi karartır ve yan panelleri gizler — dikkatiniz dağılmadan taslak oluşturmak için idealdir."
+        },
+        "scenes": {
+          "title": "Sahne Çubuğu",
+          "body": "Bu bölümün sahnelerini gösterir — sahneler arasında geçiş yapın, sıralamayı değiştirin veya durumlarını takip edin."
+        },
+        "openJson": {
+          "title": "JSON olarak aç",
+          "body": "Bu bölümü ham yapılandırılmış veri olarak açar — aynı belge, her iki durumda da düzenlemeler anlık olarak yansıtılır."
+        },
+        "originalSource": {
+          "title": "Orijinal Kaynak",
+          "body": "Eğer bu bölüm içe aktarıldıysa, çeviri öncesi kaynak metnin salt okunur görünümü."
+        },
+        "reader": {
+          "title": "Okuyucu",
+          "body": "Bu bölümü okuyucu görünümünde açar — gerçek bir okuyucunun metni nasıl göreceğini gösterir."
+        },
+        "translate": {
+          "title": "Çeviri",
+          "body": "Doğrudan bu bölümün çeviri sürümlerine gider — tam Çeviri matrisinden geçmenize gerek kalmaz."
+        },
+        "save": {
+          "title": "Kaydet",
+          "body": "Değişikliklerinizi kaydeder. Düzenleyicinin her yerinde ⌘S / Ctrl+S kısayolu çalışır."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Klasik ⇄ Yapay Zeka modu",
+          "body": "Düz bir yazım alanı ile yapay zeka araçlarının (Yeniden Yaz/Genişlet/Betimle seçimi, imleçten devam et) mevcut olduğu alan arasında geçiş yapın."
+        },
+        "continueStep": {
+          "title": "Yapay zeka ile yazmaya devam et",
+          "body": "İmlecinizden başlayarak yapay zeka tarafından oluşturulan bir devam metni akışı sağlar. Bunun yerine Yeniden Yaz, Genişlet veya Betimle yapmak için önce herhangi bir metni seçin."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Yapay zeka düzenleme kontrol noktaları",
+          "body": "Her yapay zeka düzenlemesi burada bir geri yükleme noktası oluşturur — yazmaya devam etmiş olsanız bile bir yapay zeka değişikliğini geri alabilirsiniz."
+        },
+        "revisionHistory": {
+          "title": "Revizyon geçmişi",
+          "body": "Her kayıt, yapay zeka kontrol noktalarından bağımsız olarak önizleyebileceğiniz ve geri yükleyebileceğiniz bir versiyondur."
+        },
+        "publish": {
+          "title": "Yayınlama kontrolü",
+          "body": "Okuyarların gördüğü kısımların tutarlı kalması için önce çözülmemiş kurgu çelişkilerini ve tamamlanmamış sahneleri kontrol eder."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Sahne Çizelgesi",
+          "body": "Bu bölümün sahnelerini listeler; durum, özet ve yeniden sıralama işlemlerinin tamamı buradan yapılır."
+        },
+        "anchor": {
+          "title": "Çapa sahneler",
+          "body": "Sahne başlıklarını metindeki başlıklara eşleştirerek çizelgenin doğrudan o kısımlara atlamasını sağlar."
+        },
+        "add": {
+          "title": "Sahne ekle",
+          "body": "Bu bölüm için yeni bir sahne girişi oluşturur."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Sözlük",
+          "body": "Metin içinde bilinen varlık isimlerinin üzerine gelindiğinde onları vurgular; `[[` yazmak ise bir varlığı eklemek veya bağlamak için otomatik tamamlama açar. Düzelti yaparken dikkat dağıtıyorsa buradan kapatabilirsiniz."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Görseller",
+          "body": "Bir görsel yükleyin, sürükleyip bırakın veya yapıştırın — ya da yapay zekayla bir tane oluşturun (modeli açıkça siz seçersiniz, asla varsayılan bir seçim yapılmaz). Eklendikten sonra görseli değiştirebilir, yeniden boyutlandırabilir, altyazı ekleyebilir, alternatif metin yazabilir ve sürüm geçmişine göz atabilirsiniz."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Bir video dosyası yükleyin veya yapay zekayla kısa bir klip oluşturun (açık model seçici ile). Değiştirme, yeniden boyutlandırma, altyazı ekleme ve sürüm geçmişi özellikleri görsellerle aynı şekilde çalışır."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Ses",
+          "body": "Bağımsız bir ses bloğu ekleyin — bir dosya yükleyin veya yapay zekayla anlatım oluşturun. İpucu: HERHANGİ bir paragrafın üzerine gelmek, anlatımı doğrudan o metne eklemek için hızlı bir yükleme/kaydetme/yapay zeka ile oluşturma çubuğu gösterir; blok eklemenize gerek kalmaz."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Ortak yazarınıza yazın",
+          "body": "Enter ile mesaj gönderilir, yeni satır için Shift+Enter kullanılır. Ctrl+Enter hızlı yanıt gönderir, Ctrl+Shift+Enter ise daha derinlemesine düşünme modunu tetikler. Şablonlar ve komutlar için / , bağlam eklemek için @ kullanın."
+        },
+        "permissionMode": {
+          "title": "Sor, Planla veya Yaz",
+          "body": "Ajanın kendi başına ne kadar yapabileceğini kontrol eder — «Sor» her şeyi onaylar, «Planla» önce adımları belirler, «Yaz» ise izin verilenler listesi dahilinde daha özgür hareket eder. Ctrl+. ile modlar arasında geçiş yapabilirsiniz."
+        },
+        "effort": {
+          "title": "Akıl yürütme çabası",
+          "body": "Modelin yanıt vermeden önce ne kadar derin düşüneceği — Kapalı/Düşük/Orta/Yüksek/Otomatik. Akıl yürütemeyen modeller için gizlenmiştir."
+        },
+        "attachContext": {
+          "title": "Bağlam ekle",
+          "body": "Yapay zekanın bu mesaj için tam olarak ihtiyaç duyduğu bağlama sahip olması için belirli kitap, bölüm veya sözlük girişlerini dahil edin."
+        },
+        "send": {
+          "title": "Gönder",
+          "body": "Mesajınızı gönderir. Yapay zeka yanıt verirken bu düğme bir Durdur düğmesine dönüşür."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Sohbetleri değiştir",
+          "body": "Bu kitabın sohbet oturumları arasında geçiş yapın, eski olanları arşivleyin veya yeni bir tane başlatın — bir model ve başlangıç kişiliği (Romancı/Çevirmen/Dünya Kurucu/Editör) seçin."
+        },
+        "rename": {
+          "title": "Bu sohbeti yeniden adlandır",
+          "body": "Oturuma daha sonra tanıyabileceğiniz bir isim verin."
+        },
+        "settings": {
+          "title": "Oturum ayarları",
+          "body": "Model, kompozitör/planlayıcı model geçersiz kılmaları, bellek temellendirme, sistem istemi, sıcaklık (temperature), top-P ve akıl yürütme çabası — hepsi bu oturuma özeldir."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Araçlar ve yetenekler paneli",
+          "body": "Yapay zekanın bu sohbette şu anda kullanabileceği tüm araçları ve yetenekleri gösterir — daha fazlasını ekleyin veya kullanmasını istemediklerinizi kaldırın."
+        },
+        "add": {
+          "title": "Araç veya yetenek ekle",
+          "body": "Kategorilere göre mevcut olan her şeye göz atın ve bu sohbetin tam olarak neye ihtiyacı olduğunu belirleyerek etkinleştirin."
+        },
+        "inspector": {
+          "title": "Ajan çalışma zamanı denetleyicisi",
+          "body": "Ajanın şu anda ne yaptığını —araç keşfetme, bir araç çalıştırma veya boşta bekleme— görün ve tüm ayrıntılı izi görmek için genişletin."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Bağlam bütçesi",
+          "body": "Bu sohbetin modelin bağlam penceresinin ne kadarını kullandığını gösterir. Kategorilere göre tam dökümü görmek ve isteğe bağlı olarak sohbeti sıkıştırmak için üzerine tıklayın."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Yayımlanmadan önce incelenen yapay zeka düzenlemeleri",
+          "body": "Ajan bir anlatım düzenlemesi önerdiğinde, her değişikliği kabul etmeniz veya reddetmeniz için burada bir inceleme kartı görünür. Daha riskli işlemler (toplu düzenlemeler, yıkıcı işlemler), önce maliyet/etki önizlemesi içeren kendi onay kartına sahiptir. Ajanın otomatik olarak uyguladığı her şey, tek tıkla Geri Al seçeneğiyle bir Etkinlik şeridinde görünür."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Sesli mod",
+          "body": "Yazmak yerine konuşun — canlı transkripsiyon ile tamamen eller serbest bir sohbet."
+        },
+        "settings": {
+          "title": "Ses ayarları",
+          "body": "Konuşmadan metne ve metinden konuşmaya modellerinizi, sesinizi, hızınızı ve otomatik gönderim davranışınızı seçin."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Ayrı bir pencerede aç",
+          "body": "Yazım aracını ayrı bir işletim sistemi penceresinde açar — ikinci bir monitör için kullanışlıdır. Orada onayladığınız düzenlemeler hâlâ bu kitabın editörüne kaydedilir."
+        }
+      }
+    }
+  },
+  "userGuide": {
+    "intro": "Writing Studio'nun açabileceği her araç, Komut Paleti ile aynı şekilde gruplandırılmıştır.",
+    "toursGroup": "Rehberli turlar",
+    "toursEditor": "Editör",
+    "toursComposer": "Yazım Aracı"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Editör Temelleri",
+      "desc": "Araç çubuğu — dil bilgisi, ısı haritası, sözlük, odaklanma, sahneler ve hızlı erişim düğmeleri."
+    },
+    "editorAiTools": {
+      "label": "Yapay Zeka Yazım Araçları",
+      "desc": "İmleçten devam et, seçili metni Yeniden Yaz/Genişlet/Betimle ve Klasik/Yapay Zeka modu geçişi."
+    },
+    "editorDataSafety": {
+      "label": "Veri Güvenliği",
+      "desc": "Yapay zeka düzenleme kontrol noktaları, revizyon geçmişi ve yayınlama kontrolü."
+    },
+    "editorSceneRail": {
+      "label": "Sahne Çubuğu",
+      "desc": "Sahneleri takip edin, yeniden sıralayın ve akışın metninizle senkronize kalmasını sağlayın."
+    },
+    "editorGlossary": {
+      "label": "Sözlük",
+      "desc": "Yazarken metin içi varlık ipuçları ve `[[` ile otomatik tamamlama."
+    },
+    "editorMediaImage": {
+      "label": "Medya — Görseller",
+      "desc": "Değiştirme, yeniden boyutlandırma, altyazı ve sürüm geçmişi seçenekleriyle görsel yükleyin veya yapay zekayla oluşturun."
+    },
+    "editorMediaVideo": {
+      "label": "Medya — Video",
+      "desc": "Kısa video klipler yükleyin veya yapay zekayla oluşturun."
+    },
+    "editorMediaAudio": {
+      "label": "Medya — Ses ve Seslendirme",
+      "desc": "Bağımsız ses bloklarının yanı sıra yükleyebileceğiniz, kaydedebileceğiniz veya yapay zekayla oluşturabileceğiniz paragraf bazlı seslendirmeler."
+    },
+    "composerBasics": {
+      "label": "Temel Bileşenler",
+      "desc": "Mesaj kutusu, izin modu, akıl yürütme çabası, bağlam ekleme ve gönderme."
+    },
+    "composerSessions": {
+      "label": "Oturum Yönetimi",
+      "desc": "Sohbetleri değiştirin, yeniden adlandırın veya başlatın ve oturuma özel ayarları açın."
+    },
+    "composerAgentTools": {
+      "label": "Ajan Araçları ve Yetenekleri",
+      "desc": "Ajanın şu anda hangi araçlara ve yeteneklere erişebileceğini görün ve yönetin."
+    },
+    "composerContextBudget": {
+      "label": "Bağlam Bütçesi",
+      "desc": "Bu sohbetin modelin bağlam penceresinin ne kadarını kullandığını ve bunun nasıl sıkıştırılacağını görün."
+    },
+    "composerAiEditReview": {
+      "label": "Yapay Zeka Düzenleme İncelemesi ve Güvenlik",
+      "desc": "Önerilen düzenlemelerin, riskli işlemlerin ve otomatik olarak uygulanan değişikliklerin nasıl incelendiğini ve nasıl geri alınabileceğini öğrenin."
+    },
+    "composerVoice": {
+      "label": "Sesli Asistan",
+      "desc": "Yapılandırılabilir konuşmadan metne ve metinden konuşmaya özellikleriyle yazmak yerine konuşun."
+    },
+    "composerPopout": {
+      "label": "Ayrı Pencere",
+      "desc": "İkinci bir monitör için Oluşturma ekranını kendi işletim sistemi penceresi olarak açın."
+    }
+  },
+  "planHub": {
+    "undo": "Geri al",
+    "empty": {
+      "title": "Bu kitap için henüz bir plan yok",
+      "body": "Plan Merkezi; arkları, bölümleri ve sahneleri gösteren teknik ayrıntıları sunar. Bu kitabın henüz bir planı yok. Taslağınızdan otomatik olarak oluşturulmaz: ya taslağı kullanın ya da yeni bir plan yazın.",
+      "extractCta": "Taslaktan planı çıkar",
+      "extracting": "Çıkarılıyor…",
+      "planCta": "Sıfırdan plan oluştur",
+      "extractNote": "Çıkarma işlemi, bölümlerinizden halihazırda ayrıştırılmış olan sahneleri okur ve her birini bir teknik düğüme dönüştürür. Bunları arklar halinde gruplandırmak ayrı bir yapay zeka adımıdır; bunun için asistana komut verin. O zamana kadar çıkarılan bölümler «Atanmamış» şeridinde duracaktır.",
+      "nothingParsed": "Çıkarılacak bir şey yok — bu kitabın henüz ayrıştırılmış sahnesi bulunmuyor. Önce bölümleri ayrıştırın veya içe aktarın, ardından çıkarın.",
+      "startArcCta": "İlk arkınla başla",
+      "startingArc": "Oluşturuluyor…",
+      "arcPlaceholder": "İlk arkına bir isim ver…",
+      "untitledArc": "İsimsiz ark",
+      "extractNeedsChapters": "İhtiyaç duyulan bölümler çıkarılıyor — bu kitabın henüz bölümü yok."
+    },
+    "node": {
+      "unplannedTray": "Planlanmamış bölümler",
+      "unplannedUnknown": "Planlanmamış bölümler: bilinmiyor (taslak okunamadı)",
+      "unplannedCapped": "…ve {{n}} tane daha (liste sınırlandırıldı)",
+      "unassignedStrip": "Herhangi bir arka yer almayan {{count}} bölüm — onu bir şeride sürükleyin",
+      "unassignedStrip_other": "Herhangi bir kurguda olmayan {{count}} bölüm — onları bir şeride sürükleyin",
+      "untitled": "Başlıksız",
+      "unassignedFlow": "{{count}} bölüm henüz bir hikaye akışında değil",
+      "unassignedFlow_other": "{{count}} bölüm henüz bir hikaye akışında değil"
+    },
+    "loading": "Plan yükleniyor…",
+    "toolbar": {
+      "search": "Bir düğüm ara…",
+      "fit": "Sığdır",
+      "problems": "Sorunlar",
+      "askAi": "Yapay Zekaya Sor",
+      "askAiHint": "Hakkında soru sormak için bir düğüm seçin",
+      "viewNarrative": "Anlatı",
+      "viewTimeline": "Zaman Çizelgesi",
+      "viewWorldmap": "Dünya haritası",
+      "viewSoon": "Daha sonraki bir aşamada gelecek"
+    },
+    "mode": {
+      "simple": "Basit",
+      "advanced": "Gelişmiş"
+    },
+    "simple": {
+      "guide": "Kitabınız, bölüm bölüm. Yazmaya devam etmek için bir bölüme tıklayın veya aşağıdan yeni bir bölüm başlatın.",
+      "loading": "Bölümleriniz yükleniyor…",
+      "error": "Bölümleriniz yüklenemedi. Bir an sonra tekrar deneyin.",
+      "emptyLine": "Boş bir kitap. Bir cümleyle başlayın; yapı daha sonra gelebilir.",
+      "untitled": "Başlıksız bölüm",
+      "words": "{{n}} kelime",
+      "status": {
+        "done": "tamamlandı",
+        "drafting": "taslak aşamasında",
+        "empty": "başlanmadı",
+        "aiIdea": "Yapay zeka fikri"
+      },
+      "more": "+ {{n}} tane daha",
+      "loadingMore": "Yükleniyor…",
+      "writeCta": "Yeni bir bölüm yaz",
+      "writing": "Oluşturuluyor…",
+      "doorNote": "Doğrudan boş bir sayfa açar.",
+      "goAdvanced": "Hikaye akışlarına göre düzenle →",
+      "rename": "Yeniden Adlandır",
+      "delete": "Bölümü sil",
+      "aiDraft": "Veya yapay zekanın taslak oluşturmasına izin ver →",
+      "legend": {
+        "authored": "siz yazdınız",
+        "ai": "Yapay zeka fikri"
+      }
+    },
+    "costHint": "Yapıyı düzenlemek model çağrısı gerektirmez.",
+    "flow": {
+      "chNo": "bölüm {{n}}",
+      "chCount": "{{n}} böl.",
+      "gap": "⚠ boşluk",
+      "aiCollapsed": "AI · daraltıldı",
+      "subArcTag": "alt-ark",
+      "untitledArc": "Başlıksız ark",
+      "untitledChapter": "Başlıksız bölüm",
+      "untitledScene": "Başlıksız sahne",
+      "addChapter": "+ bölüm",
+      "addScene": "+ sahne",
+      "addSubArc": "+ alt-ark",
+      "showScenes": "▸ sahneler",
+      "moreChapters": "+ {{n}} tane daha",
+      "empty": "Henüz hikaye akışı yok — başlamak için araç çubuğundan bir ark ekleyin.",
+      "status": {
+        "empty": "boş",
+        "outline": "taslak",
+        "drafting": "yazılıyor",
+        "done": "tamamlandı"
+      },
+      "moveTo": "arkın ... kısmına taşı",
+      "unassigned": "hikaye akışında olmayan {{count}} bölüm",
+      "unassigned_other": "hikaye akışında olmayan {{count}} bölüm"
+    },
+    "adv": {
+      "graph": "Grafik",
+      "lane": "Şerit",
+      "graphHint": "Grafik — hareket ettirmek için yakınlaştırın, kaydırın ve sürükleyin (büyük yapılar için en iyisi)",
+      "laneHint": "Şerit — okunabilir, kaydırılabilir kartlar (yakınlaştırma yok)"
+    }
+  },
+  "structTpl": {
+    "subtitle": "bölümlerinizi çözümlemek için kullanacağınız hikaye yapıları",
+    "builtin": "Yerleşik (salt okunur)",
+    "mine": "Benimkiler",
+    "mineEmpty": "Henüz hiç yok — başlamak için bir yerleşik yapıyı klonlayın.",
+    "loading": "Yükleniyor…",
+    "pickHint": "Olay örgüsünü görüntülemek için bir yapı seçin.",
+    "beats": "olay örgüsü",
+    "builtinNote": "Bu yerleşik bir yapıdır. Özelleştirmek için klonlayın; siz kendi kopyanızı düzenlersiniz, orijinal yapı herkes için bozulmadan kalır.",
+    "cloneBuiltin": "Yapılarım arasına klonla",
+    "duplicate": "Kopyala",
+    "cloning": "Kopyalanıyor…",
+    "beatLabel": "Etiket",
+    "beatPurpose": "Bu vuruşun amacı…",
+    "addBeat": "Vuruş ekle",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor…",
+    "showArchived": "arşivlenmiş",
+    "archive": "Arşivle",
+    "restore": "Geri Yükle",
+    "archivedNote": "Bu yapı arşivlendi. Düzenlemek veya tekrar kullanmak için geri yükleyin.",
+    "newStructure": "Yeni yapı",
+    "createStructure": "Yapı oluştur",
+    "creating": "Oluşturuluyor…",
+    "cancel": "İptal",
+    "unsaved": "Kaydedilmemiş",
+    "discard": "Kaldır",
+    "discardTitle": "Kaydedilmemiş değişiklikler atılsın mı?",
+    "discardBody": "Bu yapıdaki düzenlemeleriniz kaydedilmedi. Ayrılmak değişiklikleri silecektir.",
+    "archiveTitle": "Bu yapı arşivlensin mi?",
+    "archiveBody": "«{{name}}» arşivleniyor — daha sonra geri yükleyebilirsiniz.",
+    "nameLabel": "Yapı adı",
+    "namePlaceholder": "Yapınıza bir ad verin…",
+    "kindLabel": "Tür (serbest metin etiketi)",
+    "beatKey": "anahtar",
+    "beatKeyLabel": "Vuruş anahtarı",
+    "beatLabelLabel": "Vuruş etiketi",
+    "moveUp": "Vuruşu yukarı taşı",
+    "moveDown": "Vuruşu aşağı taşı",
+    "removeBeat": "Vuruşu kaldır",
+    "decomposeHint": "Bu yapıyı kullanmak için bir bölüm açın ve Parçalara Ayır adımını çalıştırın; yapılarınız orada seçici kısmında görünecektir.",
+    "err": {
+      "conflict": "Bu yapı başka bir yerde değiştirildi — lütfen sayfayı yenileyip düzenlemelerinizi tekrar uygulayın.",
+      "duplicate": "Bu isme sahip bir yapınız zaten mevcut.",
+      "blank": "Bir yapının isme ihtiyacı var.",
+      "unknown": "Bir şeyler ters gitti — lütfen tekrar deneyin."
+    },
+    "toast": {
+      "saved": "Yapı kaydedildi",
+      "archived": "Yapı arşivlendi",
+      "restored": "Yapı geri yüklendi",
+      "created": "Yapı oluşturuldu"
+    },
+    "badge": {
+      "builtin": "yerleşik",
+      "mine": "benimki",
+      "archived": "arşivlenmiş"
+    }
+  },
+  "search": {
+    "modeLabel": "Arama modu",
+    "mode": {
+      "text": "Metin",
+      "semantic": "Anlamsal"
+    },
+    "rail": {
+      "placeholder": "Kitabınızda arayın…",
+      "go": "Ara",
+      "hint": "Metin, düz metindeki tam kelimeleri bulur; Anlamsal, pasajları anlamlarına göre bulur. Bir sonuç, editörü o noktada açar."
+    },
+    "semantic": {
+      "placeholder": "Bilgi birikiminizde anlam arayın…",
+      "loadingProject": "Yükleniyor…",
+      "noProject": "Bu kitabın henüz bir bilgi projesi yok — önce bilgi çıkarın veya oluşturun.",
+      "error": "Anlamsal arama şu anda kullanılamıyor.",
+      "hint": "Anlama göre arama yapmak için en az 3 karakter yazın.",
+      "searching": "Aranıyor…",
+      "empty": "Eşleşen pasaj bulunamadı.",
+      "openChapter": "bölümü aç →"
+    }
+  },
+  "setup": {
+    "firstStructureTitle": "Birinci Perde",
+    "everything": "Veya bu kitabı tamamen yapılandır",
+    "everythingBusy": "Yapılandırılıyor…"
+  }
+}

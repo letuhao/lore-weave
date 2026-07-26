@@ -7,9 +7,13 @@ import type { IntentId } from '../../types';
 // generic shell. A wrong route here defeats the whole cycle.
 
 describe('intentRoutes (C22)', () => {
-  it('presents exactly the four BL-15 intents', () => {
+  it('presents the BL-15 intents incl. the work assistant (F1)', () => {
     const ids = INTENT_CHOICES.map((c) => c.id);
-    expect(ids).toEqual(['write', 'world', 'translate', 'explore']);
+    expect(ids).toEqual(['write', 'world', 'translate', 'explore', 'assistant']);
+  });
+
+  it('routes Work-assistant → the assistant surface (/assistant)', () => {
+    expect(routeForIntent('assistant')).toBe('/assistant');
   });
 
   it('routes Write → the book workspace container (/books)', () => {

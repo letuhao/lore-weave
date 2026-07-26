@@ -88,7 +88,9 @@ async def publish(routing_key: str, body: dict) -> None:
     assert _jobs_exchange is not None, "Broker not connected"
     await _jobs_exchange.publish(
         aio_pika.Message(
-            body=json.dumps(body).encode(),
+            # ML-5: ensure_ascii=False keeps CJK/Vietnamese prose in job bodies as
+            # UTF-8 on the wire; the default (True) inflates it 2-3x to \uXXXX escapes.
+            body=json.dumps(body, ensure_ascii=False).encode(),
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             content_type="application/json",
         ),
@@ -100,7 +102,9 @@ async def publish_event(user_id: str, event: dict) -> None:
     assert _events_exchange is not None, "Broker not connected"
     await _events_exchange.publish(
         aio_pika.Message(
-            body=json.dumps({**event, "user_id": user_id}).encode(),
+            # ML-5: ensure_ascii=False keeps CJK/Vietnamese prose in event bodies as
+            # UTF-8 on the wire; the default (True) inflates it 2-3x to \uXXXX escapes.
+            body=json.dumps({**event, "user_id": user_id}, ensure_ascii=False).encode(),
             content_type="application/json",
         ),
         routing_key=f"user.{user_id}",

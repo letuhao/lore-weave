@@ -49,7 +49,12 @@ KNOWLEDGE_CONTAINER = os.environ.get("KNOWLEDGE_CONTAINER", "infra-knowledge-ser
 
 SRC_DIR = Path(os.environ.get(
     "SRC_DIR",
-    r"D:\Works\source\web-crawling\output\万古神帝-51254\chapters",
+    # EXTERNAL corpus (a separate crawler's output) — env-overridable rather than a
+    # one-machine constant. See docs/standards/README.md § no-absolute-host-paths.
+    os.environ.get(
+        "RAWSEARCH_CORPUS_DIR",
+        r"D:\Works\source\web-crawling\output\万古神帝-51254\chapters",
+    ),
 ))
 N_CHAPTERS = int(os.environ.get("N_CHAPTERS", "40"))
 

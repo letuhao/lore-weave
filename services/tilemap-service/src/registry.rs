@@ -286,7 +286,7 @@ impl Registry {
                 }
             }
             // MED-2 — density_weight must be finite + positive so chunk C's
-            // weighted-sample `rng.gen_range(0.0..total)` never panics on
+            // weighted-sample `rng.random_range(0.0..total)` never panics on
             // NaN/Inf and never silently never-picks on negative.
             if !def.density_weight.is_finite() || def.density_weight <= 0.0 {
                 return Err(RegistryError::Validation(format!(

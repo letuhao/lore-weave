@@ -7,6 +7,7 @@ import { WorldGraphSection } from '../components/WorldGraphSection';
 import { WorldTimelineSection } from '../components/WorldTimelineSection';
 import { LivingWorldTree } from '../components/LivingWorldTree';
 import { WorldPopulateActions } from '../components/WorldPopulateActions';
+import { WorldMapsSection } from '../components/WorldMapsSection';
 
 // C21 — the world WORKSPACE. A prose-less worldbuilding surface: it resolves the
 // world's bible chapter (the lore anchor) and presents lore authoring + a
@@ -60,6 +61,9 @@ export function WorldWorkspacePage() {
             <WorldPopulateActions worldId={worldId} />
             <LivingWorldTree worldId={worldId} />
           </section>
+
+          {/* W10 — the world's maps: base image + region polygons + marker pins, view-only. */}
+          <WorldMapsSection worldId={worldId} />
 
           {/* Read-only world graph — the W2 rollup union (G4). */}
           <WorldGraphSection worldId={worldId} />

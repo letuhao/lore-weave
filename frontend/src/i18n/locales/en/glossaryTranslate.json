@@ -57,7 +57,8 @@
     "cancel": "Cancel",
     "cancelConfirm": "Cancel this translation job? Entities already processed will keep their translations.",
     "cancelRequested": "Cancellation requested",
-    "noEntities": "No entities need translation for this language."
+    "noEntities": "No entities need translation for this language.",
+    "pollFailed": "Couldn't get the translation progress — the service may be unavailable. Retrying…"
   },
   "results": {
     "title": "Translation Complete",

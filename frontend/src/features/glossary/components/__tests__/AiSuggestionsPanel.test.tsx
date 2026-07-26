@@ -80,4 +80,15 @@ describe('AiSuggestionsPanel', () => {
     renderPanel();
     expect(screen.getByText('ai_suggestions.empty_title')).toBeInTheDocument();
   });
+
+  it('shows a scope_label badge only for entities that have one set', () => {
+    hookMocks.state = {
+      items: [{ ...ent('e1', '姜子牙'), scope_label: 'World A' }, ent('e2', '哪吒')],
+      total: 2,
+      isLoading: false,
+      error: null,
+    };
+    renderPanel();
+    expect(screen.getByText('World A')).toBeInTheDocument();
+  });
 });

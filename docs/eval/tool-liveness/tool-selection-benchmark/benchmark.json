@@ -1,0 +1,273 @@
+{
+  "catalog_size": 288,
+  "cases": [
+    {
+      "ask": "update the book's description",
+      "expect": "book_update_details"
+    },
+    {
+      "ask": "change the blurb",
+      "expect": "book_update_details"
+    },
+    {
+      "ask": "rewrite the synopsis",
+      "expect": "book_update_details"
+    },
+    {
+      "ask": "rename the book",
+      "expect": "book_update_details"
+    },
+    {
+      "ask": "set the genre to dark fantasy",
+      "expect": "book_update_details"
+    },
+    {
+      "ask": "fix the book's summary",
+      "expect": "book_update_details"
+    },
+    {
+      "ask": "write chapter one",
+      "expect": "book_chapter_create"
+    },
+    {
+      "ask": "save the chapter text I just wrote",
+      "expect": "book_chapter_save_draft"
+    },
+    {
+      "ask": "edit the prose of this chapter",
+      "expect": "book_chapter_save_draft"
+    },
+    {
+      "ask": "delete a chapter",
+      "expect": "book_chapter_delete"
+    },
+    {
+      "ask": "publish the chapter as canon",
+      "expect": "book_chapter_publish"
+    },
+    {
+      "ask": "start a new novel",
+      "expect": "book_create"
+    },
+    {
+      "ask": "show my library of books",
+      "expect": "book_list"
+    },
+    {
+      "ask": "open the table of contents",
+      "expect": "book_list_chapters"
+    }
+  ],
+  "models": {
+    "Gemma-4-26B-200K": {
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "hits": 10,
+      "total": 14,
+      "rows": [
+        {
+          "ask": "update the book's description",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "change the blurb",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "rewrite the synopsis",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "rename the book",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "set the genre to dark fantasy",
+          "expect": "book_update_details",
+          "verdict": "MISS",
+          "picked": "glossary_book_set_active_genres",
+          "answer": "glossary_book_set_active_genres"
+        },
+        {
+          "ask": "fix the book's summary",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "write chapter one",
+          "expect": "book_chapter_create",
+          "verdict": "HIT",
+          "picked": "book_chapter_create",
+          "answer": "book_chapter_create"
+        },
+        {
+          "ask": "save the chapter text I just wrote",
+          "expect": "book_chapter_save_draft",
+          "verdict": "HIT",
+          "picked": "book_chapter_save_draft",
+          "answer": "book_chapter_save_draft"
+        },
+        {
+          "ask": "edit the prose of this chapter",
+          "expect": "book_chapter_save_draft",
+          "verdict": "MISS",
+          "picked": "composition_write_prose",
+          "answer": "composition_write_prose"
+        },
+        {
+          "ask": "delete a chapter",
+          "expect": "book_chapter_delete",
+          "verdict": "HIT",
+          "picked": "book_chapter_delete",
+          "answer": "book_chapter_delete"
+        },
+        {
+          "ask": "publish the chapter as canon",
+          "expect": "book_chapter_publish",
+          "verdict": "MISS",
+          "picked": "composition_publish",
+          "answer": "composition_publish"
+        },
+        {
+          "ask": "start a new novel",
+          "expect": "book_create",
+          "verdict": "HIT",
+          "picked": "book_create",
+          "answer": "book_create"
+        },
+        {
+          "ask": "show my library of books",
+          "expect": "book_list",
+          "verdict": "HIT",
+          "picked": "book_list",
+          "answer": "book_list"
+        },
+        {
+          "ask": "open the table of contents",
+          "expect": "book_list_chapters",
+          "verdict": "MISS",
+          "picked": "ui_navigate",
+          "answer": "ui_navigate"
+        }
+      ]
+    },
+    "Nemotron-3-Nano": {
+      "model_ref": "019f837d-abe9-7bb0-9698-80329c9a24af",
+      "hits": 10,
+      "total": 14,
+      "rows": [
+        {
+          "ask": "update the book's description",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "change the blurb",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "rewrite the synopsis",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "rename the book",
+          "expect": "book_update_details",
+          "verdict": "MISS",
+          "picked": "(unrecognized)",
+          "answer": "book_rename"
+        },
+        {
+          "ask": "set the genre to dark fantasy",
+          "expect": "book_update_details",
+          "verdict": "MISS",
+          "picked": "glossary_propose_new_kind",
+          "answer": "glossary_propose_new_kind"
+        },
+        {
+          "ask": "fix the book's summary",
+          "expect": "book_update_details",
+          "verdict": "HIT",
+          "picked": "book_update_details",
+          "answer": "book_update_details"
+        },
+        {
+          "ask": "write chapter one",
+          "expect": "book_chapter_create",
+          "verdict": "HIT",
+          "picked": "book_chapter_create",
+          "answer": "book_chapter_create"
+        },
+        {
+          "ask": "save the chapter text I just wrote",
+          "expect": "book_chapter_save_draft",
+          "verdict": "HIT",
+          "picked": "book_chapter_save_draft",
+          "answer": "book_chapter_save_draft"
+        },
+        {
+          "ask": "edit the prose of this chapter",
+          "expect": "book_chapter_save_draft",
+          "verdict": "MISS",
+          "picked": "book_chapter_update_meta",
+          "answer": "book_chapter_update_meta"
+        },
+        {
+          "ask": "delete a chapter",
+          "expect": "book_chapter_delete",
+          "verdict": "HIT",
+          "picked": "book_chapter_delete",
+          "answer": "book_chapter_delete"
+        },
+        {
+          "ask": "publish the chapter as canon",
+          "expect": "book_chapter_publish",
+          "verdict": "HIT",
+          "picked": "book_chapter_publish",
+          "answer": "book_chapter_publish"
+        },
+        {
+          "ask": "start a new novel",
+          "expect": "book_create",
+          "verdict": "HIT",
+          "picked": "book_create",
+          "answer": "book_create"
+        },
+        {
+          "ask": "show my library of books",
+          "expect": "book_list",
+          "verdict": "HIT",
+          "picked": "book_list",
+          "answer": "book_list"
+        },
+        {
+          "ask": "open the table of contents",
+          "expect": "book_list_chapters",
+          "verdict": "MISS",
+          "picked": "ui_open_book",
+          "answer": "ui_open_book"
+        }
+      ]
+    }
+  }
+}

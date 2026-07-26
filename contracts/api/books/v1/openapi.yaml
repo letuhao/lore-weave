@@ -450,6 +450,270 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorBody'
 
+  /v1/books/{book_id}/chapters/bulk:
+    post:
+      tags: [chapters]
+      summary: Create many plain-text chapters in one request (folder/large-import flow)
+      description: >
+        One chapter per item, no structural parse; imported chapters are published canon.
+        Idempotent: an item whose original_filename already exists (active) in this book is skipped, not duplicated.
+      operationId: bulkCreateChapters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCreateChaptersRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkCreateChaptersResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Parent book is not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '422':
+          description: More than 500 chapters in one request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '507':
+          description: Quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/import:
+    post:
+      tags: [chapters]
+      summary: Import a whole book file (.docx, .epub, .md, .pdf, .txt) as chapters
+      description: >
+        docs/specs/2026-07-06-pdf-book-import.md. .txt is parsed synchronously (source_format=plain)
+        and returns the created chapter(s) directly. All other formats are stored and processed
+        asynchronously by worker-infra — poll GET .../imports/{import_id} or listen on the
+        `/ws` import-progress channel. For file_format=pdf with caption_images=true, model_source
+        and model_ref are REQUIRED (Provider gateway invariant — no platform default vision model;
+        the caller must explicitly pick a vision-capable BYOK model).
+      operationId: startImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: .txt, .docx, .epub, .md, or .pdf — up to 200 MB.
+                original_language:
+                  type: string
+                  maxLength: 35
+                  description: BCP-47 tag (e.g. vi, zh-Hans). Defaults to "auto" when omitted.
+                pages_per_chunk:
+                  type: integer
+                  minimum: 1
+                  description: Required (and only read) when the file is a PDF — how many source pages become one chapter.
+                caption_images:
+                  type: boolean
+                  description: PDF only. When true, model_source/model_ref become required.
+                model_source:
+                  type: string
+                  description: PDF + caption_images only. BYOK provider source for the vision model (e.g. "user_model").
+                model_ref:
+                  type: string
+                  description: PDF + caption_images only. The user_model_id (UUID) of the vision-capable model to caption images with.
+      responses:
+        '201':
+          description: >
+            .txt path only — synchronous. A single Chapter when the file has one part,
+            or a BulkImportSummary when it decomposed into multiple parts/chapters.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Chapter'
+                  - $ref: '#/components/schemas/BulkImportSummary'
+        '202':
+          description: .docx/.epub/.md/.pdf — queued for async processing by worker-infra.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobAccepted'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Parent book is not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '413':
+          description: File exceeds the 200 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '415':
+          description: Unsupported file extension
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '507':
+          description: Quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/import/pdf-peek:
+    post:
+      tags: [chapters]
+      summary: Cheap synchronous page-count check for a PDF, before configuring pages_per_chunk
+      description: >
+        Called right after file select in the PDF import wizard. Rejects encrypted/corrupted PDFs
+        with a 422 rather than letting the wizard proceed to a chunking step for an unusable file.
+      operationId: pdfPeek
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF file — up to 200 MB.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page_count]
+                properties:
+                  page_count:
+                    type: integer
+                    minimum: 0
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Parent book is not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '413':
+          description: File exceeds the 200 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '422':
+          description: PDF is encrypted, corrupted, or otherwise unreadable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '502':
+          description: knowledge-service failed to inspect the PDF
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/imports:
+    get:
+      tags: [chapters]
+      summary: List recent import jobs for this book (most recent 20)
+      operationId: listImportJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}/imports/{import_id}:
+    get:
+      tags: [chapters]
+      summary: Get one import job's status/progress
+      operationId: getImportJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - name: import_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
   /v1/books/{book_id}/chapters/{chapter_id}:
     get:
       tags: [chapters]
@@ -996,6 +1260,120 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    BulkCreateChaptersRequest:
+      type: object
+      required: [chapters]
+      properties:
+        chapters:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            required: [original_filename, content]
+            properties:
+              original_filename:
+                type: string
+              content:
+                type: string
+              title:
+                type: string
+        original_language:
+          type: string
+          maxLength: 35
+          description: BCP-47 tag applied to every chapter in this batch. Defaults to "auto" when omitted.
+
+    BulkCreateChaptersResponse:
+      type: object
+      required: [chapters_created, skipped_existing, book_id]
+      properties:
+        chapters_created:
+          type: integer
+          minimum: 0
+        skipped_existing:
+          type: integer
+          minimum: 0
+          description: Items skipped because original_filename already exists (active) in this book — re-running a partially-failed batch is idempotent.
+        book_id:
+          type: string
+          format: uuid
+
+    BulkImportSummary:
+      type: object
+      required: [chapters_created, book_id]
+      description: Returned by POST .../import (text path) when the file decomposed into more than one chapter.
+      properties:
+        chapters_created:
+          type: integer
+          minimum: 0
+        book_id:
+          type: string
+          format: uuid
+
+    ImportJobAccepted:
+      type: object
+      required: [id, book_id, status, filename, file_size, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending]
+        filename:
+          type: string
+        file_size:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+
+    ImportJob:
+      type: object
+      required: [id, book_id, status, filename, file_format, file_size, chapters_created, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        filename:
+          type: string
+        file_format:
+          type: string
+          enum: [docx, epub, markdown, pdf]
+        file_size:
+          type: integer
+          minimum: 0
+        chapters_created:
+          type: integer
+          minimum: 0
+        error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        completed_at:
+          type: string
+          nullable: true
+
+    ImportJobListResponse:
+      type: object
+      required: [imports]
+      properties:
+        imports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportJob'
 
     PatchChapterRequest:
       type: object

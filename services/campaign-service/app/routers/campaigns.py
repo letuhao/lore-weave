@@ -23,7 +23,7 @@ from ..grant_deps import (
     get_grant_client_dep,
     not_found as _grant_not_found,
 )
-from ..clients.book_client import BookClient, BookNotFound, BookServiceError
+from ..clients.book_client import BookClient, BookIsDiary, BookNotFound, BookServiceError
 from ..clients.dispatch_clients import (
     KnowledgeDispatchClient,
     DispatchError,
@@ -85,11 +85,15 @@ async def _grant_verified_chapters(gc, *, book_id, caller: str, need: GrantLevel
         except BookNotFound:
             raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_BOOK_NOT_FOUND",
                                                          "message": "book not found"})
+        except BookIsDiary:
+            # P-1 / D-R19 — a private diary can never be batch-translated into a campaign.
+            raise HTTPException(status_code=403, detail={"code": "CAMPAIGN_DIARY_NOT_ALLOWED",
+                                                         "message": "a diary cannot be made into a campaign"})
         except BookServiceError as exc:
             raise HTTPException(status_code=502, detail={"code": "CAMPAIGN_BOOK_SERVICE_ERROR",
                                                          "message": str(exc)})
         try:
-            chapters = await book.list_published_chapters(book_id)
+            chapters = await book.list_indexed_chapters(book_id)
         except BookServiceError as exc:
             raise HTTPException(status_code=502, detail={"code": "CAMPAIGN_BOOK_SERVICE_ERROR",
                                                          "message": str(exc)})

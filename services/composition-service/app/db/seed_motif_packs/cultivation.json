@@ -1,0 +1,394 @@
+[
+  {
+    "code": "cultivation.fortuitous_encounter",
+    "language": "en",
+    "kind": "sequence",
+    "category": "cultivation.encounter",
+    "name": "Fortuitous Encounter → Legacy",
+    "summary": "A humiliated weakling, isolated by a fall or banishment, discovers a relic or dying master, is tested, and receives a hidden legacy at the cost of a binding debt.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "progression"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the isolated weakling", "constraints": ["currently weak or disgraced"]},
+      {"key": "mentor", "actant": "sender", "label": "dying master / relic spirit", "constraints": ["near death or dormant"]},
+      {"key": "legacy", "actant": "object", "label": "the inherited art or bloodline", "constraints": ["forbidden or peerless"]}
+    ],
+    "beats": [
+      {"key": "isolation", "label": "Isolation after the fall", "intent": "strand the protagonist beyond help, at their lowest", "tension_target": 2, "order": 1},
+      {"key": "discovery", "label": "Discover the relic/master", "intent": "the chance encounter that changes everything", "tension_target": 3, "order": 2},
+      {"key": "trial", "label": "Trial by the legacy", "intent": "the mentor or relic tests worthiness", "tension_target": 3, "order": 3},
+      {"key": "inheritance", "label": "Receive the legacy at a cost", "intent": "grant power bound to a debt or secret", "tension_target": 2, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist is weak, humiliated, or cast out"},
+      {"text": "no allies are present"}
+    ],
+    "effects": [
+      {"text": "the protagonist gains a hidden power or technique"},
+      {"text": "a debt or secret tie to the mentor is created"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "hope",
+    "examples": [
+      {"text": "Cast into a sealed ravine, the weakling stumbles on a dying master who tests then gifts a forbidden art — bound by a debt of loyalty."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.closed_door_breakthrough",
+    "language": "en",
+    "kind": "sequence",
+    "category": "cultivation.breakthrough",
+    "name": "Closed-Door Breakthrough",
+    "summary": "Sealed away to break a stagnant rank, the cultivator confronts an inner wall, endures a heavenly trial, brushes death, and ascends a realm.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "progression"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the stalled cultivator", "constraints": ["stuck below a rank wall"]},
+      {"key": "tribulation", "actant": "opponent", "label": "the heavenly trial", "constraints": ["impersonal, escalating"]},
+      {"key": "guardian", "actant": "helper", "label": "ally guarding the door", "constraints": ["optional"]}
+    ],
+    "beats": [
+      {"key": "seclusion", "label": "Enter seclusion", "intent": "withdraw to break the bottleneck", "tension_target": 2, "order": 1},
+      {"key": "bottleneck", "label": "Hit the inner wall", "intent": "the stagnant rank resists", "tension_target": 3, "order": 2},
+      {"key": "insight", "label": "Sudden insight", "intent": "a comprehension cracks the wall", "tension_target": 3, "order": 3},
+      {"key": "tribulation", "label": "Heavenly trial", "intent": "the heavens test the ascent", "tension_target": 4, "order": 4},
+      {"key": "crisis", "label": "Brush with death", "intent": "the trial nearly kills the cultivator", "tension_target": 5, "order": 5},
+      {"key": "breakthrough", "label": "Ascend a realm", "intent": "survive and break through", "tension_target": 4, "order": 6}
+    ],
+    "preconditions": [
+      {"text": "the protagonist is blocked at a cultivation bottleneck"},
+      {"text": "a measure of resources or insight is at hand"}
+    ],
+    "effects": [
+      {"text": "the protagonist advances a realm or rank"},
+      {"text": "their reputation and power visibly rise"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "anticipation",
+    "examples": [
+      {"text": "Sealed away to break a stagnant rank, the cultivator faces an inner wall, a heavenly trial, near-death, then ascends a realm."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.face_slap",
+    "language": "en",
+    "kind": "situation",
+    "category": "cultivation.reversal",
+    "name": "Face-Slap Reversal",
+    "summary": "An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "reversal"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the underestimated one", "constraints": ["publicly dismissed"]},
+      {"key": "arrogant", "actant": "opponent", "label": "the arrogant genius", "constraints": ["proud, well-backed"]},
+      {"key": "witnesses", "actant": "receiver", "label": "the watching crowd", "constraints": ["a public audience"]}
+    ],
+    "beats": [
+      {"key": "mockery", "label": "Arrogant party mocks", "intent": "the proud heir sneers at the protagonist", "tension_target": 2, "order": 1},
+      {"key": "underestimate", "label": "Protagonist underestimated", "intent": "the crowd writes them off", "tension_target": 2, "order": 2},
+      {"key": "reveal", "label": "Hidden power revealed", "intent": "the protagonist unveils a higher art", "tension_target": 4, "order": 3},
+      {"key": "reversal", "label": "Humiliation reversed", "intent": "the mocker is publicly broken", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist is publicly underestimated or insulted"},
+      {"text": "the protagonist secretly holds power beyond their apparent rank"}
+    ],
+    "effects": [
+      {"text": "the protagonist's true strength is revealed to witnesses"},
+      {"text": "the arrogant party is humiliated and made an enemy"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "satisfaction",
+    "examples": [
+      {"text": "A preening heir sneers at the 'trash'; mid-contest the trash unveils a higher art and the heir is publicly broken."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.trash_to_genius",
+    "language": "en",
+    "kind": "pattern",
+    "category": "cultivation.arc",
+    "name": "Trash-to-Genius Vindication",
+    "summary": "A hidden affliction scorned as crippling is diagnosed as a rare gift; the very flaw becomes the engine of ascent and the protagonist is vindicated.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "progression"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the scorned 'cripple'", "constraints": ["thought to lack talent"]},
+      {"key": "diagnostician", "actant": "sender", "label": "elder / diagnostician", "constraints": ["able to read the true constitution"]},
+      {"key": "clan", "actant": "opponent", "label": "the scornful clan", "constraints": ["dismissive, status-bound"]}
+    ],
+    "beats": [
+      {"key": "affliction", "label": "Hidden affliction", "intent": "the protagonist is treated as crippled", "tension_target": 2, "order": 1},
+      {"key": "explained", "label": "Affliction explained", "intent": "the flaw is read as a rare constitution", "tension_target": 3, "order": 2},
+      {"key": "gift", "label": "Affliction becomes a gift", "intent": "the flaw drives an impossible ascent", "tension_target": 4, "order": 3},
+      {"key": "vindication", "label": "Vindication", "intent": "the scorners are proven wrong", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist is dismissed as talentless or crippled"}
+    ],
+    "effects": [
+      {"text": "the protagonist's hidden potential is unlocked"},
+      {"text": "the former scorners are forced to acknowledge them"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "vindication",
+    "examples": [
+      {"text": "The body called 'crippled' is revealed to host a rare constitution; the very flaw becomes the engine of ascent."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.dao_heart_temper",
+    "language": "en",
+    "kind": "sequence",
+    "category": "cultivation.inner",
+    "name": "Dao-Heart Tempering",
+    "summary": "An inner demon surfaces in an illusory trial that replays the cultivator's worst guilt; only by refusing the comforting lie does the dao-heart hold.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "inner-demon"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the cultivator", "constraints": ["carrying unresolved guilt"]},
+      {"key": "inner_demon", "actant": "opponent", "label": "the inner demon", "constraints": ["wears a comforting face"]},
+      {"key": "dao_heart", "actant": "object", "label": "the dao-heart / resolve", "constraints": ["the thing at stake"]}
+    ],
+    "beats": [
+      {"key": "surface", "label": "Inner demon surfaces", "intent": "the cultivator's doubt takes form", "tension_target": 3, "order": 1},
+      {"key": "false_memory", "label": "False-memory trial", "intent": "an illusion replays the worst guilt", "tension_target": 4, "order": 2},
+      {"key": "confront", "label": "Confront the self", "intent": "the cultivator must reject the comforting lie", "tension_target": 5, "order": 3},
+      {"key": "emerge", "label": "Emerge resolute", "intent": "the dao-heart holds, tempered", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist carries an unresolved guilt or attachment"}
+    ],
+    "effects": [
+      {"text": "the protagonist's resolve is tempered and clarified"},
+      {"text": "a vulnerability to illusion or temptation is removed"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "resolve",
+    "examples": [
+      {"text": "An illusory trial replays the cultivator's worst guilt; only by refusing the comforting lie does the dao-heart hold."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.auction_house_treasure",
+    "language": "en",
+    "kind": "situation",
+    "category": "cultivation.contest",
+    "name": "Auction-House Treasure",
+    "summary": "A rare item surfaces at auction; outspent and mocked, the protagonist wins it through a hidden backer or unexpected means.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "contest"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the bidder", "constraints": ["short on resources"]},
+      {"key": "rival", "actant": "opponent", "label": "the wealthy rival", "constraints": ["arrogant, deep-pocketed"]},
+      {"key": "treasure", "actant": "object", "label": "the auctioned relic", "constraints": ["rare, coveted"]},
+      {"key": "backer", "actant": "helper", "label": "a hidden backer", "constraints": ["concealed support"]}
+    ],
+    "beats": [
+      {"key": "surface", "label": "Rare item surfaces", "intent": "a coveted relic comes to auction", "tension_target": 2, "order": 1},
+      {"key": "bidding_war", "label": "Bidding war", "intent": "rivals drive the price up", "tension_target": 3, "order": 2},
+      {"key": "outbid", "label": "Rival outbids", "intent": "the protagonist is outspent and mocked", "tension_target": 3, "order": 3},
+      {"key": "secret_win", "label": "Secret means to win", "intent": "the protagonist takes it by an unexpected means", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "a coveted resource is available through open contest"}
+    ],
+    "effects": [
+      {"text": "the protagonist obtains the treasure"},
+      {"text": "a wealthy rival is publicly bested"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "triumph",
+    "examples": [
+      {"text": "A relic surfaces at auction; outspent and mocked, the protagonist wins it by a means none expected."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.sect_entrance_trial",
+    "language": "en",
+    "kind": "sequence",
+    "category": "cultivation.trial",
+    "name": "Sect-Entrance Trial",
+    "summary": "An unranked outsider shatters the testing measure at a sect's entrance trial; the elders fight to claim them, with stakes attached.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "trial"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the unknown outsider", "constraints": ["unranked, unexpected"]},
+      {"key": "elder", "actant": "sender", "label": "the sect elder", "constraints": ["judges and recruits"]},
+      {"key": "gatekeeper", "actant": "opponent", "label": "the gatekeeping disciple", "constraints": ["condescending"]}
+    ],
+    "beats": [
+      {"key": "arrive", "label": "Arrive unknown", "intent": "the outsider arrives without standing", "tension_target": 2, "order": 1},
+      {"key": "underestimated", "label": "Underestimated at the test", "intent": "the gatekeeper dismisses them", "tension_target": 2, "order": 2},
+      {"key": "exceed", "label": "Exceed the measure", "intent": "the testing-stone is shattered", "tension_target": 4, "order": 3},
+      {"key": "recruited", "label": "Recruited with stakes", "intent": "elders contend to claim them", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "an open trial or test gates entry to a faction"}
+    ],
+    "effects": [
+      {"text": "the protagonist gains a position and patron"},
+      {"text": "a rivalry with the gatekeeping party is seeded"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "triumph",
+    "examples": [
+      {"text": "An unranked outsider shatters the testing-stone's ceiling; the elders fight to claim them."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.life_and_death_duel",
+    "language": "en",
+    "kind": "situation",
+    "category": "cultivation.duel",
+    "name": "Life-and-Death Duel",
+    "summary": "A duel to the death is sworn on the arena; the favored son loses the instant he believes he has won.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "duel"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the challenger or challenged", "constraints": ["seemingly outmatched"]},
+      {"key": "rival", "actant": "opponent", "label": "the favored rival", "constraints": ["confident, backed"]},
+      {"key": "crowd", "actant": "receiver", "label": "the watching crowd", "constraints": ["a public arena"]}
+    ],
+    "beats": [
+      {"key": "challenge", "label": "Challenge issued", "intent": "a duel is called", "tension_target": 3, "order": 1},
+      {"key": "stakes", "label": "Stakes sworn", "intent": "death is set as the price", "tension_target": 3, "order": 2},
+      {"key": "turn", "label": "Duel turns", "intent": "the tide shifts unexpectedly", "tension_target": 4, "order": 3},
+      {"key": "reversal", "label": "Fatal reversal", "intent": "the favored party falls at the moment of certainty", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "a public, high-stakes confrontation is sworn"}
+    ],
+    "effects": [
+      {"text": "a rival is decisively defeated, often fatally"},
+      {"text": "the protagonist's standing is transformed"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {"text": "A duel to the death on the arena; the favored son loses the instant he thinks he has won."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.bottleneck_resource_hunt",
+    "language": "en",
+    "kind": "sequence",
+    "category": "cultivation.hunt",
+    "name": "Bottleneck Resource Hunt",
+    "summary": "Stalled below a wall, the cultivator hunts a guarded essence into a deadly range and breaks through on its power.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "hunt"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the stalled cultivator", "constraints": ["needs a specific resource"]},
+      {"key": "resource", "actant": "object", "label": "the spirit herb / core", "constraints": ["rare, guarded"]},
+      {"key": "guardian", "actant": "opponent", "label": "the guardian beast", "constraints": ["lethal, territorial"]}
+    ],
+    "beats": [
+      {"key": "stall", "label": "Rank stalls", "intent": "progress halts at a wall", "tension_target": 2, "order": 1},
+      {"key": "named", "label": "Resource named", "intent": "the needed essence is identified", "tension_target": 3, "order": 2},
+      {"key": "acquire", "label": "Perilous acquisition", "intent": "claim it from a deadly range", "tension_target": 4, "order": 3},
+      {"key": "advance", "label": "Consume and advance", "intent": "break through on its power", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist is blocked at a bottleneck"},
+      {"text": "a specific resource is known to break it"}
+    ],
+    "effects": [
+      {"text": "the protagonist acquires the needed resource"},
+      {"text": "the protagonist advances a rank"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "determination",
+    "examples": [
+      {"text": "Stuck below a wall, the cultivator hunts a guarded essence into a deadly range and breaks through on its power."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.master_disciple_debt",
+    "language": "en",
+    "kind": "situation",
+    "category": "cultivation.bond",
+    "name": "Master-Disciple Debt",
+    "summary": "Saved or taught by a reclusive master, the disciple owes an unpayable debt that is called due at the worst possible hour.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "bond"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the indebted disciple", "constraints": ["owes the master"]},
+      {"key": "master", "actant": "sender", "label": "the reclusive master", "constraints": ["powerful, exacting"]},
+      {"key": "obligation", "actant": "object", "label": "the debt / obligation", "constraints": ["binding, costly"]}
+    ],
+    "beats": [
+      {"key": "taught", "label": "Rescued or taught", "intent": "the master saves or instructs the protagonist", "tension_target": 1, "order": 1},
+      {"key": "incur", "label": "Unpayable debt incurred", "intent": "an obligation beyond easy repayment is created", "tension_target": 2, "order": 2},
+      {"key": "called", "label": "Debt called in", "intent": "the master demands repayment at a hard hour", "tension_target": 3, "order": 3},
+      {"key": "loyalty_test", "label": "Loyalty test", "intent": "the disciple's fidelity is tested", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist receives life-changing aid or teaching"}
+    ],
+    "effects": [
+      {"text": "a binding obligation ties the protagonist to the master"},
+      {"text": "the protagonist's loyalty is proven or broken"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "obligation",
+    "examples": [
+      {"text": "Saved by a reclusive master, the disciple owes a debt that is called due at the worst hour."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.tribulation_ascension",
+    "language": "en",
+    "kind": "sequence",
+    "category": "cultivation.ascension",
+    "name": "Tribulation Ascension",
+    "summary": "Accrued power draws the heavens' wrath; nine waves of lightning tribulation must be survived to ascend, anchored by an ally.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "ascension"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the ascending cultivator", "constraints": ["at the threshold of ascension"]},
+      {"key": "tribulation", "actant": "opponent", "label": "the heavenly tribulation", "constraints": ["escalating, lethal"]},
+      {"key": "anchor", "actant": "helper", "label": "the ally anchor", "constraints": ["holds the line"]}
+    ],
+    "beats": [
+      {"key": "merit", "label": "Merit accrued", "intent": "power reaches the ascension threshold", "tension_target": 3, "order": 1},
+      {"key": "notice", "label": "Heavens take notice", "intent": "the tribulation gathers", "tension_target": 4, "order": 2},
+      {"key": "tribulation", "label": "Lightning tribulation", "intent": "wave after wave must be endured", "tension_target": 5, "order": 3},
+      {"key": "ascend", "label": "Ascend or fall", "intent": "survive to ascend, or be undone", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist has reached an ascension threshold"}
+    ],
+    "effects": [
+      {"text": "the protagonist ascends to a higher plane or realm"},
+      {"text": "their old world standing is left behind"}
+    ],
+    "tension_target": 5,
+    "emotion_target": "awe",
+    "examples": [
+      {"text": "Power draws the heavens' wrath; nine waves of tribulation must be survived to ascend."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  }
+]

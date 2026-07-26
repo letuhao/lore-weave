@@ -3,14 +3,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { compositionApi } from '../api';
 import type { CanonRule } from '../types';
 
-export function useCanonRules(projectId: string | undefined, token: string | null) {
+export function useCanonRules(
+  projectId: string | undefined, token: string | null,
+  opts?: { includeArchived?: boolean },
+) {
   const qc = useQueryClient();
-  const key = ['composition', 'canon', projectId];
-  const invalidate = () => qc.invalidateQueries({ queryKey: key });
+  const includeArchived = opts?.includeArchived ?? false;
+  // The list key carries includeArchived (the archived + non-archived lists are distinct caches),
+  // but invalidate uses the BASE prefix so a write refreshes BOTH variants — and so the Lane-B
+  // agent-parity handler (which invalidates ['composition','canon',projectId]) still prefix-matches.
+  const baseKey = ['composition', 'canon', projectId];
+  const invalidate = () => qc.invalidateQueries({ queryKey: baseKey });
 
   const list = useQuery({
-    queryKey: key,
-    queryFn: () => compositionApi.listCanonRules(projectId!, token!),
+    queryKey: [...baseKey, { includeArchived }],
+    queryFn: () => compositionApi.listCanonRules(projectId!, token!, { includeArchived }),
     enabled: !!projectId && !!token,
     select: (d): CanonRule[] => d.rules,
   });
@@ -28,6 +35,10 @@ export function useCanonRules(projectId: string | undefined, token: string | nul
     mutationFn: (id: string) => compositionApi.deleteCanonRule(id, token!),
     onSuccess: invalidate,
   });
+  const restore = useMutation({
+    mutationFn: (id: string) => compositionApi.restoreCanonRule(id, token!),
+    onSuccess: invalidate,
+  });
 
-  return { list, create, patch, remove };
+  return { list, create, patch, remove, restore };
 }

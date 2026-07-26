@@ -1,4 +1,9 @@
 {
+  "focus": {
+    "toggle": "Chế độ tập trung",
+    "continuity": "Mạch truyện ✓",
+    "hint": "✦ chạm vào một dòng để xem nền tảng"
+  },
   "saved": "Đã lưu chương",
   "no_content": "Không có nội dung để dịch",
   "translation_failed": "Dịch thất bại",
@@ -17,14 +22,32 @@
     "ai": "AI",
     "ai_title": "Chế độ trợ lý AI — đầy đủ tính năng"
   },
+  "workmode": {
+    "write": "Viết",
+    "write_desc": "Chỉnh sửa bản thảo",
+    "translate": "Dịch",
+    "translate_desc": "Phiên bản, so sánh & dịch",
+    "read": "Đọc",
+    "read_desc": "Mở trình đọc (TTS, giao diện)",
+    "compose": "Sáng tác",
+    "compose_desc": "Xưởng đồng sáng tác AI"
+  },
   "grammar_title": "Bật/tắt kiểm tra ngữ pháp & chính tả (LanguageTool)",
   "translate_title": "Dịch nội dung bằng AI (chế độ khối)",
   "translating": "Đang dịch...",
   "translate": "Dịch",
+  "view_translations": "Bản dịch",
+  "view_translations_title": "Xem các phiên bản bản dịch đã lưu (ngôn ngữ, lịch sử, so sánh song song)",
   "toggle_source": "Bật/tắt bảng nguồn",
   "toggle_history": "Bật/tắt bảng lịch sử / AI",
   "unsaved": "Chưa lưu",
   "saved_badge": "Đã lưu",
+  "mobile": {
+    "editor": "Soạn thảo",
+    "studio": "Xưởng",
+    "history": "Lịch sử",
+    "nav": "Khu vực soạn thảo"
+  },
   "discard_title": "Hủy mọi thay đổi chưa lưu",
   "discard": "Hủy bỏ",
   "save": "Lưu",
@@ -150,7 +173,8 @@
     "copied": "Đã sao chép",
     "copy_prompt": "Sao chép prompt",
     "regenerate": "Tạo lại",
-    "generating": "Đang tạo..."
+    "generating": "Đang tạo...",
+    "model_label": "Mô hình AI"
   },
   "image": {
     "err_type": "Loại không hỗ trợ: {{type}}. Dùng PNG, JPG, GIF hoặc WebP.",
@@ -337,5 +361,36 @@
     "same": "Hai bên là cùng một phiên bản — không có khác biệt.",
     "load_more": "Tải thêm ({{loaded}}/{{total}})",
     "load_more_hint": "Tải các phiên bản cũ hơn vào danh sách chọn"
+  },
+  "checkpoint": {
+    "header": "Điểm khôi phục chỉnh sửa AI",
+    "insert": "Đã chèn",
+    "polish": "Đã trau chuốt",
+    "restore": "Khôi phục",
+    "restored": "Đã khôi phục về trước khi AI chỉnh sửa",
+    "no_restore": "Không có phiên bản trước đó để khôi phục",
+    "confirm_title": "Khôi phục về trước lần chỉnh sửa AI này?",
+    "confirm_desc": "Bản nháp hiện tại được lưu ảnh trước, nên thao tác này có thể hoàn tác từ lịch sử phiên bản."
+  },
+  "knowledge": {
+    "add": "Thêm vào kiến thức",
+    "reindex": "Cập nhật kiến thức",
+    "indexed_badge": "Trong kiến thức của bạn",
+    "not_indexed_badge": "Chưa có trong kiến thức",
+    "excluded_badge": "Đã loại bỏ",
+    "forget": "Quên chương này",
+    "keep_out": "Không đưa vào kiến thức",
+    "allow": "Cho phép đưa vào kiến thức",
+    "save_first": "Hãy lưu trước khi thêm vào kiến thức",
+    "indexed_toast": "Đã thêm vào kiến thức của bạn",
+    "reused_toast": "Đã cập nhật — không có thay đổi nào",
+    "empty_toast": "Chương này chưa có nội dung để thêm — hãy viết gì đó trước.",
+    "excluded_toast": "Chương này đang bị loại khỏi kho kiến thức của bạn — hãy cho phép nó trước.",
+    "forgotten_toast": "Đã quên — đã loại khỏi kho kiến thức của bạn",
+    "allowed_toast": "Đã cho phép. Chọn «Thêm vào kho kiến thức» khi bạn đã sẵn sàng.",
+    "failed_toast": "Không thể cập nhật kho kiến thức — vui lòng thử lại.",
+    "forget_confirm_title": "Quên chương này?",
+    "forget_confirm_body": "Mọi thông tin học được từ chương này sẽ bị loại khỏi kho kiến thức của bạn. Bản thân chương này không bị xóa và bạn có thể thêm lại nó sau.",
+    "hint": "Thêm một chương vào kho kiến thức sẽ cho phép trợ lý sử dụng nội dung đó. Bạn không nhất thiết phải xuất bản nó."
   }
 }

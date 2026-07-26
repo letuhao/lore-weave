@@ -39,6 +39,8 @@ STREAMS = [
     "loreweave:events:chapter",
     "loreweave:events:chat",
     "loreweave:events:glossary",
+    # KG-ML M2 — translation.published (dual-index a chapter's active translation).
+    "loreweave:events:translation",
 ]
 GROUP_NAME = "knowledge-extractor"
 MAX_RETRIES = 3

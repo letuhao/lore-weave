@@ -1,0 +1,31 @@
+{
+  "scenario": "S00d",
+  "title": "write mode auto-seeds the rail — the user pins nothing, and the right recipe is already there",
+  "maps_to": "Track C WS-3 — mode→capability binding (the JOURNEY; the mechanism shipped 2026-07-11)",
+  "persona": "P1 Mai (novelist) — pins NOTHING, names NOTHING",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "a fresh EMPTY book — SKILL_BOOK_ID. enabled_skills MUST stay [] — the whole point is that the user pinned nothing and the binding seeded the rail for them.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "workflow", "rail", "recipe", "binding", "mode", "skill", "pin",
+    "ontology", "kind", "entity", "schema", "tool"
+  ],
+  "canon_facts": [
+    "the user pinned NOTHING (enabled_skills empty) yet the vision-to-book rail was active",
+    "the agent began the rail's own first step, not an improvised plan of its own",
+    "an artifact actually landed in the DB",
+    "the user never heard the words for any of the machinery"
+  ],
+  "movements": [
+    {"id": "A", "label": "Just start writing — no setup, no pinning"},
+    {"id": "B", "label": "Say yes"},
+    {"id": "C", "label": "What happened?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "I want to write a novel about a bride who is murdered at her own wedding and comes back a thousand years later. Where do we start?"},
+    {"movement": "B", "user": "Yeah, do it."},
+    {"movement": "C", "user": "What have you got set up for me so far?"}
+  ]
+}

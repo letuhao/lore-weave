@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "アクセスを許可",
+    "subtitle": "アプリケーションが LoreWeave であなたに代わって操作することを求めています。",
+    "client_named": "{{client}} があなたのアカウントへのアクセスを要求しています。",
+    "client_unnamed": "あるアプリケーションがあなたのアカウントへのアクセスを要求しています。",
+    "signed_in_as": "{{email}} としてサインイン中",
+    "redirect_to": "リダイレクト先",
+    "unverified": "このアプリは LoreWeave によって検証されていません。心当たりがあり信頼できる場合のみ続行してください。上記のリダイレクト先を確認してください。",
+    "permissions_heading": "要求された権限",
+    "permissions_hint": "許可したくない権限はオフにしてください。要求より少なく許可できますが、多くは許可できません。",
+    "actions_heading": "操作",
+    "areas_heading": "範囲",
+    "resource_label": "リソース",
+    "allow": "アクセスを許可",
+    "allowing": "認可中…",
+    "deny": "拒否",
+    "sign_in": "続行するにはサインイン",
+    "no_scopes": "続行するには少なくとも 1 つの権限を選択してください。",
+    "invalid_request": "この認可リクエストには情報が不足しているか、無効です。アプリケーションに戻ってやり直してください。",
+    "error": "認可を完了できませんでした。もう一度お試しください。",
+    "scope": {
+      "read": "コンテンツの読み取り",
+      "paid_read": "有料の読み取り操作の実行",
+      "write_auto": "自動的に変更を行う",
+      "write_confirm": "変更を行う（確認あり）"
+    },
+    "domain": {
+      "book": "書籍",
+      "glossary": "用語集",
+      "knowledge": "ナレッジ",
+      "translation": "翻訳",
+      "composition": "作成",
+      "jobs": "ジョブ",
+      "settings": "設定",
+      "lore_enrichment": "設定資料の拡充",
+      "catalog": "カタログ"
+    }
+  }
+}

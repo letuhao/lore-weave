@@ -22,6 +22,10 @@ _DSN = os.environ.get(
     "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_translation",
 )
 
+# Shared-dev-Postgres tests - serialize onto one xdist worker
+# (`-n auto --dist loadgroup`) so concurrent workers cannot interleave.
+pytestmark = pytest.mark.xdist_group("pg")
+
 
 async def _mk_segment(conn, chapter_id, idx, src_hash, *, start=None, end=None):
     start = idx if start is None else start

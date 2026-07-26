@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Arc Templates + Import &amp; Deconstruct (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     ARC TEMPLATES (`arc-templates`, category `storyBible`)
+     — with IMPORT & DECONSTRUCT (拆文) as a SECTION inside it, not a panel.
+     Spec: docs/specs/2026-07-01-writing-studio/34_arc_templates_and_deconstruct.md
+     Wave 4 of plan 30. Decision prefix AT-.
+
+     WHY THIS EXISTS
+     拆文 — taking a reference novel apart into reusable structure — is the
+     headline differentiator for web-novel authors who study 套路. At HEAD it
+     is 100% AGENT-ONLY, and the shipped UI ADVERTISES the feature it cannot
+     reach. ArcTemplateLibraryView.tsx:51 renders, as its empty state:
+
+         "No arc templates yet. Adopt one from the catalog,
+          or import a story to deconstruct."
+
+     `grep -rn "import-sources" frontend/src` → EMPTY. There is no import
+     entry point anywhere in the frontend. That sentence is a DANGLING CTA
+     pointing at a feature with no door — this repo's `built-mounted-
+     unreachable` class, shipped inside the empty state of the very panel
+     that needs it. It is rendered below as the BEFORE (state ⑦).
+
+     And the asymmetry runs deeper than the door. APPLY exists for the human.
+     EXTRACT ("save this arc as a template" — the half that makes the library
+     GROW FROM THE USER'S OWN WORK), SUGGEST, and DRIFT do not exist for
+     anyone with a mouse. A library you can only consume from is a catalog.
+
+     THE ARCHITECTURE THIS MOCK RENDERS — and the two audit corrections
+     The gap audit said "the drift view is REAL backend work ⇒ PARK it behind
+     BE-8." Half right, and the consequence INVERTS:
+       • `build_template_drift` genuinely does not exist (grep hits only the
+         getattr seam at mcp/server.py:4698) — so the AGENT's tool is a stub.
+       • But GET /works/{pid}/conformance?scope=arc_template_drift&arc_id=…
+         is SHIPPED, wired, and has ZERO FE CONSUMERS (conformance.py:390-404
+         → compute_arc_report(by_structure=False)). ⇒ THE HUMAN DRIFT VIEW IS
+         BE-NONE AND SHIPS IN THE CORE (M4). BE-8 collapses to agent parity.
+       • The real blocker was never the READ — it was the WRITER. Drift keys
+         on structure_node.arc_template_id and NOTHING in the product writes
+         it (the human's /arc/materialize writes outline_node + a ledger and
+         no structure_node; the agent's composition_arc_apply is a stub). So
+         the shipped read has no subject, forever. AT-6 closes it with ZERO
+         backend: POST /books/{bid}/arcs ALREADY accepts arc_template_id +
+         template_version (arc.py:342,354,482) and has no FE consumer. The
+         panel stamps provenance through it, right after materialize.
+
+     ► THIS MOCK COLOR-CODES ROUTE PROVENANCE, not field provenance. Every
+       section carries a route tape. teal = SHIPPED-BUT-UNCONSUMED (the whole
+       argument of this wave) · amber = live and already consumed · sand =
+       MUST BUILD · violet = PARKED (BE-8) · red = DEAD AT HEAD. A reviewer
+       must be able to check the estimate at a glance, because "this needs a
+       new engine" was exactly the claim that was wrong.
+
+     ► AND THE AUDIT WAS WRONG THE OTHER WAY TOO (spec §0.1 — added by the
+       adversarial review). It sized 拆文 as "BE: NONE — propose→confirm→POLL
+       is sufficient." The propose and the confirm are real. THE POLL IS NOT:
+         _execute_arc_import enqueues with project_id=None → _enqueue_motif_job
+         stamps a SYNTHETIC uuid4() (actions.py:552) with no composition_work
+         row → GET /jobs/{id} gates on _gate_work(job.project_id) → works.get()
+         → None → 404, ALWAYS. And composition_get_mine_job (the tool the
+         confirm response NAMES in its `poll` field) DEMANDS a project_id the
+         caller can never know. ⇒ A confirmed deconstruct enqueues a job that
+         NEITHER THE HUMAN NOR THE AGENT CAN READ. The spend happens; the
+         outcome is unreadable. That is silent-success-is-a-bug, shipped.
+         ⇒ BE-7c below. It also un-breaks motifApi.mineConfirm, which polls the
+         same dead route — a 4th live 404 the audit's §3.3 does not list.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • BE-7a  POST /v1/composition/arcs/{node_id}/extract-template — XS,
+         a thin wrapper over the SHIPPED engine extract_template_from_arc
+         (arc_apply.py:652). It is a Tier-A WRITE, so it CANNOT ride the BFF
+         FE_BRIDGE_TOOL_ALLOWLIST, whose own contract says "nothing here
+         writes" (tools.controller.ts:19-31). AT-3.
+       • BE-7b  POST /v1/composition/arc-templates/suggest — XS, wrapper over
+         MotifRetriever.retrieve_arcs. REST, not the allowlist, so no gateway
+         change at all. AT-4.
+       • BE-7c  GET /v1/composition/motif-jobs/{job_id} — XS, the MISSING
+         POLL. Owner-scoped (gate on generation_job.created_by), NOT book-
+         scoped: a Work-less job has no book to gate on. AT-11.
+       • THREE routes, all XS. Everything else on this screen — browse,
+         catalog, CRUD, adopt, apply-preview, materialize, the provenance
+         stamp, propose, confirm, AND the drift read — rides routes that
+         ALREADY SHIP.
+       • Gateway: ZERO changes (pathFilter is `startsWith('/v1/composition')`).
+       • BE-8 (agent parity) is PARKED to M5 and does not gate this panel.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① Library — 3 tiers (Mine / System / Catalog), the ⚠ imported chip.
+       ①b System row SELECTED — read-only, "Adopt to edit", NEVER a disabled
+          input. (AT-2's tenancy claim, DRAWN — not just asserted in a callout.)
+       ② Detail — timeline · apply-preview · materialize · AT-6's stamp.
+       ②b Materialize's FOUR error codes + the 409 replace re-confirm dialog.
+       ③ Drift — the report, AND all THREE distinct empty states (they must
+          not collapse into one: "not applied" ≠ 422 NO_TEMPLATE_PROVENANCE
+          ≠ 404 template gone).
+       ④ Suggest + Extract — two of the three routes we build.
+       ⑤ Import & Deconstruct — sources · configure · cost gate · run (BE-7c).
+       ⑥ Deconstruct's hard states — zero models (X-1!), awaiting confirm,
+          running, failed, 402 insufficient balance.
+       ⑦ BEFORE — the dangling CTA, and the ArcConformancePanel that is DEAD
+          ON BOTH CALLS at HEAD (a 4th live bug, not in the audit's three).
+
+     SCALE — a user's own library is tens of rows; the public catalog is the
+     one that grows without bound, so /arc-templates/catalog is paged (limit/
+     offset, server-side genre+q). The timeline grid is threads × chapters
+     (≤ ~40 × ~60) — no virtualization needed. import_source.content is
+     hard-capped at 20 000 chars by StringConstraints: the FE COUNTS AND
+     BLOCKS before submit; it does not let the server 422 an essay.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: route provenance */
+    --build: #e8b87e; --build-muted: #3a2e1e;
+    --parked: #b89ee8; --parked-muted: #2e2440;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.none { color: var(--accent); border-color: var(--accent); }
+  h2 .tag.build { color: var(--build); border-color: var(--build); }
+  h2 .tag.dead { color: var(--destructive); border-color: var(--destructive); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Route-provenance legend ──────────────────────────────────────────── */
+  .legend { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.s { background: var(--accent); } .swatch.l { background: var(--primary); }
+  .swatch.b { background: var(--build); } .swatch.k { background: var(--parked); } .swatch.d { background: var(--destructive); }
+
+  /* the route tape — every section states the route it rides + its status */
+  .rt { display: inline-flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+        padding: 2px 7px; border-radius: 4px; background: var(--secondary); color: var(--muted-fg); border-left: 2px solid var(--border); }
+  .rt.s { border-left-color: var(--accent); color: var(--accent-fg); background: var(--accent-muted); }
+  .rt.l { border-left-color: var(--primary); color: var(--primary); background: var(--primary-muted); }
+  .rt.b { border-left-color: var(--build); color: var(--build); background: var(--build-muted); }
+  .rt.k { border-left-color: var(--parked); color: var(--parked); background: var(--parked-muted); }
+  .rt.d { border-left-color: var(--destructive); color: var(--destructive); background: var(--destructive-muted); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; flex-shrink: 0; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }  /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; gap: 10px; font-size: 10.5px; color: var(--muted-fg); }
+
+  .wide { width: 1120px; max-width: 100%; }
+  .half { width: 550px; max-width: 100%; flex: 1 1 480px; }
+
+  /* ── Toolbar / tabs ───────────────────────────────────────────────────── */
+  .toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; }
+  .row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tabs { display: flex; gap: 2px; padding: 2px; background: var(--background); border: 1px solid var(--border); border-radius: 7px; flex-shrink: 0; }
+  .tabs .tab { height: 24px; padding: 0 11px; display: flex; align-items: center; gap: 6px; border-radius: 5px;
+    font-size: 11.5px; font-weight: 500; color: var(--muted-fg); cursor: pointer; white-space: nowrap; }
+  .tabs .tab:hover { color: var(--foreground); }
+  .tabs .tab.on { background: var(--secondary); color: var(--foreground); box-shadow: inset 0 0 0 1px var(--border-hover); }
+  .tabs .tab svg { width: 12px; height: 12px; }
+  .search-box { flex: 1; min-width: 120px; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12.5px; }
+  .search-box svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12.5px; }
+  .search-box .kbd { font-family: 'JetBrains Mono'; font-size: 9px; border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; }
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+  .chip { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid transparent; color: var(--muted-fg); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .chip.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+  .chip:hover:not(.active) { border-color: var(--border-hover); color: var(--foreground); }
+  .chip.disabled { opacity: .38; cursor: not-allowed; }
+  .chip-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+
+  /* ── List rows ────────────────────────────────────────────────────────── */
+  .cols { display: grid; grid-template-columns: 1fr 96px 168px 92px 92px 24px; gap: 10px; align-items: center; }
+  .thead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .trow { padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12.5px; }
+  .trow:hover { background: var(--card-hover); }
+  .trow.active { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+  .name-cell { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .name-cell .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name-cell .code { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); flex-shrink: 0; }
+  .span { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .span b { color: var(--foreground); font-weight: 500; }
+  .genre { display: flex; gap: 4px; flex-wrap: wrap; }
+  .g { font-size: 10px; padding: 1px 6px; border-radius: 100px; background: var(--secondary); color: var(--muted-fg); white-space: nowrap; }
+  .when { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .badge svg { width: 11px; height: 11px; }
+  .b-mine     { background: var(--primary-muted); color: var(--primary); }
+  .b-system   { background: #23303f; color: #8ab6e8; }
+  .b-catalog  { background: var(--accent-muted); color: var(--accent-fg); }
+  .b-imported { background: var(--parked-muted); color: var(--parked); }
+  .b-ok       { background: #16301f; color: var(--success); }
+  .b-warn     { background: var(--build-muted); color: var(--build); }
+  .b-bad      { background: var(--destructive-muted); color: var(--destructive); }
+
+  .btn { height: 27px; padding: 0 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn:hover { border-color: var(--border-hover); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.teal { background: var(--accent); border-color: var(--accent); color: #10201d; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 23px; padding: 0 9px; font-size: 11px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.danger { color: var(--destructive); }
+
+  /* ── Detail sections ──────────────────────────────────────────────────── */
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px 7px; flex-wrap: wrap;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .rt { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .sect-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .field { display: grid; grid-template-columns: 104px 1fr; gap: 10px; align-items: center; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .inp.err { border-color: var(--destructive); }
+  .inp.ro { background: transparent; border-color: transparent; color: var(--muted-fg); padding-left: 0; }
+  textarea.inp { resize: vertical; min-height: 46px; line-height: 1.45; font-family: inherit; }
+  .inline { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .hint { font-size: 10px; color: var(--muted-fg); line-height: 1.5; }
+  .hint b { color: var(--foreground); font-weight: 600; }
+  .err-msg { font-size: 10.5px; color: var(--destructive); display: flex; align-items: center; gap: 5px; }
+  .err-msg svg { width: 12px; height: 12px; flex-shrink: 0; }
+
+  /* ── Arc timeline grid (thread × chapter) ─────────────────────────────── */
+  .tl { display: grid; grid-template-columns: 118px repeat(18, 1fr); gap: 2px; align-items: center; }
+  .tl .ch { font-family: 'JetBrains Mono'; font-size: 8.5px; color: var(--muted-fg); text-align: center; }
+  .tl .th { font-size: 10.5px; color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 5px; }
+  .tl .th i { width: 3px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+  .cell { height: 17px; border-radius: 3px; background: var(--background); border: 1px solid var(--border); }
+  .cell.p { border-color: transparent; }
+  .cell.drop { background: repeating-linear-gradient(45deg, var(--destructive-muted), var(--destructive-muted) 3px, transparent 3px, transparent 6px);
+    border-color: var(--destructive); }
+
+  /* ── Drift ────────────────────────────────────────────────────────────── */
+  .drift-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 12px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; background: var(--background); padding: 10px 12px; }
+  .card h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg);
+    margin-bottom: 9px; display: flex; align-items: center; gap: 6px; }
+  .card h4 svg { width: 12px; height: 12px; }
+  .cov { display: grid; grid-template-columns: 116px 1fr 46px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 11px; }
+  .cov .bar { height: 5px; border-radius: 3px; background: var(--secondary); overflow: hidden; }
+  .cov .bar i { display: block; height: 100%; border-radius: 3px; }
+  .cov .v { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); text-align: right; }
+  .cov .v.bad { color: var(--destructive); }
+  .flag { display: flex; align-items: flex-start; gap: 7px; padding: 5px 0; font-size: 11px; line-height: 1.5; color: var(--muted-fg); }
+  .flag svg { width: 12px; height: 12px; margin-top: 2px; flex-shrink: 0; }
+  .flag b { color: var(--foreground); font-weight: 600; }
+  .flag.ok svg { color: var(--success); } .flag.warn svg { color: var(--warning); } .flag.bad svg { color: var(--destructive); }
+  .curve-legend { display: flex; gap: 14px; font-size: 10px; color: var(--muted-fg); margin-top: 6px; }
+  .curve-legend span { display: flex; align-items: center; gap: 5px; }
+  .curve-legend i { width: 12px; height: 2px; border-radius: 1px; }
+
+  /* ── Deconstruct steps ────────────────────────────────────────────────── */
+  .step { border-bottom: 1px solid var(--border); padding: 12px; }
+  .step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .n { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--primary-muted); border: 1px solid var(--primary); color: var(--primary);
+    font-family: 'JetBrains Mono'; font-size: 10px; font-weight: 500; }
+  .step-head h3 { font-size: 11.5px; font-weight: 600; }
+  .step-head .rt { margin-left: auto; }
+  .src-row { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--background); font-size: 12px; margin-bottom: 6px; cursor: pointer; }
+  .src-row:hover { border-color: var(--border-hover); }
+  .src-row.on { border-color: var(--accent); background: var(--accent-muted); }
+  .src-row .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .src-row .meta { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .paste { width: 100%; min-height: 60px; background: var(--background); border: 1px dashed var(--border-hover); border-radius: 7px;
+    color: var(--foreground); font: inherit; font-size: 12px; padding: 8px 9px; outline: none; resize: vertical; line-height: 1.5; }
+  .counter { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .counter.over { color: var(--destructive); }
+  .cost-card { border: 1px solid var(--primary); background: var(--primary-muted); border-radius: 8px; padding: 11px 12px; }
+  .cost-card .top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 11.5px; font-weight: 600; color: var(--primary); }
+  .cost-card .top svg { width: 13px; height: 13px; }
+  .cost-line { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted-fg); padding: 2px 0; }
+  .cost-line b { color: var(--foreground); font-weight: 600; font-family: 'JetBrains Mono'; font-size: 11px; }
+  .cost-card .acts { display: flex; gap: 7px; margin-top: 10px; align-items: center; }
+  .tok { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); opacity: .8; }
+  .model-pick { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); }
+  .model-pick .av { width: 18px; height: 18px; border-radius: 4px; background: var(--accent-muted); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .model-pick .av svg { width: 11px; height: 11px; }
+  .model-pick .nm { font-size: 12px; }
+  .model-pick .tier { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--accent); background: var(--accent-muted); padding: 1px 5px; border-radius: 3px; }
+  .progress { height: 4px; border-radius: 2px; background: var(--secondary); overflow: hidden; margin-top: 8px; }
+  .progress i { display: block; height: 100%; background: var(--primary); border-radius: 2px; }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1120px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout.good { border-left-color: var(--accent); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .mini { width: 258px; height: 320px; flex-shrink: 0; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .mini .body { padding: 12px 11px; }
+  .mini-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;
+    text-align: center; gap: 10px; padding: 0 6px; }
+  .mini-empty .big { color: var(--border-hover); }
+  .mini-empty .big svg { width: 26px; height: 26px; }
+  .mini-empty p { font-size: 11px; color: var(--muted-fg); line-height: 1.6; }
+  .strike { text-decoration: line-through; opacity: .5; }
+</style>
+</head>
+<body>
+
+<h1>Arc Templates <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panel + the 拆文 section, draft</span></h1>
+<p class="sub">
+  Spec: <b>34_arc_templates_and_deconstruct.md</b> · panel <code>arc-templates</code>, category <code>storyBible</code>. One panel with three top-level views —
+  <b>Library</b>, <b>Catalog</b>, <b>Import &amp; Deconstruct</b> — all three <b>kept mounted</b> (CSS <code>hidden</code>, never a ternary unmount: the deconstruct job poll must survive a tab switch).
+  拆文 is a <b>section inside</b> the library, not a panel of its own: an import's only product purpose is to <i>produce an arc template</i>, and splitting producer from consumer would re-fork the library across two docks.
+  Today the whole domain is <b>agent-only</b>, and the shipped empty state advertises a door that does not exist.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch s"></span><b>Shipped, ZERO FE consumers</b> — the route exists; this wave is its first caller</div>
+  <div class="item"><span class="swatch l"></span><b>Live + consumed</b> (legacy page)</div>
+  <div class="item"><span class="swatch b"></span><b>MUST BUILD</b> — 3 routes, XS each</div>
+  <div class="item"><span class="swatch k"></span><b>Parked</b> — BE-8, agent parity</div>
+  <div class="item"><span class="swatch d"></span><b>Dead at HEAD</b> — dropped</div>
+</div>
+
+<div class="callout good">
+  <b>Read the legend before you read the estimate.</b> The gap audit sized this wave on the assumption that the drift view needed a new engine. It does not:
+  <code>GET /works/{pid}/conformance?scope=arc_template_drift&amp;arc_id=…</code> is <b>shipped and wired</b> (<code>conformance.py:390-404</code>) with <b>zero</b> FE consumers, as are
+  <code>/arc-templates/catalog</code>, all 4 <code>/import-sources</code> routes, and <code>POST /books/{bid}/arcs</code> (which already accepts <code>arc_template_id</code>).
+  <b>Three routes get built</b> — extract, suggest, and <b>the poll</b> — all XS. Everything teal below is a route we are finally <i>calling</i>.
+</div>
+
+<div class="callout bad">
+  <b>The audit was wrong in the OTHER direction too, and this one COSTS us.</b> It sized 拆文 as <i>"BE: NONE — propose → confirm → <b>poll</b> is sufficient."</i>
+  The propose and the confirm are real. <b>The poll does not exist.</b> <code>_execute_arc_import</code> enqueues with <code>project_id=None</code>, so <code>_enqueue_motif_job</code> stamps a
+  <b>synthetic <code>uuid4()</code></b> (<code>actions.py:552</code>) that matches no <code>composition_work</code> row — and <b>both</b> readers gate on a Work:
+  <code>GET /jobs/{id}</code> → <code>works.get(&lt;synthetic&gt;)</code> → <code>None</code> → <b>404, always</b>; and <code>composition_get_mine_job</code> — <i>the very tool the confirm response names in its
+  <code>poll</code> field</i> — <b>demands a <code>project_id</code> the caller can never know</b>. <b>A confirmed deconstruct enqueues a job nobody can read.</b> The money is spent and the outcome is
+  unreachable: <code>silent-success-is-a-bug</code>, already shipped. <b>BE-7c</b> is the fix (owner-scoped read, gate on <code>created_by</code>) — and it un-breaks
+  <code>motifApi.mineConfirm</code>, which polls the same dead route. <b>That is a 4th live 404, not in the audit's three.</b>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① LIBRARY — three tiers, one browse
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Library <span class="tag">arc-templates</span> <span class="tag">storyBible</span> — Mine · System · Catalog</h2>
+<p class="sub">
+  <code>arc_template</code> has <b>no <code>book_id</code></b> (unlike <code>motif</code>) — so there is <b>no book-shared tier</b>, and this mock does not invent one (AT-2, OQ-6).
+  System rows (<code>owner_user_id IS NULL</code>) are admin-seeded and <b>not user-mutable</b>: <code>PATCH</code> is owner-filtered, so a System row 404s.
+  The GUI therefore renders <b>Adopt to edit</b> — never a disabled input, because a disabled field says <i>"you may not"</i> when the truth is <i>"clone it first"</i>.
+</p>
+
+<div class="panel wide" style="height:560px">
+  <div class="panel-head">
+    <span>Arc Templates</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="tabs" id="tabs">
+        <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>Library</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"/></svg>Catalog</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Import &amp; Deconstruct</div>
+      </div>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="Search names, codes, genre tags…" />
+        <span class="kbd">⌘F</span>
+      </div>
+      <span class="lbl">Genre</span>
+      <div class="select-wrap">
+        <select><option>all</option><option>xianxia</option><option>tiên hiệp</option><option>court intrigue</option><option>litrpg</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="chip active">Mine <span class="mono" style="font-size:9.5px;opacity:.8">3</span></div>
+      <div class="chip">System <span class="mono" style="font-size:9.5px;opacity:.8">6</span></div>
+      <div class="chip">Catalog <span class="mono" style="font-size:9.5px;opacity:.8">5</span></div>
+      <div class="chip-sep"></div>
+      <div class="chip">⚠ Imported only</div>
+      <div class="chip">Published</div>
+      <span class="rt s" style="margin-left:auto">GET /arc-templates?scope=all · GET /arc-templates/catalog ← 0 FE consumers</span>
+    </div>
+  </div>
+
+  <div class="thead cols">
+    <div>Template</div><div>Chapters</div><div>Genre</div><div>Tier</div><div>Updated</div><div></div>
+  </div>
+
+  <div class="body">
+    <div class="trow cols active">
+      <div class="name-cell"><span class="t">逆天改命</span><span class="code">nghich-thien</span></div>
+      <div class="span"><b>18</b> ch · 4 threads</div>
+      <div class="genre"><span class="g">xianxia</span><span class="g">爽文</span></div>
+      <div><span class="badge b-mine">Mine</span></div>
+      <div class="when">2 days ago</div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="name-cell"><span class="t">Nghịch Thiên Cải Mệnh (v2)</span><span class="code">nt-cai-menh-v2</span></div>
+      <div class="span"><b>22</b> ch · 5 threads</div>
+      <div class="genre"><span class="g">tiên hiệp</span><span class="g">phục thù</span></div>
+      <div><span class="badge b-mine">Mine</span></div>
+      <div class="when">6 days ago</div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="name-cell">
+        <span class="t">山海遺聞 (deconstructed)</span>
+        <span class="badge b-imported" title="source='imported' — publishing strips the source reference (AT-9)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          imported</span>
+        <span class="code">shanhai-24</span>
+      </div>
+      <div class="span"><b>24</b> ch · 6 threads</div>
+      <div class="genre"><span class="g">志怪</span><span class="g">群像</span></div>
+      <div><span class="badge b-mine">Mine</span></div>
+      <div class="when">11 min ago</div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="name-cell"><span class="t">Hero's Journey (12-beat)</span><span class="code">heros-journey</span></div>
+      <div class="span"><b>12</b> ch · 3 threads</div>
+      <div class="genre"><span class="g">—</span></div>
+      <div><span class="badge b-system">System</span></div>
+      <div class="when">seeded</div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="name-cell"><span class="t">Save the Cat! Beat Sheet</span><span class="code">save-the-cat</span></div>
+      <div class="span"><b>15</b> ch · 3 threads</div>
+      <div class="genre"><span class="g">—</span></div>
+      <div><span class="badge b-system">System</span></div>
+      <div class="when">seeded</div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="name-cell"><span class="t">Slow-burn Court Intrigue</span><span class="code">slow-court</span></div>
+      <div class="span"><b>30</b> ch · 7 threads</div>
+      <div class="genre"><span class="g">court intrigue</span><span class="g">宫斗</span></div>
+      <div><span class="badge b-catalog">Catalog</span></div>
+      <div class="when">adopted 41×</div>
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span><b class="mono" style="color:var(--foreground);font-weight:500">14</b> templates · 3 mine · 6 system · 5 catalog</span>
+    <div class="inline">
+      <button class="btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> New</button>
+      <button class="btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Extract from an arc</button>
+      <button class="btn sm primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.9 5.8H20l-4.9 3.6 1.9 5.8-4.9-3.6-4.9 3.6 1.9-5.8L4 8.8h6.1Z"/></svg> Suggest an arc</button>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>A System row has no edit affordance — it has an Adopt button.</b> CLAUDE.md User Boundaries: a System-tier row is admin-seeded and a regular user must never mutate it.
+  <code>PATCH /arc-templates/{id}</code> is owner-filtered in the repo (<code>arc.py:201-204</code>), so a System row already <b>404s</b> under H13's uniform not-found.
+  Rendering a greyed-out input would be a lie about <i>why</i>; the GUI renders the real path — clone it into your tier, then edit the clone. Same for a Catalog row.
+</div>
+
+<div class="callout">
+  <b>The ⚠ imported chip is not decoration — it is a promise about publishing (AT-9).</b> The DB trigger <code>arc_template_publish_strip</code> (<code>migrate.py:1065-1078</code>) rewrites
+  <code>source_ref</code> → an opaque <code>lineage:&lt;own id&gt;</code> on <i>any</i> <code>visibility → public|unlisted</code> transition of an imported row. It is a <b>trigger, not a prompt</b> — it cannot be
+  bypassed or forgotten. So the visibility control must say what it strips <b>before</b> the flip. A user who publishes and then discovers their database silently rewrote their source
+  reference has been surprised by their own data.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ①b SYSTEM ROW SELECTED — the tenancy claim, DRAWN
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>①b System row selected <span class="tag">Hero's Journey</span> — read-only, <span class="tag none">Adopt to edit</span></h2>
+<p class="sub">
+  The callout above <i>asserts</i> this; here it is <b>rendered</b>. A claim in prose that no mock draws is exactly the hand-waving the house style forbids — and this is the one state
+  where getting it wrong is a <b>tenancy defect</b>, not a cosmetic one.
+</p>
+
+<div class="stack">
+  <div class="panel" style="width:550px;max-width:100%;height:300px">
+    <div class="panel-head"><span style="color:var(--success)">After — the correct affordance</span></div>
+    <div class="body">
+      <div class="sect">
+        <div class="sect-head">Identity <span class="rt s">GET /arc-templates?scope=system · read-only</span></div>
+        <div class="sect-body">
+          <div class="field"><label>Name</label><input class="inp ro" value="Hero's Journey (12-beat)" readonly /></div>
+          <div class="field"><label>Code</label><input class="inp ro" value="heros-journey" readonly /></div>
+          <div class="field"><label>Tier</label><div class="inline"><span class="badge b-system">System</span>
+            <span class="hint"><code class="mono">owner_user_id IS NULL</code> — admin-seeded</span></div></div>
+          <div class="field"><label></label>
+            <div class="inline">
+              <button class="btn primary sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h10a2 2 0 0 1 2 2v10M16 8H6a2 2 0 0 0-2 2v10h10a2 2 0 0 0 2-2V8Z"/></svg> Adopt to edit</button>
+              <span class="hint">clones it into <b>your</b> tier — <code class="mono">POST /arc-templates/{id}/adopt</code></span>
+            </div></div>
+          <div class="hint">
+            <b>No edit affordance exists on this row at all</b> — not a greyed-out one. The fields render as flat text, and the only write is Adopt. Same for a Catalog row.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="width:470px;max-width:100%;height:300px">
+    <div class="panel-head"><span style="color:var(--destructive)">The wrong answer — do not build this</span></div>
+    <div class="body">
+      <div class="sect">
+        <div class="sect-head" style="color:var(--destructive)">Identity — disabled inputs</div>
+        <div class="sect-body">
+          <div class="field"><label>Name</label><input class="inp" value="Hero's Journey (12-beat)" disabled style="opacity:.38" /></div>
+          <div class="field"><label>Code</label><input class="inp" value="heros-journey" disabled style="opacity:.38" /></div>
+          <div class="field"><label></label><div class="inline"><button class="btn primary sm" disabled>Save</button></div></div>
+          <div class="hint" style="color:var(--destructive);line-height:1.6">
+            <b style="color:var(--destructive)">A disabled field says "you may not."</b> The truth is <b style="color:var(--foreground)">"clone it first."</b><br />
+            It also <b style="color:var(--foreground)">lies about the backend</b>: <code class="mono">PATCH /arc-templates/{id}</code> is owner-filtered in the repo (<code class="mono">arc.py:201-204</code>), so a
+            System row does not return <i>403 forbidden</i> — it returns a <b style="color:var(--foreground)">uniform H13 404</b>. There is no "permission" to grey out. The row simply
+            <b style="color:var(--foreground)">is not yours to address</b>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② DETAIL — timeline · apply-preview · materialize · AT-6's stamp
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② Detail <span class="tag">逆天改命</span> — timeline, apply-preview, materialize <span class="tag none">+ AT-6 provenance stamp · BE-NONE</span></h2>
+<p class="sub">
+  The apply is a <b>PURE preview</b> — <code>POST /arc-templates/{id}/apply</code> persists nothing (<code>arc.py:278-296</code>). Materialize commits it.
+  Then <b>AT-6</b> does the thing nothing in the product has ever done: it <b>stamps provenance</b> on the book's spec arc through
+  <code>POST /books/{bid}/arcs</code> — a shipped route with <code>arc_template_id</code> + <code>template_version</code> and <b>zero FE consumers</b>. Without that stamp,
+  <code>structure_node.arc_template_id</code> is never written by anything, and the drift read below has <b>no subject, forever</b>.
+</p>
+
+<div class="panel wide" style="height:660px">
+  <div class="panel-head">
+    <span>Arc Templates › 逆天改命</span>
+    <div class="acts">
+      <div class="ico" title="Back to list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- Identity -->
+    <div class="sect">
+      <div class="sect-head">Identity <span class="rt l">PATCH /arc-templates/{id} · If-Match: 7</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Name</label><input class="inp" value="逆天改命" /></div>
+        <div class="field"><label>Code</label>
+          <div>
+            <input class="inp err" value="nghich-thien" />
+            <div class="err-msg" style="margin-top:5px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              409 <span class="mono">ARC_TEMPLATE_CODE_EXISTS</span> — you already have a template with this code in <b style="color:var(--foreground)">zh</b>.
+            </div>
+          </div>
+        </div>
+        <div class="field"><label>Language</label>
+          <div class="inline"><div class="select-wrap"><select><option>zh</option><option>vi</option><option>en</option></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+            <span class="hint">part of the uniqueness key: <b>UNIQUE(owner, code, language)</b></span></div></div>
+        <div class="field"><label>Visibility</label>
+          <div class="inline">
+            <div class="select-wrap"><select id="vis"><option>private</option><option>unlisted</option><option>public</option></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+            <span class="hint">6 of 20 published</span>
+          </div></div>
+        <div class="field"><label>Chapter span</label><div class="inline">
+          <input class="inp" style="width:56px" value="18" /><span class="hint">chapters · rescaled on apply</span></div></div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="sect">
+      <div class="sect-head">Structure — thread × chapter <span class="rt l">ArcTimelineEditor · lifted as-is (4 test files)</span></div>
+      <div class="sect-body">
+        <div class="tl">
+          <div></div>
+          <div class="ch">1</div><div class="ch">2</div><div class="ch">3</div><div class="ch">4</div><div class="ch">5</div><div class="ch">6</div><div class="ch">7</div><div class="ch">8</div><div class="ch">9</div><div class="ch">10</div><div class="ch">11</div><div class="ch">12</div><div class="ch">13</div><div class="ch">14</div><div class="ch">15</div><div class="ch">16</div><div class="ch">17</div><div class="ch">18</div>
+
+          <div class="th"><i style="background:var(--primary)"></i>復仇 · revenge</div>
+          <div class="cell p" style="background:var(--primary-muted)"></div><div class="cell"></div><div class="cell p" style="background:var(--primary-muted)"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:var(--primary)"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:var(--primary-muted)"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:var(--primary)"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:var(--primary-muted)"></div><div class="cell"></div><div class="cell p" style="background:var(--primary)"></div>
+
+          <div class="th"><i style="background:var(--accent)"></i>師徒 · mentor</div>
+          <div class="cell"></div><div class="cell p" style="background:var(--accent-muted)"></div><div class="cell"></div><div class="cell p" style="background:var(--accent)"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:var(--accent-muted)"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:var(--accent)"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell drop" title="folded away on rescale — see the drop/merge report"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+
+          <div class="th"><i style="background:#b89ee8"></i>身世 · origin</div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#2e2440"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#b89ee8"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#2e2440"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#b89ee8"></div><div class="cell"></div>
+
+          <div class="th"><i style="background:#5496e8"></i>宗門 · sect politics</div>
+          <div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#23303f"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#5496e8"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#23303f"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell p" style="background:#5496e8"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+        </div>
+        <div class="hint" style="margin-top:2px">
+          Solid = a beat placement · muted = a supporting placement · <span style="color:var(--destructive)">hatched</span> = <b>folded away</b> by the rescale below.
+          The grid is a chip/select over an <b>OCC entity</b>: writes are <b>chained</b> (a rapid second cell edit must not race the first into a self-412) and each debounced write is
+          <b>bound to the template id it was started for</b>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Apply preview -->
+    <div class="sect">
+      <div class="sect-head">Apply — preview onto <b style="color:var(--foreground);text-transform:none;letter-spacing:0;font-weight:600">Thiên Kiếm Lục</b> (24 chapters)
+        <span class="rt l">POST /arc-templates/{id}/apply · PURE, persists nothing, $0</span></div>
+      <div class="sect-body">
+        <div class="inline" style="gap:14px">
+          <span class="badge b-ok">rescale 18 → 24 ch</span>
+          <span class="badge b-ok">roster bound · 4/4 threads</span>
+          <span class="badge b-warn">1 placement folded away</span>
+        </div>
+        <div class="card" style="border-color:var(--build)">
+          <h4 style="color:var(--build)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            Drop / merge report — 1 unmaterialized placement
+          </h4>
+          <div class="flag warn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            <span>Thread <b>師徒 · mentor</b>, template ch. 15 → merged into ch. 19's placement (scale factor 1.33 collapsed two adjacent beats).
+              <b>A motif lost to a scale mismatch is never silent</b> — <code class="mono">arc.py:288</code>.</span>
+          </div>
+        </div>
+        <div class="inline">
+          <button class="btn primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Materialize onto this book</button>
+          <span class="hint">→ <code class="mono">POST /works/{pid}/arc/materialize</code> · then <b>AT-6</b>'s stamp · deterministic, no LLM, <b>$0</b> — and therefore <b>not</b> wrapped in a cost card.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AT-6 stamp -->
+    <div class="sect">
+      <div class="sect-head" style="color:var(--accent)">AT-6 · The provenance stamp (what materialize never did)
+        <span class="rt s">POST /books/{bid}/arcs {arc_template_id, template_version} ← 0 FE consumers</span></div>
+      <div class="sect-body">
+        <div class="flag ok">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+          <span><b>Materialized</b> — 24 outline nodes, 61 scenes, 18 motif applications. <span class="mono" style="font-size:10px">work 019d5e3c…</span></span>
+        </div>
+        <div class="flag ok">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+          <span><b>Spec arc stamped</b> — <code class="mono">structure_node</code> <span class="mono" style="font-size:10px">a7f2…</span> ← <code class="mono">arc_template_id = 逆天改命 · template_version 7</code>,
+            <b>assigned 24 / 24 chapters</b> <span class="mono" style="font-size:10px;color:var(--success)">✓ verified by count</span></span>
+        </div>
+        <div class="hint">
+          <b>The "24 / 24" is not decoration — it is the guard.</b> <code class="mono">assign-chapters</code> answers <code class="mono">{assigned: n}</code> with HTTP 200 even when <code class="mono">n = 0</code>.
+          The panel asserts <code class="mono">assigned === chapter_ids.length</code> (the ids <b>materialize itself returned</b>) and errors on a mismatch — see ②b's last callout.
+          It reuses <code class="mono">planHubApi.assignArcChapters</code> (<code class="mono">plan-hub/api.ts:248</code>), which <b>already exists</b>: no second caller of the same table.
+        </div>
+        <div class="hint">
+          On a <b>second</b> materialize of the same template (OQ-2), the panel <b>matches on <code>(book_id, arc_template_id)</code> and PATCHes the existing node</b> — it does not create a second one.
+          (<code class="mono">structure.py</code>'s <code class="mono">_UPDATABLE_COLUMNS</code> does include <code class="mono">arc_template_id</code> + <code class="mono">template_version</code>, so the PATCH really persists them — verified, not assumed.)
+          A duplicate spec arc would make drift ambiguous, which is the failure this stamp exists to prevent.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span class="mono">v7 · saved 4 min ago</span>
+    <div class="inline">
+      <button class="btn">Revert</button>
+      <button class="btn primary">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>412 is a reconcile, never a clobber.</b> <code>PATCH /arc-templates/{id}</code> takes <code>If-Match: &lt;version&gt;</code> and returns
+  <b>412 <code>ARC_TEMPLATE_VERSION_CONFLICT</code> with the server's <code>current</code> row in the body</b> (<code>arc.py:215-229</code>). The panel's path: show
+  <i>"changed elsewhere — reloaded"</i>, replace the editor's <b>baseline</b> with <code>current</code>, <b>keep the user's unsaved edits in the form</b>, and re-enable Save at the new version.
+  Discarding the user's typing on a 412 is the same defect as clobbering the server's — it just loses the other person's work instead.
+</div>
+
+<div class="callout bad">
+  <b>The FE stamp is DEBT the moment M1 lands, and it is recorded as such (OQ-1).</b> The honest server-side answer is for <code>materialize</code> to stamp provenance inside its own
+  transaction — but that means editing <code>plan.py</code>'s 130-line commit path, shared with decompose, whose blast radius is far beyond this wave. So v1 stamps from the FE with 2 calls
+  against 2 shipped routes. <b>When BE-8's <code>apply_arc_to_spec</code> lands (M5), it owns the transactional version and this FE stamp must be DELETED — not left behind as a second writer
+  of the same column.</b> Two writers of one identity is exactly the bug the KG↔glossary anchor shipped.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ②b MATERIALIZE'S FOUR ERRORS + the 409 replace dialog
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>②b Materialize — the four refusals, and the one that is a <span class="tag dead">silent no-op if you don't check it</span></h2>
+<p class="sub">
+  <code>POST /works/{pid}/arc/materialize</code> has <b>four</b> distinct refusals and a <b>replace</b> negotiation. Each is a different sentence; none is a toast. Rendered here because a
+  spec that only <i>names</i> error codes ships a panel that renders <i>"something went wrong"</i> for all four.
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span style="color:var(--warning)">400 NO_CHAPTERS</span></div>
+    <div class="body" style="padding:11px">
+      <p class="hint" style="line-height:1.7"><b style="color:var(--foreground)">Materialize maps onto chapters that already exist</b> — it never mints them (like decompose).
+        <br /><br />Create chapters first.</p>
+      <button class="btn sm primary" style="margin-top:8px">Open manuscript ↗</button>
+      <p class="hint" style="margin-top:9px">Also <span class="mono" style="font-size:9px">TOO_MANY_CHAPTERS</span> — the book exceeds <code class="mono" style="font-size:9px">plan_max_chapters</code>; render the count and the max, not "too many".</p>
+    </div>
+  </div>
+
+  <div class="panel mini" style="height:300px">
+    <div class="panel-head"><span style="color:var(--destructive)">400 NO_MATERIALIZABLE_PLACEMENTS</span></div>
+    <div class="body" style="padding:11px">
+      <p class="hint" style="line-height:1.6">Nothing in the plan resolved. The server returns <code class="mono" style="font-size:9px">unresolved_placements</code> — <b style="color:var(--foreground)">render it</b>:</p>
+      <div class="card" style="margin-top:8px;border-color:var(--destructive)">
+        <div class="flag bad"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span><code class="mono" style="font-size:9px">師徒</code> · no motif with this code in your tier</span></div>
+        <div class="flag bad"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span><code class="mono" style="font-size:9px">宗門</code> · pinned <code class="mono" style="font-size:9px">motif_id</code> no longer visible</span></div>
+      </div>
+      <p class="hint" style="margin-top:8px"><b style="color:var(--foreground)">The user needs to see WHICH motif failed</b>, or the refusal is unactionable.</p>
+    </div>
+  </div>
+
+  <div class="panel" style="width:470px;max-width:100%;height:300px">
+    <div class="panel-head"><span style="color:var(--warning)">409 CHAPTER_ALREADY_PLANNED — the replace re-confirm</span></div>
+    <div class="body" style="padding:12px">
+      <div class="card" style="border-color:var(--warning)">
+        <h4 style="color:var(--warning)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          6 chapters already carry a plan
+        </h4>
+        <p class="hint" style="line-height:1.6">Materializing with <code class="mono">replace=true</code> will <b style="color:var(--foreground)">overwrite the existing scenes</b> in:</p>
+        <p class="mono" style="font-size:10px;color:var(--foreground);margin-top:6px;line-height:1.7">ch 3 · ch 4 · ch 7 · ch 11 · ch 12 · ch 18</p>
+        <p class="hint" style="margin-top:6px">↑ the <b style="color:var(--foreground)">exact <code class="mono">chapter_ids</code> the server returned</b> — never a bare count, and never an unlisted "some".</p>
+        <div class="inline" style="margin-top:10px">
+          <button class="btn sm danger">Replace these 6</button>
+          <button class="btn sm ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>And the fifth failure has no error code at all — which is why it is the dangerous one.</b> AT-6's stamp finishes with
+  <code>POST /books/{bid}/arcs/assign-chapters</code>, which matches chapter rows <i>by predicate</i> and answers <code>{assigned: &lt;count&gt;}</code>. If the ids don't match the predicate it
+  returns <b><code>{assigned: 0}</code> with HTTP 200</b> — a <b>silent success</b>. The panel <b>MUST assert <code>assigned === chapter_ids.length</code></b> and raise an error on a mismatch,
+  never a checkmark. Skip that assertion and the stamp no-ops, <code>structure_node.arc_template_id</code> stays NULL, and <b>Drift renders <code>422 NO_TEMPLATE_PROVENANCE</code> forever</b> —
+  the panel would be quietly broken while every test stayed green. <i>(`silent-success-is-a-bug`; `noop-guard-on-partial-data`.)</i>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ DRIFT — the audit correction, rendered
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ Drift <span class="tag none">BE-NONE — the route already ships</span> — how far has the book wandered from its template?</h2>
+<p class="sub">
+  This is the view the audit told us to park. It reads <code>GET /works/{pid}/conformance?scope=arc_template_drift&amp;arc_id=&lt;structure_node_id&gt;</code>
+  (<code>conformance.py:390-404</code> → <code>compute_arc_report(by_structure=False)</code>) — <b>shipped, wired, zero FE consumers</b>. The <b>Used by</b> list above it is
+  <code>GET /books/{bid}/arcs</code> (already consumed by plan-hub) filtered client-side on <code>arc_template_id === template.id</code> — which only returns rows <i>because</i> AT-6 stamps them.
+</p>
+
+<div class="panel wide" style="height:430px">
+  <div class="panel-head">
+    <span>逆天改命 › Drift — Thiên Kiếm Lục, ch. 1–24</span>
+    <div class="acts">
+      <div class="ico" title="Re-run"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar" style="padding:8px 12px">
+    <div class="row2">
+      <span class="lbl">Used by</span>
+      <div class="chip active">Thiên Kiếm Lục · ch 1–24 <span class="mono" style="font-size:9.5px;opacity:.8">v7</span></div>
+      <div class="chip">Nghịch Thiên · ch 1–18 <span class="mono" style="font-size:9.5px;opacity:.8">v5</span></div>
+      <span class="rt s" style="margin-left:auto">GET /works/{pid}/conformance?scope=arc_template_drift ← 0 FE consumers</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="drift-grid">
+      <div class="card">
+        <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 4-6"/></svg> Thread coverage — realized vs template</h4>
+        <div class="cov"><span>復仇 · revenge</span><div class="bar"><i style="width:100%;background:var(--success)"></i></div><span class="v">6/6</span></div>
+        <div class="cov"><span>師徒 · mentor</span><div class="bar"><i style="width:80%;background:var(--warning)"></i></div><span class="v">4/5</span></div>
+        <div class="cov"><span>身世 · origin</span><div class="bar"><i style="width:100%;background:var(--success)"></i></div><span class="v">4/4</span></div>
+        <div class="cov"><span>宗門 · sect</span><div class="bar"><i style="width:40%;background:var(--destructive)"></i></div><span class="v bad">2/5</span></div>
+        <div class="hint" style="margin-top:8px">
+          <b>宗門</b> has drifted hardest: 3 of its 5 template placements have no realized beat in the prose. That is not automatically wrong — it is what the author needs to <i>see</i>.
+        </div>
+      </div>
+
+      <div class="card">
+        <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h4l3-9 4 18 3-9h6"/></svg> Pacing curve — template (rescaled) vs realized</h4>
+        <svg viewBox="0 0 340 96" style="width:100%;height:96px">
+          <line x1="0" y1="88" x2="340" y2="88" stroke="#332d28" stroke-width="1"/>
+          <line x1="0" y1="48" x2="340" y2="48" stroke="#332d28" stroke-width="1" stroke-dasharray="3 4"/>
+          <polyline points="6,74 32,68 60,60 88,66 116,44 144,38 172,50 200,28 228,34 256,20 284,30 312,12 334,22"
+                    fill="none" stroke="#3da692" stroke-width="2" stroke-linejoin="round"/>
+          <polyline points="6,78 32,76 60,70 88,72 116,62 144,40 172,36 200,42 228,26 256,32 284,18 312,26 334,10"
+                    fill="none" stroke="#e8a832" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4 3"/>
+        </svg>
+        <div class="curve-legend">
+          <span><i style="background:#3da692"></i>template, rescaled 18 → 24</span>
+          <span><i style="background:#e8a832"></i>realized (scene tension)</span>
+        </div>
+        <div class="hint" style="margin-top:6px">The realized midpoint lands <b>2 chapters late</b> and the climb into the climax is flatter than the template's.</div>
+      </div>
+
+      <div class="card">
+        <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg> Structural succession</h4>
+        <div class="flag ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>Beat order preserved on <b>復仇</b> and <b>身世</b>.</span></div>
+        <div class="flag warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          <span><b>宗門</b>'s reveal precedes its setup — ch. 9 pays off a beat the template plants in ch. 13.</span></div>
+        <div class="flag bad"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span>Template beat <b>師徒 · the mentor's death</b> has <b>no realized scene</b> in ch. 1–24.</span></div>
+      </div>
+
+      <div class="card">
+        <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg> Unmaterialized (folded away) — §12.6</h4>
+        <div class="flag warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span><b>師徒</b> template ch. 15 → merged into realized ch. 19 at apply time.</span></div>
+        <div class="hint" style="margin-top:4px">
+          <b>This card is the whole point of the report.</b> A placement that vanished into a scale mismatch is the one thing an author cannot recover by re-reading their own book —
+          it never got written. It is surfaced at apply time <i>and</i> preserved here.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span class="mono">computed 8s ago · coarse report (by_structure=false)</span>
+    <button class="btn sm">Open in <span style="color:var(--accent)">quality-conformance</span> ↗</button>
+  </div>
+</div>
+
+<h2>③b Drift's three empty states — <span class="tag dead">they must NOT collapse into one</span></h2>
+<p class="sub">
+  Three different truths, three different sentences. Collapsing them into a generic "no data" is how a <b>silently no-op'd AT-6 stamp</b> would hide: the panel would render an
+  empty report instead of telling you the arc has no provenance. <b>The live browser smoke asserts the drift report RENDERS</b> — which is transitively the assertion that the stamp landed.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span>① Not applied here</span></div>
+    <div class="body"><div class="mini-empty">
+      <span class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+      <p><b style="color:var(--foreground)">Not applied to this book yet.</b><br />No spec arc references this template.</p>
+      <p class="mono" style="font-size:9.5px;opacity:.7">no call made — the Used-by list is empty</p>
+      <button class="btn sm primary">Apply to Thiên Kiếm Lục</button>
+    </div></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--warning)">② No provenance — 422</span></div>
+    <div class="body"><div class="mini-empty">
+      <span class="big" style="color:var(--warning)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></span>
+      <p><b style="color:var(--foreground)">This arc was authored directly —<br />there is no template to drift from.</b></p>
+      <p class="mono" style="font-size:9.5px;color:var(--warning)">422 NO_TEMPLATE_PROVENANCE</p>
+      <p style="font-size:10px">Not a spinner. Not a zero. <b style="color:var(--foreground)">If you see this after materializing, AT-6's stamp silently no-op'd.</b></p>
+    </div></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">③ Template gone — 404</span></div>
+    <div class="body"><div class="mini-empty">
+      <span class="big" style="color:var(--destructive)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+      <p><b style="color:var(--foreground)">The source template is no longer available.</b><br />It was deleted, or it belongs to someone else.</p>
+      <p class="mono" style="font-size:9.5px;color:var(--destructive)">404 · H13 uniform</p>
+      <p style="font-size:10px">Never worded as <span class="strike">"not found"</span> — a uniform 404 must not double as an <b style="color:var(--foreground)">existence oracle</b> for a stranger's row.</p>
+    </div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ SUGGEST + EXTRACT — the only two routes we build
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ Suggest + Extract <span class="tag build">BE-7b + BE-7a — two of the wave's three routes (BE-7c is the poll, ⑤)</span></h2>
+<p class="sub">
+  Both are <b>XS thin wrappers over engines that already ship</b> — <code>MotifRetriever.retrieve_arcs</code> and <code>extract_template_from_arc</code> (<code>arc_apply.py:652</code>), today
+  reachable only by MCP. <b>Extract cannot ride the BFF bridge allowlist</b>: it is a <b>Tier-A WRITE</b>, and the allowlist's own contract says <i>"nothing here writes or deletes"</i>
+  (<code>tools.controller.ts:19-31</code>). Adding a write to it would silently void the BFF's stated trust model — so it gets a REST route. Suggest takes REST too, for symmetry and to skip a
+  gateway change entirely (<code>pathFilter</code> is generic: a new <code>/v1/composition</code> route is auto-proxied).
+</p>
+
+<div class="stack">
+  <div class="panel half" style="height:430px">
+    <div class="panel-head"><span>Suggest an arc for this premise</span>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+    </div>
+    <div class="body">
+      <div class="sect">
+        <div class="sect-head">Premise <span class="rt b">POST /arc-templates/suggest · MUST BUILD (XS)</span></div>
+        <div class="sect-body">
+          <textarea class="inp" style="min-height:52px">A disgraced sword-cultivator returns to the sect that exiled her, carrying the name of the man who framed her — and a debt she does not remember owing.</textarea>
+          <div class="hint">Seeded from the book's <code class="mono">summary</code>. There is no first-class <code class="mono">premise</code> field on <code class="mono">composition_work</code> yet (OQ-3) — that belongs to Wave 6, not here.</div>
+          <div class="inline">
+            <div class="select-wrap"><select><option>genre: xianxia</option><option>genre: any</option></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+            <div class="select-wrap"><select><option>detail: summary</option><option>detail: full</option></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+            <button class="btn primary sm">Suggest</button>
+          </div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head">Ranked candidates — <span style="color:var(--accent);text-transform:none;letter-spacing:0">with the match_reason the engine already returns</span></div>
+        <div class="sect-body" style="gap:8px">
+          <div class="card">
+            <div class="inline" style="justify-content:space-between">
+              <b style="font-size:12px">逆天改命</b><span class="mono" style="font-size:11px;color:var(--success)">0.87</span>
+            </div>
+            <div class="hint" style="margin-top:5px">
+              <b>match_reason:</b> genre <span class="mono">xianxia</span> exact · thread <span class="mono">復仇</span> ↔ "framed her" (0.91) ·
+              thread <span class="mono">宗門</span> ↔ "the sect that exiled her" (0.84) · chapter span 18 ≈ book 24 (rescale 1.33)
+            </div>
+          </div>
+          <div class="card">
+            <div class="inline" style="justify-content:space-between">
+              <b style="font-size:12px">Slow-burn Court Intrigue</b><span class="mono" style="font-size:11px;color:var(--muted-fg)">0.61</span>
+            </div>
+            <div class="hint" style="margin-top:5px">
+              <b>match_reason:</b> thread <span class="mono">復仇</span> ↔ "carrying the name" (0.72) · <span style="color:var(--warning)">genre mismatch</span> (court intrigue ≠ xianxia) · span 30 vs 24
+            </div>
+          </div>
+          <div class="hint">
+            <b>Never throw <code class="mono">match_reason</code> away.</b> It is the <i>only</i> explanation a user gets for a ranked list. A bare score is a magic number; a broken-down
+            score is a decision they can disagree with.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-foot"><span class="mono">2 of 5 candidates · retrieve_arcs (SQL prefilter → embed → cosine)</span></div>
+  </div>
+
+  <div class="panel half" style="height:430px">
+    <div class="panel-head"><span>Extract — save this arc as a template</span>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+    </div>
+    <div class="body">
+      <div class="sect">
+        <div class="sect-head">Source arc <span class="rt b">POST /arcs/{node_id}/extract-template · MUST BUILD (XS)</span></div>
+        <div class="sect-body">
+          <div class="src-row on">
+            <span class="badge b-ok">arc</span>
+            <span class="t">Act II — The Salt Court</span>
+            <span class="meta">ch 9–21 · 5 threads · 31 placements</span>
+          </div>
+          <div class="src-row">
+            <span class="badge b-ok">arc</span>
+            <span class="t">Act I — The Ash Gate</span>
+            <span class="meta">ch 1–8 · 3 threads · 14 placements</span>
+          </div>
+          <div class="hint">Grant is derived from the <b>arc row's own book</b> (<code class="mono">_arc_or_deny</code>) — never from a body-supplied <code class="mono">book_id</code>.</div>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head">New template</div>
+        <div class="sect-body">
+          <div class="field"><label>Name</label><input class="inp" value="Salt Court (from Thiên Kiếm Lục)" /></div>
+          <div class="field"><label>Code</label>
+            <div>
+              <input class="inp err" value="salt-court" />
+              <div class="err-msg" style="margin-top:5px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                409 duplicate <span class="mono">(owner, code, language)</span> — rendered <b style="color:var(--foreground)">on the field</b>, not as a toast.
+              </div>
+            </div>
+          </div>
+          <div class="field"><label>Language</label><div class="select-wrap" style="width:100%">
+            <select style="width:100%"><option>vi</option><option>en</option><option>zh</option></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+          <div class="field"><label>Visibility</label><div class="select-wrap" style="width:100%">
+            <select style="width:100%"><option>private</option><option>unlisted</option></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+          <div class="hint">
+            The engine deliberately does <b>not</b> swallow the <code class="mono">UniqueViolationError</code> (<code class="mono">arc_apply.py:660-666</code>) — the REST wrapper maps it to
+            <b>409</b> and the field owns the message. A swallowed duplicate would silently overwrite a template the user still uses.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-foot">
+      <span class="mono">arc a7f2… · 13 chapters</span>
+      <button class="btn primary sm">Extract</button>
+    </div>
+  </div>
+</div>
+
+<div class="callout good">
+  <b>Extract is the half that makes a library a library.</b> Apply lets you consume structure; extract lets the library <b>grow out of your own finished work</b>. Today it has no surface at
+  all — the engine has shipped since <code>arc_apply.py:652</code> and only an agent can reach it. Without extract, this panel is a catalog you shop in. With it, it is a place your own
+  craft accumulates.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ IMPORT & DECONSTRUCT — the 拆文 section
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ Import &amp; Deconstruct <span class="tag">拆文</span> <span class="tag build">steps 1–3 ship today · step 4 is BE-7c</span></h2>
+<p class="sub">
+  Four steps, one column, inside the panel. The cost gate rides the <b>generic</b> Tier-W spine and nothing else:
+  <code>mcpExecute('composition_arc_import_analyze')</code> → <code>{confirm_token, estimate}</code> → <code>POST /v1/composition/actions/confirm?token=…</code> → <code>job_id</code> → poll.
+  The tool is <b>already on the BFF FE-bridge allowlist</b> (<code>tools.controller.ts:24-31</code>) and the confirm effect is shipped — <b>but the poll is not</b> (see the callout above).
+  Steps 1–3 are pure new-consumer work; <b>step 4 needs BE-7c</b>, and without it this flow spends money and then spins forever.
+</p>
+
+<div class="panel wide" style="height:700px">
+  <div class="panel-head">
+    <span>Arc Templates › Import &amp; Deconstruct</span>
+    <div class="acts">
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- step 1 -->
+    <div class="step">
+      <div class="step-head">
+        <span class="n">1</span><h3>Source</h3>
+        <span class="rt s">GET|POST|DELETE /import-sources ← 0 FE consumers</span>
+      </div>
+      <div class="src-row on">
+        <span class="badge b-catalog">zh</span>
+        <span class="t">山海遺聞 — 第一至第九章（節選）</span>
+        <span class="meta">19,204 / 20,000 chars · 3 days ago</span>
+        <span class="ico" title="Delete — hard, no restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+      </div>
+      <div class="src-row">
+        <span class="badge b-catalog">vi</span>
+        <span class="t">Nghịch Thiên — chương 1–12</span>
+        <span class="meta">17,880 / 20,000 chars · 2 weeks ago</span>
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+      </div>
+      <textarea class="paste" style="margin-top:8px" placeholder="…or paste a reference text here (or drop a .txt / .md file)">第一章 · 潮生
+
+海上生明月，天涯共此時。舟中人不記得自己是誰，只記得那把刀的重量……</textarea>
+      <div class="counter over">
+        <span>21,430 / 20,000 chars — <b>1,430 over. Trim before submitting.</b></span>
+        <span>StringConstraints(max_length=20000)</span>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        The FE <b>counts and blocks at 20 000</b>. It does not let the server 422 an essay the user just spent five minutes pasting.
+        <b>Delete is a hard delete</b> — there is no restore, and the button says so.
+      </div>
+    </div>
+
+    <!-- step 2 -->
+    <div class="step">
+      <div class="step-head">
+        <span class="n">2</span><h3>Configure</h3>
+        <span class="rt l">ModelPicker · capability: chat · BYOK via provider-registry</span>
+      </div>
+      <div class="sect-body" style="padding:0">
+        <div class="field"><label>Arc hint</label><input class="inp" value="focus on the 群像 ensemble threading, not the single-MC spine" /></div>
+        <div class="field"><label>Language</label>
+          <div class="inline">
+            <div class="select-wrap"><select><option>zh (detected)</option><option>vi</option><option>en</option></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+            <span class="hint"><b>A first-class dedup + embed key.</b> A <code class="mono">zh</code> work tagged <code class="mono">en</code> is a later re-key <i>migration</i> — so this control is prominent, not a footnote.</span>
+          </div></div>
+        <div class="field"><label>Web search</label>
+          <div class="inline"><span class="badge b-warn">off</span><span class="hint">A tool credential (BYOK), not LLM spend — priced separately in the estimate.</span></div></div>
+        <div class="field"><label>Model <b style="color:var(--destructive)">*</b></label>
+          <div class="model-pick">
+            <span class="av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></span>
+            <span class="nm">Qwen3 35B — lm_studio (local)</span>
+            <span class="tier">source: user_models · BYOK</span>
+            <span class="ico" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
+          </div></div>
+        <div class="hint">
+          <b>Required (AT-8) — no hidden default on a spending action.</b> The panel renders the <b>effective model + its source tier</b>. The worker's platform fallback
+          (<code class="mono">settings.motif_deconstruct_model_ref</code>) is <b>never allowed to be the silent payer</b>. Submit is <b>impossible</b> without a model — not merely warned.
+        </div>
+      </div>
+    </div>
+
+    <!-- step 3 -->
+    <div class="step">
+      <div class="step-head">
+        <span class="n">3</span><h3>Cost gate — the spend has NOT happened yet</h3>
+        <span class="rt s">mcpExecute(propose) → POST /actions/confirm?token=… ← generic spine</span>
+      </div>
+      <div class="cost-card">
+        <div class="top">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Confirm the deconstruct
+        </div>
+        <div class="cost-line"><span>Estimated cost</span><b>$0.0000</b></div>
+        <div class="cost-line"><span>Model</span><b>Qwen3 35B · lm_studio (local)</b></div>
+        <div class="cost-line"><span>Tokens</span><b>≈ 21,480 in / 6,200 out</b></div>
+        <div class="cost-line"><span>Confirm token</span><span class="tok">composition.arc_import · expires in 4m 51s</span></div>
+        <div class="acts">
+          <button class="btn primary">Confirm &amp; run</button>
+          <button class="btn ghost">Cancel</button>
+          <span class="hint" style="margin-left:auto">A local model is <b>$0</b> — the gate still runs. A gate that only appears when it is expensive teaches users to click through it.</span>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        ⚠ The MCP tool takes a <b>single Pydantic <code class="mono">args</code> model</b>, so the bridge body must <b>NEST the fields under <code class="mono">args</code></b> — a flat body fails
+        arg-validation. Verified live, commented at <code class="mono">motif/api.ts:251-253</code>. <b>Copy the nesting; do not "clean it up".</b>
+      </div>
+    </div>
+
+    <!-- step 4 -->
+    <div class="step" style="border-bottom:none">
+      <div class="step-head">
+        <span class="n">4</span><h3>Run</h3>
+        <span class="rt b">GET /motif-jobs/{id} · BE-7c · MUST BUILD (XS)</span>
+      </div>
+      <div class="hint" style="margin-bottom:9px;border-left:2px solid var(--build);padding-left:8px">
+        <b style="color:var(--build)">This step does not work at HEAD.</b> <code class="mono">GET /v1/composition/jobs/{id}</code> gates on the job's <code class="mono">project_id</code>, which for an import job is a
+        <b>synthetic <code class="mono">uuid4()</code></b> with no Work behind it ⇒ <b>404, always</b>. <b>BE-7c</b> gates on <code class="mono">generation_job.created_by</code> instead — the row's real scope key.
+        <b>The FE must not swallow the 404 into an endless spinner</b>: an unreadable job is an <i>error</i>, and the panel says so.
+      </div>
+      <div class="card">
+        <div class="inline" style="justify-content:space-between">
+          <span class="inline"><span class="badge b-ok">completed</span><b style="font-size:12px">analyze_reference</b></span>
+          <span class="mono" style="font-size:10px;color:var(--muted-fg)">job 4c1e… · 2m 14s</span>
+        </div>
+        <div class="progress"><i style="width:100%"></i></div>
+        <div class="flag ok" style="margin-top:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>New template <b>山海遺聞 (deconstructed)</b> — 24 chapters, 6 threads, 38 placements.
+            <button class="btn sm teal" style="margin-left:6px">Open in Library ↗</button></span>
+        </div>
+        <div class="hint" style="margin-top:4px">
+          On <code class="mono">completed</code>: invalidate <code class="mono">['composition','arc-templates']</code> and <b>deep-link the new template into the detail view</b>
+          (<code class="mono">?panel=arc-templates&amp;template=&lt;id&gt;</code>).
+        </div>
+      </div>
+      <div class="callout" style="margin-top:12px;max-width:none">
+        <b>Copyright, rendered — not buried.</b> <i>"The raw text stays private to you and is never shared. Only the derived abstract structure can be published — and publishing strips the
+        source reference."</i> This is structural, not a promise: <code>import_source</code> has <b>no <code>visibility</code> column by construction</b> (<code>migrate.py:961-969</code>), and the
+        <code>arc_template_publish_strip</code> trigger enforces the strip in the database.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span class="mono">2 import sources · 1 job in the last 24h</span>
+    <span>All three views stay <b style="color:var(--foreground)">mounted</b> — a tab switch must not kill this poll</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑥ DECONSTRUCT — the hard states
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑥ Deconstruct — the states that actually break <span class="tag dead">X-1 is a HARD blocker</span></h2>
+<p class="sub">
+  The zero-model state is not a cosmetic empty state — it is <b>the reason this whole wave is gated behind Wave 0</b>. <code>ModelPicker</code> renders <code>AddModelCta</code>
+  (<code>ModelPicker.tsx:388</code>) when the user has no BYOK models, and today that is a raw <code>&lt;Link&gt;</code> that <b>route-navigates and tears down the entire dockview</b>.
+  Ship this panel before X-1 and the first user without a model destroys their own workspace by clicking the button we told them to click.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Zero models — X-1</span></div>
+    <div class="body"><div class="mini-empty">
+      <span class="big" style="color:var(--muted-fg)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></span>
+      <p>No chat-capable model yet.<br />Deconstruct needs one — and <b style="color:var(--foreground)">will not let you submit without it</b>.</p>
+      <button class="btn sm primary">+ Add a model</button>
+      <p style="font-size:10px;color:var(--destructive);line-height:1.5">
+        At HEAD this button is a raw <code class="mono" style="font-size:9px">&lt;Link&gt;</code> → <b style="color:var(--destructive)">the dock is destroyed</b>.<br />
+        X-1 makes it open <code class="mono" style="font-size:9px">settings</code> <i>in-dock</i>.<br />The smoke asserts <b style="color:var(--foreground)">no teardown</b>.
+      </p>
+    </div></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--primary)">Awaiting confirm</span></div>
+    <div class="body" style="padding:11px">
+      <div class="cost-card">
+        <div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Confirm</div>
+        <div class="cost-line"><span>Estimate</span><b>$0.38</b></div>
+        <div class="cost-line"><span>Model</span><b style="font-size:10px">gpt-4o</b></div>
+        <div class="acts"><button class="btn primary sm">Confirm</button><button class="btn ghost sm">Cancel</button></div>
+      </div>
+      <p class="hint" style="margin-top:10px">
+        <b>Nothing has been spent.</b> The token is minted, the job is <b>not</b> enqueued. Closing the panel here costs $0 —
+        and the token expires on its own.
+      </p>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Running</span></div>
+    <div class="body" style="padding:11px">
+      <div class="card">
+        <div class="inline" style="justify-content:space-between">
+          <span class="badge b-warn">running</span><span class="mono" style="font-size:10px">1m 07s</span>
+        </div>
+        <div class="progress"><i style="width:44%"></i></div>
+        <p class="hint" style="margin-top:8px"><b>analyze_reference</b> · chunk 4 of 9</p>
+      </div>
+      <p class="hint" style="margin-top:10px">
+        <b>Cancel is not available</b>, and the panel says so rather than showing a button that does nothing. The worker has no cancel seam for this job kind —
+        <b>a fake cancel is worse than an honest absence.</b>
+      </p>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Failed · 402</span></div>
+    <div class="body" style="padding:11px">
+      <div class="card" style="border-color:var(--destructive)">
+        <div class="inline"><span class="badge b-bad">failed</span><span class="mono" style="font-size:10px">job 8b3d…</span></div>
+        <p class="hint" style="margin-top:7px;color:var(--destructive)">
+          <b style="color:var(--destructive)">"model returned no parseable arc structure after 3 chunks; the excerpt may be too short"</b>
+        </p>
+        <p class="hint" style="margin-top:4px">↑ the <b>worker's own message</b>, rendered verbatim from <code class="mono" style="font-size:9px">job.result.error</code> — never replaced with "something went wrong".</p>
+      </div>
+      <div class="card" style="border-color:var(--warning);margin-top:9px">
+        <div class="inline"><span class="badge b-warn">402</span><span style="font-size:11px">Insufficient balance</span></div>
+        <p class="hint" style="margin-top:6px">Estimated <b>$0.38</b>, balance <b>$0.11</b>.
+          <button class="btn sm" style="margin-top:6px">Open <span style="color:var(--accent)">usage</span> ↗</button></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ BEFORE — the dangling CTA, and a 4th live bug
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ Before — the dangling CTA, and the panel that is dead on both calls <span class="tag dead">at HEAD</span></h2>
+<p class="sub">
+  Left: what <code>ArcTemplateLibraryView.tsx:50-52</code> renders <b>today</b> when you have no templates. Middle: <code>ArcConformancePanel</code>, which is rendered <b>inside</b> that same
+  view and is <b>dead on both of its calls</b> — a 4th live bug the audit did not list. Right: what this spec ships instead.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — today</span></div>
+    <div class="body"><div class="mini-empty">
+      <span class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
+      <p style="font-size:11.5px">No arc templates yet. Adopt one from the catalog,<br />
+        <span style="color:var(--destructive);font-weight:600">or import a story to deconstruct.</span></p>
+      <p style="font-size:10px;color:var(--destructive);line-height:1.6;margin-top:6px">
+        ← <b style="color:var(--destructive)">the bug.</b> That is not a link.<br />
+        It is not a button. It is <b style="color:var(--destructive)">prose</b>.<br />
+        <code class="mono" style="font-size:9px">grep -rn "import-sources" frontend/src</code><br />→ <b style="color:var(--destructive)">EMPTY</b>.<br />
+        A dangling CTA pointing at a feature with no door.
+      </p>
+    </div></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — ArcConformancePanel</span></div>
+    <div class="body">
+      <p class="hint" style="line-height:1.7">
+        Rendered <b>inside</b> <code class="mono" style="font-size:9px">ArcTemplateLibraryView</code>'s detail view — i.e. inside this wave's port surface. Both calls are dead:
+      </p>
+      <p class="hint" style="margin-top:9px;line-height:1.7">
+        <span class="strike"><code class="mono" style="font-size:9px">arcConformance()</code> → <code class="mono" style="font-size:9px">?arc_template_id=</code></span><br />
+        BA4 retargeted the route to <code class="mono" style="font-size:9px">arc_id</code> (a <code class="mono" style="font-size:9px">structure_node</code>).
+        FastAPI <b>silently drops</b> the unknown param ⇒ <code class="mono" style="font-size:9px">arc_id=None</code>.
+      </p>
+      <p class="hint" style="margin-top:9px;line-height:1.7">
+        <span class="strike"><code class="mono" style="font-size:9px">arcConformanceRunPropose()</code> → <code class="mono" style="font-size:9px">arc_template_id</code></span><br />
+        <code class="mono" style="font-size:9px">_ConformanceRunArgs</code> is <b>ForbidExtra</b> with no such field ⇒ arg-validation refusal.
+      </p>
+      <p class="hint" style="margin-top:9px;color:var(--destructive);line-height:1.6">
+        <b style="color:var(--destructive)">cross-service-normalization:</b> the BA4 sweep hit the service and never hit the FE. <b style="color:var(--foreground)">AT-7 drops it</b> — dropping a
+        panel that is dead on every call costs nothing. Handed to spec 33 as <code class="mono" style="font-size:9px">D-ARC-CONFORMANCE-FE-ARGS-DRIFT</code>.
+      </p>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--success)">After</span></div>
+    <div class="body"><div class="mini-empty">
+      <span class="big" style="color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
+      <p style="font-size:11.5px">No arc templates yet.</p>
+      <button class="btn sm">Browse the catalog</button>
+      <button class="btn sm primary">Import a story to deconstruct</button>
+      <p style="font-size:10px;line-height:1.6;margin-top:6px">
+        Two <b style="color:var(--foreground)">buttons</b>, both wired.<br />
+        The second opens the section in <b style="color:var(--foreground)">this same panel</b> —<br />
+        <code class="mono" style="font-size:9px">GET /import-sources</code> gets its <b style="color:var(--foreground)">first caller</b>.
+      </p>
+    </div></div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b>
+  <b>(1) No book-shared tier.</b> <code>arc_template</code> has no <code>book_id</code> column — a book tier is a schema change <i>plus</i> a tenancy design (who may edit a shared arc?), and
+  motif needed a trigger to answer it. Collaborators share arc structure by <b>publish + adopt</b>. Say so in the User Guide so it does not read as an omission (OQ-6).
+  <b>(2) No "mine motifs from this import source."</b> REFUTED — <code>_MotifMineArgs</code> is <code>scope: Literal["book","corpus"]</code>; there is no <code>import_source_id</code> field.
+  <code>motif_mine</code> mines <i>your own</i> corpus. An imported work's member motifs are written by the <code>analyze_reference</code> worker (AT-10).
+  <b>(3) No bespoke <code>/actions/arc_import/estimate</code> or <code>/confirm</code> route.</b> That exact invention is <b>404ing in production right now, three times over</b>
+  (<code>motifApi.conformanceRunEstimate/Confirm</code>). The generic pair is <code>GET /actions/preview</code> + <code>POST /actions/confirm</code>. Mirror <code>minePropose/mineConfirm</code> —
+  the shape that is proven to work.
+</div>
+
+<div class="callout warn">
+  <b>The inverse gap — stated, not hidden (GG-2).</b> After this wave ships, <b>a human can apply an arc template and read its drift from a panel; an agent asked to do the same gets a
+  refusal.</b> <code>composition_arc_apply</code> and <code>composition_arc_template_drift</code> are honest <code>_pending_engine</code> stubs (they return
+  <code>{success:false, pending_dependency}</code> — correct behavior, <b>not</b> a silent no-op, and that distinction is the only reason this is tolerable for one wave).
+  <b>BE-8 closes it, sequenced after the panel</b> because the panel has zero dependency on it: <code>build_template_drift</code> becomes <b>S</b> (delegate to the shipped
+  <code>compute_arc_report(by_structure=False)</code> — <i>do not write a second engine; two engines that disagree is the bug BE-8 exists to prevent</i>), while
+  <code>apply_arc_to_spec</code> stays <b>M</b>.
+</div>
+
+<div class="callout">
+  <b>Registration is three counters that must move together.</b> <code>catalog.ts</code> (with a <b>mandatory</b> <code>category: 'storyBible'</code> — already in <code>CATEGORY_ORDER</code>, so
+  X-2 does not block — and a non-empty <code>guideBodyKey</code>, which X-3 asserts) · the <code>panel_id</code> <b>enum + description prose</b> in
+  <code>chat-service/app/services/frontend_tools.py</code> · and the <b>regenerated</b> <code>contracts/frontend-tools.contract.json</code>
+  (<code>WRITE_FRONTEND_CONTRACT=1 pytest</code> — never hand-edited). <b>57 → 58 in lockstep across all three.</b> A count that moves in only two of three is precisely the drift the guards
+  exist to catch. Plus <code>arcEffects.ts</code> (X-4): without it, every agent write to an arc or a template leaves this panel <b>stale</b>.
+</div>
+
+<script>
+  /* The visibility control must disclose the publish-strip BEFORE the flip (AT-9). */
+  const vis = document.getElementById('vis');
+  const warn = document.createElement('div');
+  warn.style.cssText = 'display:none;grid-column:2/-1;margin-top:2px;font-size:10.5px;line-height:1.5;' +
+    'color:#e8b87e;border-left:2px solid #e8b87e;padding-left:8px';
+  warn.innerHTML = '<b>Publishing rewrites this template\'s <span style="font-family:\'JetBrains Mono\'">source_ref</span></b> ' +
+    'to an opaque <span style="font-family:\'JetBrains Mono\'">lineage:&lt;id&gt;</span>. It is a DB trigger ' +
+    '(<span style="font-family:\'JetBrains Mono\'">arc_template_publish_strip</span>) — it cannot be undone by un-publishing.';
+  vis.closest('.field').appendChild(warn);
+  vis.addEventListener('change', () => {
+    warn.style.display = (vis.value === 'public' || vis.value === 'unlisted') ? 'block' : 'none';
+  });
+
+  /* Tabs are a class toggle, never an unmount — the deconstruct poll must survive. */
+  document.querySelectorAll('#tabs .tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('#tabs .tab').forEach(x => x.classList.remove('on'));
+    t.classList.add('on');
+  }));
+</script>
+</body>
+</html>

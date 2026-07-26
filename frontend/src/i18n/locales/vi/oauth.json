@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "Cấp quyền truy cập",
+    "subtitle": "Một ứng dụng muốn hành động thay mặt bạn trong LoreWeave.",
+    "client_named": "{{client}} đang yêu cầu truy cập vào tài khoản của bạn.",
+    "client_unnamed": "Một ứng dụng đang yêu cầu truy cập vào tài khoản của bạn.",
+    "signed_in_as": "Đang đăng nhập với tư cách {{email}}",
+    "redirect_to": "Chuyển hướng đến",
+    "unverified": "Ứng dụng này chưa được LoreWeave xác minh. Chỉ tiếp tục nếu bạn nhận ra và tin tưởng nó — hãy kiểm tra địa chỉ chuyển hướng ở trên.",
+    "permissions_heading": "Quyền được yêu cầu",
+    "permissions_hint": "Tắt bất kỳ quyền nào bạn không muốn cấp. Bạn có thể cấp ít hơn yêu cầu, nhưng không bao giờ nhiều hơn.",
+    "actions_heading": "Hành động",
+    "areas_heading": "Phạm vi",
+    "resource_label": "Tài nguyên",
+    "allow": "Cho phép truy cập",
+    "allowing": "Đang cấp quyền…",
+    "deny": "Từ chối",
+    "sign_in": "Đăng nhập để tiếp tục",
+    "no_scopes": "Chọn ít nhất một quyền để tiếp tục.",
+    "invalid_request": "Yêu cầu cấp quyền này thiếu hoặc có thông tin không hợp lệ. Quay lại ứng dụng và thử lại.",
+    "error": "Không thể hoàn tất việc cấp quyền. Vui lòng thử lại.",
+    "scope": {
+      "read": "Đọc nội dung của bạn",
+      "paid_read": "Chạy các thao tác đọc có tính phí",
+      "write_auto": "Thực hiện thay đổi tự động",
+      "write_confirm": "Thực hiện thay đổi (có xác nhận)"
+    },
+    "domain": {
+      "book": "Sách",
+      "glossary": "Thuật ngữ",
+      "knowledge": "Tri thức",
+      "translation": "Dịch thuật",
+      "composition": "Soạn thảo",
+      "jobs": "Tác vụ",
+      "settings": "Cài đặt",
+      "lore_enrichment": "Làm giàu cốt truyện",
+      "catalog": "Danh mục"
+    }
+  }
+}

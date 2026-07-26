@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 
 	"github.com/loreweave/glossary-service/internal/config"
 )
@@ -62,6 +63,51 @@ func TestCheckGrant_OwnerSatisfiesAllTiers(t *testing.T) {
 		if err := s.checkGrant(context.Background(), book, owner, need); err != nil {
 			t.Fatalf("owner should satisfy %v, got %v", need, err)
 		}
+	}
+}
+
+// projectionWithShare is a fake book-service where `grantee` holds a non-owner
+// SHARE (manage) and `owner` is the owner — to exercise the OD-8 owned-only gate.
+func projectionWithShare(book, owner, grantee uuid.UUID) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/access") {
+			lvl := "none"
+			switch r.URL.Query().Get("user_id") {
+			case owner.String():
+				lvl = "owner"
+			case grantee.String():
+				lvl = "manage" // a collaboration SHARE, NOT owner
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"grant_level": lvl, "lifecycle_state": "active"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"book_id": book.String(), "owner_user_id": owner.String(),
+		})
+	}
+}
+
+// OD-8: a PUBLIC MCP key (X-Mcp-Key-Id in ctx) may reach a book ONLY as its OWNER.
+// A grantee holding a share (manage) — allowed first-party — is denied for a public
+// key, while the owner still passes.
+func TestCheckGrant_OD8_PublicKeyOwnedOnly(t *testing.T) {
+	owner, grantee, book := uuid.New(), uuid.New(), uuid.New()
+	s := ownershipTestServer(t, projectionWithShare(book, owner, grantee))
+	firstParty := context.Background()
+	publicKey := lwmcp.ContextWithMcpKeyID(context.Background(), "key-xyz")
+
+	// First-party: the share satisfies a view-tier check.
+	if err := s.checkGrant(firstParty, book, grantee, grantclient.GrantView); err != nil {
+		t.Fatalf("first-party grantee (share) should pass view, got %v", err)
+	}
+	// Public key: the same grantee is denied (OD-8 requires OWNER, share != owner).
+	if err := s.checkGrant(publicKey, book, grantee, grantclient.GrantView); !errors.Is(err, ErrNotAccessible) {
+		t.Fatalf("public-key grantee (share) must be ErrNotAccessible (OD-8), got %v", err)
+	}
+	// Public key: the OWNER still passes.
+	if err := s.checkGrant(publicKey, book, owner, grantclient.GrantView); err != nil {
+		t.Fatalf("public-key OWNER should pass, got %v", err)
 	}
 }
 

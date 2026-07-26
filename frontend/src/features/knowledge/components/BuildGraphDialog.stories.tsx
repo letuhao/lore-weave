@@ -4,7 +4,6 @@ import { BuildGraphDialog } from './BuildGraphDialog';
 import {
   findConfirmButton,
   findRunBenchmarkButton,
-  waitForSelects,
 } from '@sb/story-helpers';
 import {
   projectFixture,
@@ -105,6 +104,32 @@ const baseArgs = {
   onStarted: fn(),
 };
 
+/**
+ * W5 — the LLM + embedding dropdowns are now the shared ModelPicker
+ * (combobox trigger button + listbox of role=option rows), not native
+ * `<select>`s. DOM order inside the dialog: [0] LLM picker,
+ * [1] EmbeddingModelPicker. Query `document` because the Radix dialog
+ * portals outside `canvasElement`.
+ */
+async function pickFromModelPicker(comboboxIndex: number, optionText: RegExp) {
+  const trigger = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const triggers =
+      dialog?.querySelectorAll<HTMLButtonElement>('[role="combobox"]') ?? [];
+    const btn = triggers[comboboxIndex];
+    if (!btn) throw new Error(`ModelPicker trigger #${comboboxIndex} not rendered yet`);
+    return btn;
+  });
+  await userEvent.click(trigger);
+  const option = await waitFor(() => {
+    const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+    const hit = options.find((o) => optionText.test(o.textContent ?? ''));
+    if (!hit) throw new Error(`no option matching ${optionText} rendered yet`);
+    return hit;
+  });
+  await userEvent.click(option);
+}
+
 // 1. Idle — project without book_id, default scope='all'. Passed
 // benchmark + populated chat models + loaded cost estimate. User sees
 // form ready to fill. Confirm disabled until llm_model picked.
@@ -154,10 +179,9 @@ export const EstimateLoading: Story = {
     project: projectFixtureNoBook({ embedding_model: 'bge-m3' }),
   },
   parameters: { msw: { handlers: ambientHandlers({ estimate: { mode: 'loading' } }) } },
-  play: async ({ canvasElement }) => {
+  play: async () => {
     // Pick an LLM so estimate actually fires (debounced 300ms).
-    const selects = await waitForSelects(canvasElement, 2, { withOptionValue: { selectIndex: 0, value: 'claude-haiku-4-5-20251001' } });
-    await userEvent.selectOptions(selects[0], 'claude-haiku-4-5-20251001');
+    await pickFromModelPicker(0, /Haiku 4\.5/);
   },
 };
 
@@ -175,9 +199,8 @@ export const EstimateError422: Story = {
       }),
     },
   },
-  play: async ({ canvasElement }) => {
-    const selects = await waitForSelects(canvasElement, 2, { withOptionValue: { selectIndex: 0, value: 'claude-haiku-4-5-20251001' } });
-    await userEvent.selectOptions(selects[0], 'claude-haiku-4-5-20251001');
+  play: async () => {
+    await pickFromModelPicker(0, /Haiku 4\.5/);
   },
 };
 
@@ -197,9 +220,8 @@ export const Confirming: Story = {
     },
   },
   play: async ({ canvasElement }) => {
-    // DOM order: [0] LLM dropdown, [1] EmbeddingModelPicker.
-    const selects = await waitForSelects(canvasElement, 2, { withOptionValue: { selectIndex: 0, value: 'claude-haiku-4-5-20251001' } });
-    await userEvent.selectOptions(selects[0], 'claude-haiku-4-5-20251001');
+    // DOM order: [0] LLM ModelPicker, [1] EmbeddingModelPicker.
+    await pickFromModelPicker(0, /Haiku 4\.5/);
     // Wait for estimate + benchmark gate to resolve → Confirm enables.
     const confirm = await waitFor(() => {
       const btn = findConfirmButton(canvasElement);
@@ -229,8 +251,7 @@ export const ConfirmErrorBudgetExceeded: Story = {
     },
   },
   play: async ({ canvasElement }) => {
-    const selects = await waitForSelects(canvasElement, 2, { withOptionValue: { selectIndex: 0, value: 'claude-haiku-4-5-20251001' } });
-    await userEvent.selectOptions(selects[0], 'claude-haiku-4-5-20251001');
+    await pickFromModelPicker(0, /Haiku 4\.5/);
     const confirm = await waitFor(() => {
       const btn = findConfirmButton(canvasElement);
       if (!btn || btn.disabled) throw new Error('confirm still disabled');

@@ -32,6 +32,11 @@ export interface Project {
   // queues a pending fact for the user to confirm/reject instead of
   // writing it straight to the graph. Default false — opt-in.
   memory_remember_confirm: boolean;
+  // WS-4C Half A: when true, every 4th chat turn is sent to glossary to
+  // extract the entities it newly NAMED, which land in the book's review
+  // inbox as ai-suggested drafts (never canon). Default false — OPT-IN,
+  // because each capture is an LLM call billed to the user's own model.
+  canon_capture_enabled: boolean;
   extraction_status: ExtractionStatus;
   embedding_model: string | null;
   // K12.4: dimension derived from embedding_model server-side.
@@ -90,6 +95,8 @@ export interface ProjectUpdatePayload {
   // K21-C (D4): per-project `memory_remember` confirmation gate.
   // Omit to leave unchanged.
   memory_remember_confirm?: boolean;
+  // WS-4C Half A: per-project canon auto-capture. Omit to leave unchanged.
+  canon_capture_enabled?: boolean;
 }
 
 export interface ProjectListResponse {
@@ -122,6 +129,8 @@ export interface EntityRecoveryOverride {
   enabled?: boolean;
   model_ref?: string;
   model_source?: ExtractionModelSource;
+  // KN model-roles — Tier-3 classifier batch size (1-20; omit = default 5).
+  max_items_per_batch?: number;
 }
 
 export interface PromptOverride {
@@ -230,6 +239,11 @@ export interface BenchmarkStatus {
   recall_at_3: number | null;
   mrr: number | null;
   created_at: string | null;
+  // R2 (D-JOURNEY-KG-BENCHMARK-UX) — named failing gates on the latest run
+  // (empty == passed). `insufficient_runs` means inconclusive (too few passes),
+  // NOT a low-quality model; the badge keys its copy off this so it never says
+  // "low-quality" when recall@3 is actually fine. Optional (older BE omits it).
+  gate_failures?: string[];
 }
 
 // ── C12b-b — K17.9 on-demand benchmark run ─────────────────────────────
@@ -249,5 +263,9 @@ export interface BenchmarkRunResponse {
   negative_control_max_score: number;
   stddev_recall: number;
   stddev_mrr: number;
+  // The effective run count (the interactive endpoint clamps up to min_runs, so
+  // a requested runs=1 reports runs=3 — a perfect short run no longer "fails").
   runs: number;
+  // R2 — named failing gates (empty == passed). See BenchmarkStatus.gate_failures.
+  gate_failures?: string[];
 }

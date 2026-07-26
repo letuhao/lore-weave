@@ -33,6 +33,21 @@ export function JobProgressPanel({ job }: { job: Job }) {
     }
   }
 
+  // LLM-call counts (bug #37): producers that know their call budget put `estimated_llm_calls`
+  // on the create event and advance `llm_calls_done` on each progress event (params JSONB, no
+  // schema change). Null-safe — show "done / total" only when an estimate exists; if only a
+  // running count is present (no estimate), show the bare count.
+  const estCalls =
+    typeof job.params?.estimated_llm_calls === 'number' ? job.params.estimated_llm_calls : null;
+  const callsDone =
+    typeof job.params?.llm_calls_done === 'number' ? job.params.llm_calls_done : null;
+  let llmCalls: string | null = null;
+  if (estCalls != null) {
+    llmCalls = `${(callsDone ?? 0).toLocaleString()} / ${estCalls.toLocaleString()}`;
+  } else if (callsDone != null) {
+    llmCalls = callsDone.toLocaleString();
+  }
+
   const stat = (labelKey: string, def: string, value: string | null) =>
     value ? (
       <div>
@@ -61,6 +76,7 @@ export function JobProgressPanel({ job }: { job: Job }) {
         </div>
       )}
       <div className="mt-3 flex flex-wrap gap-8 text-sm">
+        {stat('detail.llmCalls', 'LLM calls', llmCalls)}
         {stat('detail.elapsed', 'Elapsed', elapsed)}
         {stat('detail.throughput', 'Throughput', throughput)}
         {stat('detail.eta', 'ETA', eta)}

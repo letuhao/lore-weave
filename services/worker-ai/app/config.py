@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # calls submit_job through the loreweave_llm SDK; the SDK posts
     # to this base URL with the X-Internal-Token header.
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
+    # WS-2.8: usage-billing internal API — the distiller reads the user's daily spend guardrail to
+    # degrade the BACKGROUND memory path when the daily cap is exhausted (foreground chat is unaffected).
+    # Port 8086 (usage-billing's HTTP_ADDR; the canonical USAGE_BILLING_SERVICE_URL in docker-compose).
+    usage_billing_service_url: str = "http://usage-billing-service:8086"
 
     # Timeouts (seconds).
     # Phase 4b-γ: extract_item_timeout_s is now used ONLY for the thin
@@ -39,6 +43,10 @@ class Settings(BaseSettings):
     # FD-27: provider-registry model-info fetch for the reasoning-model
     # advisory — a tiny metadata read, runs once per job. Best-effort.
     provider_registry_client_timeout_s: float = 5.0
+    # WS-2.8: the daily-cap pre-check is a tiny indexed read; a short timeout, and it FAILS OPEN on
+    # timeout/error (the provider-gateway reserve is the hard backstop), so a slow read never stalls
+    # or silently pauses a user's memory.
+    usage_billing_client_timeout_s: float = 5.0
 
     # Poll interval (seconds) — how often to check for running jobs.
     poll_interval_s: float = 5.0
@@ -76,6 +84,15 @@ class Settings(BaseSettings):
     extraction_resume_sweep_timeout_s: int = 900
     extraction_resume_sweep_batch: int = 20
 
+    # D-EXTRACTION-SILENT-NOOP gap #3 — generic STALL backstop. The resume-sweeper
+    # above only re-drives DECOUPLED rows with resume_state (+ it's off by default);
+    # a NON-decoupled job whose runner/provider died mid-loop sits 'running' forever,
+    # looking healthy. This catch-all fails a job with NO progress (updated_at is
+    # bumped on every cursor advance / stage / count change) for this many minutes.
+    # Generous (> the 15-min resume timeout) so a recoverable row is re-driven first
+    # and a long-but-live LLM call isn't wrongly failed. 0 ⇒ off.
+    extraction_stall_minutes: int = 30
+
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1
@@ -89,6 +106,11 @@ class Settings(BaseSettings):
     summary_consumer_enabled: bool = True
     summary_consumer_group: str = "worker-ai-summarize"
     summary_consumer_name: str = "worker-ai-1"
+
+    # A1 / P-10 — the assistant.distill ("End my day") consumer.
+    distill_consumer_enabled: bool = True
+    distill_consumer_group: str = "worker-ai-distill"
+    distill_consumer_name: str = "worker-ai-1"
     # XREADGROUP BLOCK timeout (ms). Short enough to react to shutdown
     # promptly; long enough to avoid CPU spin when idle.
     summary_consumer_block_ms: int = 5000

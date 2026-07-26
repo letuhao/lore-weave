@@ -6,18 +6,37 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/loreweave/grantclient"
-	"golang.org/x/text/unicode/norm"
+	"github.com/loreweave/glossary-service/internal/textnorm"
 )
+
+// pgxRWQuerier is the read+write querier shared by *pgxpool.Pool and pgx.Tx —
+// like pgxExecQuerier (attribute_handler.go) but also exposes multi-row Query,
+// so the extraction writeback's resolver/create/merge helpers run either
+// standalone on the pool (the MCP propose-entity path) OR enlisted in the
+// per-chapter writeback transaction (bulkExtractEntities), where every write
+// for a chapter must commit or roll back as one unit (INV-C1). (The package's
+// existing pgxQuerier in outbox.go is read-only QueryRow; extraction needs all three.)
+type pgxRWQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// extractionWritebackLockNS namespaces the per-book advisory lock taken around a
+// whole-chapter extraction writeback (INV-C1: per-book serialized). The 2-key
+// pg_advisory_xact_lock(ns, hashtext(book)) form keeps extraction locks from
+// colliding with the migration lock or any single-key advisory use elsewhere.
+// Value is the ASCII bytes of "EXTW".
+const extractionWritebackLockNS int32 = 0x45585457
 
 // getExtractionProfile auto-resolves entity kinds + attributes for extraction
 // based on the book's genre groups. JWT + book grant (public route only).
@@ -83,7 +102,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 	// 2. Fetch all book kinds (book-local). All adopted/native book kinds are
 	//    auto-selected (the user already scaffolded them); is_hidden kinds excluded.
 	kindRows, err := s.pool.Query(ctx, `
-		SELECT book_kind_id, code, name, icon
+		SELECT book_kind_id, code, name, icon, description
 		FROM book_kinds
 		WHERE book_id = $1 AND is_hidden = false AND deprecated_at IS NULL
 		ORDER BY sort_order, name
@@ -107,6 +126,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 		KindID       string    `json:"kind_id"`
 		Code         string    `json:"code"`
 		Name         string    `json:"name"`
+		Description  *string   `json:"description"` // bug #33 — fed to the extraction prompt so the model picks the right kind
 		Icon         string    `json:"icon"`
 		AutoSelected bool      `json:"auto_selected"`
 		Attributes   []attrOut `json:"attributes"`
@@ -116,7 +136,8 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 	for kindRows.Next() {
 		var kindID uuid.UUID
 		var code, name, icon string
-		if err := kindRows.Scan(&kindID, &code, &name, &icon); err != nil {
+		var description *string
+		if err := kindRows.Scan(&kindID, &code, &name, &icon, &description); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan kind")
 			return
 		}
@@ -165,6 +186,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 			KindID:       kindID.String(),
 			Code:         code,
 			Name:         name,
+			Description:  description,
 			Icon:         icon,
 			AutoSelected: true,
 			Attributes:   attrs,
@@ -210,6 +232,29 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	if limit > 500 {
 		limit = 500
 	}
+	if limit < 1 {
+		limit = 1
+	}
+	// D-ANCHOR-PRELOAD-50-CAP: `offset` makes the 500-row page cap PAGEABLE, so a
+	// caller wanting every entity (extraction's anchor pre-load, the WS-4B graph
+	// projection) can walk the whole glossary instead of being silently truncated
+	// at the default 50. Requires the deterministic ORDER BY tiebreak below.
+	offset := queryInt(q.Get("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
+	// D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM: `status` was accepted by every caller
+	// (GlossaryClient.list_entities sent `status=active`) but NEVER read here — a
+	// write-only parameter that silently lied. Now honored: absent/empty ⇒ no status
+	// filter (the historical effective behavior, preserved for existing callers);
+	// a value must be one of the closed set or the request is rejected.
+	status := q.Get("status")
+	if status != "" && !validEntityStatus(status) {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_STATUS",
+			"status must be one of: active, inactive, draft, rejected")
+		KnownEntitiesTotal.WithLabelValues(OutcomeValidationError).Inc()
+		return
+	}
 
 	// Build the query dynamically based on filters.
 	// We join glossary_entities with system_kinds and aggregate chapter_entity_links
@@ -225,8 +270,22 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	args = append(args, bookID)
 	argIdx++
 
+	// Never surface soft-deleted entities. Soft-delete is a pure `SET deleted_at`
+	// (it leaves status/alive untouched and does NOT cascade chapter_entity_links),
+	// so without this a deleted `status='active'` entity still passes the frequency
+	// HAVING — and the W11-M3 public lore route would serve author-removed content to
+	// anonymous readers. Mirrors every sibling entity read (entity_handler.go).
+	conditions = append(conditions, "e.deleted_at IS NULL")
+
 	if alive {
 		conditions = append(conditions, "e.alive = true")
+	}
+
+	// D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM — only filter when explicitly asked.
+	if status != "" {
+		conditions = append(conditions, "e.status = $"+strconv.Itoa(argIdx))
+		args = append(args, status)
+		argIdx++
 	}
 
 	// Chapter link subquery for frequency + recency
@@ -255,6 +314,9 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, limit)
 	limitParam := "$" + strconv.Itoa(argIdx)
+	argIdx++
+	args = append(args, offset)
+	offsetParam := "$" + strconv.Itoa(argIdx)
 
 	query := `
 		SELECT
@@ -286,8 +348,8 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 		WHERE ` + strings.Join(conditions, " AND ") + `
 		GROUP BY e.entity_id, k.code, name_av.original_value, alias_av.original_value
 		HAVING ` + strings.Join(havingClauses, " AND ") + `
-		ORDER BY COUNT(cl.link_id) DESC
-		LIMIT ` + limitParam
+		ORDER BY COUNT(cl.link_id) DESC, e.entity_id ASC
+		LIMIT ` + limitParam + ` OFFSET ` + offsetParam
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -364,6 +426,31 @@ type bulkUpsertRequest struct {
 	// tombstone is SKIPPED — a user-rejected suggestion is not re-proposed.
 	// nil/empty → no tags applied, no tombstone gate (backward-compatible).
 	DefaultTags []string `json:"default_tags"`
+	// ── Extraction pipeline FND/M1 — two-ledger writeback (all additive/optional;
+	//    an omitting caller keeps today's non-idempotent, lock-free behavior) ──
+	// ChapterID scopes this writeback to ONE chapter (the per-chapter atomic unit,
+	// design §3.3). Used for the writeback-log row + the advisory lock is per-book.
+	ChapterID string `json:"chapter_id"`
+	// WritebackKey = the worker-computed idempotency key hash(book, chapter,
+	// content_hash, kinds, profile_hash). When present and ALREADY committed in
+	// extraction_writeback_log, the whole apply is a no-op returning the original
+	// counts (INV-C3: retry = replay = concurrent fresh land once). Empty → no
+	// idempotency record (legacy callers / the MCP single-entity path).
+	WritebackKey string `json:"writeback_key"`
+	// ContentHash of the prepared chapter text the entities were extracted from —
+	// stored on the log row for provenance + the worker-side source-drift
+	// precondition (INV-C4). Glossary records it; the 409-on-drift check is upstream.
+	ContentHash string `json:"content_hash"`
+	// OwnerUserID stamps the writeback-log row for tenancy/redaction (INV-6). The
+	// worker resolves it from extraction_jobs; omitted → NULL (book_id still scopes).
+	OwnerUserID string `json:"owner_user_id"`
+	// ChapterOrdinal is the chapter's story-time position (0-based chapter_index). When
+	// present (with ChapterID + ContentHash), the writeback ALSO emits append-only
+	// bi-temporal facts into entity_facts (the temporal-knowledge SSOT, §12 Path A):
+	// it ingests the immutable episode for this chapter revision and opens one fact per
+	// written attribute valid-from this ordinal, citing the episode. Omitted (legacy
+	// caller) → no fact emission, today's flat EAV behavior unchanged (additive).
+	ChapterOrdinal *int64 `json:"chapter_ordinal"`
 }
 
 type extractedEntity struct {
@@ -372,6 +459,18 @@ type extractedEntity struct {
 	Attributes   map[string]any  `json:"attributes"`
 	Evidence     string          `json:"evidence"`
 	ChapterLinks []chapterLinkIn `json:"chapter_links"`
+	// PROV/M3 — VALIDATED evidence provenance (INV-7 / T1). The worker is the only
+	// component holding the chapter text, so it locates the `evidence` quote in the
+	// REAL text and sends offsets it already verified + a closed-enum trust status.
+	// Glossary persists them DEFENSIVELY (evidenceProvenanceFields): it accepts only
+	// the {exact,resolved,ambiguous,unmatched} enum, clamps the offsets (non-negative,
+	// start<=end) and keeps them only for exact/resolved — a raw model number is NEVER
+	// persisted unvalidated. Omitted (legacy callers / the MCP path) ⇒ status defaults
+	// to 'unverified' with NULL offsets (the migration-0033 column default).
+	EvidenceProvenanceStatus string `json:"evidence_provenance_status"`
+	EvidenceCharStart        *int   `json:"evidence_char_start"`
+	EvidenceCharEnd          *int   `json:"evidence_char_end"`
+	EvidenceBlockOrLine      *int   `json:"evidence_block_or_line"`
 	// Translation (M4d-2b) — optional target-language rendering of the name, seeded
 	// by the translation 2-pass cold-start writeback. Written to the name attr's
 	// attribute_translations at confidence='machine' (the M1d trust ladder treats
@@ -390,6 +489,12 @@ type chapterLinkIn struct {
 	ChapterTitle string `json:"chapter_title"`
 	ChapterIndex int    `json:"chapter_index"`
 	Relevance    string `json:"relevance"`
+	// MentionCount (M7) — per-chapter mention frequency for this entity, computed by
+	// the translation-service producer (CJK-aware longest-match over canonical+aliases,
+	// presence-gated). Omitted ⇒ 0 (backward-compatible: a producer predating M7 leaves
+	// the column at its default). The upsert overwrites with EXCLUDED so a recount lands
+	// the fresh value.
+	MentionCount int `json:"mention_count"`
 }
 
 type entityResult struct {
@@ -399,7 +504,18 @@ type entityResult struct {
 	Status            string   `json:"status"` // "created" | "updated" | "skipped"
 	AttributesWritten []string `json:"attributes_written"`
 	AttributesSkipped []string `json:"attributes_skipped"`
-	SkipReason        string   `json:"skip_reason,omitempty"` // e.g. "tombstoned" when an ai-rejected name is re-proposed
+	// AttributesSkippedReasons (MERGE/M5) carries WHY each attribute was skipped — the
+	// skip-reason taxonomy that ends the silent-skip gap (F-append). Additive to the bare
+	// AttributesSkipped code list (kept for back-compat). Reasons: no_action | fill_occupied
+	// | verified (the verified-clobber guard fired, INV-8) | tombstoned (Slice-2 append).
+	AttributesSkippedReasons []attrSkip `json:"attributes_skipped_reasons,omitempty"`
+	SkipReason               string     `json:"skip_reason,omitempty"` // e.g. "tombstoned" when an ai-rejected name is re-proposed
+}
+
+// attrSkip pairs a skipped attribute code with the reason it was skipped (MERGE/M5).
+type attrSkip struct {
+	Code   string `json:"code"`
+	Reason string `json:"reason"`
 }
 
 const (
@@ -410,6 +526,41 @@ const (
 	// suggestion; an AI writeback batch skips names that carry it.
 	tagAIRejected = "ai-rejected"
 )
+
+// evidenceProvenanceFields returns the (provenance_status, char_start, char_end,
+// block_or_line) to persist for an evidence row — the DEFENSIVE glossary side of the
+// model-offset-trust contract (INV-7 / T1). The worker already validated the quote's
+// location against the real chapter text; glossary still trusts no raw number:
+//
+//   - Only the closed enum {exact,resolved,ambiguous,unmatched} is honored; anything
+//     else (incl. an omitting legacy caller) degrades to 'unverified' with NULL offsets.
+//   - Offsets are persisted ONLY for exact/resolved (a single verified location) AND only
+//     when sane (non-negative, start<=end). A status that claims exact/resolved without
+//     valid offsets is downgraded to 'unverified' rather than stored half-trusted.
+//   - ambiguous/unmatched keep the status but carry NULL offsets (no blind pick / no
+//     fabricated citation — the quote is still stored via original_text).
+//
+// block_or_line is TEXT NOT NULL DEFAULT '' (the legacy column), so a present block index
+// is rendered as a decimal string and absence is the empty string.
+func evidenceProvenanceFields(ent extractedEntity) (status string, charStart, charEnd *int, blockOrLine string) {
+	status = "unverified"
+	switch ent.EvidenceProvenanceStatus {
+	case "exact", "resolved":
+		if ent.EvidenceCharStart != nil && ent.EvidenceCharEnd != nil &&
+			*ent.EvidenceCharStart >= 0 && *ent.EvidenceCharEnd >= *ent.EvidenceCharStart {
+			status = ent.EvidenceProvenanceStatus
+			charStart = ent.EvidenceCharStart
+			charEnd = ent.EvidenceCharEnd
+			if ent.EvidenceBlockOrLine != nil && *ent.EvidenceBlockOrLine >= 0 {
+				blockOrLine = strconv.Itoa(*ent.EvidenceBlockOrLine)
+			}
+		}
+		// else: claimed exact/resolved but no/invalid offset → stay 'unverified'.
+	case "ambiguous", "unmatched":
+		status = ent.EvidenceProvenanceStatus // keep the quote; offsets stay NULL
+	}
+	return
+}
 
 // bulkExtractEntities receives extracted entities from translation-service and upserts them.
 //
@@ -459,11 +610,84 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pre-load attr_def map (book_kind_id+code → attr_id) for THIS book (G4 book tier).
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	// These two reads are book CONFIG — left on the pool, BEFORE the writeback tx, to
+	// keep the per-book advisory lock window tight (only the actual writes are locked).
+	attrDefMap, err := s.loadAttrDefMap(ctx, s.pool, bookID)
 	if err != nil {
 		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
 		return
+	}
+	// MERGE/M5 slice 2 — the authored per-attribute merge_strategy (the default the
+	// profile overrides). Book CONFIG, read on the pool before the writeback tx.
+	strategyMap, err := s.loadAttrStrategyMap(ctx, bookID)
+	if err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load merge strategies")
+		return
+	}
+
+	// ── M1: parse the optional two-ledger writeback fields (additive/back-compat) ──
+	var chapterID uuid.UUID
+	if req.ChapterID != "" {
+		chapterID, err = uuid.Parse(req.ChapterID)
+		if err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeValidationError).Inc()
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid chapter_id")
+			return
+		}
+	}
+	var ownerUserID uuid.UUID
+	if req.OwnerUserID != "" {
+		ownerUserID, _ = uuid.Parse(req.OwnerUserID) // best-effort tenancy stamp; nil if malformed
+	}
+
+	// ── M1: per-book serialized, whole-chapter transactional writeback (INV-C1) ──
+	// One transaction for the whole chapter's entities: partial failure rolls the
+	// entire chapter back (no half-written chapter), and a per-book advisory lock
+	// serializes concurrent jobs so the app-layer resolver is race-free (two jobs on
+	// the same chapter no longer both miss-then-create the same entity — the TOCTOU
+	// duplicate). defer-rollback is a no-op after a successful Commit.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to begin writeback tx")
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, hashtext($2))`,
+		extractionWritebackLockNS, bookID.String()); err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to take book writeback lock")
+		return
+	}
+
+	// Idempotency (INV-C3): a writeback_key already 'committed' means this chapter's
+	// entities ALREADY landed (a retry, a redelivery, or a concurrent fresh run that
+	// won the lock). Return the original counts without re-applying — duplicate apply
+	// is a no-op. The check runs INSIDE the lock so a same-key concurrent request that
+	// lost the lock sees the committed row here.
+	if req.WritebackKey != "" {
+		var prevStatus string
+		var pc, pu, ps int
+		ierr := tx.QueryRow(ctx,
+			`SELECT status, entities_created, entities_updated, entities_skipped
+			   FROM extraction_writeback_log WHERE writeback_key = $1`, req.WritebackKey,
+		).Scan(&prevStatus, &pc, &pu, &ps)
+		if ierr == nil && prevStatus == "committed" {
+			_ = tx.Rollback(ctx)
+			BulkExtractTotal.WithLabelValues(OutcomeOK).Inc()
+			writeJSON(w, http.StatusOK, map[string]any{
+				"created": pc, "updated": pu, "skipped": ps,
+				"entities": []entityResult{}, "idempotent_replay": true,
+			})
+			return
+		}
+		if ierr != nil && ierr != pgx.ErrNoRows {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "writeback-log lookup failed")
+			return
+		}
 	}
 
 	// The 'unknown' review bucket: a kind_code that resolves to neither a kind nor
@@ -487,6 +711,21 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		skipped int
 	)
 
+	// Temporal-knowledge Path A (§12): when the caller supplies the chapter ordinal, ingest
+	// the immutable episode for this chapter revision ONCE (UNIQUE(chapter_id, content_hash)
+	// → resumes, never re-mints) so the per-entity fact emission below can cite it. Sealed
+	// 'pending'; reconciled after the entity loop commits the facts (§12.2.5).
+	var factEpisodeID *uuid.UUID
+	if req.ChapterOrdinal != nil && chapterID != uuid.Nil && req.ContentHash != "" {
+		epID, _, eerr := ingestEpisode(ctx, tx, bookID, chapterID, *req.ChapterOrdinal, req.ContentHash, req.WritebackKey)
+		if eerr != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to ingest episode: "+eerr.Error())
+			return
+		}
+		factEpisodeID = &epID
+	}
+
 	for _, ent := range req.Entities {
 		kindID, kindOK := kindMap[ent.KindCode]
 		sourceKindCode := "" // non-empty only when parked under 'unknown'
@@ -508,12 +747,38 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			actions = map[string]string{}
 		}
 
-		// 1. Find existing entity by normalized name or alias match
-		existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, ent.Name)
+		// 1. Find existing entity by normalized name or alias match (same kind).
+		// "" scope: the bulk extraction pipeline has no scope concept yet (out of
+		// scope for this pass — D-GLOSSARY-ENTITY-SCOPE only covers the interactive
+		// MCP creation path); this preserves its exact prior dedup behavior.
+		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name, "")
 		if err != nil {
 			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
 			return
+		}
+		// mergeKindID is the kind to merge incoming attributes under. It equals the
+		// extraction kind for a same-kind hit; for a cross-kind hit (#38/#39) it is the
+		// MATCHED entity's actual kind, so attributes resolve against that entity's
+		// schema (compatible codes merge, the rest skip) instead of orphaning onto the
+		// wrong kind.
+		mergeKindID := kindID
+		// 1b. #38/#39 — cross-kind dedup: if the same name already exists under ANOTHER
+		// kind, reuse that entity instead of creating a duplicate. This kills both the
+		// one-name-under-N-kinds explosion (#38) and the re-run-with-changed-kinds
+		// duplication (#39, where the per-chapter writeback_key changes and the per-kind
+		// resolver misses the prior run's entity).
+		if existingID == uuid.Nil {
+			crossID, crossKindID, cerr := s.findEntityCrossKind(ctx, tx, bookID, ent.Name, "")
+			if cerr != nil {
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "cross-kind entity lookup failed")
+				return
+			}
+			if crossID != uuid.Nil {
+				existingID = crossID
+				mergeKindID = crossKindID
+			}
 		}
 
 		var result entityResult
@@ -525,7 +790,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// (tag 'ai-rejected') is skipped without touching the row — a
 		// rejected suggestion must not be re-proposed every extraction.
 		if existingID != uuid.Nil && isAIWriteback {
-			rejected, terr := s.entityHasTag(ctx, existingID, tagAIRejected)
+			rejected, terr := s.entityHasTag(ctx, tx, existingID, tagAIRejected)
 			if terr != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tombstone check failed")
@@ -547,7 +812,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// 2. CREATE new entity — default tags (e.g. ai-suggested) are
 			// applied on create only, so an AI writeback never re-tags a
 			// user's existing/active entity into the suggestion inbox.
-			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
+			entityID, written, skippedAttrs, err := s.createExtractedEntity(ctx, tx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
@@ -558,7 +823,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// Parked under 'unknown' → remember the code it arrived as, so the review
 			// GUI can offer "alias <code> → <kind>" / "create kind from <code>".
 			if sourceKindCode != "" {
-				if _, uerr := s.pool.Exec(ctx,
+				if _, uerr := tx.Exec(ctx,
 					`UPDATE glossary_entities SET source_kind_code = $1 WHERE entity_id = $2`,
 					sourceKindCode, entityID,
 				); uerr != nil {
@@ -567,17 +832,26 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			// All provided attributes are written on create
-			result.AttributesWritten = make([]string, 0, len(ent.Attributes)+1)
-			result.AttributesWritten = append(result.AttributesWritten, "name")
-			for code := range ent.Attributes {
-				result.AttributesWritten = append(result.AttributesWritten, code)
+			// /review-impl HIGH fix: report only codes that actually matched an attr_def
+			// (+ "description" when the unmatched-attr fallback fired) — NOT every raw
+			// key in ent.Attributes. AttributesWritten feeds emitChapterFacts below,
+			// which emits a fact per code; a phantom code with no attr_def would mint an
+			// entity_facts row (INV-FACTS SSOT) that can never agree with the EAV
+			// projection, since that value actually lives inside "description".
+			result.AttributesWritten = written
+			skippedCodes := make([]string, 0, len(skippedAttrs))
+			for _, sa := range skippedAttrs {
+				skippedCodes = append(skippedCodes, sa.Code)
 			}
-			result.AttributesSkipped = []string{}
+			result.AttributesSkipped = skippedCodes
+			result.AttributesSkippedReasons = skippedAttrs
 			created++
 		} else {
-			// 3. MERGE with existing entity
-			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, existingID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			// 3. MERGE with existing entity — under mergeKindID (the matched entity's
+			// own kind, which equals kindID for a same-kind hit and the cross-kind
+			// match's kind for #38/#39 dedup) so attributes resolve against the
+			// entity's real schema.
+			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, tx, existingID, mergeKindID, ent, actions, strategyMap, attrDefMap, req.SourceLanguage)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to merge entity: "+err.Error())
@@ -585,13 +859,33 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 			result.EntityID = existingID.String()
 			result.AttributesWritten = written
-			result.AttributesSkipped = skippedAttrs
+			// Surface both the bare code list (back-compat) and the structured reasons.
+			skippedCodes := make([]string, 0, len(skippedAttrs))
+			for _, sa := range skippedAttrs {
+				skippedCodes = append(skippedCodes, sa.Code)
+			}
+			result.AttributesSkipped = skippedCodes
+			result.AttributesSkippedReasons = skippedAttrs
 			if len(written) > 0 {
 				result.Status = "updated"
 				updated++
 			} else {
 				result.Status = "skipped"
 				skipped++
+			}
+		}
+
+		// 3b. Temporal-knowledge Path A: emit one append-only fact per WRITTEN attribute,
+		// valid-from this chapter ordinal, citing the episode. Additive — the EAV write above
+		// stays the live "current" projection; entity_facts accumulates as the SSOT (§12).
+		if factEpisodeID != nil && result.EntityID != "" {
+			entID, perr := uuid.Parse(result.EntityID)
+			if perr == nil {
+				if ferr := s.emitChapterFacts(ctx, tx, bookID, entID, ent, result.AttributesWritten, *req.ChapterOrdinal, *factEpisodeID); ferr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to emit facts: "+ferr.Error())
+					return
+				}
 			}
 		}
 
@@ -606,15 +900,22 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			if relevance == "" {
 				relevance = "appears"
 			}
-			if _, err := s.pool.Exec(ctx, `
-				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance)
-				VALUES ($1, $2, $3, $4, $5)
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance, mention_count)
+				VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (entity_id, chapter_id) DO UPDATE SET
 					chapter_title = EXCLUDED.chapter_title,
 					chapter_index = EXCLUDED.chapter_index,
-					relevance = EXCLUDED.relevance
-			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance); err != nil {
-				slog.Warn("extraction: failed to insert chapter_entity_link", "entity_id", entID, "chapter_id", chID, "error", err)
+					relevance = EXCLUDED.relevance,
+					mention_count = EXCLUDED.mention_count
+			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance, cl.MentionCount); err != nil {
+				// In a tx a failed statement poisons it, so this must not error in
+				// practice — the ON CONFLICT makes the insert total. Roll back + 500
+				// rather than swallow (a swallowed error would abort every later
+				// statement in this tx anyway).
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to link chapter: "+err.Error())
+				return
 			}
 		}
 
@@ -625,16 +926,60 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			if nameOK {
 				// Get the name attr_value_id
 				var nameAVID uuid.UUID
-				err := s.pool.QueryRow(ctx, `
+				err := tx.QueryRow(ctx, `
 					SELECT attr_value_id FROM entity_attribute_values
 					WHERE entity_id = $1 AND attr_def_id = $2
 				`, entID, nameAttrDefID).Scan(&nameAVID)
 				if err == nil {
-					if _, err := s.pool.Exec(ctx, `
-						INSERT INTO evidences (attr_value_id, chapter_id, evidence_type, original_language, original_text, note)
-						VALUES ($1, $2, 'extraction_quote', $3, $4, 'auto-extracted by glossary extraction pipeline')
-					`, nameAVID, s.firstChapterID(ent.ChapterLinks), req.SourceLanguage, ent.Evidence); err != nil {
-						slog.Warn("extraction: failed to insert evidence", "entity", ent.Name, "error", err)
+					// PROV/M3 — populate CHAPTER-LEVEL provenance (chapter_title +
+					// chapter_index) from the entity's first chapter link, so a quote
+					// traces at least to its chapter (was: only chapter_id + text). The
+					// finer block_or_line/char offsets + the trust taxonomy stay at the
+					// safe DEFAULT 'unverified' until the translation-side offset map +
+					// validation populate them (INV-7: model offsets are validated, never
+					// trusted — that's the model-offset-trust step, deliberately not here).
+					// M2 — the quote's chapter is the chapter THIS writeback processed
+					// (req.ChapterID), not the entity's first-ever appearance.
+					evChapterID, evChapterTitle, evChapterIndex := evidenceChapterFor(req.ChapterID, ent.ChapterLinks)
+					// PROV/M3 — VALIDATED offset + trust status (INV-7). The worker already
+					// located the quote in the real text; glossary trusts no raw number —
+					// evidenceProvenanceFields clamps + enum-gates, degrading anything
+					// off-contract to 'unverified' with NULL offsets (keep the quote, never
+					// fabricate a citation).
+					provStatus, provCS, provCE, provBlk := evidenceProvenanceFields(ent)
+					// INV-C5: idempotent evidence — uq_evidence_dedup keeps ONE row per
+					// (attr_value_id, evidence_type, quote), so re-extraction/redelivery
+					// of the same quote never duplicates, and (crucial inside a tx) the
+					// ON CONFLICT keeps a duplicate from raising an error that would poison
+					// the whole writeback. A TRUE replay is already short-circuited upstream
+					// by the writeback_key guard, so this conflict path is reached only by a
+					// DISTINCT writeback that re-asserts the same quote (e.g. a re-extraction
+					// after the chapter was edited so a byte-identical quote MOVED). There we
+					// DO UPDATE the PROVENANCE columns only — latest-validated-wins — so the
+					// stored offset/trust tracks the current text instead of going stale on
+					// the first-writer's coordinates. original_text is the conflict key (so
+					// it's identical); the chapter pointer (M5 backfill of the firstChapterID bug) + the validated
+					// offsets can legitimately differ, so only they refresh.
+					if _, err := tx.Exec(ctx, `
+						INSERT INTO evidences (attr_value_id, chapter_id, chapter_title, chapter_index,
+						                       block_or_line, char_start, char_end, provenance_status,
+						                       evidence_type, original_language, original_text, note)
+						VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+						        'extraction_quote', $9, $10, 'auto-extracted by glossary extraction pipeline')
+						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO UPDATE SET
+							chapter_id        = EXCLUDED.chapter_id,
+							chapter_title     = EXCLUDED.chapter_title,
+							chapter_index     = EXCLUDED.chapter_index,
+							block_or_line     = EXCLUDED.block_or_line,
+							char_start        = EXCLUDED.char_start,
+							char_end          = EXCLUDED.char_end,
+							provenance_status = EXCLUDED.provenance_status
+					`, nameAVID, evChapterID, evChapterTitle, evChapterIndex,
+						provBlk, provCS, provCE, provStatus,
+						req.SourceLanguage, ent.Evidence); err != nil {
+						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+						writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to insert evidence: "+err.Error())
+						return
 					}
 				}
 			}
@@ -652,11 +997,11 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
 			if nameOK {
 				var nameAVID uuid.UUID
-				if err := s.pool.QueryRow(ctx, `
+				if err := tx.QueryRow(ctx, `
 					SELECT attr_value_id FROM entity_attribute_values
 					WHERE entity_id = $1 AND attr_def_id = $2
 				`, entID, nameAttrDefID).Scan(&nameAVID); err == nil {
-					ct, err := s.pool.Exec(ctx, `
+					ct, err := tx.Exec(ctx, `
 						INSERT INTO attribute_translations (attr_value_id, language_code, value, confidence, translator)
 						VALUES ($1, $2, $3, 'machine', 'translation-2pass')
 						ON CONFLICT (attr_value_id, language_code) DO UPDATE
@@ -665,8 +1010,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 						  WHERE attribute_translations.confidence <> 'verified'
 					`, nameAVID, ent.Translation.LanguageCode, ent.Translation.Value)
 					if err != nil {
-						slog.Warn("extraction: failed to write name translation",
-							"entity", ent.Name, "error", err)
+						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+						writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to write name translation: "+err.Error())
+						return
 					} else if ct.RowsAffected() > 0 {
 						translationChanged = true
 					}
@@ -702,12 +1048,18 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
 				nil, "", result.Status, "pipeline", "", nil,
 			)
+			// Transactional outbox (INV-O12): the event row now commits ATOMICALLY
+			// with the entity write in this same tx (it used to be a post-commit
+			// best-effort pool write). A failed INSERT poisons the tx, so it's fatal
+			// here — but it's a DB write, not a broker publish (the relay drains the
+			// outbox table later), so this does not couple the response to the broker.
 			if err := insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
-				_, e := s.pool.Exec(ctx, sql, args...)
+				_, e := tx.Exec(ctx, sql, args...)
 				return e
 			}, entID, payload); err != nil {
-				slog.Warn("extraction: failed to emit glossary.entity_updated (non-fatal)",
-					"entity_id", entID, "name", ent.Name, "error", err)
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to emit entity event: "+err.Error())
+				return
 			}
 		}
 
@@ -717,6 +1069,47 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	if results == nil {
 		results = []entityResult{}
 	}
+
+	// Temporal-knowledge Path A: the chapter's facts have landed → flip the episode
+	// pending→reconciled in the same tx (§12.2.5 tx-2). A crash before here leaves a
+	// resumable 'pending' episode, never a phantom sealed-empty one polluting retrieval.
+	if factEpisodeID != nil {
+		if err := reconcileEpisode(ctx, tx, *factEpisodeID); err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to reconcile episode: "+err.Error())
+			return
+		}
+	}
+
+	// ── M1: record the WRITEBACK ledger row (INV-C3) + commit the chapter atomically.
+	// Only when the caller supplied an idempotency key AND a chapter (the per-chapter
+	// unit). ON CONFLICT DO NOTHING guards a concurrent winner (the advisory lock makes
+	// that unreachable in practice, but it keeps the insert total inside the tx).
+	if req.WritebackKey != "" && chapterID != uuid.Nil {
+		var ownerArg any
+		if ownerUserID != uuid.Nil {
+			ownerArg = ownerUserID
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO extraction_writeback_log
+			  (owner_user_id, book_id, chapter_id, writeback_key, content_hash, status,
+			   entities_created, entities_updated, entities_skipped, committed_at)
+			VALUES ($1, $2, $3, $4, $5, 'committed', $6, $7, $8, now())
+			ON CONFLICT (writeback_key) DO NOTHING
+		`, ownerArg, bookID, chapterID, req.WritebackKey, req.ContentHash,
+			created, updated, skipped); err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to record writeback log: "+err.Error())
+			return
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to commit writeback: "+err.Error())
+		return
+	}
+
 	BulkExtractTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"created":  created,
@@ -775,14 +1168,45 @@ func (s *Server) loadKindMap(ctx context.Context, bookID uuid.UUID) (map[string]
 	return m, arows.Err()
 }
 
+// loadBookKindCodes returns the set of LITERAL book_kind codes for a book (active
+// only) — NO alias folding, unlike loadKindMap. This is the executor's existence
+// domain: create_kinds inserts a book_kind by literal code and skips only on a
+// unique violation against this set. The plan-card preview uses it so its
+// "N new — M already exist" count matches what execute_plan will actually do; the
+// alias-folded loadKindMap over-counts "exist" (an alias of an adopted kind, e.g.
+// "faction"→organization, is NOT a book_kind, so create_kinds still creates it) —
+// the drift D-PLAN-PREVIEW-COUNT-DRIFT fixes.
+func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[string]struct{}, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT code FROM book_kinds WHERE book_id = $1 AND deprecated_at IS NULL`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	codes := make(map[string]struct{})
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		codes[code] = struct{}{}
+	}
+	return codes, rows.Err()
+}
+
 // loadAttrDefMap returns a map of "book_kind_id:code" → attr_id for the given book
 // (G4: book_attributes). Keyed by the UNIVERSAL-genre row — the seed lifts every
 // kind's attrs into (kind, universal) and adopt copies them there, so extraction /
 // entity attributes resolve under universal. DISTINCT ON (kind_id, code) preferring
 // the universal row keeps one attr per (kind, code) even if a genre-specific row
 // shares the code.
-func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `
+// q lets a caller that already holds a tx (e.g. under the per-book advisory
+// lock, INV-C1) run this on that SAME connection instead of a second one from
+// s.pool — the fix for D-GLOSSARY-PROPOSE-LOCK's connection-pool deadlock risk
+// (a hardcoded s.pool here forced every tx-holding caller to need 2 connections
+// at once). Callers with no open tx yet just pass s.pool.
+func (s *Server) loadAttrDefMap(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := q.Query(ctx, `
 		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.attr_id, ba.kind_id, ba.code
 		FROM book_attributes ba
 		JOIN book_genres g ON g.genre_id = ba.genre_id
@@ -804,19 +1228,103 @@ func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[stri
 	return m, rows.Err()
 }
 
-// findEntityByNameOrAlias looks up an existing entity by normalized name match,
+// loadAttrStrategyMap returns kindID:code → authored merge_strategy (MERGE/M5 slice 2).
+// The authored strategy is the DEFAULT merge behavior; the per-extraction profile
+// (attribute_actions) overrides it. Resolved book-tier (the same DISTINCT-ON universal-
+// preferred selection as loadAttrDefMap) so a book override of the System default wins.
+func (s *Server) loadAttrStrategyMap(ctx context.Context, bookID uuid.UUID) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.kind_id, ba.code, ba.merge_strategy
+		FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.book_id = $1 AND ba.deprecated_at IS NULL
+		ORDER BY ba.kind_id, ba.code, (g.code = 'universal') DESC, ba.sort_order`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var kindID uuid.UUID
+		var code, strategy string
+		if err := rows.Scan(&kindID, &code, &strategy); err != nil {
+			return nil, err
+		}
+		m[kindID.String()+":"+code] = strategy
+	}
+	return m, rows.Err()
+}
+
+// seedMergeStrategy is the runtime twin of migration 0039's CASE (merge_strategy_heuristic.go):
+// the default authored merge_strategy for a NEWLY-created ontology attribute, by type. It MUST
+// stay in sync with that migration — identity (name/term, or a required text key)→fill_if_empty;
+// tags→append; everything else→overwrite. Without it, an attribute created at runtime (book
+// adoption clones a NEW source, custom kind/attr) lands on the column DEFAULT 'fill_if_empty' and
+// silently re-freezes on re-extraction, even though the migration healed the rows that existed at
+// migration time (D-EXTRACT-ATTR-MERGE-DEFAULTS — the one-time migration can't cover future rows).
+func seedMergeStrategy(code, fieldType string, isRequired bool) string {
+	switch {
+	case code == "name" || code == "term":
+		return "fill_if_empty"
+	case isRequired && fieldType == "text":
+		return "fill_if_empty"
+	case fieldType == "tags":
+		return "append"
+	default:
+		return "overwrite"
+	}
+}
+
+// strategyToAction maps an authored merge_strategy to the runtime merge action the
+// extraction writeback understands. 'manual' returns "" (the caller skips it with a
+// 'manual' reason — queue for human review, never auto-write). Unknown/empty → the safe
+// fill-if-empty default.
+func strategyToAction(strategy string) string {
+	switch strategy {
+	case "replace", "overwrite":
+		return "overwrite"
+	case "append":
+		return "append"
+	case "summarize":
+		// #26/#7 — merge-rewrite. Accumulates the raw layer exactly like append, then
+		// flags the EAV for an end-of-job LLM canonical resynthesis (mergeExtractedEntity).
+		return "summarize"
+	case "manual":
+		return "" // skip → 'manual'
+	default: // "fill_if_empty" and anything unrecognized
+		return "fill"
+	}
+}
+
+// findEntityByNameOrAlias looks up an existing LIVE entity by normalized name match,
 // then by alias match if not found. Returns uuid.Nil if no match.
-func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
+//
+// All steps exclude soft-deleted entities (`deleted_at IS NULL`): a deleted row must
+// never be an extraction resolution target. This is the anti-resurrection contract — a
+// merged-away loser is soft-deleted with its name/aliases folded into the WINNER, so an
+// incoming name must resolve to the live winner (whose folded alias matches), never to the
+// hidden loser. (/review-impl S6 #1 — Steps 1-2 previously omitted this; Step 3 inherited.)
+// scope is an OPTIONAL disambiguation filter (glossary_entities.scope_label —
+// a plain author-set text label, e.g. a world/realm name, added 2026-07-08 per
+// real feedback: two entities can share a name+kind but genuinely be different
+// "Lâm gia" in different worlds — the resolver used to always fold them
+// together). Empty scope matches only entities whose OWN scope_label is also
+// empty (today's default, unchanged behavior for every caller that doesn't
+// pass one); a non-empty scope matches only entities carrying that EXACT
+// label. This is an additional filter, not a relaxation — normalized name/alias
+// still must match first.
+func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bookID, kindID uuid.UUID, name, scope string) (uuid.UUID, error) {
 	normalizedName := normalizeEntity(name)
 
 	// Step 1: Try exact name match (normalized)
-	rows, err := s.pool.Query(ctx, `
-		SELECT ge.entity_id, eav.original_value
+	rows, err := q.Query(ctx, `
+		SELECT ge.entity_id, eav.original_value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'name'
 	`, bookID, kindID)
 	if err != nil {
@@ -827,27 +1335,29 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 	type nameEntry struct {
 		entityID uuid.UUID
 		name     string
+		scope    string
 	}
 	var entries []nameEntry
 	for rows.Next() {
 		var e nameEntry
-		if err := rows.Scan(&e.entityID, &e.name); err != nil {
+		if err := rows.Scan(&e.entityID, &e.name, &e.scope); err != nil {
 			return uuid.Nil, err
 		}
-		if normalizeEntity(e.name) == normalizedName {
+		if normalizeEntity(e.name) == normalizedName && e.scope == scope {
 			return e.entityID, nil
 		}
 		entries = append(entries, e)
 	}
 
 	// Step 2: Check aliases (app-layer JSON parsing per design C1)
-	aliasRows, err := s.pool.Query(ctx, `
-		SELECT ge.entity_id, eav.original_value
+	aliasRows, err := q.Query(ctx, `
+		SELECT ge.entity_id, eav.original_value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE ge.book_id = $1
 		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
 		  AND ad.code = 'aliases'
 		  AND eav.original_value != ''
 	`, bookID, kindID)
@@ -858,9 +1368,54 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 
 	for aliasRows.Next() {
 		var entityID uuid.UUID
-		var aliasRaw string
-		if err := aliasRows.Scan(&entityID, &aliasRaw); err != nil {
+		var aliasRaw, entScope string
+		if err := aliasRows.Scan(&entityID, &aliasRaw, &entScope); err != nil {
 			return uuid.Nil, err
+		}
+		if entScope != scope {
+			continue
+		}
+		var aliases []string
+		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
+			continue // not a valid JSON array, skip
+		}
+		for _, alias := range aliases {
+			if normalizeEntity(alias) == normalizedName {
+				return entityID, nil
+			}
+		}
+	}
+
+	// Step 3 (S6): check PER-LANGUAGE alias sets — the aliases attr's translations, each
+	// a JSON array in some target language. This makes resolution cross-language: an
+	// entity whose 'en' alias set contains the incoming name resolves to it even when the
+	// source-language name/aliases don't match (anti-resurrection across languages). Same
+	// book+kind scope as Steps 1-2.
+	tRows, err := q.Query(ctx, `
+		SELECT ge.entity_id, t.value, ge.scope_label
+		FROM glossary_entities ge
+		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
+		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+		JOIN attribute_translations t ON t.attr_value_id = eav.attr_value_id
+		WHERE ge.book_id = $1
+		  AND ge.kind_id = $2
+		  AND ge.deleted_at IS NULL
+		  AND ad.code = 'aliases'
+		  AND t.value != ''
+	`, bookID, kindID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tRows.Close()
+
+	for tRows.Next() {
+		var entityID uuid.UUID
+		var aliasRaw, entScope string
+		if err := tRows.Scan(&entityID, &aliasRaw, &entScope); err != nil {
+			return uuid.Nil, err
+		}
+		if entScope != scope {
+			continue
 		}
 		var aliases []string
 		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
@@ -876,12 +1431,54 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 	return uuid.Nil, nil
 }
 
+// findEntityCrossKind resolves a name to an existing book entity REGARDLESS of kind
+// (#38/#39). The per-kind findEntityByNameOrAlias above misses when the LLM tags the
+// same character under a different kind (or a re-run with a changed kind set lands it
+// elsewhere), so the resolver creates a duplicate. This fallback matches the same
+// folded name across ALL kinds in the book via the app-maintained normalized_name
+// column (the SAME textnorm.Normalize fold the per-kind resolver and the dedup
+// backstop use — so 張若塵/张若尘/full-width/case variants all collapse), and returns
+// the matched entity + its ACTUAL kind so the caller merges incoming attributes
+// against that kind, not the (mis-tagged) extraction kind.
+//
+// Oldest-wins (created_at) makes the canonical entity deterministic. Name-only for
+// now — a cross-kind ALIAS collision is rarer and left as a follow-up. Safe under the
+// per-book extraction-writeback advisory lock (the loop is serialized per book), so a
+// cross-kind check-then-merge can't race another job into a duplicate.
+//
+// scope (D-GLOSSARY-ENTITY-SCOPE) — same discipline as findEntityByNameOrAlias: the
+// bulk extraction pipeline has no scope concept of its own (a caller here always
+// passes ""), so this only matches an UNSCOPED entity. Without this filter, a
+// human who had already disambiguated two same-named entities across worlds via
+// scope_label could have a later extraction pass silently attach new attributes to
+// WHICHEVER one is oldest, regardless of which world the chapter actually belongs
+// to — worse than making a fresh unscoped draft, which is at least visibly wrong
+// rather than silently mis-merged.
+func (s *Server) findEntityCrossKind(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, name, scope string) (entityID, kindID uuid.UUID, err error) {
+	normalized := normalizeEntity(name)
+	if normalized == "" {
+		return uuid.Nil, uuid.Nil, nil
+	}
+	err = q.QueryRow(ctx, `
+		SELECT entity_id, kind_id FROM glossary_entities
+		WHERE book_id = $1 AND normalized_name = $2 AND scope_label = $3 AND deleted_at IS NULL
+		ORDER BY created_at, entity_id
+		LIMIT 1`, bookID, normalized, scope).Scan(&entityID, &kindID)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, uuid.Nil, nil
+	}
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return entityID, kindID, nil
+}
+
 // entityHasTag reports whether the entity's tags array contains tag.
 // Used by the AI-writeback tombstone gate (ai-rejected). Returns false
 // if the entity is gone (no row) — a deleted target can't be tombstoned.
-func (s *Server) entityHasTag(ctx context.Context, entityID uuid.UUID, tag string) (bool, error) {
+func (s *Server) entityHasTag(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID, tag string) (bool, error) {
 	var has bool
-	err := s.pool.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`SELECT $2 = ANY(tags) FROM glossary_entities WHERE entity_id = $1`,
 		entityID, tag,
 	).Scan(&has)
@@ -897,105 +1494,250 @@ func (s *Server) entityHasTag(ctx context.Context, entityID uuid.UUID, tag strin
 // createExtractedEntity creates a new entity with all provided attributes.
 func (s *Server) createExtractedEntity(
 	ctx context.Context,
+	q pgxRWQuerier,
 	bookID, kindID uuid.UUID,
 	ent extractedEntity,
 	actions map[string]string,
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
 	tags []string,
-) (uuid.UUID, error) {
+) (entityID uuid.UUID, written []string, skipped []attrSkip, err error) {
 	if tags == nil {
 		tags = []string{} // tags column is NOT NULL DEFAULT '{}'
 	}
-	var entityID uuid.UUID
-	err := s.pool.QueryRow(ctx, `
+	err = q.QueryRow(ctx, `
 		INSERT INTO glossary_entities (book_id, kind_id, status, tags)
 		VALUES ($1, $2, 'draft', $3)
 		RETURNING entity_id
 	`, bookID, kindID, tags).Scan(&entityID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("insert entity: %w", err)
+		return uuid.Nil, nil, nil, fmt.Errorf("insert entity: %w", err)
 	}
 
 	// Insert name attribute
 	nameDefID, ok := attrDefMap[kindID.String()+":name"]
 	if ok {
-		_, err = s.pool.Exec(ctx, `
+		_, err = q.Exec(ctx, `
 			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
 		`, entityID, nameDefID, sourceLang, ent.Name)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("insert name attr: %w", err)
+			return uuid.Nil, nil, nil, fmt.Errorf("insert name attr: %w", err)
 		}
+		written = append(written, "name")
 	}
 
 	// Insert other attributes
+	var unmatchedCodes, unmatchedNotes []string
 	for code, val := range ent.Attributes {
 		defID, ok := attrDefMap[kindID.String()+":"+code]
 		if !ok {
+			// D-GLOSSARY-UNMATCHED-ATTR-FALLBACK: a code the kind hasn't registered
+			// (e.g. an AI proposal guessing a field name) is captured into the kind's
+			// "description" catch-all below rather than dropped — glossary content is
+			// authored prose, not a rigid schema; losing the observation is worse than
+			// filing it under a generic heading (see appendUnmatchedAttrsToFallback).
+			unmatchedCodes = append(unmatchedCodes, code)
+			unmatchedNotes = append(unmatchedNotes, fmt.Sprintf("- %s: %s", code, serializeValue(val)))
 			continue
 		}
 		serialized := serializeValue(val)
-		_, err = s.pool.Exec(ctx, `
+		_, err = q.Exec(ctx, `
 			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
 		`, entityID, defID, sourceLang, serialized)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("insert attr %s: %w", code, err)
+			return uuid.Nil, nil, nil, fmt.Errorf("insert attr %s: %w", code, err)
+		}
+		// D-GLOSSARY-MULTIROW slice 2 — seed per-item rows for a list value on create
+		// (scalar ⇒ no-op) so a freshly-created list attr is item-consistent for
+		// verify/tombstone without waiting for a later append.
+		if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
+			return uuid.Nil, nil, nil, fmt.Errorf("insert attr %s (items): %w", code, e)
+		}
+		written = append(written, code)
+	}
+	if len(unmatchedNotes) > 0 {
+		ok, reason, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes)
+		if ferr != nil {
+			return uuid.Nil, nil, nil, ferr
+		}
+		if ok {
+			written = markDescriptionWritten(written)
+		} else {
+			for _, code := range unmatchedCodes {
+				skipped = append(skipped, attrSkip{code, reason})
+			}
 		}
 	}
 
-	return entityID, nil
+	// D-GLOSSARY-ST-DEDUP M3a: stamp the app-maintained dedup key from the
+	// just-landed name (cached_name is set by the snapshot trigger on the name EAV).
+	if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
+		return uuid.Nil, nil, nil, fmt.Errorf("refresh dedup key: %w", err)
+	}
+	if skipped == nil {
+		skipped = []attrSkip{}
+	}
+	return entityID, written, skipped, nil
 }
 
-// mergeExtractedEntity merges attributes into an existing entity based on fill/overwrite actions.
+// appendUnmatchedAttrsToFallback captures attribute codes a kind hasn't registered
+// into that kind's "description" textarea (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK) instead
+// of silently dropping them — a glossary/wiki entity is authored prose, not a rigid
+// schema, so an unrecognized-but-real observation is worth keeping even if it can't be
+// filed under its own field yet. Appends (never overwrites) so repeated extraction runs
+// accumulate rather than clobber. Respects the INV-8 verified-clobber guard: a
+// human-curated description is never machine-appended to. Returns appended=true (the
+// caller should report the attr code as "description", per INV-FACTS/§12 — NEVER under
+// its own original code, since no fact-worthy attr_def exists for it; see the two call
+// sites) or appended=false with a reason ("unmapped" — the kind has no "description"
+// attr_def at all, or "verified" — INV-8 blocked the write), in which case the caller
+// keeps its prior silent-skip behavior for those attribute codes.
+func appendUnmatchedAttrsToFallback(
+	ctx context.Context, q pgxRWQuerier, entityID, kindID uuid.UUID,
+	attrDefMap map[string]uuid.UUID, sourceLang string, lines []string,
+) (appended bool, reason string, err error) {
+	descID, ok := attrDefMap[kindID.String()+":description"]
+	if !ok {
+		return false, "unmapped", nil
+	}
+	var existingValue, existingConfidence string
+	selErr := q.QueryRow(ctx, `
+		SELECT original_value, confidence FROM entity_attribute_values
+		WHERE entity_id = $1 AND attr_def_id = $2
+	`, entityID, descID).Scan(&existingValue, &existingConfidence)
+	exists := selErr == nil
+	if exists && existingConfidence == "verified" {
+		return false, "verified", nil
+	}
+	appendText := strings.Join(lines, "\n")
+	if exists && existingValue != "" {
+		appendText = existingValue + "\n" + appendText
+	}
+	if exists {
+		_, err = q.Exec(ctx, `
+			UPDATE entity_attribute_values SET original_value = $1
+			WHERE entity_id = $2 AND attr_def_id = $3
+		`, appendText, entityID, descID)
+	} else {
+		_, err = q.Exec(ctx, `
+			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+			VALUES ($1, $2, $3, $4)
+		`, entityID, descID, sourceLang, appendText)
+	}
+	if err != nil {
+		return false, "", fmt.Errorf("append unmatched attrs to description: %w", err)
+	}
+	return true, "", nil
+}
+
+// markDescriptionWritten adds "description" to a written-codes list exactly once —
+// shared by create/merge so a fallback append is reported truthfully (Status/back-compat
+// AttributesWritten) WITHOUT ever adding the original unmatched code. /review-impl HIGH:
+// the original code has no attr_def, so passing it to emitChapterFacts's writtenCodes
+// (which looks up ent.Attributes[code] and emits a fact under THAT code) would mint a
+// phantom entity_facts row for an attribute that has no EAV cell — a fact SSOT (INV-FACTS)
+// that permanently disagrees with the EAV projection it's supposed to back, surviving
+// even after the description text is edited. "description" is always a real attr_def
+// here (the fallback only fires when one exists), so it's fact-emission-safe: the shared
+// emit path re-reads ent.Attributes["description"] and no-ops when that key is absent.
+func markDescriptionWritten(written []string) []string {
+	for _, c := range written {
+		if c == "description" {
+			return written
+		}
+	}
+	return append(written, "description")
+}
+
+// mergeExtractedEntity merges attributes into an existing entity. The action is the
+// per-extraction profile directive (fill/overwrite/append/skip); when the profile does NOT
+// specify one, the attribute's AUTHORED merge_strategy is the default (MERGE/M5 slice 2 —
+// strategy is the default, profile overrides). The verified-clobber guard (INV-8) supersedes
+// whichever action results.
 func (s *Server) mergeExtractedEntity(
 	ctx context.Context,
+	q pgxRWQuerier,
 	entityID, kindID uuid.UUID,
 	ent extractedEntity,
 	actions map[string]string,
+	strategyMap map[string]string,
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
-) (written, skippedAttrs []string, err error) {
+) (written []string, skipped []attrSkip, err error) {
+	var unmatchedCodes []string
+	var unmatchedNotes []string
 	for code, val := range ent.Attributes {
 		defID, ok := attrDefMap[kindID.String()+":"+code]
 		if !ok {
+			// D-GLOSSARY-UNMATCHED-ATTR-FALLBACK — see appendUnmatchedAttrsToFallback.
+			unmatchedCodes = append(unmatchedCodes, code)
+			unmatchedNotes = append(unmatchedNotes, fmt.Sprintf("- %s: %s", code, serializeValue(val)))
 			continue
 		}
-		action := actions[code]
-		if action == "" || action == "skip" {
-			skippedAttrs = append(skippedAttrs, code)
+		// Resolve the effective action: the profile overrides; otherwise the authored
+		// merge_strategy default governs (fill_if_empty→fill, replace→overwrite,
+		// append→append, manual→queue for review). An explicit profile 'skip' wins.
+		action, specified := actions[code]
+		if action == "skip" {
+			skipped = append(skipped, attrSkip{code, "no_action"})
 			continue
+		}
+		// "default" is the explicit "defer to the authored merge_strategy" sentinel
+		// (D-EXTRACT-ATTR-MERGE-DEFAULTS) — the worker/FE send it instead of forcing
+		// "fill", so the seeded heuristic (append/overwrite/fill) governs. Treated
+		// identically to an omitted/empty action.
+		if !specified || action == "" || action == "default" {
+			strat := strategyMap[kindID.String()+":"+code]
+			if strat == "manual" {
+				skipped = append(skipped, attrSkip{code, "manual"})
+				continue
+			}
+			action = strategyToAction(strat)
 		}
 
 		serialized := serializeValue(val)
 
-		// Check existing value
+		// Check existing value + its trust marker (MERGE/M5) + its surrogate id (the
+		// child-item FK target, D-GLOSSARY-MULTIROW-ATTR-VALUES).
 		var existingValue string
+		var existingConfidence string
+		var existingAttrValueID uuid.UUID
 		var attrValueExists bool
-		err := s.pool.QueryRow(ctx, `
-			SELECT original_value FROM entity_attribute_values
+		err := q.QueryRow(ctx, `
+			SELECT attr_value_id, original_value, confidence FROM entity_attribute_values
 			WHERE entity_id = $1 AND attr_def_id = $2
-		`, entityID, defID).Scan(&existingValue)
+		`, entityID, defID).Scan(&existingAttrValueID, &existingValue, &existingConfidence)
 		if err == nil {
 			attrValueExists = true
 		}
 
+		// INV-8 verified-clobber guard — a human-authored ('verified') SOURCE value
+		// supersedes the machine merge action: never overwrite it, queue for manual review
+		// (skip-reason 'verified'). Checked at WRITE time against the stored marker, never
+		// assumed. This is the T2 fix — a re-extraction can no longer silently clobber a
+		// value the user curated via the editor / apply-edit.
+		if attrValueExists && existingConfidence == "verified" {
+			skipped = append(skipped, attrSkip{code, "verified"})
+			continue
+		}
+
 		if action == "fill" {
 			if attrValueExists && existingValue != "" {
-				skippedAttrs = append(skippedAttrs, code)
+				skipped = append(skipped, attrSkip{code, "fill_occupied"})
 				continue
 			}
 			// Fill empty value
 			if attrValueExists {
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
 					WHERE entity_id = $3 AND attr_def_id = $4
 				`, serialized, sourceLang, entityID, defID)
 			} else {
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 					VALUES ($1, $2, $3, $4)
 				`, entityID, defID, sourceLang, serialized)
@@ -1003,24 +1745,33 @@ func (s *Server) mergeExtractedEntity(
 			if err != nil {
 				return nil, nil, fmt.Errorf("fill attr %s: %w", code, err)
 			}
+			// D-GLOSSARY-MULTIROW slice 2 — keep the per-item rows in step for a list value
+			// (scalar ⇒ no-op). A machine fill writes machine items with chapter provenance.
+			if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
+				return nil, nil, fmt.Errorf("fill attr %s (items): %w", code, e)
+			}
 			written = append(written, code)
 		} else if action == "overwrite" {
 			// Log to extraction_audit_log before overwriting
 			if attrValueExists {
 				chapterID := firstChapterIDFromLinks(ent.ChapterLinks)
-				if _, auditErr := s.pool.Exec(ctx, `
+				// /review-impl (M1) — must HARD-FAIL inside the writeback tx, not warn:
+				// a swallowed Exec error POISONS the transaction (pgx aborts every later
+				// statement until rollback), so the next attr's UPDATE would fail with a
+				// confusing "current transaction is aborted" instead of this real cause.
+				if _, auditErr := q.Exec(ctx, `
 					INSERT INTO extraction_audit_log (entity_id, attr_def_id, chapter_id, old_value, new_value)
 					VALUES ($1, $2, $3, $4, $5)
 				`, entityID, defID, chapterID, existingValue, serialized); auditErr != nil {
-					slog.Warn("extraction: failed to insert audit log", "entity_id", entityID, "attr", code, "error", auditErr)
+					return nil, nil, fmt.Errorf("audit log attr %s: %w", code, auditErr)
 				}
 
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
 					WHERE entity_id = $3 AND attr_def_id = $4
 				`, serialized, sourceLang, entityID, defID)
 			} else {
-				_, err = s.pool.Exec(ctx, `
+				_, err = q.Exec(ctx, `
 					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
 					VALUES ($1, $2, $3, $4)
 				`, entityID, defID, sourceLang, serialized)
@@ -1028,36 +1779,150 @@ func (s *Server) mergeExtractedEntity(
 			if err != nil {
 				return nil, nil, fmt.Errorf("overwrite attr %s: %w", code, err)
 			}
+			// D-GLOSSARY-MULTIROW slice 2 — replace the per-item rows for a list value
+			// (scalar ⇒ no-op), closing the slice-1 overwrite→append divergence. Machine
+			// items with chapter provenance.
+			if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
+				return nil, nil, fmt.Errorf("overwrite attr %s (items): %w", code, e)
+			}
+			written = append(written, code)
+		} else if action == "append" || action == "summarize" {
+			// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 1 — per-item append. Each incoming
+			// element becomes a child row (its own confidence/status/source-chapter); the
+			// list is deduped by normalized value via UNIQUE(attr_value_id, item_norm) +
+			// ON CONFLICT DO NOTHING, so a re-append is a no-op → skip 'unchanged'. The
+			// whole op runs under the per-book writeback lock (this tx), so the cache
+			// rebuild is race-free. original_value is kept as the write-synced cache of the
+			// ACTIVE items (rebuildItemsCache) so every existing reader is unchanged.
+			//
+			// #26/#7 — `summarize` shares this RAW layer verbatim (lossless provenance);
+			// it differs only in that a real change also flags canonical_dirty so the
+			// end-of-extraction-job LLM pass rewrites the accumulated raw items into one
+			// deduped canonical_value (see the dirty-set below + resummarize endpoints).
+			incoming := parseListValue(serialized)
+			if len(dedupNormalized(incoming)) == 0 {
+				// nothing meaningful to append (empty/whitespace input)
+				skipped = append(skipped, attrSkip{code, "unchanged"})
+				continue
+			}
+			attrValueID := existingAttrValueID
+			seeded := false
+			if !attrValueExists {
+				// Materialize the EAV first (cache seeded empty; rebuilt below). RETURNING
+				// gives us the child-FK target.
+				if err = q.QueryRow(ctx, `
+					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+					VALUES ($1, $2, $3, '[]')
+					RETURNING attr_value_id
+				`, entityID, defID, sourceLang).Scan(&attrValueID); err != nil {
+					return nil, nil, fmt.Errorf("append attr %s (create): %w", code, err)
+				}
+			} else if seeded, err = ensureItemsMaterialized(ctx, q, attrValueID, existingValue, existingConfidence); err != nil {
+				// First per-item touch of a value first written as a scalar/legacy list:
+				// seed its existing elements so the cache rebuild doesn't drop them.
+				return nil, nil, fmt.Errorf("append attr %s (materialize): %w", code, err)
+			}
+			added, err := appendListItems(ctx, q, attrValueID, incoming, firstChapterIDFromLinks(ent.ChapterLinks))
+			if err != nil {
+				return nil, nil, fmt.Errorf("append attr %s (items): %w", code, err)
+			}
+			// Rebuild the cache whenever the item set changed OR we just materialized a
+			// legacy scalar (canonicalize it to the active-item JSON array — INV-MR1 never
+			// diverges, even on a no-op re-append).
+			if added > 0 || seeded {
+				if err := rebuildItemsCache(ctx, q, attrValueID); err != nil {
+					return nil, nil, fmt.Errorf("append attr %s (cache): %w", code, err)
+				}
+			}
+			if added == 0 && attrValueExists {
+				// no NEW element (every incoming item already present) → idempotent;
+				// report 'unchanged' (the cache may have canonicalized, but the active set
+				// is the same). Preserves the slice-2 'unchanged' contract. summarize does
+				// NOT re-dirty here — an unchanged raw set means the canonical is still valid.
+				skipped = append(skipped, attrSkip{code, "unchanged"})
+				continue
+			}
+			// #26/#7 — summarize: a real raw-layer change invalidates the canonical value.
+			// Flag it so the end-of-extraction-job resummarize pass rewrites it (the LLM
+			// rewrite runs OUT of this tx — never inline). Same EAV, same book scope.
+			if action == "summarize" {
+				if _, err := q.Exec(ctx, `
+					UPDATE entity_attribute_values SET canonical_dirty = true WHERE attr_value_id = $1
+				`, attrValueID); err != nil {
+					return nil, nil, fmt.Errorf("summarize attr %s (dirty): %w", code, err)
+				}
+			}
 			written = append(written, code)
 		}
 	}
 
-	// Touch updated_at
+	if len(unmatchedNotes) > 0 {
+		// /review-impl HIGH fix: report "description" (a real attr_def), never the
+		// original unmatched codes — see markDescriptionWritten's doc comment for why
+		// reporting the raw code here would mint a phantom INV-FACTS entity_facts row.
+		ok, reason, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes)
+		if ferr != nil {
+			return nil, nil, ferr
+		}
+		if ok {
+			written = markDescriptionWritten(written)
+		} else {
+			for _, code := range unmatchedCodes {
+				skipped = append(skipped, attrSkip{code, reason})
+			}
+		}
+	}
+
+	// Touch updated_at. /review-impl (M1): hard-fail, not warn — a swallowed error
+	// here poisons the writeback tx (this is the LAST statement of the merge, so the
+	// poison would surface on the NEXT entity's resolver query or at commit).
 	if len(written) > 0 {
-		if _, err := s.pool.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
-			slog.Warn("extraction: failed to touch updated_at", "entity_id", entityID, "error", err)
+		if _, err := q.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
+			return nil, nil, fmt.Errorf("touch updated_at: %w", err)
+		}
+		// D-GLOSSARY-ST-DEDUP M3a: if the name/term was among the written attrs the
+		// dedup key must follow it. Idempotent (no-op when cached_name is unchanged).
+		if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
+			return nil, nil, fmt.Errorf("refresh dedup key: %w", err)
 		}
 	}
 
 	if written == nil {
 		written = []string{}
 	}
-	if skippedAttrs == nil {
-		skippedAttrs = []string{}
+	if skipped == nil {
+		skipped = []attrSkip{}
 	}
-	return written, skippedAttrs, nil
+	return written, skipped, nil
 }
 
-// firstChapterID extracts the first chapter UUID from chapter links input.
-func (s *Server) firstChapterID(links []chapterLinkIn) *uuid.UUID {
-	if len(links) == 0 {
-		return nil
+// evidenceChapterFor resolves the chapter an extracted quote belongs to: the chapter THIS
+// writeback processed (reqChapterID — where the quote was extracted), with title/index from the
+// matching ChapterLink. Falls back to the entity's FIRST link only when reqChapterID is unset
+// (the legacy single-entity / MCP path). Fixes the firstChapterID bug (D-EVIDENCE-PROVENANCE-
+// OVERHAUL M2) that stamped every quote with the entity's first-ever appearance — so a
+// chapter-50 quote on a recurring character was labeled chapter 1, making evidence un-traceable.
+func evidenceChapterFor(reqChapterID string, links []chapterLinkIn) (*uuid.UUID, string, *int) {
+	if reqChapterID != "" {
+		if id, err := uuid.Parse(reqChapterID); err == nil {
+			for _, cl := range links {
+				if cl.ChapterID == reqChapterID {
+					ci := cl.ChapterIndex
+					return &id, cl.ChapterTitle, &ci
+				}
+			}
+			// Valid scope chapter but the worker didn't include a matching link → still stamp
+			// the correct chapter id; title/index are then filled by the chapter-title backfill.
+			return &id, "", nil
+		}
 	}
-	id, err := uuid.Parse(links[0].ChapterID)
-	if err != nil {
-		return nil
+	if len(links) > 0 {
+		if id, err := uuid.Parse(links[0].ChapterID); err == nil {
+			ci := links[0].ChapterIndex
+			return &id, links[0].ChapterTitle, &ci
+		}
 	}
-	return &id
+	return nil, "", nil
 }
 
 // firstChapterIDFromLinks extracts the first chapter UUID (nullable) from chapter links.
@@ -1099,18 +1964,21 @@ func serializeValue(val any) string {
 	}
 }
 
+// parseListValue interprets a stored attribute value as a string list (delegates to
+// the shared textnorm.ParseList — the single impl shared with the migration backfill,
+// D-GLOSSARY-MULTIROW-ATTR-VALUES normalize-parity).
+func parseListValue(s string) []string {
+	return textnorm.ParseList(s)
+}
+
 // ── Name normalization ──────────────────────────────────────────────────────
 
-var wsCollapse = regexp.MustCompile(`\s+`)
-
-// normalizeEntity prepares a name string for dedup comparison.
-// Unicode NFC, trim, collapse whitespace, lowercase.
+// normalizeEntity prepares a name string for dedup comparison (delegates to the
+// shared textnorm.Normalize — NFC, trim, collapse whitespace, lowercase). Shared
+// with the migration backfill so the per-item child rows dedup identically to the
+// runtime append path (D-GLOSSARY-MULTIROW-ATTR-VALUES normalize-parity).
 func normalizeEntity(s string) string {
-	s = norm.NFC.String(s)
-	s = strings.TrimSpace(s)
-	s = wsCollapse.ReplaceAllString(s, " ")
-	s = strings.ToLower(s)
-	return s
+	return textnorm.Normalize(s)
 }
 
 // Ensure pgx import is used
@@ -1181,6 +2049,29 @@ func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
 	}
 	EntityCountTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{"count": count})
+}
+
+// internalSuggestionsCount — GET /internal/books/{book_id}/suggestions-count.
+//
+// The entity-triage rail's completion signal for the Track-C rail driver: how many
+// AI-suggested items still await a triage decision. It reuses the tool's OWN producer
+// (queryAISuggestions with status="draft") rather than re-deriving the predicate, so the
+// count the driver grounds on can never drift from the pile the agent actually sees via
+// glossary_list_ai_suggestions — a keep/throw-out/combine decision moves an item off 'draft',
+// so this counts DOWN as the user triages, reaching 0 exactly when the pile is clean.
+// Auth-free like its siblings: this is an /internal route, the caller (chat-service) owns the
+// grant check on the session's book.
+func (s *Server) internalSuggestionsCount(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, total, err := s.queryAISuggestions(r.Context(), bookID, "draft")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count suggestions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": total})
 }
 
 // ── C12c-a: glossary entities listing for knowledge-service sync ──────────

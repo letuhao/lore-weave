@@ -15,13 +15,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE \"git commit\"; then bash ./scripts/workflow-gate.sh pre-commit && bash ./scripts/workflow-gate.sh amaw-pre-commit; fi'",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE \"git commit\"; then bash ./scripts/workflow-gate.sh pre-commit && bash ./scripts/workflow-gate.sh amaw-pre-commit; fi'",
             "timeout": 75000,
             "description": "Block git commit if VERIFY/POST-REVIEW/SESSION not done; also call check_guardrails when AMAW mode active (no-op default v2.2). Timeout 75s to accommodate cold-start ContextHub embedding ops."
           },
           {
             "type": "command",
-            "command": "python ./scripts/amaw-guardrail-gate.py",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python ./scripts/amaw-guardrail-gate.py'",
             "timeout": 15000,
             "description": "AMAW risky-action guardrail gate. Cheap local pre-check on every Bash call; for git push / force-push / rm -r / git reset --hard / destructive docker / migrations it consults ContextHub check_guardrails and surfaces a permission 'ask' so the action needs explicit user approval. Fail-open: ContextHub unavailable -> allow."
           }
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python ./scripts/amaw-context-inject.py",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python ./scripts/amaw-context-inject.py'",
             "timeout": 60000,
             "description": "AMAW ContextHub steering. At session start, injects the active guardrail set + recent captured lessons into context (Kiro-style steering — rules in front of the agent, not search-on-demand). Fail-open: ContextHub unavailable -> injects nothing."
           }

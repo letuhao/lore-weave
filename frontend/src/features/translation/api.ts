@@ -283,6 +283,10 @@ export const translationApi = {
       // Bypass the idempotency skip-gate so an already-translated chapter is
       // re-translated (and a new version produced) rather than skipped.
       force_retranslate?: boolean;
+      // Enable model reasoning (hidden thinking) for the translation LLM. Default
+      // OFF — thinking can burn the output budget on local models. Persisted on the
+      // job so it survives resume.
+      thinking_enabled?: boolean;
     },
   ): Promise<TranslationJob> {
     return apiJson(`/v1/translation/books/${bookId}/jobs`, {

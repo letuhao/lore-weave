@@ -89,9 +89,13 @@ describe('useConfirmName', () => {
     expect(await run('提拉米', 'Tirami')).toBe('no_name_attr');
   });
 
-  it('returns error on an API failure', async () => {
+  it('returns error on an API failure AND logs the exception (S8: no silent swallow)', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     listEntities.mockRejectedValue(new Error('boom'));
     expect(await run('提拉米', 'Tirami')).toBe('error');
+    // S8: the catch used to discard the exception; it must now surface it to the console.
+    expect(spy).toHaveBeenCalledWith('useConfirmName: confirm failed', expect.any(Error));
+    spy.mockRestore();
   });
 
   it('returns error on blank input without calling the API', async () => {

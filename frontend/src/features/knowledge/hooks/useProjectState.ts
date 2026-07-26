@@ -386,6 +386,7 @@ export function useProjectState(project: Project): UseProjectStateResult {
               project.project_id,
               { llm_model: latestLlmModel, embedding_model: latestEmbeddingModel },
               token,
+              true, // bug #14 — explicit confirm; this is the post-confirmation commit path
             ),
           invalidate,
         );
@@ -404,6 +405,7 @@ export function useProjectState(project: Project): UseProjectStateResult {
               project.project_id,
               { llm_model: latestLlmModel, embedding_model: latestEmbeddingModel },
               token,
+              true, // bug #14 — explicit confirm; this is the post-confirmation commit path
             ),
           invalidate,
         );

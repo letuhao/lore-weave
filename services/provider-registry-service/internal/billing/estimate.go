@@ -30,9 +30,17 @@ var ErrUnpriced = errors.New("model pricing not configured")
 type Pricing struct {
 	InputPerMTok  *float64 `json:"input_per_mtok,omitempty"`
 	OutputPerMTok *float64 `json:"output_per_mtok,omitempty"`
-	PerImage      *float64 `json:"per_image,omitempty"`
-	PerSecond     *float64 `json:"per_second,omitempty"`
-	PerKChar      *float64 `json:"per_kchar,omitempty"`
+	// CachedInputPerMTok — the rate for input tokens SERVED FROM the provider's prompt
+	// cache (OpenAI cached_tokens / Anthropic cache_read). Every major 2026 provider
+	// discounts these 50–90%; billing them at the full InputPerMTok is a real overcharge
+	// (LiteLLM #19681: 10.9× on a 91%-cached prompt). Optional — when nil, billing applies
+	// a conservative DEFAULT of 0.5×InputPerMTok (the OpenAI floor; GPT-5.x/Anthropic are
+	// 0.1× so this never OVER-discounts). Cache WRITES (Anthropic cache_creation) bill at a
+	// 1.25× premium of InputPerMTok, applied in usageCostUSD.
+	CachedInputPerMTok *float64 `json:"cached_input_per_mtok,omitempty"`
+	PerImage           *float64 `json:"per_image,omitempty"`
+	PerSecond          *float64 `json:"per_second,omitempty"`
+	PerKChar           *float64 `json:"per_kchar,omitempty"`
 }
 
 // Estimator computes a worst-case USD upper bound for a job. The three int
@@ -94,6 +102,21 @@ const (
 	// api.validateVideoGenInput — the upper bound used to estimate a
 	// video_gen job that omits an explicit duration.
 	videoMaxDurationSeconds = 60
+
+	// visionImageTokenCeiling — PDF-import vision op (docs/specs/2026-07-06-
+	// pdf-book-import.md L5). A conservative flat per-image input-token
+	// ceiling for a single-image vision-caption call, covering high-detail
+	// tiling across common OpenAI-compatible vision models (~765-1105
+	// tokens/image in practice). Deliberately NOT derived from the
+	// base64 image byte count: walkText's generic char-count approach
+	// would treat the entire base64 payload as "text" and inflate the
+	// estimate by orders of magnitude (a 200KB image ≈ 266K b64 chars →
+	// tens of thousands of phantom tokens) — over-estimating is normally
+	// the safe direction (see walkText's doc comment), but at this
+	// magnitude it would make ordinary vision calls look artificially
+	// expensive enough to spuriously blow a legitimate spend cap. A flat,
+	// named ceiling keeps the estimate realistic while still erring high.
+	visionImageTokenCeiling = 1500
 )
 
 // EstimateUSD returns a worst-case USD upper bound for one job. "Upper bound"
@@ -149,6 +172,20 @@ func (e Estimator) EstimateUSD(operation string, input map[string]any, pricing P
 	case "stt":
 		chars := getInt(input, "audio_chars", sttFallbackChars)
 		return perUnitCost(float64(chars)/1000.0, pricing.PerKChar)
+	case "vision":
+		// PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5).
+		// Deliberately does NOT call e.InputTokens/walkText on the whole
+		// input map — that would walk into image_b64 and treat the raw
+		// base64 image bytes as "text", wildly over-counting (see
+		// visionImageTokenCeiling's doc comment). Only the prompt string
+		// is char-counted; the image contributes a flat, conservative
+		// per-image ceiling instead.
+		promptChars, promptNonASCII := 0, 0
+		if p, ok := input["prompt"].(string); ok {
+			promptChars, promptNonASCII = CountScriptChars(p)
+		}
+		ti := estimateInputTokens(promptChars, promptNonASCII) + visionImageTokenCeiling
+		return textCost(ti, e.chatOutputTokens(input), pricing)
 	default:
 		return 0, fmt.Errorf("estimate: unknown operation %q", operation)
 	}
@@ -268,6 +305,31 @@ func PriceText(inputTokens, outputTokens int, p Pricing) (float64, error) {
 // path for the embedding stage). Mirrors PriceText.
 func PriceEmbedding(inputTokens int, p Pricing) (float64, error) {
 	return embeddingCost(inputTokens, p)
+}
+
+// PriceSTT prices a REAL-TIME voice speech-to-text invocation by AUDIO DURATION (C6 / SD-C6). The
+// model's rate is `per_second` (a per-minute rate is per_second×60; pricing the seconds directly is
+// equivalent), so the billing math lives with the model in provider-registry — never hardcoded in a
+// consumer. A model with no per_second rate is ErrUnpriced (fail closed) — the price-voice endpoint
+// surfaces that as status='unpriced' and the chat caller WARNS (a paid model billing $0 is observable,
+// not silent). A $0 local model (Whisper) carries an explicit per_second=0 → priced, cost 0.
+//
+// NOTE (cold-review HIGH-1): the async STT-JOB estimate path (EstimateUSD case "stt") prices by
+// per_kchar(audio_chars) — a pre-flight PROXY for a different operation. Voice STT (accurate duration
+// meter) uses per_second. A model intended for VOICE must carry per_second. Unifying the two STT
+// metering conventions is tracked as D-STT-METER-UNIFY.
+func PriceSTT(audioSeconds float64, p Pricing) (float64, error) {
+	return perUnitCost(audioSeconds, p.PerSecond)
+}
+
+// PriceTTS prices a text-to-speech invocation by CHARACTER count (C6 / SD-C6). The model's rate is
+// `per_kchar` (per 1000 characters). Mirrors the estimate path's tts/audio_gen op so an estimate and the
+// real charge never disagree. Unpriced ⇒ fail closed (a local Kokoro carries per_kchar=0).
+func PriceTTS(chars int, p Pricing) (float64, error) {
+	if chars < 0 {
+		chars = 0
+	}
+	return perUnitCost(float64(chars)/1000.0, p.PerKChar)
 }
 
 // perUnitCost prices a job with a single per-unit dimension (per_image,

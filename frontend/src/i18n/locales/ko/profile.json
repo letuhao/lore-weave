@@ -1,0 +1,49 @@
+{
+  "anonymous": "익명",
+  "joined": "{{date}} 가입",
+  "followers": "팔로워",
+  "following": "팔로잉",
+  "follow": "팔로우",
+  "unfollow": "팔로잉 중",
+  "editProfile": "프로필 수정",
+  "loading": "로딩 중...",
+  "noBooks": "아직 출판된 도서가 없습니다.",
+  "noTranslations": "아직 번역된 내역이 없습니다.",
+  "errorLoading": "프로필을 불러오지 못했습니다.",
+  "followError": "사용자를 팔로우할 수 없습니다.",
+  "unfollowError": "사용자 팔로우를 취소할 수 없습니다.",
+  "userNotFound": "사용자를 찾을 수 없습니다.",
+  "achievements": "업적",
+  "chapters": "챕터",
+  "readers": "독자",
+  "recentActivity": "최근 활동",
+  "last7d": "최근 7일",
+  "last30d": "최근 30일",
+  "translationLanguages": "번역 언어",
+  "stats": {
+    "books": "도서",
+    "chaptersTranslated": "번역된 챕터",
+    "totalReaders": "총 독자 수",
+    "followers": "팔로워",
+    "totalTranslations": "총 번역 수",
+    "languages": "언어"
+  },
+  "achievement": {
+    "booksPublished": "{{count}}권의 도서 출판",
+    "booksPublished_other": "{{count}}권의 도서 출판",
+    "kReaders": "{{count}}K+ 명의 독자",
+    "hundredReaders": "독자 100명 이상",
+    "followers": "{{count}} 명의 팔로워",
+    "multiLangTranslator": "{{count}}개 국어 번역가",
+    "fiftyChapters": "50개 이상의 챕터 번역"
+  },
+  "loadError": "도서를 불러오지 못했습니다.",
+  "noWiki": "아직 위키 기여 내역이 없습니다.",
+  "wikiError": "위키 기여 내역을 불러오지 못했습니다.",
+  "untitled": "제목 없음",
+  "tabs": {
+    "books": "도서",
+    "translations": "번역",
+    "wiki": "위키 기여"
+  }
+}

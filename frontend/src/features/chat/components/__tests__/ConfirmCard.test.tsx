@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { renderWithClient } from '@/test-utils/renderWithClient';
 
 // Generalized class-C confirm card (spec §13): on mount it fetches a current-state
 // preview (non-consuming), Confirm POSTs the token to the JWT-only
@@ -43,14 +44,14 @@ describe('ConfirmCard', () => {
 
   it('fetches the current-state preview on mount and renders its rows', async () => {
     confirmAction.mockResolvedValue({});
-    render(<ConfirmCard record={record(delArgs)} />);
+    renderWithClient(<ConfirmCard record={record(delArgs)} />);
     await waitFor(() => expect(previewAction).toHaveBeenCalledWith('tok123', 'tok'));
     await waitFor(() => expect(screen.getByText('attributes deprecated')).toBeInTheDocument());
   });
 
   it('confirm POSTs the token and resumes action_done', async () => {
     confirmAction.mockResolvedValue({});
-    render(<ConfirmCard record={record(delArgs)} />);
+    renderWithClient(<ConfirmCard record={record(delArgs)} />);
 
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
 
@@ -60,15 +61,31 @@ describe('ConfirmCard', () => {
 
   it('resumes token_expired when confirm returns 422 (expired/replay/drift)', async () => {
     confirmAction.mockRejectedValue(Object.assign(new Error('expired'), { status: 422 }));
-    render(<ConfirmCard record={record(delArgs)} />);
+    renderWithClient(<ConfirmCard record={record(delArgs)} />);
 
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
 
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'token_expired'));
   });
 
+  it('surfaces the BE 422 reason instead of a blanket "Expired — re-ask"', async () => {
+    confirmAction.mockRejectedValue(
+      Object.assign(new Error('the book ontology must be adopted before adding kinds'), { status: 422 }),
+    );
+    renderWithClient(<ConfirmCard record={record(delArgs)} />);
+
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+
+    // The actionable BE message is shown — NOT the generic expired_short key.
+    await waitFor(() =>
+      expect(screen.getByText('the book ontology must be adopted before adding kinds')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('actionConfirm.expired_short')).not.toBeInTheDocument();
+    expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'token_expired');
+  });
+
   it('cancel resumes cancelled without a confirm POST', async () => {
-    render(<ConfirmCard record={record(delArgs)} />);
+    renderWithClient(<ConfirmCard record={record(delArgs)} />);
 
     fireEvent.click(screen.getByText('actionConfirm.cancel'));
 

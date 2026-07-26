@@ -24,40 +24,41 @@ JOB = uuid.uuid4()
 
 
 def _work(settings=None):
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, settings=settings or {})
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, settings=settings or {})
 
 
 def _job(result=None):
-    return GenerationJob(id=JOB, user_id=USER, project_id=PROJECT, operation="draft_scene",
+    return GenerationJob(id=JOB, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                         operation="draft_scene",
                          status="completed", result=result if result is not None else {"text": "winner prose"})
 
 
 class StubWorks:
     def __init__(self): self.work = _work()
-    async def get(self, u, p): return self.work
+    async def get(self, p): return self.work
 
 
 class StubJobs:
     def __init__(self): self.job = _job()
-    async def get(self, u, jid): return self.job
+    async def get(self, jid): return self.job
 
 
 class StubCorrections:
     def __init__(self):
         self.calls = []
         self.raise_ref = False
-    async def create(self, user_id, project_id, job_id, **kw):
+    async def create(self, project_id, job_id, *, created_by=None, **kw):
         if self.raise_ref:
             raise ReferenceViolationError("cross-user/project")
         self.calls.append(kw)
         return GenerationCorrection(
-            id=uuid.uuid4(), user_id=user_id, project_id=project_id, job_id=job_id,
+            id=uuid.uuid4(), created_by=created_by, project_id=project_id, job_id=job_id,
             kind=kw["kind"], chosen_candidate_index=kw.get("chosen_candidate_index"),
             guidance=kw.get("guidance"), changed_blocks=kw.get("changed_blocks"),
             raw_before=kw.get("raw_before"), raw_after=kw.get("raw_after"),
             regenerated_to_job_id=kw.get("regenerated_to_job_id"),
         )
-    async def correction_stats(self, user_id, project_id):
+    async def correction_stats(self, project_id):
         from app.db.models import CorrectionStats, ModeCorrectionStats
         return CorrectionStats(project_id=project_id, by_mode=[
             ModeCorrectionStats(mode="auto", generations=4, corrected_jobs=2, accept_rate=0.5,
@@ -77,14 +78,24 @@ def ctx(monkeypatch):
 
     from app.main import app
     from app.deps import (get_generation_corrections_repo, get_generation_jobs_repo,
-                          get_works_repo)
+                          get_grant_client_dep, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the correction endpoints now
+    # _gate_work (resolve the Work's book, then gate) before acting.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, jobs, corr = StubWorks(), StubJobs(), StubCorrections()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_generation_jobs_repo] = lambda: jobs
     app.dependency_overrides[get_generation_corrections_repo] = lambda: corr
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, jobs, corr
     app.dependency_overrides.clear()

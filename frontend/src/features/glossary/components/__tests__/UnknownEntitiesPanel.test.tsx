@@ -56,6 +56,20 @@ describe('UnknownEntitiesPanel', () => {
     expect(screen.getByText('unknown.no_source_code')).toBeInTheDocument();
   });
 
+  it('shows a scope_label badge only for entities that have one set', () => {
+    hookMocks.state = {
+      items: [
+        { entity_id: 'e1', name: '哪吒', source_kind_code: 'faction', status: 'draft', created_at: '2026-06-04T00:00:00Z', scope_label: 'World A' },
+        { entity_id: 'e2', name: '楊戩', source_kind_code: 'faction', status: 'draft', created_at: '2026-06-04T00:00:00Z' },
+      ],
+      total: 2,
+      isLoading: false,
+      error: null,
+    };
+    renderPanel();
+    expect(screen.getByText('World A')).toBeInTheDocument();
+  });
+
   it('shows the empty state when there is nothing to review', () => {
     hookMocks.state = { items: [], total: 0, isLoading: false, error: null };
     renderPanel();

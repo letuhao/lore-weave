@@ -211,7 +211,7 @@ def _user_token() -> str:
     resolves an authenticated principal (signature unverified at this layer)."""
     import jwt as pyjwt
 
-    return pyjwt.encode({"sub": _UUID}, "x", algorithm="HS256")
+    return pyjwt.encode({"sub": _UUID, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 def test_list_routes_return_spec_valid_empty_shape(client):

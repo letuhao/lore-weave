@@ -43,7 +43,6 @@ pub const MAX_BODY_BYTES: usize = 1024 * 1024;
 #[derive(Debug)]
 pub struct JsonProblem<T>(pub T);
 
-#[axum::async_trait]
 impl<T, S> FromRequest<S> for JsonProblem<T>
 where
     T: serde::de::DeserializeOwned,

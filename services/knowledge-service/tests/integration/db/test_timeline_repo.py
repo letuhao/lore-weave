@@ -80,6 +80,41 @@ async def test_timeline_browse_no_filter_returns_all_for_user(
 
 
 @pytest.mark.asyncio
+async def test_timeline_browse_text_search_q(neo4j_driver, test_user):
+    """#12 — free-text ``q`` filters on title + summary, case-insensitive;
+    empty/None disables the filter. (Locks the headline search behavior — the
+    build-time smoke only proved the Cypher executes, not that it filters.)"""
+    try:
+        async with neo4j_driver.session() as session:
+            await merge_event(
+                session, user_id=test_user, project_id="p-1",
+                title="The bridge DUEL", chapter_id="ch-1", event_order=1,
+            )
+            await merge_event(
+                session, user_id=test_user, project_id="p-1",
+                title="A quiet morning", summary="they Rested by the river",
+                chapter_id="ch-1", event_order=2,
+            )
+
+            async def q(term):
+                rows, total = await list_events_filtered(
+                    session, user_id=test_user, project_id=None,
+                    after_order=None, before_order=None,
+                    q=term, limit=50, offset=0,
+                )
+                return total, [e.title for e in rows]
+
+            assert await q("duel") == (1, ["The bridge DUEL"])  # case-insensitive title
+            assert await q("morning") == (1, ["A quiet morning"])  # title
+            assert await q("rested") == (1, ["A quiet morning"])  # case-insensitive SUMMARY
+            assert (await q("dragon"))[0] == 0  # no match
+            assert (await q(None))[0] == 2  # None disables the filter
+            assert (await q(""))[0] == 2  # empty disables the filter
+    finally:
+        await _cleanup(neo4j_driver, test_user)
+
+
+@pytest.mark.asyncio
 async def test_timeline_browse_cross_user_excluded(neo4j_driver):
     user_a = f"u-test-{uuid.uuid4().hex[:12]}"
     user_b = f"u-test-{uuid.uuid4().hex[:12]}"

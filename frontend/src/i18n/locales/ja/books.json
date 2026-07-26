@@ -1,10 +1,13 @@
 {
-  "translateIntent": { "hint": "翻訳する本を選んでください — 開いてから「翻訳」タブで翻訳を開始します。" },
+  "translateIntent": {
+    "hint": "翻訳する本を選んでください — 開いてから「翻訳」タブで翻訳を開始します。"
+  },
   "workspace": "マイブック",
   "new_book": "新しい書籍",
   "search_placeholder": "書籍を検索...",
   "all_languages": "すべての言語",
   "all_states": "すべての状態",
+  "select_language": "言語を選択…",
   "book_count": "{{count}}冊",
   "book_count_other": "{{count}}冊",
   "translated_to": "翻訳済み: {{langs}}",
@@ -29,6 +32,7 @@
     "no_language": "言語未設定"
   },
   "detail": {
+    "open_studio": "スタジオ",
     "not_found": "書籍が見つかりません",
     "updated": "更新 {{date}}",
     "readers": "{{count}}人の読者",
@@ -37,6 +41,7 @@
       "chapters": "章",
       "translation": "翻訳",
       "glossary": "用語集",
+      "kgOntology": "グラフスキーマ",
       "enrichment": "拡充",
       "wiki": "Wiki",
       "sharing": "共有",
@@ -113,6 +118,7 @@
     "count": "{{count}}章",
     "count_other": "{{count}}章",
     "import": "インポート",
+    "importPdf": "PDFをインポート",
     "new": "新しい章",
     "col": {
       "title": "タイトル",
@@ -122,6 +128,7 @@
     },
     "action": {
       "edit": "編集",
+      "translations": "翻訳を表示",
       "extract": "用語を抽出",
       "download": "ダウンロード",
       "trash": "ゴミ箱"
@@ -186,17 +193,26 @@
     "range": "{{total}}件中 {{start}}–{{end}}",
     "page_size_label": "1ページ",
     "page_size": "{{count}}件/ページ",
-    "pager": { "page": "ページ", "prev": "前のページ", "next": "次のページ" },
+    "pager": {
+      "page": "ページ",
+      "prev": "前のページ",
+      "next": "次のページ"
+    },
     "page_empty": "このページは空です。",
     "page_empty_first": "最初のページへ",
-    "match_field": { "name": "名前", "alias": "別名", "translation": "翻訳" },
+    "match_field": {
+      "name": "名前",
+      "alias": "別名",
+      "translation": "翻訳"
+    },
     "kind_label": "種類",
     "status_label": "ステータス",
     "status_all": "すべて",
     "status": {
       "draft": "下書き",
       "active": "アクティブ",
-      "inactive": "非アクティブ"
+      "inactive": "非アクティブ",
+      "rejected": "却下済み"
     },
     "bulk": {
       "select_row": "エンティティを選択",
@@ -207,7 +223,14 @@
       "clear": "選択解除",
       "done": "{{count}} 件のエンティティを {{status}} にしました",
       "select_all_matching": "一致する {{count}} 件すべてを選択",
-      "cap_note": "選択は最大 {{cap}} 件までです"
+      "cap_note": "選択は最大 {{cap}} 件までです",
+      "delete": "削除",
+      "deleted": "{{count}} 件のエンティティを削除しました",
+      "delete_confirm": {
+        "title": "{{count}} 件のエンティティを削除しますか？",
+        "description": "選択した {{count}} 件のエンティティはゴミ箱に移動されます。"
+      },
+      "reject": "却下"
     },
     "clear_filters": "すべてのフィルターをクリア",
     "deleted": "エンティティを削除しました",
@@ -231,7 +254,8 @@
       "title": "エンティティを削除しますか？",
       "description": "「{{title}}」はゴミ箱に移動されます。",
       "confirm": "削除"
-    }
+    },
+    "scope_label_title": "スコープ — 同名の他のエンティティとこのエンティティを区別します"
   },
   "sharing": {
     "title": "公開設定",
@@ -265,7 +289,11 @@
     "subtitle": "メールで招待して、この本の閲覧・編集・管理を許可します。",
     "email_placeholder": "共同編集者のメール",
     "role_label": "権限",
-    "roles": { "view": "閲覧者", "edit": "編集者", "manage": "管理者" },
+    "roles": {
+      "view": "閲覧者",
+      "edit": "編集者",
+      "manage": "管理者"
+    },
     "invite": "招待",
     "invited": "{{email}} を招待しました",
     "invite_failed": "その共同編集者を招待できませんでした",
@@ -310,7 +338,12 @@
       "public": "カタログで全員に表示されます"
     },
     "discard": "変更を破棄",
-    "save": "設定を保存"
+    "save": "設定を保存",
+    "world": {
+      "title": "ワールド",
+      "hint": "この本をワールドにグループ化して、ワールドのグラフとタイムラインに組み込みます。",
+      "open": "ワールドで開く"
+    }
   },
   "translate": {
     "title": "章を翻訳",

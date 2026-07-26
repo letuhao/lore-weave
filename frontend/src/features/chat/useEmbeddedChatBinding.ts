@@ -67,16 +67,59 @@ export function useEmbeddedChatBinding({
   }, [accessToken, bookId]);
 
   // 2. Select the book-scoped session, or signal a new one is needed.
+  //
+  // D-COMPOSE-SESSION-RESTORE: prefer a direct book_id match — it works even
+  // when the book has no knowledge project yet (project_id stays null
+  // forever in that case, so matching on it alone could never find a
+  // session for such a book). Falls back to the pre-existing project_id
+  // match for sessions created before book_id existed (never re-tagged).
+  //
+  // The local `sessions` array alone isn't reliable for this: it's ordered
+  // by last_message_at DESC NULLS LAST, so a freshly-created 0-message
+  // session sorts to the very bottom and can fall outside the loaded page
+  // (the exact D-CHAT-URL-SESSION-ACTIVATION class of bug, hit again here).
+  // When no local match is found and bookId is set, fall back to a direct
+  // book_id-scoped fetch (the list endpoint's book_id filter) before giving
+  // up and asking to start a new chat.
+  const bookFetchInFlightRef = useRef(false);
   useEffect(() => {
     if (projectId === undefined || sessionsLoading || activeSession || boundRef.current) return;
-    boundRef.current = true;
-    const existing = projectId ? sessions.find((s) => s.project_id === projectId) : undefined;
-    if (existing) {
-      selectSession(existing);
-    } else {
-      setNeedsNewSession(true);
+    const localMatch = (bookId ? sessions.find((s) => s.book_id === bookId) : undefined)
+      ?? (projectId ? sessions.find((s) => s.project_id === projectId) : undefined);
+    if (localMatch) {
+      boundRef.current = true;
+      selectSession(localMatch);
+      return;
     }
-  }, [projectId, sessions, sessionsLoading, activeSession, selectSession]);
+    if (!bookId) {
+      boundRef.current = true;
+      setNeedsNewSession(true);
+      return;
+    }
+    if (!accessToken || bookFetchInFlightRef.current) return; // wait for auth, or a fetch already in flight
+    bookFetchInFlightRef.current = true;
+    let ignore = false;
+    void chatApi
+      .listSessions(accessToken, 'active', bookId)
+      .then((res) => {
+        if (ignore) return;
+        boundRef.current = true;
+        const found = res.items[0];
+        if (found) {
+          selectSession(found);
+        } else {
+          setNeedsNewSession(true);
+        }
+      })
+      .catch(() => {
+        if (ignore) return;
+        boundRef.current = true;
+        setNeedsNewSession(true);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [bookId, projectId, sessions, sessionsLoading, activeSession, selectSession, accessToken]);
 
   // 3. Bind a newly-active session to the book's project.
   useEffect(() => {

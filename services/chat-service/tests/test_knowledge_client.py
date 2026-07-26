@@ -13,6 +13,7 @@ knowledge-service is unavailable.
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -311,6 +312,54 @@ class TestKnowledgeClientBodyNormalisation:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_current_chapter_id_forwarded_when_present(self):
+        """M1b: an editor turn's open chapter rides the body for the
+        working-scope boost."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(
+            user_id="u", message="hi",
+            current_chapter_id="00000000-0000-0000-0000-0000000000ab",
+        )
+        body = self._json_body(captured[0])
+        assert body["current_chapter_id"] == "00000000-0000-0000-0000-0000000000ab"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_current_chapter_id_omitted_when_absent(self):
+        """Non-editor turns (no chapter) never send the field → older
+        knowledge-service byte-identical, and no empty-string 422."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", current_chapter_id=None)
+        body = self._json_body(captured[0])
+        assert "current_chapter_id" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_context_length_forwarded_when_present(self):
+        """Model-context-aware Mode-3 budget scaling: the session model's real
+        resolved window rides the body so knowledge-service can scale its flat
+        mode3_token_budget instead of every model getting the same cap."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", context_length=1_000_000)
+        body = self._json_body(captured[0])
+        assert body["context_length"] == 1_000_000
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_context_length_omitted_when_absent(self):
+        """Unknown window → never sent → older/current knowledge-service keeps
+        its flat default (byte-identical)."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", context_length=None)
+        body = self._json_body(captured[0])
+        assert "context_length" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_long_message_truncated_to_max(self):
         captured: list = []
         client = _make_client(_capture(captured))
@@ -339,6 +388,52 @@ class TestKnowledgeClientBodyNormalisation:
         assert body["message"] == ""
         await client.aclose()
 
+    @pytest.mark.asyncio
+    async def test_project_ids_forwarded_to_body(self):
+        """Track B B1(2): a non-empty project_ids set is forwarded verbatim so
+        knowledge-service's builder routes to the multi-KG union."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(
+            user_id="u", project_ids=["p1", "p2"], message="hi",
+        )
+        body = self._json_body(captured[0])
+        assert body["project_ids"] == ["p1", "p2"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_project_ids_omitted_from_body(self):
+        """An empty/None set is omitted — only the single-project / no-project
+        path applies then."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", project_ids=[], message="hi")
+        body = self._json_body(captured[0])
+        assert "project_ids" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_grounding_true_omits_field_backcompat(self):
+        """T5: grounding=True (default) omits the field so an older knowledge-service
+        without the `grounding` param is byte-identical to before."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi")  # default grounding=True
+        body = self._json_body(captured[0])
+        assert "grounding" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_grounding_false_forwarded_to_body(self):
+        """T5: the intent gate's gate-OUT decision is forwarded so the builder serves
+        the light static path (skips the expensive retrieval)."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="give me a plan", grounding=False)
+        body = self._json_body(captured[0])
+        assert body["grounding"] is False
+        await client.aclose()
+
     @staticmethod
     def _json_body(request: httpx.Request) -> dict:
         import json as _json
@@ -348,6 +443,62 @@ class TestKnowledgeClientBodyNormalisation:
 # ── headers ────────────────────────────────────────────────────────────────
 
 
+class TestResolveBookId:
+    """T5 (audit) — project→book_id resolution for the entity-presence gate."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_and_caches(self):
+        calls = {"n": 0}
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            assert "/internal/context/project-book/" in str(req.url)
+            assert "user_id=u1" in str(req.url)
+            return httpx.Response(200, json={"book_id": "book-123"})
+
+        client = _make_client(handler)
+        try:
+            a = await client.resolve_book_id(user_id="u1", project_id="proj-9")
+            b = await client.resolve_book_id(user_id="u1", project_id="proj-9")
+        finally:
+            await client.aclose()
+        assert a == "book-123" and b == "book-123"
+        assert calls["n"] == 1  # second call served from cache
+
+    @pytest.mark.asyncio
+    async def test_no_book_returns_none_cached(self):
+        client = _make_client(_ok_response({"book_id": None}))
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="p") is None
+        finally:
+            await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_none_not_cached(self):
+        state = {"fail": True}
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            if state["fail"]:
+                return httpx.Response(500, text="boom")
+            return httpx.Response(200, json={"book_id": "b"})
+
+        client = _make_client(handler)
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="p") is None
+            state["fail"] = False
+            assert await client.resolve_book_id(user_id="u", project_id="p") == "b"  # retried
+        finally:
+            await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_project_id_returns_none(self):
+        client = _make_client(_ok_response({"book_id": "b"}))
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="") is None
+        finally:
+            await client.aclose()
+
+
 class TestKnowledgeClientHeaders:
     @pytest.mark.asyncio
     async def test_internal_token_baked_into_request(self):
@@ -355,6 +506,52 @@ class TestKnowledgeClientHeaders:
         client = _make_client(_capture(captured))
         await client.build_context(user_id="u")
         assert captured[0].headers.get("X-Internal-Token") == "unit-test-token"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_mcp_execute_tool_stringifies_uuid_object_id_headers(self):
+        """Regression (found live 2026-07-25): session_id/project_id/book_id can arrive
+        as uuid.UUID OBJECTS from asyncpg (a suspended-run record on the resume path).
+        httpx rejects a non-str header value ("Header value must be str or bytes, not
+        UUID"), which silently aborted the whole tool call — on the resume path it killed
+        glossary_task_provide_input so an accepted adopt-standards gate never ran its write
+        (book ontology kinds never created). The client must str() every id header. We
+        assert on the headers the client hands to `streamablehttp_client` (mcp_execute_tool
+        uses the MCP streamable transport, not the injected httpx MockTransport)."""
+        from uuid import UUID
+        from unittest.mock import patch
+
+        captured: dict = {}
+
+        class _FakeStreamCtx:
+            def __init__(self, url, headers=None, **kw):
+                captured.update(headers or {})
+
+            async def __aenter__(self):
+                # Short-circuit AFTER the client built its headers — every value in
+                # `captured` must already be a plain str (that IS the fix under test).
+                raise RuntimeError("stop-after-header-capture")
+
+            async def __aexit__(self, *a):
+                return False
+
+        client = _make_client()
+        with patch("app.client.knowledge_client.streamablehttp_client", _FakeStreamCtx):
+            await client.mcp_execute_tool(
+                user_id=UUID("019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"),
+                session_id=UUID("019f99fd-6594-7ee2-bf56-b8d167b405dd"),
+                project_id=UUID("019f99fd-6353-7fe8-9931-ea547fe4a339"),
+                book_id=UUID("019f99fd-6352-7fe8-9931-ea547fe4a339"),
+                tool_name="glossary_task_provide_input",
+                tool_args={"task_id": "t1", "accepted": True},
+            )
+        assert captured.get("X-Project-Id") == "019f99fd-6353-7fe8-9931-ea547fe4a339"
+        assert captured.get("X-Book-Id") == "019f99fd-6352-7fe8-9931-ea547fe4a339"
+        assert captured.get("X-Session-Id") == "019f99fd-6594-7ee2-bf56-b8d167b405dd"
+        assert captured.get("X-User-Id") == "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+        # Every id header is a plain str — no uuid.UUID would survive to poison httpx.
+        for k in ("X-Project-Id", "X-Book-Id", "X-Session-Id", "X-User-Id"):
+            assert isinstance(captured[k], str)
         await client.aclose()
 
 
@@ -700,6 +897,43 @@ class TestGetToolDefinitions:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_user_id_sends_x_user_id_header(self):
+        # REG-P2-03 — the per-user overlay only federates when the gateway sees
+        # X-User-Id. Passing user_id MUST put it on the wire; omitting it must NOT
+        # (base inspection paths get the overlay-free catalog).
+        client = _make_client()
+        tpatch, spatch, factory = _patch_list_tools(tools=[_mcp_tool("u_aaa_x")])
+        with tpatch, spatch:
+            await client.get_tool_definitions(user_id="user-123")
+        assert factory.call_args.kwargs["headers"]["X-User-Id"] == "user-123"
+        tp2, sp2, f2 = _patch_list_tools(tools=[_mcp_tool("base")])
+        with tp2, sp2:
+            await client.get_tool_definitions()  # no user
+        assert "X-User-Id" not in f2.call_args.kwargs["headers"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_per_user_cache_is_isolated(self):
+        # Two users must NOT share a catalog cache entry (else A's overlay leaks to
+        # B). And a repeat call for the same user is served from that user's cache.
+        client = _make_client()
+        t1, s1, _ = _patch_list_tools(tools=[_mcp_tool("u_aaa_toolA")])
+        with t1, s1:
+            a = await client.get_tool_definitions(user_id="u1")
+        t2, s2, _ = _patch_list_tools(tools=[_mcp_tool("u_bbb_toolB")])
+        with t2, s2:
+            b = await client.get_tool_definitions(user_id="u2")
+        assert a[0]["function"]["name"] == "u_aaa_toolA"
+        assert b[0]["function"]["name"] == "u_bbb_toolB"  # u2 NOT served u1's cache
+        # u1 again, within TTL → served from u1's cache, NOT re-fetched (would be toolC)
+        t3, s3, f3 = _patch_list_tools(tools=[_mcp_tool("u_ccc_toolC")])
+        with t3, s3:
+            a2 = await client.get_tool_definitions(user_id="u1")
+        assert a2[0]["function"]["name"] == "u_aaa_toolA"
+        assert f3.call_count == 0  # cache hit — no transport opened
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_targets_gateway_mcp_url_with_internal_token(self):
         """The MCP transport opens the ai-gateway /mcp URL with the service token."""
         tpatch, spatch, factory = _patch_list_tools(tools=[])
@@ -709,6 +943,294 @@ class TestGetToolDefinitions:
         # default tools_base_url == base_url in tests (no gateway URL passed)
         assert factory.call_args.args[0] == "http://knowledge-service:8092/mcp"
         assert factory.call_args.kwargs["headers"]["X-Internal-Token"] == "unit-test-token"
+        await client.aclose()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Wave C5 — MCP resources + prompts (federated via ai-gateway)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Same degrade contract as get_tool_definitions / mcp_execute_tool: every
+# failure path returns []/None, never raises into the turn. The transport +
+# ClientSession are the same module-level symbols, patched where they are used.
+
+
+def _patch_mcp_session(session_methods: dict, *, transport_side_effect=None):
+    """Generalisation of _patch_list_tools for the Wave C5 methods: wires the
+    async-with transport + ClientSession chain against a mock session whose
+    methods come from `session_methods` (name → AsyncMock/return value).
+    Returns (transport_patch, session_patch, transport_factory, mock_session)."""
+    transport_cm = MagicMock()
+    if transport_side_effect is not None:
+        transport_cm.__aenter__ = AsyncMock(side_effect=transport_side_effect)
+    else:
+        transport_cm.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock(), None))
+    transport_cm.__aexit__ = AsyncMock(return_value=False)
+    transport_factory = MagicMock(return_value=transport_cm)
+
+    mock_session = AsyncMock()
+    mock_session.initialize = AsyncMock()
+    for method, value in session_methods.items():
+        setattr(mock_session, method, value)
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    session_factory = MagicMock(return_value=session_cm)
+
+    return (
+        patch("app.client.knowledge_client.streamablehttp_client", transport_factory),
+        patch("app.client.knowledge_client.ClientSession", session_factory),
+        transport_factory,
+        mock_session,
+    )
+
+
+def _mcp_resource(uri: str, name: str = "", description: str = "", mime: str = "text/plain"):
+    r = MagicMock()
+    r.uri = uri
+    r.name = name
+    r.description = description
+    r.mimeType = mime
+    return r
+
+
+def _mcp_template(uri_template: str, name: str = "", mime: str = "text/plain"):
+    t = MagicMock()
+    t.uriTemplate = uri_template
+    t.name = name
+    t.description = ""
+    t.mimeType = mime
+    return t
+
+
+def _mcp_prompt(name: str, description: str = "", args: list | None = None):
+    p = MagicMock()
+    p.name = name
+    p.description = description
+    p.arguments = args or []
+    return p
+
+
+class TestListMcpResources:
+    @pytest.mark.asyncio
+    async def test_merges_concrete_resources_and_templates(self):
+        listed = MagicMock()
+        listed.resources = [_mcp_resource("knowledge://static", "static", "a static one")]
+        templates = MagicMock()
+        templates.resourceTemplates = [
+            _mcp_template(
+                "knowledge://project/{project_id}/summary", "project_summary", "text/plain",
+            ),
+        ]
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_resources": AsyncMock(return_value=listed),
+            "list_resource_templates": AsyncMock(return_value=templates),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.list_mcp_resources()
+        assert out == [
+            {"uri": "knowledge://static", "name": "static",
+             "description": "a static one", "mime_type": "text/plain"},
+            {"uri_template": "knowledge://project/{project_id}/summary",
+             "name": "project_summary", "description": "", "mime_type": "text/plain"},
+        ]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_returns_empty(self):
+        tpatch, spatch, _, _ = _patch_mcp_session(
+            {}, transport_side_effect=httpx.ConnectError("refused"),
+        )
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.list_mcp_resources() == []
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_templates_failure_still_returns_concrete_list(self):
+        """A gateway that lists concrete resources but errors the templates
+        sub-list still contributes the concrete entries (partial tolerance)."""
+        listed = MagicMock()
+        listed.resources = [_mcp_resource("knowledge://static")]
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_resources": AsyncMock(return_value=listed),
+            "list_resource_templates": AsyncMock(side_effect=RuntimeError("no templates")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.list_mcp_resources()
+        assert [e["uri"] for e in out] == ["knowledge://static"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_targets_gateway_mcp_url_with_internal_token(self):
+        listed = MagicMock()
+        listed.resources = []
+        templates = MagicMock()
+        templates.resourceTemplates = []
+        tpatch, spatch, factory, _ = _patch_mcp_session({
+            "list_resources": AsyncMock(return_value=listed),
+            "list_resource_templates": AsyncMock(return_value=templates),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            await client.list_mcp_resources()
+        assert factory.call_args.args[0] == "http://knowledge-service:8092/mcp"
+        assert factory.call_args.kwargs["headers"]["X-Internal-Token"] == "unit-test-token"
+        await client.aclose()
+
+
+class TestReadMcpResource:
+    _URI = "knowledge://project/p-1/summary"
+
+    @pytest.mark.asyncio
+    async def test_success_maps_first_text_contents(self):
+        content = MagicMock()
+        content.uri = self._URI
+        content.mimeType = "text/plain"
+        content.text = "the story so far"
+        result = MagicMock()
+        result.contents = [content]
+        tpatch, spatch, factory, session = _patch_mcp_session({
+            "read_resource": AsyncMock(return_value=result),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1", project_id="p-1",
+            )
+        assert out == {"uri": self._URI, "mime_type": "text/plain", "text": "the story so far"}
+        session.read_resource.assert_awaited_once_with(self._URI)
+        # D3 — identity rides the envelope headers, never a tool/LLM arg.
+        headers = factory.call_args.kwargs["headers"]
+        assert headers["X-User-Id"] == "u-1"
+        assert headers["X-Session-Id"] == "s-1"
+        assert headers["X-Project-Id"] == "p-1"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_returns_none(self):
+        tpatch, spatch, _, _ = _patch_mcp_session(
+            {}, transport_side_effect=httpx.ConnectError("refused"),
+        )
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_read_error_returns_none(self):
+        """A downstream tenancy rejection (e.g. 'project not found') surfaces
+        as an McpError from read_resource — degraded to None, never a raise."""
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "read_resource": AsyncMock(side_effect=RuntimeError("project not found")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_or_textless_contents_returns_none(self):
+        empty = MagicMock()
+        empty.contents = []
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "read_resource": AsyncMock(return_value=empty),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        # A blob-only (no .text) contents item degrades the same way.
+        blob = MagicMock(spec=[])  # no attributes at all → getattr(..., 'text', None) is None
+        blob_result = MagicMock()
+        blob_result.contents = [blob]
+        tpatch2, spatch2, _, _ = _patch_mcp_session({
+            "read_resource": AsyncMock(return_value=blob_result),
+        })
+        with tpatch2, spatch2:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        await client.aclose()
+
+
+class TestListMcpPrompts:
+    @pytest.mark.asyncio
+    async def test_success_maps_prompts_with_arguments(self):
+        arg = MagicMock()
+        arg.name = "project_id"
+        arg.description = "the project"
+        arg.required = True
+        listed = MagicMock()
+        listed.prompts = [_mcp_prompt("recap_story_so_far", "recap it", [arg])]
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_prompts": AsyncMock(return_value=listed),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.list_mcp_prompts()
+        assert out == [{
+            "name": "recap_story_so_far",
+            "description": "recap it",
+            "arguments": [
+                {"name": "project_id", "description": "the project", "required": True},
+            ],
+        }]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_empty(self):
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_prompts": AsyncMock(side_effect=RuntimeError("boom")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.list_mcp_prompts() == []
+        await client.aclose()
+
+
+class TestGetMcpPrompt:
+    @pytest.mark.asyncio
+    async def test_success_maps_description_and_messages(self):
+        msg = MagicMock()
+        msg.role = "user"
+        msg.content = MagicMock()
+        msg.content.text = "Recap the story so far…"
+        result = MagicMock()
+        result.description = "recap"
+        result.messages = [msg]
+        tpatch, spatch, _, session = _patch_mcp_session({
+            "get_prompt": AsyncMock(return_value=result),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.get_mcp_prompt(
+                "recap_story_so_far", {"project_id": "p-1"},
+            )
+        assert out == {
+            "description": "recap",
+            "messages": [{"role": "user", "text": "Recap the story so far…"}],
+        }
+        session.get_prompt.assert_awaited_once_with(
+            "recap_story_so_far", {"project_id": "p-1"},
+        )
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_none(self):
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "get_prompt": AsyncMock(side_effect=RuntimeError("unknown prompt")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.get_mcp_prompt("nope", {}) is None
         await client.aclose()
 
 
@@ -776,3 +1298,159 @@ class TestToolCallingEnabledField:
         assert result.mode == "degraded"
         assert result.tool_calling_enabled is True
         await client.aclose()
+
+
+# ── M4: init_working_memory (goal-authority write path, best-effort) ──────────
+
+
+@pytest.mark.asyncio
+async def test_init_working_memory_posts_charter():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["token"] = req.headers.get("X-Internal-Token")
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(204)
+
+    client = _make_client(handler)
+    ok = await client.init_working_memory(
+        session_id="s-1", user_id="u-1",
+        charter={"goal": "g", "phases": ["warmup"], "checklist": [], "language": "vi"},
+    )
+    assert ok is True
+    assert captured["url"].endswith("/internal/working-memory/init")
+    assert captured["token"] == "unit-test-token"
+    assert captured["body"]["charter"]["goal"] == "g"
+    assert captured["body"]["session_id"] == "s-1"
+
+
+@pytest.mark.asyncio
+async def test_init_working_memory_swallows_failure():
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = _make_client(handler)
+    # Best-effort: a knowledge outage must not raise — the session anchors from
+    # its own seed (EC-4).
+    ok = await client.init_working_memory(
+        session_id="s", user_id="u", charter={"goal": "g", "phases": ["x"], "language": "en"},
+    )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_tick_working_memory_posts_turns_and_returns_status():
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"status": "updated"})
+
+    client = _make_client(handler)
+    status = await client.tick_working_memory(
+        session_id="s-1", user_id="u-1",
+        model_source="user_model", model_ref="m-1",
+        recent_turns=[{"role": "user", "content": "hi"}],
+    )
+    assert status == "updated"
+    assert captured["url"].endswith("/internal/working-memory/tick")
+    assert captured["body"]["recent_turns"][0]["content"] == "hi"
+    assert captured["body"]["model_ref"] == "m-1"
+
+
+@pytest.mark.asyncio
+async def test_tick_working_memory_swallows_failure():
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    client = _make_client(handler)
+    status = await client.tick_working_memory(
+        session_id="s", user_id="u", model_source="user_model", model_ref="m", recent_turns=[],
+    )
+    assert status is None
+
+
+# ── D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR ───────────────────────────────────────
+
+
+def test_error_envelope_decodes_c4_json_code_and_detail():
+    """knowledge-service now RAISES on a tool failure and puts a C4-shaped JSON
+    body in content[0].text. The stable code + detail must survive so a workflow
+    can branch on KG_ENDPOINT_NOT_NODE rather than pattern-matching prose (C5)."""
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope(
+        '{"code":"KG_ENDPOINT_NOT_NODE","message":"endpoints are not nodes",'
+        '"detail":{"missing":["b"]}}'
+    )
+    assert out["success"] is False
+    assert out["error"] == "endpoints are not nodes"
+    assert out["code"] == "KG_ENDPOINT_NOT_NODE"
+    assert out["detail"] == {"missing": ["b"]}
+
+
+def test_error_envelope_json_without_code_omits_it():
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope('{"message":"boom"}')
+    assert out == {"success": False, "result": None, "error": "boom"}
+
+
+def test_error_envelope_decodes_the_REAL_fastmcp_wire_shape():
+    """K18 — the shape the PRODUCER actually emits, not the one the contract describes.
+
+    FastMCP wraps every raised ToolError as `Error executing tool <name>: {c4 body}`. The
+    tests above feed a BARE body, which production never sends — so `text.startswith("{")`
+    was always False and the C4 decoding NEVER RAN: every tool failure degraded to raw text
+    and the stable `code` a workflow branches on (C5) was silently lost.
+
+    Captured verbatim from a live ai-gateway probe on 2026-07-23.
+    """
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope(
+        'Error executing tool kg_add_nodes: {"code":"KG_ENDPOINT_NOT_NODE",'
+        '"message":"invalid arguments: mode=manual requires name and kind",'
+        '"detail":{"missing":["name"]}}'
+    )
+    assert out["code"] == "KG_ENDPOINT_NOT_NODE", (
+        "the prefix swallowed the C4 body — a workflow cannot branch on a code it never sees"
+    )
+    assert out["error"] == "invalid arguments: mode=manual requires name and kind"
+    assert out["detail"] == {"missing": ["name"]}
+    assert "Error executing tool" not in out["error"], (
+        "the model must read the message, not the SDK's plumbing"
+    )
+
+
+def test_error_envelope_keeps_a_plain_text_error_that_merely_starts_that_way():
+    # The stripper is deliberately narrow (it requires a `{` right after the colon), so a
+    # genuine prose error is never truncated into nonsense.
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope("Error executing tool: the upstream service is down")
+    assert out["error"] == "Error executing tool: the upstream service is down"
+
+
+def test_error_envelope_plain_text_degrades():
+    """Overlay/external tools and older services still send plain text — never raise."""
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope("something went wrong")
+    assert out == {"success": False, "result": None, "error": "something went wrong"}
+
+
+def test_error_envelope_malformed_json_degrades_to_raw_text():
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope('{"message": broken')
+    assert out["success"] is False
+    assert out["error"] == '{"message": broken'
+
+
+def test_error_envelope_empty_has_fallback_message():
+    from app.client.knowledge_client import _error_envelope
+
+    assert _error_envelope("")["error"] == "mcp tool error"

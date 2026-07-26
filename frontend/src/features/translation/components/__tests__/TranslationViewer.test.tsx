@@ -6,7 +6,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok-1' }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 
 const { getChapterVersion, setActiveVersion } = vi.hoisted(() => ({
   getChapterVersion: vi.fn(), setActiveVersion: vi.fn(),
@@ -26,9 +27,9 @@ const baseVersion = {
   created_at: '2026-01-01', quality_score: 72, qa_rounds_used: 2, is_glossary_stale: false,
 };
 
-function renderViewer() {
+function renderViewer(extraProps: Partial<Parameters<typeof TranslationViewer>[0]> = {}) {
   return render(
-    <TranslationViewer chapterId="c1" versionId="v1" isActive={false} onSetActive={vi.fn()} />,
+    <TranslationViewer chapterId="c1" versionId="v1" isActive={false} onSetActive={vi.fn()} {...extraProps} />,
   );
 }
 
@@ -88,5 +89,27 @@ describe('TranslationViewer needs-review badge', () => {
     renderViewer();
     await screen.findByText('Hello world');
     expect(screen.queryByTitle('viewer.glossary_stale_title')).toBeNull();
+  });
+
+  // #16 Phase 3 DOCK-7 fix — the Review button must not tear down the Studio dockview by
+  // navigating full-page when embedded there; it should defer to an optional onReview callback.
+  describe('Review button (DOCK-7 fix)', () => {
+    it('navigates to the full-page route when no onReview is supplied (classic route, unchanged)', async () => {
+      navigate.mockClear();
+      getChapterVersion.mockResolvedValue({ ...baseVersion, unresolved_high_count: 0 });
+      renderViewer({ bookId: 'b1' });
+      fireEvent.click(await screen.findByText('viewer.review'));
+      expect(navigate).toHaveBeenCalledWith('/books/b1/chapters/c1/review/v1');
+    });
+
+    it('calls onReview instead of navigating when supplied (Studio dock panel)', async () => {
+      navigate.mockClear();
+      const onReview = vi.fn();
+      getChapterVersion.mockResolvedValue({ ...baseVersion, unresolved_high_count: 0 });
+      renderViewer({ bookId: 'b1', onReview });
+      fireEvent.click(await screen.findByText('viewer.review'));
+      expect(onReview).toHaveBeenCalledWith('v1');
+      expect(navigate).not.toHaveBeenCalled();
+    });
   });
 });

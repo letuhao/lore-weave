@@ -211,7 +211,7 @@ async def get_outcome_recompute(
           -- carry source_extraction_run_id IS NULL, so without this filter they
           -- would be miscounted as extraction corrections and falsely degrade an
           -- extraction run's recomputed_outcome (/review-impl slice-2 HIGH#1).
-          AND c.target_type IN ('entity', 'relation', 'event')
+          AND c.target_type IN ('entity', 'relation', 'event', 'fact')
         WHERE er.user_id = $1
           AND ($2::uuid IS NULL OR er.project_id = $2)
         GROUP BY er.run_id, er.project_id, er.outcome, er.created_at

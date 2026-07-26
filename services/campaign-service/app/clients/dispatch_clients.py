@@ -12,12 +12,20 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 logger = logging.getLogger(__name__)
 
 
-class DispatchError(Exception):
-    """A downstream dispatch call failed (network or non-2xx)."""
+class DispatchError(InternalClientError):
+    """A downstream dispatch call failed (network or non-2xx).
+
+    P3 SDK-first W4: subclasses the shared InternalClientError for one uniform
+    `except InternalClientError` surface across the fleet (matches campaign's
+    BookServiceError). Status isn't threaded at the raise sites — campaign fails the
+    saga on ANY DispatchError regardless of code, so no caller inspects `.retryable`;
+    the load-bearing dispatch semantics are the 404/409-as-success returns in the
+    cancel methods, which are untouched."""
 
 
 class EmbeddingConflict(Exception):

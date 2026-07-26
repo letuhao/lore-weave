@@ -92,10 +92,12 @@ WHERE owner_user_id = $1`
 // + credits). A user_model job reserves against Subsystem A only.
 func (s *Server) guardrailReserve(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		OwnerUserID  uuid.UUID `json:"owner_user_id"`
-		JobID        uuid.UUID `json:"job_id"`
-		EstimatedUSD float64   `json:"estimated_usd"`
-		ModelSource  string    `json:"model_source"`
+		OwnerUserID  uuid.UUID  `json:"owner_user_id"`
+		JobID        uuid.UUID  `json:"job_id"`
+		EstimatedUSD float64    `json:"estimated_usd"`
+		ModelSource  string     `json:"model_source"`
+		McpKeyID     *uuid.UUID `json:"mcp_key_id,omitempty"`     // P4/Wave-C (H-K) — public key, per-key cap
+		SpendCapUSD  *float64   `json:"spend_cap_usd,omitempty"`  // P4/Wave-C (H-K) — the key's sub-cap
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "invalid payload")
@@ -218,12 +220,48 @@ SELECT reservation_id FROM token_reservations WHERE job_id = $1 AND status = 'he
 		}
 	}
 
+	// Public MCP P4/Wave-C (H-K) — per-key spend sub-cap. Enforced INSIDE the
+	// owner-row FOR UPDATE lock taken above, which serializes EVERY reserve for
+	// this owner — and thus every concurrent reserve for this owner's key — so the
+	// read-then-check below is race-safe without any new lock. The key's running
+	// spend = COMMITTED (usage_logs this calendar month) + HELD (this key's other
+	// in-flight reservations); reject when this estimate would push it over the
+	// cap. Secondary to the owner guardrail above (which gates first); a zero-cost
+	// job is never gated. Only public-key calls carry mcp_key_id + cap.
+	if in.McpKeyID != nil && in.SpendCapUSD != nil && in.EstimatedUSD > 0 {
+		var committed, held float64
+		if err := tx.QueryRow(ctx, `
+SELECT COALESCE(SUM(total_cost_usd), 0) FROM usage_logs
+WHERE mcp_key_id = $1 AND created_at >= date_trunc('month', now() AT TIME ZONE 'utc')`,
+			*in.McpKeyID).Scan(&committed); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to sum key spend")
+			return
+		}
+		if err := tx.QueryRow(ctx, `
+SELECT COALESCE(SUM(estimated_usd), 0) FROM token_reservations
+WHERE mcp_key_id = $1 AND status = 'held'`,
+			*in.McpKeyID).Scan(&held); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to sum key holds")
+			return
+		}
+		keyAvail := *in.SpendCapUSD - committed - held
+		if in.EstimatedUSD > keyAvail {
+			_ = tx.Rollback(ctx)
+			writeJSON(w, http.StatusPaymentRequired, map[string]any{
+				"code":          "MCP_KEY_CAP_EXCEEDED",
+				"key_available": keyAvail,
+				"requested":     in.EstimatedUSD,
+			})
+			return
+		}
+	}
+
 	// Insert the hold + bump reserved_usd as one atomic unit.
 	var resID uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO token_reservations(owner_user_id, job_id, estimated_usd, status, expires_at, model_source)
-VALUES ($1,$2,$3,'held',$4,$5) RETURNING reservation_id`,
-		in.OwnerUserID, in.JobID, in.EstimatedUSD, time.Now().Add(s.cfg.ReservationTTL), in.ModelSource).Scan(&resID)
+INSERT INTO token_reservations(owner_user_id, job_id, estimated_usd, status, expires_at, model_source, mcp_key_id)
+VALUES ($1,$2,$3,'held',$4,$5,$6) RETURNING reservation_id`,
+		in.OwnerUserID, in.JobID, in.EstimatedUSD, time.Now().Add(s.cfg.ReservationTTL), in.ModelSource, in.McpKeyID).Scan(&resID)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
@@ -479,7 +517,7 @@ func writeGuardrailJSON(w http.ResponseWriter, dLimit, mLimit, dSpent, mSpent, r
 // getGuardrail — GET /v1/model-billing/guardrail. The authed user's
 // Subsystem-A limits + (window-aware) spend. No row yet → config defaults.
 func (s *Server) getGuardrail(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -497,12 +535,40 @@ func (s *Server) getGuardrail(w http.ResponseWriter, r *http.Request) {
 	writeGuardrailJSON(w, dLimit, mLimit, dSpent, mSpent, reserved)
 }
 
+// getGuardrailStatusInternal — GET /internal/billing/guardrail/status?owner_user_id=<uuid>.
+//
+// WS-2.8 (spec 10) — an internal-token READ of a user's spend guardrail so a BACKGROUND worker (the
+// diary distiller) can DEGRADE gracefully BEFORE spending: if the user's daily cap is exhausted, the
+// worker skips with a "memory paused — daily cap reached" status instead of letting each LLM call fail
+// hard mid-run at the provider-gateway (which reserves against this same guardrail — the hard backstop).
+// owner_user_id is an explicit query arg (the caller already authenticated the owner), like
+// getMcpKeyUsage. A window-stale row reads spent as 0 (guardrailReadSQL), so this never mutates.
+func (s *Server) getGuardrailStatusInternal(w http.ResponseWriter, r *http.Request) {
+	owner, err := uuid.Parse(r.URL.Query().Get("owner_user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "owner_user_id must be a UUID")
+		return
+	}
+	var dLimit, mLimit, dSpent, mSpent, reserved float64
+	err = s.pool.QueryRow(r.Context(), guardrailReadSQL, owner).
+		Scan(&dLimit, &mLimit, &dSpent, &mSpent, &reserved)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No row yet → the config defaults, nothing spent.
+		dLimit, mLimit = s.cfg.GuardrailDefaultDailyUSD, s.cfg.GuardrailDefaultMonthlyUSD
+		dSpent, mSpent, reserved = 0, 0, 0
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_FAILED", "failed to read guardrail")
+		return
+	}
+	writeGuardrailJSON(w, dLimit, mLimit, dSpent, mSpent, reserved)
+}
+
 // patchGuardrail — PATCH /v1/model-billing/guardrail. Sets the authed user's
 // daily and/or monthly USD limit. Either field may be omitted; a supplied
 // limit must be > 0. Lowering a limit below current spend is allowed — it
 // bounds NEW work, never aborts in-flight work (billing ADR).
 func (s *Server) patchGuardrail(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -567,7 +633,7 @@ WHERE owner_user_id = $1`, userID, in.DailyLimitUSD, in.MonthlyLimitUSD); err !=
 // getPlatformBalance — GET /v1/model-billing/platform-balance. The authed
 // user's Subsystem-B free tier + credits. No row yet → config free tier.
 func (s *Server) getPlatformBalance(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return

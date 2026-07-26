@@ -25,9 +25,41 @@ class BookProfile:
     structure_pref: str = "generic"
     tone: str = ""
     density: str = ""
+    # T3.5 — per-scope prose-style steering, resolved by the packer for the target
+    # scene (None = unset → no directive). character_voices = present characters with
+    # a voice profile: ((name, (tag, ...)), ...). All default-empty so every existing
+    # BookProfile construction (NEUTRAL, from_settings) is unaffected.
+    density_level: int | None = None
+    pace_level: int | None = None
+    character_voices: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 NEUTRAL = BookProfile()
+
+
+def style_directive(profile: BookProfile) -> str:
+    """The prose-style steer (T3.5) appended to the drafter's system prompt — a
+    leading-space string (matching the `lang`/`voice` convention) or '' when nothing
+    is set. Only the OUTER slider bands emit a directive (a mid 34-66 value is
+    'balanced' → no instruction, so a token isn't spent saying 'be normal')."""
+    parts: list[str] = []
+    d = profile.density_level
+    if d is not None and d < 34:
+        parts.append("Keep the prose lean and economical: spare description, tight sentences.")
+    elif d is not None and d > 66:
+        parts.append("Write lush, richly textured prose with vivid sensory detail.")
+    p = profile.pace_level
+    if p is not None and p < 34:
+        parts.append("Use slow, introspective pacing — linger in reflection and interiority.")
+    elif p is not None and p > 66:
+        parts.append("Use fast, propulsive pacing — momentum and short, punchy beats.")
+    if profile.character_voices:
+        voices = "; ".join(
+            f"{name} ({', '.join(tags)})" for name, tags in profile.character_voices if tags
+        )
+        if voices:
+            parts.append(f"Honour each present character's established voice — {voices}.")
+    return (" " + " ".join(parts)) if parts else ""
 
 
 def from_settings(settings: dict[str, Any] | None) -> BookProfile:
@@ -58,4 +90,6 @@ def resolve_source_language(profile: BookProfile, fallback_language: str | None)
     return BookProfile(
         source_language=fallback_language, voice=profile.voice,
         structure_pref=profile.structure_pref, tone=profile.tone, density=profile.density,
+        density_level=profile.density_level, pace_level=profile.pace_level,
+        character_voices=profile.character_voices,
     )

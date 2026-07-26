@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loreweave_llm.errors import LLMError
@@ -136,6 +137,7 @@ async def judge_prose(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     passage: str, active_rules: list[dict[str, Any]], present_facts: list[str],
     profile: BookProfile, max_tokens: int = 1536, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the advisory critique. Returns the generation_job.critic dict. CC4:
     any LLM/timeout/parse failure degrades to an empty critique with an `error`
@@ -158,7 +160,8 @@ async def judge_prose(
                 "reasoning_effort": "none",
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
-            job_meta={"extractor": "judge_prose"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_critic", "extractor": "judge_prose"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("judge_prose degraded (LLM error): %s", exc)

@@ -1,7 +1,12 @@
 """One-shot script: add mining section to all 4 knowledge.json locale files."""
 import json
+import pathlib
 
-BASE = "d:/Works/source/lore-weave/frontend/src/i18n/locales"
+# Derived from THIS file, never an absolute host path: the hardcoded
+# "d:/Works/source/lore-weave/..." only resolved on one machine and silently pointed at
+# whatever lived there (see the repo-wide sweep in docs/standards/README.md § no-absolute-
+# host-paths).
+BASE = str(pathlib.Path(__file__).resolve().parents[1] / "frontend" / "src" / "i18n" / "locales")
 
 MINING = {
     "en": {

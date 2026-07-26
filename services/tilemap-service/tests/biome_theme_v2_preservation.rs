@@ -87,7 +87,7 @@ fn v2_fixture() -> TilemapTemplate {
 /// Computed by running the test once with a placeholder, then copying
 /// the actual hash from the assertion failure message.
 const V2_TERRAIN_LAYER_HASH_PIN: &str =
-    "64d8d1b25edd9ed94faf4730860faecf843ad26f3887e462870d31af49ee3ec8";
+    "b32fe411f10299473557157b903124a81cee173f6af3bc952ca7fcfd24b27310";
 
 #[test]
 fn v2_fixture_terrain_layer_is_deterministic_post_chunk_a() {

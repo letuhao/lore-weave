@@ -237,7 +237,7 @@ export interface ComposeBody {
   intent_text?: string;
   gap_targets?: ComposeTargetInput[];
   technique?: string;
-  max_spend_usd?: number | null;
+  max_spend_tokens?: number | null;
   top_k?: number;
 }
 

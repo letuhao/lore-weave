@@ -25,6 +25,12 @@ type previewRow struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 	Note  string `json:"note,omitempty"`
+	// OpID + Destructive are set for execute_plan previews (one row per plan op): the
+	// FE renders an opt-in enable toggle, keyed by OpID, on each Destructive row and
+	// sends the checked ids back as enabled_ops at confirm (§4 G1). Empty/false for
+	// non-plan single-action previews (unchanged).
+	OpID        string `json:"op_id,omitempty"`
+	Destructive bool   `json:"destructive,omitempty"`
 }
 
 // confirmCardOut is the propose result fed to the LLM and rendered by the FE
@@ -38,6 +44,11 @@ type confirmCardOut struct {
 	PreviewRows  []previewRow `json:"preview_rows"`
 	Destructive  bool         `json:"destructive"`
 	ExpiresAt    string       `json:"expires_at"`
+	// Warning (external MCP discoverability audit #11) — set when the propose call is a
+	// genuine no-op (a valid, confirmable token that would change nothing). Without this,
+	// a caller that doesn't read preview_rows' counts closely could confirm a token that
+	// accomplishes nothing and believe an action succeeded.
+	Warning string `json:"warning,omitempty"`
 }
 
 // mintGrantActionCard marshals params, mints a grant-authority action token bound
@@ -66,17 +77,31 @@ func (s *Server) mintGrantActionCard(userID, bookID uuid.UUID, descriptor, title
 // ── schema create (migrated from the retired schema-confirm path) ─────────────
 
 type proposeKindToolIn struct {
-	BookID      string   `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID      string   `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	Code        string   `json:"code" jsonschema:"machine code for the kind, e.g. power_system"`
 	Name        string   `json:"name" jsonschema:"display name, e.g. Power System"`
 	Description string   `json:"description,omitempty" jsonschema:"optional description"`
 	Icon        string   `json:"icon,omitempty"`
 	Color       string   `json:"color,omitempty"`
 	GenreTags   []string `json:"genre_tags,omitempty"`
+	// F3b — propose the kind's defining attributes in the SAME call; they are
+	// created atomically with the kind on one confirm. Strongly recommended: a
+	// kind with no attributes can't describe anything (and extraction needs each
+	// attribute's description as its instruction).
+	Attributes []proposeKindAttrIn `json:"attributes,omitempty" jsonschema:"the kind's defining attributes (each needs a clear description for extraction)"`
+}
+
+type proposeKindAttrIn struct {
+	Code        string   `json:"code" jsonschema:"machine code, e.g. weaknesses"`
+	Name        string   `json:"name" jsonschema:"display name"`
+	Description string   `json:"description,omitempty" jsonschema:"what this attribute captures — used by extraction as the instruction"`
+	FieldType   string   `json:"field_type,omitempty" jsonschema:"text|textarea|select|number|date|tags|url|boolean (default text)"`
+	IsRequired  bool     `json:"is_required,omitempty"`
+	Options     []string `json:"options,omitempty" jsonschema:"options for a select field"`
 }
 
 type proposeAttrToolIn struct {
-	BookID      string   `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID      string   `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	KindCode    string   `json:"kind_code" jsonschema:"the kind to add the attribute to (code — see glossary_book_ontology_read)"`
 	Code        string   `json:"code" jsonschema:"machine code for the attribute, e.g. cultivation_realm"`
 	Name        string   `json:"name" jsonschema:"display name"`
@@ -86,12 +111,12 @@ type proposeAttrToolIn struct {
 	Description string   `json:"description,omitempty"`
 }
 
-func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest, in proposeKindToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolProposeNewKind(ctx context.Context, req *mcp.CallToolRequest, in proposeKindToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
 	}
-	bookID, err := uuid.Parse(in.BookID)
+	bookID, err := resolveBookScope(ctx, in.BookID) // ambient: X-Book-Id when omitted
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
 	}
@@ -107,18 +132,149 @@ func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest,
 	if d := strings.TrimSpace(in.Description); d != "" {
 		desc = &d
 	}
-	params := kindCreateParams{Code: code, Name: name, Description: desc, Icon: in.Icon, Color: in.Color, GenreTags: in.GenreTags}
+	// F3b — fold the proposed attributes into the create-spec (created atomically
+	// with the kind on confirm). Validate each field_type up front + dedup by code
+	// so a doomed proposal never reaches a confirm card.
+	attrs := make([]kindAttrSpec, 0, len(in.Attributes))
+	seen := map[string]bool{"name": true} // `name` is auto-seeded
+	for _, a := range in.Attributes {
+		ac := strings.TrimSpace(a.Code)
+		an := strings.TrimSpace(a.Name)
+		if ac == "" || an == "" {
+			return nil, confirmCardOut{}, errors.New("each attribute needs a code and a name")
+		}
+		if a.FieldType != "" && !isValidFieldType(a.FieldType) {
+			return nil, confirmCardOut{}, errors.New("invalid field_type: " + a.FieldType +
+				" (text|textarea|select|number|date|tags|url|boolean)")
+		}
+		if seen[ac] {
+			continue
+		}
+		seen[ac] = true
+		var ad *string
+		if d := strings.TrimSpace(a.Description); d != "" {
+			ad = &d
+		}
+		attrs = append(attrs, kindAttrSpec{
+			Code: ac, Name: an, Description: ad, FieldType: a.FieldType,
+			IsRequired: a.IsRequired, Options: a.Options,
+		})
+	}
+	params := kindCreateParams{Code: code, Name: name, Description: desc, Icon: in.Icon, Color: in.Color, GenreTags: in.GenreTags, Attributes: attrs}
 	rows := []previewRow{{Label: "code", Value: code}, {Label: "name", Value: name}}
-	return s.mintGrantActionCard(userID, bookID, descSchemaCreateKind,
-		fmt.Sprintf("Create kind %q (code: %s)", name, code), params, rows, false)
+	for _, a := range attrs {
+		rows = append(rows, previewRow{Label: "+ attribute", Value: a.Code, Note: a.FieldTypeOrDefault()})
+	}
+	title := fmt.Sprintf("Create kind %q (code: %s)", name, code)
+	if len(attrs) > 0 {
+		title = fmt.Sprintf("Create kind %q + %d attribute(s)", name, len(attrs))
+	}
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSchemaCreateKind, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descSchemaCreateKind, bookID, userID, params, card, cerr)
 }
 
-func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolRequest, in proposeAttrToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+// ── batch schema create — the WHOLE ontology on ONE confirm ──────────────────
+
+type proposeKindsToolIn struct {
+	BookID string              `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	Kinds  []proposeKindItemIn `json:"kinds" jsonschema:"the kinds to create — EACH with its defining attributes; ALL land together on ONE confirm card"`
+}
+
+type proposeKindItemIn struct {
+	Code        string              `json:"code" jsonschema:"machine code for the kind, e.g. cultivation_realm"`
+	Name        string              `json:"name" jsonschema:"display name, e.g. Cultivation Realm"`
+	Description string              `json:"description,omitempty" jsonschema:"optional description"`
+	Icon        string              `json:"icon,omitempty"`
+	Color       string              `json:"color,omitempty"`
+	Attributes  []proposeKindAttrIn `json:"attributes,omitempty" jsonschema:"the kind's defining attributes (each needs a clear description for extraction)"`
+}
+
+// toolProposeKinds proposes MANY kinds (each with its attributes) on a SINGLE
+// confirm card — the user builds a whole ontology with one approval instead of one
+// click per kind. The effect creates them idempotently (skip-on-conflict), so a
+// re-confirm after a partial batch fills only the missing kinds.
+func (s *Server) toolProposeKinds(ctx context.Context, req *mcp.CallToolRequest, in proposeKindsToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
 	}
-	bookID, err := uuid.Parse(in.BookID)
+	bookID, err := resolveBookScope(ctx, in.BookID) // ambient: X-Book-Id when omitted
+	if err != nil {
+		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
+	}
+	if len(in.Kinds) == 0 {
+		return nil, confirmCardOut{}, errors.New("kinds must not be empty")
+	}
+	if len(in.Kinds) > 20 {
+		return nil, confirmCardOut{}, errors.New("at most 20 kinds per batch — split into multiple proposals")
+	}
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantManage); err != nil {
+		return nil, confirmCardOut{}, uniformOwnershipError(err)
+	}
+
+	kinds := make([]kindCreateParams, 0, len(in.Kinds))
+	rows := make([]previewRow, 0, len(in.Kinds))
+	seenKind := map[string]bool{}
+	for _, k := range in.Kinds {
+		code := strings.TrimSpace(k.Code)
+		name := strings.TrimSpace(k.Name)
+		if code == "" || name == "" {
+			return nil, confirmCardOut{}, errors.New("each kind needs a code and a name")
+		}
+		if seenKind[code] {
+			return nil, confirmCardOut{}, errors.New("duplicate kind code in batch: " + code)
+		}
+		seenKind[code] = true
+		var desc *string
+		if d := strings.TrimSpace(k.Description); d != "" {
+			desc = &d
+		}
+		attrs := make([]kindAttrSpec, 0, len(k.Attributes))
+		seenAttr := map[string]bool{"name": true} // `name` is auto-seeded
+		for _, a := range k.Attributes {
+			ac := strings.TrimSpace(a.Code)
+			an := strings.TrimSpace(a.Name)
+			if ac == "" || an == "" {
+				return nil, confirmCardOut{}, errors.New("each attribute needs a code and a name (kind " + code + ")")
+			}
+			if a.FieldType != "" && !isValidFieldType(a.FieldType) {
+				return nil, confirmCardOut{}, errors.New("invalid field_type: " + a.FieldType + " (kind " + code + ")")
+			}
+			if seenAttr[ac] {
+				continue
+			}
+			seenAttr[ac] = true
+			var ad *string
+			if d := strings.TrimSpace(a.Description); d != "" {
+				ad = &d
+			}
+			attrs = append(attrs, kindAttrSpec{Code: ac, Name: an, Description: ad, FieldType: a.FieldType, IsRequired: a.IsRequired, Options: a.Options})
+		}
+		kinds = append(kinds, kindCreateParams{Code: code, Name: name, Description: desc, Icon: k.Icon, Color: k.Color, Attributes: attrs})
+		rows = append(rows, previewRow{Label: "kind", Value: code, Note: fmt.Sprintf("%s · %d attribute(s)", name, len(attrs))})
+	}
+
+	params := kindsBatchParams{Kinds: kinds}
+	title := fmt.Sprintf("Create %d kind(s) with their attributes", len(kinds))
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSchemaCreateKinds, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descSchemaCreateKinds, bookID, userID, params, card, cerr)
+}
+
+// FieldTypeOrDefault returns the spec's field type, defaulting to "text" for the
+// confirm-card preview note.
+func (a kindAttrSpec) FieldTypeOrDefault() string {
+	if a.FieldType == "" {
+		return "text"
+	}
+	return a.FieldType
+}
+
+func (s *Server) toolProposeNewAttribute(ctx context.Context, req *mcp.CallToolRequest, in proposeAttrToolIn) (*mcp.CallToolResult, any, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, confirmCardOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := resolveBookScope(ctx, in.BookID) // ambient: X-Book-Id when omitted
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
 	}
@@ -152,26 +308,27 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolReq
 		FieldType: in.FieldType, IsRequired: in.IsRequired, Options: in.Options,
 	}
 	rows := []previewRow{{Label: "kind", Value: kindCode}, {Label: "code", Value: code}, {Label: "name", Value: name}}
-	return s.mintGrantActionCard(userID, bookID, descSchemaCreateAttr,
-		fmt.Sprintf("Add attribute %q (code: %s) to kind %q", name, code, kindCode), params, rows, false)
+	title := fmt.Sprintf("Add attribute %q (code: %s) to kind %q", name, code, kindCode)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descSchemaCreateAttr, title, params, rows, false)
+	return s.gateOrCard(ctx, req, descSchemaCreateAttr, bookID, userID, params, card, cerr)
 }
 
 // ── book_delete (the CP-1 canary — destructive cascade, class C) ──────────────
 
 type bookDeleteToolIn struct {
-	BookID    string `json:"book_id" jsonschema:"the book to delete from (UUID)"`
+	BookID    string `json:"book_id,omitempty" jsonschema:"the book to delete from (UUID)"`
 	Level     string `json:"level" jsonschema:"what to delete: genre | kind | attribute"`
 	Code      string `json:"code" jsonschema:"the code of the genre/kind, or (for level=attribute) the attribute's own code"`
 	KindCode  string `json:"kind_code,omitempty" jsonschema:"for level=attribute: the kind code the attribute belongs to"`
 	GenreCode string `json:"genre_code,omitempty" jsonschema:"for level=attribute: the genre code the attribute belongs to"`
 }
 
-func (s *Server) toolBookDelete(ctx context.Context, _ *mcp.CallToolRequest, in bookDeleteToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
+func (s *Server) toolBookDelete(ctx context.Context, req *mcp.CallToolRequest, in bookDeleteToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")
 	}
-	bookID, err := uuid.Parse(in.BookID)
+	bookID, err := resolveBookScope(ctx, in.BookID) // ambient: X-Book-Id when omitted
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
 	}
@@ -207,6 +364,7 @@ func (s *Server) toolBookDelete(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("failed to preview the cascade")
 	}
-	return s.mintGrantActionCard(userID, bookID, descBookDelete,
-		fmt.Sprintf("Delete %s %q (and cascade)", level, code), p, rows, true)
+	title := fmt.Sprintf("Delete %s %q (and cascade)", level, code)
+	_, card, cerr := s.mintGrantActionCard(userID, bookID, descBookDelete, title, p, rows, true)
+	return s.gateOrCard(ctx, req, descBookDelete, bookID, userID, p, card, cerr)
 }

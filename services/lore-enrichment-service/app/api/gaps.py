@@ -27,8 +27,9 @@ from app.clients.glossary import (
     GlossaryClient,
     GlossaryServiceError,
 )
+from app.clients.grant_client import GrantClient, GrantLevel
 from app.config import settings
-from app.deps import get_db
+from app.deps import get_db, get_grant_client_dep
 from app.db.book_profile import NEUTRAL_PROFILE, BookProfile, get_book_profile
 from app.gaps.engine import EntityCoverage, detect_ranked_gaps
 from app.gaps.model import GENERIC_KIND, resolve_dimensions
@@ -65,7 +66,7 @@ class AutoEnrichBody(BaseModel):
     technique: str = "retrieval"
     max_gaps: int = Field(default=10, ge=1, le=100)        # top-N ranked gaps to enrich
     coverage_limit: int = Field(default=200, ge=1, le=1000)  # entities scanned for gaps
-    max_spend_usd: float | None = Field(default=None, ge=0.0)
+    max_spend_tokens: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
     # LE-064 — when set, enrich exactly these targets (the per-row "enrich →"),
@@ -191,10 +192,11 @@ async def list_dimensions(
       * ``base=true`` → the BASE (un-overridden) set — the profile override editor (#3)
         so the author sees the canonical dims to relabel/reweight/remove.
 
-    AUTH (review-impl #3): authenticated + book-scoped, NOT owner-gated — consistent
-    with the gaps read family (detect-gaps / auto-enrich), which is also book-scoped.
-    It surfaces a kind's dimension LABELS (incl. profile overrides), not content; the
-    owner-gated surface is the profile authoring endpoints (book_profile.py)."""
+    AUTH (review-impl #3): authenticated + book-scoped, NOT grant-gated — it surfaces
+    a kind's dimension LABELS (incl. profile overrides), not book content, so it is a
+    safe read for any authenticated caller. (auto-enrich, which grounds on + SPENDS
+    against the book, DOES carry a VIEW grant gate — D-ENRICH-MCP-OWNER-GATE; the
+    owner-gated surface is the profile authoring endpoints in book_profile.py.)"""
     if principal.user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
     profile = await get_book_profile(pool, book_id)
@@ -218,6 +220,7 @@ async def auto_enrich(
     body: AutoEnrichBody,
     principal: Principal = Depends(require_principal),
     pool: asyncpg.Pool = Depends(get_db),
+    grants: GrantClient = Depends(get_grant_client_dep),
 ) -> dict:
     """Detect under-described entities and ENQUEUE an enrichment job over the
     top-N (the deferred D1 half). Composes detect-gaps + the job runner:
@@ -231,6 +234,16 @@ async def auto_enrich(
     bounded by max_gaps + the per-job cost-cap (a breach pauses; resume continues)."""
     if principal.user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
+    # E0 tenancy gate (D-ENRICH-MCP-OWNER-GATE) — auto-enrich grounds on AND spends
+    # (caller-paid) against the author's book, so a caller with no grant must not be
+    # able to enqueue it on another user's book. VIEW is the floor: a viewer/translator
+    # may legitimately request enrichment, and H0 only ever yields quarantined proposals.
+    # Fail-closed — a book-service outage resolves to NONE → 404 (the MCP tool inherits
+    # this gate, since it delegates to this handler). NONE covers a missing book AND a
+    # no-grant user, so 404 is never an existence oracle (E0 DESIGN R4).
+    level = await grants.resolve_grant(body.book_id, principal.user_id)
+    if not level.at_least(GrantLevel.VIEW):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     try:
         technique = Technique(body.technique)
     except ValueError:
@@ -313,7 +326,7 @@ async def auto_enrich(
         book_id=str(body.book_id),
         technique=technique.value,
         entity_kind="location",
-        max_spend=body.max_spend_usd,
+        max_spend=body.max_spend_tokens,
         estimated_cost=0.0,
     )
     await save_job_request(
@@ -326,7 +339,7 @@ async def auto_enrich(
             "technique": technique.value,
             "top_k": body.top_k,
             "eval_reserve_fraction": body.eval_reserve_fraction,
-            "max_spend_usd": body.max_spend_usd,
+            "max_spend_tokens": body.max_spend_tokens,
             "entity_kind": "location",
             "targets": targets,
             "user_id": str(principal.user_id),

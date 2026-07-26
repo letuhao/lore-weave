@@ -67,8 +67,10 @@ func TestActionToken_TamperAndUnknownDescriptorRejected(t *testing.T) {
 	if _, err := verifyActionToken("another_secret_at_least_32_characters_xx", tok, now.Add(time.Minute)); !errors.Is(err, ErrActionTokenInvalid) {
 		t.Fatalf("wrong-secret must be invalid, got %v", err)
 	}
-	// a not-yet-live descriptor must NOT mint (fail closed)
-	if mintActionToken(secret, mkClaims(uuid.New(), uuid.New(), "system_create"), now) != "" {
+	// a not-yet-live descriptor must NOT mint (fail closed). `book_set_genres` is a
+	// buildplan §2 reserved descriptor that was implemented as a direct W (no token),
+	// so it never became live — a stable example of a rejected descriptor.
+	if mintActionToken(secret, mkClaims(uuid.New(), uuid.New(), "book_set_genres"), now) != "" {
 		t.Error("reserved descriptor must not mint a token")
 	}
 }
@@ -218,13 +220,130 @@ func TestConfirmAction_CreatesKindThenRejectsReplayAndBadTokens(t *testing.T) {
 	if w := f.confirm(t, mint(f.ownerID, f.bookID, time.Now().Add(-2*actionTokenTTL))); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("expired: want 422, got %d", w.Code)
 	}
-	// tampered → 422
+	// tampered → 422, with a concrete, actionable message (IN-6 / audit #8 diagnosability —
+	// not just a bare "invalid confirmation").
 	if w := f.confirm(t, good[:len(good)-2]+"zz"); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("tampered: want 422, got %d", w.Code)
+	} else if body := w.Body.String(); !strings.Contains(body, "propose the action again") {
+		t.Errorf("tampered-token error must state a concrete fix pointer, got %q", body)
 	}
-	// minted for a DIFFERENT user → 403 (bound to proposer, checked before consume)
+	// minted for a DIFFERENT user → 403 (bound to proposer, checked before consume), with a
+	// message that says WHY (a different account proposed it) instead of a bare "forbidden".
 	if w := f.confirm(t, mint(uuid.New(), f.bookID, time.Now())); w.Code != http.StatusForbidden {
 		t.Errorf("wrong-user token: want 403, got %d", w.Code)
+	} else if body := w.Body.String(); !strings.Contains(body, "different account") {
+		t.Errorf("wrong-user error must name the concrete reason, got %q", body)
+	}
+}
+
+// ── internal confirm-replay envelope (D-PMCP-WORKER-CARRIER retrofit) ─────────
+//
+// auth-service's public-MCP confirm-replay (self-confirm AND human-approve,
+// `mcp_approvals.go::replayConfirm`) is a trusted internal caller — it can never
+// present the owner's Bearer JWT, so it sends the token as a `?token=` query param
+// with a nil body and identifies the owner via X-Internal-Token+X-User-Id. Found
+// live 2026-07-08 (MCP discoverability audit's confirm_action repro): this route
+// 401'd that shape unconditionally, meaning EVERY confirm-replay to glossary failed.
+
+func (f *actionFixture) confirmViaInternalEnvelope(t *testing.T, token, internalTok, userID string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/glossary/actions/confirm?token="+token, nil)
+	if internalTok != "" {
+		req.Header.Set("X-Internal-Token", internalTok)
+	}
+	if userID != "" {
+		req.Header.Set("X-User-Id", userID)
+	}
+	w := httptest.NewRecorder()
+	f.srv.Router().ServeHTTP(w, req)
+	return w
+}
+
+func TestConfirmAction_InternalReplayEnvelope_QueryParamTokenSucceeds(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	params, _ := json.Marshal(kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
+	tok := mintActionToken(versionTestSecret, actionClaims{
+		JTI: uuid.NewString(), Authority: authorityGrant, UserID: f.ownerID, BookID: f.bookID,
+		Descriptor: descSchemaCreateKind, Params: params,
+	}, time.Now())
+
+	// Exactly the shape auth-service's replayConfirm sends: query-param token, nil
+	// body, X-Internal-Token + X-User-Id, NO Authorization header at all.
+	w := f.confirmViaInternalEnvelope(t, tok, "tok", f.ownerID.String())
+	if w.Code != http.StatusCreated {
+		t.Fatalf("internal-envelope confirm-replay: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	var n int
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM book_kinds WHERE book_id=$1 AND code='qa_new_kind'`, f.bookID).Scan(&n)
+	if n != 1 {
+		t.Fatalf("kind not created via internal-envelope replay: count=%d", n)
+	}
+}
+
+func TestConfirmAction_InternalReplayEnvelope_WrongOrMissingCredsRejected(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	params, _ := json.Marshal(kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
+	mint := func(u uuid.UUID) string {
+		return mintActionToken(versionTestSecret, actionClaims{
+			JTI: uuid.NewString(), Authority: authorityGrant, UserID: u, BookID: f.bookID,
+			Descriptor: descSchemaCreateKind, Params: params,
+		}, time.Now())
+	}
+
+	// wrong internal token → 401, not silently falling through to "unauthenticated Bearer" success
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "not-the-real-token", f.ownerID.String()); w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong internal token: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// correct internal token but NO X-User-Id → 401 (fail closed, does not fall back to Bearer)
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "tok", ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("internal token with no X-User-Id: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// correct internal token, syntactically invalid X-User-Id → 401
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "tok", "not-a-uuid"); w.Code != http.StatusUnauthorized {
+		t.Errorf("internal token with malformed X-User-Id: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// correct internal token, X-User-Id names a DIFFERENT user than the token's proposer →
+	// still 403 forbidden (authorizeAction's existing proposer-binding check applies
+	// identically regardless of which auth path resolved the caller)
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "tok", uuid.New().String()); w.Code != http.StatusForbidden {
+		t.Errorf("internal envelope naming a different user than the proposer: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// ── confirm diagnosability (audit #8 / IN-6) — no DB needed, these branches return
+// before touching the grant-service or the DB ────────────────────────────────────
+
+func TestAuthorizeAction_AdminAuthorityMessageIsActionable(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/glossary/actions/confirm", nil)
+	claims := actionClaims{Authority: authorityAdmin, UserID: uuid.New(), BookID: uuid.New(), Descriptor: descSystemCreate}
+	if ok := s.authorizeAction(w, req, claims.UserID, claims); ok {
+		t.Fatal("admin authority must not be authorized via the user confirm path")
+	}
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("want 501, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "admin confirm") {
+		t.Errorf("admin-authority error must point at the actual admin confirm route, got %q", body)
+	}
+}
+
+func TestAuthorizeAction_UnknownAuthorityMessageIsActionable(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/glossary/actions/confirm", nil)
+	claims := actionClaims{Authority: "bogus", UserID: uuid.New(), BookID: uuid.New(), Descriptor: descAdopt}
+	if ok := s.authorizeAction(w, req, claims.UserID, claims); ok {
+		t.Fatal("an unrecognized authority must never authorize")
+	}
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("want 422, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "propose the action again") {
+		t.Errorf("unknown-authority error must state a concrete fix pointer, got %q", body)
 	}
 }
 
@@ -237,11 +356,74 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose: %v", err)
 	}
-	if out.ConfirmToken == "" || out.Descriptor != descSchemaCreateKind {
+	if asCard(out).ConfirmToken == "" || asCard(out).Descriptor != descSchemaCreateKind {
 		t.Fatalf("bad propose output: %+v", out)
 	}
-	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusCreated {
 		t.Fatalf("confirm of a freshly-proposed token: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// An UNADOPTED book auto-scaffolds the baseline ontology on the first kind-create,
+// instead of 422'ing "not adopted" AFTER the human confirmed (and the single-use
+// token burned). The agent no longer has to sequence adopt→kind by hand.
+func TestProposeNewKind_AutoScaffoldsUnadoptedBook(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, out, err := f.srv.toolProposeNewKind(ctxWithUser(f.ownerID), nil,
+		proposeKindToolIn{BookID: f.bookID.String(), Code: "qa_scaffold_kind", Name: "Power System"})
+	if err != nil {
+		t.Fatalf("propose: %v", err)
+	}
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusCreated {
+		t.Fatalf("confirm create-kind on an UNADOPTED book: want 201 (auto-scaffold), got %d (%s)", w.Code, w.Body.String())
+	}
+	// The baseline universal genre must now exist — proof the scaffold ran.
+	var hasUniversal bool
+	if err := pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL)`,
+		f.bookID).Scan(&hasUniversal); err != nil {
+		t.Fatalf("check universal genre: %v", err)
+	}
+	if !hasUniversal {
+		t.Error("auto-scaffold did not create the baseline universal genre")
+	}
+}
+
+// glossary_propose_kinds mints ONE confirm card for MANY kinds; a single confirm
+// creates them all (auto-scaffolding the unadopted book) — the batch UX the user
+// wanted instead of one click per kind.
+func TestProposeKinds_BatchRoundTripToConfirm(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, out, err := f.srv.toolProposeKinds(ctxWithUser(f.ownerID), nil, proposeKindsToolIn{
+		BookID: f.bookID.String(),
+		Kinds: []proposeKindItemIn{
+			{Code: "qa_concept", Name: "Concept", Attributes: []proposeKindAttrIn{{Code: "category", Name: "Category", FieldType: "text"}}},
+			{Code: "qa_realm", Name: "Realm", Attributes: []proposeKindAttrIn{{Code: "rank_order", Name: "Order", FieldType: "number"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("propose batch: %v", err)
+	}
+	if asCard(out).ConfirmToken == "" || asCard(out).Descriptor != descSchemaCreateKinds {
+		t.Fatalf("bad batch output: %+v", out)
+	}
+	if len(asCard(out).PreviewRows) != 2 {
+		t.Errorf("want 2 preview rows (one per kind), got %d", len(asCard(out).PreviewRows))
+	}
+	if w := f.confirm(t, asCard(out).ConfirmToken); w.Code != http.StatusCreated {
+		t.Fatalf("confirm batch (1 click → N kinds): want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	for _, code := range []string{"qa_concept", "qa_realm"} {
+		var exists bool
+		if err := pool.QueryRow(context.Background(),
+			`SELECT EXISTS(SELECT 1 FROM book_kinds WHERE book_id=$1 AND code=$2)`, f.bookID, code).Scan(&exists); err != nil {
+			t.Fatalf("check kind %s: %v", code, err)
+		}
+		if !exists {
+			t.Errorf("kind %s was not created by the batch confirm", code)
+		}
 	}
 }
 
@@ -283,12 +465,12 @@ func TestBookDelete_CanaryRoundTripAndSingleUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose book_delete: %v", err)
 	}
-	if card.ConfirmToken == "" || card.Descriptor != descBookDelete || !card.Destructive {
+	if asCard(card).ConfirmToken == "" || asCard(card).Descriptor != descBookDelete || !asCard(card).Destructive {
 		t.Fatalf("bad card: %+v", card)
 	}
 
 	// preview (non-consuming) returns current-state cascade rows
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	} else {
 		var pv actionPreview
@@ -298,7 +480,7 @@ func TestBookDelete_CanaryRoundTripAndSingleUse(t *testing.T) {
 		}
 	}
 	// preview did NOT consume — confirm still works
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusNoContent {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusNoContent {
 		t.Fatalf("confirm book_delete: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 	var dep *time.Time
@@ -307,7 +489,7 @@ func TestBookDelete_CanaryRoundTripAndSingleUse(t *testing.T) {
 		t.Error("kind was not soft-deleted")
 	}
 	// replay → single-use → 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay of consumed book_delete: want 422, got %d", w.Code)
 	}
 }

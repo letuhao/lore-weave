@@ -1,13 +1,17 @@
 fastapi>=0.111
 uvicorn[standard]>=0.29
-asyncpg>=0.29
+asyncpg>=0.31.0
 pydantic>=2.6
 pydantic-settings>=2.2
 python-json-logger>=2.0
 httpx>=0.27
 PyJWT>=2.8
-cachetools>=5.3
-prometheus-client>=0.20
+# KM5 — RS256 admin-JWT verification (app/auth/admin_jwt.py) needs the
+# cryptography backend for RSA + SPKI/PKIX PEM parsing. Present transitively
+# today, but pinned explicitly so a security-critical dep can't silently drop.
+cryptography>=49.0.0
+cachetools>=7.1.4
+prometheus-client>=0.25.0
 
 # loreweave_llm SDK (Phase 4a-α) — installed via Dockerfile COPY of
 # sdks/python (build context is repo root). For host-side pytest:
@@ -27,28 +31,53 @@ langdetect>=1.0.9
 # check (extract_canon_terms: CJK proper-noun extraction, lazy-loaded so
 # its dict cost is paid only when a contradiction term is needed). Same
 # version lore-enrichment pins; pure Python, no native deps.
-jieba>=0.42
+jieba>=0.42.1
+# M-recall (2026-07-07) — pyahocorasick for CJK/VI-aware entity-anchor matching.
+# The intent classifier can't segment scriptio-continua (Chinese has no spaces),
+# so `select_l2_facts` anchored on classifier tokens returns 0 facts for CJK queries
+# even when the answer is a 1-hop relation. We instead Aho-Corasick match the message
+# against the project's KNOWN entity-name dictionary (language-agnostic: zh/ja/ko/vi).
+# Prebuilt manylinux wheels (no build toolchain needed); C-ext = sub-ms at scale.
+pyahocorasick>=2.0
 # D-T2-01 — tiktoken for accurate token counting (CJK especially).
 # The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
 # context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x
 # tokenization closely enough for budget enforcement.
-tiktoken>=0.7
+tiktoken>=0.13.0
 # P1 (2026-05-23) — loreweave_parse SDK uses bs4 + stdlib html.parser
 # for the /internal/parse endpoint. Pure Python, no native deps.
-beautifulsoup4>=4.12,<5
+beautifulsoup4>=4.15.0,<5
 
 # Eval framework overhaul (2026-05-27 spec D8 + plan LOW-10 pinning).
 # Pinned for reproducibility — DeepEval especially has rapid API churn.
 # Realistic added image footprint ~500MB-1GB including transitive
 # pydantic v2 + sentence-transformers + pyarrow (per plan LOW-12).
 # Used only in tests/quality/* and only opt-in via --run-quality.
-deepeval==4.0.4
+deepeval==4.1.1
 seqeval==1.2.2
 datasets==2.21.0
-krippendorff==0.7.0
+krippendorff==0.8.2
 
 # ARCH-1 C1 (2026-06-01) — MCP server facade for the memory tools.
 # FastMCP ships inside the official `mcp` SDK; the [cli] extra adds the
 # fastmcp CLI + dev tooling. Mounted at /mcp in app/main.py. The
 # bespoke /internal/tools/* path is retained (dual-run).
-mcp[cli]>=1.9,<2
+# SP-0 (2026-07-19): pinned to 1.28.1 (latest STABLE; native elicitation + Tasks
+# extension). Beta v2 (mcp==2.0.0b2) exists but REMOVES mcp.server.fastmcp, which this
+# service's whole MCP server is built on — a v2 move goes through a FastMCP→MCPServer
+# adapter in the loreweave_mcp kit, not a per-service rewrite. Deferred (see chat-service
+# requirements note + docs/plans/2026-07-19-frontend-tools-mcp-migration-BUILD.md).
+mcp[cli]==1.28.1
+
+# PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md) —
+# sdks/python/loreweave_parse/pdf_walker.py. pymupdf (imports as `fitz`)
+# does per-page text + embedded-image extraction in one library; pypdf
+# alone (used by lore-enrichment-service) doesn't expose embedded-image
+# extraction. OCR fallback libs (pytesseract/pdf2image/Pillow) are
+# import-guarded in pdf_walker.py the same way lore-enrichment-service's
+# extract.py guards them — a missing lib/binary degrades gracefully
+# (text-layer only), it never crashes the service.
+pymupdf>=1.28.0
+pytesseract>=0.3.13
+pdf2image>=1.17
+Pillow>=12.3.0

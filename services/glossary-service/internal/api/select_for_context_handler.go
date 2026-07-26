@@ -32,6 +32,58 @@ type selectForContextRequest struct {
 	MaxEntities int      `json:"max_entities"`
 	MaxTokens   int      `json:"max_tokens"`
 	ExcludeIDs  []string `json:"exclude_ids"`
+	// Language (S6, optional): augment each entity's aliases with its per-language
+	// alias SET (source ∪ target, deduped). Omitted → source aliases only.
+	Language string `json:"language"`
+}
+
+// composePerLanguageAliases augments each item's CachedAliases with the per-language
+// alias SET (the `aliases` attr's translation in `language`, a JSON array) when
+// `language` is set. Source ∪ target, de-duped. Best-effort — a query error leaves the
+// source aliases untouched (context enrichment must never break the turn). Used by both
+// internal context endpoints (select-for-context + entities/by-ids).
+func (s *Server) composePerLanguageAliases(ctx context.Context, bookID uuid.UUID, items []glossaryEntityForContext, language string) {
+	language = strings.TrimSpace(language)
+	if language == "" || len(items) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(items))
+	idx := make(map[string]int, len(items))
+	for i, it := range items {
+		if id, err := uuid.Parse(it.EntityID); err == nil {
+			ids = append(ids, id)
+			idx[it.EntityID] = i
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT e.entity_id, t.value
+		FROM glossary_entities e
+		JOIN entity_attribute_values av ON av.entity_id = e.entity_id
+		JOIN book_attributes ba ON ba.attr_id = av.attr_def_id
+		JOIN attribute_translations t ON t.attr_value_id = av.attr_value_id
+		WHERE e.book_id = $1 AND e.entity_id = ANY($2::uuid[])
+		  AND ba.code = 'aliases' AND t.language_code = $3 AND t.value != ''`,
+		bookID, ids, language)
+	if err != nil {
+		return // best-effort
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var eid, val string
+		if rows.Scan(&eid, &val) != nil {
+			continue
+		}
+		var langAliases []string
+		if json.Unmarshal([]byte(val), &langAliases) != nil {
+			continue
+		}
+		if i, ok := idx[eid]; ok {
+			items[i].CachedAliases = dedupStrings(append(append([]string{}, items[i].CachedAliases...), langAliases...))
+		}
+	}
 }
 
 type glossaryEntityForContext struct {
@@ -115,6 +167,8 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", err.Error())
 		return
 	}
+	// S6: augment aliases with the requested language's alias set (best-effort).
+	s.composePerLanguageAliases(r.Context(), bookID, resp.Entities, req.Language)
 	SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, resp)
 }

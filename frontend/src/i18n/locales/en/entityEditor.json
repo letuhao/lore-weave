@@ -16,9 +16,15 @@
       "translations": "{{count}} translations",
       "evidences": "{{count}} evidences"
     },
+    "scope_label": {
+      "placeholder": "Disambiguate (e.g. world/realm)...",
+      "aria": "Scope label — disambiguates same-name entities across different in-story contexts",
+      "duplicate": "An entity with this name, kind, and scope already exists in this book"
+    },
     "tab": {
       "attributes": "Attributes",
-      "evidences": "Evidences"
+      "evidences": "Evidences",
+      "history": "History"
     },
     "viewing_in_language": "Viewing in {{lang}}",
     "viewing_original": "Original ({{lang}})",
@@ -33,12 +39,20 @@
       "saved": "Entity saved",
       "status_changed": "Status changed to {{status}}",
       "invalid_lang": "Invalid language code (e.g. en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "Remove this attribute value? You can add it again later.",
+    "remove_attr_success": "Attribute value removed",
+    "add_attr_heading": "Add a value for another attribute",
+    "add_attr_pick": "Pick an attribute…",
+    "add_attr_value_placeholder": "Value",
+    "add_attr_button": "Add",
+    "add_attr_success": "Attribute added"
   },
   "attr_card": {
     "required": "*required",
     "modified": "modified",
-    "has_translations": "Has translations"
+    "has_translations": "Has translations",
+    "remove": "Remove this value"
   },
   "translation_row": {
     "confidence": {
@@ -52,6 +66,7 @@
     "save": "Save",
     "delete_aria": "Delete translation",
     "placeholder": "{{lang}} translation...",
+    "tags_add": "+ Add alias",
     "delete_title": "Delete translation?",
     "delete_desc": "The {{lang}} translation for this attribute will be permanently deleted.",
     "delete_confirm": "Delete",
@@ -66,6 +81,14 @@
       "quote": "Quote",
       "summary": "Summary",
       "reference": "Reference"
+    },
+    "provenance": {
+      "ambiguous": "Unverified match",
+      "ambiguous_hint": "This quote matched the source text in more than one place — the exact location is uncertain.",
+      "unmatched": "Not found in source",
+      "unmatched_hint": "This quote could not be located in the chapter text — it may be paraphrased or hallucinated. Verify before trusting it.",
+      "unverified": "Unverified",
+      "unverified_hint": "This quote has not been validated against the source text."
     },
     "filter": {
       "all": "All",
@@ -110,6 +133,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "edit_title": "Edit",
+      "open_source": "Open the source chapter",
       "delete_title": "Delete",
       "translated": "Translated ({{lang}})",
       "note_label": "Note: {{note}}"
@@ -119,6 +143,11 @@
       "clear_filters": "Clear filters",
       "prev_page": "Previous page",
       "next_page": "Next page",
+      "first_page": "First page",
+      "last_page": "Last page",
+      "jump_to_page": "Jump to page",
+      "page_size": "Rows per page",
+      "per_page": "{{n}} / page",
       "delete_title": "Delete evidence?",
       "delete_desc": "This evidence from \"{{attr}}\" will be permanently deleted.",
       "delete_confirm": "Delete"
@@ -129,5 +158,12 @@
       "created": "Evidence created",
       "text_required": "Original text is required"
     }
+  },
+  "summarize": {
+    "canonical_label": "Merged summary",
+    "pending_dirty": "Will re-summarize after the next extraction",
+    "pending_new": "Will be summarized after the next extraction",
+    "sources": "Raw mentions ({{count}})",
+    "empty": "No mentions yet"
   }
 }

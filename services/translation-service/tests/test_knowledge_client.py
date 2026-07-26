@@ -40,6 +40,7 @@ class _FakeResp:
 class _FakeClient:
     """Records the last POST; returns a canned response or raises."""
     last_call = {}
+    factory_kwargs: dict = {}  # W5: build_internal_client(...) kwargs (token baked here)
 
     def __init__(self, resp=None, exc=None):
         self._resp = resp
@@ -60,8 +61,10 @@ class _FakeClient:
 
 def _patch_client(monkeypatch, *, resp=None, exc=None):
     def factory(*a, **k):
+        _FakeClient.factory_kwargs = k
         return _FakeClient(resp=resp, exc=exc)
-    monkeypatch.setattr(kc.httpx, "AsyncClient", factory)
+    # W5: knowledge_client builds its client via build_internal_client (token baked).
+    monkeypatch.setattr(kc, "build_internal_client", factory)
     _FakeClient.last_call = {}
 
 
@@ -116,7 +119,7 @@ async def test_fetch_success_parses(monkeypatch):
     assert nb.found and len(nb.relations) == 2
     # request shape: body + internal-token header
     assert _FakeClient.last_call["json"] == {"user_id": "u1", "glossary_entity_id": "e1", "rel_cap": 50}
-    assert _FakeClient.last_call["headers"]["X-Internal-Token"] == "tok"
+    assert _FakeClient.factory_kwargs["internal_token"] == "tok"
     assert _FakeClient.last_call["url"].endswith("/internal/knowledge/wiki-neighborhood")
 
 
@@ -184,7 +187,7 @@ async def test_fetch_timeline_success_parses(monkeypatch):
     assert brief.events[0].title == "The pact" and brief.events[0].participants == ["Tirami", "Aldric"]
     assert brief.events[1].summary is None
     assert _FakeClient.last_call["json"] == {"book_id": "b1", "chapter_order": 5, "limit": 10}
-    assert _FakeClient.last_call["headers"]["X-Internal-Token"] == "tok"
+    assert _FakeClient.factory_kwargs["internal_token"] == "tok"
     assert _FakeClient.last_call["url"].endswith("/internal/knowledge/timeline")
 
 

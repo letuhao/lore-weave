@@ -172,4 +172,37 @@ describe('EntityEditDialog', () => {
       expect(toastMocks.error).toHaveBeenCalledTimes(1);
     });
   });
+
+  // S7-1: the kind field is now a CLOSED-SET <select>, never a free <input>.
+  it('renders kind as an enum <select> over the 5 authorable kinds', () => {
+    render(
+      <EntityEditDialog open={true} onOpenChange={vi.fn()} entity={ENTITY} />,
+      { wrapper: Wrapper },
+    );
+    const el = screen.getByTestId('entity-edit-kind');
+    expect(el.tagName).toBe('SELECT');
+    const opts = Array.from((el as HTMLSelectElement).options).map((o) => o.value);
+    expect(opts).toEqual([
+      'character',
+      'location',
+      'organization',
+      'concept',
+      'item',
+    ]);
+  });
+
+  it('keeps a non-authorable current kind selectable (no silent kind mutation)', () => {
+    render(
+      <EntityEditDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        entity={{ ...ENTITY, kind: 'event' }}
+      />,
+      { wrapper: Wrapper },
+    );
+    const el = screen.getByTestId('entity-edit-kind') as HTMLSelectElement;
+    const opts = Array.from(el.options).map((o) => o.value);
+    expect(opts).toContain('event'); // preserved, not dropped
+    expect(el.value).toBe('event');
+  });
 });

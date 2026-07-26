@@ -4,6 +4,7 @@ import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { useNotificationList } from '@/features/notifications/hooks/useNotificationList';
 import { NotificationItem } from '@/features/notifications/components/NotificationItem';
 import { CATEGORIES } from '@/features/notifications/constants';
+import { notificationLink } from '@/features/notifications/link';
 import type { Notification } from '@/features/notifications/api';
 
 export function NotificationsPage() {
@@ -14,18 +15,10 @@ export function NotificationsPage() {
     loadMore, markOne, markAll,
   } = useNotificationList();
 
-  // metadata is server-authored (createNotification is internal-token-gated), but
-  // still: only follow http(s) externally and in-app paths via the router — never
-  // hand an arbitrary string to navigate() (LOW-4).
-  const linkOf = (n: Notification): string | null => {
-    const meta = n.metadata as Record<string, unknown> | undefined;
-    const l = typeof meta?.link === 'string' ? meta.link : typeof meta?.url === 'string' ? meta.url : null;
-    return l && (/^https?:\/\//.test(l) || l.startsWith('/')) ? l : null;
-  };
-
   const onItemClick = (n: Notification) => {
     if (!n.read) markOne(n.id);
-    const link = linkOf(n);
+    // LOW-4 safety lives in notificationLink (shared with the studio panel, #11).
+    const link = notificationLink(n);
     if (!link) return;
     if (/^https?:\/\//.test(link)) window.location.href = link;
     else navigate(link);
@@ -82,7 +75,7 @@ export function NotificationsPage() {
               notification={n}
               // Only clickable when there's something to do (mark-read or navigate),
               // so fully-read no-link rows aren't deceptively cursor-pointer (COSMETIC).
-              onClick={!n.read || linkOf(n) ? onItemClick : undefined}
+              onClick={!n.read || notificationLink(n) ? onItemClick : undefined}
             />
           ))
         )}

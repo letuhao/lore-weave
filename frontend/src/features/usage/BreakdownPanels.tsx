@@ -1,19 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import type { ProviderBreakdown, PurposeBreakdown } from './types';
+import { purposeColor } from './types';
 
 const PROVIDER_COLORS: Record<string, string> = {
   anthropic: '#d4a574',
   openai: '#74c0a4',
   ollama: '#7ab4f0',
   lm_studio: '#a78bfa',
-};
-
-const PURPOSE_COLORS: Record<string, string> = {
-  translation: '#3dba6a',
-  chat: '#3da692',
-  chunk_edit: '#a78bfa',
-  image_gen: '#e8a832',
-  unknown: '#9e9488',
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -98,7 +91,7 @@ export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
               <span className="flex w-28 items-center gap-1.5 text-xs">
                 <span
                   className="inline-block h-2 w-2 rounded-sm"
-                  style={{ background: PURPOSE_COLORS[item.purpose] }}
+                  style={{ background: purposeColor(item.purpose) }}
                 />
                 {t(`purpose.${item.purpose}`, { defaultValue: item.purpose })}
               </span>
@@ -108,7 +101,7 @@ export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
                     className="h-full rounded-sm opacity-70"
                     style={{
                       width: `${(item.total_tokens / maxPurposeTokens) * 100}%`,
-                      background: PURPOSE_COLORS[item.purpose] ?? '#888',
+                      background: purposeColor(item.purpose),
                     }}
                   />
                 </div>

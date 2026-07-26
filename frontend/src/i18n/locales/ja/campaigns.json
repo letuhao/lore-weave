@@ -22,7 +22,8 @@
     "projectNoEmbedding": "埋め込みモデルなし",
     "projectHint": "抽出結果はこのプロジェクトに書き込まれます。埋め込み/リランカーは「モデル」ステップで上書きできます。",
     "targetLanguage": "ターゲット言語（任意）",
-    "targetLanguagePlaceholder": "例: vi — 空欄の場合は翻訳設定を使用"
+    "targetLanguagePlaceholder": "例: vi — 空欄の場合は翻訳設定を使用",
+    "targetLanguageAny": "翻訳設定を使用"
   },
   "range": {
     "intro": "この書籍には公開済みの章が{{count}}件あります。空欄にすると書籍全体を処理します。",

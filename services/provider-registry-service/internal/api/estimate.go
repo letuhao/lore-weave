@@ -149,3 +149,67 @@ func (s *Server) internalBillingEstimate(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, estimateResponse{Items: items})
 }
+
+// priceVoiceRequest — C6 / SD-C6: price ONE STT/TTS invocation from the model's registered rate.
+// `kind` selects the dimension: "stt" (units = audio SECONDS, priced per_second) or "tts" (units =
+// CHARACTERS, priced per_kchar). Keeps the "pricing lives with the model in provider-registry" invariant
+// — the voice caller (chat) resolves the $ here instead of hardcoding a rate.
+type priceVoiceRequest struct {
+	OwnerUserID string  `json:"owner_user_id"`
+	ModelSource string  `json:"model_source"`
+	ModelRef    string  `json:"model_ref"`
+	Kind        string  `json:"kind"` // "stt" | "tts"
+	Units       float64 `json:"units"`
+}
+
+type priceVoiceResponse struct {
+	Status  string  `json:"status"` // ok | unpriced | not_found | bad_request
+	CostUSD float64 `json:"cost_usd"`
+	Priced  bool    `json:"priced"` // false ⇒ the model has no rate for this dimension (cost stays 0)
+}
+
+// internalBillingPriceVoice handles POST /internal/billing/price-voice.
+func (s *Server) internalBillingPriceVoice(w http.ResponseWriter, r *http.Request) {
+	var in priceVoiceRequest
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "PRICE_VALIDATION", "invalid payload")
+		return
+	}
+	owner, err := uuid.Parse(in.OwnerUserID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "PRICE_VALIDATION", "invalid owner_user_id")
+		return
+	}
+	ref, err := uuid.Parse(in.ModelRef)
+	if err != nil || (in.ModelSource != "user_model" && in.ModelSource != "platform_model") ||
+		(in.Kind != "stt" && in.Kind != "tts") {
+		writeJSON(w, http.StatusOK, priceVoiceResponse{Status: estStatusBadRequest})
+		return
+	}
+	pricing, _, found, err := s.jobsRepo.EstimateModelInfo(r.Context(), in.ModelSource, owner, ref)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PRICE_PRICING_ERROR", err.Error())
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusOK, priceVoiceResponse{Status: estStatusNotFound})
+		return
+	}
+	var usd float64
+	if in.Kind == "stt" {
+		usd, err = billing.PriceSTT(in.Units, pricing)
+	} else {
+		usd, err = billing.PriceTTS(int(in.Units), pricing)
+	}
+	if errors.Is(err, billing.ErrUnpriced) {
+		// The model has no rate for this dimension — a soft "unpriced", cost 0 (not an error). A $0
+		// local model (Whisper/Kokoro) carries an explicit 0 rate and returns ok with cost 0 instead.
+		writeJSON(w, http.StatusOK, priceVoiceResponse{Status: estStatusUnpriced})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PRICE_PRICING_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, priceVoiceResponse{Status: estStatusOK, CostUSD: usd, Priced: true})
+}

@@ -125,6 +125,10 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	setClauses := []string{}
 	args := []any{}
 	argN := 1
+	// D-GLOSSARY-MULTIROW slice 2 — the new SOURCE value when original_value is patched,
+	// so the per-item child rows can be synced (verified) after the UPDATE. nil ⇒ value
+	// not touched by this PATCH.
+	var newSourceValue *string
 
 	if raw, ok := in["original_language"]; ok {
 		var lang string
@@ -146,6 +150,12 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		setClauses = append(setClauses, fmt.Sprintf("original_value = $%d", argN))
 		args = append(args, val)
 		argN++
+		// MERGE/M5 (INV-8) — a human authoring a SOURCE value marks it 'verified', so a
+		// later machine re-extraction's verified-clobber guard refuses to overwrite it.
+		// Literal (no placeholder) so it rides both the If-Match guard-CTE and plain paths.
+		setClauses = append(setClauses, "confidence = 'verified'")
+		v := val
+		newSourceValue = &v
 	}
 
 	ctx := r.Context()
@@ -210,6 +220,17 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// D-GLOSSARY-MULTIROW slice 2 — sync the per-item child rows for a LIST value
+		// (scalar ⇒ no-op), stamped 'verified' (a human edit). Keeps items in step with
+		// the editor's original_value so per-item verify/tombstone and a later append see
+		// the curated list. In-tx → atomic with the edit.
+		if newSourceValue != nil {
+			if err := syncListItemsByID(ctx, tx, attrValueID, *newSourceValue, "verified", nil); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "item sync failed")
+				return
+			}
+		}
+
 		// K3.3b auto-regen IN-TX: when the description attribute is the one being
 		// patched AND short_description is still auto-generated, rebuild it from
 		// the new text — so the AFTER snapshot + the event reflect it. Best-effort:
@@ -226,6 +247,19 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 			if err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
 				slog.Warn("regenerate short_description failed",
 					"entity_id", entityID.String(), "error", err.Error())
+			}
+		}
+		// D-GLOSSARY-ST-DEDUP M3a: a name/term edit must move the app-maintained
+		// dedup key with it (cached_name was just recomputed by the EAV trigger).
+		if attrCode == "name" || attrCode == "term" {
+			if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
+				if errors.Is(err, errDuplicateName) {
+					writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+						"an entity with this name already exists in this book")
+					return
+				}
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "dedup key refresh failed")
+				return
 			}
 		}
 

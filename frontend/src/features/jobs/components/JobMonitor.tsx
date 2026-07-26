@@ -19,8 +19,21 @@ import { jobKey } from '../types';
 /** Generic per-job detail (the cross-service generalization of CampaignMonitor).
  *  Campaign jobs redirect to /campaigns/:id upstream; this renders the unified
  *  projection: progress · cost & usage · dynamic parameters · metadata · activity ·
- *  children · error. Live via the SSE overlay. */
-export function JobMonitor({ service, jobId }: { service: string; jobId: string }) {
+ *  children · error. Live via the SSE overlay.
+ *
+ *  `hideBack` (studio dockable-migration injectable prop, docs/standards/dockable-gui.md
+ *  DOCK-7): the studio JobDetailPanel has no "/jobs" route to return to — its dock tabs
+ *  already show what's open — so it hides the breadcrumb instead of route-navigating.
+ *  Omitted (the standalone /jobs/:service/:jobId page): behavior is byte-identical to before. */
+export function JobMonitor({
+  service,
+  jobId,
+  hideBack,
+}: {
+  service: string;
+  jobId: string;
+  hideBack?: boolean;
+}) {
   const { t } = useTranslation('jobs');
   const detail = useJob(service, jobId);
   const live = useJobLive(jobKey({ service, job_id: jobId }));
@@ -37,10 +50,12 @@ export function JobMonitor({ service, jobId }: { service: string; jobId: string 
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <Link to="/jobs" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" />
-        {t('monitor.back', { defaultValue: 'All jobs' })}
-      </Link>
+      {!hideBack && (
+        <Link to="/jobs" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+          {t('monitor.back', { defaultValue: 'All jobs' })}
+        </Link>
+      )}
 
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">

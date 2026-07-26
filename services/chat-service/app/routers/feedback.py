@@ -40,9 +40,17 @@ async def submit_feedback(
     owner = UUID(user_id)
 
     async with pool.acquire() as conn:
+        # P3b (Track 4): join the session's project_id + carry the message's
+        # created_at so knowledge-service can attribute the thumbs to the
+        # entities surfaced for THAT turn (time-window + session scoped).
+        # Additive payload keys — consumers that ignore them are unaffected.
         msg = await conn.fetchrow(
-            "SELECT session_id FROM chat_messages "
-            "WHERE message_id = $1 AND owner_user_id = $2",
+            """
+            SELECT m.session_id, m.created_at, s.project_id
+            FROM chat_messages m
+            JOIN chat_sessions s ON s.session_id = m.session_id
+            WHERE m.message_id = $1 AND m.owner_user_id = $2
+            """,
             message_id, owner,
         )
         if msg is None:
@@ -75,6 +83,10 @@ async def submit_feedback(
                     else None
                 ),
                 "feedback_id": str(row["id"]),
+                # P3b — entity-attribution keys (additive): knowledge-service scopes
+                # the salience boost by (user, project, session) + the turn's time.
+                "project_id": str(msg["project_id"]) if msg["project_id"] else None,
+                "message_created_at": msg["created_at"].isoformat(),
             }
             await conn.execute(
                 """

@@ -1,29 +1,34 @@
 {
+  "reconnecting": "Đang kết nối lại…",
   "nav": {
     "startNew": "Bắt đầu điều gì đó mới",
     "workspace": "Không gian làm việc",
     "chat": "Trò chuyện",
+    "assistant": "Trợ lý",
+    "roleplay": "Nhập vai",
     "knowledge": "Tri thức",
     "worlds": "Thế giới",
     "campaigns": "Chiến dịch",
     "standards": "Tiêu chuẩn",
     "jobs": "Tác vụ",
     "browse": "Khám phá",
+    "trash": "Thùng rác",
     "usage": "Sử dụng",
     "leaderboard": "Bảng xếp hạng",
+    "extensions": "Tiện ích mở rộng",
     "settings": "Cài đặt",
     "notifications": "Thông báo",
     "logout": "Đăng xuất",
     "main": "Chính",
     "manage": "Quản lý",
-    "trash": "Thùng rác",
     "expand_sidebar": "Mở rộng thanh bên",
     "collapse_sidebar": "Thu gọn thanh bên",
     "theme": "Giao diện: {{name}}",
     "home": "Trang chủ",
     "account": "Tài khoản",
     "signin": "Đăng nhập",
-    "back_to_book": "Quay lại sách"
+    "back_to_book": "Quay lại sách",
+    "more": "Thêm"
   },
   "logout_confirm": {
     "title": "Đăng xuất khi có thay đổi chưa lưu?",
@@ -84,6 +89,7 @@
     "silenceThreshold": "Ngưỡng im lặng",
     "autoSend": "Tự động gửi khi im lặng",
     "showInterim": "Hiển thị kết quả tạm thời",
+    "providerVoice": "Giọng nói",
     "browserVoice": "Giọng trình duyệt",
     "defaultVoice": "Mặc định",
     "speed": "Tốc độ",
@@ -100,7 +106,6 @@
     "recording": "Đang ghi...",
     "exitVoiceMode": "Thoát chế độ giọng nói",
     "pauseResume": "Tạm dừng / Tiếp tục",
-    "providerVoice": "Giọng nói",
     "inactive": "Không hoạt động",
     "sending": "Đang gửi...",
     "receiving": "Đang nhận...",
@@ -142,5 +147,30 @@
     "light": "Sáng",
     "sepia": "Nâu sepia",
     "oled": "OLED"
+  },
+  "modelPicker": {
+    "placeholder": "Chọn mô hình…",
+    "search": "Tìm mô hình…",
+    "favorites": "Yêu thích",
+    "recents": "Gần đây",
+    "none": "Không",
+    "empty": "Chưa có mô hình nào. Hãy đăng ký một mô hình để bắt đầu.",
+    "error": "Không tải được danh sách mô hình.",
+    "noResults": "Không có mô hình nào khớp với tìm kiếm.",
+    "orphan": "Mô hình đã chọn trước đó (không còn trong danh mục của bạn)",
+    "ctx": "{{n}}K",
+    "free": "$0 cục bộ",
+    "freeHint": "Chạy cục bộ — không tính phí theo token.",
+    "paidHint": "Tính phí theo mức sử dụng.",
+    "favorite": "Thêm vào yêu thích",
+    "unfavorite": "Bỏ khỏi yêu thích"
+  },
+  "modelOrder": {
+    "heading": "Thứ tự mô hình",
+    "subtitle": "Kéo để đặt thứ tự mô hình hiển thị trong mọi bộ chọn. Được lưu vào tài khoản của bạn (đồng bộ giữa các thiết bị). Mô hình yêu thích vẫn hiển thị trước khi một mô hình chưa có vị trí.",
+    "dragAria": "Sắp xếp lại mô hình",
+    "saved": "Đã lưu thứ tự mô hình",
+    "saveFailed": "Không lưu được thứ tự.",
+    "loadFailed": "Không tải được danh sách mô hình."
   }
 }

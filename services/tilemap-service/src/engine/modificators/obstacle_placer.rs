@@ -657,7 +657,7 @@ mod tests {
             let mut free = Vec::new();
             for y in 0..9 {
                 for x in 0..9 {
-                    if rng.gen_bool(0.35) {
+                    if rng.random_bool(0.35) {
                         free.push((x, y));
                     }
                 }
@@ -683,7 +683,7 @@ mod tests {
         let mut m = TileMask::new(w, h);
         for y in 0..h {
             for x in 0..w {
-                if rng.gen_bool(density) {
+                if rng.random_bool(density) {
                     m.set(TileCoord::new(x, y));
                 }
             }
@@ -704,7 +704,7 @@ mod tests {
         let mut some_false = 0usize;
         let mut none_count = 0usize;
         for _ in 0..400 {
-            let density = *[0.3, 0.5, 0.7].get(rng.gen_range(0..3)).unwrap();
+            let density = *[0.3, 0.5, 0.7].get(rng.random_range(0..3)).unwrap();
             let passable = random_passable(&mut rng, 9, 9, density);
             let count = passable.count_ones();
             for tile in passable.iter_set() {
@@ -745,7 +745,7 @@ mod tests {
             let mut free = Vec::new();
             for y in 0..9 {
                 for x in 0..9 {
-                    if rng.gen_bool(0.3) {
+                    if rng.random_bool(0.3) {
                         free.push((x, y));
                     }
                 }
@@ -757,7 +757,7 @@ mod tests {
             let mut walls = Vec::new();
             for y in 0..9 {
                 for x in 0..9 {
-                    if rng.gen_bool(0.15) {
+                    if rng.random_bool(0.15) {
                         walls.push((x, y));
                     }
                 }

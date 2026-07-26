@@ -107,7 +107,12 @@ def test_with_confirm_deletes_graph_and_updates_model(
     data = resp.json()
     assert data["new_model"] == "text-embedding-3-small"
     assert data["embedding_dimension"] == 1024  # D-EMB-MODEL-REF-03 — probed
-    assert data["nodes_deleted"] == 20  # 4 labels × 5
+    # D-EMB-MODEL-REF-04 — 4 labels × 5 PLUS the `:Passage` purge (5). This total was 20
+    # until 2026-07-23: `_GRAPH_LABELS` has no "Passage", so the confirm gate whose whole
+    # job is "delete the stale vectors first" deleted everything except the vectors. The
+    # 5th deletion is the fix, and this number is the route-level proof it is wired here
+    # (the flag defaults to False for the non-model-changing delete/rebuild paths).
+    assert data["nodes_deleted"] == 25
     assert data["extraction_status"] == "disabled"
 
     # D-EMB-MODEL-REF-03 — the probed dimension is stored with the model.

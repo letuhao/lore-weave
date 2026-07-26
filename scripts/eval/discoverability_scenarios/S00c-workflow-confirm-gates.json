@@ -1,0 +1,30 @@
+{
+  "scenario": "S00c",
+  "title": "workflow_list / workflow_load — and the step-runner HONORS the confirm gate",
+  "maps_to": "Track A WS-2 — workflow storage + step-runner (MECHANISM test, white-box BY DESIGN)",
+  "persona": "any — the MODEL is the subject",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "a fresh EMPTY book — SKILL_BOOK_ID. The rail must have real work to do; on an already-built book the confirm step may never fire and the gate would go untested.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [],
+  "_denylist_note": "INTENTIONALLY EMPTY — white-box mechanism test (see S00a).",
+  "canon_facts": [
+    "workflow_list returned the seeded System rails (10)",
+    "workflow_load returned the named rail's steps with their gates",
+    "a gate:confirm step SUSPENDED for consent rather than executing silently",
+    "after the confirm, the rail RESUMED and the artifact actually landed in the DB",
+    "0 find_tools calls"
+  ],
+  "movements": [
+    {"id": "A", "label": "What recipes exist?"},
+    {"id": "B", "label": "Load one and start it"},
+    {"id": "C", "label": "The confirm gate — did it stop and ask?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "What step-by-step recipes do you have available for a book like this?"},
+    {"movement": "B", "user": "Load the one for setting up the world info and walk it."},
+    {"movement": "C", "user": "Yes, go ahead — and tell me exactly what landed."}
+  ]
+}

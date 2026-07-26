@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "월드",
+    "subtitle": "원고 없이도 캐릭터, 장소, 세력 등 세계관 설정을 통해 당신만의 세계를 구축하세요.",
+    "loading": "월드 로딩 중…"
+  },
+  "empty": {
+    "title": "생성된 월드가 없습니다",
+    "description": "첫 번째 월드를 만들어 세계관 설정을 시작하세요. 챕터는 필요하지 않습니다."
+  },
+  "card": {
+    "books": "{{count}} 권의 도서"
+  },
+  "create": {
+    "cta": "새 월드",
+    "title": "새 월드",
+    "description": "월드의 이름을 정해주세요. 바로 세계관 설정을 시작할 수 있습니다.",
+    "nameLabel": "월드 이름",
+    "namePlaceholder": "예: 부서진 영역들",
+    "descLabel": "설명 (선택 사항)",
+    "cancel": "취소",
+    "submit": "월드 생성",
+    "creating": "생성 중…",
+    "error": "월드 생성에 실패했습니다"
+  },
+  "workspace": {
+    "back": "모든 월드",
+    "loading": "월드 로딩 중…",
+    "error": "월드를 찾을 수 없습니다."
+  },
+  "lore": {
+    "title": "월드 바이블",
+    "extractionOptional": "캐릭터, 장소, 세력 등 세계관 설정을 직접 작성하세요. 원고는 필요하지 않습니다. 산문에서 추출하는 것은 선택 사항이며, 이 월드 바이블이 중심축 역할을 합니다.",
+    "anchorUnavailable": "이 월드에는 아직 바이블 앵커가 없습니다. 세계관 설정 작성을 사용할 수 없습니다.",
+    "kindLabel": "유형",
+    "kindPlaceholder": "유형 선택…",
+    "add": "설정 추가",
+    "adding": "추가 중…",
+    "added": "월드 바이블에 설정이 추가되었습니다.",
+    "error": "설정 추가에 실패했습니다"
+  },
+  "graph": {
+    "title": "월드 그래프",
+    "subtitle": "월드 세계관 설정이 어떻게 연결되어 있는지 보여주는 읽기 전용 뷰입니다.",
+    "rollupSubtitle": "각 도서의 정사(canon) 그래프를 도서별 섬 형태로 렌더링하여 통합한 읽기 전용 롤업 뷰입니다.",
+    "counts": "{{nodes}} 노드 · {{edges}} 관계",
+    "sources": "{{count}}권의 도서에서 통합됨",
+    "truncated": "상위 {{n}}개 표시 — 큰 도서는 작은 도서의 시야를 가릴 수 있습니다",
+    "hint": "스크롤하여 확대/축소 · 빈 공간을 드래그하여 이동 · 노드를 클릭하여 상세 정보 확인",
+    "loading": "월드 그래프 로딩 중…",
+    "loadFailed": "월드 그래프 로드 실패: {{error}}",
+    "empty": "아직 월드 지식이 없습니다 — 바이블을 구축하거나 도서를 추출하여 이곳에 그래프를 통합하세요."
+  },
+  "timeline": {
+    "title": "월드 타임라인",
+    "subtitle": "모든 도서의 정사 타임라인을 서사 순서대로 통합하여 보여주는 읽기 전용 뷰입니다.",
+    "counts": "{{count}}개의 이벤트",
+    "sources": "{{count}}권의 도서에 걸쳐 있음",
+    "truncated": "처음 {{n}}개 표시",
+    "chapterLabel": "챕터",
+    "loading": "월드 타임라인 로딩 중…",
+    "loadFailed": "월드 타임라인 로드 실패: {{error}}",
+    "empty": "아직 타임라인 이벤트가 없습니다 — 도서를 추출하여 이곳에 타임라인을 통합하세요."
+  },
+  "populate": {
+    "addBook": "도서 추가",
+    "createWhatIf": "What-if(가상 시나리오) 생성",
+    "whatIfHint": "정사 작품으로부터 What-if 분기 생성",
+    "whatIfNeedsCanon": "먼저 정사 작품이 포함된 도서를 추가하세요 — What-if는 정사에서 분기됩니다.",
+    "pickCanon": "분기 시작점…",
+    "addBookTitle": "이 월드에 도서 추가",
+    "addBookDesc": "기존 도서를 연결하거나 새 도서를 만드세요 — 월드의 타임라인과 그래프에 통합됩니다.",
+    "tabAttach": "기존 도서 연결",
+    "tabCreate": "새 도서 생성",
+    "pickBook": "도서",
+    "bookTitle": "제목",
+    "bookTitlePlaceholder": "새 도서 제목…",
+    "bookDesc": "설명 (선택 사항)",
+    "attach": "도서 연결",
+    "createAttach": "생성 및 추가",
+    "adding": "추가 중…",
+    "cancel": "취소",
+    "addFailed": "도서를 추가할 수 없습니다: {{error}}"
+  },
+  "living": {
+    "heading": "리빙 월드",
+    "subtitle": "월드의 정사와 What-if 분기들을 탐색 가능한 타임라인으로 보여줍니다. 작품을 클릭하여 열 수 있습니다.",
+    "title": "리빙 월드",
+    "counts": "{{canon}} 정사 · {{branches}} What-if 분기",
+    "hint": "스크롤하여 확대/축소 · 빈 공간을 드래그하여 이동 · 작품을 클릭하여 열기",
+    "loading": "리빙 월드 로딩 중…",
+    "loadFailed": "리빙 월드 로드 실패: {{error}}",
+    "empty": "이 월드에는 아직 작품이 없습니다 — 도서나 What-if를 시작하여 타임라인을 확장하세요.",
+    "canonBadge": "정사",
+    "branchBadge": "What-if",
+    "canonAria": "정사: {{title}}",
+    "branchAria": "챕터 {{ch}}에서 분기된 What-if: {{title}}",
+    "branchAt": "ch. {{ch}}에서 분기",
+    "orphan": "· 외부 월드 소스",
+    "edgeLabel": "ch. {{ch}}"
+  }
+}

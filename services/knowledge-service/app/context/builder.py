@@ -25,6 +25,7 @@ from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
 from app.context.modes.full import build_full_mode
+from app.context.modes.multi_project import build_multi_project_mode
 from app.context.modes.no_project import BuiltContext, build_no_project_mode
 from app.context.modes.static import build_static_mode
 from app.db.repositories.projects import ProjectsRepo
@@ -52,14 +53,71 @@ async def build_context(
     message: str,
     embedding_client: EmbeddingClient | None = None,
     llm_client: LLMClient | None = None,
+    language: str | None = None,
+    entity_access_repo=None,
+    project_ids: list[UUID] | None = None,
+    grounding: bool = True,
+    current_chapter_id: UUID | None = None,
+    context_length: int | None = None,
 ) -> BuiltContext:
-    if project_id is None:
+    # Track B B1(2) — normalize the requested project set. `project_ids` (multi-KG)
+    # takes precedence; else the single `project_id` (back-compat). Order-preserving
+    # dedup; owner-scoped resolution below filters stale/foreign ids (the caller owns
+    # the set, so a deleted id is skipped, not fatal — unless NONE resolve).
+    ids: list[UUID] = list(project_ids) if project_ids else ([project_id] if project_id else [])
+    _seen: set[UUID] = set()
+    ids = [i for i in ids if not (i in _seen or _seen.add(i))]
+
+    if not ids:
         return await build_no_project_mode(summaries_repo, user_id)
 
-    project = await projects_repo.get(user_id, project_id)
-    if project is None:
+    resolved = []
+    for pid in ids:
+        p = await projects_repo.get(user_id, pid)
+        if p is not None:
+            resolved.append(p)
+
+    if not resolved:
+        # None of the requested projects exist for this user (all stale/foreign).
         raise ProjectNotFound()
 
+    # T5 (Context Budget Law D2) — grounding intent gate. chat-service decided this
+    # turn references NO book lore (entity-presence heuristic), so skip the EXPENSIVE
+    # retrieval (passage vector search + semantic glossary + LLM summarization) and
+    # serve the LIGHT project-aware path (static: glossary badges + summaries +
+    # instruction, no vectors/LLM). The always-on story_state block (chat-side, D4)
+    # remains the safety net, so a false-negative gate never strips loaded lore. For
+    # a multi-KG union we serve the light path for the first resolved project (the
+    # union's expensive cross-project rank is exactly what the gate is skipping).
+    if not grounding:
+        return await build_static_mode(
+            summaries_repo,
+            glossary_client,
+            user_id=user_id,
+            project=resolved[0],
+            message=message,
+            language=language,
+            entity_access_repo=entity_access_repo,
+        )
+
+    if len(resolved) >= 2:
+        # ≥2 readable projects → the multi-KG union (shared budget, cross-project
+        # dedup + rank). A static (no-graph) member contributes glossary only; the
+        # L2/L3 selectors degrade to empty for it.
+        return await build_multi_project_mode(
+            summaries_repo,
+            glossary_client,
+            user_id=user_id,
+            projects=resolved,
+            message=message,
+            embedding_client=embedding_client,
+            llm_client=llm_client,
+            language=language,
+            entity_access_repo=entity_access_repo,
+            context_length=context_length,
+        )
+
+    project = resolved[0]
     if project.extraction_enabled:
         return await build_full_mode(
             summaries_repo,
@@ -69,6 +127,10 @@ async def build_context(
             message=message,
             embedding_client=embedding_client,
             llm_client=llm_client,
+            language=language,
+            entity_access_repo=entity_access_repo,
+            current_chapter_id=current_chapter_id,
+            context_length=context_length,
         )
 
     return await build_static_mode(
@@ -77,4 +139,6 @@ async def build_context(
         user_id=user_id,
         project=project,
         message=message,
+        language=language,
+        entity_access_repo=entity_access_repo,
     )

@@ -1,0 +1,1624 @@
+[
+  {
+    "tool": "tool_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "tool_load",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "find_tools",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "intent": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_audio_generate",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_chapter_bulk_create",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "book_chapter_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "original_language": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_chapter_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_chapter_publish",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_chapter_purge",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_chapter_restore_revision",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "book_chapter_save_draft",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "book_chapter_unpublish",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_chapter_update_meta",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "no fields to update",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "title": "tle-sweep"
+    }
+  },
+  {
+    "tool": "book_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "book_get",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "book_get_chapter",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "book_list_chapters",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "book_list_revisions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_media_generate",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "book_purge",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "book_set_cover",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "book_update_meta",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "no fields to update",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "catalog_get_book",
+    "tier": "R",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "book not found",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "catalog_list_public_books",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "composition_arc_import_analyze",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_arc_suggest",
+    "tier": "R",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "Error executing tool composition_arc_suggest: not found or not accessible",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "composition_authoring_run_accept_unit",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_close",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_create",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_gate",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_list",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_pause",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_reject_unit",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_resume",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_revert_all",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_authoring_run_start",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_canon_rule_create",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_canon_rule_delete",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_canon_rule_update",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_conformance_run",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_create_work",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "composition_generate",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_get_generation_job",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_get_mine_job",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_get_outline_node",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_get_prose",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "composition_get_work",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "composition_list_canon_rules",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "composition_list_outline",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "composition_motif_adopt",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_bind",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_book_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "composition_motif_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_link_list",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_mine",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_search",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_suggest_for_chapter",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_motif_unbind",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_outline_node_create",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_outline_node_delete",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_outline_node_restore",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_outline_node_update",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_publish",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "composition_scene_link_create",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_scene_link_delete",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "composition_write_prose",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_adopt_standards",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_book_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "level": "genre",
+      "name": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_book_delete",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_ontology_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_book_patch",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_revert",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_set_active_genres",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_book_set_kind_genres",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_sync_apply",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_book_sync_available",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_create_chapter_link",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "glossary_create_evidence",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_entity_delete",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_entity_get_genres",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_entity_rename",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225",
+      "name": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_entity_restore",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_entity_set_attributes",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "attributes or scope_label must be provided",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_entity_set_genres",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_get_entity",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_get_entity_evidence",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_list_ai_suggestions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_list_chapter_links",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_list_entity_revisions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+    }
+  },
+  {
+    "tool": "glossary_list_merge_candidates",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_list_system_standards",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "glossary_list_unknown_entities",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "glossary_ontology_delete",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_ontology_upsert",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_aliases",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_batch",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_entities",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_kinds",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_merge",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_new_attribute",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_new_entity",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_new_kind",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_reassign_kind",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_restore_revision",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_propose_status_change",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "status": "active",
+      "entity_ids": [
+        "019f4b1f-619c-790c-99dc-80c7a1b8f225"
+      ]
+    }
+  },
+  {
+    "tool": "glossary_propose_translation",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "glossary_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "glossary_user_standards_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "jobs_get",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "jobs_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "jobs_summary",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_adopt_template",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_build_graph",
+    "tier": "W",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_build_graph: {\"message\": \"this project has no embedding model configured \\u2014 call kg_project_set_embedding_model first (pick one of your embedding models with settings_list_models), then kg_run_benchmark, then retry this build\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "llm_model": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_build_wiki",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "model_ref": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_entity_edge_timeline",
+    "tier": "R",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "Error executing tool kg_entity_edge_timeline: {\"message\": \"entity not found\"}",
+    "args": {
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225",
+      "edge_type": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_graph_query",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_list_templates",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_multi_query",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_ids": [
+        "019f4b1f-6293-7765-98b9-fb6719c808b7"
+      ]
+    }
+  },
+  {
+    "tool": "kg_project_entities_to_nodes",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_project_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_project_set_embedding_model",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected our arguments/context — inconclusive, not a tool failure",
+    "error": "Error executing tool kg_project_set_embedding_model: {\"message\": \"embedding model probe failed: embedding failed (400): {\\\"code\\\":\\\"EMBED_VALIDATION\\\",\\\"message\\\":\\\"invalid model_ref\\\"}\\n \\u2014 check the model_ref is one of your own embedding models (settings_list_models)\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "embedding_model": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_propose_edge",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_propose_fact",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "fact_text": "tle-sweep",
+      "fact_type": "decision"
+    }
+  },
+  {
+    "tool": "kg_run_benchmark",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_run_benchmark: {\"message\": \"this project has no embedding model configured \\u2014 set one first\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_schema_edit",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_schema_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_sync_apply",
+    "tier": "W",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_sync_apply: {\"message\": \"this project has no adopted ontology to sync \\u2014 adopt a template first\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "base_source_hash": "tle-sweep"
+    }
+  },
+  {
+    "tool": "kg_sync_available",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_triage_list",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_triage_place_edge",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "kg_triage_resolve",
+    "tier": "A",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_triage_resolve: {\"message\": \"no pending triage items for this signature\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "signature": "tle-sweep",
+      "action": "map"
+    }
+  },
+  {
+    "tool": "kg_triage_schema_write",
+    "tier": "W",
+    "capability": "SKIP-INCONCLUSIVE",
+    "executes": null,
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_triage_schema_write: {\"message\": \"this project has no adopted ontology to edit \\u2014 adopt a project schema first (the System template is read-only and admin-managed)\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "signature": "tle-sweep",
+      "action": "add_to_vocab"
+    }
+  },
+  {
+    "tool": "kg_view_read",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "kg_world_query",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "lore_enrichment_auto_enrich",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "memory_forget",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "memory_recall_entity",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "entity_name": "tle-sweep"
+    }
+  },
+  {
+    "tool": "memory_remember",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "fact_text": "tle-sweep",
+      "fact_type": "decision"
+    }
+  },
+  {
+    "tool": "memory_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "memory_timeline",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
+  },
+  {
+    "tool": "plan_apply_revision",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_compile",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_handoff_autofix",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_interpret_feedback",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_propose_spec",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "source_markdown": "tle-sweep"
+    }
+  },
+  {
+    "tool": "plan_review_checkpoint",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_self_check",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "plan_validate",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "registry_get_skill",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "registry_get_workflow",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "registry_list_skills",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "registry_list_workflows",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_get_defaults",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_get_profile",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_list_models",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_list_providers",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "settings_model_delete",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "settings_provider_inventory",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "story_search",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "translation_coverage",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  },
+  {
+    "tool": "translation_job_control",
+    "tier": "W",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_job_status",
+    "tier": "R",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_list_versions",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
+    }
+  },
+  {
+    "tool": "translation_patch_block",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_retranslate_dirty",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152",
+      "target_language": "tle-sweep"
+    }
+  },
+  {
+    "tool": "translation_save_edited_version",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_segment_status",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152",
+      "target_language": "tle-sweep"
+    }
+  },
+  {
+    "tool": "translation_set_active_version",
+    "tier": "A",
+    "capability": "SKIP-NO-ARGS",
+    "executes": null,
+    "why": "required arg needs authored/structured input"
+  },
+  {
+    "tool": "translation_start_extraction",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_ids": [
+        "019f4b1f-610e-767c-a7cd-07714ddc1152"
+      ]
+    }
+  },
+  {
+    "tool": "translation_start_job",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_ids": [
+        "019f4b1f-610e-767c-a7cd-07714ddc1152"
+      ]
+    }
+  },
+  {
+    "tool": "translation_update_settings",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
+  }
+]

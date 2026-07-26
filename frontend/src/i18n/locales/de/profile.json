@@ -1,0 +1,49 @@
+{
+  "anonymous": "Anonym",
+  "joined": "Beigetreten am {{date}}",
+  "followers": "Follower",
+  "following": "Folgt",
+  "follow": "Folgen",
+  "unfollow": "Folge ich",
+  "editProfile": "Profil bearbeiten",
+  "loading": "Wird geladen...",
+  "noBooks": "Noch keine Bücher veröffentlicht.",
+  "noTranslations": "Noch keine Übersetzungen.",
+  "errorLoading": "Profil konnte nicht geladen werden.",
+  "followError": "Benutzer konnte nicht gefolgt werden.",
+  "unfollowError": "Benutzer konnte nicht entfolgt werden.",
+  "userNotFound": "Benutzer nicht gefunden.",
+  "achievements": "Erfolge",
+  "chapters": "Kapitel",
+  "readers": "Leser",
+  "recentActivity": "Letzte Aktivitäten",
+  "last7d": "Letzte 7 Tage",
+  "last30d": "Letzte 30 Tage",
+  "translationLanguages": "Übersetzungssprachen",
+  "stats": {
+    "books": "Bücher",
+    "chaptersTranslated": "Übersetzte Kapitel",
+    "totalReaders": "Gesamtzahl der Leser",
+    "followers": "Follower",
+    "totalTranslations": "Gesamtzahl der Übersetzungen",
+    "languages": "Sprachen"
+  },
+  "achievement": {
+    "booksPublished": "{{count}} Buch veröffentlicht",
+    "booksPublished_other": "{{count}} Bücher veröffentlicht",
+    "kReaders": "{{count}}K+ Leser",
+    "hundredReaders": "100+ Leser",
+    "followers": "{{count}} Follower",
+    "multiLangTranslator": "{{count}}-Sprachen-Übersetzer",
+    "fiftyChapters": "50+ Kapitel übersetzt"
+  },
+  "loadError": "Bücher konnten nicht geladen werden.",
+  "noWiki": "Noch keine Wiki-Beiträge.",
+  "wikiError": "Wiki-Beiträge konnten nicht geladen werden.",
+  "untitled": "Unbetitelt",
+  "tabs": {
+    "books": "Bücher",
+    "translations": "Übersetzungen",
+    "wiki": "Wiki-Beiträge"
+  }
+}

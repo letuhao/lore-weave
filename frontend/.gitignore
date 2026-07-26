@@ -7,3 +7,10 @@ package-lock.json
 # Storybook — K19a.8 (dev server log + static export build output)
 *storybook.log
 storybook-static
+
+# Live-smoke evidence artifacts — reproducible by re-running the specs, referenced
+# from the RUN-STATE/usability docs by path, never committed. Patterns here are
+# relative to frontend/, so they must NOT be prefixed with `frontend/`.
+s8-journey/
+test-results/
+tests/e2e/test-results/

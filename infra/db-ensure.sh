@@ -13,6 +13,7 @@ DATABASES="
 loreweave_auth
 loreweave_book
 loreweave_sharing
+loreweave_scheduler
 loreweave_catalog
 loreweave_provider_registry
 loreweave_usage_billing
@@ -29,6 +30,8 @@ loreweave_composition
 loreweave_campaign
 loreweave_video_gen
 loreweave_jobs
+loreweave_roleplay
+loreweave_agent_registry
 "
 
 for db in $DATABASES; do

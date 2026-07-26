@@ -181,21 +181,24 @@ def test_k15_2_frequency_bonus_is_capped():
 # ── CJK via glossary-only path ───────────────────────────────────────
 
 
-def test_k15_2_cjk_detected_only_via_glossary():
-    """K15.2 English-first scope: CJK text has no capitalized-phrase
-    signal because there's no case. The glossary path is the only
-    way a CJK name surfaces until K15.3 ships per-language patterns."""
+def test_k15_2_cjk_surfaces_via_run_pass_and_glossary():
+    """A2 (ML-3): CJK text now surfaces candidates via the CJK-family run
+    pass (degrade-open) — no longer glossary-only. Run segments are imperfect
+    without a segmenter (D-ML-SEGMENTER), but the glossary path still pins the
+    exact name 凯 with the strongest signals + a frequency bonus."""
     text = "凯笑了。凯抽出剑。"
 
-    # Without glossary: no candidates
-    assert extract_entity_candidates(text) == []
+    # Without glossary: the run pass now surfaces SOMETHING (was []).
+    bare = extract_entity_candidates(text)
+    assert bare, "CJK run pass should surface candidates without a glossary"
+    assert all("script_run" in c.signals for c in bare)
 
-    # With glossary: detected + frequency bonus for two mentions
+    # With glossary: the exact 凯 is pinned with glossary + frequency signals.
     out = extract_entity_candidates(text, glossary_names=["凯"])
-    assert len(out) == 1
-    assert out[0].name == "凯"
-    assert "glossary" in out[0].signals
-    assert "frequency" in out[0].signals
+    kai = next((c for c in out if c.name == "凯"), None)
+    assert kai is not None
+    assert "glossary" in kai.signals
+    assert "frequency" in kai.signals
 
 
 def test_k15_2_mixed_script_text_with_glossary():
@@ -279,10 +282,11 @@ def test_k15_2_r2_i1_cjk_quoted_name_accrues_frequency_bonus():
     count=0 regardless of mention frequency.
     """
     text = "\u300c凯\u300d跑了。\u300c凯\u300d停下。\u300c凯\u300d笑了。"
+    # Post-A2: the CJK-family run pass now also surfaces incidental run
+    # segments (e.g. "停下") — degrade-open noise — so locate 凯 by name.
     out = extract_entity_candidates(text)
-    assert len(out) == 1
-    kai = out[0]
-    assert kai.name == "凯"
+    kai = next((c for c in out if c.name == "凯"), None)
+    assert kai is not None
     assert "quoted" in kai.signals
     assert "frequency" in kai.signals, (
         f"CJK quoted name with 3 mentions should have frequency signal, "

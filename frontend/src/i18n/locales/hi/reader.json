@@ -1,0 +1,146 @@
+{
+  "loading": "लोड हो रहा है...",
+  "chapter_of": "अध्याय {{current}} / {{total}}",
+  "stop_reading": "पढ़ना बंद करें",
+  "read_aloud": "ज़ोर से पढ़ें",
+  "reading_theme": "पढ़ने का थीम",
+  "edit_chapter": "इस अध्याय को संपादित करें",
+  "back_to_book": "किताब पर वापस जाएँ",
+  "chapter_label": "अध्याय {{n}}",
+  "chars": "अक्षर",
+  "words": "शब्द",
+  "min_read": "~{{minutes}} मिनट का पाठ",
+  "loading_translation": "अनुवाद लोड हो रहा है...",
+  "empty_chapter": "खाली अध्याय — अभी कुछ नहीं लिखा गया है।",
+  "end_of_chapter": "अध्याय {{n}} का अंत",
+  "next_in": "{{seconds}}s में अगला अध्याय...",
+  "cancel": "रद्द करें",
+  "progress": "अध्याय {{current}} / {{total}} · {{percent}}% पूरा हुआ",
+  "ch_short": "अध्याय {{n}}",
+  "history": {
+    "title": "पढ़ने का इतिहास",
+    "subtitle": "आपकी हाल ही में पढ़ी गई पुस्तकें और अध्याय।",
+    "empty": "अभी तक कोई इतिहास नहीं। पढ़ना शुरू करें!",
+    "chapters_read": "{{count}} अध्याय पढ़े गए",
+    "fully_read": "{{percent}}% पूरी तरह पढ़ा गया",
+    "last_read": "पिछली बार पढ़ा गया {{date}}",
+    "continue": "जारी रखें"
+  },
+  "theme": {
+    "title": "पढ़ने का थीम",
+    "presets": "थीम प्रीसेट",
+    "preset": {
+      "dark": {
+        "name": "डार्क",
+        "desc": "गहरा गर्म बैकग्राउंड"
+      },
+      "light": {
+        "name": "लाइट",
+        "desc": "साफ सफेद बैकग्राउंड"
+      },
+      "sepia": {
+        "name": "सेपिया",
+        "desc": "गर्म कागज़ जैसा रंग"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "OLED स्क्रीन के लिए असली काला"
+      },
+      "parchment": {
+        "name": "पर्चमेंट",
+        "desc": "क्लासिक पर्चमेंट जैसा अहसास"
+      },
+      "forest": {
+        "name": "फॉरेस्ट",
+        "desc": "रात में आँखों के लिए आरामदायक"
+      }
+    },
+    "font": "फ़ॉन्ट",
+    "typography": "टाइपोग्राफी",
+    "font_size": "फ़ॉन्ट आकार",
+    "line_height": "लाइन की ऊँचाई",
+    "text_width": "टेक्स्ट की चौड़ाई",
+    "spacing": "स्पेसिंग",
+    "reading_mode": "पढ़ने का मोड",
+    "show_indices": "ब्लॉक इंडेक्स दिखाएं (अनुवादक मोड)",
+    "auto_next": "अगला अध्याय ऑटो-लोड करें",
+    "auto_scroll": "TTS के साथ ऑटो-स्क्रॉल"
+  },
+  "tts": {
+    "source": {
+      "attached": "संलग्न",
+      "ai": "AI TTS",
+      "browser": "ब्राउज़र",
+      "inline": "ऑडियो"
+    },
+    "prev_block": "पिछला ब्लॉक (Shift+Left)",
+    "play": "प्ले (Space)",
+    "pause": "पॉज़ (Space)",
+    "next_block": "अगला ब्लॉक (Shift+Right)",
+    "cycle_speed": "गति बदलें",
+    "autoscroll_on": "ऑटो-स्क्रॉल: चालू",
+    "autoscroll_off": "ऑटो-स्क्रॉल: बंद",
+    "settings": "TTS सेटिंग्स",
+    "stop": "रोकें (Escape)",
+    "speed": "गति",
+    "browser_voice": "ब्राउज़र आवाज़",
+    "default": "डिफ़ॉल्ट",
+    "no_voices": "कोई आवाज़ उपलब्ध नहीं है। आपका ब्राउज़र Web Speech API का समर्थन नहीं कर सकता है।",
+    "ai_model": "AI TTS मॉडल",
+    "none_browser": "कोई नहीं (केवल ब्राउज़र TTS)",
+    "no_models": "कोई मॉडल कॉन्फ़िगर नहीं किया गया है। सेटिंग्स > प्रदाता में एक प्रदाता जोड़ें।",
+    "ai_voice": "AI आवाज़",
+    "openai_voices": "OpenAI आवाज़ें: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "व्यवहार",
+    "autoscroll_active": "सक्रिय ब्लॉक पर ऑटो-स्क्रॉल करें",
+    "highlight_active": "सक्रिय ब्लॉक को हाईलाइट करें",
+    "now_playing": "अभी चल रहा है",
+    "block_label": "ब्लॉक: {{id}}",
+    "status": {
+      "playing": "चल रहा है",
+      "paused": "रुका हुआ",
+      "loading": "लोड हो रहा है"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "संलग्न",
+      "ai": "AI TTS",
+      "browser": "ब्राउज़र",
+      "inline": "ऑडियो ब्लॉक",
+      "none": "कोई नहीं"
+    },
+    "coverage": "ऑडियो कवरेज",
+    "summary": "{{speakable}} बोलने योग्य ब्लॉक · {{missing}} ब्राउज़र TTS का उपयोग करके",
+    "generate_missing": "लापता ऑडियो जेनरेट करें",
+    "block_chars": "{{count}} ब्लॉक · ~{{chars}} अक्षर",
+    "block_chars_other": "{{count}} ब्लॉक · ~{{chars}} अक्षर",
+    "est_cost": "अनुमानित ${{cost}}",
+    "generating": "जेनरेट हो रहा है... {{progress}}/{{total}}",
+    "select_model_alert": "पहले TTS सेटिंग्स में एक TTS मॉडल चुनें।",
+    "generate_all": "सभी जेनरेट करें ({{count}})",
+    "blocks": "ब्लॉक",
+    "audio_block_preview": "ऑडियो ब्लॉक"
+  },
+  "block": {
+    "audio_unavailable": "ऑडियो उपलब्ध नहीं है",
+    "audio_fallback": "आपका ब्राउज़र ऑडियो एलिमेंट का समर्थन नहीं करता है।",
+    "image_unavailable": "छवि उपलब्ध नहीं है",
+    "video_unavailable": "वीडियो उपलब्ध नहीं है"
+  },
+  "indicator": {
+    "pause": "पॉज़",
+    "play": "संलग्न ऑडियो चलाएं",
+    "mismatch": "ऑडियो सबटाइटल ब्लॉक टेक्स्ट से अलग है"
+  },
+  "citation": {
+    "aria": "उद्धरण {{n}}",
+    "jump": "स्रोत पर जाएँ",
+    "relevance": "प्रासंगिकता",
+    "source": {
+      "glossary": "शब्दावली",
+      "kg": "ज्ञान",
+      "passage": "अनुच्छेद"
+    }
+  }
+}

@@ -79,7 +79,7 @@ impl Sim {
         let waker = Waker::noop();
         let mut cx = Context::from_waker(waker);
         while !alive.is_empty() {
-            let pick = rng.gen_range(0..alive.len());
+            let pick = rng.random_range(0..alive.len());
             let idx = alive[pick];
             match tasks[idx].as_mut().poll(&mut cx) {
                 Poll::Ready(()) => {

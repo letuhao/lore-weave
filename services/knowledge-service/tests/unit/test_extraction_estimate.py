@@ -291,13 +291,18 @@ def _install_capturing_book_client(chapter_count: int = 10) -> dict:
 
     async def _count_chapters(
         book_id, *, from_sort=None, to_sort=None, editorial_status=None,
+        kg_indexed=False,
     ):
         captured["book_id"] = book_id
         captured["from_sort"] = from_sort
         captured["to_sort"] = to_sort
-        # CM3c: the estimate gates to published so the preview matches
-        # the gated rebuild (R1-BLOCK#1 / R3-WARN#3 parity).
         captured["editorial_status"] = editorial_status
+        # WS-0.6: the estimate gates on KG MEMBERSHIP (kg_indexed), not publish, so the
+        # preview matches what the re-keyed rebuild actually extracts. Keyed on publish,
+        # the preview would quote "0 chapters" to a user who indexed 50 drafts and then
+        # the job would extract all 50 — estimate and enumeration MUST use one gate
+        # (R1-BLOCK#1 parity, restated against the new predicate).
+        captured["kg_indexed"] = kg_indexed
         return chapter_count
 
     class _Stub:
@@ -325,7 +330,10 @@ def test_estimate_scope_range_forwards_chapter_range_to_book_client():
     # CM3c (R3-WARN#3) parity regression-lock: the estimate MUST gate to
     # published, matching the server-side filter the gated rebuild uses —
     # else the preview over-counts drafts the rebuild will skip.
-    assert captured["editorial_status"] == "published"
+    # WS-0.6: the preview counts KG MEMBERSHIP, not publish state — it must match
+    # what the re-keyed rebuild extracts, or the cost card lies.
+    assert captured["kg_indexed"] is True
+    assert captured["editorial_status"] is None
 
 
 def test_estimate_scope_range_all_scope_also_forwards():
@@ -345,7 +353,10 @@ def test_estimate_scope_range_all_scope_also_forwards():
     assert captured["to_sort"] == 7
     # CM3c parity must hold on the 'all' scope too (the more complex path),
     # not only 'chapters' — else the all-scope preview over-counts drafts.
-    assert captured["editorial_status"] == "published"
+    # WS-0.6: the preview counts KG MEMBERSHIP, not publish state — it must match
+    # what the re-keyed rebuild extracts, or the cost card lies.
+    assert captured["kg_indexed"] is True
+    assert captured["editorial_status"] is None
 
 
 def test_estimate_scope_range_malformed_rejected():

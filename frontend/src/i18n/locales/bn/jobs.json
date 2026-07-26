@@ -1,0 +1,155 @@
+{
+  "title": "জব",
+  "status": {
+    "pending": "অপেক্ষমাণ",
+    "running": "চলমান",
+    "paused": "স্থগিত",
+    "cancelling": "বাতিল করা হচ্ছে",
+    "completed": "সম্পন্ন",
+    "failed": "ব্যর্থ",
+    "cancelled": "বাতিল করা হয়েছে"
+  },
+  "kind": {
+    "extraction": "জ্ঞান আহরণ",
+    "glossary_extraction": "শব্দকোষ আহরণ",
+    "wiki_gen": "উইকি তৈরি",
+    "translation": "অনুবাদ",
+    "glossary_translation": "শব্দকোষ অনুবাদ",
+    "video_gen": "ভিডিও তৈরি",
+    "campaign": "ক্যাম্পেইন",
+    "enrichment_job": "Lore সমৃদ্ধকরণ",
+    "book_import": "বই ইমপোর্ট",
+    "composition": {
+      "generate": "রচনা"
+    }
+  },
+  "summary": {
+    "active": "সক্রিয়",
+    "completed": "সম্পন্ন",
+    "failed": "ব্যর্থ",
+    "cancelled": "বাতিল করা হয়েছে"
+  },
+  "filters": {
+    "status": "অবস্থা",
+    "kind": "ধরণ",
+    "allStatuses": "সব অবস্থা",
+    "allKinds": "সব ধরণ",
+    "search": "শিরোনাম খুঁজুন…",
+    "searchWide": "শিরোনাম, ধরণ, সার্ভিস, মডেল বা জব ID খুঁজুন…",
+    "searchHint": "শিরোনাম · ধরণ · সার্ভিস · মডেল · জব ID দিয়ে খুঁজুন (debounced)।"
+  },
+  "col": {
+    "job": "জব",
+    "status": "অবস্থা",
+    "progress": "প্রগতি",
+    "cost": "খরচ · টোকেন",
+    "started": "শুরু হয়েছে",
+    "actions": "অ্যাকশন"
+  },
+  "section": {
+    "active": "সক্রিয় · লাইভ",
+    "activeHint": "পেজ করা নেই — SSE-এর মাধ্যমে সরাসরি আপডেট হয়",
+    "history": "ইতিহাস",
+    "historyHint": "তৈরির সময় অনুযায়ী সাজানো · পেজ করা আছে"
+  },
+  "list": {
+    "loading": "লোড হচ্ছে…",
+    "error": "জব লোড করতে ব্যর্থ হয়েছে।",
+    "empty": "এখনো কোনো জব নেই।",
+    "noActive": "কোনো সক্রিয় জব নেই।",
+    "more": "আরও লোড করুন",
+    "toggleChildren": "চাইল্ড জবগুলো দেখান/লুকান",
+    "noChildren": "কোনো চাইল্ড জব নেই।"
+  },
+  "row": {
+    "ran": "{{d}} দিন আগে চলেছে",
+    "running": "{{d}} দিন ধরে চলছে",
+    "details": "বিস্তারিত ↗"
+  },
+  "pager": {
+    "range": "{{total}}টির মধ্যে {{from}}–{{to}}",
+    "pageSize": "পেজ সাইজ",
+    "perPage": "প্রতি পেজে {{n}}টি",
+    "page": "পেজ {{n}}",
+    "prev": "আগের পেজ",
+    "next": "পরের পেজ",
+    "outOfRange": "এই পেজে কোনো সারি নেই (মোট {{total}}টি)।",
+    "first": "প্রথম পেজে ফিরে যান"
+  },
+  "live": {
+    "on": "● লাইভ",
+    "onShort": "লাইভ",
+    "reconnecting": "পুনরায় সংযোগ করা হচ্ছে…",
+    "off": "অফলাইন"
+  },
+  "controls": {
+    "pause": "স্থগিত করুন",
+    "resume": "পুনরায় শুরু করুন",
+    "cancel": "বাতিল করুন",
+    "cancelConfirm": "এখনই কি থামিয়ে দেবেন? চলমান কাজগুলো মুছে যাবে; সম্পন্ন অংশগুলো সংরক্ষিত থাকবে।",
+    "cancelYes": "হ্যাঁ",
+    "cancelNo": "না",
+    "cancelled": "বাতিল করা হয়েছে।",
+    "paused": "স্থগিত করা হয়েছে।",
+    "resumed": "পুনরায় শুরু করা হয়েছে।",
+    "retry": "আবার চেষ্টা করুন",
+    "retried": "নতুন জব হিসেবে পুনরায় জমা দেওয়া হয়েছে।",
+    "stale": "জবের অবস্থা পরিবর্তিত হয়েছে — রিফ্রেশ করা হয়েছে।",
+    "actionFailed": "অ্যাকশন ব্যর্থ হয়েছে: {{error}}"
+  },
+  "monitor": {
+    "back": "সব জব",
+    "error": "জব লোড করতে ব্যর্থ হয়েছে।",
+    "pausedBanner": "স্থগিত করা হয়েছে — নতুন কোনো ইউনিট পাঠানো হবে না এবং চলমানগুলো শেষ হওয়া পর্যন্ত অপেক্ষা করা হবে। উপরে থেকে পুনরায় শুরু করুন।",
+    "children": "চাইল্ড জব"
+  },
+  "detail": {
+    "progress": "প্রগতি",
+    "llmCalls": "LLM কল",
+    "elapsed": "অতিক্রান্ত সময়",
+    "throughput": "থ্রুপুট",
+    "throughputVal": "~{{n}} /ঘণ্টা",
+    "eta": "ETA",
+    "costSoFar": "এখন পর্যন্ত খরচ",
+    "tokensIn": "ইনপুট টোকেন",
+    "tokensOut": "আউটপুট টোকেন",
+    "bestEffort": "বেস্ট-এফোর্ট",
+    "models": "মডেল",
+    "parameters": "প্যারামিটার",
+    "parametersHint": "ডাইনামিক, জবের প্যারামস অবজেক্ট থেকে",
+    "jobId": "জব ID",
+    "kind": "ধরণ",
+    "service": "সার্ভিস",
+    "parent": "প্যারেন্ট",
+    "viewParent": "প্যারেন্ট দেখুন ↗",
+    "created": "তৈরি করা হয়েছে",
+    "lastUpdate": "শেষ আপডেট",
+    "copied": "জব ID কপি করা হয়েছে।",
+    "copyFailed": "কপি করা সম্ভব হয়নি।",
+    "activity": "অ্যাক্টিভিটি (লাইভ)",
+    "errorTitle": "ত্রুটি"
+  },
+  "activity": {
+    "created": "তৈরি করা হয়েছে",
+    "pending": "কিউতে আছে",
+    "running": "চলমান",
+    "paused": "স্থগিত",
+    "cancelling": "বাতিল করা হচ্ছে",
+    "completed": "সম্পন্ন",
+    "failed": "ব্যর্থ",
+    "cancelled": "বাতিল করা হয়েছে"
+  },
+  "mobile": {
+    "children": "চাইল্ড"
+  },
+  "fairness": {
+    "title": "ফেয়ার শিডিউলিং",
+    "running": "{{running}}/{{cap}} চলমান",
+    "queued": "· {{queued}} কিউতে আছে",
+    "lane": {
+      "translation": "অনুবাদ",
+      "knowledge": "জ্ঞান",
+      "loreEnrichment": "Lore সমৃদ্ধকরণ"
+    }
+  }
+}

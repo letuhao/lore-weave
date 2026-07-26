@@ -227,7 +227,7 @@ class PgProposalStore:
                 job_id = await conn.fetchval(
                     """INSERT INTO enrichment_job
                          (project_id, user_id, book_id, technique, entity_kind, status,
-                          max_spend_usd, estimated_cost_usd)
+                          max_spend_tokens, estimated_cost_tokens)
                        VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)
                        RETURNING job_id""",
                     UUID(project_id), UUID(user_id),
@@ -241,7 +241,7 @@ class PgProposalStore:
                     conn, service=JOB_SERVICE, job_id=str(job_id),
                     owner_user_id=str(user_id), kind=JOB_KIND, status="pending",
                     # P4 — NO actual spend yet at create (cost_usd is ACTUAL spend, set
-                    # from actual_cost_usd on transitions); the estimate rides params so
+                    # from actual_cost_tokens on transitions); the estimate rides params so
                     # it is still visible without masquerading as spend. D-JOBS-P4-LORE-MODEL:
                     # the model NAME is resolved OUT-OF-TX by the caller (the ref lives in a
                     # separate enrichment_job_request row) and passed in; emitted ONLY here
@@ -251,8 +251,8 @@ class PgProposalStore:
                     params={
                         "technique": technique,
                         "entity_kind": entity_kind,
-                        "max_spend_usd": float(max_spend) if max_spend is not None else None,
-                        "estimated_cost_usd": (
+                        "max_spend_tokens": float(max_spend) if max_spend is not None else None,
+                        "estimated_cost_tokens": (
                             float(estimated_cost) if estimated_cost is not None else None
                         ),
                     },
@@ -336,7 +336,7 @@ class PgProposalStore:
         params: list[Any] = [UUID(job_id), status]
         if actual_cost is not None:
             params.append(actual_cost)
-            sets.append(f"actual_cost_usd = ${len(params)}")
+            sets.append(f"actual_cost_tokens = ${len(params)}")
         if proposals_total is not None:
             params.append(proposals_total)
             sets.append(f"proposals_total = ${len(params)}")
@@ -352,7 +352,7 @@ class PgProposalStore:
             async with conn.transaction():  # UPDATE + emit_job_event atomic (H1)
                 row = await conn.fetchrow(
                     f"UPDATE enrichment_job SET {', '.join(sets)} "
-                    f"{where} RETURNING user_id, status, error_message, actual_cost_usd",
+                    f"{where} RETURNING user_id, status, error_message, actual_cost_tokens",
                     *params,
                 )
                 if row is None:
@@ -364,7 +364,7 @@ class PgProposalStore:
                 cstatus = canonical_status(row["status"])
                 if cstatus is not None:
                     # P4 — carry the CHANGING actual cost (params set once at create).
-                    _cost = row["actual_cost_usd"]
+                    _cost = row["actual_cost_tokens"]
                     await emit_job_event(
                         conn, service=JOB_SERVICE, job_id=str(job_id),
                         owner_user_id=str(row["user_id"]), kind=JOB_KIND, status=cstatus,
@@ -384,7 +384,7 @@ class PgProposalStore:
     async def record_actual_cost(
         self, *, job_id: str, actual_cost: float, only_if_status: tuple[str, ...]
     ) -> None:
-        """Persist actual_cost_usd WITHOUT changing status and WITHOUT emitting a
+        """Persist actual_cost_tokens WITHOUT changing status and WITHOUT emitting a
         lifecycle event (review-impl LOW-3). Used on the M2 interrupt path so a job
         the control endpoint moved to cancelled/paused still reflects the spend done
         before the interrupt — the control endpoint owns the status + already emitted
@@ -392,7 +392,7 @@ class PgProposalStore:
         ``only_if_status`` so it only writes while the row is still in that state."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "UPDATE enrichment_job SET actual_cost_usd = $2, updated_at = now() "
+                "UPDATE enrichment_job SET actual_cost_tokens = $2, updated_at = now() "
                 "WHERE job_id = $1 AND status = ANY($3::text[])",
                 UUID(job_id), actual_cost, list(only_if_status),
             )

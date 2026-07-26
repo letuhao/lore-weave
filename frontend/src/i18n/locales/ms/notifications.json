@@ -1,0 +1,60 @@
+{
+  "title": "Notifikasi",
+  "markAllRead": "Tanda semua telah dibaca",
+  "markRead": "Tanda sebagai dibaca",
+  "delete": "Padam",
+  "empty": "Tiada notifikasi lagi",
+  "loading": "Memuatkan...",
+  "justNow": "Baru sahaja",
+  "minsAgo": "{{count}}m yang lalu",
+  "hrsAgo": "{{count}}j yang lalu",
+  "daysAgo": "{{count}}h yang lalu",
+  "viewAll": "Lihat semua notifikasi",
+  "loadMore": "Muat lebih banyak",
+  "pageTitle": "Notifikasi",
+  "notif": {
+    "translation": {
+      "completed": "Terjemahan selesai — {{count}} bab daripada \"{{book}}\"",
+      "partial": "Terjemahan separa — {{done}} selesai, {{failed}} gagal",
+      "failed": "Terjemahan gagal — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} mula mengikuti anda"
+    },
+    "llm_job": {
+      "completed": "{{operation}} selesai",
+      "failed": "{{operation}} gagal",
+      "cancelled": "{{operation}} dibatalkan",
+      "unknown": "{{operation}}"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Sembang",
+      "completion": "Penyelesaian",
+      "embedding": "Penanaman (Embedding)",
+      "entity_extraction": "Pengekstrakan entiti",
+      "fact_extraction": "Pengekstrakan fakta",
+      "relation_extraction": "Pengekstrakan hubungan",
+      "event_extraction": "Pengekstrakan peristiwa",
+      "translation": "Terjemahan",
+      "image_gen": "Penjanaan imej",
+      "video_gen": "Penjanaan video"
+    },
+    "status": {
+      "completed": "selesai",
+      "failed": "gagal",
+      "cancelled": "dibatalkan",
+      "running": "sedang berjalan",
+      "pending": "menunggu"
+    }
+  },
+  "category": {
+    "all": "Semua",
+    "translation": "Terjemahan",
+    "social": "Sosial",
+    "wiki": "Wiki",
+    "system": "Sistem"
+  }
+}

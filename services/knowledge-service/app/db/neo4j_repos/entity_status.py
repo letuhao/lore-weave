@@ -45,6 +45,7 @@ __all__ = [
     "merge_entity_status",
     "status_at_order",
     "statuses_detail_at_order",
+    "list_gone_entities",
     "delete_entity_status_with_zero_evidence",
 ]
 
@@ -247,6 +248,56 @@ async def statuses_detail_at_order(
         record["entity_id"]: {"status": record["status"], "from_order": record["from_order"]}
         async for record in result
     }
+
+
+# ── list_gone_entities (D-KG-EXTRACTION-CANON-WIRE) ────────────────────
+
+# Unlike status_at_order/statuses_detail_at_order (windowed by a caller-supplied
+# at_order + entity_ids), this has no position window and no id list — it's
+# "gone as of the latest evidenced transition, for whichever entities have one
+# at all". Scans EntityStatus transitions (sparse — most entities never have
+# one) rather than the full Entity set, so it stays cheap even on a large book.
+_GONE_ENTITIES_CYPHER = """
+MATCH (s:EntityStatus {user_id: $user_id})
+WHERE ($project_id IS NULL OR s.project_id = $project_id)
+  AND s.evidence_count >= $min_evidence
+WITH s.entity_id AS entity_id, s
+ORDER BY s.from_order DESC
+WITH entity_id, head(collect(s)) AS latest
+WHERE latest.status = 'gone'
+OPTIONAL MATCH (e:Entity {id: entity_id})
+WHERE e.user_id = $user_id AND ($project_id IS NULL OR e.project_id = $project_id)
+RETURN entity_id, latest.from_order AS from_order, e.name AS name,
+       e.canonical_name AS canonical_name
+"""
+
+
+async def list_gone_entities(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    min_evidence: int = 1,
+) -> list[dict[str, Any]]:
+    """Entities whose latest EVIDENCED transition is `gone`, for the extraction
+    canon-check gate's symbolic-prefilter snapshot (`app/extraction/canon_check.py`).
+    Each row: `{entity_id, name, canonical_name, from_order}`. An entity whose
+    `:Entity` node isn't found (shouldn't happen, but no FK enforced) still
+    appears with `name`/`canonical_name` as `None` — the prefilter's own
+    `snapshot.get("entities")` handling already tolerates a missing name."""
+    result = await run_read(
+        session, _GONE_ENTITIES_CYPHER,
+        user_id=user_id, project_id=project_id, min_evidence=min_evidence,
+    )
+    return [
+        {
+            "entity_id": r["entity_id"],
+            "name": r["name"],
+            "canonical_name": r["canonical_name"],
+            "from_order": r["from_order"],
+        }
+        async for r in result
+    ]
 
 
 # ── delete_entity_status_with_zero_evidence ───────────────────────────

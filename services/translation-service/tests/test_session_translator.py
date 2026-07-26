@@ -971,3 +971,141 @@ async def test_translate_chunk_upstream_error_remains_transient():
             llm_client=fake,
             context_window=8192,
         )
+
+
+# ── bug #34: immediate-cancel cancel_check threading ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_cancel_check_forwarded_to_submit_and_wait_text_path():
+    """bug #34 — translate_chapter forwards the cancel_check closure down to the
+    per-chunk submit_and_wait so the SDK can abort an in-flight call on cancel."""
+    pool = _make_pool()
+    msg  = _make_msg(chunk_size_tokens=1000)
+
+    fake = FakeLLMClient()
+    fake.queue_translation(content="done")
+
+    async def _cc() -> bool:
+        return False
+
+    from app.workers.session_translator import translate_chapter
+    await translate_chapter(
+        chapter_text="Hello.",
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+        cancel_check=_cc,
+    )
+
+    assert len(fake.calls) == 1
+    assert fake.calls[0].get("cancel_check") is _cc
+
+
+@pytest.mark.asyncio
+async def test_cancel_check_omitted_is_none_text_path():
+    """Backward compat — no cancel_check supplied → forwarded as None (default)."""
+    pool = _make_pool()
+    fake = FakeLLMClient()
+    fake.queue_translation(content="done")
+
+    from app.workers.session_translator import translate_chapter
+    await translate_chapter(
+        chapter_text="Hello.",
+        source_lang="en",
+        msg=_make_msg(chunk_size_tokens=1000),
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
+    assert fake.calls[0].get("cancel_check") is None
+
+
+@pytest.mark.asyncio
+async def test_cancelled_sdk_job_raises_cancelled_error_text_path():
+    """bug #34 — a cancelled terminal Job (SDK aborted the in-flight call) raises
+    _CancelledError (NOT _PermanentError), so the worker ends the chapter as a clean
+    cancel rather than a spurious failure."""
+    from app.workers.chapter_worker import _CancelledError, _PermanentError
+
+    pool = _make_pool()
+    fake = FakeLLMClient()
+    fake.queue_translation(status="cancelled")
+
+    from app.workers.session_translator import translate_chapter
+    with pytest.raises(_CancelledError):
+        await translate_chapter(
+            chapter_text="text",
+            source_lang="en",
+            msg=_make_msg(chunk_size_tokens=1000),
+            pool=pool,
+            chapter_translation_id=uuid4(),
+            llm_client=fake,
+            context_window=8192,
+            cancel_check=None,
+        )
+    # _CancelledError is NOT a _PermanentError — distinct routing.
+    assert not issubclass(_CancelledError, _PermanentError)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_sdk_job_raises_cancelled_error_block_path():
+    """bug #34 — a cancelled job inside translate_batch_with_retry must propagate
+    _CancelledError past the broad retry catch, not be swallowed into an empty result
+    (which would have surfaced as a 'produced no output' FAILURE)."""
+    from app.workers.chapter_worker import _CancelledError
+    from app.workers.session_translator import translate_batch_with_retry
+
+    fake = FakeLLMClient()
+    fake.queue_translation(status="cancelled")
+
+    with pytest.raises(_CancelledError):
+        await translate_batch_with_retry(
+            llm_client=fake,
+            user_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            model_source="platform_model",
+            model_ref=str(uuid4()),
+            system_content="sys",
+            user_content="usr",
+            combined="[BLOCK 0] hello",
+            block_indices=[0],
+            input_texts={0: "hello"},
+            out_max=2048,
+            max_retries=1,
+            job_meta_base={},
+            cancel_check=None,
+        )
+    # cancel aborts on the FIRST attempt — no retry burned.
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_cancel_check_forwarded():
+    """bug #34 — translate_batch_with_retry forwards cancel_check to submit_and_wait."""
+    from app.workers.session_translator import translate_batch_with_retry
+
+    fake = FakeLLMClient()
+    fake.queue_translation(content="[BLOCK 0] hi")
+
+    async def _cc() -> bool:
+        return False
+
+    await translate_batch_with_retry(
+        llm_client=fake,
+        user_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        model_source="platform_model",
+        model_ref=str(uuid4()),
+        system_content="sys",
+        user_content="usr",
+        combined="[BLOCK 0] hello",
+        block_indices=[0],
+        input_texts={0: "hello"},
+        out_max=2048,
+        max_retries=1,
+        job_meta_base={},
+        cancel_check=_cc,
+    )
+    assert fake.calls[0].get("cancel_check") is _cc

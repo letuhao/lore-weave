@@ -19,9 +19,13 @@
     "selectAllKinds": "すべて選択",
     "deselectAllKinds": "すべて解除",
     "attrsSelected": "{{count}}属性",
+    "actionDefault": "デフォルト（スマート）",
+    "actionAppend": "追加",
     "actionFill": "未入力を補完",
     "actionOverwrite": "上書き",
     "actionSkip": "スキップ",
+    "allDefault": "全てデフォルト",
+    "allAppend": "全て追加",
     "allFill": "全て補完",
     "allOverwrite": "全て上書き",
     "required": "必須",
@@ -76,7 +80,10 @@
     "activityLog": "アクティビティログ",
     "cancel": "キャンセル",
     "cancelConfirm": "抽出ジョブをキャンセルしますか？処理済みのチャプターの結果は保持されます。",
-    "cancelRequested": "キャンセルを要求しました"
+    "cancelRequested": "キャンセルを要求しました",
+    "background": "バックグラウンドで実行",
+    "backgroundToast": "抽出はバックグラウンドで実行中です。",
+    "viewInJobs": "ジョブで表示"
   },
   "results": {
     "title": "抽出完了",

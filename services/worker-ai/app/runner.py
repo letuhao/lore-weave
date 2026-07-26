@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -32,6 +33,7 @@ from opentelemetry import trace as _ot_trace
 from loreweave_jobs import JobStatus, emit_job_event_safe
 
 from loreweave_extraction import (
+    ContextBudget,
     EntityRecoveryConfig,
     PrecisionFilterConfig,
     ResolvedConfig,
@@ -41,6 +43,7 @@ from loreweave_extraction import (
     resolve_effective_config,
 )
 from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_llm.errors import LLMError
 
 from app import fair_sched
@@ -55,6 +58,7 @@ from app.clients import (
     ProviderRegistryClient,
 )
 from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
+from loreweave_llm.attribution import set_public_key_attribution
 from app.metrics import (
     worker_ai_extraction_reasoning_model_advised_total,
     worker_ai_extraction_zero_output_total,
@@ -422,7 +426,7 @@ def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
 
 async def _advance_cursor_and_emit_run(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, cursor: dict, payload: dict,
-    *, chapter_extracted: dict | None = None,
+    *, chapter_extracted: dict | None = None, skipped_delta: int = 0,
 ) -> None:
     """Advance the cursor + emit the extraction_run ATOMICALLY (B2-A), and — when
     `chapter_extracted` is supplied (a chapter's successful extraction) — emit the
@@ -444,7 +448,7 @@ async def _advance_cursor_and_emit_run(
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                await _advance_cursor(conn, user_id, job_id, cursor)
+                await _advance_cursor(conn, user_id, job_id, cursor, skipped_delta=skipped_delta)
                 await emit_extraction_run(conn, payload)
                 if chapter_extracted is not None:
                     await emit_chapter_extracted(conn, **chapter_extracted)
@@ -454,7 +458,7 @@ async def _advance_cursor_and_emit_run(
             "best-effort (run telemetry lost for this item, non-fatal)",
             job_id, exc_info=True,
         )
-        await _advance_cursor(pool, user_id, job_id, cursor)
+        await _advance_cursor(pool, user_id, job_id, cursor, skipped_delta=skipped_delta)
         if chapter_extracted is not None:
             await emit_chapter_extracted_best_effort(pool, **chapter_extracted)
 
@@ -590,6 +594,22 @@ class JobRow:
     # extraction window's known_entities. None/empty ⇒ no pins (back-compat —
     # the column is JSONB NULL by default).
     pinned_entity_ids: list[str] | None = None
+    # D-KG-WORKER-GRADED-EFFORT — the graded reasoning effort stored on the row
+    # (knowledge-side clamp at mint, Wave 4). The runner reads it and threads it
+    # through extract_pass2 → the SDK submit builders → the LLM input. The column
+    # is NOT NULL DEFAULT 'none', so a real row always carries a concrete value;
+    # the default here only covers synthetic/test rows. No re-clamp (already
+    # clamped at mint — the runner is single-purpose + trusted).
+    reasoning_effort: str = "none"
+    # D-PMCP-WORKER-CARRIER — the public-MCP key id + per-key spend ceiling that
+    # priced this extraction (kg_build_graph confirm route → extraction_jobs row).
+    # The in-process attribution contextvar dies at the job-row boundary (knowledge
+    # extraction is poll-based), so the carrier rides the row → resume_state →
+    # process_job re-sets set_public_key_attribution before any provider call.
+    # NULL ⇒ a first-party (non-public-MCP) job. spend_cap_usd is DOUBLE PRECISION
+    # (float8) so asyncpg binds the float natively — see the migration note.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
 
 # ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
@@ -688,6 +708,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.cost_spent_usd, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
                j.targets, j.concurrency_level, j.pinned_entity_ids,
+               j.reasoning_effort, j.mcp_key_id, j.spend_cap_usd,
                p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
@@ -736,6 +757,13 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             # C13 — pinned_entity_ids is JSONB; asyncpg returns it as a str (raw
             # JSON) or a decoded list depending on the codec. Normalise both.
             pinned_entity_ids=_decode_pinned(r["pinned_entity_ids"]),
+            # D-KG-WORKER-GRADED-EFFORT — TEXT NOT NULL DEFAULT 'none'; coerce a
+            # stray NULL (synthetic row / pre-migration replica) to "none".
+            reasoning_effort=r["reasoning_effort"] or "none",
+            # D-PMCP-WORKER-CARRIER — public-MCP key + per-key cap (NULL on a
+            # first-party job). spend_cap_usd is float8 → asyncpg returns a float.
+            mcp_key_id=r["mcp_key_id"],
+            spend_cap_usd=r["spend_cap_usd"],
         ))
     return result
 
@@ -787,7 +815,7 @@ async def _try_spend(
 
 async def _advance_cursor(
     executor: Any, user_id: UUID, job_id: UUID,
-    cursor: dict, items_delta: int = 1,
+    cursor: dict, items_delta: int = 1, skipped_delta: int = 0,
 ) -> None:
     """Persist progress so a restart can resume from here.
 
@@ -795,17 +823,23 @@ async def _advance_cursor(
     the chapter-success/skip path advance the cursor AND emit the
     extraction_run in ONE transaction (B2-A): the run row is guaranteed iff the
     cursor advanced, and an emit failure rolls back the advance (chapter
-    re-processed, never a silently-missing run)."""
+    re-processed, never a silently-missing run).
+
+    D-WORKER-SKIP-FALSE-GREEN: `skipped_delta` counts items that advanced the
+    cursor WITHOUT doing any work (text unavailable, retry-exhausted) into
+    `items_skipped`, so a job whose items were all skipped no longer reads as
+    an indistinguishable "complete N/N" success."""
     await executor.execute(
         """
         UPDATE extraction_jobs
         SET current_cursor = $3::jsonb,
             items_processed = items_processed + $4,
+            items_skipped = items_skipped + $5,
             updated_at = now()
         WHERE user_id = $1 AND job_id = $2
           AND status IN ('running', 'paused')
         """,
-        user_id, job_id, json.dumps(cursor), items_delta,
+        user_id, job_id, json.dumps(cursor), items_delta, skipped_delta,
     )
 
 
@@ -904,13 +938,49 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
         row = await conn.fetchrow(
             """
             UPDATE extraction_jobs
-            SET status = 'complete', completed_at = now(), updated_at = now()
+            SET status = 'complete', completed_at = now(), updated_at = now(),
+                -- D-WORKER-SKIP-FALSE-GREEN: a job whose EVERY item was skipped
+                -- must not read as an indistinguishable success ("complete N/N"
+                -- masked the _text extraction bug). Status stays 'complete'
+                -- (skips are per-item terminal by design; 'failed' would trip
+                -- campaign breakers), but the row now says so out loud.
+                error_message = CASE
+                  WHEN items_skipped > 0 AND items_total > 0 AND items_skipped >= items_total
+                    THEN 'completed with ALL ' || items_total || ' items skipped — no work performed (see job logs)'
+                  -- D-EXTRACTION-SILENT-NOOP: a job that PROCESSED items (not skipped) but
+                  -- made ZERO LLM calls did no extraction — the LLM is what identifies
+                  -- entities/relations/facts. Reporting a bare 'complete' let a silent
+                  -- no-op (no graph schema kinds / provider unreachable) masquerade as a
+                  -- built graph. Same convention as the skip case: status stays 'complete'
+                  -- (no campaign-breaker trip) but the row says so out loud.
+                  WHEN items_processed > 0 AND COALESCE(llm_calls_made, 0) = 0
+                    THEN 'completed but made 0 LLM calls over ' || items_processed ||
+                         ' processed item(s) — no extraction performed (no usable graph schema kinds, or the extraction provider was unreachable)'
+                  ELSE error_message
+                END
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id, cost_spent_usd
+            RETURNING job_id, cost_spent_usd, items_skipped, items_total,
+                      items_processed, COALESCE(llm_calls_made, 0) AS llm_calls_made
             """,
             user_id, job_id,
         )
+        _skipped = row.get("items_skipped") if row is not None else None
+        _total = row.get("items_total") if row is not None else None
+        if _skipped and _total and _skipped >= _total:
+            logger.warning(
+                "Job %s completed but ALL %d items were skipped — no work performed",
+                job_id, _total,
+            )
+        elif row is not None and row.get("items_processed") and not row.get("llm_calls_made"):
+            # D-EXTRACTION-SILENT-NOOP — a processed-but-no-LLM completion is a silent
+            # no-op; surface it loudly (the error_message above + this warning) so an
+            # empty graph never reads as a successful build.
+            logger.warning(
+                "Job %s completed but made 0 LLM calls over %d processed item(s) — "
+                "no extraction performed (check the project's graph schema kinds / the "
+                "extraction provider)", job_id, row.get("items_processed"),
+            )
         if row is not None:
             # P4 — carry the final cumulative cost on the terminal event (the changing
             # field); model + params were set on 'running' and kept via the projection's
@@ -949,6 +1019,47 @@ async def _fail_job(
                 cost_usd=float(_cost) if _cost is not None else None,
                 error={"code": "extraction_failed", "message": error[:500]},
             )
+
+
+async def sweep_stalled_jobs(pool: asyncpg.Pool, *, stall_minutes: int) -> int:
+    """D-EXTRACTION-SILENT-NOOP gap #3 — the generic STALL backstop.
+
+    `updated_at` is bumped on every progress step (cursor advance, items_total set,
+    stage change), so a job that is still `status='running'` with `updated_at` older
+    than `stall_minutes` made NO progress that whole time — its runner/provider died or
+    hung mid-loop, and without this it would sit 'running' forever, looking healthy.
+
+    Fails such jobs via `_fail_job` (so the terminal event fires and the row stops
+    lying). Deliberately COMPLEMENTS the Wave-1b resume-sweeper (which only re-drives
+    DECOUPLED rows with resume_state, and is off by default): `stall_minutes` is
+    configured generously (> the resume timeout) so a recoverable row is re-driven
+    first and a long-but-live LLM call is never wrongly failed. `stall_minutes<=0` ⇒
+    disabled. Returns the number swept."""
+    if stall_minutes <= 0:
+        return 0
+    rows = await pool.fetch(
+        """
+        SELECT user_id, job_id
+        FROM extraction_jobs
+        WHERE status = 'running'
+          AND updated_at < now() - make_interval(mins => $1)
+        ORDER BY updated_at ASC
+        LIMIT 50
+        """,
+        stall_minutes,
+    )
+    for r in rows:
+        logger.warning(
+            "STALL sweep: extraction job %s made no progress for >%d min — failing it "
+            "(runner/provider died or hung; re-dispatch to retry)",
+            r["job_id"], stall_minutes,
+        )
+        await _fail_job(
+            pool, r["user_id"], r["job_id"],
+            f"stalled: no progress for {stall_minutes}+ min "
+            "(the runner or extraction provider died/hung mid-stage) — re-dispatch to retry",
+        )
+    return len(rows)
 
 
 async def _get_project_book_id(
@@ -1002,17 +1113,25 @@ async def _enumerate_chapters(
 ) -> list[ChapterInfo]:
     """Get chapters to process, respecting cursor for resume.
 
-    CM3c — canon=published gate: the manual whole-book rebuild only extracts
-    PUBLISHED chapters (drafts are not canon), reading each at its PINNED
-    revision (`ChapterInfo.revision_id` ← `published_revision_id`). Drafts are
-    filtered server-side via `editorial_status='published'`. A chapter that is
-    published but has NO pinned revision (the FK `ON DELETE SET NULL` purge edge
-    — §8.9 adversary-R2-NEW-2) is skipped with a WARNING (not silently), since
-    it represents a published chapter we cannot pin canon for.
+    WS-0.6 — the KG-membership gate (spec 2026-07-11-publish-independent-kg-indexing
+    §3.5, red-team P0-2). This REPLACES the old CM3c canon=published gate.
+
+    The whole-book rebuild extracts the chapters the user actually put in their
+    KNOWLEDGE GRAPH — not the chapters they published. Those are different sets now:
+    a draft can be indexed (and a kind='diary' book never publishes at all). Filtering
+    server-side on `editorial_status='published'` would enumerate ZERO of a user's 50
+    explicitly-indexed drafts, and this job would report success having extracted
+    nothing — the user's explicit act silently undone by an unrelated button.
+
+    Each chapter is read at its PINNED revision (`ChapterInfo.revision_id` ←
+    `kg_indexed_revision_id`). The no-pinned-revision skip is KEPT and is load-bearing:
+    with `revision_id=None` the per-chapter fetch falls back to `get_chapter_text()` =
+    the LIVE DRAFT, which would extract unreviewed prose and break the pinned-revision
+    guarantee. It stays a WARNING, never a silent drop.
     """
     if book_id is None:
         return []
-    chapters = await book_client.list_chapters(book_id, editorial_status="published")
+    chapters = await book_client.list_chapters(book_id, kg_indexed=True)
     if chapters is None:
         return []
 
@@ -1020,8 +1139,9 @@ async def _enumerate_chapters(
     for ch in chapters:
         if ch.revision_id is None:
             logger.warning(
-                "CM3c: published chapter %s has no pinned revision "
-                "(published_revision_id NULL) — skipping; re-publish to pin canon",
+                "WS-0.6: chapter %s is in the knowledge graph but has no pinned "
+                "revision (kg_indexed_revision_id NULL) — skipping rather than falling "
+                "back to live draft text; re-index it to pin a revision",
                 ch.chapter_id,
             )
             continue
@@ -1164,6 +1284,17 @@ async def _enumerate_pending_chat_turns(
           ON p.project_id = ep.project_id AND p.user_id = $1
         WHERE ep.project_id = $2 AND ep.processed_at IS NULL
           AND ep.aggregate_type = 'chat'
+          -- ── WS-1.3 · the D6 gate, ENFORCED ON BOTH SIDES (review-impl P1) ──
+          -- knowledge-service's handle_chat_turn gates at ENQUEUE, but a one-sided gate
+          -- is a silent-success bug (spec 09 says so explicitly, and I wrote a comment
+          -- claiming both sides were covered — they were not). A row can be enqueued and
+          -- THEN the project flipped to assistant, or the extraction re-run over an old
+          -- row. This is the same derived predicate (fail-closed): the ASSISTANT never
+          -- extracts per turn (its facts come once a day from the confirmed entry), and a
+          -- project with per-turn extraction disabled is skipped. A NULL is_assistant or
+          -- flag cannot pass (both are NOT NULL columns, so this reads as false-safe).
+          AND p.is_assistant = false
+          AND p.chat_turn_extraction_enabled = true
         ORDER BY ep.created_at ASC
         LIMIT 1000
         """,
@@ -1270,6 +1401,11 @@ async def _extract_and_persist(
     # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}} from
     # the job's resolved snapshot ({} when the project has no custom prompts).
     prompt_overrides: dict | None = None,
+    # L7 (Milestone B) — the project's ADVISORY extraction schema, resolved once
+    # per job. Threaded into extract_pass2 so the LLM emits the project's vocab.
+    # None ⇒ static prompt. allow_free_edges is forced True server-side, so the
+    # SDK never pre-drops — /persist-pass2 stays the sole enforce+park point.
+    schema: ExtractionSchema | None = None,
     # B2 follow-up — per-project Pass2-writer autocreate override (forwarded to
     # /persist-pass2). None = chat/glossary callers leave the env default.
     writer_autocreate: bool | None = None,
@@ -1301,6 +1437,19 @@ async def _extract_and_persist(
     # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
     # chat_turn / glossary callers leave it unset → no pins).
     pinned_names: list[str] | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — the job's graded reasoning effort, threaded
+    # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
+    # wire fields (chat_turn / glossary callers omit it → unchanged).
+    reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook threaded into extract_pass2 so an
+    # in-flight extraction LLM call is aborted the moment the KG-build job is
+    # cancelled. None (default) ⇒ no cancellation polling (back-compat).
+    cancel_check: "Callable[[], Awaitable[bool]] | None" = None,
+    # Model-context-aware chunk sizing. None (default — chat_turn/glossary
+    # callers) keeps the legacy flat 15-paragraph chunk size. The chapter branch
+    # resolves the target model's real context window via ProviderRegistryClient
+    # and passes a ContextBudget so chunk size scales with the model in use.
+    context_budget: "ContextBudget | None" = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1368,6 +1517,15 @@ async def _extract_and_persist(
             entity_recovery=eff_recovery,
             # B2-B-b2 — per-op raw system-prompt overrides ({} = all defaults).
             prompt_overrides=prompt_overrides,
+            # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
+            schema=schema,
+            # D-KG-WORKER-GRADED-EFFORT — graded effort → core extraction LLM
+            # calls ("none" ⇒ no wire fields; recovery/filter stay force-off).
+            reasoning_effort=reasoning_effort,
+            # bug #34 — immediate-cancel hook → core extraction submit_and_wait
+            # calls so an in-flight LLM call aborts on job cancellation.
+            cancel_check=cancel_check,
+            context_budget=context_budget,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1454,6 +1612,15 @@ async def _start_decoupled_chunk(
     # resume_state so the decoupled consumer can release the exact slot at the chunk
     # terminal; released here on submit-failure (no chunk ends up in flight).
     p5_token: str | None = None,
+    # L7 (Milestone B) — the project's ADVISORY extraction schema (None ⇒ static
+    # prompt). Stashed in resume_state so the consumer rebuilds it for build_*_system.
+    extraction_schema: ExtractionSchema | None = None,
+    # Model-context-aware chunk sizing — resolves the target model's real context
+    # window so the entity/trio submits (assembled later by decoupled_extract.py,
+    # possibly after a process restart) can build a ContextBudget instead of
+    # assuming a flat window. None (only in tests that don't wire a client) ⇒ the
+    # resolution is skipped and chunk size falls back to the SDK's legacy default.
+    provider_client: "ProviderRegistryClient | None" = None,
 ) -> None:
     """WX-T3b — seed resume_state for one chapter + submit its entity job, then
     return (released). The llm_extract_consumer folds the terminal events through
@@ -1465,6 +1632,13 @@ async def _start_decoupled_chunk(
     from app import decoupled_extract as dx
 
     eff_model_ref = job.billing_llm_model if job.billing_user_id else run_snapshot.model_ref
+    # Resolved ONCE here (not re-fetched on every fold) and stashed into resume_state
+    # alongside model_ref — decoupled_extract.py's assemble_* functions are pure
+    # (no I/O) and read it back to build a ContextBudget per submit.
+    context_length = (
+        await provider_client.get_context_length("user_model", str(eff_model_ref))
+        if provider_client is not None else None
+    )
     # WX Wave 4 — recovery/filter are now decoupled fan-out stages (no sync fallback).
     eff_recovery = run_snapshot.entity_recovery
     eff_filter = run_snapshot.precision_filter
@@ -1494,6 +1668,17 @@ async def _start_decoupled_chunk(
     rs.update(
         user_id=str(job.user_id), project_id=str(job.project_id),
         model_source="user_model", model_ref=str(eff_model_ref),
+        # Model-context-aware chunk sizing — stashed alongside model_ref so
+        # decoupled_extract.py's assemble_* functions build a ContextBudget on
+        # both the initial submit AND resume (a process restart never re-resolves
+        # it, matching the reasoning_effort stash pattern below). None ⇒ the SDK
+        # falls back to its legacy flat chunk size — never guessed here.
+        context_length=context_length,
+        # D-KG-WORKER-GRADED-EFFORT — stash the job's graded effort in
+        # resume_state alongside model_ref so the decoupled consumer rebuilds the
+        # entity + trio submits with the SAME effort on resume. Missing it here
+        # would silently drop graded effort on the async/resume path.
+        reasoning_effort=job.reasoning_effort,
         prompt_overrides=run_snapshot.prompts or {},
         # C12 (D-C12-CONCURRENCY-DECOUPLED) — carry the job's cap on parallel
         # LLM calls into the decoupled state so the consumer bounds the trio /
@@ -1502,6 +1687,11 @@ async def _start_decoupled_chunk(
         concurrency_level=job.concurrency_level,
         campaign_id=(str(job.campaign_id) if job.campaign_id else None),
         billing_user_id=(str(job.billing_user_id) if job.billing_user_id else None),
+        # D-PMCP-WORKER-CARRIER: seed the public-MCP key + cap so the decoupled
+        # terminal-event consumer re-sets the attribution contextvar on resume
+        # (parity with billing_user_id; both ride resume_state across the process hop).
+        mcp_key_id=job.mcp_key_id,
+        spend_cap_usd=job.spend_cap_usd,
         # D-WX-RUN-SAMPLE-DECOUPLE — the project's raw-retention opt-in, seeded so
         # the consumer's terminal persist can write the extraction_run_sample at
         # parity with the sync chapter loop (keyed by run_payload's run_id).
@@ -1559,6 +1749,20 @@ async def _start_decoupled_chunk(
             "max_items_per_batch": eff_filter.max_items_per_batch,
             "transient_retry_budget": eff_filter.transient_retry_budget,
         }
+    # L7 (Milestone B) — stash the advisory schema projection so the consumer
+    # rebuilds it for build_*_system (vocab hint in the prompt). allow_free_edges
+    # is True (advisory) → never pre-drops; /persist-pass2 stays the enforce+park
+    # point. Absent when the project has no resolved schema.
+    if extraction_schema is not None:
+        rs["_schema"] = {
+            "entity_kinds": list(extraction_schema.entity_kinds),
+            "edge_predicates": list(extraction_schema.edge_predicates),
+            "event_kinds": list(extraction_schema.event_kinds),
+            "fact_types": list(extraction_schema.fact_types),
+            "allow_free_edges": extraction_schema.allow_free_edges,
+            "label": extraction_schema.label,
+            "schema_version": extraction_schema.schema_version,
+        }
     # Bounded transient-retry on the entity submit — mirrors submit_and_wait's
     # resilience. A fire-and-forget submit_job has no retry, so without this a single
     # transient transport blip to provider-registry would PERMANENTLY fail the job
@@ -1587,6 +1791,9 @@ async def _start_decoupled_chunk(
     await pool.execute(
         """UPDATE extraction_jobs
            SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4,
+               -- bug #37 — count the entity submit (the chunk's first LLM call); the
+               -- consumer's _submit_map bumps the trio/recovery/filter fan-outs.
+               llm_calls_made = llm_calls_made + 1,
                updated_at=now()
            WHERE job_id=$1""",
         job.job_id, json.dumps(rs), json.dumps([str(submit.job_id)]), rs["stage"],
@@ -1632,6 +1839,28 @@ async def process_job(
     # per job (poll_and_run), so the ContextVar is task-local — concurrent jobs
     # for different campaigns never cross-contaminate.
     set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
+    # D-PMCP-WORKER-CARRIER: bind the public-MCP key + cap for THIS job task so every
+    # provider call made while extracting tags job_meta with the agent's key (the
+    # in-process contextvar set at the kg confirm route died at the job-row boundary;
+    # knowledge extraction is poll-based, so the id rides the row). task-local, like
+    # campaign_id; None ⇒ first-party job.
+    set_public_key_attribution(job.mcp_key_id, job.spend_cap_usd)
+
+    # bug #34 — immediate-cancel hook for in-flight extraction LLM calls.
+    # Polled by loreweave_llm.Client.wait_terminal (threaded down via
+    # extract_pass2) so a cancelled KG-build job aborts its current LLM call
+    # at once, rather than only between items via _refresh_job_status. Mirrors
+    # _refresh_job_status's query/acquire idiom. FAIL-SOFT: any read error
+    # returns False so a transient DB blip never spuriously cancels healthy work.
+    async def cancel_check() -> bool:
+        try:
+            status = await pool.fetchval(
+                "SELECT status FROM extraction_jobs WHERE job_id = $1",
+                job.job_id,
+            )
+        except Exception:
+            return False
+        return status == "cancelled"
 
     # LLM re-arch Phase 2b WX-T3b — decoupled-extraction in-flight guard. If a chunk
     # is already in flight (the llm_extract_consumer is driving it off terminal
@@ -1711,6 +1940,17 @@ async def process_job(
         # extract_pass2 still reads the module globals in B2-A (B2-B wires the
         # snapshot into the pipeline).
         run_snapshot, run_cfg_hash, run_base_version = _build_run_config(job)
+
+        # L7 (Milestone B) — resolve the project's ADVISORY extraction schema ONCE
+        # per job (pinned like the config snapshot). Threaded into extract_pass2 so
+        # the LLM emits the project's vocab. None (no project / resolve failure /
+        # un-adopted → general@v1 with no custom vocab) ⇒ static prompt. The
+        # writer (/persist-pass2) resolves the AUTHORITATIVE schema server-side and
+        # stays the sole closed-set enforce+park point — so this advisory copy
+        # never pre-drops an off-schema edge (the R3 reconciliation).
+        extraction_schema = await knowledge_client.resolve_extraction_schema(
+            user_id=job.user_id, project_id=job.project_id,
+        )
 
         # Pre-enumerate items. Done once — the results are reused for
         # both K16.7 items_total counting and the main processing loop,
@@ -1848,6 +2088,7 @@ async def process_job(
                         pool, job.user_id, job.job_id,
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                         unavail_payload,
+                        skipped_delta=1,  # D-WORKER-SKIP-FALSE-GREEN
                     )
                     # P5 — this chapter did no LLM work; free its slot before the next
                     # iteration (which re-acquires). No-op when P5 off / token None.
@@ -1915,6 +2156,23 @@ async def process_job(
                         job.scope in ("chapters", "all")
                         and ch.chapter_id == pre_chapters[-1].chapter_id
                     )
+                elif (not job.targets) or ("summaries" in job.targets):
+                    # D-KG-SUMMARIES-TARGET-NOOP — de-silence the skip: a
+                    # requested summary pass built NO p3_hierarchy_paths, so no
+                    # chapter summary will enqueue. Book-service now synthesizes
+                    # an implicit part for undecomposed chapters, so the usual
+                    # remaining cause is a project with no embedding model
+                    # (embedding_dimension None) or a hierarchy fetch failure —
+                    # both were previously invisible ([[silent-success-is-a-bug]]).
+                    logger.warning(
+                        "summary enqueue SKIPPED chapter=%s book=%s: "
+                        "hierarchy_present=%s chapter_path_present=%s "
+                        "embedding_dimension=%s — no chapter summary generated",
+                        ch.chapter_id, book_id,
+                        hierarchy is not None,
+                        (hierarchy is not None and hierarchy.chapter_path is not None),
+                        job.embedding_dimension,
+                    )
 
                 # LLM re-arch Phase 2b WX-T3b — event-driven decouple of the chapter
                 # extraction. Submit the entity job + RELEASE (return); the
@@ -1940,6 +2198,11 @@ async def process_job(
                         # P5 — the WFQ lease for this chunk; stashed in resume_state so the
                         # consumer releases it at the chunk terminal. None when P5 off.
                         p5_token=_p5_token,
+                        # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
+                        extraction_schema=extraction_schema,
+                        # Model-context-aware chunk sizing (resolved once, stashed in
+                        # resume_state for decoupled_extract.py's assemble_* functions).
+                        provider_client=provider_client,
                     )
                     logger.info(
                         "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
@@ -1951,6 +2214,16 @@ async def process_job(
                 # stage in-process via loreweave_extraction.extract_pass2,
                 # then POSTs candidates to /persist-pass2.
                 # Q4b-feed: candidates captured for the run-sample write below.
+                _eff_model_ref = (
+                    job.billing_llm_model if job.billing_user_id
+                    else run_snapshot.model_ref
+                )
+                # Model-context-aware chunk sizing — resolve the ACTUAL model's
+                # context window (never a flat assumption) so extraction chunk
+                # size scales with the model in use. None (unresolved) keeps the
+                # SDK's legacy flat 15-paragraph chunk size — never guess here.
+                _ctx_len = await provider_client.get_context_length("user_model", _eff_model_ref)
+                _chapter_context_budget = ContextBudget(model_context=_ctx_len) if _ctx_len else None
                 result, candidates = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
@@ -1967,14 +2240,14 @@ async def process_job(
                     # snapshot ref applies only on the owner path. Gated on
                     # billing_user_id (the identity), not the ref alone, to stay
                     # coherent with the submit_and_wait contextvar (MED-1).
-                    model_ref=(
-                        job.billing_llm_model if job.billing_user_id
-                        else run_snapshot.model_ref
-                    ),
+                    model_ref=_eff_model_ref,
+                    context_budget=_chapter_context_budget,
                     precision_filter=run_snapshot.precision_filter,
                     entity_recovery=run_snapshot.entity_recovery,
                     prompt_overrides=run_snapshot.prompts,
                     writer_autocreate=run_snapshot.writer_autocreate,
+                    # L7 (Milestone B) — advisory project schema (None ⇒ static).
+                    schema=extraction_schema,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     chapter_index=p3_chapter_index,  # FD-4 (066) — flat-book event_order
@@ -2005,6 +2278,10 @@ async def process_job(
                     # C13 — pinned names resolved once per job above; injected
                     # into this window's known_entities.
                     pinned_names=pinned_names,
+                    # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
+                    reasoning_effort=job.reasoning_effort,
+                    # bug #34 — abort an in-flight LLM call on job cancellation.
+                    cancel_check=cancel_check,
                 )
 
                 if result.error:
@@ -2068,6 +2345,7 @@ async def process_job(
                             pool, job.user_id, job.job_id,
                             {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                             skip_payload,
+                            skipped_delta=1,  # D-WORKER-SKIP-FALSE-GREEN
                         )
                         # CM3b: retry-exhausted is terminal — clear the queue row
                         # so the drainer doesn't re-process it forever. Mark-by-
@@ -2204,6 +2482,12 @@ async def process_job(
                     # included (the cost estimate's num_windows counts chat turns,
                     # so the injection must too). Resolved once per job above.
                     pinned_names=pinned_names,
+                    # L7 (Milestone B) — advisory project schema (None ⇒ static).
+                    schema=extraction_schema,
+                    # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
+                    reasoning_effort=job.reasoning_effort,
+                    # bug #34 — abort an in-flight LLM call on job cancellation.
+                    cancel_check=cancel_check,
                 )
 
                 if result.error and not result.retryable:
@@ -2212,16 +2496,26 @@ async def process_job(
                     return
 
                 await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
+                # D-EXTRACTION-SILENT-NOOP: a chat turn whose text is gone/empty
+                # (deleted session, a tool-only turn with no prose) does NO extraction —
+                # extract_pass2 short-circuited WITHOUT an LLM call. Count it SKIPPED
+                # (mirroring the chapter D-WORKER-SKIP-FALSE-GREEN), NOT a fake
+                # 'processed', and don't charge for a no-op. This keeps items_processed
+                # honest AND stops the 0-LLM-call completion flag from false-positiving
+                # on a legitimately-empty turn (the all-skipped flag covers that case).
+                _empty_turn = not turn_text.strip()
                 await _advance_cursor(
                     pool, job.user_id, job.job_id,
                     {"last_pending_id": str(turn["pending_id"]), "scope": "chat"},
+                    items_delta=0 if _empty_turn else 1,
+                    skipped_delta=1 if _empty_turn else 0,
                 )
-                # D-K16.11-01: same per-project accounting as the chapters
-                # branch, see above.
-                await _record_spending(
-                    pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
-                )
-                items_processed += 1
+                if not _empty_turn:
+                    # D-K16.11-01: same per-project accounting as the chapters branch.
+                    await _record_spending(
+                        pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
+                    )
+                    items_processed += 1
 
         # C12c-a: glossary_sync branch. Fires for scope='glossary_sync'
         # (primary) AND the tail of scope='all'. No LLM call — each

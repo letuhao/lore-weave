@@ -50,7 +50,7 @@ sqlx = { workspace = true }
 # The rendered body itself never leaves the Composer call stack (S09 §12Y
 # body-never-stored invariant); the hash is what crosses into the audit row
 # and the bundle. RustCrypto's sha2 = no openssl dep, no Windows pain.
-sha2 = "0.10"
+sha2 = "0.11"
 
 # S6 / H1-loom — the CircuitBreaker sync core now lives in a tokio-free leaf
 # crate (so loom can build it). resilience.rs re-exports CircuitBreaker etc.
@@ -76,4 +76,4 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"
 # tokio::Semaphore, which shuttle can't intercept; see D-W2-BULKHEAD-SHUTTLE-LITERAL).
 # Run: `RUSTFLAGS="--cfg shuttle" cargo test -p dp-kernel bulkhead_shuttle`.
 [target.'cfg(shuttle)'.dev-dependencies]
-shuttle = "0.7"
+shuttle = "0.9"

@@ -51,6 +51,7 @@ from app.context.formatters.stopwords import (
     CJK_PARTICLES,
     STOPPHRASES_LOWER,
 )
+from app.extraction.scripts import CJK_FAMILY_RUN_RE, LATIN_NAME_RE
 from app.db.models import Project
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import CypherSession
@@ -67,17 +68,17 @@ __all__ = [
 
 # ── candidate extraction ───────────────────────────────────────────────────
 
-# Matches English capitalized phrases: `Kai`, `Master Lin`, `The Dragon Lord`.
-# Limited to 1-3 word sequences to avoid false-positive sentence starts.
-_ENGLISH_CAPITALIZED = re.compile(
-    r"\b[A-Z][a-z]+(?:[\s\-][A-Z][a-z]+){0,2}\b"
-)
+# Matches capitalized phrases (1-3 words), Vietnamese-diacritic aware:
+# `Kai`, `Master Lin`, `Nguy\u1ec5n V\u0103n`, `Tr\u1ea7n \u0110\u01b0\u1eddng`. Shared with the extraction
+# entity detector via app.extraction.scripts (ML-3: was an ASCII-only
+# capitalized regex that shredded vi names \u2014 "Nguy\u1ec5n" \u2192 "Nguy").
+_CAPITALIZED = LATIN_NAME_RE
 
-# Matches runs of 2+ CJK characters. The run is then re-split inside
-# _push_cjk on CJK_PARTICLES (shared in app.context.formatters.stopwords).
-# Python's `re` doesn't support character-class intersection, which is
-# why we split in two passes.
-_CJK_RUN = re.compile(r"[\u4e00-\u9fff]{2,}")
+# Matches runs of 2+ CJK-family characters (Han + kana + hangul; was Han-only,
+# so ja kana \u30ab\u30a4 / ko hangul \uae40\ucca0\uc218 never surfaced). The run is re-split inside
+# _push_cjk on CJK_PARTICLES (zh + ja particles; ko left whole). Python's `re`
+# doesn't support character-class intersection, which is why we split in two passes.
+_CJK_RUN = CJK_FAMILY_RUN_RE
 
 # Secondary splitter used inside _push_cjk to break long CJK runs at particles.
 _CJK_SPLIT = re.compile(f"[{CJK_PARTICLES}]+")
@@ -175,9 +176,9 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
         if len(out) >= max_candidates:
             return out
 
-    # 2) English capitalized phrases. For `Master Lin` we also push `Lin`
-    #    (the last token) so a brute exact-match on the bare name wins.
-    for match in _ENGLISH_CAPITALIZED.finditer(message):
+    # 2) Latin capitalized phrases (English + Vietnamese). For `Master Lin` we
+    #    also push `Lin` (the last token) so a brute exact-match on the bare name wins.
+    for match in _CAPITALIZED.finditer(message):
         phrase = match.group(0)
         _push(phrase)
         if len(out) >= max_candidates:
@@ -231,6 +232,7 @@ async def select_glossary_semantic(
     query: str,
     max_entities: int = 20,
     max_tokens: int = 800,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     """mui #4 — semantic glossary selection (architecture B).
 
@@ -290,7 +292,7 @@ async def select_glossary_semantic(
         return []
 
     rows = await glossary_client.fetch_entities_by_ids(
-        book_id=book_id, entity_ids=ranked_ids
+        book_id=book_id, entity_ids=ranked_ids, language=language
     )
     by_id = {r.entity_id: r for r in rows}
     out: list[GlossaryEntityForContext] = []
@@ -318,13 +320,14 @@ async def select_glossary_semantic(
 
 
 async def _pinned_entities(
-    client: GlossaryClient, user_id: UUID, book_id: UUID, max_tokens: int
+    client: GlossaryClient, user_id: UUID, book_id: UUID, max_tokens: int,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     """Fetch just the pinned tier (empty-query select-for-context returns
     pinned + recent; keep only pinned). Best-effort — [] on failure."""
     rows = await client.select_for_context(
         user_id=user_id, book_id=book_id, query="",
-        max_entities=10, max_tokens=max_tokens,
+        max_entities=10, max_tokens=max_tokens, language=language,
     )
     return [r for r in rows if r.tier == "pinned"]
 
@@ -338,6 +341,7 @@ async def _semantic_with_pinned(
     message: str,
     max_entities: int,
     max_tokens: int,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     """mui #4 K-2: vector-ranked entities + pinned merged ahead. Returns []
     if semantic yielded nothing (caller falls back to FTS)."""
@@ -354,12 +358,13 @@ async def _semantic_with_pinned(
             query=message,
             max_entities=max_entities,
             max_tokens=max_tokens,
+            language=language,
         )
     if not semantic:
         return []
     # Pinned is an authoring signal vectors can't represent — merge it ahead
     # of the semantic hits, deduped by entity_id (AC3).
-    pinned = await _pinned_entities(client, user_id, project.book_id, max_tokens)
+    pinned = await _pinned_entities(client, user_id, project.book_id, max_tokens, language)
     seen: set[str] = set()
     out: list[GlossaryEntityForContext] = []
     for e in [*pinned, *semantic]:
@@ -379,6 +384,7 @@ async def select_glossary_for_context(
     max_entities: int = 20,
     max_tokens: int = 800,
     embedding_client: EmbeddingClient | None = None,
+    language: str | None = None,
 ) -> list[GlossaryEntityForContext]:
     if project.book_id is None:
         return []
@@ -391,7 +397,7 @@ async def select_glossary_for_context(
         semantic = await _semantic_with_pinned(
             client, embedding_client,
             user_id=user_id, project=project, message=message,
-            max_entities=max_entities, max_tokens=max_tokens,
+            max_entities=max_entities, max_tokens=max_tokens, language=language,
         )
         if semantic:
             return semantic
@@ -408,6 +414,7 @@ async def select_glossary_for_context(
             query="",
             max_entities=max_entities,
             max_tokens=max_tokens,
+            language=language,
         )
 
     # K4-I2: divide the entity budget across candidates with a small
@@ -424,6 +431,7 @@ async def select_glossary_for_context(
             query=candidate,
             max_entities=per_call_limit,
             max_tokens=max_tokens,
+            language=language,
         )
         for candidate in candidates
     ]

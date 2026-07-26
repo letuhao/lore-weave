@@ -1,0 +1,49 @@
+{
+  "anonymous": "مجهول",
+  "joined": "انضم في {{date}}",
+  "followers": "متابع",
+  "following": "متابع",
+  "follow": "متابعة",
+  "unfollow": "متابع",
+  "editProfile": "تعديل الملف الشخصي",
+  "loading": "جاري التحميل...",
+  "noBooks": "لم يتم نشر أي كتب بعد.",
+  "noTranslations": "لا توجد ترجمات بعد.",
+  "errorLoading": "فشل تحميل الملف الشخصي.",
+  "followError": "فشل في متابعة المستخدم.",
+  "unfollowError": "فشل في إلغاء متابعة المستخدم.",
+  "userNotFound": "المستخدم غير موجود.",
+  "achievements": "الإنجازات",
+  "chapters": "فصول",
+  "readers": "قراء",
+  "recentActivity": "النشاط الأخير",
+  "last7d": "آخر 7 أيام",
+  "last30d": "آخر 30 يومًا",
+  "translationLanguages": "لغات الترجمة",
+  "stats": {
+    "books": "الكتب",
+    "chaptersTranslated": "الفصول المترجمة",
+    "totalReaders": "إجمالي القراء",
+    "followers": "المتابعون",
+    "totalTranslations": "إجمالي الترجمات",
+    "languages": "اللغات"
+  },
+  "achievement": {
+    "booksPublished": "تم نشر {{count}} كتاب",
+    "booksPublished_other": "تم نشر {{count}} كتاب",
+    "kReaders": "+{{count}} ألف قارئ",
+    "hundredReaders": "أكثر من 100 قارئ",
+    "followers": "{{count}} متابع",
+    "multiLangTranslator": "مترجم بـ {{count}} لغات",
+    "fiftyChapters": "تمت ترجمة +50 فصل"
+  },
+  "loadError": "فشل تحميل الكتب.",
+  "noWiki": "لا توجد مساهمات في الويكي بعد.",
+  "wikiError": "فشل تحميل مساهمات الويكي.",
+  "untitled": "بدون عنوان",
+  "tabs": {
+    "books": "الكتب",
+    "translations": "الترجمات",
+    "wiki": "مساهمات الويكي"
+  }
+}

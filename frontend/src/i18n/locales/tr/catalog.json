@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Hikayeleri Keşfedin",
+    "subtitle": "LoreWeave topluluğundan herkese açık romanlara göz atın. Hikayeleri okuyun, çevirin ve diller arası keşfe çıkın.",
+    "search_placeholder": "Başlık, yazar veya dile göre ara...",
+    "search_aria": "Kataloğu ara",
+    "no_books": "Kitap bulunamadı. Farklı bir arama veya filtre deneyin.",
+    "load_failed": "Katalog yüklenemedi"
+  },
+  "filter": {
+    "lang_all": "Hepsi",
+    "clear_genres": "Türleri temizle",
+    "books_found": "{{count}} kitap bulundu",
+    "sort_aria": "Kitapları şuna göre sırala",
+    "sort": {
+      "recent": "En yeni",
+      "popular": "En popüler",
+      "chapters": "En çok bölüm",
+      "alpha": "Alfabetik"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} böl"
+  },
+  "detail": {
+    "breadcrumb_browse": "Göz At",
+    "public_badge": "Herkese Açık",
+    "unlisted_badge": "Listelenmemiş",
+    "chapters_count": "{{count}} bölüm",
+    "available_languages": "Mevcut diller",
+    "original": "Orijinal",
+    "start_reading": "Okumaya Başla",
+    "no_chapters_yet": "Henüz bölüm yok",
+    "share": "Paylaş",
+    "copy_link": "Bağlantıyı Kopyala",
+    "loading": "Yükleniyor...",
+    "chapters_heading": "Bölümler",
+    "no_chapters_available": "Mevcut bölüm bulunmuyor.",
+    "untitled": "Başlıksız",
+    "words": "{{count}} kelime",
+    "showing_chapters": "{{total}} bölümden {{from}}–{{to}} arası gösteriliyor",
+    "stat_chapters": "Bölümler",
+    "stat_languages": "Diller",
+    "stat_original": "Orijinal",
+    "stat_published": "Yayınlandı",
+    "na": "Yok",
+    "book_not_found": "Kitap bulunamadı",
+    "back_to_browse": "Göz Atmaya Dön",
+    "link_copied": "Bağlantı kopyalandı",
+    "copy_failed": "Kopyalama başarısız",
+    "load_chapters_failed": "Bölümler yüklenemedi"
+  },
+  "shared": {
+    "indicator": "Paylaşılan bir bağlantıyı görüntülüyorsunuz. Bu kitap herkese açık olarak listelenmemiştir.",
+    "invalid": "Bu paylaşılan bağlantı geçersiz veya süresi dolmuş.",
+    "not_found": "Paylaşılan bağlantı bulunamadı veya süresi doldu",
+    "browse_instead": "Bunun yerine herkese açık kitaplara göz atın",
+    "back_to_chapters": "Bölümlere dön",
+    "ch_short": "Böl. {{n}}",
+    "load_chapter_failed": "Bölüm yüklenemedi: {{error}}"
+  }
+}

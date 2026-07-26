@@ -35,6 +35,12 @@ Standard AI translators treat your novel like a news article. LoreWeave's transl
 
 The composition engine assembles your published chapters, character relationships, and lore context before drafting a single word. An advisory critic cross-checks every suggestion against your established canon. You still decide what goes in — but the AI can no longer confidently write things that never happened in your story.
 
+### A workspace that holds your whole novel at once
+
+Writing a long novel is not a text-editor problem. You need the chapter, the outline, the character who appeared 40 chapters ago, the rule you set for your magic system, and the AI — all at the same time, without losing your place.
+
+The **Writing Studio** is a dockable workspace built for exactly that. Manuscript, plan, story bible, search, and quality live on one rail; every panel can be split, stacked, floated, or **popped out into its own window** — put the canon on your second monitor and write on your first. A command palette (`⌘P`) jumps to any chapter, scene, or arc. The AI co-writer is a panel like any other, so it sees the same book you do — and the status bar keeps your live token spend in view while you work.
+
 ### One platform — write, translate, worldbuild, and collaborate, all connected
 
 The knowledge graph that grounds your AI chat also grounds your translations. The glossary you maintain for worldbuilding also enforces consistency in every translated chapter. The lore you extract today becomes the AI's context tomorrow. Nothing stays siloed — every part of LoreWeave feeds every other part.
@@ -126,11 +132,25 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 - Evidence linking — tie every lore entry to the exact paragraph that establishes it
 - Automatic entity and relationship extraction from chapters
 
+### The Writing Studio
+- Dockable, pop-out-able panel workspace — arrange the editor, canon, plan, and AI panels the way you work
+- **PlanForge** — plan a novel's structure from your premise, in rules mode (deterministic) or LLM mode
+- **Plan Hub** — a lane-based plan canvas for arcs and beats
+- **Steering rules** — per-book author rules injected into every book-scoped AI turn ("story-bible-as-steering")
+- Motif and arc libraries with conformance checking against what you actually wrote
+
 ### AI Co-Writing
 - Lore-grounded prose suggestions anchored to your published canon
 - Spoiler-safe context assembly — the AI sees only what's relevant to the current scene
 - Advisory prose critic flags potential canon contradictions before you accept a suggestion
 - Auto Reasoning Mode: thinking-capable models switch in automatically when it helps
+- **Auto-Draft Factory** — run a whole drafting campaign across chapters with a budget ceiling and per-chapter progress
+
+### Worlds & Automation
+- **Worlds** — group books under one shared canon container, with an auto-provisioned world bible
+- **Agent extensibility** — register skills, plugins, and MCP servers; bind which ones auto-seed per mode (ask / write / plan)
+- **Workflow rack** — saved multi-step agent recipes ("set up my world", "check my story for contradictions")
+- **Public MCP gateway** — let external AI agents reach your lore over MCP, with OAuth consent, scope limits, and spend caps
 
 ### Lore Enrichment
 - AI-powered gap detection in your worldbuilding
@@ -149,9 +169,11 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 
 ### Platform
 - BYOK: OpenAI, Anthropic, LM Studio, Ollama, any OpenAI-compatible endpoint
+- Every LLM, embedding, rerank, image, audio, and STT call routes through one provider gateway — no service holds a provider key
 - Dynamic model discovery (110+ OpenAI models, 58+ LM Studio models auto-detected)
 - AI usage monitoring — cost estimates, token breakdowns per model and per operation
-- Multilingual UI (4 languages)
+- Unified job control plane — every async job (translation, extraction, drafting, media) in one queue view with live progress
+- Multilingual UI — **18 languages**
 - Recycle bin with restore
 
 ---
@@ -163,12 +185,16 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 cd infra
 docker compose up --build
 ```
-Access the UI at [http://localhost:5173](http://localhost:5173)
+Access the UI at **[http://localhost:5174](http://localhost:5174)** · gateway on `:3123` · admin CMS on `:5175`.
+
+> `:5174` serves the **baked** nginx production build. Rebuild the image to see frontend changes — a host `vite dev` can shadow it.
 
 ### Manual / Hybrid
 1. **Infra**: `cd infra && docker compose up -d postgres minio redis mailhog`
 2. **Services**: Start individual services (see each service's README)
 3. **Frontend**: `cd frontend && npm install && npm run dev`
+
+`docker compose up` starts the **novel platform**. The Living Worlds reality-ops tier (14 SRE services, the Rust world/travel services, and the meta Patroni cluster) is not in the default stack.
 
 ---
 
@@ -257,7 +283,7 @@ This is not a chatbot with a roleplay prompt. It is a text-based **LLM MMO RPG**
 
 Implementation is gated on novel-platform maturity and prototype data on LLM cost per user-hour, retrieval quality on real books, and IP/canon ownership rules. **The novel platform ships first. The game builds on the same substrate — glossary, knowledge graph, book canon — without re-engineering.**
 
-The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/) — 179 features catalogued, ~150 decisions locked with reasoning, architecture fully specified.
+The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/) — **474 features catalogued** across 12 categories, ~150 decisions locked with reasoning, architecture fully specified. Start at the [feature catalog](docs/03_planning/LLM_MMO_RPG/catalog/_index.md) or the [feature-design tree](docs/03_planning/LLM_MMO_RPG/features/_index.md).
 
 ---
 
@@ -268,7 +294,7 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 | **Phase 1** | Platform Core — writing, translation, glossary, sharing | ✅ Done |
 | **Phase 2** | Knowledge Graph & RAG — automatic extraction, semantic search | ✅ Done |
 | **Phase 3** | Intelligence Layer — canon co-writing, lore enrichment, translation quality | 🔄 In Progress |
-| **Phase 4** | Continuation & Canon Safety — long-form AI drafting grounded in canon | Planned |
+| **Phase 4** | Continuation & Canon Safety — the Writing Studio, PlanForge, canon rules, Auto-Draft Factory | 🔄 In Progress |
 | **Phase 5** | Hardening & Scale — performance, multi-tenancy, cloud deployment | Planned |
 | **Phase 6+** | **Living Worlds** — LLM-driven NPCs, shared persistent realities, the MMO | Foundation building |
 
@@ -276,10 +302,13 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 
 ## Documentation
 
-- [Architecture & Services](docs/ARCHITECTURE.md) — services, tech stack, infrastructure diagram
+- [Architecture & Services](docs/ARCHITECTURE.md) — all 47 services, tech stack, infrastructure, ports
+- [Data Architecture](docs/DATA_ARCHITECTURE.md) — SSOT layers, the 22 databases, event flows
+- [Frontend Feature Index](docs/FEATURE_INDEX.md) — every UI feature → route → backing service
+- [Standards index](docs/standards/README.md) — every cross-cutting rule, where it lives, how it's enforced
 - [Planning docs](docs/03_planning/) — module-level design and execution packs
 - [API contracts](contracts/api/) — OpenAPI specs per service
-- [Design mockups](design-drafts/) — 30+ interactive HTML mockups
+- [Design mockups](design-drafts/) — 116 interactive HTML mockups
 
 ---
 

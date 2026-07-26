@@ -1,0 +1,26 @@
+{
+  "scenario": "S01",
+  "title": "Help me set up the world info for my book",
+  "maps_to": "W1 glossary-bootstrap",
+  "persona": "P2 Linh (worldbuilder, near-zero platform knowledge)",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "a book basically empty of world info — SKILL_BOOK_ID",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "ontology", "kind", "attribute", "attribute description", "genre code",
+    "adopt standards", "adopt", "confirm-token", "entity", "schema"
+  ],
+  "movements": [
+    {"id": "A", "label": "Propose a structure"},
+    {"id": "B", "label": "Refine + apply"},
+    {"id": "C", "label": "Read it back"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Help me set up the world info for this book — it's a multi-world xianxia/harem story."},
+    {"movement": "B", "user": "Good, but also add something for cultivation systems, then go ahead."},
+    {"movement": "B", "user": "Yes, go ahead."},
+    {"movement": "C", "user": "What did you set up?"}
+  ]
+}

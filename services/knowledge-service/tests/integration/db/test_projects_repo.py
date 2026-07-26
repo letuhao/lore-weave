@@ -45,6 +45,45 @@ async def test_list_excludes_archived_by_default(pool):
 
 
 @pytest.mark.asyncio
+async def test_erase_resolver_includes_archived_assistant_epochs(pool):
+    """A1 (right-to-erasure) — a CLOSED employment epoch is an ARCHIVED assistant project. It must be
+    EXCLUDED from the recall-exclude resolver (`list_assistant_project_ids`, D16 — a closed epoch stays
+    out of default recall) but INCLUDED by the account-erase resolver (`list_all_assistant_project_ids`),
+    because close-epoch archives without purging — the decryptable diary data still lives under it and
+    right-to-erasure must reach it. Resolving erase with `NOT is_archived` (the old bug) stranded it."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    # A job change: the first (old) epoch is closed → archived; a fresh epoch becomes the active one.
+    old, _ = await repo.get_or_create_assistant_project(user, uuid4())
+    await repo.archive(user, old.project_id)
+    new, created = await repo.get_or_create_assistant_project(user, uuid4())
+    assert created and new.project_id != old.project_id  # the archived one didn't satisfy get-or-create
+
+    recall_targets = set(await repo.list_assistant_project_ids(user))
+    erase_targets = set(await repo.list_all_assistant_project_ids(user))
+
+    assert recall_targets == {str(new.project_id)}  # archived epoch stays OUT of recall
+    # A1 fix: erase reaches BOTH — the archived epoch is not stranded.
+    assert erase_targets == {str(new.project_id), str(old.project_id)}
+    assert str(old.project_id) in erase_targets and str(old.project_id) not in recall_targets
+
+
+@pytest.mark.asyncio
+async def test_erase_resolver_is_user_scoped(pool):
+    """A1 — the archived-inclusive erase resolver is still tenant-scoped: user B's archived assistant
+    epoch never appears in user A's erase targets."""
+    repo = ProjectsRepo(pool)
+    user_a, user_b = uuid4(), uuid4()
+    b_old, _ = await repo.get_or_create_assistant_project(user_b, uuid4())
+    await repo.archive(user_b, b_old.project_id)
+    a_active, _ = await repo.get_or_create_assistant_project(user_a, uuid4())
+
+    a_erase = set(await repo.list_all_assistant_project_ids(user_a))
+    assert a_erase == {str(a_active.project_id)}
+    assert str(b_old.project_id) not in a_erase
+
+
+@pytest.mark.asyncio
 async def test_list_filters_by_book_id(pool):
     """C5 (ARCH-1): the editor AI panel resolves a book's project via the
     book_id filter. Returns only the project linked to that book, scoped to

@@ -75,31 +75,11 @@ func (s *Server) createWorld(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	var worldID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-INSERT INTO worlds(owner_user_id, name, description)
-VALUES($1,$2,$3)
-RETURNING id
-`, ownerID, in.Name, nullableDescription(in.Description)).Scan(&worldID); err != nil {
+	// world + hidden bible book + sort_order-0 bible chapter (shared with the
+	// world_create MCP tool via createWorldCore, so both paths provision identically).
+	worldID, _, _, err := s.createWorldCore(ctx, tx, ownerID, in.Name, in.Description)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create world")
-		return
-	}
-
-	// The world's bible book: a standalone book attached to this world, holding
-	// the hidden sort_order-0 bible chapter. It is grouped INTO the world it
-	// anchors (world_id set), so the world is non-empty from creation.
-	var bibleBookID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-INSERT INTO books(owner_user_id, title, description, world_id, is_bible)
-VALUES($1,$2,$3,$4,true)
-RETURNING id
-`, ownerID, in.Name+" — World Bible", "Auto-created world bible (hidden).", worldID).Scan(&bibleBookID); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create world bible book")
-		return
-	}
-
-	if _, err := provisionBibleChapter(ctx, tx, bibleBookID, ownerID); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to provision world bible chapter")
 		return
 	}
 
@@ -336,12 +316,13 @@ func (s *Server) deleteWorld(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
 		return
 	}
-	ct, err := s.pool.Exec(r.Context(), `DELETE FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID)
+	// S-07 audit — route the world's hidden bible through purge_pending (not orphan it active).
+	deleted, err := s.deleteWorldWithBiblePurge(r.Context(), worldID, ownerID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to delete world")
 		return
 	}
-	if ct.RowsAffected() == 0 {
+	if !deleted {
 		writeError(w, http.StatusNotFound, "WORLD_NOT_FOUND", "world not found")
 		return
 	}
@@ -424,7 +405,11 @@ func (s *Server) moveBookIntoWorld(w http.ResponseWriter, r *http.Request) {
 	// is_bible=false guards against re-parenting an auto-created world-bible
 	// container book — moving it would orphan its origin world's lore anchor.
 	// A bible-book target falls through to the RowsAffected==0 → 404 below.
-	ct, err := s.pool.Exec(r.Context(), `UPDATE books SET world_id=$1, updated_at=now() WHERE id=$2 AND is_bible=false`, worldID, bookID)
+	// WS-1.2 · EGRESS (review-impl): a diary must never be moved into a world. A world can
+	// be shared and its member books surface through world-scoped reads, so absorbing a
+	// private diary into one is a share by the back door. `kind<>'diary'` (like is_bible)
+	// makes a diary target fall through to the RowsAffected==0 → 404 below.
+	ct, err := s.pool.Exec(r.Context(), `UPDATE books SET world_id=$1, updated_at=now() WHERE id=$2 AND is_bible=false AND kind<>'diary'`, worldID, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to move book")
 		return

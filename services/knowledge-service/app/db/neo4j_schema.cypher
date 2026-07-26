@@ -45,16 +45,31 @@ FOR (p:Project) REQUIRE p.id IS UNIQUE;
 CREATE CONSTRAINT session_id_unique IF NOT EXISTS
 FOR (s:Session) REQUIRE s.id IS UNIQUE;
 
-// K11.5b-R1/R1: glossary FK uniqueness. Two `:Entity` nodes
-// must never share the same `glossary_entity_id` — the FK is
-// the rename-aware lookup key for `get_entity_by_glossary_id`
-// and a duplicate would crash `result.single()`. Neo4j
-// uniqueness constraints allow multiple NULLs but reject
-// duplicate non-NULL values, which is exactly the semantics we
-// want for a nullable FK. Discovered entities (FK = NULL) are
-// unaffected.
-CREATE CONSTRAINT entity_glossary_id_unique IF NOT EXISTS
-FOR (e:Entity) REQUIRE e.glossary_entity_id IS UNIQUE;
+// K11.5b-R1/R1 + D-KG-GLOSSARY-FK-GLOBAL-UNIQUE (2026-07-10): the glossary FK is
+// unique PER (user, project) — not globally.
+//
+// The old `entity_glossary_id_unique` required `e.glossary_entity_id` to be unique
+// across the WHOLE database, so exactly one :Entity node anywhere could point at a
+// given glossary entity. But `Entity.id` is hash(user_id, project_id, name, kind) —
+// a per-project identity — so a second knowledge project over the same book
+// legitimately needs its OWN node for that entity. Under the global constraint that
+// project's anchor upsert raised ConstraintValidationFailed and the entity was left
+// silently un-anchored (hit `kg_project_entities_to_nodes` AND the shipped extraction
+// Pass-0 anchor pre-loader).
+//
+// Composite uniqueness keeps what made the original constraint useful — within a
+// project a glossary entity still resolves to at most ONE node, so the FK remains a
+// valid single-row lookup key (`get_entity_by_glossary_id`). Neo4j exempts rows with
+// ANY NULL in the key, so discovered entities (FK = NULL) are unaffected, exactly as
+// before. Composite UNIQUENESS is Community-supported (only NODE KEY is Enterprise).
+//
+// Existing data satisfies the strictly-stronger global constraint, so this creates
+// cleanly with no backfill.
+// Spec: docs/specs/2026-07-10-kg-glossary-fk-project-scoped.md
+DROP CONSTRAINT entity_glossary_id_unique IF EXISTS;
+
+CREATE CONSTRAINT entity_glossary_fk_unique IF NOT EXISTS
+FOR (e:Entity) REQUIRE (e.user_id, e.project_id, e.glossary_entity_id) IS UNIQUE;
 
 // ─────────────────────────────────────────────────────────────────
 // user_id NOT NULL — enforced at the APPLICATION layer, not here.
@@ -150,6 +165,14 @@ FOR (f:Fact) ON (f.user_id, f.evidence_count);
 // the windowed per-entity facts read.
 CREATE INDEX fact_user_from_order IF NOT EXISTS
 FOR (f:Fact) ON (f.user_id, f.from_order);
+
+// F3 — story (valid) time axis index. The as-of-N read is the half-open range
+// `valid_from_ordinal <= N AND N < valid_to_ordinal_eff` (§12.3.1). The composite
+// `(user_id, valid_from_ordinal, valid_to_ordinal_eff)` lets the range query be
+// index-served; valid_to_ordinal_eff is the null-sink ceiling (INT64_MAX) for
+// open intervals so an open fact is included without an OR-NULL branch.
+CREATE INDEX fact_user_valid_ordinal IF NOT EXISTS
+FOR (f:Fact) ON (f.user_id, f.valid_from_ordinal, f.valid_to_ordinal_eff);
 
 // ─────────────────────────────────────────────────────────────────
 // A2-S1 :EntityStatus — coarse entity status timeline (active|gone) for the
@@ -309,3 +332,44 @@ OPTIONS {
     `vector.similarity_function`: 'cosine'
   }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// KG-ML M6 (D12 / V6) — CJK full-text index over :Passage text.
+//
+// The lexical leg's other home (book-service Postgres) only has pg_trgm:
+// trigram ranking is noise on CJK and a GIN-trigram index can't accelerate a
+// 2-char query, so a short Chinese proper-noun keyword search has poor recall
+// (V6 FAIL). Neo4j ships a built-in `cjk` analyzer (bi-grams, normalised,
+// case-folded) — the M6-entry probe confirmed it's available with NO custom
+// image (Postgres zhparser/pg_jieba are NOT, so they'd need an infra change).
+// So the CJK-tokenized lexical leg lives HERE, over the same `:Passage` nodes
+// the semantic leg already searches (they carry `source_lang`, M1/M2). The
+// book-service trigram leg stays as the script-agnostic fallback.
+//
+// Full-text indexes are global (like vector indexes) — the query helper
+// post-filters on `user_id`/`project_id`/`canon` for tenant scope. Idempotent
+// via IF NOT EXISTS.
+CREATE FULLTEXT INDEX passage_text_cjk_ft IF NOT EXISTS
+FOR (n:Passage) ON EACH [n.text]
+OPTIONS { indexConfig: { `fulltext.analyzer`: 'cjk' } };
+
+// ── KG customizable-ontology epic (L1) — additive seam, unused at v1 ─────────
+// `schema_version` stamps each edge with the resolved-schema version it was
+// written under (M3); `graph_id` is the layer-4 partition seam on the EDGE
+// (M2 — nodes are shared across views/graphs, so the seam lives on the
+// relationship, never the node). Both default NULL and are populated only at
+// L7 enforcement / a later partition epic. Indexed now so the seam is query-
+// ready without a later reindex. RELATES_TO is the canonical relation edge
+// (app/db/neo4j_repos/relations.py).
+CREATE INDEX relates_to_schema_version IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.schema_version);
+
+CREATE INDEX relates_to_graph_id IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.graph_id);
+
+// F3 — story (valid) time axis index for the RELATES_TO edge. Mirrors
+// fact_user_valid_ordinal: the as-of-N read filters
+// `valid_from_ordinal <= N AND N < valid_to_ordinal_eff` (§12.3.1). Relationship
+// property indexes accelerate the temporal as-of-chapter graph read.
+CREATE INDEX relates_to_valid_ordinal IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.valid_from_ordinal, r.valid_to_ordinal_eff);

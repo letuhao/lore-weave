@@ -39,9 +39,12 @@ import asyncio
 import json
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 from uuid import UUID
+
+from loreweave_vecmath import cosine_similarity_prenormed as _cosine
+from loreweave_vecmath import l2_norm as _norm
 
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.llm_client import LLMClient
@@ -149,8 +152,12 @@ async def select_l3_passages(
     user_uuid,   # UUID, needed by embedding_client
     model_source: str = "user_model",
     current_chapter_index: int | None = None,
+    working_scope_boost: float = 0.0,
+    working_scope_window: int = 2,
     llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
+    reranker_client=None,
+    cross_encoder_model: str | None = None,
 ) -> list[L3Passage]:
     """Run K18.3 semantic retrieval.
 
@@ -221,7 +228,15 @@ async def select_l3_passages(
         ]
         ref_chapter = max(chapter_indices) if chapter_indices else None
     scored = [
-        (_apply_post_filters(hit, hub_penalty, recency_w, ref_chapter), hit)
+        (
+            _apply_post_filters(
+                hit, hub_penalty, recency_w, ref_chapter,
+                working_chapter=current_chapter_index,
+                working_boost=working_scope_boost,
+                working_window=working_scope_window,
+            ),
+            hit,
+        )
         for hit in hits
     ]
 
@@ -248,9 +263,11 @@ async def select_l3_passages(
 
     logger.info(
         "K18.3: L3 selection intent=%s pool=%d hits=%d final=%d hub_penalty=%.2f "
-        "recency_w=%+.1f",
+        "recency_w=%+.1f working_chapter=%s working_boost=%.2f",
         intent.intent.value, pool_size, len(hits), len(final),
         hub_penalty, recency_w,
+        current_chapter_index if working_scope_boost > 0.0 else None,
+        working_scope_boost,
     )
     passages = [
         L3Passage(
@@ -264,6 +281,27 @@ async def select_l3_passages(
         )
         for score, hit in final
     ]
+
+    # 7b. Cross-encoder rerank (Track 4 P2) — a purpose-built reranker (BYOK via
+    #     provider-registry, e.g. bge-reranker-v2-m3) reorders the final cut by true
+    #     query↔passage relevance. Opt-in via extraction_config["cross_encoder_rerank_model"];
+    #     PREFERRED over the generative rerank (cheaper + purpose-built). Degrades to
+    #     the MMR order on any failure (rerank() returns None). When it succeeds we
+    #     return immediately — no need to also run the generative rerank.
+    if reranker_client is not None and cross_encoder_model and len(passages) >= 2:
+        reranked = await _cross_encoder_rerank(
+            reranker_client,
+            query=message,
+            passages=passages,
+            model_ref=cross_encoder_model,
+            user_id=user_uuid,
+            model_source=model_source,
+        )
+        if reranked is not None:
+            logger.info(
+                "K18.3/P2: cross-encoder reranked final cut (%d passages)", len(reranked)
+            )
+            return reranked
 
     # 8. Optional generative rerank (D-K18.3-02). Opt-in via
     #    project.extraction_config["rerank_model"]; skipped when the
@@ -295,8 +333,13 @@ def _apply_post_filters(
     hub_penalty: float,
     recency_weight: float,
     current_chapter: int | None,
+    *,
+    working_chapter: int | None = None,
+    working_boost: float = 0.0,
+    working_window: int = 2,
 ) -> float:
-    """Combine raw cosine score with hub penalty + recency weight.
+    """Combine raw cosine score with hub penalty + recency weight + M1b
+    working-scope boost.
 
     Recency decay: `1 / (1 + age_in_chapters)`. Multiplied by the
     intent's `recency_weight`, which is signed — HISTORICAL intent
@@ -304,6 +347,16 @@ def _apply_post_filters(
     multiplier and older chapters float up. The `1 +` in the
     product prevents the score from going to zero when `recency_w`
     is exactly the magnitude of the decay.
+
+    M1b working-scope boost (`working_boost > 0` + a resolved
+    `working_chapter`): passages WITHIN `working_window` chapters of the
+    chapter the editor has open are multiplicatively boosted with a linear
+    falloff — ×(1 + boost) at the open chapter itself, tapering to a small
+    positive at the window edge, and untouched beyond it. Purely additive
+    (never penalizes a distant passage below its raw score), and independent
+    of `recency_weight` so it fires on GENERAL intent too. `working_chapter`
+    is the EDITOR's open chapter (not the recency `current_chapter` fallback,
+    which is the newest passage in the pool when the caller supplies none).
     """
     score = hit.raw_score
     if hit.passage.is_hub:
@@ -317,6 +370,17 @@ def _apply_post_filters(
         # decay around 0 so weight -1 inverts the preference rather
         # than just flattening it.
         score *= 1.0 + recency_weight * (decay - 0.5)
+
+    if (
+        working_boost > 0.0
+        and working_chapter is not None
+        and hit.passage.chapter_index is not None
+    ):
+        dist = abs(working_chapter - hit.passage.chapter_index)
+        if dist <= working_window:
+            # Linear falloff over (window + 1): dist=0 → full boost;
+            # dist=window → boost * 1/(window+1); beyond window → no change.
+            score *= 1.0 + working_boost * (1.0 - dist / (working_window + 1))
     return score
 
 
@@ -333,23 +397,10 @@ def _jaccard(a: str, b: str) -> float:
     return inter / union if union else 0.0
 
 
-def _cosine(a: list[float], na: float, b: list[float], nb: float) -> float:
-    """Cosine similarity with pre-computed L2 norms.
-
-    Returns 0.0 if either vector has zero magnitude — safer than
-    raising, because MMR treats 0 as "not redundant" which is the
-    conservative call for a degenerate vector.
-    """
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    return dot / (na * nb)
-
-
-def _norm(v: list[float]) -> float:
-    """L2 norm for the cosine denominator. Separated from `_cosine` so
-    we can precompute per-hit once and amortize across the N² loop."""
-    return math.sqrt(sum(x * x for x in v))
+# `_cosine` / `_norm` are the shared loreweave_vecmath implementations
+# (imported above, aliased to keep this module's existing call sites
+# unchanged): cosine_similarity_prenormed / l2_norm — the pre-normalized
+# hot-loop variant MMR needs (see module docstring above the import).
 
 
 def _mmr_rerank(
@@ -415,6 +466,52 @@ def _mmr_rerank(
         selected.append(candidates.pop(best_idx))
 
     return selected
+
+
+# ── cross-encoder rerank (Track 4 P2) ───────────────────────────────
+
+
+async def _cross_encoder_rerank(
+    reranker_client,
+    *,
+    query: str,
+    passages: list[L3Passage],
+    model_ref: str,
+    user_id: UUID,
+    model_source: str,
+) -> list[L3Passage] | None:
+    """Reorder `passages` by a cross-encoder reranker's relevance scores.
+
+    Calls provider-registry `/internal/rerank` (BYOK `model_ref`) via the
+    reranker client, which returns ``[{"index", "relevance_score"}, …]`` sorted
+    desc (or None on ANY failure). Returns the reordered list with each passage's
+    ``score`` replaced by the cross-encoder relevance, or **None** on any degrade
+    (service down, empty/malformed result) so the caller keeps the MMR order.
+    Pure w.r.t. the input list — builds a new list via dataclasses.replace.
+    """
+    results = await reranker_client.rerank(
+        query,
+        [p.text for p in passages],
+        user_id=str(user_id),
+        model_source=model_source,
+        model_ref=model_ref,
+    )
+    if not results:  # None (failure) or [] (nothing) → degrade to MMR order
+        return None
+    reordered: list[L3Passage] = []
+    seen: set[int] = set()
+    for r in results:
+        idx = r.get("index")
+        if not isinstance(idx, int) or not (0 <= idx < len(passages)) or idx in seen:
+            return None  # malformed / out-of-range / duplicate index → degrade
+        seen.add(idx)
+        score = r.get("relevance_score")
+        p = passages[idx]
+        reordered.append(replace(p, score=float(score)) if isinstance(score, (int, float)) else p)
+    # A partial result (reranker dropped some docs) is fine — but never fabricate:
+    # if it returned FEWER than we sent, keep only what it ranked (it judged the
+    # rest irrelevant). Empty-after-filter is impossible here (results non-empty).
+    return reordered
 
 
 # ── generative rerank (D-K18.3-02) ──────────────────────────────────
@@ -557,7 +654,7 @@ async def rerank_passages(
                     "max_tokens": _rerank_max_tokens(n),
                 },
                 chunking=None,
-                job_meta={"extractor": "passage_rerank"},
+                job_meta={"usage_purpose": "passage_select", "extractor": "passage_rerank"},
                 transient_retry_budget=1,
             ),
             timeout=timeout_s,

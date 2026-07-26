@@ -40,6 +40,12 @@ violations=0
 #   - learning-service, lore-enrichment-service : AI/LLM-track services emitting to
 #     their OWN service streams (corrections / wiki-gen) — same accepted pattern as
 #     the already-exempt chat-service + knowledge-service.
+#   - composition-service/app/worker/events.py : the composition_jobs JOB-TRIGGER
+#     stream (loreweave:events:composition_jobs). NOT a domain event — it's a
+#     best-effort work-dispatch wake-up; the Postgres job row is the SSOT and the
+#     stuck-job sweeper re-drives on a missed XADD. Identical accepted pattern to
+#     lore-enrichment's resume-trigger stream (above); composition-service landed
+#     after this allowlist was written and was simply never added.
 #   - meta-worker/cmd/metaworker-bench : a foundation LOAD BENCH that XADDs synthetic
 #     xreality msgs to measure I7 consumer throughput (a test harness, not a service).
 hits=$(grep -rnE '(\b[a-zA-Z_]+\.XAdd\(|\bredis\.xadd\(|\bclient\.xadd\(|\br\.xadd\()' \
@@ -54,6 +60,7 @@ hits=$(grep -rnE '(\b[a-zA-Z_]+\.XAdd\(|\bredis\.xadd\(|\bclient\.xadd\(|\br\.xa
   | grep -vE 'services/provider-registry-service/internal/jobs/usage_relay\.go' \
   | grep -vE 'services/learning-service/' \
   | grep -vE 'services/lore-enrichment-service/' \
+  | grep -vE 'services/composition-service/app/worker/events\.py' \
   | grep -vE 'services/meta-worker/cmd/metaworker-bench/' \
   | grep -vE '_test\.go|_test\.rs|_test\.py|test_.*\.py' \
   | grep -vE ':[[:space:]]*(//|#|"""|\*|///)' || true)

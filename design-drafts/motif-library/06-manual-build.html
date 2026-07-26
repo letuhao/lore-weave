@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Manual build — Motif Library</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    motif: '#d97706', sys: '#64748b', user: '#6366f1', book: '#0ea5e9', pub: '#059669',
+    combat: '#dc2626', cultiv: '#0891b2', romance: '#db2777' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .tier-user { background:#6366f11a; color:#4f46e5; border:1px solid #6366f140; }
+  .tier-book { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .k { font-family:ui-monospace,monospace; }
+  .inp { width:100%; border:1px solid #e2e8f0; border-radius:.375rem; padding:.35rem .55rem; font-size:12px; }
+  .lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; }
+  .arrow { color:#d97706; font-weight:700; font-size:10px; }
+  .role { display:inline-flex; align-items:center; gap:.25rem; border-radius:999px; padding:.05rem .45rem; font-size:10px; font-weight:600; background:#7c3aed12; color:#6d28d9; border:1px solid #7c3aed33; }
+  .tl { display:grid; grid-template-columns: 92px repeat(10, 1fr); gap:4px; align-items:center; }
+  .tl .hd { font-size:9px; color:#94a3b8; text-align:center; }
+  .tl .lab { font-size:11px; font-weight:700; }
+  .track { height:26px; border-radius:.375rem; background:#f1f5f9; border:1px dashed #cbd5e1; display:flex; align-items:center; justify-content:center; }
+  .addslot { font-size:10px; color:#94a3b8; cursor:pointer; }
+  .addslot:hover { color:#d97706; }
+  .bar { border-radius:.375rem; padding:.15rem .4rem; font-size:10px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:grab; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold">Manual build <span class="text-slate-400">— author by hand, no AI</span></h1>
+        <p class="text-xs text-slate-500">The baseline path: a user composes a motif or arc template from scratch. AI (mine / import) only <i>enriches</i> on top.</p>
+      </div>
+      <span class="chip tier-user">DRAFT v0.1</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-library.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Library &amp; Catalog</a>
+      <a href="02-motif-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Motif editor</a>
+      <a href="03-planner-binding.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Planner binding ★</a>
+      <a href="04-mining.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Mine → template</a>
+      <a href="05-arc-template.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Arc template ★</a>
+      <a href="06-manual-build.html" class="rounded-md bg-motif px-3 py-1.5 font-medium text-white">Manual build</a>
+      <a href="07-trace-conformance.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Trace &amp; conformance ★</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl px-6 py-6 space-y-6">
+
+  <!-- two doors -->
+  <section class="rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <h2 class="text-sm font-bold text-amber-900">Two ways to build — manual is the baseline</h2>
+    <div class="mt-2 grid gap-3 md:grid-cols-2 text-[12px]">
+      <div class="rounded-md border bg-white p-3">
+        <div class="font-bold">✋ Manual (this screen)</div>
+        <div class="mt-0.5 text-slate-600">Compose from a blank canvas. Full control. No tokens spent. Always available for both motif and arc template.</div>
+      </div>
+      <div class="rounded-md border bg-white p-3">
+        <div class="font-bold">🤖 AI-assisted</div>
+        <div class="mt-0.5 text-slate-600"><a href="04-mining.html" class="text-motif underline">Mine my corpus</a> · <a href="05-arc-template.html" class="text-motif underline">Import &amp; deconstruct</a>. Produces <b>drafts</b> you then edit by hand here.</div>
+      </div>
+    </div>
+    <p class="mt-2 text-[11px] text-amber-900/80">Principle: every tier's content is <b>manually authorable as a peer to AI</b>. AI output is never auto-committed — it lands as an editable draft in this same canvas.</p>
+  </section>
+
+  <!-- manual motif -->
+  <section class="rounded-lg border bg-white p-4">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-bold">A · New motif (by hand)</h2>
+      <span class="text-[11px] text-slate-400">quick form — <a href="02-motif-editor.html" class="text-motif underline">full editor</a> has roles/conditions/links</span>
+    </div>
+    <div class="mt-3 grid grid-cols-12 gap-3">
+      <div class="col-span-4"><div class="lbl">Name</div><input class="inp mt-1" placeholder="e.g. Mentor's Final Lesson" /></div>
+      <div class="col-span-3"><div class="lbl">Kind</div><select class="inp mt-1"><option>sequence</option><option>situation</option><option>hook</option><option>emotion_arc</option></select></div>
+      <div class="col-span-3"><div class="lbl">Genre</div><input class="inp mt-1" placeholder="tu-tiên…" /></div>
+      <div class="col-span-2"><div class="lbl">Save to</div><select class="inp mt-1"><option>Book</option><option>My library</option></select></div>
+    </div>
+    <div class="mt-3">
+      <div class="lbl">Beats — type, press enter, drag to reorder</div>
+      <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <span class="rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-[11px] font-semibold text-amber-700">① …</span>
+        <span class="arrow">→</span>
+        <button class="rounded-md border border-dashed px-2 py-1 text-[11px] text-slate-400 hover:border-motif hover:text-motif">+ beat</button>
+      </div>
+    </div>
+    <div class="mt-3 flex items-center gap-2">
+      <button class="rounded-md bg-motif px-3 py-1.5 text-[12px] font-semibold text-white">Create motif</button>
+      <span class="text-[11px] text-slate-400">→ opens in the full editor to add roles + conditions</span>
+    </div>
+  </section>
+
+  <!-- manual arc template — blank timeline -->
+  <section class="rounded-lg border-2 border-amber-200 bg-amber-50/20 p-4">
+    <div class="flex items-start justify-between">
+      <div>
+        <h2 class="text-base font-bold">B · New arc template (by hand) <span class="text-slate-400 text-[12px]">— the missing manual GUI</span></h2>
+        <div class="mt-1 flex items-center gap-2 text-[12px]">
+          <input class="inp" style="width:240px" placeholder="Untitled arc" />
+          <span class="text-slate-400">span</span>
+          <input type="range" min="3" max="20" value="10" class="accent-amber-600" /><span class="text-slate-500">10 ch</span>
+        </div>
+      </div>
+      <button class="rounded-md bg-motif px-3 py-1.5 text-[12px] font-semibold text-white">Save arc template</button>
+    </div>
+
+    <!-- blank timeline canvas -->
+    <div class="mt-4 rounded-lg border bg-white p-3">
+      <div class="tl">
+        <div></div>
+        <div class="hd">1</div><div class="hd">2</div><div class="hd">3</div><div class="hd">4</div><div class="hd">5</div><div class="hd">6</div><div class="hd">7</div><div class="hd">8</div><div class="hd">9</div><div class="hd">10</div>
+      </div>
+
+      <!-- a thread the user added (combat) with one placed motif + empty slots -->
+      <div class="tl mt-1.5">
+        <div class="lab" style="color:#dc2626">⚔ combat <button class="text-slate-300 hover:text-rose-500 text-[10px]">✕</button></div>
+        <div class="track" style="grid-column:2/4; background:#dc2626; border:none"><span class="bar" style="background:transparent">humiliation ⠿</span></div>
+        <div class="track addslot" style="grid-column:4/6">+ place motif</div>
+        <div class="track addslot" style="grid-column:6/11">+ place motif</div>
+      </div>
+
+      <!-- a second thread, totally empty -->
+      <div class="tl mt-1">
+        <div class="lab" style="color:#0891b2">☯ cultivation <button class="text-slate-300 hover:text-rose-500 text-[10px]">✕</button></div>
+        <div class="track addslot" style="grid-column:2/11">+ place motif (search library or create inline)</div>
+      </div>
+
+      <!-- add-thread row -->
+      <div class="tl mt-1">
+        <button class="lab text-left text-slate-400 hover:text-motif">+ add thread</button>
+        <div class="track" style="grid-column:2/11; background:transparent; border:none"></div>
+      </div>
+
+      <!-- pacing, editable -->
+      <div class="tl mt-2 items-end">
+        <div class="lab text-slate-400">pacing</div>
+        <div style="grid-column:2/12; height:34px; display:flex; align-items:flex-end; gap:3px; border-bottom:1px solid #e2e8f0">
+          <i style="flex:1;height:20%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:30%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:25%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:40%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:45%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:50%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:55%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:70%;background:#d9770655;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:85%;background:#d97706aa;border-radius:2px;cursor:ns-resize"></i>
+          <i style="flex:1;height:100%;background:#d97706;border-radius:2px;cursor:ns-resize"></i>
+        </div>
+      </div>
+      <div class="mt-1.5 text-[10px] text-slate-400">drag a library motif onto a slot · ⠿ = drag to move/resize · drag the pacing bars to set per-chapter tension</div>
+    </div>
+
+    <!-- inline place-motif popover mock -->
+    <div class="mt-3 grid grid-cols-2 gap-3">
+      <div class="rounded-md border bg-white p-3">
+        <div class="lbl">Place a motif — what "+ place motif" opens</div>
+        <input class="inp mt-2" placeholder="search my library + public…" />
+        <div class="mt-2 space-y-1 text-[12px]">
+          <div class="flex items-center justify-between rounded border px-2 py-1 hover:border-motif"><span>Fortuitous Encounter → Legacy</span><span class="chip" style="background:#64748b14;color:#475569">sys</span></div>
+          <div class="flex items-center justify-between rounded border px-2 py-1 hover:border-motif"><span>Closed-Door Breakthrough</span><span class="chip tier-user">user</span></div>
+          <div class="flex items-center justify-between rounded border border-dashed px-2 py-1 text-slate-500"><span>+ create new motif inline</span><span class="text-[10px]">→ mini editor</span></div>
+        </div>
+      </div>
+      <div class="rounded-md border bg-white p-3">
+        <div class="lbl">Arc roster — define roles once</div>
+        <div class="mt-2 space-y-1 text-[12px]">
+          <div class="flex items-center gap-2"><span class="role">protagonist</span><input class="inp" placeholder="label / constraints" /></div>
+          <div class="flex items-center gap-2"><span class="role">mentor</span><input class="inp" placeholder="" /></div>
+          <button class="text-[11px] text-motif">+ role</button>
+        </div>
+        <p class="mt-2 text-[10px] text-slate-400">Bound to your cast at apply-time; propagates to every placement.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-t pt-4 text-[11px] text-slate-500">
+    <b class="text-slate-700">Spec deltas surfaced here:</b>
+    <ul class="mt-1 list-disc pl-5 space-y-0.5">
+      <li><b>Manual authoring is first-class</b> — every tier's motif/arc is buildable from blank, AI is additive. State this as a principle (not just an import flow). New §12 note.</li>
+      <li><b>Shared timeline editor</b> — the arc canvas is ONE component used by both manual-build (blank) and AI-review (05 import draft). Build once.</li>
+      <li><b>Inline motif create</b> — "+ create new motif inline" inside place-motif needs a mini-editor (subset of 02) so authoring an arc doesn't force a context switch.</li>
+      <li><b>AI output = editable draft, never auto-commit</b> — mine/import land in this same canvas as <span class="k">status='draft'</span>; confirms the review-queue delta (§11).</li>
+      <li><b>Empty-state guidance</b> — a blank arc needs onboarding affordances (add thread → place motif → set pacing). FE scope.</li>
+    </ul>
+  </footer>
+</main>
+</body>
+</html>

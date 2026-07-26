@@ -197,8 +197,33 @@ def test_autocreate_override():
     assert rc.writer_autocreate is False
 
 
-def test_filter_enabled_without_model_ref_raises():
+def test_filter_enabled_without_own_model_ref_falls_back_to_the_extraction_model():
+    """D-WX-PRECISION-FILTER-MODEL-ARCH changed this contract deliberately.
+
+    Enabling the filter without its OWN model_ref no longer raises — it falls back to the
+    EXTRACTION model (the campaign's user-owned, UI-selected, DB-stored llm_model), because
+    the previous env/global model was cross-tenant and 404'd "model not found" for every
+    user who did not own it, stalling the decoupled fold. This test asserted the pre-change
+    behaviour and so went red on a fix.
+    """
+    rc = resolve_effective_config(
+        global_defaults=_globals(precision_filter=None),
+        project_overrides={"precision_filter": {"enabled": True, "categories": ["entity"]}},
+    )
+    assert rc.precision_filter is not None
+    assert rc.precision_filter.model_ref == "model-global", (
+        "must inherit the EXTRACTION model, not an env/global one"
+    )
+
+
+def test_filter_enabled_with_no_model_anywhere_still_raises():
+    """The half of the original guard that still holds — and the half worth keeping.
+
+    With no filter model, no global filter AND no extraction model to inherit, enabling the
+    filter is unsatisfiable and must fail loudly rather than run model-less.
+    """
     g = _globals(precision_filter=None)
+    g["model_ref"] = ""
     with pytest.raises(ValueError, match="precision_filter enabled but no model_ref"):
         resolve_effective_config(
             global_defaults=g,

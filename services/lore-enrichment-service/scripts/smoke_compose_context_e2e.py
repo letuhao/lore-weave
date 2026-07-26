@@ -49,7 +49,7 @@ def main() -> int:
             "context_license": license_,
             "technique": "retrieval",
             "target": {"mode": "new", "canonical_name": TARGET, "entity_kind": "location"},
-            "max_spend_usd": 100000,
+            "max_spend_tokens": 100000,
             "top_k": 5,
         }
 

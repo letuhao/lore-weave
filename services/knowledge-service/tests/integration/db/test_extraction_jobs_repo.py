@@ -54,6 +54,7 @@ def _job_payload(
     *,
     max_spend_usd: Decimal | None = Decimal("1.00"),
     scope: str = "chapters",
+    reasoning_effort: str = "none",
 ) -> ExtractionJobCreate:
     return ExtractionJobCreate(
         project_id=project_id,
@@ -61,6 +62,7 @@ def _job_payload(
         llm_model="test-llm",
         embedding_model="test-embed",
         max_spend_usd=max_spend_usd,
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -91,6 +93,23 @@ async def test_k10_4_create_defaults(pool):
     assert job.billing_user_id is None
     assert job.billing_embedding_model is None
     assert job.billing_llm_model is None
+    # D-RE-OTHER-AGENTIC-EFFORT: default reasoning effort round-trips as 'none'.
+    assert job.reasoning_effort == "none"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_persists_and_round_trips(pool):
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped effort must survive
+    # ExtractionJobCreate → INSERT → the job row → repo.get (the store path the build-tool
+    # clamp feeds; previously only the token-params clamp was tested).
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    created = await repo.create(
+        user, _job_payload(project_id, reasoning_effort="high"))
+    assert created.reasoning_effort == "high"
+    got = await repo.get(user, created.job_id)
+    assert got is not None and got.reasoning_effort == "high"
 
 
 @pytest.mark.asyncio
@@ -978,32 +997,40 @@ async def test_c12a_list_active_for_project_filters_to_active_statuses(pool):
     regression that expanded the filter to include completed jobs
     would keep stale jobs' ``scope_range`` influencing live event
     ingestion.
+
+    K27 (2026-07-24) — rewritten to respect K16.3 (``idx_extraction_jobs_one_active_per_project``:
+    at most ONE active job per project). The original seeded THREE simultaneously-active jobs
+    (pending+running+paused) for one project, which the partial unique index now forbids at
+    CREATE time (every ``repo.create`` inserts 'pending', so the 2nd create raced the 1st and
+    500'd). That is not a filter regression — it is the one-active invariant. The filter's full
+    intent still holds and is verified here without ever holding two active rows: transition a
+    SINGLE job through each active status (each must read as active), alongside terminal jobs
+    created-then-retired first (each must be excluded).
     """
     repo = ExtractionJobsRepo(pool)
     user = uuid4()
     project = await _make_project(pool, user)
 
-    j_pending = await repo.create(user, _job_payload(project))
-    j_running = await repo.create(user, _job_payload(project))
-    j_paused = await repo.create(user, _job_payload(project))
+    # Terminal jobs first — create each, then move it OUT of the active set before the next
+    # create, so only one active row ever exists at a time (K16.3).
     j_complete = await repo.create(user, _job_payload(project))
-    j_failed = await repo.create(user, _job_payload(project))
-    j_cancelled = await repo.create(user, _job_payload(project))
-
-    await repo.update_status(user, j_running.job_id, "running")
-    await repo.update_status(user, j_paused.job_id, "paused")
     await repo.update_status(user, j_complete.job_id, "complete")
+    j_failed = await repo.create(user, _job_payload(project))
     await repo.update_status(user, j_failed.job_id, "failed")
+    j_cancelled = await repo.create(user, _job_payload(project))
     await repo.update_status(user, j_cancelled.job_id, "cancelled")
-    # j_pending stays in 'pending'
 
-    active = await repo.list_active_for_project(user, project)
-    ids = {j.job_id for j in active}
-    assert ids == {j_pending.job_id, j_running.job_id, j_paused.job_id}
-    # Terminal statuses excluded.
-    assert j_complete.job_id not in ids
-    assert j_failed.job_id not in ids
-    assert j_cancelled.job_id not in ids
+    # The single active job — EACH active status must be recognised as active.
+    j_active = await repo.create(user, _job_payload(project))  # 'pending'
+    for status in ("pending", "running", "paused"):
+        if status != "pending":
+            await repo.update_status(user, j_active.job_id, status)
+        ids = {j.job_id for j in await repo.list_active_for_project(user, project)}
+        assert ids == {j_active.job_id}, f"{status!r} must read as the only active job, got {ids}"
+        # Terminal statuses excluded at every step.
+        assert j_complete.job_id not in ids
+        assert j_failed.job_id not in ids
+        assert j_cancelled.job_id not in ids
 
 
 @pytest.mark.asyncio

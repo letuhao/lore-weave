@@ -30,6 +30,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 from app.verify.sanitize import neutralize_proposal_text
 
@@ -42,16 +43,11 @@ __all__ = [
 ]
 
 
-class WritebackError(Exception):
+# P3 SDK-first: subclass the shared InternalClientError (`.retryable` derived from
+# `.status_code`); name kept so `except WritebackError` sites are unchanged.
+class WritebackError(InternalClientError):
     """A cross-service write failed. ``retryable`` distinguishes transient
     (timeout / 502 / 503 / 429) from a hard contract failure."""
-
-    def __init__(
-        self, message: str, *, retryable: bool = False, status_code: int | None = None
-    ) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-        self.status_code = status_code
 
 
 class UnplaceableEntityError(WritebackError):
@@ -127,8 +123,14 @@ class WritebackPorts:
         data = resp.json()
         owner = data.get("owner_user_id")
         if not owner:
+            # status_code=502 is a SYNTHETIC "unusable upstream response" marker on an
+            # HTTP-200 body, NOT a transient gateway error — a missing owner won't fix on
+            # retry, so retryable stays False explicitly (the shared base would otherwise
+            # derive True from 502). P3-preserving.
             raise WritebackError(
-                f"book {book_id} projection missing owner_user_id", status_code=502
+                f"book {book_id} projection missing owner_user_id",
+                status_code=502,
+                retryable=False,
             )
         return BookOwner(book_id=book_id, owner_user_id=UUID(str(owner)))
 
@@ -180,9 +182,13 @@ class WritebackPorts:
             # Glossary silently skipped the entity → it couldn't place this kind_code
             # (unknown kind). Signal it distinctly so the caller can retry under the
             # catch-all kind (reactive fallback) instead of failing the promote.
+            # Semantic failure (unknown kind_code), NOT transient — the caller reacts by
+            # TYPE (retry under the catch-all kind), so retryable stays False explicitly
+            # (the shared base would otherwise derive True from the synthetic 502).
             raise UnplaceableEntityError(
                 f"glossary could not place kind_code={kind_code!r} (returned no entity_id)",
                 status_code=502,
+                retryable=False,
             )
         return str(ents[0]["entity_id"])
 
@@ -364,9 +370,7 @@ class WritebackPorts:
     def _check(resp: httpx.Response, url: str) -> httpx.Response:
         if resp.status_code == 200:
             return resp
-        retryable = resp.status_code in (502, 503, 429)
         raise WritebackError(
             f"{resp.request.method} {url} failed ({resp.status_code})",
-            retryable=retryable,
             status_code=resp.status_code,
         )

@@ -78,11 +78,14 @@ async def test_paused_campaign_accrues_but_not_resurrected(pool):
     assert status == "paused" and spent == Decimal("8")
 
 
-async def test_update_budget_owner_scoped(pool):
+async def test_update_budget_by_id(pool):
+    # K27 (2026-07-24): rewritten for E0-4b. `update_campaign_fields` is scoped by
+    # campaign_id (PK) — owner/grant gating moved to the router (_grant_campaign
+    # MANAGE, anti-oracle 404), covered by test_campaigns_api / test_grant_adopt.
+    # This DB test now proves only the repo's real contract: PK update + not-found.
     cid = await _make_campaign(pool, budget_usd=Decimal("5"))
-    owner = await pool.fetchval("SELECT owner_user_id FROM campaigns WHERE campaign_id=$1", cid)
-    # wrong owner → None (404)
-    assert await repo.update_campaign_fields(pool, cid, uuid4(), {"budget_usd": Decimal("20")}) is None
-    # right owner → updated
-    row = await repo.update_campaign_fields(pool, cid, owner, {"budget_usd": Decimal("20")})
+    # a real campaign_id → updated
+    row = await repo.update_campaign_fields(pool, cid, {"budget_usd": Decimal("20")})
     assert row is not None and row["budget_usd"] == Decimal("20")
+    # an unknown campaign_id → None (the repo's "not found" is by PK, not owner)
+    assert await repo.update_campaign_fields(pool, uuid4(), {"budget_usd": Decimal("20")}) is None

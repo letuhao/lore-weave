@@ -22,7 +22,8 @@
     "projectNoEmbedding": "chưa có mô hình embedding",
     "projectHint": "Quá trình trích xuất sẽ ghi vào dự án này. Mô hình embedding/reranker của nó có thể được ghi đè ở bước Mô hình.",
     "targetLanguage": "Ngôn ngữ đích (tùy chọn)",
-    "targetLanguagePlaceholder": "vd. vi — để trống sẽ dùng cài đặt dịch của bạn"
+    "targetLanguagePlaceholder": "vd. vi — để trống sẽ dùng cài đặt dịch của bạn",
+    "targetLanguageAny": "Dùng cài đặt dịch của bạn"
   },
   "range": {
     "intro": "{{count}} chương đã xuất bản trong sách này. Để trống để chạy toàn bộ sách.",

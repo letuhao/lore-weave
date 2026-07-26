@@ -1,0 +1,68 @@
+{
+  "title": "PDF İçe Aktar",
+  "description": "Sayfa aralıklarına göre bölünmüş bir kitap olarak PDF içe aktar",
+  "steps": {
+    "upload": "Yükle",
+    "configure": "Yapılandır",
+    "confirm": "Onayla",
+    "progress": "İlerleme",
+    "results": "Sonuçlar"
+  },
+  "upload": {
+    "intro": "Bir PDF'i kitap olarak içe aktarın — sadece romanlar değil, evren/teknik referans PDF'leri de dahil. Uzun PDF'ler, sayfa aralıklarına göre (bir sonraki adımda yapılandırılır) bölümlere ayrılır.",
+    "choosePdf": "Bir PDF dosyası seçin",
+    "pdfOnly": "sadece .pdf",
+    "checking": "PDF kontrol ediliyor…",
+    "pageCount_one": "{{count}} sayfa tespit edildi.",
+    "pageCount_other": "{{count}} sayfa algılandı.",
+    "readError": "Bu PDF okunamadı."
+  },
+  "configure": {
+    "pagesPerChunk": "Parça başına sayfa sayısı",
+    "pagesPerChunkHint": "Bu sayıdaki her sayfa grubu bir bölüm oluşturur — PDF içe aktarmalarında «Bölüm N» başlığı algılaması kullanılmaz, bu nedenle bölüm işaretçisi olmayan referans/teknik kitaplar için de uygundur.",
+    "willCreate_one": "{{pages}} sayfadan {{count}} bölüm oluşturulacak.",
+    "willCreate_other": "{{pages}} sayfadan {{count}} bölüm oluşturulacak.",
+    "highChapterWarning": "Bu çok fazla bölüm demek — Eğer bu bilinçli bir tercih değilse, daha büyük bir «parça başına sayfa sayısı» değeri düşünün. İçe aktarma işlemi yine de gerçekleştirilecektir.",
+    "captionImages": "Görselleri yapay zeka ile altyazılandır",
+    "captionImagesHint": "Grafikleri/görselleri ayıklar ve bir görme modeli aracılığıyla altyazı ekler; böylece sözlük/bilgi grafiği (KG) çıkarımı grafik içeriğini görebilir. Görsel başına LLM kredisi kullanılır.",
+    "visionModel": "Görme modeli",
+    "visionModelPlaceholder": "Görme yeteneği olan bir model seçin (örneğin gpt-4o)",
+    "visionModelAriaLabel": "Görsel altyazılandırma için görme modeli",
+    "visionModelHint": "Görüntü girişini gerçekten destekleyen bir model seçin — her sohbet modeli bunu yapamaz."
+  },
+  "confirm": {
+    "file": "Dosya",
+    "pages": "Sayfalar",
+    "pagesPerChunk": "Parça başına sayfa sayısı",
+    "chaptersToCreate": "Oluşturulacak bölüm sayısı",
+    "captionImages": "Görüntülere yapay zeka ile açıklama ekle",
+    "yes": "Evet",
+    "no": "Hayır",
+    "needModel": "Başlamadan önce bir görme modeli seçin — açıklama ekleme etkinleştirildi ancak seçili bir model yok.",
+    "backgroundNote": "Bu işlem arka planda çalışır — bu diyaloğu kapatabilir ve ilerlemeyi istediğiniz zaman İşler panelinden kontrol edebilirsiniz.",
+    "startImport": "İçe aktarmayı başlat",
+    "startFailed": "İçe aktarma başlatılamadı"
+  },
+  "progress": {
+    "importing": "PDF içe aktarılıyor…",
+    "chapterOf": "{{total}} bölümden {{current}}. bölüm",
+    "runInBackground": "Arka planda çalıştır",
+    "progress": "İlerleme",
+    "longNote": "Uzun PDF'lerde —özellikle yapay zeka altyazı özelliği etkinleştirildiğinde— bu işlem biraz zaman alabilir. İletişim kutusunu istediğiniz zaman kapatabilirsiniz; içe aktarma işlemi arka planda devam eder ve İşler panelinden takip edilebilir.",
+    "backgroundToast": "İçe aktarma arka planda devam ediyor — ilerlemeyi İşler panelinden kontrol edin."
+  },
+  "results": {
+    "complete": "İçe aktarma tamamlandı",
+    "failed": "İçe aktarma başarısız oldu",
+    "chaptersCreated_one": "{{count}} bölüm oluşturuldu.",
+    "chaptersCreated_other": "{{count}} bölüm oluşturuldu.",
+    "genericError": "İçe aktarma sırasında bir hata oluştu.",
+    "importAnother": "Başka bir tane içe aktar",
+    "done": "Tamamlandı"
+  },
+  "button": {
+    "back": "Geri",
+    "cancel": "İptal",
+    "next": "Sonraki"
+  }
+}

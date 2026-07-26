@@ -1,0 +1,31 @@
+constraint_ledger:
+  - "PA not coupled to cultivation realm"
+  - "THR no early explain in arc 2"
+  - "Keep Vietnamese event titles and trait labels"
+
+# Vague user turns — oracle for eval_chat_hil I1–I3
+turns:
+  - id: complaint_event3
+    user_message: "mày sai chỗ Event 3 nè"
+    expect_confirm: false
+    expect_auto: true
+    oracle:
+      expect_focus_contains: ["e2_3", "Thử", "event"]
+      expect_gap_prefix: ["polish_bullets", "synopsis_", "user_complaint"]
+      max_prompt_chars: 18000
+
+  - id: recheck_character
+    user_message: "check lại phần nhân vật đi"
+    expect_confirm: true
+    oracle:
+      expect_focus_contains: ["characters"]
+      expect_gap_prefix: ["polish_baseline", "char_baseline", "char_trait", "char_mundane"]
+      max_prompt_chars: 18000
+
+  - id: handoff_autofix
+    user_message: "ừ làm đi, sửa hết gap còn lại"
+    expect_confirm: false
+    expect_auto: true
+    oracle:
+      expect_gap_prefix: ["polish", "char_", "synopsis", "mech_"]
+      max_prompt_chars: 55000

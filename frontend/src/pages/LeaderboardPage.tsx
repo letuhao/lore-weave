@@ -1,15 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, User, Languages, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/shared';
-import {
-  leaderboardApi,
-  type LeaderboardBook,
-  type LeaderboardAuthor,
-  type LeaderboardTranslator,
-} from '@/features/leaderboard/api';
 import { PeriodSelector } from '@/features/leaderboard/PeriodSelector';
 import { FilterChips } from '@/features/leaderboard/FilterChips';
 import { Podium } from '@/features/leaderboard/Podium';
@@ -17,10 +11,9 @@ import { RankingList } from '@/features/leaderboard/RankingList';
 import { AuthorList } from '@/features/leaderboard/AuthorList';
 import { TranslatorList } from '@/features/leaderboard/TranslatorList';
 import { QuickStatsCards } from '@/features/leaderboard/QuickStatsCards';
+import { useLeaderboardList } from '@/features/leaderboard/hooks/useLeaderboardList';
 
 type Tab = 'books' | 'authors' | 'translators' | 'trending';
-
-const PAGE_SIZE = 20;
 
 const tabs: { key: Tab; icon: React.ElementType; labelKey: string }[] = [
   { key: 'books', icon: BookOpen, labelKey: 'tabs.books' },
@@ -32,108 +25,35 @@ const tabs: { key: Tab; icon: React.ElementType; labelKey: string }[] = [
 export function LeaderboardPage() {
   const { t } = useTranslation('leaderboard');
   const [activeTab, setActiveTab] = useState<Tab>('books');
-  const [period, setPeriod] = useState('30d');
-  const [genre, setGenre] = useState('');
-  const [language, setLanguage] = useState('');
-  const [sort, setSort] = useState('');
 
-  // Books state
-  const [books, setBooks] = useState<LeaderboardBook[]>([]);
-  const [booksTotal, setBooksTotal] = useState(0);
-  const [booksLoading, setBooksLoading] = useState(false);
-
-  // Authors state
-  const [authors, setAuthors] = useState<LeaderboardAuthor[]>([]);
-  const [authorsTotal, setAuthorsTotal] = useState(0);
-  const [authorsLoading, setAuthorsLoading] = useState(false);
-
-  // Translators state
-  const [translators, setTranslators] = useState<LeaderboardTranslator[]>([]);
-  const [translatorsTotal, setTranslatorsTotal] = useState(0);
-  const [translatorsLoading, setTranslatorsLoading] = useState(false);
-
-  // Quick-stats previews (separate from full lists to avoid overwriting)
-  const [previewAuthors, setPreviewAuthors] = useState<LeaderboardAuthor[]>([]);
-  const [previewTranslators, setPreviewTranslators] = useState<LeaderboardTranslator[]>([]);
-
-  // ── Fetch functions ─────────────────────────────────────────────────────
-
-  const fetchBooks = useCallback(
-    async (offset = 0, append = false) => {
-      setBooksLoading(true);
-      try {
-        const sortParam = activeTab === 'trending' ? 'trending' : sort || undefined;
-        const data = await leaderboardApi.listBooks({
-          period,
-          genre: genre || undefined,
-          language: language || undefined,
-          sort: sortParam,
-          limit: PAGE_SIZE,
-          offset,
-        });
-        setBooks(append ? (prev) => [...prev, ...data.items] : data.items);
-        setBooksTotal(data.total);
-      } catch {
-        // ignore
-      } finally {
-        setBooksLoading(false);
-      }
-    },
-    [period, genre, language, sort, activeTab],
-  );
-
-  const fetchAuthors = useCallback(
-    async (offset = 0, append = false) => {
-      setAuthorsLoading(true);
-      try {
-        const data = await leaderboardApi.listAuthors({ period, limit: PAGE_SIZE, offset });
-        setAuthors(append ? (prev) => [...prev, ...data.items] : data.items);
-        setAuthorsTotal(data.total);
-      } catch {
-        // ignore
-      } finally {
-        setAuthorsLoading(false);
-      }
-    },
-    [period],
-  );
-
-  const fetchTranslators = useCallback(
-    async (offset = 0, append = false) => {
-      setTranslatorsLoading(true);
-      try {
-        const data = await leaderboardApi.listTranslators({ period, limit: PAGE_SIZE, offset });
-        setTranslators(append ? (prev) => [...prev, ...data.items] : data.items);
-        setTranslatorsTotal(data.total);
-      } catch {
-        // ignore
-      } finally {
-        setTranslatorsLoading(false);
-      }
-    },
-    [period],
-  );
-
-  // ── Effects ─────────────────────────────────────────────────────────────
-
-  // Fetch data when tab/filters change
-  useEffect(() => {
-    if (activeTab === 'books' || activeTab === 'trending') {
-      fetchBooks(0);
-    } else if (activeTab === 'authors') {
-      fetchAuthors(0);
-    } else if (activeTab === 'translators') {
-      fetchTranslators(0);
-    }
-  }, [activeTab, fetchBooks, fetchAuthors, fetchTranslators]);
-
-  // Fetch quick-stats previews (authors + translators) on books tab
-  useEffect(() => {
-    if (activeTab === 'books') {
-      leaderboardApi.listAuthors({ period, limit: 3 }).then((d) => setPreviewAuthors(d.items)).catch(() => {});
-      leaderboardApi.listTranslators({ period, limit: 3 }).then((d) => setPreviewTranslators(d.items)).catch(() => {});
-    }
-  }, [activeTab, period]);
+  // 14_utility_panels.md D1 — fetch/filter/pagination state extracted into useLeaderboardList,
+  // re-invoked with the current tab as `kind` (byte-preserving vs. the old inline fetchers).
+  const {
+    period,
+    setPeriod,
+    genre,
+    setGenre,
+    language,
+    setLanguage,
+    sort,
+    setSort,
+    books,
+    booksTotal,
+    booksLoading,
+    fetchBooks,
+    authors,
+    authorsTotal,
+    authorsLoading,
+    fetchAuthors,
+    translators,
+    translatorsTotal,
+    translatorsLoading,
+    fetchTranslators,
+    previewAuthors,
+    previewTranslators,
+    showPodium,
+    isLoading,
+  } = useLeaderboardList(activeTab);
 
   // Reset filters when switching tabs
   const handleTabChange = (tab: Tab) => {
@@ -146,13 +66,6 @@ export function LeaderboardPage() {
   };
 
   const showFilters = activeTab === 'books' || activeTab === 'trending';
-  const showPodium = (activeTab === 'books' || activeTab === 'trending') && books.length >= 3;
-  const isLoading =
-    activeTab === 'books' || activeTab === 'trending'
-      ? booksLoading
-      : activeTab === 'authors'
-        ? authorsLoading
-        : translatorsLoading;
 
   return (
     <div className="space-y-6">

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 // Generalized class-C confirm + preview endpoints (spec §13.5). One JWT-gated
@@ -55,26 +56,72 @@ func (s *Server) consumeToken(ctx context.Context, jti, descriptor string, exp t
 	return tag.RowsAffected() > 0, nil
 }
 
-// decodeConfirmToken reads {confirm_token} and verifies it; writes the 4xx itself
-// on a missing/expired/invalid token and returns ok=false.
-func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, bool) {
-	var body struct {
-		ConfirmToken string `json:"confirm_token"`
+// resolveConfirmCaller returns the redeeming user's ID for a confirm/preview call,
+// trusting EITHER:
+//   - a valid Bearer JWT (the browser UI calling directly), or
+//   - a trusted internal-service envelope: X-Internal-Token (constant-time compare
+//     against the shared internal token) + X-User-Id (the owner uuid).
+//
+// The second path is how `auth-service`'s public-MCP confirm-replay (self-confirm
+// AND human-approve, `mcp_approvals.go::replayConfirm`) calls this route — it is a
+// trusted internal caller, never a browser, so it cannot present a user's Bearer JWT
+// and instead carries the already-verified owner identity in a header. This mirrors
+// the SAME dual-auth pattern composition/translation/knowledge-service's Python
+// confirm routes already implement (`_resolve_envelope_user` / `_resolve_confirm_caller`
+// / `_resolve_kg_confirm_caller`, decision tag D-PMCP-WORKER-CARRIER,
+// docs/plans/2026-06-28-public-mcp-p4-wave-c.md §"domain confirm routes") — glossary
+// (along with book-service and provider-registry-service's settings routes) was never
+// retrofitted with it, so EVERY confirm-replay to this route 401'd unconditionally
+// (found live 2026-07-08 via the MCP discoverability audit's confirm_action repro).
+// The internal-token branch is checked FIRST and, if the token matches but X-User-Id
+// is missing/malformed, this fails closed rather than falling through to the Bearer
+// path (an internal caller that got the envelope wrong should not silently succeed
+// via some unrelated Bearer header it happens to also be carrying).
+func (s *Server) resolveConfirmCaller(r *http.Request) (uuid.UUID, bool) {
+	return lwmcp.ResolveEnvelopeOrBearerCaller(r, s.cfg.InternalServiceToken, s.requireUserID)
+}
+
+// decodeConfirmToken reads the confirm token — from the `token` query param (the
+// shape auth-service's internal confirm-replay sends, nil body) or the JSON body
+// `{confirm_token, enabled_ops?}` (the shape the browser UI sends) — and verifies
+// it; writes the 4xx itself on a missing/expired/invalid token and returns ok=false.
+// enabled_ops is the per-op destructive opt-in for an execute_plan confirm (§4 G1);
+// nil/absent for every other action (and ignored by the read-only preview path, and
+// by definition absent on the query-param/replay path — a self-confirm/human-approve
+// replay never carries execute_plan's per-op opt-ins today).
+func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, []string, bool) {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	var enabledOps []string
+	if token == "" {
+		var body struct {
+			ConfirmToken string   `json:"confirm_token"`
+			EnabledOps   []string `json:"enabled_ops"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "confirm_token is required")
+			return actionClaims{}, nil, false
+		}
+		token = body.ConfirmToken
+		enabledOps = body.EnabledOps
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
-		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "confirm_token is required")
-		return actionClaims{}, false
-	}
-	claims, err := verifyActionToken(s.cfg.JWTSecret, body.ConfirmToken, time.Now())
+	claims, err := verifyActionToken(s.cfg.JWTSecret, token, time.Now())
 	if errors.Is(err, ErrActionTokenExpired) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "confirmation expired — propose again")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
 	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "invalid confirmation")
-		return actionClaims{}, false
+		// IN-6 (mcp-tool-io.md): a concrete, actionable reason instead of a bare
+		// "invalid confirmation" — the specific cause (bad signature vs unknown
+		// descriptor vs malformed payload) is intentionally NOT distinguished further
+		// here (same anti-oracle posture as a forbidden-grant check: telling a caller
+		// exactly WHICH structural check failed would help someone probing a forged
+		// token). The fix pointer is always the same regardless of which sub-case hit.
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"invalid confirmation — the token is malformed, was tampered with, or was signed by a "+
+				"different server/environment; propose the action again to get a fresh confirm_token")
+		return actionClaims{}, nil, false
 	}
-	return claims, true
+	return claims, enabledOps, true
 }
 
 // authorizeAction re-checks authority at confirm/preview time (C3 + defense in
@@ -87,15 +134,23 @@ func (s *Server) authorizeAction(w http.ResponseWriter, r *http.Request, userID 
 		// Bound to the proposer — a different signed-in user cannot redeem it even
 		// with the string. Checked BEFORE consuming so a stranger can't burn it.
 		if claims.UserID != userID {
-			writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "confirmation not valid for this user")
+			writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN",
+				"confirmation not valid for this user — this confirm_token was proposed by a "+
+					"different account; only that account can redeem it. Propose the action again "+
+					"from your own account to get your own confirm_token")
 			return false
 		}
 		return s.requireGrant(w, r.Context(), claims.BookID, userID, grantclient.GrantManage)
 	case authorityAdmin:
-		writeError(w, http.StatusNotImplemented, "GLOSS_ADMIN_DISABLED", "admin actions are not enabled yet")
+		writeError(w, http.StatusNotImplemented, "GLOSS_ADMIN_DISABLED",
+			"system-tier admin actions are not enabled on the regular user confirm path — this token "+
+				"requires a platform admin to apply it via the RS256-gated admin confirm route, not "+
+				"this one")
 		return false
 	default:
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown authority")
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"unknown confirmation authority — this token looks corrupted or was minted by an "+
+				"incompatible server version; propose the action again to get a fresh confirm_token")
 		return false
 	}
 }
@@ -105,12 +160,12 @@ func (s *Server) authorizeAction(w http.ResponseWriter, r *http.Request, userID 
 // jti (single-use) → re-validate + run the effect. Authority is checked BEFORE the
 // jti is consumed so a stranger submitting a victim's token can't burn it.
 func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireUserID(r)
+	userID, ok := s.resolveConfirmCaller(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token or internal-service confirm envelope required")
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, enabledOps, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
@@ -129,17 +184,83 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.dispatchConfirmEffect(w, r.Context(), claims, enabledOps)
+}
+
+// dispatchConfirmEffect runs the effect for a verified, authorized, jti-claimed token,
+// writing the effect's HTTP response to `w`. Extracted from confirmAction so the SAME
+// per-descriptor effect handlers serve BOTH the single confirm (/actions/confirm) and
+// the batch confirm (/actions/confirm-batch, #27/#29/#30): the batch path drives each
+// child token through this dispatch via a per-child recorder — no effect is rewritten.
+func (s *Server) dispatchConfirmEffect(w http.ResponseWriter, ctx context.Context, claims actionClaims, enabledOps []string) {
 	switch claims.Descriptor {
 	case descBookDelete:
-		s.effectBookDelete(w, r.Context(), claims)
+		s.effectBookDelete(w, ctx, claims)
+	case descBookDeleteBatch:
+		s.effectBookDeleteBatch(w, ctx, claims)
 	case descSchemaCreateKind:
-		s.effectSchemaCreateKind(w, r.Context(), claims)
+		s.effectSchemaCreateKind(w, ctx, claims)
+	case descSchemaCreateKinds:
+		s.effectSchemaCreateKinds(w, ctx, claims)
 	case descSchemaCreateAttr:
-		s.effectSchemaCreateAttr(w, r.Context(), claims)
+		s.effectSchemaCreateAttr(w, ctx, claims)
 	case descAdopt:
-		s.effectAdopt(w, r.Context(), claims)
+		s.effectAdopt(w, ctx, claims)
 	case descSyncApply:
-		s.effectSyncApply(w, r.Context(), claims)
+		s.effectSyncApply(w, ctx, claims)
+	case descBookRevert:
+		s.effectBookRevert(w, ctx, claims)
+	case descStatusChange:
+		s.effectStatusChange(w, ctx, claims)
+	case descRestoreRevision:
+		s.effectRestoreRevision(w, ctx, claims)
+	case descReassignKind:
+		s.effectReassignKind(w, ctx, claims)
+	case descMerge:
+		s.effectMerge(w, ctx, claims)
+	case descEntityDelete:
+		s.effectEntityDelete(w, ctx, claims)
+	case descDeepResearch:
+		s.effectDeepResearch(w, ctx, claims)
+	case descExecutePlan:
+		s.effectExecutePlan(w, ctx, claims, enabledOps)
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
+	}
+}
+
+// dispatchPreviewEffect renders the (non-consuming) current-state preview for a verified,
+// authorized token. Extracted from previewAction for the same single+batch reuse reason.
+func (s *Server) dispatchPreviewEffect(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	switch claims.Descriptor {
+	case descBookDelete:
+		s.previewBookDelete(w, ctx, claims)
+	case descBookDeleteBatch:
+		s.previewBookDeleteBatch(w, ctx, claims)
+	case descSchemaCreateKind, descSchemaCreateAttr:
+		s.previewSchemaCreate(w, claims)
+	case descSchemaCreateKinds:
+		s.previewSchemaCreateKinds(w, claims)
+	case descAdopt:
+		s.previewAdopt(w, ctx, claims)
+	case descSyncApply:
+		s.previewSyncApply(w, ctx, claims)
+	case descBookRevert:
+		s.previewBookRevert(w, ctx, claims)
+	case descStatusChange:
+		s.previewStatusChange(w, ctx, claims)
+	case descRestoreRevision:
+		s.previewRestoreRevision(w, ctx, claims)
+	case descReassignKind:
+		s.previewReassignKind(w, ctx, claims)
+	case descMerge:
+		s.previewMerge(w, ctx, claims)
+	case descEntityDelete:
+		s.previewEntityDelete(w, ctx, claims)
+	case descDeepResearch:
+		s.previewDeepResearch(w, ctx, claims)
+	case descExecutePlan:
+		s.previewExecutePlan(w, ctx, claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -233,10 +354,41 @@ func (s *Server) effectBookDelete(w http.ResponseWriter, ctx context.Context, cl
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ensureBookScaffolded guarantees the book has the baseline `universal` genre (and
+// `unknown` kind) that custom kinds anchor to. Idempotent — a no-op once the book is
+// scaffolded. This lets glossary_propose_new_kind "just work" without a MANDATORY
+// prior glossary_adopt_standards: the universal genre is infrastructure, not a content
+// choice (adopt ALWAYS seeds it regardless of picked genres), so a user/agent never
+// has to know the adopt→kind ordering. Genre-specific standards (fantasy, …) can still
+// be adopted later to import their seeded kinds.
+func (s *Server) ensureBookScaffolded(ctx context.Context, bookID, userID uuid.UUID) error {
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL)`,
+		bookID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	// nil genres/kinds → adoptBookOntologyCore still seeds the baseline `universal`
+	// genre + `unknown` kind (it dedup-appends them), and is itself idempotent
+	// (advisory lock + ON CONFLICT DO NOTHING).
+	return s.adoptBookOntologyCore(ctx, bookID, userID, nil, nil)
+}
+
 func (s *Server) effectSchemaCreateKind(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
 	var p kindCreateParams
 	if err := json.Unmarshal(claims.Params, &p); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// Auto-scaffold the baseline ontology if the book hasn't been adopted yet, so
+	// creating the first custom kind succeeds instead of 422'ing "not adopted" AFTER
+	// the human already confirmed (and the single-use token burned). The agent no
+	// longer has to sequence adopt→kind by hand.
+	if err := s.ensureBookScaffolded(ctx, claims.BookID, claims.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scaffold book ontology")
 		return
 	}
 	k, err := s.createKindFromParams(ctx, claims.BookID, p)
@@ -253,6 +405,68 @@ func (s *Server) effectSchemaCreateKind(w http.ResponseWriter, ctx context.Conte
 		return
 	}
 	writeJSON(w, http.StatusCreated, k)
+}
+
+// kindsBatchParams is the captured intent of a glossary_propose_kinds proposal: the
+// full list of kinds (each with its attributes) the user confirms in one click.
+type kindsBatchParams struct {
+	Kinds []kindCreateParams `json:"kinds"`
+}
+
+// effectSchemaCreateKinds creates every kind (+ its attributes) in the batch on one
+// confirm. Idempotent: a kind whose code already exists is SKIPPED (unique-violation),
+// so a re-confirm after a partial batch fills only the missing kinds instead of
+// failing the whole package. Auto-scaffolds the baseline ontology once up front.
+func (s *Server) effectSchemaCreateKinds(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p kindsBatchParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	if len(p.Kinds) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "no kinds in this proposal — propose again")
+		return
+	}
+	if err := s.ensureBookScaffolded(ctx, claims.BookID, claims.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scaffold book ontology")
+		return
+	}
+	created := make([]string, 0, len(p.Kinds))
+	skipped := make([]string, 0)
+	for _, kp := range p.Kinds {
+		switch _, err := s.createKindFromParams(ctx, claims.BookID, kp); {
+		case err == nil:
+			created = append(created, kp.Code)
+		case isUniqueViolation(err):
+			skipped = append(skipped, kp.Code) // already exists — idempotent re-confirm
+		default:
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create kind "+kp.Code)
+			return
+		}
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"created":       created,
+		"skipped":       skipped,
+		"created_count": len(created),
+		"skipped_count": len(skipped),
+	})
+}
+
+func (s *Server) previewSchemaCreateKinds(w http.ResponseWriter, claims actionClaims) {
+	var p kindsBatchParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	rows := make([]previewRow, 0, len(p.Kinds))
+	for _, kp := range p.Kinds {
+		rows = append(rows, previewRow{Label: "kind", Value: kp.Code, Note: fmt.Sprintf("%s · %d attribute(s)", kp.Name, len(kp.Attributes))})
+	}
+	writeJSON(w, http.StatusOK, actionPreview{
+		Descriptor: descSchemaCreateKinds, Destructive: false,
+		Title:       fmt.Sprintf("Create %d kind(s) with their attributes", len(p.Kinds)),
+		PreviewRows: rows,
+	})
 }
 
 func (s *Server) effectSchemaCreateAttr(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
@@ -309,25 +523,14 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, _, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
 	if !s.authorizeAction(w, r, userID, claims) {
 		return
 	}
-	switch claims.Descriptor {
-	case descBookDelete:
-		s.previewBookDelete(w, r.Context(), claims)
-	case descSchemaCreateKind, descSchemaCreateAttr:
-		s.previewSchemaCreate(w, claims)
-	case descAdopt:
-		s.previewAdopt(w, r.Context(), claims)
-	case descSyncApply:
-		s.previewSyncApply(w, r.Context(), claims)
-	default:
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
-	}
+	s.dispatchPreviewEffect(w, r.Context(), claims)
 }
 
 // previewSyncApply re-renders the sync confirm card from CURRENT state (§5.1 #5):
@@ -383,10 +586,10 @@ func (s *Server) previewAdopt(w http.ResponseWriter, ctx context.Context, claims
 		return
 	}
 	writeJSON(w, http.StatusOK, actionPreview{
-		Descriptor: descAdopt, Title: "Adopt standards into this book", Destructive: false,
+		Descriptor: descAdopt, Title: "Set up your book's world", Destructive: false,
 		PreviewRows: []previewRow{
-			{Label: "genres newly adopted", Value: fmt.Sprint(newGenres), Note: "+ universal (always)"},
-			{Label: "kinds newly adopted", Value: fmt.Sprint(newKinds), Note: "+ unknown (always)"},
+			{Label: "Story genres to add", Value: fmt.Sprint(newGenres), Note: "plus the always-on baseline"},
+			{Label: "Lore categories to add", Value: fmt.Sprint(newKinds), Note: "plus the always-on baseline"},
 		},
 	})
 }
@@ -415,6 +618,89 @@ func (s *Server) previewBookDelete(w http.ResponseWriter, ctx context.Context, c
 		return
 	}
 	out.PreviewRows = rows
+	writeJSON(w, http.StatusOK, out)
+}
+
+// effectBookRevert re-pulls a book row's parent values (G-U1). Re-resolves the target by
+// code at confirm time; a vanished target or a now-retired/deprecated source is
+// re-proposable (422). On success returns the refreshed row.
+func (s *Server) effectBookRevert(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p bookDeleteParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	targetID, err := s.resolveDeleteTarget(ctx, claims.BookID, p)
+	if isNoRows(err) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the target no longer exists — propose again")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed")
+		return
+	}
+	reverted, err := s.revertBookRow(ctx, claims.BookID, claims.UserID, p.Level, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed")
+		return
+	}
+	if !reverted {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN",
+			"the parent standard is no longer available — propose again")
+		return
+	}
+	var detail any
+	switch p.Level {
+	case deleteLevelGenre:
+		detail, err = s.loadBookGenreOne(ctx, claims.BookID, targetID)
+	case deleteLevelKind:
+		detail, err = s.loadBookKindOne(ctx, claims.BookID, targetID)
+	case deleteLevelAttr:
+		detail, err = s.loadBookAttrOne(ctx, claims.BookID, targetID)
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown revert level")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+// previewBookRevert re-renders the revert confirm card from CURRENT state: the parent tier
+// the row reverts to, or a "book-native / nothing to revert" note.
+func (s *Server) previewBookRevert(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p bookDeleteParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	out := actionPreview{Descriptor: descBookRevert, Destructive: false,
+		Title: fmt.Sprintf("Revert %s %q to default", p.Level, p.Code)}
+	targetID, err := s.resolveDeleteTarget(ctx, claims.BookID, p)
+	if isNoRows(err) {
+		out.PreviewRows = []previewRow{{Label: "status", Value: "already removed", Note: "this target no longer exists"}}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	ref, err := s.bookRowSourceRef(ctx, claims.BookID, p.Level, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "preview failed")
+		return
+	}
+	if ref == "" {
+		out.PreviewRows = []previewRow{{Label: "status", Value: "book-native", Note: "no parent standard to revert to"}}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out.PreviewRows = []previewRow{
+		{Label: "reverts to", Value: tierLabel(ref) + " default", Note: "discards this book's local edits to this row"},
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -479,6 +765,17 @@ func (s *Server) previewSchemaCreate(w http.ResponseWriter, claims actionClaims)
 		_ = json.Unmarshal(claims.Params, &p)
 		title = fmt.Sprintf("Create kind %q", p.Name)
 		rows = []previewRow{{Label: "code", Value: p.Code}, {Label: "name", Value: p.Name}}
+		// F3b — list the defining attributes created atomically with the kind.
+		if len(p.Attributes) > 0 {
+			title = fmt.Sprintf("Create kind %q + %d attribute(s)", p.Name, len(p.Attributes))
+			for _, a := range p.Attributes {
+				ft := a.FieldType
+				if ft == "" {
+					ft = "text"
+				}
+				rows = append(rows, previewRow{Label: "+ attribute", Value: a.Code, Note: ft})
+			}
+		}
 	case descSchemaCreateAttr:
 		var p attrCreateParams
 		_ = json.Unmarshal(claims.Params, &p)

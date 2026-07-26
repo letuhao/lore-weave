@@ -1,0 +1,60 @@
+/* #12 J2 — the studio dockview theme, mapped ENTIRELY to the app's CSS tokens
+ * (index.css [data-theme=…]) so the dock chrome follows dark/light/sepia/oled live.
+ * Replaces the hard-coded `themeAbyss` (navy #000c18 regardless of theme — the
+ * "studio ignores the theme" bug). Structural vars mirror dockview-theme-abyss
+ * (dockview-core/dist/styles/dockview.css); only the colors are re-pointed. */
+.dockview-theme-loreweave {
+  /* ── structure (mirrors dockview-theme-abyss) ── */
+  --dv-tabs-and-actions-container-font-size: 13px;
+  --dv-tabs-and-actions-container-height: 35px;
+  --dv-overlay-z-index: 999;
+  --dv-tab-font-size: inherit;
+  --dv-border-radius: 0px;
+  --dv-tab-margin: 0;
+  --dv-sash-color: transparent;
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0.5s;
+  --dv-spacing-padding: 0px;
+  --dv-tab-border-radius: 0px;
+  --dv-sash-border-radius: 0px;
+  --dv-dropdown-border-radius: 0px;
+  --dv-tab-close-icon-size: inherit;
+  --dv-floating-group-border: none;
+  --dv-drag-over-border: none;
+  --dv-floating-group-dragging-opacity: 0.5;
+  --dv-floating-titlebar-height: 22px;
+  --dv-floating-titlebar-background-color: var(--dv-tabs-and-actions-container-background-color);
+  --dv-floating-titlebar-border-bottom: var(--dv-floating-border);
+  --dv-tab-group-chip-padding: 4px 8px;
+  --dv-tab-group-chip-border-radius: 6px;
+  --dv-tab-group-chip-font-size: 11px;
+  --dv-tab-group-line-height: 2px;
+  --dv-tab-group-line-opacity: 0.6;
+
+  /* ── colors — the app tokens (re-resolve on every [data-theme] switch) ── */
+  --dv-group-view-background-color: hsl(var(--background));
+  --dv-tabs-and-actions-container-background-color: hsl(var(--card));
+  --dv-activegroup-visiblepanel-tab-background-color: hsl(var(--background));
+  --dv-activegroup-hiddenpanel-tab-background-color: hsl(var(--card));
+  --dv-inactivegroup-visiblepanel-tab-background-color: hsl(var(--background));
+  --dv-inactivegroup-hiddenpanel-tab-background-color: hsl(var(--card));
+  --dv-tab-divider-color: hsl(var(--border));
+  --dv-activegroup-visiblepanel-tab-color: hsl(var(--foreground));
+  --dv-activegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground));
+  --dv-inactivegroup-visiblepanel-tab-color: hsl(var(--muted-foreground));
+  --dv-inactivegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground) / 0.6);
+  --dv-separator-border: hsl(var(--border));
+  --dv-paneview-header-border-color: hsl(var(--border));
+  --dv-paneview-active-outline-color: hsl(var(--ring));
+  --dv-active-sash-color: hsl(var(--ring) / 0.6);
+  --dv-drag-over-background-color: hsl(var(--primary) / 0.18);
+  --dv-drag-over-border-color: transparent;
+  --dv-tabs-container-scrollbar-color: hsl(var(--muted-foreground));
+  --dv-icon-hover-background-color: hsl(var(--secondary));
+  --dv-floating-box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --dv-floating-border: 1px solid hsl(var(--border));
+}
+.dockview-theme-loreweave .dv-drop-target-container .dv-drop-target-anchor.dv-drop-target-anchor-container-changed {
+  opacity: 0;
+  transition: none;
+}

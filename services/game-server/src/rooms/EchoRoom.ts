@@ -1,4 +1,4 @@
-import { Room, Client, ServerError, type AuthContext } from 'colyseus';
+import { Room, Client, ServerError, CloseCode, type AuthContext } from 'colyseus';
 
 import {
   ticketRedeemerFromEnv,
@@ -80,6 +80,13 @@ export interface AuthedUser {
 // V1+ Rooms will use Colyseus Schema for state sync.
 interface EmptyState {}
 
+// Colyseus 0.17 replaced the old `Room<State, Auth>` two-generic form with a
+// single RoomOptions bag (`{ state?; metadata?; client? }`), and moved the auth
+// type onto a custom Client (`Client<{ auth }>`). EchoClient binds our AuthedUser
+// so `client.auth` is typed. Note: the base interface declares `auth?` optional
+// (it's unset until onAuth resolves), so post-handshake reads assert non-null.
+type EchoClient = Client<{ auth: AuthedUser }>;
+
 /**
  * Pure auth check — extracted from EchoRoom so it can be unit-tested
  * without instantiating a full Colyseus Room. Returns the AuthedUser
@@ -100,7 +107,7 @@ export function expectedToken(): string {
   return process.env.LOREWEAVE_INTERNAL_TOKEN ?? 'dev_token';
 }
 
-export class EchoRoom extends Room<EmptyState, AuthedUser> {
+export class EchoRoom extends Room<{ state: EmptyState; client: EchoClient }> {
   /**
    * Handshake auth (077, PRR-20 control #1). When a shared Redis ticket store
    * is configured (LW_WS_REDIS_URL), validate a real gateway-issued ticket:
@@ -115,9 +122,16 @@ export class EchoRoom extends Room<EmptyState, AuthedUser> {
       authed = redeemer
         ? {
             userId: (
-              await authenticateTicket(redeemer, context.headers, context.ip, Date.now(), {
-                trustedProxy: wsTrustedProxy(),
-              })
+              await authenticateTicket(
+                redeemer,
+                // Colyseus 0.17 hands onAuth a web `Headers`; our upgrade parser
+                // reads a Node `IncomingHttpHeaders` bag. Both use lowercased keys,
+                // so a flat entries object is a faithful, lossless adapter.
+                Object.fromEntries(context.headers),
+                context.ip,
+                Date.now(),
+                { trustedProxy: wsTrustedProxy() },
+              )
             ).userId,
           }
         : authenticate(options, expectedToken());
@@ -169,16 +183,18 @@ export class EchoRoom extends Room<EmptyState, AuthedUser> {
         original: message,
         receivedAt: Date.now(),
         echoedBy: 'EchoRoom',
-        userId: client.auth.userId,
+        userId: client.auth!.userId,
       });
     });
   }
 
-  onJoin(client: Client): void {
+  onJoin(client: EchoClient): void {
+    // Auth is guaranteed set by the time onJoin fires (onAuth resolved it).
+    const { userId } = client.auth!;
     // Acquire the per-user slot HERE (paired with the onLeave release) so it
     // cannot leak on an auth-without-join (review MED-1). The onAuth atCap check
     // already gated over-cap; this acquire is the authoritative count.
-    edge.connectionCap.acquire(client.auth.userId);
+    edge.connectionCap.acquire(userId);
     edge.messageLimiters.set(
       client.sessionId,
       new MessageRateLimiter(edge.rateConfig.messagesPerWindow, edge.rateConfig.windowMs),
@@ -186,17 +202,22 @@ export class EchoRoom extends Room<EmptyState, AuthedUser> {
     edge.auditSink.emit({
       kind: 'ws.connection.opened',
       connectionId: client.sessionId,
-      userRefId: client.auth.userId,
+      userRefId: userId,
       at: Date.now(),
     });
     client.send('welcome', {
-      userId: client.auth.userId,
+      userId,
       sessionId: client.sessionId,
       reconnectionToken: client.reconnectionToken,
     });
   }
 
-  async onLeave(client: Client, consented: boolean): Promise<void> {
+  async onLeave(client: EchoClient, code?: number): Promise<void> {
+    // Auth is guaranteed set by the time onLeave fires (onAuth resolved it).
+    const { userId } = client.auth!;
+    // Colyseus 0.17 replaced the `consented: boolean` param with the WS close
+    // `code`; a clean client-initiated leave arrives as CloseCode.CONSENTED (4000).
+    const consented = code === CloseCode.CONSENTED;
     // Final departure: release the per-user slot, drop the limiter, audit the
     // close with its real reason (rate-limit / consented / disconnect-expired).
     const finalize = (reason: string): void => {
@@ -208,13 +229,13 @@ export class EchoRoom extends Room<EmptyState, AuthedUser> {
       if (!edge.messageLimiters.has(client.sessionId)) {
         return;
       }
-      edge.connectionCap.release(client.auth.userId);
+      edge.connectionCap.release(userId);
       edge.messageLimiters.delete(client.sessionId);
       edge.leaveReasons.delete(client.sessionId);
       edge.auditSink.emit({
         kind: 'ws.connection.closed',
         connectionId: client.sessionId,
-        userRefId: client.auth.userId,
+        userRefId: userId,
         reason,
         at: Date.now(),
       });

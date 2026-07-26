@@ -17,6 +17,10 @@
     "explore": {
       "title": "Explore",
       "desc": "Browse your knowledge — entities, timelines and the relationship graph."
+    },
+    "assistant": {
+      "title": "Work assistant",
+      "desc": "A private daily journal that quietly remembers your people, projects and decisions."
     }
   }
 }

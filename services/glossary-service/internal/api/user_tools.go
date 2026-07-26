@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -39,39 +40,61 @@ const (
 
 // RegisterUserTools adds every user-tier tool to the user/book MCP server.
 func (s *Server) RegisterUserTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_standards_read",
 		Description: "Read YOUR personal standards library — your user-tier genres and kinds (reusable " +
 			"across your books). Pass kind_code + genre_code to also list your attributes for that cell. " +
-			"These are private to you; other users never see them.",
+			"These are private to you; other users never see them. " +
+			"NOTE: user-tier standards are managed by YOU in the GUI — this read is kept for existing callers only.",
+		// LEGACY (catalog-unification 2026-07-22): user-tier standards management is a user/GUI concern,
+		// not a co-writer capability — hidden from the hot-set, still loadable on demand.
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserStandardsRead)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_create",
 		Description: "Create a genre, kind, or attribute in YOUR personal standards library (additive, " +
 			"takes effect immediately). level=genre|kind|attribute + name (+ code, derived from name if " +
 			"omitted). For an attribute: kind_code & genre_code identify which of YOUR kind×genre cells it " +
-			"attaches to (both must already be your user-tier rows).",
+			"attaches to (both must already be your user-tier rows). " +
+			"NOTE: superseded by glossary_ontology_upsert — kept for existing callers only.",
+		InputSchema: closedSetSchemaFor[userCreateToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserCreate)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_patch",
 		Description: "Edit one of YOUR user-tier genre/kind/attributes in place. level + code identify the " +
 			"row (attribute also needs kind_code + genre_code). Pass the base_version you read from " +
-			"glossary_user_standards_read so a concurrent edit is detected (409 on drift). Only supplied fields change.",
+			"glossary_user_standards_read so a concurrent edit is detected (409 on drift). Only supplied fields change. " +
+			"NOTE: superseded by glossary_ontology_upsert — kept for existing callers only.",
+		InputSchema: closedSetSchemaFor[userPatchToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserPatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_delete",
 		Description: "Move one of YOUR user-tier genre/kind/attributes to the trash (soft-delete, REVERSIBLE " +
 			"via glossary_user_restore). level + code (attribute also needs kind_code + genre_code). A genre " +
-			"still linked to a kind or carrying attributes can't be trashed until those are removed.",
+			"still linked to a kind or carrying attributes can't be trashed until those are removed. " +
+			"NOTE: superseded by glossary_ontology_delete — kept for existing callers only.",
+		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserDelete)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_restore",
 		Description: "Restore one of YOUR user-tier genre/kind/attributes from the trash (undo a " +
-			"glossary_user_delete). level + code (attribute also needs kind_code + genre_code).",
+			"glossary_user_delete). level + code (attribute also needs kind_code + genre_code). " +
+			"NOTE: user-tier standards are managed by YOU in the GUI — kept for existing callers only.",
+		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
+		// Direct, reversible write (undo a soft-delete) ⇒ Tier A, matching create/patch/delete.
+		// LEGACY (catalog-unification 2026-07-22): user-tier management is a user/GUI concern.
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserRestore)
 }
 
@@ -261,11 +284,14 @@ type userCreateToolIn struct {
 	Icon        string   `json:"icon,omitempty"`
 	Color       string   `json:"color,omitempty"`
 	SortOrder   int      `json:"sort_order,omitempty"`
+	IsPerson    bool     `json:"is_person,omitempty" jsonschema:"kind only: mark this kind a REAL person (colleague/self/client) — excludes its entities from AI wiki-gen + enrichment (carried into the book on adopt)"`
 	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: your user-tier kind it attaches to"`
 	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: your user-tier genre cell"`
-	FieldType   string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
-	IsRequired  bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
+	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean — omit this argument for the default; do not send an empty string"`
+	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
+	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only: how the AI auto-fills this attribute from chapter text"`
+	TranslationHint string   `json:"translation_hint,omitempty" jsonschema:"attribute only: guidance injected when translating this attribute's value"`
 }
 
 type userWriteOut struct {
@@ -336,10 +362,10 @@ func (s *Server) createUserKindTool(ctx context.Context, userID uuid.UUID, code,
 	var id uuid.UUID
 	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO user_kinds (owner_user_id, code, name, description, icon, color)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO user_kinds (owner_user_id, code, name, description, icon, color, is_person)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
 		RETURNING user_kind_id, updated_at`,
-		userID, code, name, optStr(in.Description), icon, color).Scan(&id, &updatedAt)
+		userID, code, name, optStr(in.Description), icon, color, in.IsPerson).Scan(&id, &updatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, userWriteOut{}, errors.New("a user kind with this code already exists")
@@ -379,10 +405,10 @@ func (s *Server) createUserAttrTool(ctx context.Context, userID uuid.UUID, code,
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO user_attributes
-		  (owner_user_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, content_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		  (owner_user_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash, merge_strategy)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING attr_id`,
-		userID, kindID, genreID, code, name, desc, fieldType, in.IsRequired, in.SortOrder, in.Options, hash).Scan(&id)
+		userID, kindID, genreID, code, name, desc, fieldType, in.IsRequired, in.SortOrder, in.Options, optStr(in.AutoFillPrompt), optStr(in.TranslationHint), hash, seedMergeStrategy(code, fieldType, in.IsRequired)).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, userWriteOut{}, errors.New("an attribute with this code already exists on this kind×genre")
@@ -405,9 +431,11 @@ type userPatchToolIn struct {
 	Icon        *string   `json:"icon,omitempty"`
 	Color       *string   `json:"color,omitempty"`
 	SortOrder   *int      `json:"sort_order,omitempty"`
-	FieldType   *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
-	IsRequired  *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
-	Options     *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only — omit this argument to leave it unchanged; do not send an empty string"`
+	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
+	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
+	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`
+	TranslationHint *string   `json:"translation_hint,omitempty" jsonschema:"attribute only"`
 }
 
 func (s *Server) toolUserPatch(ctx context.Context, _ *mcp.CallToolRequest, in userPatchToolIn) (*mcp.CallToolResult, userWriteOut, error) {
@@ -443,7 +471,7 @@ func (s *Server) patchUserGenreTool(ctx context.Context, userID uuid.UUID, code 
 		return nil, userWriteOut{}, errors.New("the target no longer exists")
 	}
 	if cverr := compareBaseVersion(curHash, strings.TrimSpace(in.BaseVersion)); cverr != nil {
-		return nil, userWriteOut{}, errUserPatchConflict
+		return nil, userWriteOut{}, errUserPatchConflict(curHash)
 	}
 	fields := []updateField{}
 	if in.Name != nil {
@@ -487,7 +515,7 @@ func (s *Server) patchUserKindTool(ctx context.Context, userID uuid.UUID, code s
 		return nil, userWriteOut{}, errors.New("the target no longer exists")
 	}
 	if cverr := compareBaseVersion(curUpdated.UTC().Format(time.RFC3339Nano), strings.TrimSpace(in.BaseVersion)); cverr != nil {
-		return nil, userWriteOut{}, errUserPatchConflict
+		return nil, userWriteOut{}, errUserPatchConflict(curUpdated.UTC().Format(time.RFC3339Nano))
 	}
 	fields := []updateField{}
 	if in.Name != nil {
@@ -535,7 +563,7 @@ func (s *Server) patchUserAttrTool(ctx context.Context, userID uuid.UUID, code s
 		return nil, userWriteOut{}, errors.New("the target no longer exists")
 	}
 	if cverr := compareBaseVersion(curHash, strings.TrimSpace(in.BaseVersion)); cverr != nil {
-		return nil, userWriteOut{}, errUserPatchConflict
+		return nil, userWriteOut{}, errUserPatchConflict(curHash)
 	}
 	fields := []updateField{}
 	if in.Name != nil {
@@ -555,6 +583,12 @@ func (s *Server) patchUserAttrTool(ctx context.Context, userID uuid.UUID, code s
 	}
 	if in.Options != nil {
 		fields = append(fields, updateField{"options", *in.Options})
+	}
+	if in.AutoFillPrompt != nil {
+		fields = append(fields, updateField{"auto_fill_prompt", in.AutoFillPrompt})
+	}
+	if in.TranslationHint != nil {
+		fields = append(fields, updateField{"translation_hint", in.TranslationHint})
 	}
 	if len(fields) == 0 {
 		return nil, userWriteOut{}, errors.New("no editable fields supplied")
@@ -578,7 +612,14 @@ func (s *Server) patchUserAttrTool(ctx context.Context, userID uuid.UUID, code s
 	return nil, userWriteOut{Level: userLevelAttr, ID: id.String(), Code: code, BaseVersion: newHash, Status: "patched"}, nil
 }
 
-var errUserPatchConflict = errors.New("the row changed since you read it (409) — re-read glossary_user_standards_read and retry")
+// errUserPatchConflict builds the user-tier 409 with the row's CURRENT
+// base_version embedded, so the model retries in ONE step (W0 #1a) instead of
+// re-reading the whole standards library (or looping a hallucinated value).
+func errUserPatchConflict(current string) error {
+	return fmt.Errorf(
+		"the row changed since you read it (409) — its current base_version is %s; retry the same patch with base_version=%q",
+		current, current)
+}
 
 // applyUserUpdate runs an owner-scoped UPDATE of the validated fields. table/idCol are
 // internal constants (never request input) → no injection; owner_user_id in the WHERE

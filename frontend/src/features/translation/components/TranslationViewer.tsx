@@ -18,9 +18,14 @@ interface TranslationViewerProps {
   onSetActive: (versionId: string) => void;
   // M7c-2: a human edit saved a new version — let the parent refresh/select it.
   onSaved?: (saved: ChapterTranslation) => void;
+  // #16 Phase 3 DOCK-7 fix — when embedded in the Studio `translation-versions` dock panel, a
+  // full-page `navigate()` to the review route would tear the whole studio down. Optional so the
+  // classic route (ChapterTranslationsPage) and the legacy editor's Translate workmode, neither of
+  // which pass it, keep navigating exactly as before.
+  onReview?: (versionId: string) => void;
 }
 
-export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSetActive, onSaved }: TranslationViewerProps) {
+export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSetActive, onSaved, onReview }: TranslationViewerProps) {
   const { t } = useTranslation('translation');
   const navigate = useNavigate();
   const { accessToken } = useAuth();
@@ -171,7 +176,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
           {bookId && version.status === 'completed' && (
             <button
               type="button"
-              onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/review/${versionId}`)}
+              onClick={() => (onReview ? onReview(versionId) : navigate(`/books/${bookId}/chapters/${chapterId}/review/${versionId}`))}
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[#8b5cf6] hover:bg-[#8b5cf6]/10 transition-colors"
             >
               <SplitSquareVertical className="h-3 w-3" />

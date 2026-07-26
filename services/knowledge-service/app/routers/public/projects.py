@@ -38,7 +38,9 @@ from app.db.models import (
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import purge_project
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.event_text_translations import EventTextTranslationsRepo
 from app.db.repositories.projects import (
     _PROJECT_SORT_COLUMNS,
     _PROJECT_STATUS_FILTERS,
@@ -46,7 +48,8 @@ from app.db.repositories.projects import (
 )
 from app.auth.grant_deps import GrantLevel, require_project_grant
 from app.clients.grant_client import GrantClient
-from app.deps import get_grant_client, get_projects_repo
+from app.clients.book_client import BookClient
+from app.deps import get_book_client, get_grant_client, get_projects_repo
 from app.events.outbox_emit import config_adjustment_payload, emit_config_adjustment
 from app.middleware.jwt_auth import get_current_user
 
@@ -445,6 +448,57 @@ async def create_project(
     return project
 
 
+class AssistantProjectCreate(BaseModel):
+    """WS-1.4 — the body of POST /v1/knowledge/projects/assistant."""
+
+    book_id: UUID
+    name: str = "Work Assistant"
+
+
+@router.post(
+    "/assistant",
+    response_model=Project,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": Project,
+            "description": "Existing assistant project returned (idempotent)",
+        },
+    },
+)
+async def provision_assistant_project(
+    body: AssistantProjectCreate,
+    response: Response,
+    user_id: UUID = Depends(get_current_user),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+    grant: GrantClient = Depends(get_grant_client),
+    book_client: BookClient = Depends(get_book_client),
+) -> Project:
+    """WS-1.4 (spec 02 §Q2.2) — get-or-create the user's ONE assistant knowledge project,
+    bound to their diary book. ``is_assistant=true`` + ``chat_turn_extraction_enabled=false``
+    (fail-closed D6: the assistant's facts come once a day from the confirmed entry, never
+    per chat turn).
+
+    The diary must be OWNED by the caller — a non-owner is denied uniformly (404, no oracle),
+    exactly like create_project's book-binding path. This prevents binding the assistant's
+    memory to someone else's book.
+
+    It must ALSO be an actual ``kind='diary'`` book (review-impl WS-1.4 M2). Ownership alone
+    is not enough: binding the assistant project to a shareable NOVEL the caller owns would let
+    a collaborator on that novel read the assistant's private extracted memory (knowledge
+    authorizes project reads by resolve-to-owner on the project's book). Fail-closed — an
+    unresolvable/non-diary book is refused with the same uniform 404 as a non-owner."""
+    if await grant.resolve_grant(body.book_id, user_id) != GrantLevel.OWNER:
+        raise _not_found()
+    if await book_client.get_book_kind(body.book_id, user_id) != "diary":
+        raise _not_found()
+    project, created = await repo.get_or_create_assistant_project(
+        user_id, body.book_id, body.name
+    )
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return project
+
+
 @router.get("/{project_id}", response_model=Project)
 async def get_project(
     project_id: UUID,
@@ -501,16 +555,23 @@ async def patch_project(
     # in Neo4j tagged with the old model UUID while Mode-3 retrieval
     # queries the new model's vector space — silent zero-recall.
     # Route those changes through PUT /embedding-model?confirm=true
-    # which deletes the stale graph first. First-time setup
-    # (extraction_status='disabled') is fine because there is nothing
-    # to orphan. Same-value sets are no-ops, also fine.
+    # which deletes the stale graph first. First-time setup is fine
+    # because there is nothing to orphan. Same-value sets are no-ops,
+    # also fine.
+    #
+    # The "nothing to orphan" test is a PASSAGE-EXISTENCE probe, not
+    # `extraction_status`: that column reads 'disabled' both after a graph
+    # delete (vectors gone) and after `POST /extraction/disable` (vectors
+    # explicitly preserved). See app/db/neo4j_repos/graph_state.py.
     if "embedding_model" in body.model_fields_set:
+        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+
         current = await repo.get(user_id, project_id)
         if current is None:
             raise _not_found()
         if (
             body.embedding_model != current.embedding_model
-            and current.extraction_status != "disabled"
+            and await project_has_embedded_passages(user_id, project_id)
         ):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -572,6 +633,30 @@ async def patch_project(
     return updated
 
 
+class CaptureConsentUpdate(BaseModel):
+    """A2 — the per-turn work-capture consent toggle body. Closed set (bool)."""
+
+    enabled: bool
+
+
+@router.put("/{project_id}/capture-consent", response_model=Project)
+async def put_capture_consent(
+    project_id: UUID,
+    body: CaptureConsentUpdate,
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+) -> Project:
+    """A2 / D-R17 (spec 09) — the per-turn WORK-CAPTURE CONSENT toggle (`canon_capture_enabled`).
+    OWNER-only: it is the user's own consent to have their real colleagues/projects captured, so a
+    mere collaborator must not flip it. Fail-closed by default; this turns it on/off. Consumed by
+    the chat-service capture gate via `project_enables` — the effective value is
+    AND(deploy_ceiling, this), and turning it off stops capture on the next turn (E8). Idempotent."""
+    updated = await repo.set_canon_capture_consent(user_id, project_id, enabled=body.enabled)
+    if updated is None:
+        raise _not_found()
+    return updated
+
+
 @router.put("/{project_id}/extraction-config", response_model=Project)
 async def put_extraction_config(
     project_id: UUID,
@@ -603,10 +688,17 @@ async def put_extraction_config(
         raise _not_found()
 
     # New config = the non-None, non-empty fields of the body (PUT replace).
-    new_config = {
-        k: v for k, v in body.model_dump(exclude_none=True).items() if v
-    }
+    raw = body.model_dump(exclude_none=True)
+    new_config = {k: v for k, v in raw.items() if v}
     old_config = current.extraction_config or {}
+    # Track 4 P2 (review MED): the L3 rerank knobs are managed by a DIFFERENT
+    # surface (model pickers / direct API), not the FE structural-config editor —
+    # so an editor save that simply doesn't know these keys must not silently
+    # clear them. PUT-replace applies to the sections the editor owns; these two
+    # are preserved when OMITTED, and cleared only by an explicit empty value.
+    for _k in ("rerank_model", "cross_encoder_rerank_model"):
+        if _k not in raw and _k in old_config:
+            new_config[_k] = old_config[_k]
 
     try:
         updated = await repo.update_extraction_config(
@@ -715,5 +807,21 @@ async def delete_project(
     except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
         logger.warning(
             "neo4j purge for deleted project %s failed — graph orphaned, re-sweep owed",
+            project_id, exc_info=True,
+        )
+    # KG-TL M3 (AC-T7) — purge the project's on-demand event-text translation
+    # cache so it leaves no orphans after the graph partition is deleted. Same
+    # best-effort posture: a failure must not fail the authoritative delete.
+    try:
+        cache_repo = EventTextTranslationsRepo(get_knowledge_pool())
+        removed = await cache_repo.delete_for_project(project_id=project_id)
+        if removed:
+            logger.info(
+                "purged %s event-text translation rows for deleted project %s",
+                removed, project_id,
+            )
+    except Exception:  # noqa: BLE001 — best-effort cache cleanup
+        logger.warning(
+            "event-text translation cache purge for project %s failed — orphans owed",
             project_id, exc_info=True,
         )

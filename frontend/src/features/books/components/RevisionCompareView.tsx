@@ -12,6 +12,15 @@ type Props = {
   token: string | null;
   bookId: string;
   chapterId: string;
+  /** #20_agent_mode.md D2 — an initial (left, right) revision pair, e.g. a
+   * drafted unit's (pre_revision_id, post_revision_id) from Agent Mode's diff
+   * panel. Omitted → defaults to the two newest revisions (unchanged). */
+  initialLeftId?: string;
+  initialRightId?: string;
+  /** The classic route back-link only makes sense when this view lives at its
+   * own route (ChapterComparePage). Studio's `chapter-revision-compare` panel
+   * never navigates (DOCK-7) so it hides this button instead. */
+  showBackLink?: boolean;
 };
 
 function revLabel(r: RevisionSummary): string {
@@ -45,23 +54,27 @@ function Picker({
   );
 }
 
-export function RevisionCompareView({ token, bookId, chapterId }: Props) {
+export function RevisionCompareView({
+  token, bookId, chapterId, initialLeftId, initialRightId, showBackLink = true,
+}: Props) {
   const { t } = useTranslation('editor');
   const navigate = useNavigate();
-  const c = useRevisionCompare(token, bookId, chapterId);
+  const c = useRevisionCompare(token, bookId, chapterId, { leftId: initialLeftId, rightId: initialRightId });
   const emptyLabel = t('compare.no_revisions', { defaultValue: 'No revisions' });
 
   return (
     <div className="flex h-full flex-col">
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        <button
-          data-testid="compare-back"
-          onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/edit`)}
-          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:text-primary"
-        >
-          <ArrowLeft className="h-3 w-3" /> {t('compare.back', { defaultValue: 'Back to editor' })}
-        </button>
+        {showBackLink && (
+          <button
+            data-testid="compare-back"
+            onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/edit`)}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:text-primary"
+          >
+            <ArrowLeft className="h-3 w-3" /> {t('compare.back', { defaultValue: 'Back to editor' })}
+          </button>
+        )}
         <h1 className="mr-2 text-sm font-semibold">{t('compare.title', { defaultValue: 'Compare revisions' })}</h1>
 
         <div className="flex min-w-[420px] flex-1 items-center gap-2">

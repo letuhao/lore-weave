@@ -2,6 +2,14 @@
 from __future__ import annotations
 
 import os
+import pathlib
+import sys
+
+# Expose the in-repo SDK (loreweave_safety — the shared safety floor for WS-5.13) from source
+# on a host whose Python predates the SDK's requires-python; the container installs it normally.
+_SDK = pathlib.Path(__file__).resolve().parents[3] / "sdks" / "python"
+if _SDK.is_dir() and str(_SDK) not in sys.path:
+    sys.path.insert(0, str(_SDK))
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
@@ -92,6 +100,24 @@ def make_session_record(
         "last_message_at": None,
         "created_at": now,
         "updated_at": now,
+        "project_id": None,
+        "book_id": None,
+        "project_ids": [],
+        "composer_model_source": None,
+        "composer_model_ref": None,
+        "planner_model_source": None,
+        "planner_model_ref": None,
+        "enabled_tools": [],
+        "enabled_skills": [],
+        "activated_tools": [],
+        "pinned_legacy_tools": [],
+        # Chat & AI settings override columns (M1a). grounding_enabled defaults to
+        # True here so the send path resolves grounding without the account-prefs
+        # fallback fetch (real rows are NULL = inherit; tests exercising the
+        # inherit path set it None explicitly).
+        "grounding_enabled": True,
+        "voice_overrides": None,
+        "context_overrides": None,
     }
     base.update(overrides)
     return FakeRecord(base)

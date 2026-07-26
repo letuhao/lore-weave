@@ -117,7 +117,7 @@ func (s *Server) listSystemAttributes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT `+attrDefCols+` FROM system_attributes WHERE kind_id=$1 AND genre_id=$2 ORDER BY sort_order, code`,
+		`SELECT `+attrDefCols+` FROM system_attributes WHERE kind_id=$1 AND genre_id=$2 AND deprecated_at IS NULL ORDER BY sort_order, code`,
 		kindID, genreID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
@@ -239,11 +239,11 @@ func (s *Server) createUserAttribute(w http.ResponseWriter, r *http.Request) {
 	err = s.pool.QueryRow(r.Context(), `
 		INSERT INTO user_attributes
 		  (owner_user_id, kind_id, genre_id, code, name, description, field_type,
-		   is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		   is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash, merge_strategy)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING `+attrDefCols,
 		userID, kindID, genreID, in.Code, in.Name, in.Description, in.FieldType,
-		in.IsRequired, in.SortOrder, in.Options, in.AutoFillPrompt, in.TranslationHint, contentHash,
+		in.IsRequired, in.SortOrder, in.Options, in.AutoFillPrompt, in.TranslationHint, contentHash, seedMergeStrategy(in.Code, in.FieldType, in.IsRequired),
 	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
 		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint)
 	if err != nil {

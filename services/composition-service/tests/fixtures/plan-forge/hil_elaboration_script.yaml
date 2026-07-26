@@ -1,0 +1,13 @@
+constraint_ledger:
+  - "Phase B: elaborate only — do not change variables, forbids, event order"
+  - "Vietnamese text for behavioral_rules, relationship_seeds, recognition_tiers"
+
+revisions:
+  - checkpoint: elaborate
+    intent: elaboration
+    instruction: >
+      Thêm behavioral_rules từ §1.6 checklist Tầng 0 (>=4 rules VN).
+      relationship_seeds từ §1.4 (>=2 seeds). recognition_tiers từ §1.6 Tầng 0–2.
+    scope: [character_elaboration]
+    frozen_paths: [variables, arcs, events, charter.forbids]
+    expect_contains: ["hài hước", "cửa sổ"]

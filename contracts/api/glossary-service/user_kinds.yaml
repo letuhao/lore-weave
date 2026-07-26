@@ -1,0 +1,180 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — User-tier Kinds API
+  version: 1.0.0
+  description: >-
+    T2 per-user kind CRUD (SS-4) — owner-scoped, JWT-only. A user clones/overrides the
+    System kind catalogue into their own tier (never mutates the shared System rows).
+    Includes the per-user-kind attribute CRUD, the user-kind recycle bin, the merged
+    kind list, and the alias read. (Per-user-kind genre links live in
+    kinds_genres_attributes.yaml.) Documented under D-GLOSSARY-CONTRACT-FIRST (P3).
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/glossary/kinds:
+    get:
+      tags: [kinds]
+      summary: List merged kinds (System defaults + the caller's User-tier kinds)
+      description: System (T1) kinds are read-only over HTTP; user writes go to /user-kinds.
+      responses:
+        '200':
+          description: Merged kind list
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/kind-aliases:
+    get:
+      tags: [kinds]
+      summary: List kind aliases (alias_code → kind) for the unknown-kind review GUI
+      responses:
+        '200':
+          description: Alias list
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/user-kinds:
+    get:
+      tags: [kinds]
+      summary: List the caller's User-tier kinds (live only)
+      responses:
+        '200': { description: User kinds }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [kinds]
+      summary: Create a User-tier kind
+      requestBody: { $ref: '#/components/requestBodies/KindBody' }
+      responses:
+        '201': { description: The created user kind }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/glossary/user-kinds/{user_kind_id}:
+    get:
+      tags: [kinds]
+      summary: Get one User-tier kind
+      parameters: [ { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: The user kind }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [kinds]
+      summary: Patch a User-tier kind
+      parameters: [ { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { $ref: '#/components/requestBodies/KindBody' }
+      responses:
+        '200': { description: The updated user kind }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [kinds]
+      summary: Soft-delete a User-tier kind (recoverable via /user-kinds-trash)
+      parameters: [ { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '204': { description: Soft-deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/user-kinds/{user_kind_id}/attributes:
+    post:
+      tags: [kinds]
+      summary: Add an attribute to a User-tier kind
+      parameters: [ { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { $ref: '#/components/requestBodies/AttributeBody' }
+      responses:
+        '201': { description: The created attribute }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/glossary/user-kinds/{user_kind_id}/attributes/{attr_id}:
+    patch:
+      tags: [kinds]
+      summary: Patch a User-tier kind attribute
+      parameters:
+        - { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/AttributeBody' }
+      responses:
+        '200': { description: The updated attribute }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [kinds]
+      summary: Remove a User-tier kind attribute
+      parameters:
+        - { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/user-kinds-trash:
+    get:
+      tags: [kinds]
+      summary: List the caller's soft-deleted User-tier kinds (recycle bin)
+      responses:
+        '200': { description: Trashed user kinds }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/glossary/user-kinds-trash/{user_kind_id}/restore:
+    post:
+      tags: [kinds]
+      summary: Restore a soft-deleted User-tier kind
+      parameters: [ { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: Restored }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/user-kinds-trash/{user_kind_id}:
+    delete:
+      tags: [kinds]
+      summary: Permanently purge a soft-deleted User-tier kind
+      parameters: [ { name: user_kind_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '204': { description: Purged }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  requestBodies:
+    KindBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              icon: { type: string }
+              color: { type: string }
+    AttributeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              field_type: { type: string }
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found (or not owned by the caller)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }

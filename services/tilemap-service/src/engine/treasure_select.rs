@@ -56,7 +56,7 @@ pub fn sample_weighted_by_rarity(
     if total == 0 {
         return None;
     }
-    let roll = rng.gen_range(0..total);
+    let roll = rng.random_range(0..total);
     let mut acc: u32 = 0;
     for obj in pool.iter().filter(|o| o.value <= value_cap) {
         acc += u32::from(obj.rarity);

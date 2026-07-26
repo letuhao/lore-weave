@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -86,7 +87,10 @@ func (c *Consumer) Run(ctx context.Context) {
 					c.handleReadingProgress(ctx, payloadStr)
 				case "chapter.created":
 					c.handleChapterCreated(ctx, payloadStr)
-				case "chapter.trashed", "chapter.deleted":
+				case "chapter.trashed", "chapter.deleted", "chapter.restored":
+					// All three just re-read the book's CURRENT active-chapter count from book-service
+					// (a re-read, order-safe — reflects the truth NOW), so a bulk book trash AND its
+					// restore both land the right count. Restore is symmetric here for free.
 					c.handleChapterRemoved(ctx, payloadStr)
 				case "chapter.translated":
 					c.handleChapterTranslated(ctx, payloadStr)
@@ -307,6 +311,25 @@ func (c *Consumer) handleChapterTranslated(ctx context.Context, payloadStr strin
 	`, userID, bookID, chapterID, p.TargetLanguage, p.Status, p.InputTokens, p.OutputTokens)
 }
 
+// statsExecer is the narrow slice of *pgxpool.Pool the diary guard needs, so the
+// guard is unit-testable with a hand-written fake (no DB, no pgxmock dependency).
+type statsExecer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// purgeDiaryFromStats enforces the P-4/D16 diary taint at book_stats. If the book
+// is a diary it DELETEs any existing stats row (assert ABSENCE) and returns true so
+// the caller skips the upsert; a non-diary returns false and is tracked normally.
+func purgeDiaryFromStats(ctx context.Context, db statsExecer, bookID uuid.UUID, kind string) bool {
+	if kind != "diary" {
+		return false
+	}
+	if tag, err := db.Exec(ctx, `DELETE FROM book_stats WHERE book_id = $1`, bookID); err == nil && tag.RowsAffected() > 0 {
+		slog.Info("statistics: purged diary from book_stats", "book_id", bookID)
+	}
+	return true
+}
+
 // ensureBookStats creates a book_stats row if it doesn't exist, fetching metadata from book-service.
 func (c *Consumer) ensureBookStats(ctx context.Context, bookID uuid.UUID) {
 	var exists bool
@@ -345,6 +368,7 @@ func (c *Consumer) refreshBookMetadata(ctx context.Context, bookID uuid.UUID) {
 	var proj struct {
 		BookID       uuid.UUID `json:"book_id"`
 		OwnerUserID  uuid.UUID `json:"owner_user_id"`
+		Kind         string    `json:"kind"`
 		Title        string    `json:"title"`
 		GenreTags    []string  `json:"genre_tags"`
 		Language     *string   `json:"original_language"`
@@ -356,6 +380,16 @@ func (c *Consumer) refreshBookMetadata(ctx context.Context, bookID uuid.UUID) {
 		slog.Error("statistics: decode projection", "error", err)
 		return
 	}
+
+	// P-4 egress (D16): a diary is private-forever. book_stats is the SOLE birth
+	// site for public author_stats, rankings, and snapshots — and it carries the
+	// title + owner display name. Guarding here keeps a diary out of every public
+	// aggregate. Delete any pre-guard row so the invariant is ABSENCE, not merely
+	// "not refreshed". (Empty kind ⇒ legacy book-service ⇒ treated as a normal book.)
+	if purgeDiaryFromStats(ctx, c.Pool, bookID, proj.Kind) {
+		return
+	}
+
 	if proj.GenreTags == nil {
 		proj.GenreTags = []string{}
 	}

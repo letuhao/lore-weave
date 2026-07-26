@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, FileText, Search } from 'lucide-react';
-import { useAuth } from '@/auth';
-import { booksApi, type Book, type Chapter } from '@/features/books/api';
-import { glossaryApi } from '@/features/glossary/api';
 import { useEntityKinds } from '@/features/glossary/hooks/useEntityKinds';
-import type { GlossaryEntitySummary } from '@/features/glossary/types';
+import { useContextCandidates } from '../hooks/useContextCandidates';
 import { cn } from '@/lib/utils';
 import type { ContextItem, ContextType } from './types';
 
@@ -20,70 +17,21 @@ interface ContextPickerProps {
 
 export function ContextPicker({ attached, onAttach, onDetach, onClose }: ContextPickerProps) {
   const { t } = useTranslation('chat');
-  const { accessToken } = useAuth();
   const [tab, setTab] = useState<PickerTab>('book');
   const [search, setSearch] = useState('');
 
-  // ── Data ────────────────────────────────────────────────────────────────
+  // ── Data (shared with the @-mention picker via useContextCandidates) ──────
 
-  const [books, setBooks] = useState<Book[]>([]);
-  const [chapters, setChapters] = useState<(Chapter & { bookTitle: string })[]>([]);
-  const [entities, setEntities] = useState<(GlossaryEntitySummary & { bookTitle: string })[]>([]);
   const { kinds } = useEntityKinds();
 
-  // Glossary filters
+  // Glossary filters ('' book = default to first book, resolved by the hook)
   const [glossaryBookId, setGlossaryBookId] = useState('');
   const [glossaryKind, setGlossaryKind] = useState('');
 
+  const { books, chapters, entities } = useContextCandidates({ glossaryBookId, glossaryKind });
+  const effectiveGlossaryBookId = glossaryBookId || books[0]?.book_id || '';
+
   const attachedIds = useMemo(() => new Set(attached.map((a) => a.id)), [attached]);
-
-  // Fetch books
-  useEffect(() => {
-    if (!accessToken) return;
-    void booksApi.listBooks(accessToken).then((r) => {
-      setBooks(r.items);
-      if (r.items.length > 0 && !glossaryBookId) {
-        setGlossaryBookId(r.items[0].book_id);
-      }
-    });
-  }, [accessToken]);
-
-  // Fetch chapters (all books)
-  useEffect(() => {
-    if (!accessToken || books.length === 0) return;
-    void Promise.all(
-      books.map((b) =>
-        booksApi
-          .listChapters(accessToken, b.book_id, { limit: 100 })
-          .then((r) => r.items.map((ch) => ({ ...ch, bookTitle: b.title })))
-          .catch(() => []),
-      ),
-    ).then((results) => setChapters(results.flat()));
-  }, [accessToken, books]);
-
-  // Fetch glossary entities (per selected book)
-  useEffect(() => {
-    if (!accessToken || !glossaryBookId) return;
-    const filters: Record<string, string> = {};
-    if (glossaryKind) filters.kind_code = glossaryKind;
-    void glossaryApi
-      .listEntities(
-        glossaryBookId,
-        {
-          kindCodes: glossaryKind ? [glossaryKind] : [],
-          status: 'all',
-          searchQuery: '',
-          limit: 100,
-          offset: 0,
-        },
-        accessToken,
-      )
-      .then((r) => {
-        const bookTitle = books.find((b) => b.book_id === glossaryBookId)?.title ?? '';
-        setEntities(r.items.map((e) => ({ ...e, bookTitle })));
-      })
-      .catch(() => setEntities([]));
-  }, [accessToken, glossaryBookId, glossaryKind, books]);
 
   // ── Filtered items ────────────────────────────────────────────────────────
 
@@ -177,7 +125,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
       {tab === 'glossary' && (
         <div className="flex gap-1.5 border-b border-border px-2.5 py-2">
           <select
-            value={glossaryBookId}
+            value={effectiveGlossaryBookId}
             onChange={(e) => setGlossaryBookId(e.target.value)}
             className="flex-1 rounded border border-border bg-input px-2 py-1 text-[11px] text-foreground"
           >

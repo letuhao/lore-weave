@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ProposalsInboxTab } from '../ProposalsInboxTab';
 import * as inboxHook from '../../hooks/useProposalsInbox';
-import type { ProposalInbox } from '../../lib/proposalsInbox';
+import type { ProposalInbox, ProposalInboxRow } from '../../lib/proposalsInbox';
 
 // C11 — ProposalsInboxTab: read-only aggregation of 3 sources with per-origin
 // counts, deep-link rows, empty-states, and per-source graceful degrade.
 // Route-scoped (G6 — bookId comes from the route project, no select-box).
+//
+// 14_kg_panels.md K9/DOCK-7 — rows no longer render a raw <Link>; the tab
+// takes an `onOpenRow` callback so the caller (classic route vs studio
+// panel) decides how to reach the deep link. No MemoryRouter needed anymore.
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -17,8 +19,8 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-function wrapper({ children }: { children: ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>;
+function noopOpenRow(_row: ProposalInboxRow) {
+  /* default no-op for tests that don't assert row-open behavior */
 }
 
 function mockInbox(value: {
@@ -61,17 +63,22 @@ describe('ProposalsInboxTab', () => {
       },
     });
 
-    render(<ProposalsInboxTab bookId="b1" />, { wrapper });
+    const onOpenRow = vi.fn();
+    render(<ProposalsInboxTab bookId="b1" onOpenRow={onOpenRow} />);
 
     // per-origin counts
     expect(screen.getByTestId('proposals-count-glossary')).toHaveTextContent('1');
     expect(screen.getByTestId('proposals-count-wiki')).toHaveTextContent('1');
     expect(screen.getByTestId('proposals-count-enrichment')).toHaveTextContent('1');
 
-    // each row deep-links to its source's existing review UI route
-    expect(screen.getByTestId('proposals-row-glossary-g1')).toHaveAttribute('href', '/books/b1/glossary');
-    expect(screen.getByTestId('proposals-row-wiki-w1')).toHaveAttribute('href', '/books/b1/wiki');
-    expect(screen.getByTestId('proposals-row-enrichment-e1')).toHaveAttribute('href', '/books/b1/enrichment');
+    // each row carries its source's deep link and, on click, hands the whole
+    // row (deepLinkUrl intact) to the caller-supplied handler — no <Link>.
+    expect(screen.getByTestId('proposals-row-glossary-g1')).toHaveAttribute('data-deeplink', '/books/b1/glossary');
+    expect(screen.getByTestId('proposals-row-wiki-w1')).toHaveAttribute('data-deeplink', '/books/b1/wiki');
+    expect(screen.getByTestId('proposals-row-enrichment-e1')).toHaveAttribute('data-deeplink', '/books/b1/enrichment');
+
+    fireEvent.click(screen.getByTestId('proposals-row-glossary-g1'));
+    expect(onOpenRow).toHaveBeenCalledWith(gRow);
 
     // titles carried through
     expect(screen.getByTestId('proposals-row-glossary-g1')).toHaveTextContent('九天明帝经');
@@ -90,7 +97,7 @@ describe('ProposalsInboxTab', () => {
       },
     });
 
-    render(<ProposalsInboxTab bookId="b1" />, { wrapper });
+    render(<ProposalsInboxTab bookId="b1" onOpenRow={noopOpenRow} />);
 
     // the down source shows an error chip, NOT a blanked inbox
     expect(screen.getByTestId('proposals-source-error-wiki')).toBeInTheDocument();
@@ -112,7 +119,7 @@ describe('ProposalsInboxTab', () => {
       },
     });
 
-    render(<ProposalsInboxTab bookId="b1" />, { wrapper });
+    render(<ProposalsInboxTab bookId="b1" onOpenRow={noopOpenRow} />);
 
     expect(screen.getByTestId('proposals-empty')).toBeInTheDocument();
   });
@@ -120,7 +127,7 @@ describe('ProposalsInboxTab', () => {
   it('shows the no-book state when the project has no linked book (no source fetch)', () => {
     mockInbox({ inbox: null });
 
-    render(<ProposalsInboxTab bookId={null} />, { wrapper });
+    render(<ProposalsInboxTab bookId={null} onOpenRow={noopOpenRow} />);
 
     expect(screen.getByTestId('proposals-no-book')).toBeInTheDocument();
     expect(screen.queryByTestId('proposals-groups')).not.toBeInTheDocument();
@@ -129,7 +136,7 @@ describe('ProposalsInboxTab', () => {
   it('renders the loading state while the inbox query is in flight', () => {
     mockInbox({ inbox: null, isLoading: true });
 
-    render(<ProposalsInboxTab bookId="b1" />, { wrapper });
+    render(<ProposalsInboxTab bookId="b1" onOpenRow={noopOpenRow} />);
 
     expect(screen.getByTestId('proposals-loading')).toBeInTheDocument();
   });

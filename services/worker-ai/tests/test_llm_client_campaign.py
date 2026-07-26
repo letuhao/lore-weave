@@ -54,6 +54,26 @@ async def test_submit_and_wait_no_campaign_id_when_unset():
     assert "campaign_id" not in (req.job_meta or {})
 
 
+async def test_submit_and_wait_accepts_and_forwards_cancel_check():
+    """bug #34 SDK-mirror drift regression-lock — loreweave_extraction ALWAYS
+    forwards cancel_check to submit_and_wait (default None). This concrete
+    wrapper MUST accept it without TypeError and forward it to wait_terminal
+    (the same drift that crashed knowledge-service's live extraction)."""
+    set_campaign_id(None)
+    sdk = _fake_sdk()
+    client = LLMClient(sdk)
+
+    async def _cancel() -> bool:
+        return False
+
+    await client.submit_and_wait(
+        user_id="u", operation="entity_extraction",
+        model_source="user_model", model_ref="m",
+        input={}, cancel_check=_cancel,
+    )
+    assert sdk.wait_terminal.call_args.kwargs["cancel_check"] is _cancel
+
+
 def test_submit_job_only_invoked_via_wrapper():
     """S4a drift guard (review-impl LOW-2): the campaign_id + BYOK caller-pays merge
     lives in LLMClient.submit_and_wait AND LLMClient.submit_job (WX-T3b's fire-and-

@@ -18,6 +18,10 @@ _DSN = os.environ.get(
     "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_translation",
 )
 
+# Shared-dev-Postgres tests - serialize onto one xdist worker
+# (`-n auto --dist loadgroup`) so concurrent workers cannot interleave.
+pytestmark = pytest.mark.xdist_group("pg")
+
 _SUM_SQL = (
     "SELECT COALESCE(SUM(input_tokens),0) AS ti, "
     "COALESCE(SUM(output_tokens),0) AS toks_out "

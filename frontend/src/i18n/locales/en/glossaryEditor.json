@@ -8,6 +8,14 @@
   "select": "select",
   "dismiss": "dismiss",
   "createNew": "Create new",
+  "createAs": "Create \"{{name}}\" as…",
+  "kind": {
+    "character": "Character",
+    "location": "Location",
+    "organization": "Organization",
+    "concept": "Concept",
+    "item": "Item"
+  },
   "filterEntities": "Filter entities...",
   "noEntities": "No entities detected in this chapter",
   "showHighlights": "Show glossary highlights",

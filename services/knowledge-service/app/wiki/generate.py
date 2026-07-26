@@ -20,6 +20,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from loreweave_extraction.reasoning_wire import reasoning_wire_fields
+
 from app.clients.book_profile_client import BookProfile
 from app.clients.llm_client import LLMClient
 from app.wiki.context import GenerationContext
@@ -75,9 +77,21 @@ async def _call_llm(
     messages: list[dict[str, str]],
     max_tokens: int,
     temperature: float,
+    reasoning_effort: str = "none",
 ) -> str | None:
     """One generation LLM call → the Markdown body, or ``None`` on any failure
-    (exception / non-completed job). A completed-but-contentless job → ``""``."""
+    (exception / non-completed job). A completed-but-contentless job → ``""``.
+
+    AI-Task Standard — CONSCIOUS EXCEPTION (documented, not a silent fork): the
+    single-shot standard (loreweave_llm.structured_generate) disables hidden
+    reasoning by default to close the empty-prose footgun. Wiki does NOT: it
+    generates long-form Markdown PROSE (not strict JSON), where a reasoning model
+    thinking first can help, and the path degrades gracefully (empty → corrective
+    retry → deterministic stub) so an empty completion is self-recovering, not a
+    hard failure. So it uses the GRADED opt-in ``reasoning_wire_fields`` instead of
+    ``no_thinking_fields``: the stored ``wiki_gen_jobs.reasoning_effort`` (clamped
+    at mint, W4) is applied; default "none" emits NO wire fields (byte-identical —
+    the model's own default), rather than forcing thinking off."""
     try:
         job = await llm.submit_and_wait(
             user_id=user_id,
@@ -88,8 +102,11 @@ async def _call_llm(
                 "messages": messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                # D-KG-WIKI-WORKER-GRADED-EFFORT — graded effort wire fields
+                # ({} default ⇒ unchanged for non-opt-in callers).
+                **reasoning_wire_fields(reasoning_effort),
             },
-            job_meta={"feature": "wiki_generate"},
+            job_meta={"usage_purpose": "wiki_generate", "feature": "wiki_generate"},
             transient_retry_budget=1,
         )
     except Exception as exc:  # noqa: BLE001 — generation must not crash on LLM error
@@ -118,6 +135,9 @@ async def generate_article(
     max_attempts: int = 2,
     initial_corrective: str | None = None,
     exemplars: list[tuple[str, str]] | None = None,
+    # D-KG-WIKI-WORKER-GRADED-EFFORT — graded effort for the prose call
+    # (default "none" ⇒ no wire fields, byte-identical for prior callers).
+    reasoning_effort: str = "none",
 ) -> GenerateResult:
     """Generate one grounded article IR for ``context``'s entity (bounded retry).
 
@@ -139,6 +159,7 @@ async def generate_article(
         markdown = await _call_llm(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             messages=messages, max_tokens=max_tokens, temperature=temperature,
+            reasoning_effort=reasoning_effort,
         )
         if markdown is None:
             last = GenerateResult(status="llm_failed", attempts=attempt)

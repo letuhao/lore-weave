@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import type { JSX } from 'react';
 
 function Boom(): JSX.Element {
   throw new Error('boom');

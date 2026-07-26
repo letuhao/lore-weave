@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,6 +20,43 @@ import (
 
 	"github.com/loreweave/provider-registry-service/internal/billing"
 )
+
+// #32 — per-payload byte cap for the traced request/response stored on usage_outbox.
+// Bounds Redis-event size + the encrypted usage_logs column volume. Tunable via env.
+var usagePayloadCapBytes = func() int {
+	if v := os.Getenv("LLM_USAGE_PAYLOAD_CAP_BYTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 16384
+}()
+
+// truncatePayload returns b as a string capped at capBytes, backing off to a valid
+// UTF-8 rune boundary (a mid-rune cut would be invalid UTF-8 → Postgres TEXT rejects
+// the INSERT). Empty in → empty out (caller stores NULL). The marker keeps it obvious
+// in the trace that the payload was clipped.
+func truncatePayload(b []byte, capBytes int) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if len(b) <= capBytes {
+		return string(b)
+	}
+	cut := capBytes
+	for cut > 0 && !utf8.RuneStart(b[cut]) {
+		cut--
+	}
+	return string(b[:cut]) + fmt.Sprintf("…[truncated %d bytes]", len(b)-cut)
+}
+
+// nullIfEmpty maps "" → NULL so an absent payload/status doesn't store an empty string.
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
 
 // PgxPool is the subset of *pgxpool.Pool that Repo + UsageRelay use. Declaring it
 // as an interface lets tests inject pgxmock (PgxPoolIface) while production passes
@@ -208,31 +248,41 @@ FROM llm_jobs WHERE job_id = $1
 	return d, nil
 }
 
-// ResolveKind reads a model's provider_kind (the queue routing key + governor
-// concurrency class). found=false → model gone (caller 404s). Mirrors
-// EstimateModelInfo's lookup, kind-only (no pricing decode).
-func (r *Repo) ResolveKind(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (string, bool, error) {
-	var kind string
-	var err error
+// ResolveConcurrency resolves a job's concurrency CLASS — the key the governor +
+// queue serialize on — and that class's per-credential cap. The key is the
+// provider_credential_id (so all jobs sharing one BYOK credential share its
+// limit, regardless of provider kind). limit ≤ 0 means UNLIMITED (NULL
+// max_concurrency → request-as-demand; the backend infra is the only limiter).
+// found=false → model gone (caller acks+drops). Platform models have no
+// per-user credential → keyed by platform_model_id, always unlimited.
+func (r *Repo) ResolveConcurrency(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (key string, limit int, ok bool, err error) {
+	var credID uuid.UUID
+	var maxConc *int
 	switch modelSource {
 	case "user_model":
-		err = r.pool.QueryRow(ctx,
-			`SELECT provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
-			modelRef, ownerUserID).Scan(&kind)
+		err = r.pool.QueryRow(ctx, `
+SELECT pc.provider_credential_id, pc.max_concurrency
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&credID, &maxConc)
 	case "platform_model":
-		err = r.pool.QueryRow(ctx,
-			`SELECT provider_kind FROM platform_models WHERE platform_model_id=$1`,
-			modelRef).Scan(&kind)
+		// Platform models are shared/cloud — no per-user credential, no cap.
+		// Key by the model id so the (unlimited) class is still distinct.
+		return "platform:" + modelRef.String(), 0, true, nil
 	default:
-		return "", false, fmt.Errorf("unknown model_source %q", modelSource)
+		return "", 0, false, fmt.Errorf("unknown model_source %q", modelSource)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return "", 0, false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("resolve kind: %w", err)
+		return "", 0, false, fmt.Errorf("resolve concurrency: %w", err)
 	}
-	return kind, true, nil
+	if maxConc != nil && *maxConc > 0 {
+		limit = *maxConc
+	}
+	return credID.String(), limit, true, nil
 }
 
 // MarkRunning transitions a pending job to running and stamps started_at.
@@ -282,6 +332,12 @@ type UsageOutbox struct {
 	InputTokens  int
 	OutputTokens int
 	CostUSD      *float64 // nil → cost unresolvable (stored NULL)
+	// #32 — full-logging fields. RequestStatus is "success" (completed) | "failed" |
+	// "cancelled". RequestPayload/ResponsePayload are the truncated job input/result
+	// (tracing artifact; usage-billing encrypts them). Empty string ⇒ stored NULL.
+	RequestStatus   string
+	RequestPayload  string
+	ResponsePayload string
 }
 
 // TerminalOutbox is the LLM re-arch Phase 1 terminal-event payload written to
@@ -298,6 +354,36 @@ type TerminalOutbox struct {
 	ErrorCode     string
 	ErrorMessage  string
 	CorrelationID string
+}
+
+// insertUsageOutbox writes one usage_outbox audit row inside the caller's tx (#32).
+// Shared by FinalizeWithUsageOutbox (worker terminal path) and Cancel (user-cancel
+// path) so EVERY terminal call — including a cancellation — produces a usage-billing
+// audit row, and both paths attach the same UTF-8-safe-truncated request/response
+// payloads + request_status. cost may be nil (cancelled/unpriced → stored NULL).
+func insertUsageOutbox(
+	ctx context.Context, tx pgx.Tx,
+	jobID, ownerUserID uuid.UUID, campaignID, mcpKeyID *uuid.UUID,
+	modelSource string, modelRef uuid.UUID, operationLabel string,
+	inTok, outTok int, cost *float64, requestStatus string,
+	inputJSON, resultJSON []byte,
+) error {
+	reqPayload := truncatePayload(inputJSON, usagePayloadCapBytes)
+	respPayload := truncatePayload(resultJSON, usagePayloadCapBytes)
+	// mcp_key_id (public-MCP per-key spend attribution, H-C/PUB-11) is carried alongside
+	// the #32 audit columns (request_status + payloads); both migrations add their columns
+	// to usage_outbox, so the merged row records BOTH the public-key attribution and the
+	// traceable payload/status.
+	_, err := tx.Exec(ctx, `
+INSERT INTO usage_outbox
+  (request_id, owner_user_id, campaign_id, mcp_key_id, model_source, model_ref,
+   operation, input_tokens, output_tokens, cost_usd,
+   request_status, request_payload, response_payload)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+`, jobID, ownerUserID, campaignID, mcpKeyID, modelSource, modelRef,
+		operationLabel, inTok, outTok, cost,
+		nullIfEmpty(requestStatus), nullIfEmpty(reqPayload), nullIfEmpty(respPayload))
+	return err
 }
 
 // insertJobEventOutbox writes one job_event_outbox row inside the caller's tx.
@@ -378,14 +464,17 @@ func (r *Repo) FinalizeWithUsageOutbox(
 	// Same race guard as Finalize (WHERE status='running'); RETURNING job_meta so
 	// we can stamp the outbox row with the job's campaign_id in this tx. No row
 	// matched ⇒ a cancel beat us → no transition, no outbox (matches notifier gate).
+	// #32 — RETURNING input too: the immutable request payload the worker truncates
+	// into the usage_outbox row (no extra query; same tx).
 	var jobMeta []byte
+	var inputJSON []byte
 	err = tx.QueryRow(ctx, `
 UPDATE llm_jobs
 SET status = $2, completed_at = now(), result = $3,
     error_code = $4, error_message = $5, finish_reason = $6
 WHERE job_id = $1 AND status = 'running'
-RETURNING job_meta
-`, jobID, status, resultJSON, ec, em, fr).Scan(&jobMeta)
+RETURNING job_meta, input
+`, jobID, status, resultJSON, ec, em, fr).Scan(&jobMeta, &inputJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if cerr := tx.Commit(ctx); cerr != nil {
 			return 0, fmt.Errorf("finalize+outbox: commit (no-op): %w", cerr)
@@ -398,15 +487,34 @@ RETURNING job_meta
 
 	// campaign_id (the S4a correlation tag) stamps BOTH outbox rows; parse once.
 	campaignID := parseJobMetaCampaignID(jobMeta)
+	// mcp_key_id (H-C/PUB-11 per-key spend attribution) rides the same job_meta tag
+	// into the usage_outbox row → usage stream → usage_logs. NULL for first-party jobs.
+	mcpKeyID := ParseJobMetaMcpKeyID(jobMeta)
 
-	if status == "completed" && usage != nil {
-		if _, err := tx.Exec(ctx, `
-INSERT INTO usage_outbox
-  (request_id, owner_user_id, campaign_id, model_source, model_ref,
-   operation, input_tokens, output_tokens, cost_usd)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-`, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
-			usage.Operation, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
+	// #32 — emit a usage_outbox row for EVERY terminal status the worker provides a
+	// usage for (not just completed) so usage-billing audits every call. The worker
+	// sets usage on all terminal statuses now; cost/tokens are 0/nil for non-completed
+	// and RequestStatus distinguishes them (usage_logs is audit-only — enforcement is
+	// the guardrail, untouched). Payloads are filled HERE from the immutable input +
+	// the result (both in this tx), UTF-8-safe truncated, so a call can be traced.
+	// mcp_key_id (public-MCP per-key attribution) rides the same insert (NULL first-party).
+	if usage != nil {
+		// bug #24: the usage-billing `purpose` (the human label in the Usage GUI)
+		// is derived from this `operation` column. But `operation` is overloaded —
+		// it ALSO selects the worker's result aggregator + cost estimate + budget
+		// salvage, so every background-job caller submits operation="chat" (the
+		// chat-shaped result they parse) and was therefore mislabeled "chat". The
+		// caller's real intent rides job_meta.usage_purpose; prefer it for the
+		// billing label only, leaving the job's real operation untouched. Fail-soft
+		// (absent/malformed → fall back to the operation), mirroring campaign_id.
+		operationLabel := usage.Operation
+		if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
+			operationLabel = p
+		}
+		if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID, mcpKeyID,
+			usage.ModelSource, usage.ModelRef, operationLabel,
+			usage.InputTokens, usage.OutputTokens, usage.CostUSD, usage.RequestStatus,
+			inputJSON, resultJSON); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
 		}
 	}
@@ -450,6 +558,92 @@ func parseJobMetaCampaignID(jobMeta []byte) *uuid.UUID {
 	return &id
 }
 
+// parseJobMetaUsagePurpose extracts job_meta.usage_purpose (bug #24) — the
+// caller's human label for the Usage GUI's `purpose` column, decoupled from the
+// overloaded `operation`. Returns "" (→ caller falls back to the real operation)
+// on EVERY failure: absent, non-object, non-string, or a value that isn't a
+// safe label. The charset gate (lowercase alnum + underscore, 1..48 chars,
+// leading letter) keeps an untrusted job_meta from injecting arbitrary text
+// into a billing audit row — a malformed label must never break a finalize.
+func parseJobMetaUsagePurpose(jobMeta []byte) string {
+	if len(jobMeta) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return ""
+	}
+	raw, ok := m["usage_purpose"].(string)
+	if !ok || !isSafeUsagePurpose(raw) {
+		return ""
+	}
+	return raw
+}
+
+// isSafeUsagePurpose reports whether s is a safe snake_case label: 1..48 chars,
+// leading lowercase letter, then lowercase letters / digits / underscores.
+func isSafeUsagePurpose(s string) bool {
+	if len(s) == 0 || len(s) > 48 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case i > 0 && (r == '_' || (r >= '0' && r <= '9')):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// ParseJobMetaMcpKeyID extracts job_meta.mcp_key_id (the public-MCP-key spend
+// attribution tag, H-C/PUB-11) as a UUID. Exported so the submit handler can
+// reuse it for the PUB-12 BYOK-only gate. Nil-tolerant on EVERY failure
+// (absent / non-object / non-string / bad-uuid), mirroring parseJobMetaCampaignID:
+// a malformed tag must never fail a billing-critical finalize — it just yields an
+// un-attributed (mcp_key_id NULL) usage row. Its presence means the call
+// originated at the public MCP edge (first-party traffic never sets it).
+func ParseJobMetaMcpKeyID(jobMeta []byte) *uuid.UUID {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	raw, ok := m["mcp_key_id"].(string)
+	if !ok || raw == "" {
+		return nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+// ParseJobMetaSpendCap extracts job_meta.spend_cap_usd (the public key's per-key
+// USD sub-cap, H-K) as a float. The SDK carrier writes it as a JSON number, so it
+// decodes to float64. Nil-tolerant on EVERY failure (absent / non-object /
+// non-number / negative): a malformed cap must never fail submit — it just means
+// no per-key cap is enforced for this job (the owner guardrail still applies).
+// Only meaningful alongside a non-nil ParseJobMetaMcpKeyID (public-key traffic).
+func ParseJobMetaSpendCap(jobMeta []byte) *float64 {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	v, ok := m["spend_cap_usd"].(float64)
+	if !ok || v < 0 {
+		return nil
+	}
+	return &v
+}
+
 // Cancel transitions a pre-terminal job to cancelled and stamps
 // completed_at. Returns rows-affected so caller can distinguish "already
 // terminal" (0) from "actually cancelled" (1).
@@ -466,15 +660,20 @@ func (r *Repo) Cancel(ctx context.Context, jobID, ownerUserID uuid.UUID) (int64,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var operation string
-	var jobMeta []byte
+	// #32 — RETURNING model_source/model_ref + input/result too so a cancellation
+	// also produces a usage-billing audit row (the worker's FinalizeWithUsageOutbox
+	// never runs for a user-cancel: it's gated WHERE status='running', which this
+	// UPDATE already flipped to 'cancelled').
+	var operation, modelSource string
+	var modelRef uuid.UUID
+	var jobMeta, inputJSON, resultJSON []byte
 	err = tx.QueryRow(ctx, `
 UPDATE llm_jobs
 SET status = 'cancelled', completed_at = now()
 WHERE job_id = $1 AND owner_user_id = $2
   AND status IN ('pending','running')
-RETURNING operation, job_meta
-`, jobID, ownerUserID).Scan(&operation, &jobMeta)
+RETURNING operation, model_source, model_ref, job_meta, input, result
+`, jobID, ownerUserID).Scan(&operation, &modelSource, &modelRef, &jobMeta, &inputJSON, &resultJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Not found OR already terminal — no transition, no event.
 		if cerr := tx.Commit(ctx); cerr != nil {
@@ -487,6 +686,20 @@ RETURNING operation, job_meta
 	}
 
 	campaignID := parseJobMetaCampaignID(jobMeta)
+	mcpKeyID := ParseJobMetaMcpKeyID(jobMeta)
+	// #32 — audit the cancelled call (cost 0, request_status='cancelled') with the
+	// traced request/response payloads, mirroring the worker terminal path's label
+	// override so the Usage GUI purpose matches. mcp_key_id attributes a cancelled
+	// public-MCP job (NULL first-party).
+	operationLabel := operation
+	if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
+		operationLabel = p
+	}
+	if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID, mcpKeyID,
+		modelSource, modelRef, operationLabel, 0, 0, nil, "cancelled",
+		inputJSON, resultJSON); err != nil {
+		return 0, fmt.Errorf("cancel: insert outbox: %w", err)
+	}
 	if err := insertJobEventOutbox(ctx, tx, jobID, ownerUserID,
 		operation, "cancelled", "", nil, "", "", campaignID, ""); err != nil {
 		return 0, fmt.Errorf("cancel: insert job_event: %w", err)
@@ -578,6 +791,82 @@ RETURNING job_id, owner_user_id, operation, job_meta
 		return 0, fmt.Errorf("sweep: commit: %w", err)
 	}
 	return len(batch), nil
+}
+
+// PurgeExpiredJobs DELETEs terminal (completed/failed/cancelled) llm_jobs whose
+// expires_at has passed — the plaintext input/result retention sweep designed at
+// migrate.go:143 (partial index idx_llm_jobs_expires_at). Whole-row DELETE, NOT a
+// column-purge: the durable audit copy lives (encrypted) in usage_logs (readable
+// post-P0-1), and GET /{v1,internal}/llm/jobs/{id} cleanly 404s a purged row
+// (consumers tolerate 404), whereas a column-purge would serve a confusing partial
+// row. Safe against dispatch: `input` is never API-returned and LoadForProcess
+// reads pending-only, so a terminal purge can't collide with a running job.
+//
+// Bounded by batchSize (ctid IN (SELECT … LIMIT $1)) so a backlog can't take one
+// giant table lock; the caller loops until a batch comes back short. The status
+// filter is load-bearing — dropping it would delete live running/pending work.
+func (r *Repo) PurgeExpiredJobs(ctx context.Context, batchSize int) (int, error) {
+	tag, err := r.pool.Exec(ctx, `
+DELETE FROM llm_jobs
+WHERE ctid IN (
+  SELECT ctid FROM llm_jobs
+  WHERE status IN ('completed','failed','cancelled')
+    AND expires_at < now()
+  ORDER BY expires_at
+  LIMIT $1
+)
+`, batchSize)
+	if err != nil {
+		return 0, fmt.Errorf("purge expired: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// PurgePublishedOutbox DELETEs already-published usage_outbox + job_event_outbox
+// rows older than olderThan — the plaintext-retention twin of PurgeExpiredJobs.
+// usage_outbox.request_payload/response_payload are PLAINTEXT (#32); once the row
+// is published (drained to Redis, consumers dedup on request_id/job_id, and the
+// durable ENCRYPTED copy lives in usage-billing's usage_logs) the outbox row is
+// redundant, so a published row past the window is safe to drop — otherwise the
+// two outbox tables grow unbounded with plaintext.
+//
+// The `published_at IS NOT NULL` guard is load-bearing SAFETY: an un-drained row
+// (published_at NULL) must NEVER be deleted — that would lose an unbilled usage
+// event before the relay ships it. Bounded per table by batchSize; fail-fast on
+// the first table's error (next tick retries). Returns rows deleted across both.
+func (r *Repo) PurgePublishedOutbox(ctx context.Context, olderThan time.Duration, batchSize int) (int, error) {
+	cutoff := -olderThan.Seconds() // negative → now() + (-secs) = now() - secs
+	total := 0
+	// usage_outbox first (the plaintext-payload table), then job_event_outbox.
+	uTag, err := r.pool.Exec(ctx, `
+DELETE FROM usage_outbox
+WHERE ctid IN (
+  SELECT ctid FROM usage_outbox
+  WHERE published_at IS NOT NULL
+    AND published_at < now() + make_interval(secs => $1)
+  ORDER BY published_at
+  LIMIT $2
+)
+`, cutoff, batchSize)
+	if err != nil {
+		return total, fmt.Errorf("purge usage_outbox: %w", err)
+	}
+	total += int(uTag.RowsAffected())
+	eTag, err := r.pool.Exec(ctx, `
+DELETE FROM job_event_outbox
+WHERE ctid IN (
+  SELECT ctid FROM job_event_outbox
+  WHERE published_at IS NOT NULL
+    AND published_at < now() + make_interval(secs => $1)
+  ORDER BY published_at
+  LIMIT $2
+)
+`, cutoff, batchSize)
+	if err != nil {
+		return total, fmt.Errorf("purge job_event_outbox: %w", err)
+	}
+	total += int(eTag.RowsAffected())
+	return total, nil
 }
 
 // ModelPricing reads a model's pricing JSONB. For a user_model the lookup is

@@ -134,6 +134,22 @@ func TestBulkSetStatus_DeactivatesActive(t *testing.T) {
 	}
 }
 
+func TestBulkSetStatus_SetsRejected(t *testing.T) {
+	pool := openTestDB(t)
+	f := newBulkStatusFixture(t, pool)
+	d1 := seedBulkEntity(t, pool, f.bookID, "draft")
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE book_id=$1`, f.bookID)
+	})
+	w := f.post(t, map[string]any{"status": "rejected", "entity_ids": []string{d1.String()}}, f.jwt)
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	if statusOf(t, pool, d1) != "rejected" {
+		t.Errorf("entity must be rejected, got %s", statusOf(t, pool, d1))
+	}
+}
+
 func TestBulkSetStatus_BadStatusRejected(t *testing.T) {
 	pool := openTestDB(t)
 	f := newBulkStatusFixture(t, pool)

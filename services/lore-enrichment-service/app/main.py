@@ -1,5 +1,6 @@
+import contextlib
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,10 +10,12 @@ from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.api import eval as eval_api
 from app.api import book_profile, compose, compose_tasks, gaps, internal_job_control, jobs, observability, proposals, sources, templates, uploads
+from app.clients.grant_client import close_grant_client, init_grant_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
 from app.logging_config import setup_logging, trace_id_var
+from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 
 logger = logging.getLogger(__name__)
@@ -27,10 +30,37 @@ async def lifespan(app: FastAPI):
     # KG/glossary/book client wiring here (C1), NO redis/minio (later cycles).
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+    # E0 grant authority (D-ENRICH-MCP-OWNER-GATE) — the auto-enrich tenancy gate
+    # resolves (user, book) grants against book-service via this shared client.
+    init_grant_client()
     logger.info("lore-enrichment-service started on port %d", settings.port)
+
+    # MCP fan-out — run the /mcp StreamableHTTP session manager. The /mcp sub-app is
+    # mounted at module level, but a mounted Starlette sub-app's lifespan is NOT
+    # auto-run under FastAPI, so we enter its session manager here. Failure to start
+    # affects ONLY the /mcp path — the bespoke REST API stays up regardless.
+    mcp_exit_stack: AsyncExitStack | None = None
+    try:
+        mcp_exit_stack = AsyncExitStack()
+        await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
+        logger.info("lore-enrichment MCP session manager started; /mcp facade live")
+    except Exception:  # noqa: BLE001 — /mcp is best-effort relative to the REST API
+        logger.warning(
+            "lore-enrichment MCP session manager failed to start (non-fatal) — "
+            "/mcp facade unavailable, REST still serves", exc_info=True)
+        if mcp_exit_stack is not None:
+            await mcp_exit_stack.aclose()
+            mcp_exit_stack = None
+
     try:
         yield
     finally:
+        # Stop the MCP session manager first so in-flight tool calls are cancelled
+        # before the pool they touch is closed.
+        if mcp_exit_stack is not None:
+            with contextlib.suppress(Exception):
+                await mcp_exit_stack.aclose()
+        await close_grant_client()
         await close_pool()
 
 
@@ -106,3 +136,8 @@ app.include_router(eval_api.router)
 
 # Unified Job Control Plane P3 — S2S job_id-keyed control (cancel/pause/resume).
 app.include_router(internal_job_control.router)
+
+# MCP fan-out — mount the /mcp facade. stateless_http=True + path="/" so this
+# yields the endpoint at exactly "/mcp"; the session manager is run in the lifespan
+# above (a mounted sub-app's lifespan is not auto-run under FastAPI).
+app.mount("/mcp", build_mcp_app())

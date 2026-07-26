@@ -22,7 +22,8 @@
     "projectNoEmbedding": "no embedding model",
     "projectHint": "Extraction writes into this project. Its embedding/reranker can be overridden in the Models step.",
     "targetLanguage": "Target language (optional)",
-    "targetLanguagePlaceholder": "e.g. vi — blank uses your translation settings"
+    "targetLanguagePlaceholder": "e.g. vi — blank uses your translation settings",
+    "targetLanguageAny": "Use your translation settings"
   },
   "range": {
     "intro": "{{count}} published chapters in this book. Leave blank to run the whole book.",

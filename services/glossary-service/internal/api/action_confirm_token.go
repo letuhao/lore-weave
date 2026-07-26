@@ -39,11 +39,54 @@ const (
 	// action descriptors LIVE in Foundation (§13.1). Reserved descriptors
 	// (adopt, sync_apply, book_set_*, system_*) are intentionally NOT accepted
 	// yet — verify fails closed on them until their phase wires the effect.
-	descBookDelete       = "book_delete"
-	descSchemaCreateKind = "schema_create_kind"
-	descSchemaCreateAttr = "schema_create_attribute"
-	descAdopt            = "adopt"      // T1 — scaffold a book by copy-down from standards
-	descSyncApply        = "sync_apply" // T2 — apply a proposed per-row sync choice set
+	descBookDelete        = "book_delete"
+	// descBookDeleteBatch — tool-catalog-simplification spec (glossary_ontology_delete,
+	// scope=book): ONE confirm token covers N items, mirroring descSchemaCreateKinds'
+	// per-item-independent, idempotent-skip pattern (§8.8).
+	descBookDeleteBatch   = "book_delete_batch"
+	descSchemaCreateKind  = "schema_create_kind"
+	descSchemaCreateKinds = "schema_create_kinds" // BATCH: many kinds (+ their attrs) on ONE confirm
+	descSchemaCreateAttr  = "schema_create_attribute"
+	descAdopt             = "adopt"       // T1 — scaffold a book by copy-down from standards
+	descSyncApply         = "sync_apply"  // T2 — apply a proposed per-row sync choice set
+	descBookRevert        = "book_revert" // G-U1 — revert a book override back to its parent tier
+
+	// Pipeline M2 — high-impact / destructive entity-curation writes (authorityGrant,
+	// Manage-gated at confirm). Each effect re-validates against current state (§13.5).
+	descStatusChange    = "status_change"    // batch set entity status
+	descRestoreRevision = "restore_revision" // restore an entity to a prior revision (prune+upsert)
+	descReassignKind    = "reassign_kind"    // move an entity to another kind (drops non-matching attrs)
+	descMerge           = "merge"            // merge loser entities into a winner (destructive; journaled)
+
+	// glossary_entity_delete — Tier-W propose+confirm soft-delete of ONE glossary
+	// entity (real-usage feedback finding: no MCP way to remove a genuinely empty/
+	// garbage extraction-draft entity). Its restore counterpart, glossary_entity_restore,
+	// is Tier-A/direct (no token) — see entity_delete_tools.go.
+	descEntityDelete = "entity_delete"
+
+	// S5 — web-search deep-research (authorityGrant, Manage-gated). Class-C because it is
+	// a PAID outward call (S21 cost gate); the effect runs the search + attaches sources as
+	// draft evidence. Additive (not destructive).
+	descDeepResearch = "deep_research"
+
+	// Plan/Action kit — execute a typed multi-op plan on ONE confirm (loreweave_mcp).
+	// The op-set spans additive ops + Phase-2 destructive deletes (gated per-op by
+	// enabled_ops at confirm). MUST equal loreweave_mcp.DescriptorExecutePlan.
+	descExecutePlan = "execute_plan"
+
+	// #27/#29/#30 coalesce — the chat run-loop bundles the N child confirm_tokens a turn
+	// minted into ONE card; the FE confirms/previews the bundle at /actions/(confirm|preview)
+	// -batch. descBatch is ONLY a response/card label — no token is ever signed with it (the
+	// children keep their own descriptors); it tells the FE to route to the batch endpoints.
+	descBatch = "glossary.batch"
+
+	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
+	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
+	// the descriptor, entity is the `level` in params (genre|kind|attribute).
+	descSystemCreate  = "system_create"
+	descSystemPatch   = "system_patch"
+	descSystemDelete  = "system_delete"
+	descSystemRestore = "system_restore" // G-C8 — restore a soft-deleted System row from the recycle bin
 )
 
 var (
@@ -56,7 +99,9 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply:
+	case descBookDelete, descBookDeleteBatch, descSchemaCreateKind, descSchemaCreateKinds, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
+		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch, descExecutePlan, descEntityDelete,
+		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true
 	default:
 		return false

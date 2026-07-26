@@ -1,0 +1,16 @@
+{
+  "name": "LoreWeave",
+  "short_name": "LoreWeave",
+  "description": "Your multilingual writing, journaling and world-building workshop.",
+  "start_url": "/home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#141210",
+  "theme_color": "#141210",
+  "categories": ["productivity", "books", "lifestyle"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

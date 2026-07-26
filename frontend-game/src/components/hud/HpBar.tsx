@@ -1,4 +1,5 @@
 import { useGameStore } from '@/store/game-store';
+import type { JSX } from 'react';
 
 // HP bar — reads from game-store (Zustand). Re-renders only when
 // hp/maxHp actually change. Session D wires real HP from server.

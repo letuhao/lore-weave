@@ -2,11 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Settings2, Mic, Volume2, Play, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { apiJson } from '@/api';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
+import { aiSettingsApi } from '@/features/chat-ai-settings/api';
+import { accountVoiceFromPrefs } from '@/features/chat-ai-settings/voiceBridge';
 import { type VoicePrefs, loadVoicePrefs, saveVoicePrefs, DEFAULT_VOICE_PREFS } from '../voicePrefs';
 import { cn } from '@/lib/utils';
+
+/** The VoicePrefs leaves that also live in the account home (`user_chat_ai_prefs.voice`).
+ *  Editing one of these mirrors up; everything else is voice-panel-only and stays local. */
+const SHARED_VOICE_LEAVES = new Set<string>([
+  'ttsModelRef', 'ttsVoiceId', 'ttsSource', 'sttModelRef', 'sttSource',
+]);
 
 /** Voice entry from GET /v1/voices (via provider-registry proxy) */
 type ProviderVoice = {
@@ -38,15 +45,23 @@ const SILENCE_STEP = 100;
 interface VoiceSettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  /** Render the controls INLINE, without the fixed slide-over + backdrop. Used by the
+   *  unified session settings panel, which owns the edge and the close affordance
+   *  (spec §8: "VoiceSettingsPanel → Voice sub-panel"). Two stacked `fixed` overlays
+   *  would fight for the same edge and trap the click-outside handler. */
+  embedded?: boolean;
 }
 
-export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
+export function VoiceSettingsPanel({ open, onClose, embedded = false }: VoiceSettingsPanelProps) {
   const { t } = useTranslation('common');
   const { accessToken } = useAuth();
   const [prefs, setPrefs] = useState<VoicePrefs>(loadVoicePrefs);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [sttModels, setSttModels] = useState<UserModel[]>([]);
-  const [ttsModels, setTtsModels] = useState<UserModel[]>([]);
+  // W5: model lists come from the shared useUserModels (capability-filtered
+  // server-side, incl. legacy `_capability` flags); pickers below are the
+  // shared ModelPicker.
+  const { models: sttModels } = useUserModels({ capability: 'stt', enabled: open });
+  const { models: ttsModels } = useUserModels({ capability: 'tts', enabled: open });
   const [providerVoices, setProviderVoices] = useState<ProviderVoice[]>([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -62,18 +77,6 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
     speechSynthesis?.addEventListener('voiceschanged', loadVoices);
     return () => speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
   }, []);
-
-  // Load AI models (single call, filter client-side)
-  useEffect(() => {
-    if (!accessToken) return;
-    aiModelsApi.listUserModels(accessToken)
-      .then((r) => {
-        const active = r.items.filter((m) => m.is_active);
-        setSttModels(active.filter((m) => m.capability_flags?.stt));
-        setTtsModels(active.filter((m) => m.capability_flags?.tts));
-      })
-      .catch(() => { setSttModels([]); setTtsModels([]); });
-  }, [accessToken]);
 
   // Fetch voice analytics recommendation
   useEffect(() => {
@@ -137,33 +140,44 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
     setPreviewPlaying(voiceId);
   };
 
+  // D-CHATAI-VOICE-TWO-STORES — `user_chat_ai_prefs.voice` is voice's declared home
+  // (spec §3.5) and the account Chat & AI panel reads it. Mirror the leaves the two
+  // stores SHARE (tts/stt model + voice + source) so the two surfaces can never disagree
+  // about the same setting. Only the shared leaves, and only when one of them changed —
+  // a slider drag must never fire an account PATCH. Best-effort: the runtime store is
+  // already written, so a failed mirror costs a stale chip, never the user's setting.
   const update = <K extends keyof VoicePrefs>(key: K, value: VoicePrefs[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
       saveVoicePrefs(next, accessToken);
+      // Mirror ONLY when a shared leaf actually changed value. Re-selecting the same model
+      // fires onChange in some browsers, and each mirror is a network PATCH.
+      const changed = prev[key] !== value;
+      if (accessToken && changed && SHARED_VOICE_LEAVES.has(key as string)) {
+        void aiSettingsApi
+          .patchPrefs(accessToken, { voice: accountVoiceFromPrefs(next) })
+          .catch(() => { /* the authoritative runtime store is written; mirror self-heals */ });
+      }
       return next;
     });
   };
 
   if (!open) return null;
 
+  // Embedded: the host panel owns the edge, the scroll container and the close button.
+  // Rendering our own `fixed` overlay inside it would stack two slide-overs and steal the
+  // host's click-outside handler (the dockview `fixed`-positioning class of bug).
+  //
+  // `VoiceShell` is defined at MODULE scope, not here. A component declared inside the
+  // render body gets a new function identity on every render, so React sees a different
+  // element TYPE and unmounts + remounts the entire subtree: focus is lost mid-typing, a
+  // range-slider drag drops its pointer capture, and every child re-runs its mount effects
+  // (here: re-fetching the provider voice list on each keystroke). Pinned by
+  // `VoiceSettingsPanel.embedded.test.tsx`.
   return (
-    <>
-    {/* Backdrop — click to close */}
-    <div className="fixed inset-0 z-[39]" onClick={onClose} />
-    <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Settings2 className="h-4 w-4" />
-          {t('voice.settingsTitle', 'Voice Settings')}
-        </div>
-        <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+    <VoiceShell embedded={embedded} onClose={onClose} title={t('voice.settingsTitle', 'Voice Settings')}>
+      <>
+        {/* body */}
         {/* ── Speech Recognition Section ── */}
         <SectionHeader icon={<Mic className="h-3.5 w-3.5" />} label={t('voice.sttSection', 'Speech Recognition')} />
 
@@ -182,26 +196,22 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         {/* STT Model (when ai_model) */}
         {prefs.sttSource === 'ai_model' && (
           <FieldGroup label={t('voice.sttModel', 'STT Model')}>
-            {sttModels.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No STT models configured')}</p>
-            ) : (
-              <select
-                value={prefs.sttModelRef}
-                onChange={(e) => {
-                  update('sttModelRef', e.target.value);
-                  const model = sttModels.find((m) => m.user_model_id === e.target.value);
-                  update('sttModelName', model?.provider_model_name ?? '');
-                }}
-                className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
-              >
-                <option value="">{t('voice.selectModel', 'Select model...')}</option>
-                {sttModels.map((m) => (
-                  <option key={m.user_model_id} value={m.user_model_id}>
-                    {m.alias || m.provider_model_name}
-                  </option>
-                ))}
-              </select>
-            )}
+            <ModelPicker
+              capability="stt"
+              value={prefs.sttModelRef || null}
+              onChange={(id) => {
+                update('sttModelRef', id ?? '');
+                const model = (sttModels ?? []).find((m) => m.user_model_id === id);
+                update('sttModelName', model?.provider_model_name ?? '');
+              }}
+              allowNone
+              noneLabel={t('voice.selectModel', 'Select model...')}
+              ariaLabel={t('voice.sttModel', 'STT Model')}
+              compact
+              emptyState={
+                <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No STT models configured')}</p>
+              }
+            />
           </FieldGroup>
         )}
 
@@ -267,26 +277,23 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         {/* TTS Model (when ai_model) */}
         {prefs.ttsSource === 'ai_model' && (
           <FieldGroup label={t('voice.ttsModel', 'TTS Model')}>
-            {ttsModels.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No TTS models configured')}</p>
-            ) : (
-              <select
-                value={prefs.ttsModelRef}
-                onChange={(e) => {
-                  update('ttsModelRef', e.target.value);
-                  const model = ttsModels.find((m) => m.user_model_id === e.target.value);
-                  update('ttsModelName', model?.provider_model_name ?? '');
-                }}
-                className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
-              >
-                <option value="">{t('voice.selectModel', 'Select model...')}</option>
-                {ttsModels.map((m) => (
-                  <option key={m.user_model_id} value={m.user_model_id}>
-                    {m.alias || m.provider_model_name}
-                  </option>
-                ))}
-              </select>
-            )}
+            <ModelPicker
+              capability="tts"
+              value={prefs.ttsModelRef || null}
+              onChange={(id) => {
+                update('ttsModelRef', id ?? '');
+                const model = (ttsModels ?? []).find((m) => m.user_model_id === id);
+                update('ttsModelName', model?.provider_model_name ?? '');
+                if (!id) stopPreview();
+              }}
+              allowNone
+              noneLabel={t('voice.selectModel', 'Select model...')}
+              ariaLabel={t('voice.ttsModel', 'TTS Model')}
+              compact
+              emptyState={
+                <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No TTS models configured')}</p>
+              }
+            />
           </FieldGroup>
         )}
 
@@ -524,8 +531,42 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         >
           {t('voice.resetDefaults', 'Reset to defaults')}
         </button>
+      </>
+    </VoiceShell>
+  );
+}
+
+/** Module-scope so its identity is stable across renders (see the note at the call site). */
+function VoiceShell({
+  embedded,
+  onClose,
+  title,
+  children,
+}: {
+  embedded: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  if (embedded) {
+    return <div className="space-y-5" data-testid="voice-settings-embedded">{children}</div>;
+  }
+  return (
+    <>
+      {/* Backdrop — click to close */}
+      <div className="fixed inset-0 z-[39]" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Settings2 className="h-4 w-4" />
+            {title}
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">{children}</div>
       </div>
-    </div>
     </>
   );
 }

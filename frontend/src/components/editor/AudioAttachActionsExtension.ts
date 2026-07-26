@@ -50,6 +50,7 @@ function createActionBar(view: EditorView): HTMLElement {
 
   const bar = document.createElement('div');
   bar.className = 'audio-attach-actions-bar';
+  bar.setAttribute('data-testid', 'narration-attach-bar');
   bar.contentEditable = 'false';
   bar.style.cssText = `
     position: absolute; display: none; z-index: 5;
@@ -100,7 +101,7 @@ function createActionBar(view: EditorView): HTMLElement {
     if (!ALLOWED_AUDIO_TYPES.has(file.type)) return;
     if (file.size > MAX_AUDIO_SIZE) return;
 
-    const ctx = getUploadContext();
+    const ctx = getUploadContext((view.dom as any).editor);
     if (!ctx) return;
 
     // Find block index
@@ -136,6 +137,7 @@ function createActionBar(view: EditorView): HTMLElement {
   const uploadBtn = makeBtn('\uD83D\uDCC1', 'Upload audio', () => {
     fileInput.click();
   });
+  uploadBtn.setAttribute('data-testid', 'narration-attach-upload');
   bar.appendChild(uploadBtn);
 
   // Record button
@@ -166,7 +168,7 @@ function createActionBar(view: EditorView): HTMLElement {
 
         const blob = new Blob(recordedChunks, { type: 'audio/webm' });
         const file = new File([blob], `recording-${Date.now()}.webm`, { type: 'audio/webm' });
-        const ctx = getUploadContext();
+        const ctx = getUploadContext((view.dom as any).editor);
         if (!ctx) return;
 
         let blockIndex = 0;
@@ -205,12 +207,13 @@ function createActionBar(view: EditorView): HTMLElement {
       console.error('Microphone access denied:', err);
     }
   });
+  recordBtn.setAttribute('data-testid', 'narration-attach-record');
   bar.appendChild(recordBtn);
 
   // AI Generate button — uses TTS model from localStorage prefs
   const aiBtn = makeBtn('\u2728', 'Generate AI audio (TTS)', async () => {
     if (currentPos < 0) return;
-    const ctx = getUploadContext();
+    const ctx = getUploadContext((view.dom as any).editor);
     if (!ctx) return;
 
     // Read TTS prefs from localStorage
@@ -264,6 +267,7 @@ function createActionBar(view: EditorView): HTMLElement {
     }
     hide();
   });
+  aiBtn.setAttribute('data-testid', 'narration-attach-generate');
   bar.appendChild(aiBtn);
 
   function show(pos: number, blockDom: HTMLElement) {

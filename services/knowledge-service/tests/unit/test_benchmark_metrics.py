@@ -245,6 +245,23 @@ def test_runner_rejects_too_few_runs_for_threshold():
     assert report.passes_thresholds() is False
 
 
+def test_gate_failures_distinguishes_insufficient_runs_from_low_quality():
+    """R2 (D-JOURNEY-KG-BENCHMARK-UX): a PERFECT runs=1 must report ONLY
+    `insufficient_runs` — never a quality gate — so the FE stops calling it
+    'low-quality results'. A passing runs=min report has no failures."""
+    golden = _tiny_golden()
+    one = BenchmarkRunner(golden, _PerfectRunner(golden)).run(runs=1)
+    assert one.gate_failures() == ["insufficient_runs"]  # NOT low_recall etc.
+    assert one.recall_at_3 == 1.0  # the metric was perfect — proving the point
+    assert "gate_failures" in one.to_json()
+
+    enough = BenchmarkRunner(golden, _PerfectRunner(golden)).run(
+        runs=int(golden.thresholds["min_runs"]),
+    )
+    assert enough.gate_failures() == []
+    assert enough.passes_thresholds() is True
+
+
 def test_runner_rejects_zero_runs():
     golden = _tiny_golden()
     with pytest.raises(ValueError):

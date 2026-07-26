@@ -9,6 +9,7 @@ re-exports preserve a single GrantLevel identity across services.
 from loreweave_grants import GrantClient, GrantLevel, parse_grant_level
 
 from .config import settings
+from .logging_config import trace_id_var
 
 __all__ = [
     "GrantLevel",
@@ -29,6 +30,10 @@ def init_grant_client() -> GrantClient:
     _client = GrantClient(
         base_url=settings.book_internal_url,
         internal_token=settings.internal_service_token,
+        # W3 trace-uniformity: without this the grant-check S2S calls to
+        # book-service carried NO X-Trace-Id (every sibling grant shim wires it) —
+        # a trace-continuity gap on the tenancy-gate hop.
+        trace_id_provider=trace_id_var.get,
     )
     return _client
 

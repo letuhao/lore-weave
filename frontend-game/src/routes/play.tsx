@@ -18,6 +18,7 @@ import {
   DEFAULT_ZONE_WIDTH,
 } from '@/game/config/constants';
 import type { ChannelTier } from '@/types/tilemap';
+import type { JSX } from 'react';
 
 // V1.2 tilemap-viewer route. Renders one zone fetched from
 // tilemap-service /internal/v1/tilemaps/render with all 7 visualizable

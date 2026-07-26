@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_serializer
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
@@ -149,7 +149,33 @@ class Event(BaseModel):
     # parse_time_cue_to_iso when possible). First-write-wins on
     # ON MATCH so re-mentions don't churn the original phrasing.
     time_cue: str | None = None
+    # D-W10-ARC-CONFORMANCE-THREAD-TAG — the narrative-thread label (combat/romance/…)
+    # the thread-tag classifier assigns from a caller-supplied vocabulary (the arc's
+    # threads). None until tagged; the motif_beat extractor prefers it over chapter_id
+    # so deep arc-conformance can measure realized thread-progression from prose.
+    narrative_thread: str | None = None
+    # D-W10-ARC-CONFORMANCE-SUCCESSION — which arc-placement motif (by code) this event
+    # realizes, assigned by the motif-tag classifier. None until tagged; motif_beat emits it
+    # so deep arc-conformance reconstructs the realized motif order for the succession diff.
+    realized_motif_code: str | None = None
+    # D-W8-MOTIF-BEAT-LLM-EXTRACTOR — which catalog motif (by code) this event most embodies,
+    # assigned by the tag-beats classifier against the user's VISIBLE motif catalog (system +
+    # user motifs), independent of any arc. None until tagged. DISTINCT from realized_motif_code
+    # (that one is arc-scoped, vs the arc's placements) so mining and arc-conformance never
+    # clobber each other's tags. The motif_beat producer emits it as the generic beat/thread
+    # axes so corpus PrefixSpan mines reusable motif-SEQUENCES (arc skeletons), not one-off
+    # concrete titles. "" / null is the Option-A fallback (title/chapter_id).
+    mined_motif_code: str | None = None
     participants: list[str] = Field(default_factory=list)
+    # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — stored anchor: the glossary
+    # ``entity_id`` per participant slot, same length+order as ``participants``,
+    # ``""`` where the participant couldn't be anchored (Neo4j lists can't hold
+    # nulls → ``""`` sentinel, never a real UUID). ``exclude=True``: populated
+    # FROM the node so the read-time localizer can consume it, but NOT serialized
+    # into the timeline API response — it's an internal anchor, not FE-facing, so
+    # the wire contract is unchanged. ``None`` / a length-mismatched array signals
+    # "not resolved" → the localizer falls back to read-time name resolution.
+    participant_entity_ids: list[str] | None = Field(default=None, exclude=True)
     confidence: float = 0.0
     source_types: list[str] = Field(default_factory=list)
     evidence_count: int = 0
@@ -163,6 +189,29 @@ class Event(BaseModel):
     version: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    # ── KG-TL (timeline localization) — DERIVED, response-only Layer-2 fields ──
+    # NEVER stored on the :Event node (AC-T6): the source `title`/`summary`/
+    # `time_cue`/`participants` above stay canonical source-language. These are
+    # populated ONLY when a reader language resolves on the read path; absent a
+    # reader language they stay None (the no-op / back-compat path, AC-T5).
+    #
+    # M2 — participant names localized via the glossary entity-name join. Same
+    # length + order as `participants`; each slot is the reader-language name when
+    # the glossary had a translation, else the source name. `*_translated` is the
+    # per-slot signal (True ⇒ localized; False ⇒ source-fallback, FE marks it).
+    participants_localized: list[str] | None = None
+    participants_translated: list[bool] | None = None
+    # M3 — free-text fields localized via the on-demand event_text_translations
+    # cache. `*_localized` = COALESCE(cache, source); `*_translated` = cache hit?
+    # On a cache MISS the localized value IS the source text and the flag is False
+    # (AC-T4: source + "translation pending" marker, never a blocking inline LLM).
+    summary_localized: str | None = None
+    summary_translated: bool | None = None
+    time_cue_localized: str | None = None
+    time_cue_translated: bool | None = None
+    title_localized: str | None = None
+    title_translated: bool | None = None
 
     # C14 (C14-importance-major-pivotal LOCKED) — DERIVED importance,
     # never a stored column and never an extraction pass. The :Event
@@ -204,6 +253,35 @@ class Event(BaseModel):
         ) or self.mention_count >= 3:
             return "major"
         return None
+
+    # KG-TL — keep the canonical (no-reader-language) response BYTE-IDENTICAL
+    # (AC-T5). The 8 derived localization fields above stay None on the canonical
+    # path; rather than emit 8 new `null` keys (which would change the wire shape
+    # for every existing consumer), drop them from the serialized output WHEN they
+    # are all None. When a reader language resolves and the router populates them,
+    # they serialize normally. This is surgical — only the KG-TL fields are
+    # affected; every other nullable field (summary, time_cue, …) is untouched.
+    _KG_TL_FIELDS = (
+        "participants_localized",
+        "participants_translated",
+        "summary_localized",
+        "summary_translated",
+        "time_cue_localized",
+        "time_cue_translated",
+        "title_localized",
+        "title_translated",
+    )
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler):  # type: ignore[no-untyped-def]
+        data = handler(self)
+        # Only when localization didn't run (every KG-TL field is None) do we omit
+        # the keys — preserving today's exact wire shape. If ANY is set, keep all
+        # so the FE sees the full parallel arrays/flags.
+        if all(getattr(self, f) is None for f in self._KG_TL_FIELDS):
+            for f in self._KG_TL_FIELDS:
+                data.pop(f, None)
+        return data
 
 
 # C14 — closed set of derivable importances, exposed so the router /
@@ -248,6 +326,10 @@ ON CREATE SET
   e.event_date_iso = $event_date_iso,
   e.time_cue = $time_cue,
   e.participants = $participants,
+  // KG-TL Option A — anchor array, aligned to $participants (built post-dedup
+  // by merge_event). [] when the caller didn't resolve anchors → the read path
+  // sees a length mismatch and falls back to read-time resolution.
+  e.participant_entity_ids = $participant_entity_ids,
   e.confidence = $confidence,
   e.source_types = [$source_type],
   e.provenances = [$provenance],
@@ -256,6 +338,8 @@ ON CREATE SET
   e.archived_at = NULL,
   e.version = 1,
   e.created_at = datetime(),
+  // T4.1 flywheel — the extraction job that first minted this event (net-new).
+  e.created_job_id = $job_id,
   e.updated_at = datetime()
 ON MATCH SET
   e.summary = coalesce($summary, e.summary),
@@ -299,6 +383,17 @@ ON MATCH SET
     WHEN size($participants) = 0 THEN e.participants
     ELSE e.participants + [p IN $participants WHERE NOT p IN e.participants]
   END,
+  // KG-TL Option A — append the anchor for each NEW participant, by the SAME
+  // index filter as the participants append above so the two arrays stay
+  // aligned. coalesce($participant_entity_ids[i], "") guards a caller that
+  // passed [] (no anchors resolved): an out-of-range index → null → "" (Neo4j
+  // lists reject null elements). A legacy node (no prior array) starts from []
+  // → a short array → the read path's length guard falls it back to read-time
+  // resolution until the backfill normalizes it.
+  e.participant_entity_ids = CASE
+    WHEN size($participants) = 0 THEN coalesce(e.participant_entity_ids, [])
+    ELSE coalesce(e.participant_entity_ids, []) + [i IN range(0, size($participants) - 1) WHERE NOT $participants[i] IN e.participants | coalesce($participant_entity_ids[i], "")]
+  END,
   e.source_types = CASE
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
@@ -332,9 +427,11 @@ async def merge_event(
     event_date_iso: str | None = None,
     time_cue: str | None = None,
     participants: list[str] | None = None,
+    participant_anchors: dict[str, str] | None = None,
     source_type: str = "book_content",
     confidence: float = 0.0,
     provenance: str = "human_authored",
+    job_id: str | None = None,
 ) -> Event:
     """Idempotent upsert. Same (user, project, chapter, title)
     returns the same node.
@@ -382,6 +479,17 @@ async def merge_event(
     # order in Python 3.7+, which is also Cypher list traversal
     # order, so the first-spotted entity stays at index 0.
     deduped_participants = list(dict.fromkeys(participants or []))
+    # KG-TL Option A — build the anchor array ALIGNED to the deduped participants
+    # (the list actually passed to Cypher), so index i of participant_entity_ids
+    # always maps to participant i. `participant_anchors=None` → [] (caller didn't
+    # resolve → the read path falls back to read-time resolution); a provided map
+    # → glossary entity_id per slot, "" where the name isn't anchored.
+    if participant_anchors is None:
+        participant_entity_ids: list[str] = []
+    else:
+        participant_entity_ids = [
+            participant_anchors.get(p, "") for p in deduped_participants
+        ]
     # R4: empty string → None so coalesce in Cypher treats it as
     # "no new value", not "deliberate clear". Applied to time_cue too
     # for the same reason — a blank narrative hint must not clobber a
@@ -403,9 +511,11 @@ async def merge_event(
         event_date_iso=event_date_iso,
         time_cue=normalized_time_cue,
         participants=deduped_participants,
+        participant_entity_ids=participant_entity_ids,
         source_type=source_type,
         confidence=confidence,
         provenance=provenance,
+        job_id=job_id,
     )
     record = await result.single()
     if record is None:
@@ -719,6 +829,176 @@ async def list_events_in_order(
     return [_node_to_event(record["e"]) async for record in result]
 
 
+# ── set_narrative_threads (D-W10-ARC-CONFORMANCE-THREAD-TAG) ───────────
+
+
+# Clear-aware: a row whose ``thread`` is null REMOVES the property (Neo4j SET …=null),
+# so re-tagging a previously-tagged event that now classifies as "none" / dropped out of a
+# changed vocabulary nulls its stale tag instead of leaving it to pollute succession/causal
+# pairs (D-THREAD-TAG-RETAG-STALE). ``tagged`` counts only the non-null SETs.
+_SET_NARRATIVE_THREADS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.narrative_thread = row.thread, e.updated_at = datetime()
+RETURN count(CASE WHEN row.thread IS NOT NULL THEN e END) AS tagged
+"""
+
+
+def _retag_rows(assignments: dict[str, str], event_ids: set[str] | None) -> list[dict]:
+    """Build the UNWIND rows for a clear-aware re-tag. Without ``event_ids`` (the legacy
+    set-only path) only assigned, non-empty rows are written. With ``event_ids`` (the full
+    considered set) EVERY id in scope is written — assigned → its value, unassigned → null —
+    so a stale prior tag on an event the classifier no longer picks is cleared."""
+    if event_ids is None:
+        return [{"id": eid, "v": v} for eid, v in assignments.items() if v]
+    return [{"id": eid, "v": assignments.get(eid) or None} for eid in event_ids]
+
+
+async def set_narrative_threads(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the thread-tag classifier's verdicts onto ``:Event.narrative_thread``
+    (D-W10-ARC-CONFORMANCE-THREAD-TAG). ``assignments`` is ``{event_id: thread_key}``.
+
+    Tenancy: the MATCH filters ``e.user_id = $user_id`` so a row naming another user's
+    event id silently matches nothing (never a cross-tenant write). Returns the number of
+    events actually tagged (rows whose id+user matched a node).
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale tag on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE); omit it for the
+    legacy set-only behavior."""
+    rows = [{"id": r["id"], "thread": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_NARRATIVE_THREADS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# Clear-aware (see _SET_NARRATIVE_THREADS_CYPHER): a null ``code`` REMOVES the property so a
+# vocabulary change / "none" flip nulls a stale realized_motif_code (D-THREAD-TAG-RETAG-STALE).
+_SET_REALIZED_MOTIFS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.realized_motif_code = row.code, e.updated_at = datetime()
+RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
+"""
+
+
+async def set_realized_motifs(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the motif-tag classifier's verdicts onto ``:Event.realized_motif_code``
+    (D-W10-ARC-CONFORMANCE-SUCCESSION). ``assignments`` is ``{event_id: motif_code}``.
+    Tenant-scoped on ``e.user_id`` (a foreign id matches nothing). Returns the count tagged.
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale code on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE)."""
+    rows = [{"id": r["id"], "code": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_REALIZED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# Clear-aware (D-THREAD-TAG-RETAG-STALE): a null ``code`` REMOVES the property so a re-mine
+# with a changed catalog / "none" flip nulls a stale mined_motif_code.
+_SET_MINED_MOTIFS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.mined_motif_code = row.code, e.updated_at = datetime()
+RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
+"""
+
+
+async def set_mined_motif_codes(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the tag-beats classifier's verdicts onto ``:Event.mined_motif_code``
+    (D-W8-MOTIF-BEAT-LLM-EXTRACTOR). ``assignments`` is ``{event_id: motif_code}`` against the
+    user's VISIBLE motif catalog. Tenant-scoped on ``e.user_id`` (a foreign id matches
+    nothing). Returns the count tagged.
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale code on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE) — so a re-mine after
+    the catalog changed doesn't leave orphaned generic labels."""
+    rows = [{"id": r["id"], "code": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_MINED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# ── causal edges (D-W10-ARC-CONFORMANCE-SUCCESSION F2) ─────────────────
+
+
+_MERGE_CAUSAL_EDGES_CYPHER = """
+UNWIND $rows AS row
+MATCH (a:Event {id: row.cause}), (b:Event {id: row.effect})
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+MERGE (a)-[:CAUSES]->(b)
+RETURN count(*) AS written
+"""
+
+_CAUSAL_MOTIF_PAIRS_CYPHER = """
+MATCH (a:Event)-[:CAUSES]->(b:Event)
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+  AND ($project_id IS NULL OR (a.project_id = $project_id AND b.project_id = $project_id))
+  AND a.realized_motif_code IS NOT NULL AND b.realized_motif_code IS NOT NULL
+RETURN DISTINCT a.realized_motif_code AS cause, b.realized_motif_code AS effect
+"""
+
+
+async def merge_causal_edges(
+    session: CypherSession, *, user_id: str, pairs: list[tuple[str, str]],
+) -> int:
+    """Persist inferred `(:Event)-[:CAUSES]->(:Event)` edges (idempotent MERGE), tenant-scoped
+    on BOTH endpoints (a foreign id matches nothing → never a cross-tenant edge). ``pairs`` is
+    ``[(cause_event_id, effect_event_id)]``. Returns the rows whose endpoints both matched."""
+    rows = [{"cause": c, "effect": e} for c, e in pairs if c and e and c != e]
+    if not rows:
+        return 0
+    result = await run_write(session, _MERGE_CAUSAL_EDGES_CYPHER, user_id=user_id, rows=rows)
+    record = await result.single()
+    return int(record["written"]) if record else 0
+
+
+async def get_causal_motif_pairs(
+    session: CypherSession, *, user_id: str, project_id: str | None = None,
+) -> list[tuple[str, str]]:
+    """The realized CAUSES edges projected into MOTIF-CODE space (the join lives here because
+    Neo4j holds both the edges AND ``realized_motif_code`` on each event). Returns DISTINCT
+    ``(cause_code, effect_code)`` over edges whose BOTH endpoints are motif-tagged — exactly
+    the ``causal_code_pairs`` deep arc-conformance needs to flip a transition causally-verified.
+    Tenant-scoped on both endpoints."""
+    result = await run_read(
+        session, _CAUSAL_MOTIF_PAIRS_CYPHER, user_id=user_id, project_id=project_id)
+    return [(r["cause"], r["effect"]) async for r in result]
+
+
 # ── delete_events_with_zero_evidence ──────────────────────────────────
 
 
@@ -813,6 +1093,9 @@ MATCH (e:Event)
 WHERE e.user_id = $user_id
   AND e.archived_at IS NULL
   AND ($project_id IS NULL OR e.project_id = $project_id)
+  // D16 (spec 07 §Q4) — a project-less memory read excludes the user's assistant/diary projects, so a
+  // novel-writing session's timeline can't surface diary events. Empty list = no exclusion.
+  AND (size($exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN $exclude_project_ids)
   AND ($after_order IS NULL OR e.event_order > $after_order)
   AND ($before_order IS NULL OR e.event_order < $before_order)
   AND ($after_chronological IS NULL OR e.chronological_order > $after_chronological)
@@ -820,6 +1103,11 @@ WHERE e.user_id = $user_id
   AND ($event_date_from IS NULL OR e.event_date_iso >= $event_date_from)
   AND ($event_date_to IS NULL OR e.event_date_iso <= $event_date_to)
   AND ($participant_candidates IS NULL OR ANY(c IN $participant_candidates WHERE c IN e.participants))
+  AND (
+    $q IS NULL OR $q = ''
+    OR toLower(coalesce(e.title, '')) CONTAINS toLower($q)
+    OR toLower(coalesce(e.summary, '')) CONTAINS toLower($q)
+  )
 """
 
 _LIST_EVENTS_COUNT_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
@@ -890,10 +1178,12 @@ async def list_events_filtered(
     event_date_from: str | None = None,
     event_date_to: str | None = None,
     participant_candidates: list[str] | None = None,
+    q: str | None = None,
     sort_by: str = "narrative",
     sort_dir: str = "asc",
     limit: int,
     offset: int,
+    exclude_project_ids: list[str] | None = None,
 ) -> tuple[list[Event], int]:
     """K19e.2 + C10 + C14 — paginated timeline browse.
 
@@ -978,6 +1268,7 @@ async def list_events_filtered(
             f"<= event_date_to ({event_date_to!r})"
         )
     effective_limit = min(limit, EVENTS_MAX_LIMIT)
+    _exclude = list(exclude_project_ids or [])  # D16 — assistant/diary projects to drop under all-projects
     count_result = await run_read(
         session,
         _LIST_EVENTS_COUNT_CYPHER,
@@ -990,6 +1281,8 @@ async def list_events_filtered(
         event_date_from=event_date_from,
         event_date_to=event_date_to,
         participant_candidates=participant_candidates,
+        q=q,
+        exclude_project_ids=_exclude,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
@@ -1007,8 +1300,10 @@ async def list_events_filtered(
         event_date_from=event_date_from,
         event_date_to=event_date_to,
         participant_candidates=participant_candidates,
+        q=q,
         offset=offset,
         limit=effective_limit,
+        exclude_project_ids=_exclude,
     )
     rows = [_node_to_event(record["e"]) async for record in page_result]
     return rows, total

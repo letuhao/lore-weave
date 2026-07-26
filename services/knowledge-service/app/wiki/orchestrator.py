@@ -137,6 +137,9 @@ async def _generate_one(
     gen = await generate_article(
         context=context, profile=profile, llm=clients.llm, user_id=str(job.user_id),
         model_source=job.model_source, model_ref=job.model_ref, exemplars=exemplars,
+        # D-KG-WIKI-WORKER-GRADED-EFFORT — apply the job's stored (mint-clamped)
+        # effort to the prose generation.
+        reasoning_effort=job.reasoning_effort,
     )
     if gen.status != "ok" or gen.ir is None:
         logger.info("wiki-gen skip entity=%s status=%s", entity_id, gen.status)
@@ -155,6 +158,9 @@ async def _generate_one(
     gen, verify = await revise_article(
         gen=gen, verify=verify, context=context, profile=profile, llm=clients.llm,
         user_id=str(job.user_id), model_source=revise_source, model_ref=revise_ref,
+        # D-KG-WIKI-WORKER-GRADED-EFFORT — the revise re-generates prose, so it
+        # honors the same job effort as the initial generate.
+        reasoning_effort=job.reasoning_effort,
     )
     if gen.ir is None:
         return EntityResult("skipped", name=name)

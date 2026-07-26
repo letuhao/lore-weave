@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Manuscript Navigator (#02)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       MANUSCRIPT NAVIGATOR (#02) — the Side Bar's first real navigator.
+
+       HARD REQUIREMENT: handle HUGE manuscripts (10k+ chapters, 100k+ scenes)
+       the way VS Code's Explorer handles giant repos:
+
+       ① VIRTUALIZED ROWS   — only the ~40 visible rows are in the DOM; scrolling
+                              re-renders a moving window (never mount 10k nodes).
+       ② CURSOR PAGING      — chapters load a page at a time (limit ~100) via an
+                              opaque cursor; scrolling near the end fetches the next
+                              page. No offset math, no "load all".
+       ③ LAZY EXPANSION     — a chapter's scenes are fetched ONLY when it's expanded,
+                              itself cursor-paged (a 300-scene chapter loads 100 at a
+                              time). Collapsing frees them.
+       ④ SERVER-SIDE JUMP   — the filter box queries the server (name/number match),
+                              it does NOT client-filter 10k in-memory rows.
+
+       Data contract (build input):
+         GET /v1/books/{id}/chapters?cursor=<c>&limit=100  → { items, next_cursor }
+         GET outline scenes for a chapter (MCP/REST) ?cursor&limit             → paged
+         GET jump?q=<query>                                                    → matches
+       "Reload each browse" = the window re-derives from the store on scroll; only
+       the visible slice + expanded-and-loaded scene pages are held.
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    svg { display: block; }
+    ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 20px; }
+
+    .stage { display: flex; gap: 28px; align-items: flex-start; }
+
+    /* ── Navigator panel (lives in the Side Bar; ~280px) ─────────────────── */
+    .nav {
+      width: 288px; flex-shrink: 0; height: 620px;
+      background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .nav-head {
+      height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+      font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg);
+    }
+    .nav-head .acts { display: flex; gap: 4px; }
+    .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+    .ico:hover { background: var(--secondary); color: var(--foreground); }
+
+    /* Filter / jump */
+    .jump { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .jump-box {
+      display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 7px;
+      background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12px;
+    }
+    .jump-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12px; }
+    .jump-box .kbd { font-family: 'JetBrains Mono'; font-size: 9px; border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; }
+
+    /* Tree (virtualized scroll) */
+    .tree { flex: 1; overflow-y: auto; position: relative; padding: 4px 0; }
+    .row { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+    .row:hover { background: var(--secondary); }
+    .row.active { background: rgba(232,168,50,.10); color: var(--primary); }
+    .row.active::before { content:''; position:absolute; left:0; width:2px; height:26px; background: var(--primary); }
+    .caret { width: 12px; height: 12px; flex-shrink: 0; color: var(--muted-fg); transition: transform 100ms; }
+    .caret.closed { transform: rotate(-90deg); }
+    .caret.leaf { visibility: hidden; }
+    .row.arc { font-weight: 700; color: var(--accent-fg); }
+    .row.arc .caret { color: var(--accent); }
+    .row.arc .rn { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--accent); flex-shrink: 0; }
+    .row.arc .badge { color: var(--accent); }
+    .row.chapter { font-weight: 600; padding-left: 24px; }
+    .row.chapter .num { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--border-hover); width: 34px; flex-shrink: 0; }
+    .row.scene { padding-left: 48px; color: var(--muted-fg); font-weight: 400; }
+    .row.scene .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--border-hover); flex-shrink: 0; }
+    .row.scene.done .dot { background: var(--success); }
+    .row.scene.active .dot { background: var(--primary); }
+    .row .name { overflow: hidden; text-overflow: ellipsis; }
+    .row .badge { margin-left: auto; font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono'; }
+
+    /* Skeleton (lazy load) */
+    .sk { height: 26px; display: flex; align-items: center; padding: 0 10px 0 34px; }
+    .sk .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--secondary), var(--card-hover), var(--secondary)); background-size: 200% 100%; animation: sh 1.2s infinite; }
+    @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* Sentinel + windowing spacer */
+    .spacer { text-align: center; font-size: 10px; color: var(--border-hover); padding: 6px 0; font-family: 'JetBrains Mono'; }
+    .sentinel { display: flex; align-items: center; justify-content: center; gap: 8px; height: 34px; font-size: 11px; color: var(--muted-fg); border-top: 1px dashed var(--border); }
+    .spin { width: 12px; height: 12px; border: 2px solid var(--border-hover); border-top-color: var(--primary); border-radius: 50%; animation: rot .7s linear infinite; }
+    @keyframes rot { to { transform: rotate(360deg); } }
+
+    .nav-foot {
+      height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+      border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg); font-family: 'JetBrains Mono';
+    }
+
+    /* Callout tag on a row */
+    .tag { position: relative; }
+    .tag::after {
+      content: attr(data-tag); position: absolute; right: -30px; top: 50%; transform: translateY(-50%);
+      width: 20px; height: 20px; border-radius: 50%; background: var(--primary-muted); color: var(--primary);
+      font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+      font-family: 'Inter'; border: 1px solid var(--primary);
+    }
+
+    /* ── Annotations ─────────────────────────────────────────────────────── */
+    .notes { flex: 1; max-width: 620px; }
+    .note { display: flex; gap: 12px; margin-bottom: 18px; }
+    .note .n { width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+    .note h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+    .note p { font-size: 12px; line-height: 1.6; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 11px; background: var(--secondary); padding: 1px 5px; border-radius: 4px; color: var(--accent-fg); }
+    .why { margin-top: 20px; padding: 12px 14px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 12px; line-height: 1.6; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Manuscript Navigator <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— component #02</span></h1>
+  <p class="sub">The Side Bar's <strong>arc → chapter → scene</strong> tree (adaptive depth). Built to survive 10k+ chapters / 100k+ scenes via virtualization + cursor paging + lazy expansion (the VS&nbsp;Code Explorer model).</p>
+
+  <div class="stage">
+
+    <!-- ── Navigator panel ─────────────────────────────────────────────── -->
+    <div class="nav">
+      <div class="nav-head">
+        <span>Manuscript</span>
+        <div class="acts">
+          <div class="ico" title="New chapter"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
+          <div class="ico" title="Collapse all"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16"/></svg></div>
+          <div class="ico" title="Reload"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 0 0-14-4M4 14a8 8 0 0 0 14 4"/></svg></div>
+        </div>
+      </div>
+
+      <!-- ④ server-side jump/filter -->
+      <div class="jump">
+        <div class="jump-box">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <input placeholder="Jump to chapter / scene…" />
+          <span class="kbd">↵</span>
+        </div>
+      </div>
+
+      <!-- virtualized tree (adaptive depth: arc → chapter → scene; degenerate levels collapse) -->
+      <div class="tree">
+        <div class="spacer">▲ window start</div>
+
+        <!-- ⑤ Arc I (expanded) -->
+        <div class="row arc"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="rn">ARC I</span><span class="name">Nghịch Thiên Lộ</span><span class="badge">ch 1–40</span></div>
+
+        <!-- Ch 1 expanded -->
+        <div class="row chapter" style="position:relative"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="num">0001</span><span class="name">Nghịch thiên</span><span class="badge">3</span></div>
+        <div class="row scene active" style="position:relative"><span class="dot"></span><span class="caret leaf"></span><span class="name">Cảnh 1 — Bị phản bội</span></div>
+        <div class="row scene done"><span class="dot"></span><span class="name">Cảnh 2 — Thức tỉnh ma khí</span></div>
+        <div class="row scene"><span class="dot"></span><span class="name">Cảnh 3 — Lời thề</span></div>
+
+        <!-- Ch 2 expanded -->
+        <div class="row chapter"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="num">0002</span><span class="name">Hạ sơn</span><span class="badge">2</span></div>
+        <div class="row scene done"><span class="dot"></span><span class="name">Cảnh 1 — Trấn nhỏ</span></div>
+        <div class="row scene"><span class="dot"></span><span class="name">Cảnh 2 — Kẻ truy đuổi</span></div>
+
+        <!-- Ch 3 collapsed -->
+        <div class="row chapter"><svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="num">0003</span><span class="name">Huyết chiến</span><span class="badge">5</span></div>
+
+        <!-- ③ Ch 4 expanded, scenes LAZY-LOADING -->
+        <div class="row chapter"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="num">0004</span><span class="name">Ma đạo hiện</span><span class="badge">300</span></div>
+        <div class="sk"><span class="bar" style="width:70%"></span></div>
+        <div class="sk"><span class="bar" style="width:52%"></span></div>
+
+        <!-- dense collapsed chapters -->
+        <div class="row chapter"><svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="num">0005</span><span class="name">Cửu U cốc</span><span class="badge">4</span></div>
+        <div class="row chapter" style="position:relative"><svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="num">0040</span><span class="name">Trảm tình</span><span class="badge">6</span></div>
+
+        <!-- Arc II / III collapsed -->
+        <div class="row arc"><svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="rn">ARC II</span><span class="name">Ma Đạo Truy Sát</span><span class="badge">ch 41–120</span></div>
+        <div class="row arc"><svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg><span class="rn">ARC III</span><span class="name">Cửu Trùng Thiên … (→ 8 arcs)</span><span class="badge">ch 121+</span></div>
+
+        <!-- ② cursor paging sentinel -->
+        <div class="sentinel" style="position:relative"><span class="spin"></span> Loading next page… <span class="mono" style="color:var(--border-hover)">cursor=eyJjaCI6MTAwfQ</span></div>
+        <div class="spacer">▼ 10,242 rows below (not in DOM)</div>
+      </div>
+
+      <div class="nav-foot">
+        <span>10,342 ch</span><span>·</span><span>48,120 sc</span><span style="margin-left:auto;color:var(--border-hover)">win 100–140 / 10,342</span>
+      </div>
+    </div>
+
+    <!-- ── Annotations ─────────────────────────────────────────────────── -->
+    <div class="notes">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Virtualized rows</h3>
+          <p>Only the ~40 rows in view are in the DOM (the panel shows <code>win 100–140</code>). Scrolling re-renders a moving window over a fixed-height list; the top/bottom <code>spacer</code>s reserve the off-screen height so the scrollbar is honest. A 10k-chapter book never mounts 10k nodes.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>Cursor paging</h3>
+          <p>Chapters arrive a page at a time (<code>limit≈100</code>) keyed by an opaque <code>next_cursor</code>. Scrolling near the tail fires the sentinel → fetch the next page → append to the store. No <code>offset</code> arithmetic (which drifts as chapters are added/removed); the cursor is stable. "Reload each browse" = the window re-derives from the store, holding only loaded pages.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>Lazy scene expansion</h3>
+          <p>A chapter's scenes are fetched <em>only</em> on expand (Ch 0004 has 300 → it loads 100 at a time, its own cursor). Collapsing drops them from the store. So opening one fat chapter never pulls the whole book's scenes.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">4</div>
+        <div>
+          <h3>Server-side jump</h3>
+          <p>The filter box is a <em>query</em> (by number or title), answered by the server against all 10k — not a client-side filter of in-memory rows (which would only see loaded pages anyway). Hitting <code>↵</code> jumps the window to the match and expands its chapter.</p>
+        </div>
+      </div>
+
+      <div class="note">
+        <div class="n" style="background:var(--accent-muted);border-color:var(--accent);color:var(--accent-fg)">5</div>
+        <div>
+          <h3>Adaptive depth (arc → chapter → scene)</h3>
+          <p>The tree shows only the levels that add grouping. <strong>Self-written</strong> books get the full <code>arc → chapter → scene</code> (collapse arcs to make 10k chapters navigable by group). <strong>Imports</strong> have 1 arc + 1 scene/chapter, so both degenerate levels are hidden → a <strong>flat chapter list</strong> navigated by the jump box. Same component, structure-driven — like VS&nbsp;Code flattening a single-child folder chain. Arcs + scenes come from the composition outline; a book without one renders chapters only.</p>
+        </div>
+      </div>
+
+      <div class="why">
+        <strong>Why this is mandatory:</strong> some manuscripts run <strong>10k+ chapters</strong> with piles of scenes. A plain tree (mount everything, client-filter) would freeze the browser and blow memory. VS Code's Explorer scales to giant repos with exactly this recipe — windowed rendering + lazy children + paged fetch — so the navigator mirrors it. <br><br>
+        <strong>Interaction (the "wiring", tracked as Debt #1):</strong> clicking a scene opens/focuses it in a dock group. That link is built with #03 (a dock panel to open into); until then, selection just highlights + the E2E for the link is deferred.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

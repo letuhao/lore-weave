@@ -8,6 +8,14 @@ class Settings(BaseSettings):
     internal_service_token: str
     jwt_secret: str
 
+    # KM5 — RS256 admin-signing public key (SPKI/PKIX "PUBLIC KEY" PEM, or
+    # base64 of it). The public half of auth-service's KMS admin key; when set,
+    # System-tier admin actions verify an RS256 admin JWT against it (INV-T2).
+    # Unset (default) → System-tier admin is DISABLED, those paths 503. Same
+    # contract + env-var name as glossary (ADMIN_JWT_PUBLIC_KEY_PEM) so one
+    # platform admin token works across both services.
+    admin_jwt_public_key_pem: str = ""
+
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"
     # FD-22 — emit a Redis wake signal when an extraction job starts so worker-ai
@@ -62,9 +70,98 @@ class Settings(BaseSettings):
     # instructions block are protected.
     mode3_token_budget: int = 6000
 
+    # Track 4 P1 — salience-weighted retrieval (R-T4-01). Blends the P0
+    # entity_access_log signal (recency-decayed retrieval frequency) into the
+    # glossary entity ranking so entities THIS user keeps returning to rank higher
+    # (and survive budget-trim longer). Read-time Ebbinghaus decay — no cron.
+    # WEIGHT DEFAULTS TO 0.0 (byte-identical to today) — measure-before-flip: only
+    # raise it once the POC eval shows the learned signal beats static ranking.
+    salience_access_weight: float = 0.0
+    salience_half_life_days: float = 14.0
+    # Track 4 P3a — graph-native promotion (evidence/mention/edit-recency).
+    # Same measure-before-flip discipline; default 0.0 = no Neo4j fetch, no re-order.
+    salience_promote_weight: float = 0.0
+    salience_promote_half_life_days: float = 30.0
+    # Track 4 P3b — thumbs-feedback attribution term (chat.message_feedback →
+    # entity_access_log.feedback_score). Same discipline; default 0.0 = inert.
+    salience_feedback_weight: float = 0.0
+    # Track 4 P4 (R-T4-06) — ONE widened (relational, 2-hop) L2 retry when the
+    # intent names entities but the first pass found ZERO facts. Additive recall
+    # on the empty path only; default ON (a miss-path fallback, not a re-ranker).
+    context_l2_retry_widened: bool = True
+
+    # WS-4C (2026-07-09) — admit memory_remember / llm_tool_call facts into the
+    # per-turn L2 auto-recall. These project-level "we decided X / user prefers Y"
+    # facts are unanchored (no :ABOUT edge) and written at 0.7 (below the 0.8 L2
+    # gate) + NULL from_order, so the entity-anchored L2 path never surfaced them —
+    # the F4 continuity write-side gap. This branch selects them project-wide at
+    # their own lower floor. Kill-switch default ON.
+    context_l2_tool_facts: bool = True
+    context_l2_tool_fact_min_confidence: float = 0.7
+    # Cap on tool-facts injected per turn (they are rate-limited at write time, but
+    # bound the block so a long-lived project can't bloat every turn's context).
+    context_l2_tool_facts_limit: int = 20
+
+    # M1a (2026-07-06) — passage→graph anchor bridge. After L2 facts + L3 passages
+    # are retrieved, 1-hop-expand entities the PASSAGES surfaced that the message
+    # didn't anchor, injecting the new relations into the L2 facts block. Deploy
+    # CEILING / kill-switch (default ON) — a per-turn Mode-3 assembly step, not a
+    # per-user setting. See docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md.
+    context_passage_graph_expansion_enabled: bool = True
+
+    # M1b (2026-07-06) — working-scope boost. When the editor `<Chat>` panel is
+    # open on a chapter, chat-service forwards that chapter_id; the L3 passage
+    # ranker resolves it to a chapter_index and multiplicatively boosts passages
+    # WITHIN `window` chapters of it (linear falloff), so "what I'm editing right
+    # now" outranks equally-relevant-but-distant lore — the Aider open-file idea
+    # (research 04 §2). Intent-INDEPENDENT (separate from the recency term, which
+    # only fires for HISTORICAL/RECENT_EVENT). Inert on every non-editor turn
+    # (reader/glossary chat send no chapter_id) and when the chapter has no
+    # ingested passages. `boost=0.0` ⇒ OFF (byte-identical). Conservative default:
+    # a same-chapter passage gets ×1.3, so a distant passage with materially higher
+    # cosine still wins — bounds the reorder-a-far-true-answer regression risk.
+    context_working_scope_boost: float = 0.30
+    context_working_scope_window: int = 2
+
+    # M-recall (2026-07-07) — CJK/VI dictionary anchor resolution. The intent
+    # classifier can't segment scriptio-continua, so `select_l2_facts` anchored on
+    # its tokens returns 0 facts for Chinese queries even when the answer is a 1-hop
+    # relation (measured: 3/12 wangu goldens). When the message carries a non-ASCII
+    # letter, Aho-Corasick match it against the project's known entity-name dictionary
+    # and UNION the hits into the L2/bridge anchors. Deploy kill-switch (default ON);
+    # a per-turn Mode-3 recall step, not a per-user setting. `ttl_s` bounds dictionary
+    # staleness (a new entity is anchorable within the window); `cap` bounds the
+    # 1-hop fan-out; `min_len` drops 1-char generic matches.
+    context_dict_anchor_enabled: bool = True
+    context_dict_anchor_ttl_s: float = 300.0
+    context_dict_anchor_cap: int = 12
+    context_dict_anchor_min_len: int = 2
+
+    # M-recall role-resolution — when the message names the lead by ROLE ("主角"/
+    # "the protagonist") the dictionary can't match it, so anchor the project's
+    # most-central entity (highest relation degree) instead. Recovers "主角的母亲是谁"
+    # (measured: 4/5 remaining wangu role-queries). Additive + gated on a strict
+    # protagonist-term set. Deploy kill-switch (default ON); reuses the dict-anchor TTL.
+    context_role_anchor_enabled: bool = True
+
+    # D-BACKFILL-NO-SCOPE-LIMIT (2026-07-06) — the published-passage backfill embeds
+    # EVERY published chapter of a book, and on the embedding-model PUT it runs
+    # SYNCHRONOUSLY in-request. On a large book (万古神帝: 4232 published chapters) that
+    # is a runaway whole-book embed that a client timeout only hides. Cap the INLINE
+    # (embedding-PUT) backfill: when the book has more than this many published
+    # chapters and no explicit chapter_range, skip the inline backfill and let a scoped
+    # extraction job ingest passages instead. The extraction-start backfill is bounded
+    # to the job's chapter_range separately. Deploy ceiling; 0 ⇒ never skip (old behavior).
+    kg_backfill_max_inline_chapters: int = 200
+
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
+
+    # KG-ML M2 — translation-service internal client: fetch a chapter's ACTIVE
+    # translation text (for dual-indexing vi passages on `translation.published`).
+    translation_service_url: str = "http://translation-service:8087"
+    translation_client_timeout_s: float = 10.0
 
     # wiki-llm M1 (option A) — lore-enrichment hosts the authored de-bias
     # BookProfile (worldview/voice/era/language/anachronism). The wiki
@@ -76,13 +173,16 @@ class Settings(BaseSettings):
     lore_enrichment_client_timeout_s: float = 5.0
     book_profile_cache_ttl_s: float = 60.0
 
-    # wiki-llm M6 — batch wiki-generation orchestrator. `wiki_gen_enabled` gates
-    # the stream consumer (OFF by default: generation costs tokens, so a deploy
-    # never auto-starts generating). cost_per_article is the per-article ESTIMATE
-    # charged against a job's max_spend_usd (the LLMClient meters real tokens via
-    # provider-registry; precise per-job metering is a follow-up). prompt/pipeline
-    # version stamp the C7 build_inputs fingerprint (Phase-2 staleness).
-    wiki_gen_enabled: bool = False
+    # wiki-llm M6 — batch wiki-generation orchestrator.
+    # NOTE (D-JOURNEY-WIKI-FLAG): `wiki_gen_enabled` is DEPRECATED + no longer gates
+    # the stream consumer, which now ALWAYS runs (it is idle/free until a user-
+    # triggered, cost-gated job arrives — gating it off-by-default silently pended
+    # every wiki-gen job). Spend is bounded per-request (max_spend_usd + the
+    # cost-gated trigger), not by this platform env. Kept only for back-compat;
+    # default True. cost_per_article is the per-article ESTIMATE charged against a
+    # job's max_spend_usd. prompt/pipeline version stamp the C7 build_inputs
+    # fingerprint (Phase-2 staleness).
+    wiki_gen_enabled: bool = True
     wiki_gen_cost_per_article_usd: float = 0.05
     wiki_gen_passage_limit: int = 8
     wiki_prompt_version: str = "wiki-v1"

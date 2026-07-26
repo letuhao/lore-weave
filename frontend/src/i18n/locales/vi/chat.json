@@ -16,7 +16,61 @@
     "voice_settings": "Cài đặt giọng nói",
     "export": "Xuất",
     "rename": "Đổi tên",
-    "session_settings": "Cài đặt phiên"
+    "session_settings": "Cài đặt phiên",
+    "context_inspector": "Trình kiểm tra ngữ cảnh",
+    "context_meter": {
+      "label": "Ngữ cảnh đã dùng",
+      "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",
+      "tokens": "{{used}} / {{limit}} token",
+      "until_compact": "còn {{pct}}% đến khi tự động nén",
+      "baseline": "hệ thống + công cụ: {{tokens}} token trước từ đầu tiên của bạn"
+    }
+  },
+  "context_panel": {
+    "title": "Phân tích ngữ cảnh",
+    "free": "còn trống: {{tokens}} token",
+    "tok": "token",
+    "compact_at": "tự động nén kích hoạt ở {{pct}}% cửa sổ",
+    "zero": "bằng 0",
+    "manage": "Quản lý công cụ & kỹ năng",
+    "coming_soon": "sắp có",
+    "compact": {
+      "button": "Nén ngay",
+      "pending": "Đang nén…",
+      "placeholder": "Giữ lại tên nhân vật và các lời hứa cốt truyện…",
+      "success": "Đã nén — {{before}} → {{after}} token",
+      "failed": "Nén thất bại: {{error}}",
+      "compacted_through": "đã nén đến tin nhắn {{seq}}",
+      "clear": "Xóa nén",
+      "cleared": "Đã xóa nén — khôi phục toàn bộ lịch sử"
+    },
+    "cat": {
+      "system_prompt": "Nhân cách",
+      "memory_knowledge": "Ký ức truyện",
+      "working_memory": "Bộ nhớ làm việc",
+      "steering": "Quy tắc định hướng",
+      "skills": "Kỹ năng",
+      "plan_nudge": "Nhắc kế hoạch",
+      "book_note": "Ghi chú sách",
+      "attached_context": "Ngữ cảnh đính kèm",
+      "history": "Hội thoại",
+      "tool_results": "Kết quả công cụ",
+      "frontend_tool_schemas": "Công cụ giao diện",
+      "mcp_tool_schemas": "Công cụ MCP"
+    },
+    "history": {
+      "tab_now": "Hiện tại",
+      "tab_history": "Lịch sử",
+      "turn": "Lượt",
+      "total": "Tổng",
+      "empty": "Chưa có lịch sử lượt nào — gửi một tin nhắn để bắt đầu theo dõi lượng token.",
+      "error": "Không thể tải lịch sử ngữ cảnh."
+    }
+  },
+  "compaction": {
+    "toast": "Các lượt trước đã được nén — {{before}}→{{after}} token",
+    "summarize_failed": "Tóm tắt thất bại — các lượt cũ bị cắt bớt thay thế",
+    "overflowed": "Vẫn vượt giới hạn ngữ cảnh sau khi nén — phản hồi có thể mất chi tiết"
   },
   "input": {
     "format": "Định dạng:",
@@ -28,6 +82,7 @@
       "table": "Bảng"
     },
     "placeholder": "Hỏi về truyện, nhân vật, xây dựng thế giới của bạn...",
+    "assistant_placeholder": "Chia sẻ về một ngày của bạn — về những con người, dự án và những quyết định...",
     "attach_context": "Đính kèm ngữ cảnh",
     "assist": "Trợ lý",
     "voice_assist_on": "Trợ lý giọng nói BẬT — phản hồi AI sẽ được đọc",
@@ -43,19 +98,36 @@
     "stop_audio": "Dừng âm thanh",
     "think": "Suy nghĩ",
     "fast": "Nhanh",
+    "effort_fast": "Nhanh",
+    "effort_standard": "Chuẩn",
+    "effort_deep": "Sâu",
+    "effort_fast_hint": "Không suy nghĩ ẩn — trả lời nhanh nhất",
+    "effort_standard_hint": "Suy nghĩ trước khi trả lời — cân bằng tốc độ và độ sâu",
+    "effort_deep_hint": "Ngân sách suy luận tối đa — chậm nhất, kỹ lưỡng nhất",
+    "effort_off": "Tắt",
+    "effort_low": "Thấp",
+    "effort_medium": "Vừa",
+    "effort_high": "Cao",
+    "effort_auto": "Tự động",
+    "effort_off_hint": "Không suy nghĩ ẩn — trả lời nhanh nhất",
+    "effort_low_hint": "Suy luận nhẹ — nhanh, cẩn thận hơn chút",
+    "effort_medium_hint": "Suy luận cân bằng trước khi trả lời",
+    "effort_high_hint": "Ngân sách suy luận tối đa — chậm nhất, kỹ nhất",
+    "effort_auto_hint": "Để model tự quyết mức suy nghĩ",
+    "mode_cycle_hint": "Ctrl+. chuyển vòng Hỏi → Kế hoạch → Ghi",
     "stop_generating": "Dừng tạo (Esc)",
     "send": "Gửi (Enter)",
     "context_attached": "Đã đính kèm ngữ cảnh · ",
     "hint": "Enter để gửi · Shift+Enter để xuống dòng",
-    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh",
+    "mode_ask": "Hỏi",
+    "mode_plan": "Kế hoạch",
+    "mode_write": "Ghi",
+    "mode_ask_hint": "Chế độ chỉ đọc — trợ lý có thể tra cứu nhưng không thay đổi gì",
+    "mode_plan_hint": "Chế độ lập kế hoạch — trợ lý tra cứu và xây dựng kế hoạch bằng công cụ lập kế hoạch; không viết văn cho đến khi bạn chuyển sang Ghi",
+    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
-    "preset": {
-      "novel": "Trợ lý tiểu thuyết",
-      "translator": "Phiên dịch",
-      "worldbuilder": "Kiến tạo thế giới",
-      "editor": "Biên tập"
-    },
     "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
     "title": "Bắt đầu trò chuyện mới",
     "model": "Mô hình",
@@ -96,6 +168,13 @@
     "empty_cta": "Nhấn \"Mới\" để bắt đầu.",
     "no_matches": "Không có kết quả cho \"{{query}}\"",
     "message_matches": "Khớp tin nhắn"
+  },
+  "switcher": {
+    "switch": "Chuyển cuộc trò chuyện",
+    "new_chat": "Trò chuyện mới",
+    "no_active": "Chưa có trò chuyện",
+    "loading": "Đang tải…",
+    "empty": "Chưa có cuộc trò chuyện nào."
   },
   "view": {
     "configure_voice": "Cấu hình {{missing}} để bật Trợ lý giọng nói",
@@ -147,6 +226,67 @@
     "ok": "ổn",
     "failed": "thất bại"
   },
+  "actionConfirm": {
+    "label": "Xác nhận hành động",
+    "batch_count": "{{count}} mục",
+    "warning_destructive": "Hành động này có tính phá hủy và lan truyền — vui lòng xác nhận.",
+    "destructive_skipped": "{{count}} thao tác phá hủy sẽ bị BỎ QUA trừ khi bạn bật chúng ở trên.",
+    "confirm": "Xác nhận",
+    "confirm_all": "Xác nhận tất cả",
+    "cancel": "Hủy",
+    "done": "Xong ✓",
+    "expired": "Xác nhận này không còn hợp lệ — hãy yêu cầu lại để đề xuất mới.",
+    "expired_short": "Hết hạn — hỏi lại",
+    "error": "Không thể áp dụng thay đổi.",
+    "error_short": "Thất bại",
+    "cancelled": "Đã hủy",
+    "reprice": "Chi phí đã tăng lên {{cost}} so với ước tính — hãy hỏi lại để xác nhận lại theo giá mới.",
+    "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
+    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới.",
+    "warning": "Vui lòng xem lại thay đổi này trước khi áp dụng."
+  },
+  "batchConfirm": {
+    "title": "Xác nhận {{count}} hành động trong một bước",
+    "action": "hành động",
+    "warning": "Các thay đổi quan trọng này được áp dụng cùng lúc khi xác nhận.",
+    "warning_destructive": "Một số thao tác có tính phá hủy — hãy xem kỹ trước khi xác nhận.",
+    "confirm_all": "Xác nhận tất cả",
+    "cancel": "Hủy",
+    "applied": "Đã áp dụng {{count}} hành động",
+    "partial": "Đã áp dụng {{applied}}, {{failed}} thất bại — hãy hỏi lại để thử phần còn lại.",
+    "done": "Đã áp dụng {{count}} ✓",
+    "partial_short": "Đã áp dụng {{applied}}, {{failed}} thất bại",
+    "error_short": "Không thể áp dụng — hỏi lại",
+    "cancelled": "Đã hủy"
+  },
+  "recordEdit": {
+    "label": "Đề xuất chỉnh sửa",
+    "field": "Trường",
+    "fields": "{{count}} trường",
+    "empty": "(trống)",
+    "apply": "Áp dụng",
+    "dismiss": "Bỏ qua",
+    "applied": "Đã áp dụng ✓",
+    "conflict": "Đã thay đổi kể từ khi được đề xuất — hãy hỏi lại để xem bản mới nhất.",
+    "conflict_short": "Đã đổi kể từ khi đề xuất — hỏi lại",
+    "error": "Không thể lưu thay đổi.",
+    "error_short": "Lưu thất bại",
+    "dismissed": "Đã bỏ qua"
+  },
+  "activity": {
+    "label": "Đã làm giúp bạn",
+    "undo": "Hoàn tác",
+    "undone": "Đã hoàn tác"
+  },
+  "translation_review": {
+    "header": "Đề xuất bản dịch tên tiếng {{lang}}",
+    "header_aliases": "Đề xuất bí danh tiếng {{lang}}",
+    "draft": "nháp",
+    "more": "+{{count}} nữa",
+    "written": "{{count}} đã ghi",
+    "skipped": "{{count}} đã bỏ qua",
+    "verify_hint": "Xác minh trong Thuật ngữ"
+  },
   "facts": {
     "type": {
       "decision": "Quyết định",
@@ -190,20 +330,16 @@
     "words": "{{count}} từ",
     "unnamed": "(chưa đặt tên)",
     "no_matches": "Không tìm thấy kết quả.",
-    "no_items": "Không có mục nào."
+    "no_items": "Không có mục nào.",
+    "mention": {
+      "title": "Đính kèm ngữ cảnh",
+      "aria": "Gợi ý ngữ cảnh"
+    }
   },
   "settings": {
     "title": "Cài đặt phiên",
     "model": "Mô hình",
     "system_prompt": "System Prompt",
-    "preset": {
-      "Custom": "Tùy chỉnh",
-      "Novelist": "Tiểu thuyết gia",
-      "Translator": "Phiên dịch",
-      "Worldbuilder": "Kiến tạo thế giới",
-      "Editor": "Biên tập",
-      "Analyst": "Phân tích"
-    },
     "prompt_placeholder": "Cho AI một vai trò, tính cách hoặc chỉ dẫn cụ thể...",
     "gen_params": "Tham số tạo sinh",
     "max_tokens": "Token tối đa",
@@ -231,5 +367,84 @@
     "delete_failed": "Xóa thất bại: {{error}}",
     "chat_error": "Lỗi trò chuyện: {{error}}",
     "context_load_failed": "Không thể tải ngữ cảnh cho \"{{label}}\" — gửi mà không có nó"
+  },
+  "toolApproval": {
+    "label": "Cho phép trợ lý chạy công cụ này?",
+    "tier": "Bậc {{tier}}",
+    "tier_hint": "Bậc {{tier}} — thao tác ghi có thể hoàn tác",
+    "hint": "Thao tác ghi này có thể hoàn tác. \"Luôn cho phép\" sẽ không hỏi lại với công cụ này.",
+    "approve_once": "Cho phép một lần",
+    "always_allow": "Luôn cho phép",
+    "deny": "Từ chối",
+    "never_allow": "Never allow",
+    "approved": "Đã cho phép — đang chạy ✓",
+    "always_allowed": "Luôn cho phép — đang chạy ✓",
+    "denied": "Đã từ chối",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+  },
+  "rack": {
+    "label": "Ngữ cảnh",
+    "add": "Thêm",
+    "add_title": "Thêm công cụ hoặc kỹ năng",
+    "discovered": "Đã khám phá {{count}}",
+    "clear_discovered": "Xóa công cụ đã khám phá",
+    "search_placeholder": "Tìm kiếm…",
+    "tools_tab": "Công cụ",
+    "skills_tab": "Kỹ năng",
+    "category_all": "Tất cả",
+    "category_see_all": "Xem tất cả {{count}} →",
+    "no_tools_title": "Không có công cụ phù hợp",
+    "no_tools_description": "Hãy thử từ khóa hoặc danh mục khác.",
+    "no_skills_title": "Không có kỹ năng phù hợp",
+    "no_skills_description": "Hãy thử từ khóa khác.",
+    "summary": "{{tools}} công cụ · {{skills}} kỹ năng · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} công cụ · {{skills}} kỹ năng",
+    "summary_tooltip": "Mở bảng phân tích ngữ cảnh",
+    "server_live": "Trực tiếp từ danh mục công cụ",
+    "server_pins_only": "Chỉ từ ghim của phiên",
+    "more": "+{{count}} nữa",
+    "more_tooltip": "còn {{count}} công cụ đã khám phá chưa hiển thị",
+    "remove": "Xóa",
+    "advanced_tools": "Công cụ nâng cao ({{count}})",
+    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
+    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này",
+    "server": {
+      "knowledge": "Tri thức",
+      "glossary": "Thuật ngữ",
+      "book": "Sách",
+      "composition": "Sáng tác",
+      "translation": "Dịch thuật",
+      "jobs": "Tác vụ",
+      "ui": "Giao diện",
+      "chat": "Trò chuyện",
+      "other": "Khác"
+    }
+  },
+  "inspector": {
+    "title": "Trạng thái agent",
+    "pinned": "Công cụ đã ghim",
+    "hot": "Nạp sẵn",
+    "activated": "Đã kích hoạt",
+    "skills": "Kỹ năng",
+    "last_search": "find_tools gần nhất",
+    "advertised": "Đang cung cấp",
+    "advertised_sizes": "lõi {{core}} · giao diện {{frontend}} · kích hoạt {{activated}}",
+    "trail": "Chuỗi pha",
+    "phase": {
+      "idle": "Nghỉ",
+      "curated": "Đã chọn lọc",
+      "skills": "Kỹ năng",
+      "discovering": "Đang khám phá…",
+      "activated": "Đã kích hoạt",
+      "tool_running": "Đang chạy công cụ"
+    }
+  },
+  "presets": {
+    "custom": "Tùy chỉnh",
+    "novelist": "Tiểu thuyết gia",
+    "translator": "Phiên dịch",
+    "worldbuilder": "Kiến tạo thế giới",
+    "editor": "Biên tập",
+    "analyst": "Phân tích"
   }
 }

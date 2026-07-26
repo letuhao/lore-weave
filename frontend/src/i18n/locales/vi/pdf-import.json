@@ -1,0 +1,68 @@
+{
+  "title": "Nhập PDF",
+  "description": "Nhập PDF dưới dạng sách, được chia theo phạm vi trang",
+  "steps": {
+    "upload": "Tải lên",
+    "configure": "Thiết lập",
+    "confirm": "Xác nhận",
+    "progress": "Tiến độ",
+    "results": "Kết quả"
+  },
+  "upload": {
+    "intro": "Nhập PDF dưới dạng sách — bao gồm cả PDF về cốt truyện/tài liệu kỹ thuật, không chỉ riêng tiểu thuyết. Các tệp PDF dài sẽ được chia thành các chương theo phạm vi trang (được thiết lập ở bước tiếp theo).",
+    "choosePdf": "Chọn tệp PDF",
+    "pdfOnly": "chỉ tệp .pdf",
+    "checking": "Đang kiểm tra PDF…",
+    "pageCount_one": "Phát hiện {{count}} trang.",
+    "pageCount_other": "Phát hiện được {{count}} trang.",
+    "readError": "Không thể đọc tệp PDF này."
+  },
+  "configure": {
+    "pagesPerChunk": "Số trang mỗi phần",
+    "pagesPerChunkHint": "Mỗi nhóm gồm số trang này sẽ trở thành một chương — việc nhập PDF không sử dụng tính năng tự động nhận diện tiêu đề «Chương N», vì vậy thiết lập này vẫn hiệu quả ngay cả với sách tham khảo/kỹ thuật không có dấu mốc chương.",
+    "willCreate_one": "Thao tác này sẽ tạo ra {{count}} chương từ {{pages}} trang.",
+    "willCreate_other": "Thao tác này sẽ tạo ra {{count}} chương từ {{pages}} trang.",
+    "highChapterWarning": "Số lượng chương quá lớn — hãy cân nhắc tăng giá trị «số trang mỗi phần» nếu đây không phải là ý muốn của bạn. Quá trình nhập vẫn sẽ tiếp tục diễn ra.",
+    "captionImages": "Chú thích hình ảnh bằng AI",
+    "captionImagesHint": "Trích xuất biểu đồ/hình ảnh và chú thích chúng thông qua mô hình thị giác để việc trích xuất thuật ngữ/đồ thị tri thức có thể hiểu được nội dung biểu đồ. Sử dụng tín dụng LLM cho mỗi hình ảnh.",
+    "visionModel": "Mô hình thị giác",
+    "visionModelPlaceholder": "Chọn một mô hình có khả năng thị giác (ví dụ: gpt-4o)",
+    "visionModelAriaLabel": "Mô hình thị giác để chú thích hình ảnh",
+    "visionModelHint": "Hãy chọn một mô hình thực sự hỗ trợ đầu vào hình ảnh — không phải mô hình chat nào cũng làm được điều này."
+  },
+  "confirm": {
+    "file": "Tệp",
+    "pages": "Trang",
+    "pagesPerChunk": "Số trang mỗi phần",
+    "chaptersToCreate": "Số chương cần tạo",
+    "captionImages": "Chú thích hình ảnh bằng AI",
+    "yes": "Có",
+    "no": "Không",
+    "needModel": "Hãy chọn một mô hình thị giác trước khi bắt đầu — tính năng chú thích đã được bật nhưng chưa có mô hình nào được chọn.",
+    "backgroundNote": "Quá trình này sẽ chạy ngầm — bạn có thể đóng hộp thoại này và kiểm tra tiến độ từ bảng Công việc bất cứ lúc nào.",
+    "startImport": "Bắt đầu nhập",
+    "startFailed": "Không thể bắt đầu nhập"
+  },
+  "progress": {
+    "importing": "Đang nhập PDF…",
+    "chapterOf": "Chương {{current}} trên {{total}}",
+    "runInBackground": "Chạy trong nền",
+    "progress": "Tiến độ",
+    "longNote": "Quá trình này có thể mất nhiều thời gian đối với tệp PDF dài — đặc biệt là khi đang bật tính năng chú thích bằng AI. Bạn có thể đóng hộp thoại này bất cứ lúc nào; việc nhập tệp vẫn sẽ tiếp tục và được theo dõi trong bảng Công việc.",
+    "backgroundToast": "Việc nhập tệp vẫn đang tiếp tục chạy ngầm — hãy kiểm tra bảng Công việc để xem tiến độ."
+  },
+  "results": {
+    "complete": "Nhập tệp hoàn tất",
+    "failed": "Nhập tệp thất bại",
+    "chaptersCreated_one": "Đã tạo {{count}} chương.",
+    "chaptersCreated_other": "Đã tạo {{count}} chương.",
+    "genericError": "Đã xảy ra lỗi trong quá trình nhập.",
+    "importAnother": "Nhập tệp khác",
+    "done": "Hoàn tất"
+  },
+  "button": {
+    "back": "Quay lại",
+    "cancel": "Hủy",
+    "next": "Tiếp theo"
+  }
+}

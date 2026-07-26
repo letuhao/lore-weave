@@ -13,29 +13,14 @@ import (
 // budget. The jobs worker treats this like a transient error (retryable).
 var ErrGovernorTimeout = errors.New("governor: acquire timeout")
 
-// localKinds run on a single local GPU and MUST be serialized (max 1). Cloud
-// kinds share a per-kind concurrency cap. Keeping this a small set (vs a config
-// list) is deliberate — adding a provider kind is a code change anyway.
-var localKinds = map[string]bool{"ollama": true, "lm_studio": true}
-
-// maxFor — pure: the concurrency cap for a provider kind. Local kinds are
-// serialized to 1 (the single GPU); everything else gets cloudMax.
-func maxFor(kind string, cloudMax int) int {
-	if localKinds[kind] {
-		return 1
-	}
-	return cloudMax
-}
-
-// MaxFor is the exported concurrency cap for a provider kind — used by the
-// Phase-1 Commit-3 job-queue consumer to size its per-kind semaphore (local
-// kinds serialize to 1 = the single GPU; cloud kinds get cloudMax). Same logic
-// as the governor's internal gate, so the queue's bound matches the slot bound.
-func MaxFor(kind string, cloudMax int) int { return maxFor(kind, cloudMax) }
-
 // GovernorConfig — tunables (from service config).
+//
+// D-PROVIDER-CONCURRENCY-CONFIG: the concurrency cap is no longer a per-KIND
+// constant (the old local→1 / cloud→cloudMax split was an anti-pattern — capacity
+// is a property of a credential's backend, not its kind). The cap now travels
+// with each Acquire call as the credential's max_concurrency; this struct only
+// carries the lease/timeout tunables shared by every key.
 type GovernorConfig struct {
-	CloudMax       int           // concurrency cap for cloud provider kinds
 	Lease          time.Duration // per-acquisition lease TTL (> max call duration)
 	AcquireTimeout time.Duration // max wait for a slot before ErrGovernorTimeout
 	PollInterval   time.Duration // re-check cadence while waiting
@@ -60,7 +45,7 @@ end
 return 0
 `)
 
-// Governor is the Redis-backed per-provider-kind concurrency limiter.
+// Governor is the Redis-backed per-credential concurrency limiter.
 type Governor struct {
 	rdb *redis.Client
 	cfg GovernorConfig
@@ -70,22 +55,23 @@ func NewGovernor(rdb *redis.Client, cfg GovernorConfig) *Governor {
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 50 * time.Millisecond
 	}
-	// Clamp: a misconfigured CloudMax<1 would make every cloud call un-acquirable
-	// (ZCARD < 0 is never true) → all cloud jobs time out. Floor at 1.
-	if cfg.CloudMax < 1 {
-		cfg.CloudMax = 1
-	}
 	return &Governor{rdb: rdb, cfg: cfg}
 }
 
-func concKey(kind string) string { return "gov:conc:" + kind }
+func concKey(key string) string { return "gov:conc:" + key }
 
-// Acquire takes a concurrency slot for `kind`, waiting up to AcquireTimeout.
-// Returns a release func (always non-nil; safe to call once) or ErrGovernorTimeout.
-func (g *Governor) Acquire(ctx context.Context, kind string) (func(), error) {
-	maxN := maxFor(kind, g.cfg.CloudMax)
+// Acquire takes a concurrency slot for credential-class `concClass`, capped at
+// `limit`, waiting up to AcquireTimeout. limit ≤ 0 means UNLIMITED — the call
+// passes through immediately without touching Redis (request-as-demand: the
+// backend infra is the only limiter). Returns a release func (always non-nil;
+// safe to call once) or ErrGovernorTimeout.
+func (g *Governor) Acquire(ctx context.Context, concClass string, limit int) (func(), error) {
+	if limit <= 0 {
+		return func() {}, nil // unlimited — no gate
+	}
+	maxN := limit
 	token := uuid.NewString()
-	key := concKey(kind)
+	key := concKey(concClass)
 	deadline := time.Now().Add(g.cfg.AcquireTimeout)
 
 	for {

@@ -3,6 +3,7 @@
 from loreweave_llm import (
     bucket_effort,
     infer_reasoning_control,
+    reasoning_fields,
     resolve_reasoning,
 )
 
@@ -63,3 +64,30 @@ def test_auto_effort_uses_caller_effort_and_source():
 def test_auto_non_reasoning_is_noop():
     d = resolve_reasoning(user_pref="auto", model_control="none", auto_effort="high")
     assert d.effort is None and d.passthrough is False and d.source == "non_reasoning"
+
+
+# ── reasoning_fields (directive → provider wire fields) ──
+
+def test_reasoning_fields_passthrough_and_noop_omit():
+    # adaptive (Anthropic self-decides) → omit; never send reasoning_effort.
+    adaptive = resolve_reasoning(user_pref="auto", model_control="adaptive")
+    assert reasoning_fields(adaptive) == {}
+    # non-reasoning model → omit.
+    none = resolve_reasoning(user_pref="auto", model_control="none")
+    assert reasoning_fields(none) == {}
+
+
+def test_reasoning_fields_effort_emits_knobs():
+    d = resolve_reasoning(user_pref="high", model_control="effort")
+    f = reasoning_fields(d)
+    assert f["reasoning_effort"] == "high"
+    assert f["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+
+
+def test_reasoning_fields_off_disables_thinking():
+    # An explicit "off" is a real directive (effort="none"): SEND it so a reasoning
+    # model's hidden thinking is turned OFF (not omitted).
+    d = resolve_reasoning(user_pref="off", model_control="effort")
+    f = reasoning_fields(d)
+    assert f["reasoning_effort"] == "none"
+    assert f["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}

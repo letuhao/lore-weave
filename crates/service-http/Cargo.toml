@@ -1,0 +1,35 @@
+[package]
+name = "service-http"
+version = "0.1.0"
+description = "Shared HTTP infra for LoreWeave Rust services — axum serve + graceful shutdown, k8s health probes (DB-aware), RFC 7807 problem+json (with FE-readable `message`), JWT `require_user` + internal-token middleware, JSON tracing + X-Trace-Id propagation, prometheus /metrics, fail-closed env config, and sqlx pool+migrate bootstrap. roleplay-service is the first consumer; tilemap/world migrate opportunistically."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "service_http"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+jsonwebtoken = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+prometheus = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tower = { workspace = true }
+serde_json = { workspace = true }

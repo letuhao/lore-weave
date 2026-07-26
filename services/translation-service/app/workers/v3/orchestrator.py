@@ -19,6 +19,7 @@ See docs/specs/2026-06-06-translation-pipeline-v3-multi-agent.md.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from uuid import UUID
 
@@ -118,8 +119,24 @@ async def _compute_v3_context(blocks: list[dict], source_lang: str, msg: dict) -
             extract_translatable_text(b) for b in blocks
             if classify_block(b) != "passthrough"
         )
+        # X5 (temporal-knowledge §6B): inject entity knowledge AS OF this chapter's
+        # story-time ordinal so earlier chapters don't leak future spoilers. The
+        # `chapter_sort_order` is the GLOBAL reading position (same axis the KAL/
+        # knowledge ordinals key on) — set by chapter_worker from book-service's
+        # `sort_order`; None when absent ⇒ as_of=None ⇒ current head (pre-X5 behavior).
+        # The content_hash keys the immutable-once cache (§12.1/D8): an unchanged
+        # chapter at the same as_of reuses the cached as-of knowledge. Both are
+        # opt-in — without content_hash, build_context_brief skips the KAL fetch
+        # entirely, so this is additive.
+        _as_of = msg.get("chapter_sort_order")
+        try:
+            as_of_ordinal = int(_as_of) if _as_of is not None else None
+        except (TypeError, ValueError):
+            as_of_ordinal = None
+        content_hash = hashlib.sha256(chapter_src.encode("utf-8")).hexdigest()
         knowledge_brief = await build_context_brief(
             msg.get("book_id", ""), msg.get("user_id", ""), chapter_src,
+            as_of=as_of_ordinal, content_hash=content_hash,
         )
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("v3 knowledge brief failed (non-fatal): %s", exc)

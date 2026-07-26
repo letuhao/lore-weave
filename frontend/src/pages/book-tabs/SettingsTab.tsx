@@ -1,24 +1,33 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Save, Loader2, Upload, X, ChevronDown, Check, Plus, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { apiJson } from '@/api';
-import { booksApi, type Book, type Visibility } from '@/features/books/api';
+import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { tieringApi } from '@/features/glossary/tieringApi';
 import { BookWorldSection } from '@/features/world/components/BookWorldSection';
+import { LanguagePicker } from '@/components/shared';
 import { cn } from '@/lib/utils';
 
 type Props = {
   bookId: string;
   book: Book;
   onReload: () => void;
+  /** review-impl fix (17_...docks.md, DOCK-2): injectable so BookSettingsPanel can reuse this
+   *  component AS-IS instead of forking its ~400 lines of logic. Defaults to the classic route's
+   *  own navigate() when omitted — same "caller injects, component never imports react-router or
+   *  the studio host" shape as BookWorldSection's own onOpenWorld prop (dockable-gui.md DOCK-7). */
+  onOpenWorld?: (worldId: string) => void;
 };
 
-export function SettingsTab({ bookId, book, onReload }: Props) {
+export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
+  const openWorld = onOpenWorld ?? ((worldId: string) => navigate(`/worlds/${worldId}`));
 
   // ── Form state ──
   const [title, setTitle] = useState(book.title);
@@ -26,8 +35,9 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
   const [language, setLanguage] = useState(book.original_language ?? '');
   const [summary, setSummary] = useState(book.summary ?? '');
   const [genreTags, setGenreTags] = useState<string[]>(book.genre_tags ?? []);
-  const [visibility, setVisibility] = useState<Visibility>((book.visibility as Visibility) ?? 'private');
   const [saving, setSaving] = useState(false);
+  // bug #23: visibility/sharing lives ONLY in the dedicated Sharing tab now (it also owns the
+  // unlisted link + collaborators) — the duplicate control here was removed to de-clutter.
 
   // ── Cover state ──
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
@@ -44,7 +54,6 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
     setLanguage(book.original_language ?? '');
     setSummary(book.summary ?? '');
     setGenreTags(book.genre_tags ?? []);
-    setVisibility((book.visibility as Visibility) ?? 'private');
   }, [book]);
 
   // Fetch cover (revoke old blob URL to prevent memory leak)
@@ -60,10 +69,12 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
     return () => { revoked = true; };
   }, [accessToken, bookId, book.has_cover]);
 
-  // Fetch genres for this book
+  // Fetch genres for this book — the tiered ontology read (G4e retired the old flat
+  // genre_groups /genres route; this book's genre CATALOG for the tag picker now
+  // comes from GET .../ontology, same source useBookOntology/Manage use).
   const { data: genres = [] } = useQuery({
-    queryKey: ['glossary-genres', bookId],
-    queryFn: () => glossaryApi.listGenres(bookId, accessToken!),
+    queryKey: ['glossary-ontology', bookId],
+    queryFn: () => tieringApi.getOntology(bookId, accessToken!).then((o) => o.genres),
     enabled: !!accessToken,
   });
 
@@ -81,8 +92,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
     description !== (book.description ?? '') ||
     language !== (book.original_language ?? '') ||
     summary !== (book.summary ?? '') ||
-    JSON.stringify(genreTags) !== JSON.stringify(book.genre_tags ?? []) ||
-    visibility !== ((book.visibility as Visibility) ?? 'private');
+    JSON.stringify(genreTags) !== JSON.stringify(book.genre_tags ?? []);
 
   // Genre impact preview
   const genreImpact = useMemo(() => {
@@ -114,11 +124,6 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
         await booksApi.patchBook(accessToken, bookId, changes);
       }
 
-      // Visibility via sharing-service
-      if (visibility !== ((book.visibility as Visibility) ?? 'private')) {
-        await booksApi.patchSharing(accessToken, bookId, { visibility });
-      }
-
       toast.success(t('settings.saved'));
       onReload();
     } catch (e) {
@@ -145,7 +150,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
   const handleRemoveCover = async () => {
     if (!accessToken) return;
     try {
-      await apiJson<void>(`/v1/books/${bookId}/cover`, { method: 'DELETE', token: accessToken });
+      await booksApi.deleteCover(accessToken, bookId);
       setCoverUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       toast.success(t('settings.cover_removed'));
       onReload();
@@ -190,11 +195,11 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       <div className="mb-5 grid grid-cols-2 gap-4">
         <div>
           <Label>{t('settings.language')}</Label>
-          <input
+          <LanguagePicker
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            placeholder={t('settings.language_placeholder')}
-            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm font-mono focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+            onChange={setLanguage}
+            placeholder={t('select_language')}
+            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
         <div>
@@ -301,7 +306,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
                     const isSelected = genreTags.includes(g.name);
                     return (
                       <button
-                        key={g.id}
+                        key={g.genre_id}
                         onClick={() => toggleGenre(g.name)}
                         className="flex w-full items-center gap-2.5 px-3 py-2 text-xs hover:bg-secondary/50 transition-colors"
                       >
@@ -313,9 +318,6 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
                         </span>
                         <span className="h-2 w-2 rounded-sm" style={{ background: g.color }} />
                         <span className="flex-1 text-left">{g.name}</span>
-                        {g.description && (
-                          <span className="truncate text-[10px] text-muted-foreground max-w-[150px]">{g.description}</span>
-                        )}
                       </button>
                     );
                   })
@@ -352,40 +354,13 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
 
       <Divider />
 
-      {/* ── Visibility ── */}
-      <SectionHeader>{t('settings.visibility')}</SectionHeader>
-
-      <div className="mb-5 flex flex-col gap-2">
-        {(['private', 'unlisted', 'public'] as const).map((v) => (
-          <label
-            key={v}
-            className={cn(
-              'flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 transition-colors',
-              visibility === v ? 'border-primary bg-secondary' : 'hover:bg-secondary/50',
-            )}
-          >
-            <input
-              type="radio"
-              name="visibility"
-              value={v}
-              checked={visibility === v}
-              onChange={() => setVisibility(v)}
-              className="accent-primary"
-            />
-            <div>
-              <div className="text-xs font-medium">{t(`sharing.options.${v}.label`)}</div>
-              <div className="text-[10px] text-muted-foreground">
-                {t(`settings.visibility_desc.${v}`)}
-              </div>
-            </div>
-          </label>
-        ))}
-      </div>
-
-      <Divider />
-
       {/* ── World (W6/G3 cross-link) ── */}
-      <BookWorldSection bookId={bookId} worldId={book.world_id} onChanged={onReload} />
+      <BookWorldSection
+        bookId={bookId}
+        worldId={book.world_id}
+        onChanged={onReload}
+        onOpenWorld={openWorld}
+      />
 
       <Divider />
 
@@ -398,7 +373,6 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
             setLanguage(book.original_language ?? '');
             setSummary(book.summary ?? '');
             setGenreTags(book.genre_tags ?? []);
-            setVisibility((book.visibility as Visibility) ?? 'private');
           }}
           disabled={!isDirty}
           className="rounded-md border px-4 py-1.5 text-xs font-medium text-foreground hover:bg-secondary disabled:opacity-30 transition-colors"

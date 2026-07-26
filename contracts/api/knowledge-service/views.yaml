@@ -1,0 +1,225 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Knowledge Service — Graph Views + Temporal Read API
+  version: 0.1.0
+  description: |
+    KG **views/lenses** (multi-graph v1) + **temporal graph read** (as-of-chapter).
+    Spec: `docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md` §3.3, §3.6.
+    FROZEN at S0/C0 — lanes LD/LE build against this shape.
+
+    ## Views (layer 3)
+    A **view** is a named, per-user `{edge_type_codes[], node_kind_codes[]}` lens
+    over the SAME project graph (no `graph_id` partition in v1). Views are
+    **READ-only** — they filter at query time. Extraction ALWAYS runs the whole
+    resolved schema, never scoped by a view (spec §10-C3). Views are per-user
+    inside a (possibly shared) project: `UNIQUE (project_id, user_id, code)`.
+
+    ## Temporal read (as-of-chapter)
+    `valid_from`/`valid_to` are **chapter ordinals (int)**. An edge is visible at
+    chapter N when `valid_from <= N AND (valid_to IS NULL OR valid_to > N)`.
+    Invariant edges (`temporal=false`) always show. `as_of_chapter` omitted =
+    latest (every currently-open instance).
+
+    ## Auth
+    Bearer JWT. Graph read + view read are View-gated on the project; view
+    create/update/delete require `owner == caller`.
+
+servers:
+  - url: http://api-gateway-bff:3000
+    description: Docker Compose dev (via gateway, prefix-proxied /v1/kg)
+  - url: https://api.loreweave.dev
+    description: Production
+
+tags:
+  - name: views
+    description: Per-user named lenses (edge-type + node-kind filter) over a project graph. Owner-scoped CRUD.
+  - name: graph-read
+    description: Read the project graph filtered by view + temporal as-of-chapter. View-gated.
+
+paths:
+  /v1/kg/projects/{project_id}/views:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [views]
+      summary: List the caller's views in this project
+      responses:
+        '200':
+          description: View list (caller-owned only)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/View' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [views]
+      summary: Create a view (owner = caller)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ViewCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/View' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+
+  /v1/kg/projects/{project_id}/views/{code}:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+      - { name: code, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [views]
+      summary: Upsert a view by code (owner only)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ViewCreate' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/View' } } } }
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [views]
+      summary: Delete a view (owner only; hard delete — views carry no data)
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/kg/projects/{project_id}/graph:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+      - { name: view, in: query, schema: { type: string }, description: view code; omitted = whole resolved schema }
+      - { name: as_of_chapter, in: query, schema: { type: integer }, description: chapter ordinal; omitted = latest (all open instances) }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+    get:
+      tags: [graph-read]
+      summary: Read nodes + edges filtered by view + temporal as-of-chapter
+      description: |
+        Returns nodes and edges scoped to the view's edge-types/node-kinds and the
+        temporal as-of filter. A view that references a deprecated edge-type is
+        flagged in `warnings` (spec §10-A4).
+      responses:
+        '200':
+          description: Filtered graph slice
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GraphSlice' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/kg/entities/{entity_id}/edges/{edge_type}/timeline:
+    parameters:
+      - { name: entity_id, in: path, required: true, schema: { type: string } }
+      - { name: edge_type, in: path, required: true, schema: { type: string }, description: edge type code (e.g. PURSUES) }
+    get:
+      tags: [graph-read]
+      summary: Temporal instance chain for one entity + edge type (e.g. a drive arc)
+      description: |
+        Ordered sequence of temporal instances (e.g. PURSUES→revenge,
+        PURSUES→seek_dao, PURSUES→transcendence) with their chapter ranges.
+        View-gated on the entity's project.
+      responses:
+        '200':
+          description: Edge timeline
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EdgeTimeline' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Caller lacks the required grant / is not the view owner
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found or not visible to the caller
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    DuplicateCode:
+      description: A view with this code already exists for the caller in this project
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: KG_NOT_FOUND }
+        message: { type: string }
+    View:
+      type: object
+      required: [view_id, project_id, code, name, edge_type_codes, node_kind_codes]
+      properties:
+        view_id: { type: string, format: uuid }
+        project_id: { type: string }
+        user_id: { type: string, format: uuid, description: owner }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        edge_type_codes: { type: array, items: { type: string } }
+        node_kind_codes: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ViewCreate:
+      type: object
+      required: [name]
+      properties:
+        code: { type: string, description: slugified from name when omitted }
+        name: { type: string }
+        description: { type: string }
+        edge_type_codes: { type: array, items: { type: string } }
+        node_kind_codes: { type: array, items: { type: string } }
+    GraphSlice:
+      type: object
+      properties:
+        as_of_chapter: { type: integer, nullable: true }
+        view: { type: string, nullable: true }
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              kind: { type: string }
+              name: { type: string }
+              glossary_entity_id: { type: string, nullable: true }
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              edge_type: { type: string }
+              source_id: { type: string }
+              target_id: { type: string }
+              valid_from: { type: integer, nullable: true }
+              valid_to: { type: integer, nullable: true }
+              schema_version: { type: integer, nullable: true }
+        warnings:
+          type: array
+          description: e.g. a view referencing a deprecated edge-type (§10-A4)
+          items: { type: string }
+    EdgeTimeline:
+      type: object
+      properties:
+        entity_id: { type: string }
+        edge_type: { type: string }
+        instances:
+          type: array
+          items:
+            type: object
+            properties:
+              target_id: { type: string }
+              target_label: { type: string, nullable: true }
+              valid_from: { type: integer, nullable: true }
+              valid_to: { type: integer, nullable: true }
+              evidence_chapter_id: { type: string, nullable: true }
+              schema_version: { type: integer, nullable: true }
+
+security:
+  - bearerAuth: []

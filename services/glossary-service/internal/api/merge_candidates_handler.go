@@ -231,7 +231,7 @@ func (s *Server) listMergeCandidates(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_BAD_STATUS", "status must be proposed|dismissed|merged")
 		return
 	}
-	out, err := s.loadMergeCandidates(r.Context(), bookID, status)
+	out, err := s.loadMergeCandidates(r.Context(), bookID, status, 0) // FE inbox: full set
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "candidate query failed")
 		return
@@ -241,16 +241,27 @@ func (s *Server) listMergeCandidates(w http.ResponseWriter, r *http.Request) {
 
 // loadMergeCandidates is the auth-free core of listMergeCandidates (so it is
 // DB-testable without book-service). Returns candidates of the given status
-// with member detail, ordered by score then recency.
-func (s *Server) loadMergeCandidates(ctx context.Context, bookID uuid.UUID, status string) ([]mergeCandidateView, error) {
-	rows, err := s.pool.Query(ctx, `
+// with member detail, ordered by score then recency. `limit` ≤ 0 loads ALL
+// matching candidates (the FE inbox / pipeline-read tool, which want the full set
+// to signal truncation); limit > 0 caps the SQL load — used by the planner's
+// per-plan-call context so a large `proposed` backlog can't make every plan call
+// load every cluster + every member's detail (D-PLAN-MERGE-CONTEXT-COST). The
+// highest-score clusters survive the cap (ORDER BY score before LIMIT).
+func (s *Server) loadMergeCandidates(ctx context.Context, bookID uuid.UUID, status string, limit int) ([]mergeCandidateView, error) {
+	q := `
 		SELECT mc.candidate_id, ek.code, mc.member_entity_ids,
 		       mc.suggested_winner_entity_id, mc.score, mc.evidence_json,
 		       mc.rationale, mc.status, mc.created_at
 		FROM merge_candidates mc
 		JOIN book_kinds ek ON ek.book_kind_id = mc.kind_id
 		WHERE mc.book_id = $1 AND mc.status = $2
-		ORDER BY mc.score DESC, mc.created_at DESC`, bookID, status)
+		ORDER BY mc.score DESC, mc.created_at DESC`
+	args := []any{bookID, status}
+	if limit > 0 {
+		q += ` LIMIT $3`
+		args = append(args, limit)
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

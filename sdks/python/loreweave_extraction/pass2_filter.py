@@ -256,6 +256,7 @@ async def _call_filter_llm(
     system: str,
     user: str,
     n_items: int,
+    context_length: int | None = None,
 ) -> str:
     """One filter chat call through the gateway. Returns the content
     string. Raises ValueError on any non-usable outcome so the per-batch
@@ -267,6 +268,7 @@ async def _call_filter_llm(
             transient_retry_budget=config.transient_retry_budget,
             **build_filter_submit_kwargs(
                 config=config, system=system, user=user, n_items=n_items,
+                context_length=context_length,
             ),
         )
     except Exception as exc:  # noqa: BLE001 — translate to ValueError
@@ -279,12 +281,20 @@ async def _call_filter_llm(
 
 def build_filter_submit_kwargs(
     *, config: "PrecisionFilterConfig", system: str, user: str, n_items: int,
+    context_length: int | None = None,
 ) -> dict:
     """Pure: submit_and_wait / submit_job kwargs for ONE filter chat batch
-    (user_id + transient_retry_budget stay per-call)."""
+    (user_id + transient_retry_budget stay per-call).
+
+    `max_tokens` scales with `n_items` uncapped by any real ceiling — a large batch
+    against a small-context model could request more output than the model can
+    structurally host. When `context_length` is known, clamp to 80% of the window;
+    unknown ⇒ unclamped (today's behavior)."""
     # Conservative output budget: ~250 tokens per verdict, mirrors
     # llm_judge calibration for reasoning-token bursts.
     max_tokens = 1536 + 256 * max(1, n_items)
+    if context_length and context_length > 0:
+        max_tokens = min(max_tokens, int(context_length * 0.8))
     return dict(
         operation="chat",
         model_source=config.model_source,
@@ -372,6 +382,7 @@ async def _filter_one_category(
     config: PrecisionFilterConfig,
     llm_client: LLMClientProtocol,
     on_decision: DecisionHandler | None,
+    context_length: int | None = None,
 ) -> tuple[_CategoryResult, float, list[int]]:
     """Filter one category's item list.
 
@@ -401,6 +412,7 @@ async def _filter_one_category(
                 system=system,
                 user=user_msg,
                 n_items=n_batch,
+                context_length=context_length,
             )
             local_verdicts = _parse_verdicts(content, n_items=n_batch)
         except ValueError as exc:
@@ -493,6 +505,8 @@ async def apply_precision_filter(
     user_id: str,
     llm_client: LLMClientProtocol,
     on_decision: DecisionHandler | None = None,
+    # Model-context-aware output clamp — see build_filter_submit_kwargs.
+    context_length: int | None = None,
 ) -> Pass2Candidates:
     """Apply the precision filter pass to existing Pass2 candidates.
 
@@ -542,6 +556,7 @@ async def apply_precision_filter(
             config=config,
             llm_client=llm_client,
             on_decision=on_decision,
+            context_length=context_length,
         )
     if "relation" in config.categories:
         coros["relation"] = _filter_one_category(
@@ -552,6 +567,7 @@ async def apply_precision_filter(
             config=config,
             llm_client=llm_client,
             on_decision=on_decision,
+            context_length=context_length,
         )
     if "event" in config.categories:
         coros["event"] = _filter_one_category(
@@ -562,6 +578,7 @@ async def apply_precision_filter(
             config=config,
             llm_client=llm_client,
             on_decision=on_decision,
+            context_length=context_length,
         )
 
     try:

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, RefreshCw } from 'lucide-react';
+import { Sparkles, RefreshCw, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ModelPicker } from '@/components/model-picker';
+import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 import { useGaps } from '../hooks/useGaps';
-import { useUserModels } from '../hooks/useUserModels';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
 import { gapToTarget, type Gap, type EnrichTarget } from '../types';
 
@@ -14,6 +15,11 @@ export function GapsPanel() {
   const { t } = useTranslation('enrichment');
   const { bookId, setGapCount } = useEnrichmentContext();
   const { gaps, needsExtraction, detect, detecting, autoEnrich, enriching } = useGaps(bookId);
+  // D-ENRICH-GAPS-NO-EXTRACT-CTA — the needsExtraction empty state used to be a dead-end
+  // message with no button. Extraction runs via the shared ExtractionWizard (same one
+  // GlossaryEntityList/TranslationTab/ChaptersTab already use), scoped to this book;
+  // re-detect on completion so the gaps list reflects the freshly-extracted entities.
+  const [extractOpen, setExtractOpen] = useState(false);
   const [technique, setTechnique] = useState('recook');
   const [genModel, setGenModel] = useState('');
   const [embedModel, setEmbedModel] = useState('');
@@ -23,10 +29,6 @@ export function GapsPanel() {
   // Retrieval breadth — defaults to the backend default (5) so untouched = no change.
   const [topK, setTopK] = useState(5);
 
-  // Shared model-picker seam (also used by the Compose config) — one query per
-  // capability, cache shared (no double fetch). /review-impl #3 — was inline here.
-  const gens = useUserModels('chat');
-  const embeds = useUserModels('embedding');
   const canEnrich = !!genModel && !!embedModel && !enriching;
   // LE-064 — which row's per-gap enrich is in flight (for its spinner).
   const [enrichingName, setEnrichingName] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function GapsPanel() {
       embedding_model_ref: embedModel,
       technique,
       max_gaps: maxGaps,
-      max_spend_usd: maxSpend.trim() === '' ? null : Number(maxSpend),
+      max_spend_tokens: maxSpend.trim() === '' ? null : Number(maxSpend),
       top_k: topK,
       ...(targets ? { targets } : {}),
     });
@@ -49,6 +51,11 @@ export function GapsPanel() {
     setEnrichingName(null);
   };
 
+  const runDetect = async () => {
+    const r = await detect();
+    setGapCount(r ? r.gaps.length : null);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -57,10 +64,7 @@ export function GapsPanel() {
           <p className="text-xs text-muted-foreground">{t('gaps.subtitle')}</p>
         </div>
         <button
-          onClick={async () => {
-            const r = await detect();
-            setGapCount(r ? r.gaps.length : null);
-          }}
+          onClick={() => void runDetect()}
           disabled={detecting}
           data-testid="enrichment-detect-gaps"
           className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary disabled:opacity-50"
@@ -74,15 +78,25 @@ export function GapsPanel() {
           {t('gaps.detect_hint')}
         </p>
       ) : gaps.length === 0 ? (
-        <p
+        <div
           data-testid={needsExtraction ? 'enrichment-gaps-extract-first' : 'enrichment-gaps-none'}
           className={cn(
-            'rounded-lg border border-dashed p-6 text-center text-xs',
+            'space-y-3 rounded-lg border border-dashed p-6 text-center text-xs',
             needsExtraction ? 'border-warning/40 text-warning' : 'text-muted-foreground',
           )}
         >
-          {needsExtraction ? t('gaps.extract_first') : t('gaps.none')}
-        </p>
+          <p>{needsExtraction ? t('gaps.extract_first') : t('gaps.none')}</p>
+          {needsExtraction && (
+            <button
+              type="button"
+              onClick={() => setExtractOpen(true)}
+              data-testid="enrichment-gaps-extract-cta"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              <Search className="h-3.5 w-3.5" /> {t('gaps.extract_cta')}
+            </button>
+          )}
+        </div>
       ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
@@ -141,36 +155,28 @@ export function GapsPanel() {
               <option value="recook">P3 recook</option>
             </select>
           </label>
-          <label className="flex items-center gap-1">
+          {/* Shared ModelPicker (was a raw <select> — the one outlier that bypassed
+              it; the fetch/cache was already the shared W5 seam). */}
+          <div className="flex items-center gap-1">
             <span className="text-muted-foreground">{t('gaps.gen_model')}</span>
-            <select
-              value={genModel}
-              onChange={(e) => setGenModel(e.target.value)}
-              className="rounded border bg-background px-2 py-1"
-            >
-              <option value="">{t('gaps.select_model')}</option>
-              {gens.map((m) => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias || m.provider_model_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1">
+            <ModelPicker
+              capability="chat"
+              compact
+              value={genModel || null}
+              onChange={(id) => setGenModel(id ?? '')}
+              placeholder={t('gaps.select_model')}
+            />
+          </div>
+          <div className="flex items-center gap-1">
             <span className="text-muted-foreground">{t('gaps.embed_model')}</span>
-            <select
-              value={embedModel}
-              onChange={(e) => setEmbedModel(e.target.value)}
-              className="rounded border bg-background px-2 py-1"
-            >
-              <option value="">{t('gaps.select_model')}</option>
-              {embeds.map((m) => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias || m.provider_model_name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <ModelPicker
+              capability="embedding"
+              compact
+              value={embedModel || null}
+              onChange={(id) => setEmbedModel(id ?? '')}
+              placeholder={t('gaps.select_model')}
+            />
+          </div>
           <label className="flex items-center gap-1">
             <span className="text-muted-foreground">{t('gaps.max_gaps')}</span>
             <input
@@ -219,6 +225,14 @@ export function GapsPanel() {
           </button>
         </div>
       </div>
+
+      <ExtractionWizard
+        open={extractOpen}
+        onOpenChange={setExtractOpen}
+        bookId={bookId}
+        mode="batch"
+        onComplete={() => void runDetect()}
+      />
     </div>
   );
 }

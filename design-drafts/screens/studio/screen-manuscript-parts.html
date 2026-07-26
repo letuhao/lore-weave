@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Manuscript Parts (navigator enhancement, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     MANUSCRIPT PARTS (acts / volumes) — the `manuscript` activity-bar navigator
+     Spec: docs/specs/2026-07-17-studio-completeness-build/S-02_manuscript-parts.md
+
+     WHY THIS EXISTS
+     `parts` (migrate.go:273) is written ONLY by the import decomposer
+     (parse.go:192). No editor CRUD; patchChapter/reorder never touch
+     chapters.part_id (migrate.go:305). So the acts/volumes hierarchy is
+     FROZEN at import — a Studio-authored book has none, and an imported one
+     can't be reorganised. This enhances the manuscript navigator into a
+     two-level tree that can WRITE the hierarchy.
+
+     THE LOAD-BEARING BEHAVIOURS (S-02):
+       ● drag a chapter between parts → PATCH …/chapters/{id}/part (persists
+         part_id; no id churn, no re-embed)
+       ● an "Unassigned" bucket for part_id IS NULL (the flat manuscript)
+       ● trashing a part UN-HOMES its chapters (part_id → NULL) — never
+         cascade-deletes them
+     ────────────────────────────────────────────────────────────────────── */
+  :root {
+    --bg:#0f1115; --panel:#161a21; --panel-2:#1c2129; --border:#262c36;
+    --text:#e6e9ee; --muted:#8b93a1; --primary:#6ea8fe; --primary-dim:#2b3a55;
+    --ok:#56d364; --warning:#e8a832; --destructive:#d9584f; --drop:#243b57;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 Inter, sans-serif; }
+  .nav { width:280px; height:100vh; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; }
+  .head { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--border); font-size:11px; }
+  .head .spacer { flex:1; }
+  .iconbtn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; padding:2px 5px; border-radius:5px; }
+  .iconbtn:hover { background:var(--panel-2); color:var(--text); }
+  .tree { flex:1; overflow-y:auto; padding:4px 0; }
+  .part { }
+  .part-head { display:flex; align-items:center; gap:6px; padding:6px 10px; font-weight:600; cursor:pointer; }
+  .part-head:hover { background:var(--panel-2); }
+  .part-head .caret { color:var(--muted); width:10px; }
+  .part-head .count { color:var(--muted); font:500 10px 'JetBrains Mono'; }
+  .part-head .acts { margin-left:auto; display:none; gap:2px; }
+  .part-head:hover .acts { display:flex; }
+  .ch { display:flex; align-items:center; gap:8px; padding:5px 10px 5px 30px; cursor:grab; border-left:2px solid transparent; }
+  .ch:hover { background:var(--panel-2); }
+  .ch.active { border-left-color:var(--primary); background:var(--panel-2); }
+  .ch .grip { color:var(--muted); font-size:11px; }
+  .ch .t { flex:1; }
+  .ch .wc { color:var(--muted); font:500 10px 'JetBrains Mono'; }
+  .ch.dragging { opacity:.4; }
+  .part.dropinto > .part-head { background:var(--drop); outline:1px dashed var(--primary); }
+  .unassigned .part-head { color:var(--warning); }
+  .newpart { margin:6px 10px; padding:6px; border:1px dashed var(--border); border-radius:7px; background:transparent; color:var(--muted); cursor:pointer; width:calc(100% - 20px); }
+  .badge { font:600 9px Inter; padding:1px 6px; border-radius:999px; background:#2a2320; color:var(--warning); text-transform:uppercase; }
+</style>
+</head>
+<body>
+<div class="nav">
+  <div class="head">
+    <strong style="font-size:11px">MANUSCRIPT</strong>
+    <span class="count" style="color:var(--muted)">3 acts · 18 chapters</span>
+    <span class="spacer"></span>
+    <button class="iconbtn" title="New act">＋</button>
+    <button class="iconbtn" title="Reorder acts">↕</button>
+  </div>
+
+  <div class="tree">
+    <!-- ── PART 1 (act) with nested chapters ── -->
+    <div class="part">
+      <div class="part-head">
+        <span class="caret">▾</span> Act I — The Sect
+        <span class="count">6</span>
+        <span class="acts">
+          <button class="iconbtn" title="Rename">✎</button>
+          <button class="iconbtn" title="Trash act (chapters un-home, not deleted)">🗑</button>
+        </span>
+      </div>
+      <div class="ch active"><span class="grip">⋮⋮</span><span class="t">第一章 入门</span><span class="wc">2.1k</span></div>
+      <div class="ch"><span class="grip">⋮⋮</span><span class="t">第二章 试炼</span><span class="wc">1.8k</span></div>
+      <div class="ch"><span class="grip">⋮⋮</span><span class="t">第三章 突破</span><span class="wc">2.4k</span></div>
+    </div>
+
+    <!-- ── PART 2 — shown as an active DROP TARGET (a chapter is being dragged onto it) ── -->
+    <div class="part dropinto">
+      <div class="part-head">
+        <span class="caret">▾</span> Act II — The Valley
+        <span class="count">7</span>
+        <span class="acts">
+          <button class="iconbtn" title="Rename">✎</button>
+          <button class="iconbtn" title="Trash act">🗑</button>
+        </span>
+      </div>
+      <div class="ch dragging"><span class="grip">⋮⋮</span><span class="t">第七章 幽冥谷 (dragging…)</span><span class="wc">2.0k</span></div>
+      <div class="ch"><span class="grip">⋮⋮</span><span class="t">第八章 对峙</span><span class="wc">1.9k</span></div>
+    </div>
+
+    <!-- ── UNASSIGNED bucket = chapters with part_id IS NULL (flat manuscript) ── -->
+    <div class="part unassigned">
+      <div class="part-head">
+        <span class="caret">▾</span> Unassigned <span class="badge">no act</span>
+        <span class="count">2</span>
+      </div>
+      <div class="ch"><span class="grip">⋮⋮</span><span class="t">Prologue</span><span class="wc">0.9k</span></div>
+      <div class="ch"><span class="grip">⋮⋮</span><span class="t">Interlude</span><span class="wc">1.2k</span></div>
+    </div>
+
+    <button class="newpart">+ New act / volume</button>
+  </div>
+</div>
+
+<!--
+  INTERACTION NOTES (for the build, from S-02):
+  • Drag a chapter row onto a part-head → PATCH /v1/books/{id}/chapters/{cid}/part
+    {part_id}. Drag into "Unassigned" → {part_id:null}. Use TRUSTED pointer-drag
+    (page.mouse / real pointer events) not synthetic DnD — the
+    playwright-cdp-mouse-drives-d3-drag lesson.
+  • Reorder acts (↕) → two-phase sort_order rewrite (UNIQUE(book_id,sort_order)).
+  • Trash act (🗑) → confirm "Chapters stay in the book, just un-filed" → the
+    chapters reappear under Unassigned. NEVER cascade-delete chapters.
+  • New act → inline title input → POST /parts (path synthesized from title).
+  • Legacy/flat book (no parts) → only the "Unassigned" group renders, plus the
+    "+ New act" affordance — the entry point to START organising.
+-->
+</body>
+</html>

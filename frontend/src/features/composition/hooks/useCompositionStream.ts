@@ -1,37 +1,20 @@
 // LOOM Composition (M8) — co-write SSE stream (controller).
 //
 // Consumes POST /generate's text/event-stream via fetch + ReadableStream (NOT
-// EventSource — that's GET-only and can't carry the JWT). Mirrors chat's
-// streamPost. The streamed tokens accumulate into a FE-LOCAL `ghost` buffer that
-// is NEVER written to the editor doc or autosaved until the author Accepts
-// (§13 SC4) — the panel's accept handler reads `ghost`, inserts it, then clears.
+// EventSource — that's GET-only and can't carry the JWT). The streamed tokens
+// accumulate into a FE-LOCAL `ghost` buffer that is NEVER written to the editor doc or
+// autosaved until the author Accepts (§13 SC4) — the panel's accept handler reads
+// `ghost`, inserts it, then clears.
+//
+// T5.4 M4 Slice B: the fetch/SSE/job CORE lives in runCompositionGeneration (a pure,
+// worker-safe module). This hook drives it in-process and maps its events to state.
+// The SharedWorker-backed path (one shared stream across windows) wraps this same core
+// and is engaged by LiveStateContext only when windowing is on + SharedWorker exists;
+// this hook is the always-correct in-process path (and the degrade fallback).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { compositionApi } from '../api';
-import type { StreamEvent } from '../types';
+import { runCompositionGeneration, type GenerateArgs, type ReasoningInfo } from './runCompositionGeneration';
 
-export type GenerateArgs = {
-  projectId: string;
-  /** Scene draft: the committed scene node. Omit + pass `selection` to run a
-   *  T3.2 selection-edit instead (a different, scene-decoupled endpoint). */
-  outlineNodeId?: string;
-  modelSource: string;
-  modelRef: string;
-  operation?: string;
-  guide?: string;
-  maxOutputTokens?: number;
-  /** T3.2 selection-edit: the highlighted prose. When set, `start` POSTs to
-   *  `selection-edit` (operation ∈ rewrite|expand|describe) instead of `generate`. */
-  selection?: string;
-  /** T3.2: optional scene node for grounding (the compose panel's active scene). */
-  sceneContext?: string | null;
-  /** Author reasoning preference; the server resolves "auto" per the selected
-   * model's capability. off/low/medium/high are explicit overrides. */
-  reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
-  /** Selected model metadata — lets the server pick the auto strategy per the
-   * registered model (adaptive pass-through vs our rule-based scorer). */
-  modelKind?: string;
-  modelName?: string;
-};
+export type { GenerateArgs } from './runCompositionGeneration';
 
 export function useCompositionStream(token: string | null) {
   const [ghost, setGhost] = useState('');
@@ -39,7 +22,7 @@ export function useCompositionStream(token: string | null) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // How the server resolved reasoning for this run (for the UI badge).
-  const [reasoning, setReasoning] = useState<{ source: string; effort: string | null } | null>(null);
+  const [reasoning, setReasoning] = useState<ReasoningInfo | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const stop = useCallback(() => {
@@ -61,112 +44,25 @@ export function useCompositionStream(token: string | null) {
       setStreaming(true);
       const controller = new AbortController();
       abortRef.current = controller;
-      // T3.2: a `selection` switches to the selection-edit endpoint (scene-decoupled);
-      // otherwise this is the scene-draft generate. The SSE handling below is shared.
-      const isSelection = args.selection != null;
-      const url = isSelection
-        ? compositionApi.selectionEditUrl(args.projectId)
-        : compositionApi.generateUrl(args.projectId);
-      const body = isSelection
-        ? {
-            operation: args.operation ?? 'rewrite',
-            selection: args.selection,
-            scene_context: args.sceneContext ?? null,
-            model_source: args.modelSource,
-            model_ref: args.modelRef,
-            guide: args.guide ?? '',
-            max_output_tokens: args.maxOutputTokens ?? 1024,
-            reasoning: args.reasoning ?? 'auto',
-            ...(args.modelKind ? { model_kind: args.modelKind } : {}),
-            ...(args.modelName ? { model_name: args.modelName } : {}),
-          }
-        : {
-            outline_node_id: args.outlineNodeId,
-            model_source: args.modelSource,
-            model_ref: args.modelRef,
-            operation: args.operation ?? 'draft_scene',
-            guide: args.guide ?? '',
-            max_output_tokens: args.maxOutputTokens ?? 800,
-            reasoning: args.reasoning ?? 'auto',
-            ...(args.modelKind ? { model_kind: args.modelKind } : {}),
-            ...(args.modelName ? { model_name: args.modelName } : {}),
-          };
+      // Only the CURRENT run may flip shared state — a superseded start (its read aborted
+      // by a newer Generate) must not clobber the newer controller's ghost/streaming.
+      const isCurrent = () => abortRef.current === controller;
       try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          setError(`generate failed (${res.status})`);
-          return;
-        }
-        // M4: with COMPOSITION_WORKER_ENABLED on, a batch endpoint (selection-edit)
-        // answers 202 application/json `{ job_id, status: 'pending' }` instead of an
-        // SSE stream. Detect the non-stream content-type, poll the job to terminal,
-        // and surface the result text as the ghost (same accept flow as a stream).
-        const ctype = res.headers?.get?.('content-type') ?? '';
-        if (ctype.includes('application/json')) {
-          const accepted = (await res.json()) as { job_id?: string; status?: string };
-          if (accepted.job_id) setJobId(accepted.job_id);
-          if (accepted.job_id && (accepted.status === 'pending' || accepted.status === 'running')) {
-            const job = await compositionApi.awaitJob(accepted.job_id, token ?? '', controller.signal);
-            if (abortRef.current !== controller) return; // superseded — don't clobber
-            if (job.status === 'failed') {
-              setError((job.result as { error?: string } | null)?.error ?? 'edit failed');
-            } else if (job.status === 'completed') {
-              setGhost((job.result as { text?: string } | null)?.text ?? '');
-            } else {
-              setError('edit did not complete in time');
-            }
-          }
-          return;
-        }
-        if (!res.body) {
-          setError(`generate failed (${res.status})`);
-          return;
-        }
-        const reader = res.body.getReader();
-        // Explicitly cancel the reader when this stream is superseded (a newer
-        // start), stopped, or unmounted — all of which abort `controller`. We
-        // must NOT rely solely on the abort propagating through fetch to the
-        // stream: if the runtime (or a mocked fetch) doesn't propagate it, the
-        // pending `reader.read()` below never resolves and the async iteration
-        // leaks forever (a hang). Cancelling resolves read() with {done:true}.
-        const cancelReader = () => void reader.cancel().catch(() => {});
-        if (controller.signal.aborted) cancelReader();
-        else controller.signal.addEventListener('abort', cancelReader, { once: true });
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? ''; // keep a partial line across chunks
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            let ev: StreamEvent;
-            try {
-              ev = JSON.parse(line.slice(6));
-            } catch {
-              continue; // partial/garbled frame — skip
-            }
-            if (ev.type === 'job') {
-              setJobId(ev.job_id);
-              if (ev.reasoning_source) setReasoning({ source: ev.reasoning_source, effort: ev.reasoning_effort ?? null });
-            } else if (ev.type === 'token') setGhost((g) => g + ev.delta);
-            else if (ev.type === 'error') setError(ev.error);
-          }
-        }
+        await runCompositionGeneration(
+          args,
+          token,
+          {
+            onJob: (id, r) => { if (!isCurrent()) return; setJobId(id); if (r) setReasoning(r); },
+            onToken: (delta) => { if (!isCurrent()) return; setGhost((g) => g + delta); },
+            onText: (text) => { if (!isCurrent()) return; setGhost(text); },
+            onError: (msg) => { if (!isCurrent()) return; setError(msg); },
+          },
+          controller.signal,
+        );
       } catch (e) {
-        if ((e as Error).name !== 'AbortError') setError(String(e));
+        if ((e as Error).name !== 'AbortError' && isCurrent()) setError(String(e));
       } finally {
-        // Only the CURRENT stream may flip the shared state — a superseded
-        // start (its read aborted by a newer Generate) must not clobber the
-        // newer controller / streaming flag.
-        if (abortRef.current === controller) {
+        if (isCurrent()) {
           setStreaming(false);
           abortRef.current = null;
         }

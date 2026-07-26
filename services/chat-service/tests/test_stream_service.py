@@ -9,6 +9,7 @@ helper. Tests now patch `_stream_via_gateway` instead of `acompletion` /
 from __future__ import annotations
 
 import json
+import re
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -16,8 +17,117 @@ from uuid import uuid4
 import pytest
 
 from app.models import ProviderCredentials
-from app.services.stream_service import stream_response, _Usage
+from app.services.stream_service import (
+    stream_response,
+    _Usage,
+    _thinking_pref,
+    _apply_reasoning_kwargs,
+    parse_inline_effort,
+)
 from tests.conftest import TEST_SESSION_ID, TEST_USER_ID, TEST_MODEL_REF
+
+
+def insert_param(call, column: str):
+    """Read an INSERT's bound parameter BY COLUMN NAME, from the SQL the code actually ran.
+
+    Replaces positional reads like `args[-2]`. Those needed a comment to survive
+    ("$12, second-to-last since response_id was appended as $13") and broke anyway every
+    time a column was appended — `exclude_from_memory`/`local_date` shifted the payload two
+    slots left, so `args[-2]` started returning a bool and json.loads() raised TypeError.
+    Binding by name tracks the statement instead of guessing at its shape.
+
+    Returns the bound arg for `$N`, or the inline literal when the column is hardcoded in
+    VALUES (e.g. `branch_id` → `0`).
+    """
+    sql = call.args[0]
+    m = re.search(r"INSERT INTO \w+\s*\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)", sql, re.S)
+    assert m, f"could not parse the INSERT statement:\n{sql}"
+    columns = [c.strip() for c in m.group(1).split(",")]
+    values = [v.strip() for v in m.group(2).split(",")]
+    assert len(columns) == len(values), (
+        f"INSERT lists {len(columns)} columns but {len(values)} values — the statement is "
+        f"malformed or this parse is too naive for it:\n{sql}"
+    )
+    assert column in columns, f"{column!r} is not in the INSERT: {columns}"
+    token = values[columns.index(column)]
+    if (pm := re.match(r"\$(\d+)", token)) is None:
+        return token.strip("'")          # an inline literal, not a bound param
+    return call.args[int(pm.group(1))]   # args[0] is the SQL, so $N lands on args[N]
+
+
+# ── RE: reasoning-effort wiring (the chat thinking no-op fix) ──────────────
+
+
+def test_thinking_pref_mapping():
+    # request toggle wins; True→medium (legacy enabled→medium), False→off.
+    assert _thinking_pref(True, {}) == "medium"
+    assert _thinking_pref(False, {}) == "off"
+    # None → session generation_params default, else platform "off".
+    assert _thinking_pref(None, {}) == "off"
+    assert _thinking_pref(None, {"reasoning_effort": "high"}) == "high"
+    assert _thinking_pref(None, {"thinking": True}) == "medium"
+
+
+def test_thinking_pref_request_effort_precedence():
+    # W4 — the per-message reasoning_effort (fast|standard|deep) beats the
+    # legacy thinking boolean AND the session default.
+    assert _thinking_pref(None, {}, "fast") == "off"
+    assert _thinking_pref(None, {}, "standard") == "medium"
+    assert _thinking_pref(None, {}, "deep") == "high"
+    # beats thinking=True/False when both ride the request
+    assert _thinking_pref(True, {}, "fast") == "off"
+    assert _thinking_pref(False, {}, "deep") == "high"
+    # beats the session default
+    assert _thinking_pref(None, {"reasoning_effort": "low"}, "deep") == "high"
+    # unknown/None value → falls through to the legacy path
+    assert _thinking_pref(True, {}, None) == "medium"
+    assert _thinking_pref(None, {"reasoning_effort": "high"}, None) == "high"
+
+
+def test_send_message_request_reasoning_effort_field():
+    # W4 — SendMessageRequest carries the closed-set reasoning_effort.
+    from pydantic import ValidationError
+
+    from app.models import SendMessageRequest
+
+    assert SendMessageRequest(content="hi").reasoning_effort is None
+    assert SendMessageRequest(content="hi", reasoning_effort="deep").reasoning_effort == "deep"
+    with pytest.raises(ValidationError):
+        SendMessageRequest(content="hi", reasoning_effort="max")  # not in the enum
+
+
+def test_apply_reasoning_kwargs_forwards_only_when_present():
+    # The wiring that was missing: stashed reasoning fields reach the request kwargs.
+    rk: dict = {}
+    _apply_reasoning_kwargs(rk, {"reasoning_effort": "high",
+                                 "chat_template_kwargs": {"thinking": True, "enable_thinking": True}})
+    assert rk["reasoning_effort"] == "high"
+    assert rk["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+    # No reasoning in gen_params → nothing added (adaptive/non-reasoning models).
+    empty: dict = {}
+    _apply_reasoning_kwargs(empty, {"temperature": 0.5})
+    assert "reasoning_effort" not in empty and "chat_template_kwargs" not in empty
+
+
+def test_parse_inline_effort_commands():
+    # /no_think → off, stripped.
+    assert parse_inline_effort("summarize this /no_think") == ("summarize this", "off")
+    # /think → medium, leading command.
+    assert parse_inline_effort("/think solve it") == ("solve it", "medium")
+    # /effort=high.
+    assert parse_inline_effort("plan /effort=high the trip") == ("plan the trip", "high")
+    # /effort=none normalizes to "off".
+    assert parse_inline_effort("/effort=none go") == ("go", "off")
+    # No command → unchanged, None.
+    assert parse_inline_effort("just a normal message") == ("just a normal message", None)
+    # Not anchored mid-word → NOT matched (the path '/think/x' has no boundary).
+    text = "see https://x/think/page"
+    assert parse_inline_effort(text) == (text, None)
+    # Last command wins.
+    assert parse_inline_effort("/think a /no_think b")[1] == "off"
+    # Command-ONLY message strips to empty (the caller must guard against an empty
+    # user turn — stream_response keeps the original in that case).
+    assert parse_inline_effort("/no_think") == ("", "off")
 
 
 def _make_creds(**overrides) -> ProviderCredentials:
@@ -164,7 +274,7 @@ class TestStreamResponse:
 
         # Verify assistant message was inserted
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -296,7 +406,7 @@ class TestStreamResponse:
 
         # Verify assistant INSERT includes parent_message_id
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c) and "parent_message_id" in str(c)
         ]
         assert len(insert_calls) == 1
@@ -390,7 +500,8 @@ class TestStreamResponse:
 
 
 def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None = None,
-                       mode: str = "static", tool_defs: list | None = None):
+                       mode: str = "static", tool_defs: list | None = None,
+                       sections: dict | None = None, with_core_tools: bool = False):
     """Return a MagicMock knowledge client that synthesises a
     KnowledgeContext with the given split. Caller uses this via
     `patch("app.services.stream_service.get_knowledge_client", ...)`.
@@ -402,16 +513,38 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     cache_control tests still exercise the no-tools `_stream_via_gateway`
     path they were written against."""
     from app.client.knowledge_client import KnowledgeContext
+    # Same fixture-drift class as `_CATALOG` in test_tool_discovery: several
+    # ALWAYS_ON_CORE_NAMES tools (the nav `ui_*`, `web_search`) resolve from the
+    # CATALOG rather than a local def, so a fixture catalog that omits them makes the
+    # advertiser legitimately drop them — read as a product bug. Top the caller's
+    # tool_defs up with any catalog-resolved core tool it didn't supply, so the next
+    # local->federated move needs no fixture edit here either. OPT-IN (`with_core_tools`):
+    # on the LEGACY non-discovery surface `tool_defs` IS the advertised list verbatim, so
+    # topping it up there would change what those tests assert. Only discovery-surface
+    # cases, which read the catalog through the advertiser, want this.
+    if tool_defs and with_core_tools:
+        from app.services import tool_discovery as _td
+        from app.services.frontend_tools import generic_frontend_tool_def as _gfd
+        _have = {t["function"]["name"] for t in tool_defs if isinstance(t, dict) and "function" in t}
+        tool_defs = list(tool_defs) + [
+            {"type": "function", "function": {"name": _n, "description": "",
+                                              "parameters": {"type": "object", "properties": {}}}}
+            for _n in _td.ALWAYS_ON_CORE_NAMES
+            if _gfd(_n) is None and _n not in _have
+        ]
     if context is None:
         context = stable + volatile
     kctx = KnowledgeContext(
         mode=mode, context=context, recent_message_count=50,
         token_count=10,
         stable_context=stable, volatile_context=volatile,
+        sections=sections or {},
     )
     client = MagicMock()
     client.build_context = AsyncMock(return_value=kctx)
     client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
+    # MCP-fanout: discovery reads the catalog-meta (availability) synchronously.
+    client.get_catalog_meta = lambda: {}
     return client
 
 
@@ -808,6 +941,67 @@ class TestK21BToolCallingIntegration:
         assert "propose_edit" not in names  # editor-only, no editor_context here
 
     @pytest.mark.asyncio
+    async def test_book_surface_seeds_glossary_hot_set_and_lazy_tail(self):
+        """B (per-surface hot set): a book-scoped chat with a MULTI-DOMAIN catalog
+        seeds the glossary domain into discovery_seed_names (advertised pass 1) and
+        leaves the other domains (book/translation) to the lazy discovery tail.
+
+        This GUARDS the discovery_seed_names threading stream_response →
+        _emit_chat_turn → _stream_with_tools — the other integration tests use a
+        single-tool catalog, so their empty seed is indistinguishable from a
+        dropped param; only a multi-domain catalog exercises the wiring."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        catalog = [
+            {"type": "function", "function": {"name": "glossary_search"}},
+            # An ALLOWLISTED hot write (tool_surface.ALWAYS_HOT_WRITES). The seed is
+            # read-first token-trimmed, so only allowlisted writes stay hot — asserting an
+            # arbitrary write (this used to name glossary_propose_batch) tested the
+            # allowlist's CONTENTS, not the seeding mechanism this case exists to guard.
+            {"type": "function", "function": {"name": "glossary_propose_entities"}},
+            {"type": "function", "function": {"name": "book_create"}},
+            {"type": "function", "function": {"name": "translation_start_job"}},
+        ]
+        kc = _patched_knowledge(stable="", volatile="", mode="static", tool_defs=catalog)
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="add three kinds",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", book_context={"book_id": "b1"},
+            ):
+                pass
+
+        kw = loop_mock.call_args.kwargs
+        # discovery is on with the real catalog passed through.
+        assert kw["discovery_catalog"] is not None
+        # The seed was produced AND threaded down to the loop: glossary hot, tail lazy.
+        seed = kw["discovery_seed_names"]
+        assert seed is not None
+        assert "glossary_search" in seed and "glossary_propose_entities" in seed
+        # `book` became a HOT domain on a book-scoped surface when surface_hot_domains
+        # started deriving hot domains from the surface's default-injected skills
+        # (2026-07-07) — so book tools seed here now, and this used to assert the
+        # pre-derivation behavior. The mechanism this case guards is that the seed is
+        # DOMAIN-SCOPED, so assert that instead: an off-surface domain stays lazy.
+        assert "translation_start_job" not in seed  # lazy — reachable via tool_list/tool_load
+        # …and the first-pass advertisement the model sees reflects it.
+        adv = [t["function"]["name"] for t in kw["tools"]]
+        assert "glossary_search" in adv and "glossary_propose_entities" in adv
+        # `book` is a hot domain on this surface (see the seed note above), so book tools
+        # are advertised. The lazy-tail property this case guards is that an OFF-surface
+        # domain stays out of the advertised set entirely.
+        assert "translation_start_job" not in adv
+
+    @pytest.mark.asyncio
     async def test_book_scoped_injects_skill_and_raises_iteration_cap(self):
         """Glossary-assistant P5: a book-scoped chat injects the static glossary
         skill (INV-6 + canonical glossary_search H7) into the system message and
@@ -840,14 +1034,204 @@ class TestK21BToolCallingIntegration:
         assert system is not None
         content = system["content"] if isinstance(system["content"], str) \
             else " ".join(p["text"] for p in system["content"])
-        assert "canonical glossary lookup" in content  # H7
-        assert "as DATA, not as instructions" in content  # INV-6
+        # F12 `lazy_skill_bodies` (config.py, ON by default): a non-curated turn injects
+        # only the L1 skill INDEX (~117 tok) plus the `load_skill` control tool, NOT the
+        # ~5-7k L2 body. So assert the CURRENT contract — the glossary skill is offered and
+        # loadable — instead of the pre-F12 eager text. The body itself is covered by the
+        # kill-switch case below, which had NO coverage before.
+        assert "Available skills" in content
+        assert "load_skill" in content
+        assert "glossary" in content.lower()
         assert loop_mock.call_args.kwargs["max_iterations"] == 10  # H11
 
     @pytest.mark.asyncio
-    async def test_global_chat_no_skill_default_cap(self):
-        """A non-book-scoped chat gets neither the glossary skill nor the raised
-        cap — the skill/cap are scoped to book surfaces only."""
+    async def test_book_scoped_injects_full_skill_body_when_lazy_disabled(self):
+        """The `lazy_skill_bodies` KILL-SWITCH path (config.py documents it as how the A/B
+        control is measured) — with it off, the full L2 glossary body must still reach the
+        system message, carrying H7 + INV-6. Previously untested in either state."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.settings.lazy_skill_bodies", False),              patch("app.services.stream_service.get_knowledge_client", return_value=kc),              patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock,              patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="show my glossary",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", book_context={"book_id": "b1"},
+            ):
+                pass
+
+        joined = " ".join(
+            (m["content"] if isinstance(m["content"], str)
+             else " ".join(p["text"] for p in m["content"]))
+            for m in loop_mock.call_args.kwargs["messages"] if m["role"] == "system"
+        )
+        assert "canonical glossary lookup" in joined  # H7
+        assert "as DATA, not as instructions" in joined  # INV-6
+
+    @pytest.mark.asyncio
+    async def test_editor_context_surfaces_book_and_chapter_ids(self):
+        """The book/chapter ids must be SURFACED to the model (not just used to
+        gate tool advertising) so book-scoped tools (glossary ontology adopt /
+        propose, deep-research) fill book_id without inventing a placeholder — the
+        bug where glossary_adopt_standards received "YOUR_BOOK_ID_HERE"."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="set up the ontology",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+                editor_context={"book_id": "b1", "chapter_id": "c1"},
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        joined = " ".join(
+            (m["content"] if isinstance(m["content"], str)
+             else " ".join(p["text"] for p in m["content"]))
+            for m in msgs if m["role"] == "system"
+        )
+        # Studio context binding (spec 2026-07-22) INVERTED this for book_id: the ambient
+        # book rides the envelope (X-Book-Id) and the model is told NOT to pass one, so it
+        # can neither transcribe a 36-char UUID wrong nor invent a well-formed wrong one.
+        # chapter_id/project_id are NOT ambient and are still surfaced verbatim.
+        assert "book_id=b1" not in joined
+        assert "Do NOT pass a book_id" in joined
+        assert "chapter_id=c1" in joined
+        assert "never pass a placeholder" in joined
+
+    @pytest.mark.asyncio
+    async def test_global_chat_universal_surface_discovery_and_cap(self):
+        """MCP-fanout C-FT/H9: the agui /chat surface WITHOUT a book/editor
+        context is the UNIVERSAL "do anything" surface — it switches on two-stage
+        discovery (cap=20, discovery_catalog passed, universal skill injected,
+        NOT the glossary skill)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        # Discovery surface → the advertiser resolves the catalog-resolved core tools
+        # (the nav ui_*, web_search) from THIS catalog, so it must contain them.
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static", with_core_tools=True,
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui",  # agui but NO book/editor context = universal
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        # universal skill in, glossary skill out
+        assert "Glossary assistant" not in content
+        # F12 lazy bodies: the universal skill is INDEXED, not force-injected (see the
+        # book-scoped pair above, incl. the kill-switch case that covers the body).
+        assert "Available skills" in content
+        # KM5-M4a + merge: the knowledge/graph skill co-injects on this surface
+        # (independent of the universal skill — the merge keeps BOTH).
+        # F12 lazy bodies — indexed, not force-injected (see the kill-switch case).
+        assert "load_skill" in content
+        # S-WORKFLOW (Wave 3): the cross-service ORDERING fragment composes in on
+        # the same universal surface (chapters -> translate -> glossary -> wiki).
+        # F12 lazy bodies — the workflow prose defers with the rest of the L2 bodies.
+        assert "Available skills" in content
+        # H9: universal cap = 20, and discovery is on (catalog passed)
+        assert loop_mock.call_args.kwargs["max_iterations"] == 20
+        assert loop_mock.call_args.kwargs["discovery_catalog"] is not None
+        # C-FT: the first-pass advertisement is the curated core (incl. the
+        # tool_list/tool_load discovery pair + the generic frontend tools), NOT the
+        # full catalog dumped to the LLM. (F17 — find_tools retired from the LLM's view.)
+        adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert "tool_list" in adv_names and "tool_load" in adv_names
+        assert "ui_navigate" in adv_names and "confirm_action" in adv_names
+        # Part D (2026-07-07, docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
+        # standard.md §8b.9): surface_hot_domains now derives from knowledge_skill's own
+        # declared hot_domains (honored everywhere it auto-injects, incl. universal chat)
+        # instead of the old hand-authored constants that never included it — memory_search
+        # is correctly hot-seeded here now, not left to the lazy discovery tail.
+        assert "memory_search" in adv_names
+
+    @pytest.mark.asyncio
+    async def test_admin_surface_excludes_knowledge_skill(self):
+        """/review-impl LOW-3: the CMS/admin surface advertises ONLY the System-tier
+        admin tools, so the project knowledge/graph skill must NOT be injected there
+        (it would be guidance for tools that aren't present). The admin skill is."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(stable="", volatile="", mode="static")
+        # admin surface fetches the SEPARATE admin catalog (not the user catalog)
+        kc.get_admin_tool_definitions = AsyncMock(
+            return_value=[{"type": "function", "function": {"name": "glossary_admin_propose_genre"}}]
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="edit system kinds",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", admin_context={"surface": "cms"}, admin_token="adm-tok",
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        # admin skill present, knowledge skill ABSENT (LOW-3)
+        assert "System-tier admin assistant" in content
+        assert "Knowledge & graph assistant" not in content
+
+    @pytest.mark.asyncio
+    async def test_legacy_surface_no_discovery_no_frontend_tools(self):
+        """F2: a LEGACY (non-agui) client never gets discovery or frontend tools —
+        it advertises only the federated catalog as-is (no find_tools, no ui_*,
+        no confirm_action) and never enters the discovery path, so it can't
+        suspend on a frontend tool / hang."""
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
@@ -867,17 +1251,18 @@ class TestK21BToolCallingIntegration:
                 user_id=TEST_USER_ID, model_source="user_model",
                 model_ref=TEST_MODEL_REF, creds=_make_creds(),
                 pool=pool, billing=AsyncMock(),
-                stream_format="agui",  # agui but NO book/editor context
+                stream_format="legacy",  # legacy → no discovery, no frontend tools
             ):
                 pass
 
-        msgs = loop_mock.call_args.kwargs["messages"]
-        system = next((m for m in msgs if m["role"] == "system"), None)
-        if system is not None:
-            content = system["content"] if isinstance(system["content"], str) \
-                else " ".join(p["text"] for p in system["content"])
-            assert "Glossary assistant" not in content
+        # No discovery, default cap, only the federated catalog advertised.
+        assert loop_mock.call_args.kwargs["discovery_catalog"] is None
         assert loop_mock.call_args.kwargs["max_iterations"] == 5
+        adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert adv_names == ["memory_search"]
+        assert "find_tools" not in adv_names
+        for fe in ("ui_navigate", "confirm_action", "propose_record_edit", "propose_edit"):
+            assert fe not in adv_names
 
     @pytest.mark.asyncio
     async def test_disable_tools_advertises_no_tools_compose_mode(self):
@@ -1062,16 +1447,28 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
-        assert len(insert_calls) == 1
+        # DBT-CHAT-PERSIST — a tool-loop turn now CHECKPOINTS the assistant row at
+        # the tool boundary (finish_reason='streaming') AND writes the final row
+        # (upsert by msg_id). Both carry tool_calls; only the FINAL rich upsert
+        # carries context_breakdown. Assert the final insert has the full payload.
+        assert len(insert_calls) >= 1
+        final_insert = insert_calls[-1]
         # The INSERT SQL writes the tool_calls column.
-        assert "tool_calls" in insert_calls[0].args[0]
-        # The last positional arg is the tool_calls JSON ($11).
-        tool_calls_json = insert_calls[0].args[-1]
+        assert "tool_calls" in final_insert.args[0]
+        tool_calls_json = insert_param(final_insert, "tool_calls")
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
+        # W1 — the context_breakdown JSONB is persisted and carries the per-category
+        # breakdown incl. the tool_results bucket.
+        ctx_json = insert_param(final_insert, "context_breakdown")
+        assert ctx_json is not None
+        ctx = json.loads(ctx_json)
+        assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
+                            "until_compact_pct"}
+        assert ctx["breakdown"]["tool_results"] > 0
 
     @pytest.mark.asyncio
     async def test_tool_calls_column_null_when_no_tool_calls(self):
@@ -1102,12 +1499,12 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
-        # tool_calls JSON ($11, last arg) is None when no calls were made.
-        assert insert_calls[0].args[-1] is None
+        # tool_calls JSON is None when no calls were made.
+        assert insert_param(insert_calls[0], "tool_calls") is None
 
     @pytest.mark.asyncio
     async def test_tool_call_chunk_excluded_from_assistant_content(self):
@@ -1141,11 +1538,13 @@ class TestK21BToolCallingIntegration:
                 pass
 
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c for c in conn.fetchrow.call_args_list
             if "INSERT INTO chat_messages" in str(c)
         ]
-        # conn.execute args are (sql, $1..$11); content is $4 → args[4].
-        persisted_content = insert_calls[0].args[4]
+        # DBT-CHAT-PERSIST — the tool boundary checkpoints a partial row; the FINAL
+        # upsert carries the complete content. Assert the final (fetchrow args are
+        # (sql, $1..); content is $4 → args[4]).
+        persisted_content = insert_calls[-1].args[4]
         assert persisted_content == "Let me check. Found it."
 
 
@@ -1244,11 +1643,14 @@ class TestStreamFormatNegotiation:
         assert types[0] == "RUN_STARTED"
         assert types[1] == "CUSTOM"  # memoryMode
         assert types == [
-            "RUN_STARTED", "CUSTOM",
+            "RUN_STARTED", "CUSTOM",  # memoryMode
+            "CUSTOM", "CUSTOM",  # agentSurface: Curated + SkillInjected
             "REASONING_START", "REASONING_MESSAGE_START", "REASONING_MESSAGE_CONTENT",
             "REASONING_MESSAGE_END", "REASONING_END",
             "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END",
             "CUSTOM",  # persisted — emitted AFTER the message is framed closed
+            "CUSTOM",  # agentSurface: Idle
+            "CUSTOM",  # contextBudget (RAID A2) — emitted just before finish
             "RUN_FINISHED",
         ]
         assert "[DONE]" not in types
@@ -1418,3 +1820,1048 @@ class TestStreamFormatNegotiation:
         # distinct ids
         start_ids = [_parse_event(e)["toolCallId"] for e in events if '"TOOL_CALL_START"' in e]
         assert start_ids == ["call_a", "call_b"]
+
+
+# ── M3 anchoring — working_memory pinned + tail injection ─────────────────────
+
+
+class TestAnchorInjection:
+    @pytest.mark.asyncio
+    async def test_seed_anchor_is_pinned_and_tailed(self):
+        """A roleplay session (working_memory_seed set, knowledge empty) gets the
+        anchor pinned in the system block AND tail-injected before the user turn."""
+        import json as _json
+
+        pool, conn = _make_pool_with_conn()
+        seed = _json.dumps({
+            "version": 1,
+            "charter": {
+                "goal": "Senior backend interview",
+                "phases": ["warmup", "technical"],
+                "checklist": ["system design"],
+                "time_budget_min": 60,
+                "language": "vi",
+            },
+            "state": {"phase": "", "covered": []},
+        })
+        pool.fetchrow.return_value = {
+            "system_prompt": "You are an interviewer.",
+            "generation_params": {},
+            "working_memory_seed": seed,
+        }
+        pool.fetch.return_value = [{"role": "user", "content": "hello"}]
+        conn.fetchval.return_value = 5
+
+        captured: list[dict] = []
+
+        async def fake_gw(**kwargs):
+            captured.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(),  # kctx.working_memory == "" → seed path
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_gw(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="hello",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        # Pinned: the system message carries the anchor + the frozen goal.
+        sys_msg = captured[0]
+        assert sys_msg["role"] == "system"
+        assert "ROLEPLAY SESSION" in sys_msg["content"]
+        assert "Senior backend interview" in sys_msg["content"]
+        # Tail: the Director note sits immediately before the latest user turn.
+        assert captured[-1] == {"role": "user", "content": "hello"}
+        assert captured[-2]["role"] == "system"
+        assert captured[-2]["content"].startswith("[Director")
+        assert "Senior backend interview" in captured[-2]["content"]
+
+    @pytest.mark.asyncio
+    async def test_non_roleplay_session_has_no_anchor(self):
+        """A plain chat session (no seed) injects neither pin nor tail."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = {"system_prompt": None, "generation_params": {}}
+        pool.fetch.return_value = [{"role": "user", "content": "hi"}]
+        conn.fetchval.return_value = 5
+
+        captured: list[dict] = []
+
+        async def fake_gw(**kwargs):
+            captured.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(),
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_gw(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="hi",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        assert not any("[Director" in str(m.get("content", "")) for m in captured)
+        assert not any("ROLEPLAY SESSION" in str(m.get("content", "")) for m in captured)
+
+
+class TestInLoopCompactionWiring:
+    """A4 — the tool loop grows `working` each pass; compaction must be re-invoked
+    at the top of EVERY pass with the effective_limit, or a long tool turn overflows
+    mid-turn. This guards the wire (a silent-no-op guard needs a wiring test)."""
+
+    @pytest.mark.asyncio
+    async def test_compaction_invoked_each_tool_pass_with_effective_limit(self):
+        import app.services.stream_service as ss
+        from loreweave_llm import TokenEvent, ToolCallEvent, DoneEvent
+
+        # find_tools is CONSUMER-LOCAL (no network) → drives a real 2-pass loop:
+        # pass 0 calls find_tools (executes in-memory, appends result, loops),
+        # pass 1 answers in text.
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i == 0:
+                        yield ToolCallEvent(index=0, id="c1", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta='{"intent":"anything"}')
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        seen_limits: list = []
+        real_compact = ss.compact_messages
+
+        async def spy_compact(msgs, **kw):
+            seen_limits.append(kw.get("effective_limit"))
+            return await real_compact(msgs, **kw)
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})  # called sync in the loop
+
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "compact_messages", side_effect=spy_compact):
+            chunks = []
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+                effective_limit=5000,
+            ):
+                chunks.append(ch)
+
+        # compaction ran on BOTH passes, always with the effective_limit forwarded.
+        assert len(seen_limits) >= 2, f"expected ≥2 in-loop compactions, got {seen_limits}"
+        assert all(lim == 5000 for lim in seen_limits)
+
+    @pytest.mark.asyncio
+    async def test_no_effective_limit_skips_in_loop_compaction(self):
+        import app.services.stream_service as ss
+        from loreweave_llm import TokenEvent, DoneEvent
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                async def gen():
+                    yield TokenEvent(delta="hi")
+                    yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        seen = []
+        real_compact = ss.compact_messages
+
+        async def spy_compact(msgs, **kw):
+            seen.append(kw.get("effective_limit"))
+            return await real_compact(msgs, **kw)
+
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "compact_messages", side_effect=spy_compact):
+            async for _ in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                pass
+
+        assert seen == [], "compaction must not run when effective_limit is None"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_loop_aborted_steered_and_recovers(self):
+        """D-REASONING-LOOP — the live incident: a pass loops in the REASONING
+        channel (no tool call emitted), invisible to every tool-call breaker. The
+        detector aborts it, injects a steer directive, forces reasoning OFF for
+        the retry, and the retry completes the turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ReasoningEvent, TokenEvent, DoneEvent
+
+        passes = {"n": 0}
+        requests = []
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                requests.append(request)
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i == 0:
+                        # period-2 oscillation — the exact shape from chat 019f82b3
+                        for _ in range(6):
+                            yield ReasoningEvent(delta="Actually, use book_update_meta.\n")
+                            yield ReasoningEvent(
+                                delta="Wait, use propose_record_edit instead.\n"
+                            )
+                        yield DoneEvent(finish_reason="stop")
+                    else:
+                        yield TokenEvent(delta="Done — updated the description.")
+                        yield DoneEvent(finish_reason="stop")
+
+                return gen()
+
+        frames = []
+        with patch.object(ss, "Client", FakeClient):
+            async for fr in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "rewrite the description"}],
+                gen_params={"max_tokens": 100, "reasoning_effort": "medium"}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                frames.append(fr)
+
+        # Exactly two passes: the looping pass was aborted, the steered retry ran.
+        assert passes["n"] == 2, "loop must abort pass 0 and drive exactly one retry"
+        # The retry ran with thinking FORCED OFF via the STANDARDIZED no-thinking
+        # fields. chat_template_kwargs.enable_thinking=False is what actually
+        # suppresses <think> on local Qwen3/Gemma — reasoning_effort alone is ignored
+        # (and on Gemma-4 even ENABLES it). Guards the popped-chat_template_kwargs bug.
+        assert getattr(requests[1], "reasoning_effort", None) == "none"
+        _ctk = getattr(requests[1], "chat_template_kwargs", None) or {}
+        assert _ctk.get("enable_thinking") is False, (
+            f"steer-retry must disable thinking via chat_template_kwargs, got {_ctk}"
+        )
+        # A steer directive was injected into the retry's messages.
+        assert any(
+            "[SYSTEM DIRECTIVE]" in (m.get("content") or "")
+            for m in requests[1].messages
+        ), "the steer directive must be injected before the retry"
+        # The turn completed with the retry's content — no hang.
+        assert any(
+            "updated the description" in (fr.get("content") or "") for fr in frames
+        )
+
+    @pytest.mark.asyncio
+    async def test_reasoning_loop_capped_stops_honestly(self):
+        """D-REASONING-LOOP — a model that keeps looping even after being steered
+        must end the turn HONESTLY (a plain message), never hang. After
+        REASONING_LOOP_INTERVENTION_CAP steers, the next loop stops the turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ReasoningEvent, DoneEvent
+
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                passes["n"] += 1
+
+                async def gen():
+                    # EVERY pass loops — the model never takes the steer.
+                    for _ in range(6):
+                        yield ReasoningEvent(delta="Maybe tool A is right.\n")
+                        yield ReasoningEvent(delta="Or maybe tool B is right.\n")
+                    yield DoneEvent(finish_reason="stop")
+
+                return gen()
+
+        frames = []
+        with patch.object(ss, "Client", FakeClient):
+            async for fr in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "do the thing"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                frames.append(fr)
+
+        # cap = 2 steers → the 3rd loop trips the honest stop (bounded, no hang).
+        assert passes["n"] == ss.REASONING_LOOP_INTERVENTION_CAP + 1
+        assert any(
+            "got stuck deciding" in (fr.get("content") or "") for fr in frames
+        ), "must emit an honest give-up message, never hang"
+
+    @pytest.mark.asyncio
+    async def test_blank_intent_find_tools_capped_within_turn(self):
+        """D-FINDTOOLS-BLANK-INTENT-LOOP — reproduces the real production
+        session (019f4000-43ee-7201-9d45-e2fafc83696d, gemma-4-26b-a4b-qat)
+        where find_tools was called with blank args 7+ times in a row, each
+        getting the identical unhelpful note, never escalating. The first
+        BLANK_TOOL_ARGS_CAP blank calls still reach find_tools_result_async
+        (today's helpful note); every call after that is short-circuited
+        BEFORE find_tools_result_async runs, with a directive to stop."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        TOTAL_BLANK_PASSES = 5
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < TOTAL_BLANK_PASSES:
+                        yield ToolCallEvent(index=0, id=f"c{i}", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta="{}")
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="giving up")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        real_find_tools_result_async = ss.find_tools_result_async
+        call_count = {"n": 0}
+
+        async def spy_find_tools(*a, **kw):
+            call_count["n"] += 1
+            return await real_find_tools_result_async(*a, **kw)
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "find_tools_result_async", side_effect=spy_find_tools):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "search the web"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        # Only the first BLANK_TOOL_ARGS_CAP blank calls actually reach
+        # find_tools_result_async — the rest are short-circuited before it.
+        assert call_count["n"] == ss.BLANK_TOOL_ARGS_CAP
+
+        capped = [
+            e for e in tool_call_events
+            if e.get("ok") is False and "STOP calling find_tools" in (e.get("error") or "")
+        ]
+        assert len(capped) == TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP, (
+            f"expected {TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP} capped calls, "
+            f"got {len(capped)}: {tool_call_events}"
+        )
+        # The capped calls never reached find_tools_result_async, so they can't
+        # have produced its "intent is required" note.
+        for e in capped:
+            assert e["result"] is None
+
+    @pytest.mark.asyncio
+    async def test_non_blank_intent_find_tools_resets_blank_streak(self):
+        """A real, well-formed find_tools call between blank ones proves
+        forward progress — the blank streak must reset, not just accumulate
+        toward the cap regardless of what happens in between."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        # blank, blank, REAL intent, blank, blank — none of these five should
+        # ever hit the cap (2), since the real call in the middle resets the
+        # streak back to 0.
+        script = ["", "", "translate this chapter", "", ""]
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < len(script):
+                        args = json.dumps({"intent": script[i]}) if script[i] else "{}"
+                        yield ToolCallEvent(index=0, id=f"c{i}", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta=args)
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        capped = [
+            e for e in tool_call_events
+            if e.get("ok") is False and "STOP calling find_tools" in (e.get("error") or "")
+        ]
+        assert capped == [], f"blank streak should have reset on the real call, got {capped}"
+
+    @pytest.mark.asyncio
+    async def test_blank_args_generic_backend_tool_capped_within_turn(self):
+        """D-BLANK-TOOL-ARGS-LOOP — the OTHER live-reproduced shape (not
+        find_tools): a real production session and an independent live
+        re-verification both showed the model calling a REGULAR backend tool
+        (glossary_web_search) with blank args repeatedly, each attempt
+        tripping the domain service's own "required: missing properties"
+        validation error, with NO cap on how many times this can happen in
+        one turn. After BLANK_TOOL_ARGS_CAP such failures, a further call is
+        short-circuited BEFORE the MCP round trip — mcp_execute_tool must not
+        even be invoked again this turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        TOTAL_BLANK_PASSES = 5
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < TOTAL_BLANK_PASSES:
+                        yield ToolCallEvent(index=0, id=f"c{i}", name="glossary_web_search",
+                                            arguments_delta="{}")
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="giving up")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool = AsyncMock(return_value={
+            "success": False,
+            "error": 'validating "arguments": validating root: required: missing properties: ["query"]',
+        })
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "search the web"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        # Only the first BLANK_TOOL_ARGS_CAP calls actually reach mcp_execute_tool.
+        assert kc.mcp_execute_tool.await_count == ss.BLANK_TOOL_ARGS_CAP
+
+        capped = [
+            e for e in tool_call_events
+            if e.get("ok") is False and "STOP retrying tool calls" in (e.get("error") or "")
+        ]
+        assert len(capped) == TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP, (
+            f"expected {TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP} capped calls, "
+            f"got {len(capped)}: {tool_call_events}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_blank_args_streak_shared_across_find_tools_and_generic_tool(self):
+        """The real production session mixed BOTH shapes in one turn:
+        glossary_web_search blank x2 then find_tools blank x6. The streak
+        MUST be shared — two generic-tool blank failures followed by a
+        blank-intent find_tools call should trip the cap on that very
+        find_tools call, not reset and grant it a fresh budget."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        # glossary_web_search(blank), glossary_web_search(blank), find_tools(blank), ...
+        script = [("glossary_web_search", "{}"), ("glossary_web_search", "{}"),
+                  (ss.FIND_TOOLS_NAME, "{}"), (ss.FIND_TOOLS_NAME, "{}")]
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < len(script):
+                        name, args = script[i]
+                        yield ToolCallEvent(index=0, id=f"c{i}", name=name, arguments_delta=args)
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool = AsyncMock(return_value={
+            "success": False,
+            "error": 'validating "arguments": validating root: required: missing properties: ["query"]',
+        })
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "search the web"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        # Both find_tools calls happen AFTER the streak already hit the cap
+        # from the two glossary_web_search failures — so BOTH must be capped,
+        # and find_tools_result_async's own note must never run for them.
+        find_tools_events = [e for e in tool_call_events if e["tool"] == ss.FIND_TOOLS_NAME]
+        assert len(find_tools_events) == 2
+        assert all(e["ok"] is False for e in find_tools_events)
+        assert all("STOP calling find_tools" in e["error"] for e in find_tools_events)
+        # Only the two glossary_web_search calls ever reached the MCP transport.
+        assert kc.mcp_execute_tool.await_count == 2
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# W1 — Context-Breakdown Spine: the extended contextBudget frame + the
+# compaction frame + persistence (integration through stream_response).
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _custom_events(events: list[str], name: str) -> list[dict]:
+    out = []
+    for e in events:
+        payload = e.removeprefix("data: ").strip()
+        if not payload or payload == "[DONE]":
+            continue
+        ev = json.loads(payload)
+        if ev.get("type") == "CUSTOM" and ev.get("name") == name:
+            out.append(ev["value"])
+    return out
+
+
+class TestW1ContextBreakdownFrame:
+    @pytest.mark.asyncio
+    async def test_context_budget_frame_carries_breakdown_additively(self):
+        """agui turn → ONE contextBudget CUSTOM frame with the old keys intact
+        plus breakdown / baseline_tokens / until_compact_pct; the knowledge
+        per-section map nests under memory_knowledge."""
+        pool, conn = _make_pool_with_conn()
+        # one replayed history row (the just-persisted user turn) → history > 0.
+        pool.fetch.return_value = [{"role": "user", "content": "Hi"}]
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        pool.fetchrow.return_value = {
+            "system_prompt": "You are a helpful lore assistant.",
+            "generation_params": {},
+        }
+        kc = _patched_knowledge(
+            context='<memory mode="static">lore</memory>',
+            sections={"glossary_entities": 42, "instructions": 7},
+        )
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(1000, 5))]
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+
+        frames = _custom_events(events, "contextBudget")
+        assert len(frames) == 1
+        frame = frames[0]
+        # Old keys byte-identical to the pre-W1 contract (FE meter).
+        assert frame["used_tokens"] == 1000
+        assert frame["context_length"] == 40_000
+        assert frame["effective_limit"] == 40_000 - 512
+        assert frame["pct"] == round(1000 / (40_000 - 512), 4)
+        # Additive keys.
+        assert frame["until_compact_pct"] == round(0.75 - frame["pct"], 4)
+        bd = frame["breakdown"]
+        assert bd["system_prompt"] > 0
+        assert bd["memory_knowledge"]["total"] > 0
+        assert bd["memory_knowledge"]["sections"] == {"glossary_entities": 42, "instructions": 7}
+        assert bd["history"] > 0  # the user turn replays through history
+        assert frame["baseline_tokens"] >= bd["system_prompt"] + bd["memory_knowledge"]["total"]
+        # No tools this turn → the schema buckets are 0, present, not missing.
+        assert bd["frontend_tool_schemas"] == 0
+        assert bd["mcp_tool_schemas"] == 0
+
+    @pytest.mark.asyncio
+    async def test_schema_tokens_chunk_folds_into_frame_and_persisted_row(self):
+        """The tool loop's schema_tokens chunk lands in the frame's breakdown
+        AND in the persisted context_breakdown JSONB."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"schema_tokens": {"frontend_tool_schemas": 111, "mcp_tool_schemas": 2222}}
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(10, 2)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+
+        frame = _custom_events(events, "contextBudget")[0]
+        assert frame["breakdown"]["frontend_tool_schemas"] == 111
+        assert frame["breakdown"]["mcp_tool_schemas"] == 2222
+        # baseline includes the schema buckets (fixed overhead before the user word).
+        assert frame["baseline_tokens"] >= 111 + 2222
+        # And the same payload was persisted on the assistant row ($12, second-to-last
+        # arg since the stateful-chain feature appended response_id as $13).
+        insert_calls = [c for c in conn.fetchrow.call_args_list
+                        if "INSERT INTO chat_messages" in str(c)]
+        persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
+        assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
+        assert persisted["used_tokens"] == frame["used_tokens"]
+
+    @pytest.mark.asyncio
+    async def test_used_tokens_reflects_true_context_size_not_tool_loop_sum(self):
+        """D-CHAT-CONTEXT-METER-OVERCOUNT regression: a tool-loop turn's
+        `usage.prompt_tokens` is the SUM of input across every completion in the
+        loop (each iteration re-sends the full prompt — real provider billing),
+        but the GUI meter's `used_tokens` (persisted + emitted) must reflect
+        `context_size` — the true LAST completion's input size — not that sum.
+        A real 54-tool-call/30-completion turn once summed to ~936K on an
+        actual ~34K context; this fakes the same shape at a small scale (sum=
+        3000 across what would be several completions, true last-call size=
+        1000) at the `_stream_with_tools` seam, mirroring the real loop's
+        terminal-yield contract (see stream_service.py's `context_size` +
+        `usage` pairing at every terminal yield)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "llm_call_count": 3,
+                   "context_size": 1000,
+                   "usage": _Usage(3000, 5)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+
+        frame = _custom_events(events, "contextBudget")[0]
+        assert frame["used_tokens"] == 1000  # true occupancy, NOT the 3000 sum
+        assert frame["llm_call_count"] == 3
+        # /review-impl LOW: raw_tokens (the Inspector's naive-baseline reduction_pct
+        # denominator) must track the same occupancy fix, not just used_tokens — no
+        # trace savings fired in this fake scenario, so raw_tokens == used_tokens.
+        assert frame["raw_tokens"] == 1000
+
+        insert_calls = [c for c in conn.fetchrow.call_args_list
+                        if "INSERT INTO chat_messages" in str(c)]
+        persisted = json.loads(insert_param(insert_calls[0], "context_breakdown"))
+        assert persisted["used_tokens"] == 1000
+        assert persisted["caching"]["context_size"] == 1000
+        # The billed input_tokens column is a SEPARATE positional param and must
+        # still carry the real summed cost (3000) — this fix must not touch
+        # billing, only the context-occupancy meter.
+        assert insert_calls[0].args[7] == 3000
+
+    @pytest.mark.asyncio
+    async def test_legacy_turn_emits_no_custom_frames_but_persists(self):
+        """Legacy wire: context_budget/compaction are Protocol no-ops (no frame,
+        no AttributeError) — but the row still persists the breakdown."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(3, 1))]
+        with patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                events.append(e)
+        assert all('"CUSTOM"' not in e for e in events)  # legacy vocabulary only
+        insert_calls = [c for c in conn.fetchrow.call_args_list
+                        if "INSERT INTO chat_messages" in str(c)]
+        assert "context_breakdown" in insert_calls[0].args[0]
+        # $12, second-to-last arg since response_id trails it as $13.
+        assert json.loads(insert_param(insert_calls[0], "context_breakdown"))["breakdown"]["history"] >= 0
+
+
+class TestW1CompactionFrame:
+    @pytest.mark.asyncio
+    async def test_compaction_frame_emitted_when_work_happened(self):
+        """Pre-send compaction that actually truncated → a `compaction` CUSTOM
+        frame precedes the turn's content (previously log-only)."""
+        from app.services.compaction import CompactionReport
+
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+
+        report = CompactionReport(
+            triggered=True, turns_truncated=4,
+            tokens_before=9000, tokens_after=4000, steps=["hard_truncate"],
+        )
+
+        async def fake_compact(messages, **kwargs):
+            return messages, report
+
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(1, 1))]
+        with patch("app.services.stream_service.compact_messages", side_effect=fake_compact), \
+             patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+        frames = _custom_events(events, "compaction")
+        assert len(frames) == 1
+        assert frames[0]["turns_truncated"] == 4
+        assert frames[0]["steps"] == ["hard_truncate"]
+
+    @pytest.mark.asyncio
+    async def test_no_compaction_frame_when_nothing_happened(self):
+        """A small turn (compaction not triggered / no work) emits NO
+        compaction frame — the toast only fires on real evictions."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(1, 1))]
+        with patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+        assert _custom_events(events, "compaction") == []
+
+    @pytest.mark.asyncio
+    async def test_in_loop_compaction_chunk_surfaces_as_frame(self):
+        """A {"compaction": ...} chunk from the tool loop (mid-turn re-compact)
+        is re-emitted as the CUSTOM frame by the consumer."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"compaction": {"triggered": True, "tool_results_cleared": 2,
+                                  "turns_truncated": 0, "summarized": False,
+                                  "summarize_failed": False, "overflowed": False,
+                                  "tokens_before": 8000, "tokens_after": 5000,
+                                  "steps": ["microcompact"]}}
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+        frames = _custom_events(events, "compaction")
+        assert len(frames) == 1
+        assert frames[0]["tool_results_cleared"] == 2
+
+
+class TestResolveAndStashReasoning:
+    """review-impl H: session-stored reasoning vocabulary (off|auto|...) is NOT
+    wire vocabulary — every gen_params->StreamRequest path must resolve it."""
+
+    def _creds(self, kind="openai", name="gpt-4"):
+        from app.models import ProviderCredentials
+        return ProviderCredentials(
+            provider_kind=kind, provider_model_name=name,
+            base_url="http://x", api_key="k", context_length=8192,
+        )
+
+    def test_session_off_translates_to_wire_none(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "off"}
+        _resolve_and_stash_reasoning(gp, self._creds())
+        # "off" is invalid on the wire; the resolved fields use "none".
+        assert gp.get("reasoning_effort") in (None, "none")
+        assert gp.get("reasoning_effort") != "off"
+
+    def test_session_auto_without_creds_omits_fields(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "auto"}
+        _resolve_and_stash_reasoning(gp, None)  # voice path: no creds
+        assert "reasoning_effort" not in gp
+        assert "chat_template_kwargs" not in gp
+
+    def test_session_medium_survives_resolution(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "medium"}
+        _resolve_and_stash_reasoning(gp, self._creds(kind="lm_studio", name="qwen3-35b"))
+        assert gp.get("reasoning_effort") == "medium"
+
+
+class TestGroundingToggle:
+    """M3 (spec docs/specs/2026-07-05-chat-ai-settings.md) — the explicit grounding
+    switch. When the resolved grounding_enabled is False the turn must fetch NO
+    retrieval (build_context called with grounding=False), short-circuiting the
+    'always on, no toggle' gate-disabled force-on branch. Default True preserves
+    the pre-existing always-grounded behavior."""
+
+    async def _run(self, grounding_enabled: bool):
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kclient = _patched_knowledge(stable="", volatile="")
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_acompletion(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="where is Harker?",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                grounding_enabled=grounding_enabled,
+            ):
+                pass
+        return kclient
+
+    @pytest.mark.asyncio
+    async def test_grounding_disabled_fetches_no_retrieval(self):
+        kclient = await self._run(grounding_enabled=False)
+        assert kclient.build_context.call_args.kwargs["grounding"] is False
+
+    @pytest.mark.asyncio
+    async def test_grounding_enabled_default_pulls_grounding(self):
+        kclient = await self._run(grounding_enabled=True)
+        assert kclient.build_context.call_args.kwargs["grounding"] is True
+
+
+class TestContextMode:
+    """D-LONG-WORK-CONTEXT-MODE — `context.mode` auto-detect. The env
+    `t5_intent_gate_enabled` is now a deploy CEILING (default on); the per-turn
+    enablement is the pressure decision. `off` force-disables; `on` forces the
+    tiers allowed; `auto` enables only on a big-lore book (large glossary) — so a
+    small/no-glossary book keeps the tiers OFF even under `auto`. Whether the T5
+    gate ran is observed by whether `detect_entity_presence` was called."""
+
+    async def _run_capture_detect(
+        self, *, context_mode: str, glossary_large: bool = False, t5_ceiling: bool = True,
+    ) -> bool:
+        from app.config import settings
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kclient = _patched_knowledge(stable="", volatile="")
+        # A big-lore book: resolve a book_id + a large known-entity (glossary) set so
+        # auto-detect trips the glossary signal. Small/absent → glossary_size 0.
+        kclient.resolve_book_id = AsyncMock(return_value="book-1" if glossary_large else None)
+        seen = {"called": False}
+
+        def _fake_detect(msg, tokens):
+            seen["called"] = True
+            from app.services.stream_service import EntityPresence
+            return EntityPresence(True, reason="test")
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        big = frozenset(f"entity{i}" for i in range(400))  # ≥ GLOSSARY_LARGE (300)
+        known = AsyncMock()
+        known.get_known_entity_tokens = AsyncMock(return_value=big if glossary_large else frozenset())
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service.get_known_entities_client", return_value=known,
+        ), patch(
+            "app.services.stream_service.resolve_grounding_target",
+            return_value=("proj-1", ["proj-1"]),
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_acompletion(**k),
+        ), patch(
+            "app.services.stream_service.detect_entity_presence", side_effect=_fake_detect,
+        ), patch.object(settings, "t5_intent_gate_enabled", t5_ceiling):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                context_mode=context_mode,
+            ):
+                pass
+        return seen["called"]
+
+    @pytest.mark.asyncio
+    async def test_mode_off_bypasses_t5_gate(self):
+        assert await self._run_capture_detect(context_mode="off", glossary_large=True) is False
+
+    @pytest.mark.asyncio
+    async def test_mode_on_forces_t5_gate_even_small_book(self):
+        assert await self._run_capture_detect(context_mode="on", glossary_large=False) is True
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_small_book_keeps_tiers_off(self):
+        assert await self._run_capture_detect(context_mode="auto", glossary_large=False) is False
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_large_book_enables_tiers(self):
+        assert await self._run_capture_detect(context_mode="auto", glossary_large=True) is True
+
+    @pytest.mark.asyncio
+    async def test_deploy_ceiling_off_force_disables_even_mode_on(self):
+        """The env flag is a deploy KILL-SWITCH: t5_intent_gate_enabled=False must
+        force the gate OFF even under mode='on' + a large glossary (effective =
+        AND(deploy_ceiling, enablement)). Guards the SET-correct ceiling semantics."""
+        # mode='on' + large glossary would enable — but the ceiling is off.
+        assert await self._run_capture_detect(
+            context_mode="on", glossary_large=True, t5_ceiling=False,
+        ) is False

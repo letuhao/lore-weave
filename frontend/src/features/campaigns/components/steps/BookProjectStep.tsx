@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { BookPicker } from '@/components/shared/BookPicker';
+import { LanguagePicker } from '@/components/shared';
 import { knowledgeApi } from '../../../knowledge/api';
 import type { WizardForm } from '../../hooks/useCampaignWizard';
 
@@ -78,11 +79,11 @@ export function BookProjectStep({ form, setField }: Props) {
         <span className="text-xs font-medium text-muted-foreground">
           {t('fields.targetLanguage', { defaultValue: 'Target language (optional)' })}
         </span>
-        <input
+        <LanguagePicker
           className={fieldCls}
           value={form.targetLanguage}
-          onChange={(e) => setField('targetLanguage', e.target.value)}
-          placeholder={t('fields.targetLanguagePlaceholder', { defaultValue: 'e.g. vi — blank uses your translation settings' })}
+          onChange={(code) => setField('targetLanguage', code)}
+          placeholder={t('fields.targetLanguageAny', { defaultValue: 'Use your translation settings' })}
         />
       </label>
     </div>

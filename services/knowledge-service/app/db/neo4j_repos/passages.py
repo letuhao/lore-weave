@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -31,8 +32,16 @@ __all__ = [
     "passage_canonical_id",
     "upsert_passage",
     "delete_passages_for_source",
+    "delete_all_passages_for_project",
+    "project_has_passages",
     "find_passages_by_vector",
+    "find_passages_by_fulltext",
+    "PASSAGE_CJK_FT_INDEX",
+    "lucene_escape",
     "count_passages_by_source_type",
+    "set_source_lang_for_source",
+    "get_source_ingest_state",
+    "get_chapter_index_for_source",
 ]
 
 # C8 (D-K19e-γa-01) — closed set of recognised source_type values on
@@ -79,6 +88,19 @@ class Passage(BaseModel):
     # a semantic hit can jump-to-source precisely (reader scrolls to ?block=N).
     # None for chunks ingested before P3-C or from the canon/revision path.
     block_index: int | None = None
+    # KG-ML M1 (DD1) — ISO-639-1 language of the source text this passage was
+    # ingested from (the chapter's `original_language`, or a translation's
+    # target language for dual-indexed vi passages). "unknown" for legacy nodes
+    # written before this tag + backfilled by source_lang backfill. Dormant
+    # until M4 reads it for language-aware ranking; "mixed" + `mixed=true` when
+    # detect_primary_language is ambiguous.
+    source_lang: str = "unknown"
+    mixed: bool = False
+    # KG-ML M1 (C10) — sha256 of the full source text at ingest time. Lets the
+    # ingest path skip the (delete + re-embed + re-bill) cycle when a republish
+    # carries identical text. None for legacy nodes (treated as a cache miss →
+    # ingest proceeds, same as before).
+    content_hash: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -110,6 +132,8 @@ def passage_canonical_id(
     source_type: str,
     source_id: str,
     chunk_index: int,
+    source_lang: str = "",
+    canon: bool = True,
 ) -> str:
     """Deterministic id for a passage chunk.
 
@@ -118,10 +142,29 @@ def passage_canonical_id(
     duplicates. The text itself is NOT in the hash so an edit to
     chapter text (e.g., typo fix) updates-in-place rather than
     forking a new node.
+
+    KG-ML M2 (DD1): `source_lang` participates so a chapter's translated
+    (vi) passages are DISTINCT nodes from its source (zh) passages even
+    though they share `source_id=chapter_id` (kept clean so a hit maps
+    back to the real chapter). The segment is appended ONLY when non-empty
+    so every pre-M2 passage id (chat/glossary/benchmark + untagged chapter)
+    stays byte-identical — a language-tagged chapter re-ingest forks a new
+    id, and the delete-then-upsert step reaps the old one (no orphan).
+
+    D-R20 (P-3, keep-both): `canon` participates so a chapter's PUBLISHED
+    (canon) passages and a NEWER DRAFT's passages are DISTINCT nodes that
+    coexist side by side — indexing a draft on a published chapter no longer
+    collides ids with (and clobbers) the canon set. Mirroring the source_lang
+    trick, the `draft:` segment is appended ONLY for canon=False, so every
+    published/canon id stays byte-identical to the pre-P-3 scheme (zero re-key
+    churn). Legacy draft nodes (written pre-P-3 with no segment) are reaped by
+    the canon-scoped delete-then-upsert (matched by property, not id).
     """
+    lang_seg = f"{source_lang}:" if source_lang else ""
+    canon_seg = "" if canon else "draft:"
     key = (
         f"v1:{user_id}:{project_id or 'global'}:"
-        f"{source_type}:{source_id}:{chunk_index}"
+        f"{source_type}:{source_id}:{lang_seg}{canon_seg}{chunk_index}"
     )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
@@ -150,6 +193,9 @@ ON CREATE SET
   p.chapter_index = $chapter_index,
   p.canon = $canon,
   p.block_index = $block_index,
+  p.source_lang = $source_lang,
+  p.mixed = $mixed,
+  p.content_hash = $content_hash,
   p.{embed_prop} = $embedding,
   p.created_at = datetime(),
   p.updated_at = datetime()
@@ -160,6 +206,9 @@ ON MATCH SET
   p.chapter_index = $chapter_index,
   p.canon = $canon,
   p.block_index = $block_index,
+  p.source_lang = $source_lang,
+  p.mixed = $mixed,
+  p.content_hash = $content_hash,
   p.{embed_prop} = $embedding,
   p.updated_at = datetime()
 WITH p WHERE p.user_id = $user_id
@@ -183,6 +232,9 @@ async def upsert_passage(
     chapter_index: int | None = None,
     canon: bool = True,
     block_index: int | None = None,
+    source_lang: str = "unknown",
+    mixed: bool = False,
+    content_hash: str | None = None,
 ) -> Passage:
     """Idempotent MERGE of a `:Passage` with its per-dim embedding.
 
@@ -213,6 +265,12 @@ async def upsert_passage(
         source_type=source_type,
         source_id=source_id,
         chunk_index=chunk_index,
+        # KG-ML M2 — language participates so vi/zh chunks of the same chapter
+        # are distinct nodes ("unknown" stays out of the id for back-compat).
+        source_lang=source_lang if source_lang and source_lang != "unknown" else "",
+        # D-R20 (P-3) — canon vs draft chunks of the same chapter are distinct
+        # nodes so a draft index keeps the published canon set (canon id unchanged).
+        canon=canon,
     )
 
     # Dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
@@ -236,6 +294,9 @@ async def upsert_passage(
         chapter_index=chapter_index,
         canon=canon,
         block_index=block_index,
+        source_lang=source_lang,
+        mixed=mixed,
+        content_hash=content_hash,
         embedding=embedding,
     )
     record = await result.single()
@@ -249,10 +310,108 @@ MATCH (p:Passage)
 WHERE p.user_id = $user_id
   AND p.source_type = $source_type
   AND p.source_id = $source_id
+  AND ($source_lang IS NULL OR coalesce(p.source_lang, 'unknown') = $source_lang)
+  AND ($canon IS NULL OR coalesce(p.canon, true) = $canon)
 WITH p, p.id AS id
 DETACH DELETE p
 RETURN count(id) AS deleted
 """
+
+
+_DELETE_ALL_FOR_PROJECT_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id AND p.project_id = $project_id
+WITH p, p.id AS id
+DETACH DELETE p
+RETURN count(id) AS deleted
+"""
+
+
+# D-EMB-MODEL-REF-04 — "does this project hold vectors that a model change would orphan?"
+# LIMIT 1: existence, not a count, so it stays O(1)-ish on a large index.
+_ANY_FOR_PROJECT_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id AND p.project_id = $project_id
+RETURN p.id AS id
+LIMIT 1
+"""
+
+
+# D-R27 (erasure) — the CONFIRMED-fact graph nodes. WS-2.4's promote turns a reviewed diary fact into a
+# :Fact + :Entity (+ :ABOUT edges); the :Passage delete alone leaves these behind, so a confirmed diary
+# fact + the colleague entity it names would SURVIVE "erase my account" (caught by the E2E erase smoke —
+# the PG-SSOT→Neo4j-derived delete does NOT auto-cascade). DETACH DELETE removes the nodes and every edge.
+_DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER = """
+MATCH (n)
+WHERE (n:Fact OR n:Entity OR n:Event)
+  AND n.user_id = $user_id AND n.project_id = $project_id
+DETACH DELETE n
+RETURN count(n) AS deleted
+"""
+
+
+async def delete_all_kg_nodes_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> int:
+    """D-R27 (erasure) — DETACH DELETE every :Fact / :Entity / :Event node of one (user, project), so a
+    CONFIRMED diary fact (and the colleague :Entity it names) does not survive account erasure. Tenant-
+    scoped on BOTH keys, so it can only reach the caller's own project's graph. Returns the count."""
+    result = await run_write(
+        session,
+        _DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    return int(record["deleted"]) if record else 0
+
+
+async def delete_all_passages_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> int:
+    """D-R27 (erasure) — DETACH DELETE every `:Passage` node of one (user, project). Tenant-scoped
+    on BOTH keys, so it can only reach the caller's own project's semantic index (the diary's chapter
+    + chat passages). Returns the count deleted."""
+    result = await run_write(
+        session,
+        _DELETE_ALL_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    return int(record["deleted"]) if record else 0
+
+
+async def project_has_passages(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> bool:
+    """D-EMB-MODEL-REF-04 — does this project still hold `:Passage` vectors?
+
+    The GROUND TRUTH for "changing the embedding model would orphan something".
+    It exists because the previous proxy for that question — ``extraction_status !=
+    'disabled'`` — is not equivalent to it: ``POST /extraction/disable`` sets
+    ``'disabled'`` while EXPLICITLY preserving the graph (it returns
+    ``graph_preserved: true``), so a disabled project can be full of vectors. Under
+    the old proxy that project's embedding model could then be swapped with no
+    confirm and no purge, leaving every passage in the dead vector space —
+    the exact silent zero-recall the guard was written to prevent.
+    """
+    result = await run_read(
+        session,
+        _ANY_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    return await result.single() is not None
 
 
 async def delete_passages_for_source(
@@ -261,18 +420,230 @@ async def delete_passages_for_source(
     user_id: str,
     source_type: str,
     source_id: str,
+    source_lang: str | None = None,
+    canon: bool | None = None,
 ) -> int:
-    """Delete all `:Passage` nodes for a given source (e.g. a chapter
-    that was re-ingested with different chunking)."""
+    """Delete `:Passage` nodes for a given source (e.g. a chapter re-ingested
+    with different chunking).
+
+    KG-ML M2 (DD1): `source_lang` scopes the delete to ONE language so
+    re-ingesting a chapter's vi translation never wipes its zh source passages
+    (and vice-versa). None = all languages (back-compat: the chapter-delete /
+    chapter.deleted path drops every language of a removed chapter).
+
+    D-R20 (P-3, keep-both): `canon` scopes the delete to ONE bucket. The ingester's
+    pre-write reap passes `canon=False` on a DRAFT index so it never wipes the
+    published canon passages (keep-both), and `canon=None` on a PUBLISH so the new
+    canon supersedes any ahead-of-canon draft. None = both buckets (back-compat:
+    the chapter-delete / kg_excluded retract drops every bucket of a chapter).
+    Legacy null-canon nodes coalesce to canon=True so a canon-scoped reap still
+    matches them.
+    """
     result = await run_write(
         session,
         _DELETE_BY_SOURCE_CYPHER,
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
+        source_lang=source_lang,
+        canon=canon,
     )
     record = await result.single()
     return int(record["deleted"]) if record else 0
+
+
+_SET_SOURCE_LANG_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.source_type = $source_type
+  AND p.source_id = $source_id
+SET p.source_lang = $source_lang,
+    p.mixed = $mixed,
+    p.updated_at = datetime()
+RETURN count(p) AS tagged
+"""
+
+
+async def set_source_lang_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    source_lang: str,
+    mixed: bool = False,
+) -> int:
+    """KG-ML M1 (DD1) — tag-only `source_lang` backfill for one source.
+
+    Sets `source_lang`/`mixed` on every existing `:Passage` of a source
+    WITHOUT re-embedding (pure property write) — used by the one-shot
+    backfill that stamps legacy zh passages at embedding-model-set time.
+    Returns the count of passages tagged.
+    """
+    result = await run_write(
+        session,
+        _SET_SOURCE_LANG_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        source_lang=source_lang,
+        mixed=mixed,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+_SET_CANON_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.source_type = $source_type
+  AND p.source_id = $source_id
+SET p.canon = $canon,
+    p.updated_at = datetime()
+RETURN count(p) AS updated
+"""
+
+
+async def set_canon_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    canon: bool,
+) -> int:
+    """WS-0.8 — flip the `canon` flag on every existing :Passage of one source, WITHOUT
+    re-embedding (a pure property write).
+
+    Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.7/§3.8.
+
+    Needed because publishing and INDEXING are now independent. When a chapter is
+    UNPUBLISHED, it stays in the knowledge graph (its index request survives — §3.8 /
+    acceptance #9), but it is no longer canonical. Deleting its passages would destroy
+    the user's index; leaving them `canon=True` would let unpublished prose keep
+    surfacing in `surface=canon` reads. Demoting them is the only option that honours
+    both invariants.
+
+    Returns the count of passages updated.
+    """
+    result = await run_write(
+        session,
+        _SET_CANON_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        canon=canon,
+    )
+    record = await result.single()
+    return int(record["updated"]) if record else 0
+
+
+_GET_SOURCE_STATE_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.source_type = $source_type
+  AND p.source_id = $source_id
+  AND ($source_lang IS NULL OR coalesce(p.source_lang, 'unknown') = $source_lang)
+  AND ($canon IS NULL OR coalesce(p.canon, true) = $canon)
+  AND p.content_hash IS NOT NULL
+RETURN p.content_hash AS content_hash,
+       coalesce(p.canon, true) AS canon,
+       p.chapter_index AS chapter_index,
+       p.embedding_model AS embedding_model
+LIMIT 1
+"""
+
+
+_GET_CHAPTER_INDEX_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.project_id = $project_id
+  AND p.source_type = 'chapter'
+  AND p.source_id = $chapter_id
+  AND p.chapter_index IS NOT NULL
+RETURN p.chapter_index AS chapter_index
+LIMIT 1
+"""
+
+
+async def get_chapter_index_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    chapter_id: str,
+) -> int | None:
+    """M1b — resolve the ordinal `chapter_index` of a chapter from any of its
+    ingested `:Passage` nodes (they all share `source_id=chapter_id` + the same
+    `chapter_index`; see the upsert cypher). Used by the working-scope boost to
+    turn the editor's open `chapter_id` (a UUID) into the integer position the
+    passage ranker scores against.
+
+    Returns None when the chapter has no ingested passages yet (never extracted /
+    not published) or the id is stale/foreign — the caller then simply skips the
+    boost (degrade-to-neutral, never an error). Owner + project scoped so one
+    user's open chapter can't resolve against another tenant's passages.
+    """
+    result = await run_read(
+        session,
+        _GET_CHAPTER_INDEX_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        chapter_id=chapter_id,
+    )
+    record = await result.single()
+    if record is None or record["chapter_index"] is None:
+        return None
+    return int(record["chapter_index"])
+
+
+async def get_source_ingest_state(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    source_lang: str | None = None,
+    canon: bool | None = None,
+) -> dict | None:
+    """KG-ML M1 (C10) — read the cached ingest state for a source's passages.
+
+    Returns `{content_hash, canon, chapter_index, embedding_model}` from any
+    existing passage of this source (they share these), or None when none exist /
+    legacy nodes carry no hash. The ingest path skips the re-embed ONLY when the
+    fresh text hash AND `canon` AND `chapter_index` AND `embedding_model` all
+    match — so a draft→publish canon flip, a chapter reorder, OR an embedding-model
+    change (same text, different model/dim — the model-set path does NOT delete
+    `:Passage` nodes, only graph nodes) still re-ingests correctly rather than
+    being silently skipped with stale-dimension vectors.
+
+    D-R20 (P-3, keep-both): `canon` scopes the read to ONE bucket so the canon and
+    draft passage sets have INDEPENDENT skip-gates. Without it, a `LIMIT 1` read
+    over a chapter that carries both buckets would nondeterministically return
+    either bucket's hash — a draft re-index could false-miss against the canon
+    node's hash (wasteful re-embed) once keep-both lets the two coexist. None =
+    any bucket (back-compat for pre-P-3 single-bucket callers).
+    """
+    result = await run_read(
+        session,
+        _GET_SOURCE_STATE_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        source_lang=source_lang,
+        canon=canon,
+    )
+    record = await result.single()
+    if record is None or not record["content_hash"]:
+        return None
+    ci = record["chapter_index"]
+    em = record["embedding_model"]
+    return {
+        "content_hash": str(record["content_hash"]),
+        "canon": bool(record["canon"]),
+        "chapter_index": int(ci) if ci is not None else None,
+        "embedding_model": str(em) if em is not None else None,
+    }
 
 
 # The `{vector_projection}` placeholder is f-string-substituted at call
@@ -427,6 +798,94 @@ async def find_passages_by_vector(
                 passage=_node_to_passage(record["p"]),
                 raw_score=float(record["raw_score"]),
                 vector=vector,
+            )
+        )
+    return hits
+
+
+# KG-ML M6 (D12) — the CJK full-text index name (mirrors neo4j_schema.cypher).
+PASSAGE_CJK_FT_INDEX = "passage_text_cjk_ft"
+
+# Lucene query-syntax special characters. The `cjk` analyzer tokenizes the query
+# text, but the surrounding Lucene query PARSER still interprets these — an
+# unescaped one in a user query (e.g. a stray `?` or `:`) is a parse error or a
+# wildcard, not a literal. We escape them so a raw keyword query is matched
+# literally (the analyzer then bi-grams the CJK runs).
+_LUCENE_SPECIALS = r'+-&|!(){}[]^"~*?:\/'
+_LUCENE_ESCAPE_RE = re.compile("([" + re.escape(_LUCENE_SPECIALS) + "])")
+
+
+def lucene_escape(query: str) -> str:
+    """Escape Lucene query-syntax specials so a raw keyword is matched literally.
+
+    `&&`/`||` are covered char-by-char (each `&`/`|` is escaped). Returns a
+    trimmed, escaped string; empty when the input is blank."""
+    return _LUCENE_ESCAPE_RE.sub(r"\\\1", str(query or "").strip())
+
+
+_FIND_BY_FULLTEXT_CYPHER = """
+CALL db.index.fulltext.queryNodes($index_name, $q, {limit: $oversample_limit})
+YIELD node, score
+WITH node, score
+WHERE node.user_id = $user_id
+  AND ($project_id IS NULL OR node.project_id = $project_id)
+  AND ($source_type IS NULL OR node.source_type = $source_type)
+  AND ($source_lang IS NULL OR coalesce(node.source_lang, 'unknown') = $source_lang)
+  AND ($include_drafts OR coalesce(node.canon, true) = true)
+RETURN node AS p, score AS raw_score
+ORDER BY raw_score DESC
+LIMIT $limit
+"""
+
+
+async def find_passages_by_fulltext(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    query: str,
+    source_type: str | None = None,
+    source_lang: str | None = None,
+    limit: int = 40,
+    oversample_factor: int = 10,
+    include_drafts: bool = False,
+) -> list[PassageSearchHit]:
+    """KG-ML M6 (D12) — CJK-tokenized lexical search over `:Passage` text.
+
+    Queries the `cjk`-analyzed full-text index (built-in bi-gram tokenizer), so a
+    short Chinese/Japanese/Korean keyword (the case pg_trgm fails on) recalls the
+    right passages. Full-text indexes are global → oversample then post-filter on
+    tenant scope + canon, identical to `find_passages_by_vector`. `raw_score` is
+    the Lucene score (the RRF fusion only uses rank, so the absolute scale doesn't
+    matter). A blank query (or one that escapes to empty) returns []. Best-effort
+    at the call site — the retriever treats any failure as a degraded lexical leg.
+    """
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    if oversample_factor < 1:
+        raise ValueError(f"oversample_factor must be >= 1, got {oversample_factor}")
+    q = lucene_escape(query)
+    if not q:
+        return []
+    result = await run_read(
+        session,
+        _FIND_BY_FULLTEXT_CYPHER,
+        index_name=PASSAGE_CJK_FT_INDEX,
+        q=q,
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_lang=source_lang,
+        include_drafts=include_drafts,
+        oversample_limit=limit * oversample_factor,
+        limit=limit,
+    )
+    hits: list[PassageSearchHit] = []
+    async for record in result:
+        hits.append(
+            PassageSearchHit(
+                passage=_node_to_passage(record["p"]),
+                raw_score=float(record["raw_score"]),
             )
         )
     return hits

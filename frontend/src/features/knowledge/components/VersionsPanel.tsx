@@ -1,12 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { diffLines, type Change } from 'diff';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Eye, History, RotateCcw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog, FormDialog } from '@/components/shared';
 import { isVersionConflict } from '../api';
 import { useGlobalSummaryVersions } from '../hooks/useSummaryVersions';
 import type { Summary, SummaryVersion } from '../types';
+
+// 14_kg_panels.md A3/K8 — DOCK-9 adoption precedent for this cycle: the preview + rollback-
+// confirm modals were hand-rolled `fixed inset-0` overlays (docs/standards/dockable-gui.md
+// DOCK-9); migrated onto the shared FormDialog/ConfirmDialog (Radix-portal-based), mirroring
+// Glossary's ResolveKindModal precedent (13_glossary_panels.md A4).
 
 // D-K8-01: inline history panel for the global summary bio.
 // Lives below the editor textarea in GlobalBioTab. Shows archived
@@ -38,12 +44,27 @@ export function VersionsPanel({ currentSummary, onClose }: Props) {
   // and toggle diff only when curious about "what changed".
   const [showDiff, setShowDiff] = useState(false);
 
-  // Memoise so the diff only re-runs when the preview target changes.
+  // 14_kg_panels.md A3 /review-impl MED — Radix keeps FormDialog/ConfirmDialog mounted during
+  // their ~150ms exit animation (K8.2-R6, the same fix ProjectsBrowser's archive/delete
+  // ConfirmDialogs already needed). Clearing `previewVersion`/`confirmRollback` to null to CLOSE
+  // the dialog would otherwise blank the title/description/body mid-fade — a flash that never
+  // existed before this DOCK-9 migration (the hand-rolled overlay unmounted instantly, no
+  // animation). Keep the last-shown version so the closing dialog still renders real content.
+  const lastPreview = useRef<SummaryVersion | null>(null);
+  if (previewVersion) lastPreview.current = previewVersion;
+  const displayedPreview = previewVersion ?? lastPreview.current;
+
+  const lastConfirmRollback = useRef<SummaryVersion | null>(null);
+  if (confirmRollback) lastConfirmRollback.current = confirmRollback;
+  const displayedConfirmRollback = confirmRollback ?? lastConfirmRollback.current;
+
+  // Memoise so the diff only re-runs when the preview target changes. Reads `displayedPreview`
+  // (not `previewVersion`) so the diff stays intact during the FormDialog close animation too.
   const diffChanges = useMemo<Change[]>(() => {
-    if (!previewVersion) return [];
+    if (!displayedPreview) return [];
     const base = currentSummary?.content ?? '';
-    return diffLines(base, previewVersion.content);
-  }, [previewVersion, currentSummary?.content]);
+    return diffLines(base, displayedPreview.content);
+  }, [displayedPreview, currentSummary?.content]);
 
   // Reset the diff toggle whenever the preview target changes so
   // opening a new preview always starts in plain-text mode.
@@ -172,46 +193,48 @@ export function VersionsPanel({ currentSummary, onClose }: Props) {
         )}
       </div>
 
-      {/* Preview modal */}
-      {previewVersion && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setPreviewVersion(null)}
-          role="presentation"
-        >
-          <div
-            className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-lg border bg-background shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-labelledby="preview-title"
-          >
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div>
-                <h3
-                  id="preview-title"
-                  className="font-serif text-sm font-semibold"
-                >
-                  {t('global.versions.previewTitle', {
-                    version: previewVersion.version,
-                  })}
-                </h3>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {formatTimestamp(previewVersion.created_at)} ·{' '}
-                  {t(`global.versions.source.${previewVersion.edit_source}`)}
-                </p>
-              </div>
-              <button
-                onClick={() => setPreviewVersion(null)}
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                aria-label={t('global.versions.close')}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+      {/* Preview modal — FormDialog (DOCK-9 adoption, 14_kg_panels.md A3) */}
+      <FormDialog
+        open={previewVersion !== null}
+        onOpenChange={(o) => !o && setPreviewVersion(null)}
+        size="2xl"
+        title={
+          displayedPreview
+            ? t('global.versions.previewTitle', { version: displayedPreview.version })
+            : ''
+        }
+        description={
+          displayedPreview
+            ? `${formatTimestamp(displayedPreview.created_at)} · ${t(`global.versions.source.${displayedPreview.edit_source}`)}`
+            : undefined
+        }
+        footer={
+          <>
+            <button
+              onClick={() => setPreviewVersion(null)}
+              className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              {t('global.versions.close')}
+            </button>
+            <button
+              onClick={() => {
+                if (previewVersion) setConfirmRollback(previewVersion);
+                setPreviewVersion(null);
+              }}
+              disabled={currentSummary == null || isRollingBack}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {t('global.versions.rollbackFromPreview')}
+            </button>
+          </>
+        }
+      >
+        {displayedPreview && (
+          <>
             {/* K19c.3-delta: Show-diff toggle. When off, render the
                 version's full text as before. When on, render a
                 line-level diff against the current live bio. */}
-            <div className="flex items-center justify-end gap-2 border-b bg-muted/10 px-4 py-2">
+            <div className="mb-2 flex items-center justify-end gap-2">
               <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <input
                   type="checkbox"
@@ -224,7 +247,7 @@ export function VersionsPanel({ currentSummary, onClose }: Props) {
             </div>
             {showDiff ? (
               <div
-                className="max-h-[60vh] overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed"
+                className="font-mono text-xs leading-relaxed"
                 data-testid="versions-diff-view"
               >
                 {diffChanges.length === 0 ||
@@ -254,80 +277,29 @@ export function VersionsPanel({ currentSummary, onClose }: Props) {
                 )}
               </div>
             ) : (
-              <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-relaxed">
-                {previewVersion.content || t('global.versions.emptyContent')}
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                {displayedPreview.content || t('global.versions.emptyContent')}
               </pre>
             )}
-            <div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-4 py-3">
-              <button
-                onClick={() => setPreviewVersion(null)}
-                className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                {t('global.versions.close')}
-              </button>
-              <button
-                onClick={() => {
-                  setConfirmRollback(previewVersion);
-                  setPreviewVersion(null);
-                }}
-                disabled={currentSummary == null || isRollingBack}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {t('global.versions.rollbackFromPreview')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </FormDialog>
 
-      {/* Rollback confirmation */}
-      {confirmRollback && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setConfirmRollback(null)}
-          role="presentation"
-        >
-          <div
-            className="w-full max-w-sm rounded-lg border bg-background p-5 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-            role="alertdialog"
-            aria-labelledby="rollback-title"
-            aria-describedby="rollback-desc"
-          >
-            <h3
-              id="rollback-title"
-              className="mb-1 font-serif text-sm font-semibold"
-            >
-              {t('global.versions.confirmTitle')}
-            </h3>
-            <p
-              id="rollback-desc"
-              className="mb-4 text-[12px] text-muted-foreground"
-            >
-              {t('global.versions.confirmBody', {
-                version: confirmRollback.version,
-              })}
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setConfirmRollback(null)}
-                className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                {t('projects.form.cancel')}
-              </button>
-              <button
-                onClick={() => void handleRollback(confirmRollback)}
-                disabled={isRollingBack}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {isRollingBack
-                  ? t('global.versions.rollingBack')
-                  : t('global.versions.confirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Rollback confirmation — ConfirmDialog (DOCK-9 adoption, 14_kg_panels.md A3) */}
+      <ConfirmDialog
+        open={confirmRollback !== null}
+        onOpenChange={(o) => !o && setConfirmRollback(null)}
+        title={t('global.versions.confirmTitle')}
+        description={
+          displayedConfirmRollback
+            ? t('global.versions.confirmBody', { version: displayedConfirmRollback.version })
+            : ''
+        }
+        confirmLabel={isRollingBack ? t('global.versions.rollingBack') : t('global.versions.confirm')}
+        cancelLabel={t('projects.form.cancel')}
+        onConfirm={() => confirmRollback && void handleRollback(confirmRollback)}
+        loading={isRollingBack}
+      />
     </>
   );
 }

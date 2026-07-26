@@ -19,10 +19,9 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "types": ["vitest/globals", "node"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@game/*": ["src/game/*"]
+      "@/*": ["./src/*"],
+      "@game/*": ["./src/game/*"]
     }
   },
   "include": ["src", "tests"],

@@ -1,7 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { StudioHostProvider } from '@/features/studio/host/StudioHostProvider';
 import { ExtractionWizard } from '../ExtractionWizard';
 import type { ExtractionJobStatus } from '../types';
+
+// Capture the Jobs-dashboard handoff: useNavigate target + the sonner toast (so we can
+// assert the "View in Jobs" action navigates to /jobs).
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async (orig) => ({
+  ...(await orig<typeof import('react-router-dom')>()),
+  useNavigate: () => navigateMock,
+}));
+let lastToast: { msg: string; opts?: { action?: { label: string; onClick: () => void } } } | null = null;
+vi.mock('sonner', () => ({
+  toast: {
+    success: (msg: string, opts?: { action?: { label: string; onClick: () => void } }) => {
+      lastToast = { msg, opts };
+    },
+  },
+}));
 
 // Stub the heavy step children so the test can drive the flow profile→results via
 // their callbacks without real API/model fetches. StepResults is REAL so we can
@@ -31,15 +49,37 @@ const DONE: ExtractionJobStatus = {
   error_message: null, started_at: null, finished_at: null, created_at: '', chapters: [],
 };
 vi.mock('../StepProgress', () => ({
-  StepProgress: ({ onComplete }: { onComplete: (s: ExtractionJobStatus) => void }) => (
-    <button onClick={() => onComplete(DONE)}>stub-progress</button>
+  StepProgress: ({ onComplete, onBackground }: {
+    onComplete: (s: ExtractionJobStatus) => void;
+    onBackground?: () => void;
+  }) => (
+    <>
+      <button onClick={() => onComplete(DONE)}>stub-progress</button>
+      <button onClick={() => onBackground?.()}>stub-background</button>
+    </>
   ),
 }));
 
 function setup(open = true) {
   const onOpenChange = vi.fn();
   const utils = render(
-    <ExtractionWizard open={open} onOpenChange={onOpenChange} bookId="b" mode="single" />,
+    <MemoryRouter>
+      <ExtractionWizard open={open} onOpenChange={onOpenChange} bookId="b" mode="single" />
+    </MemoryRouter>,
+  );
+  return { ...utils, onOpenChange };
+}
+
+// DOCK-7 — the wizard is reachable from inside the studio's `glossary` dock panel (via
+// GlossaryEntityList), where a bare navigate('/jobs') would tear down the whole dock layout.
+function setupInStudio() {
+  const onOpenChange = vi.fn();
+  const utils = render(
+    <MemoryRouter>
+      <StudioHostProvider bookId="b">
+        <ExtractionWizard open onOpenChange={onOpenChange} bookId="b" mode="single" />
+      </StudioHostProvider>
+    </MemoryRouter>,
   );
   return { ...utils, onOpenChange };
 }
@@ -54,6 +94,22 @@ async function runToResults() {
 }
 
 describe('ExtractionWizard', () => {
+  // DOCK-9 adoption (docs/standards/dockable-gui.md) — swapped the hand-rolled
+  // `fixed inset-0` backdrop+dialog pair for raw @radix-ui/react-dialog primitives.
+  // Regression risk: Radix's built-in Escape/outside-click dismissal must still
+  // route through `onOpenChange`, and the dialog must be a real Radix dialog
+  // (portal-safe, `role="dialog"`) rather than a hand-rolled div pair.
+  it('renders as a real Radix dialog (role=dialog), not a hand-rolled overlay', () => {
+    setup();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('Escape closes the wizard via onOpenChange(false) (Radix default — no manual keydown listener)', async () => {
+    const { onOpenChange } = setup();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
   it('shows a Run again button on the results step', async () => {
     setup();
     await runToResults();
@@ -68,12 +124,51 @@ describe('ExtractionWizard', () => {
     expect(screen.queryByText('results.runAgain')).toBeNull();
   });
 
+  it('Run in background closes the wizard and hands off to the Jobs dashboard', async () => {
+    lastToast = null;
+    navigateMock.mockClear();
+    const { onOpenChange } = setup();
+    fireEvent.click(screen.getByText('stub-profile'));        // sets profile + modelRef
+    fireEvent.click(screen.getByText('button.next'));          // → confirm
+    fireEvent.click(await screen.findByText('stub-confirm'));  // onJobCreated → progress
+    fireEvent.click(await screen.findByText('stub-background')); // dismiss while running
+    // Closes without cancelling, and surfaces a "View in Jobs" handoff toast.
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(lastToast?.msg).toBe('progress.backgroundToast');
+    lastToast?.opts?.action?.onClick();
+    expect(navigateMock).toHaveBeenCalledWith('/jobs');
+  });
+
+  it('inside the studio, the "View in Jobs" handoff opens the jobs-list dock panel instead of navigating away', async () => {
+    lastToast = null;
+    navigateMock.mockClear();
+    setupInStudio();
+    fireEvent.click(screen.getByText('stub-profile'));
+    fireEvent.click(screen.getByText('button.next'));
+    fireEvent.click(await screen.findByText('stub-confirm'));
+    fireEvent.click(await screen.findByText('stub-background'));
+    expect(lastToast?.msg).toBe('progress.backgroundToast');
+    // openPanel is a no-op until a real dock api attaches (same proof shape as
+    // StepConfig.test.tsx) — the real assertion is that navigate() is NEVER reached, since
+    // that's exactly the "tear down the whole studio" bug this branch exists to prevent.
+    expect(() => lastToast?.opts?.action?.onClick()).not.toThrow();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
   it('reopening after a finished run is fresh — not stuck on stale results (the F5 bug)', async () => {
     const { rerender, onOpenChange } = setup();
     await runToResults();
     // Close, then reopen — the persistent mount must reset, not show old results.
-    rerender(<ExtractionWizard open={false} onOpenChange={onOpenChange} bookId="b" mode="single" />);
-    rerender(<ExtractionWizard open onOpenChange={onOpenChange} bookId="b" mode="single" />);
+    rerender(
+      <MemoryRouter>
+        <ExtractionWizard open={false} onOpenChange={onOpenChange} bookId="b" mode="single" />
+      </MemoryRouter>,
+    );
+    rerender(
+      <MemoryRouter>
+        <ExtractionWizard open onOpenChange={onOpenChange} bookId="b" mode="single" />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(screen.getByText('stub-profile')).toBeTruthy());
     expect(screen.queryByText('results.runAgain')).toBeNull();
   });

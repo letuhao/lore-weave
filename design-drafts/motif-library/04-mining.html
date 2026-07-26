@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mine → template — Motif Library</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    motif: '#d97706', sys: '#64748b', user: '#6366f1', book: '#0ea5e9', pub: '#059669' } } } };
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.05rem .4rem; font-size:10px; font-weight:600; }
+  .tier-system { background:#64748b1a; color:#475569; border:1px solid #64748b40; }
+  .tier-user   { background:#6366f11a; color:#4f46e5; border:1px solid #6366f140; }
+  .tier-book   { background:#0ea5e91a; color:#0369a1; border:1px solid #0ea5e940; }
+  .k { font-family:ui-monospace,monospace; }
+  .arrow { color:#d97706; font-weight:700; font-size:10px; }
+  .ev { display:inline-flex; align-items:center; border-radius:.3rem; padding:.05rem .4rem; font-size:11px; font-weight:600; background:#0ea5e914; color:#0369a1; border:1px solid #0ea5e92e; }
+  .ab { display:inline-flex; align-items:center; border-radius:.3rem; padding:.05rem .4rem; font-size:11px; font-weight:600; background:#d977061a; color:#b45309; border:1px solid #d9770633; }
+  .step { display:flex; align-items:center; gap:.4rem; font-size:11px; }
+  .dot { width:8px; height:8px; border-radius:999px; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="border-b bg-white">
+  <div class="mx-auto max-w-6xl px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold">Mine → template <span class="text-slate-400">(self-enrichment)</span></h1>
+        <p class="text-xs text-slate-500">Analyze the corpus → mine recurring event chains → abstract to roles → judge → draft motifs. The library grows itself.</p>
+      </div>
+      <span class="chip tier-user">DRAFT v0.1 · Phase 3</span>
+    </div>
+    <nav class="mt-3 flex flex-wrap gap-2 text-sm">
+      <a href="index.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Model</a>
+      <a href="01-library.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Library &amp; Catalog</a>
+      <a href="02-motif-editor.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Motif editor</a>
+      <a href="03-planner-binding.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Planner binding ★</a>
+      <a href="04-mining.html" class="rounded-md bg-motif px-3 py-1.5 font-medium text-white">Mine → template</a>
+      <a href="05-arc-template.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Arc template ★</a>
+      <a href="06-manual-build.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Manual build</a>
+      <a href="07-trace-conformance.html" class="rounded-md border px-3 py-1.5 hover:bg-slate-100">Trace &amp; conformance ★</a>
+    </nav>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl px-6 py-6">
+
+  <!-- run config -->
+  <section class="rounded-lg border bg-white p-4">
+    <div class="flex flex-wrap items-end gap-4 text-[12px]">
+      <div><div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Scope</div>
+        <select class="mt-1 rounded-md border px-2 py-1.5"><option>This book (4 chapters)</option><option>My whole corpus (12 books)</option><option>A public source book…</option></select>
+      </div>
+      <div><div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Min support</div>
+        <input type="number" value="3" class="mt-1 w-20 rounded-md border px-2 py-1.5" />
+      </div>
+      <div><div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Chain length</div>
+        <select class="mt-1 rounded-md border px-2 py-1.5"><option>3–6 beats</option><option>2–4 beats</option><option>full arc</option></select>
+      </div>
+      <div><div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Promote to</div>
+        <select class="mt-1 rounded-md border px-2 py-1.5"><option>Book draft</option><option>My User library</option></select>
+      </div>
+      <button class="ml-auto rounded-md bg-motif px-4 py-2 text-[12px] font-semibold text-white">⛏ Run mining</button>
+    </div>
+
+    <!-- pipeline status -->
+    <div class="mt-4 flex flex-wrap items-center gap-3 rounded-md bg-slate-50 border px-3 py-2">
+      <div class="step"><span class="dot bg-emerald-500"></span> read Neo4j <span class="k">(:Event)</span> chains <b>·142</b></div><span class="arrow">→</span>
+      <div class="step"><span class="dot bg-emerald-500"></span> frequent-sequence <b>·11 candidates</b></div><span class="arrow">→</span>
+      <div class="step"><span class="dot bg-amber-500"></span> LLM abstraction <b>9/11</b></div><span class="arrow">→</span>
+      <div class="step"><span class="dot bg-slate-300"></span> judge gate</div><span class="arrow">→</span>
+      <div class="step"><span class="dot bg-slate-300"></span> dedup</div>
+      <span class="ml-auto text-[11px] text-slate-400">~$0.04 est · reuses extraction + eval stack</span>
+    </div>
+  </section>
+
+  <!-- candidates -->
+  <h2 class="mt-6 text-base font-bold">Mined candidates <span class="text-[12px] font-normal text-slate-500">— review before they join the library</span></h2>
+
+  <div class="mt-3 space-y-3">
+
+    <!-- candidate 1 -->
+    <article class="rounded-lg border bg-white p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="text-sm font-bold">Betrayal at the Sect Gate → Exile</span>
+          <span class="ml-1 k text-[10px] text-slate-400">revenge.betrayal_exile</span>
+        </div>
+        <div class="flex items-center gap-2 text-[11px]">
+          <span class="chip" style="background:#0ea5e91a;color:#0369a1">support ×9</span>
+          <span class="chip" style="background:#0596691a;color:#047857">judge 0.82</span>
+          <span class="chip" style="background:#64748b14;color:#475569">new — no near-dup</span>
+        </div>
+      </div>
+
+      <!-- concrete → abstract diff -->
+      <div class="mt-3 grid grid-cols-2 gap-4">
+        <div class="rounded-md border bg-sky-50/40 p-2.5">
+          <div class="text-[10px] font-bold uppercase tracking-wide text-sky-700">Mined (concrete · from your chapters)</div>
+          <div class="mt-1.5 flex flex-wrap items-center gap-1">
+            <span class="ev">Lin humiliated at gate</span><span class="arrow">→</span>
+            <span class="ev">elder Mo frames him</span><span class="arrow">→</span>
+            <span class="ev">robes stripped</span><span class="arrow">→</span>
+            <span class="ev">driven out</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400">seen in Ch.2, + 3 of your other books</div>
+        </div>
+        <div class="rounded-md border bg-amber-50/40 p-2.5">
+          <div class="text-[10px] font-bold uppercase tracking-wide text-amber-700">Abstracted (roles + conditions)</div>
+          <div class="mt-1.5 flex flex-wrap items-center gap-1">
+            <span class="ab">public humiliation</span><span class="arrow">→</span>
+            <span class="ab">false accusation</span><span class="arrow">→</span>
+            <span class="ab">stripped of rank</span><span class="arrow">→</span>
+            <span class="ab">cast out</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-500">roles: <b>subject</b>(victim) · <b>opponent</b>(betrayer) · <b>receiver</b>(authority) · effect: <i>exile + vow</i></div>
+        </div>
+      </div>
+
+      <div class="mt-3 flex items-center gap-2 text-[11px]">
+        <button class="rounded-md bg-motif px-3 py-1 font-semibold text-white">Promote → Book draft</button>
+        <a href="02-motif-editor.html" class="rounded-md border px-2.5 py-1 font-semibold hover:bg-slate-50">Edit first</a>
+        <button class="rounded-md border px-2.5 py-1 font-semibold hover:bg-slate-50">Discard</button>
+        <span class="ml-auto text-slate-400">abstraction confidence <b class="text-slate-600">high</b></span>
+      </div>
+    </article>
+
+    <!-- candidate 2 — near-duplicate -->
+    <article class="rounded-lg border border-amber-300 bg-amber-50/30 p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="text-sm font-bold">Lucky cave inheritance</span>
+          <span class="ml-1 k text-[10px] text-slate-400">cultivation.cave_inheritance</span>
+        </div>
+        <div class="flex items-center gap-2 text-[11px]">
+          <span class="chip" style="background:#0ea5e91a;color:#0369a1">support ×6</span>
+          <span class="chip" style="background:#0596691a;color:#047857">judge 0.77</span>
+          <span class="chip" style="background:#f59e0b1a;color:#b45309">⚠ 0.93 similar to existing</span>
+        </div>
+      </div>
+      <p class="mt-2 text-[12px] text-amber-900">Near-duplicate of <b>Fortuitous Encounter → Hidden Legacy</b> <span class="chip tier-system">system</span>. Merge as a <b>variant</b> instead of adding a duplicate?</p>
+      <div class="mt-2 flex items-center gap-2 text-[11px]">
+        <button class="rounded-md bg-motif px-3 py-1 font-semibold text-white">Merge as variant ↔</button>
+        <button class="rounded-md border px-2.5 py-1 font-semibold hover:bg-slate-50">Keep separate</button>
+        <button class="rounded-md border px-2.5 py-1 font-semibold hover:bg-slate-50">Discard</button>
+      </div>
+    </article>
+
+    <!-- candidate 3 — low abstraction confidence -->
+    <article class="rounded-lg border bg-white p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="text-sm font-bold">Tournament arc beat</span>
+          <span class="ml-1 k text-[10px] text-slate-400">draft · unnamed</span>
+        </div>
+        <div class="flex items-center gap-2 text-[11px]">
+          <span class="chip" style="background:#0ea5e91a;color:#0369a1">support ×4</span>
+          <span class="chip" style="background:#f43f5e12;color:#be123c">judge 0.51 — below gate</span>
+        </div>
+      </div>
+      <p class="mt-2 text-[12px] text-slate-500">Abstraction confidence <b class="text-rose-600">low</b> — the chain is too entangled with specifics to generalize cleanly. Held below the gate; not added.</p>
+      <div class="mt-2 flex items-center gap-2 text-[11px]">
+        <a href="02-motif-editor.html" class="rounded-md border px-2.5 py-1 font-semibold hover:bg-slate-50">Abstract manually</a>
+        <button class="rounded-md border px-2.5 py-1 font-semibold hover:bg-slate-50">Discard</button>
+      </div>
+    </article>
+
+  </div>
+
+  <footer class="mt-8 border-t pt-4 text-[11px] text-slate-500">
+    <b class="text-slate-700">Spec deltas surfaced here:</b>
+    <ul class="mt-1 list-disc pl-5 space-y-0.5">
+      <li><b>knowledge-service read</b> — mining needs a new client to read <span class="k">(:Event)-[:CAUSES|:HAPPENS_BEFORE]</span> chains per book; confirm the query + auth (internal token).</li>
+      <li><b>Dedup / merge-as-variant</b> — a near-dup needs a cosine check vs existing motifs + a <span class="k">variant_of</span> merge action. Add to the miner + API.</li>
+      <li><b>Abstraction confidence</b> — the LLM lift must return a confidence; low-confidence candidates route to manual, not auto-add. New field on the mined draft.</li>
+      <li><b>Judge gate threshold</b> — config <span class="k">motif_mine_min_judge</span>; below-gate candidates are shown but not added (transparency, not silent drop).</li>
+      <li><b>Provenance back-links</b> — a mined motif should link to the chapters/events it came from (<span class="k">source_ref</span> richer than a run id) for "show me where this came from".</li>
+      <li><b>Cost guard</b> — mining is a budgeted job (like the planner); needs the usage-billing pre-check + a $ estimate before run.</li>
+    </ul>
+  </footer>
+</main>
+</body>
+</html>

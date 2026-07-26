@@ -15,6 +15,12 @@
 // the normal `go test ./...` by the build tag.
 //
 //	go test -tags=integration -run TestScanRows ./pkg/pgsource/...
+//
+// db-safety-gate: file-ok — the destructive statements here (TRUNCATE pc_projection
+// and the migration re-applies that recreate tables) run ONLY after
+// testsafe.EnsureThrowawayDB(current_database()) refuses a non-throwaway DB; the env
+// points at a DISPOSABLE per-reality DB and the file is excluded from normal runs by
+// the //go:build integration tag.
 
 package pgsource
 
@@ -26,6 +32,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/testsafe"
 )
 
 func mustReadMigration(t *testing.T, rel string) string {
@@ -58,6 +66,18 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 		t.Fatalf("connect: %v", err)
 	}
 	defer pool.Close()
+
+	// SAFETY GUARD — before any destructive statement (this test re-applies migrations
+	// that recreate tables, then TRUNCATEs pc_projection). Refuse to proceed unless the
+	// target is a recognizable throwaway DB, so a LOREWEAVE_TEST_PG_URL accidentally
+	// pointed at a real service DB can never be wiped.
+	var dbName string
+	if err := pool.QueryRow(ctx, `SELECT current_database()`).Scan(&dbName); err != nil {
+		t.Fatalf("current_database: %v", err)
+	}
+	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, m := range []string{
 		"contracts/migrations/per_reality/0002_events_table.up.sql",

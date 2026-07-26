@@ -25,8 +25,17 @@ export type ExtractionProfileResponse = {
 
 // ── Extraction Job Request (POST /v1/extraction/books/{bookId}/extract-glossary) ──
 
-/** Per-attribute action: fill missing, overwrite existing, or skip */
-export type AttributeAction = 'fill' | 'overwrite' | 'skip';
+/**
+ * Per-attribute merge action.
+ * - `default` — defer to the attribute's authored merge_strategy (the accumulate-by-default
+ *   path: tags→append, state→overwrite, identity→fill). This is what auto-selected attrs use
+ *   so re-extraction advances knowledge instead of freezing (D-EXTRACT-ATTR-MERGE-DEFAULTS).
+ * - `fill` — write only if empty (write-once).
+ * - `append` — accumulate into a multi-value attribute (deduped).
+ * - `overwrite` — replace the existing value (last-write-wins, audit-logged).
+ * - `skip` — do not extract this attribute.
+ */
+export type AttributeAction = 'default' | 'fill' | 'append' | 'overwrite' | 'skip';
 
 /** kind_code → { attr_code → action } */
 export type ExtractionProfile = Record<string, Record<string, AttributeAction>>;
@@ -45,8 +54,15 @@ export type ExtractionJobRequest = {
   model_ref: string;
   max_entities_per_kind?: number;
   context_filters?: ContextFilters;
-  /** When true, enable model reasoning/thinking (LM Studio enable_thinking). Default off for JSON output. */
+  /** Reasoning effort (off|low|medium|high|auto) for the extraction LLM. Default
+   *  'off' — extraction is structured JSON where thinking mostly wastes budget. The
+   *  BE (translation-service extraction router) accepts this; `thinking_enabled` is
+   *  its deprecated bool alias (True→medium). */
+  reasoning_effort?: string;
   thinking_enabled?: boolean;
+  /** Parallel LLM calls per chapter (the window×batch fan-out). Omitted/1 ⇒ sequential.
+   *  The worker clamps to a hard ceiling (16). */
+  concurrency_level?: number;
 };
 
 // ── Extraction Job Response (from POST 202 + GET /v1/extraction/jobs/{jobId}) ──

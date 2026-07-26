@@ -1,0 +1,232 @@
+name: python-integration-tests
+
+# WHY THIS EXISTS (K28 step 3, 2026-07-24).
+# The companion to python-unit-tests.yml. That job runs the Python UNIT surface but the
+# DB-gated integration suites (tests/integration/db/**, tests/db/**) SKIP there because no
+# TEST_*_DB_URL / TEST_NEO4J_URI is set — exactly as they do on a dev laptop. Those suites
+# were the ones that had silently ROTTED from schema drift (K27), precisely because NOTHING
+# ever ran them: the repo's CI was go+cargo only, and even a dev's `pytest` skipped them
+# without a throwaway DB. Triaging them (K27/K29/K30/K31) fixed 2 real production bugs, a
+# mock-only coverage hole, a test-isolation bug, and a fixture that could DROP the real DB.
+#
+# This job spins ephemeral Postgres (+ Neo4j for knowledge), creates throwaway databases,
+# and runs each service's integration suite WITH the env set, so the round-trips actually
+# EXECUTE in CI and can never rot unnoticed again. It is the Python analogue of
+# domain-db-smoke.yml (which did the same for book+glossary, both Go, on 2026-07-11).
+#
+# Notes:
+#  - postgres:18-alpine to match dev + domain-db-smoke: every one of these schemas defaults
+#    a PK to the built-in uuidv7() (PG18); a pg16/17 image would fail migration.
+#  - neo4j:2026.03-community to match dev: knowledge's schema uses CREATE VECTOR INDEX /
+#    SHOW VECTOR INDEXES (Neo4j 5+) and a CJK full-text index. NO apoc plugin is loaded —
+#    the schema runner deliberately avoids APOC (neo4j_repos/events.py), so the container
+#    stays minimal and fast.
+#  - Each harness self-applies its schema (the `pool` fixture runs migrations; knowledge's
+#    neo4j_driver fixture runs run_neo4j_schema), so the job only needs EMPTY databases.
+#  - Throwaway DB names MUST carry a `test` marker: these fixtures run destructive
+#    setup/cleanup and REFUSE a non-throwaway DSN (_guard_throwaway / the session-autouse
+#    guard). A bare production name would be (correctly) refused. This is the K29 guard.
+#  - SERIAL (`-p no:cacheprovider`, no pytest-xdist): a gating job must be deterministic.
+#    The suites carry xdist_group("pg") so `-n auto --dist loadgroup` IS safe now (K31), but
+#    serial is the conservative first cut — flip to xdist once this job has proven stable.
+#  - Path-filtered: runs only when one of these services or the shared Python SDK changes.
+#  - Scope: all SIX Python services with DB-backed tests, each proven green against a fresh
+#    throwaway (K27→K28-3). composition/campaign/lore-enrichment/knowledge self-migrate via
+#    their `pool` fixture; translation self-applies its DDL per test (empty DB is enough);
+#    chat's top-level *_db.py tests do NOT self-migrate (they skip if the schema is absent),
+#    so this job runs run_migrations first for chat (`needs_migrate: true`). chat+translation
+#    still DEFAULT their DSN to a real dev DB on a bare `pytest` (a tracked smell, K32) — but
+#    that default is an intentional dev-workflow choice, and CI overrides it with an explicit
+#    throwaway DSN below, so it is not a CI concern.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "services/composition-service/**"
+      - "services/knowledge-service/**"
+      - "services/campaign-service/**"
+      - "services/lore-enrichment-service/**"
+      - "services/chat-service/**"
+      - "services/translation-service/**"
+      - "sdks/python/**"
+      - ".github/workflows/python-integration-tests.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "services/composition-service/**"
+      - "services/knowledge-service/**"
+      - "services/campaign-service/**"
+      - "services/lore-enrichment-service/**"
+      - "services/chat-service/**"
+      - "services/translation-service/**"
+      - "sdks/python/**"
+      - ".github/workflows/python-integration-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Postgres-only integration suites ─────────────────────────────────────────
+  pg-integration:
+    name: ${{ matrix.service }} (integration, PG)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: composition-service
+            dsn_var: TEST_COMPOSITION_DB_URL
+            db_name: loreweave_composition_test
+            test_path: tests/integration/db
+            needs_migrate: false
+          - service: campaign-service
+            dsn_var: TEST_CAMPAIGN_DB_URL
+            db_name: loreweave_campaign_test
+            test_path: tests/integration
+            needs_migrate: false
+          - service: lore-enrichment-service
+            dsn_var: TEST_LORE_ENRICHMENT_DB_URL
+            db_name: loreweave_lore_enrichment_test
+            test_path: tests/db
+            needs_migrate: false
+          # translation self-applies its DDL per test → an EMPTY throwaway is enough.
+          # The DB tests are a hand-listed set of files (they don't share a clean glob).
+          - service: translation-service
+            dsn_var: TRANSLATION_TEST_PG_DSN
+            db_name: loreweave_translation_test
+            test_path: >-
+              tests/test_extraction_cache.py tests/test_extraction_offload.py
+              tests/test_extraction_outcomes_pg.py tests/test_extraction_replay.py
+              tests/test_job_cost_pg.py tests/test_promote_active_pg.py
+              tests/test_segment_coverage_pg.py tests/test_segment_status_pg.py
+              tests/test_mcp_sql_compiles.py
+            needs_migrate: false
+          # chat's *_db.py tests SKIP if the schema is absent (they don't self-migrate),
+          # so run_migrations must apply the schema to the empty throwaway first.
+          - service: chat-service
+            dsn_var: CHAT_DB_DSN
+            db_name: loreweave_chat_test
+            test_path: tests/test_*_db.py
+            needs_migrate: true
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: loreweave
+          POSTGRES_PASSWORD: loreweave_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loreweave -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: install the shared Python SDK (with the [test] extra)
+        # The [test] extra brings pytest + pytest-mock + respx (K34): composition's
+        # integration/db suite uses the `mocker` fixture, so a plain `./sdks/python` install
+        # would error 'fixture mocker not found' on a real runner.
+        run: python -m pip install --upgrade pip && python -m pip install "./sdks/python[test]"
+      - name: install service dependencies
+        run: |
+          python -m pip install -r "services/${{ matrix.service }}/requirements.txt"
+          if [ -f "services/${{ matrix.service }}/requirements-test.txt" ]; then
+            python -m pip install -r "services/${{ matrix.service }}/requirements-test.txt"
+          fi
+      - name: create throwaway database
+        env:
+          PGPASSWORD: loreweave_dev
+        # The name carries `_test` so the fixtures' _guard_throwaway accepts it. A bare
+        # production name (loreweave_composition) would be REFUSED — that is the K29 guard.
+        run: psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${{ matrix.db_name }};"
+      - name: migrate schema (services whose tests do not self-migrate)
+        if: ${{ matrix.needs_migrate }}
+        working-directory: "services/${{ matrix.service }}"
+        # chat's *_db.py tests skip when the schema is absent, so apply it with the same
+        # run_migrations the app runs at startup. Proven locally: 15 tables → 57 tests pass.
+        env:
+          CHAT_DB_DSN: postgresql://loreweave:loreweave_dev@localhost:5432/${{ matrix.db_name }}
+        run: |
+          python - <<'PY'
+          import asyncio, os, asyncpg
+          from app.db.migrate import run_migrations
+          async def go():
+              pool = await asyncpg.create_pool(os.environ["CHAT_DB_DSN"])
+              await run_migrations(pool)
+              await pool.close()
+          asyncio.run(go())
+          PY
+      - name: pytest (integration — real Postgres)
+        working-directory: "services/${{ matrix.service }}"
+        # Dynamic env-var NAME per service — set it inline for the pytest process only.
+        run: |
+          export ${{ matrix.dsn_var }}="postgresql://loreweave:loreweave_dev@localhost:5432/${{ matrix.db_name }}"
+          python -m pytest ${{ matrix.test_path }} -q -p no:cacheprovider
+
+  # ── knowledge: Postgres + Neo4j ──────────────────────────────────────────────
+  knowledge-integration:
+    name: knowledge-service (integration, PG + Neo4j)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: loreweave
+          POSTGRES_PASSWORD: loreweave_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loreweave -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      neo4j:
+        image: neo4j:2026.03-community
+        env:
+          NEO4J_AUTH: neo4j/loreweave_dev_neo4j
+        ports:
+          - 7687:7687
+        # Neo4j needs ~20-40s to accept Bolt; cypher-shell ships in the image.
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p loreweave_dev_neo4j 'RETURN 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: install the shared Python SDK (with the [test] extra)
+        # The [test] extra brings pytest + pytest-mock + respx (K34): composition's
+        # integration/db suite uses the `mocker` fixture, so a plain `./sdks/python` install
+        # would error 'fixture mocker not found' on a real runner.
+        run: python -m pip install --upgrade pip && python -m pip install "./sdks/python[test]"
+      - name: install service dependencies
+        run: |
+          python -m pip install -r "services/knowledge-service/requirements.txt"
+          if [ -f "services/knowledge-service/requirements-test.txt" ]; then
+            python -m pip install -r "services/knowledge-service/requirements-test.txt"
+          fi
+      - name: create throwaway database
+        env:
+          PGPASSWORD: loreweave_dev
+        run: psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_knowledge_test;"
+      - name: pytest (integration — real Postgres + Neo4j)
+        working-directory: "services/knowledge-service"
+        env:
+          TEST_KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@localhost:5432/loreweave_knowledge_test
+          TEST_NEO4J_URI: bolt://localhost:7687
+          TEST_NEO4J_USER: neo4j
+          TEST_NEO4J_PASSWORD: loreweave_dev_neo4j
+        run: python -m pytest tests/integration -q -p no:cacheprovider

@@ -2,6 +2,7 @@
 // + action buttons that emit canonical PlayerActionEvent via EventBus.
 // Per spec §1 #8: scaffolded from V0 day 1; concrete wiring in D.
 
+import type { JSX } from 'react';
 export function VirtualGamepad(): JSX.Element {
   return (
     <div className="fixed bottom-4 left-0 right-0 flex justify-between px-6 pointer-events-none md:hidden">

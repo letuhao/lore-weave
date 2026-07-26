@@ -84,6 +84,58 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpConsumedTokens(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpConsumedTokens: %v", err)
 	}
+	// 0031 — System-tier soft-delete (G-C8): deprecated_at on system_genres/kinds/attributes.
+	if err := migrate.UpSystemSoftDelete(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpSystemSoftDelete: %v", err)
+	}
+	// 0032 — extraction FND/M1: normalized_name + uq_entity_dedup, uq_evidence_dedup,
+	// extraction_writeback_log. Runs after the G4 cutover-cache (adds cached_name, the
+	// generated normalized_name's base).
+	if err := migrate.UpExtractionConcurrency(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpExtractionConcurrency: %v", err)
+	}
+	// 0033 — extraction PROV/M3: evidence offset + provenance_status columns.
+	if err := migrate.UpEvidenceProvenance(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpEvidenceProvenance: %v", err)
+	}
+	// 0034 — extraction MERGE/M5: EAV confidence marker + attribute merge_strategy.
+	if err := migrate.UpMergePolicy(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpMergePolicy: %v", err)
+	}
+	// 0035 — D-GLOSSARY-MULTIROW-ATTR-VALUES: per-item child table + backfill.
+	if err := migrate.UpMultirowAttrValues(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpMultirowAttrValues: %v", err)
+	}
+	// 0040 — D-GLOSSARY-ST-DEDUP: convert normalized_name GENERATED→app-maintained.
+	// Required so the wired name-write paths' refreshEntityDedupKey UPDATE doesn't
+	// hit "column can only be updated to DEFAULT" against a still-generated column.
+	if err := migrate.UpStDedupAppMaintained(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpStDedupAppMaintained: %v", err)
+	}
+	// 0041 — M7: chapter_entity_links.mention_count (per-chapter mention frequency).
+	if err := migrate.UpChapterLinkMentionCount(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpChapterLinkMentionCount: %v", err)
+	}
+	// 0043 — #26/#7: the summarize mode's canonical layer on the EAV
+	// (canonical_value + canonical_dirty + canonical_synced_at).
+	if err := migrate.UpCanonicalSummary(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpCanonicalSummary: %v", err)
+	}
+	// 0051 — D-GLOSSARY-ENTITY-SCOPE: scope_label column + widened uq_entity_dedup.
+	// Safe to run here without 0044-0050 (bitemporal facts, unrelated K3-sensitive
+	// trigger changes) — this step only touches glossary_entities.scope_label and
+	// the uq_entity_dedup index already established by 0032 above. findEntityByNameOrAlias
+	// (extraction_handler.go) now unconditionally selects ge.scope_label, so every test
+	// reaching it through this shared helper needs the column present.
+	if err := migrate.UpEntityScopeLabel(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpEntityScopeLabel: %v", err)
+	}
+	// 0054 (C4/SD-C4) — book_kinds/system_kinds/user_kinds.is_person. The wiki-gen + enrichment
+	// PP-4 guards now filter `NOT ek.is_person` and the adopt clone selects sk/uk.is_person, so this
+	// column MUST exist in the shared test DB or those paths error on a missing column.
+	if err := migrate.UpKindIsPerson(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpKindIsPerson: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

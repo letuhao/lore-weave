@@ -184,6 +184,104 @@ async def test_run_pipeline_happy_path_writes_all_four_lists(
     assert write_kwargs["facts"] == ["fact"]
 
 
+# ── L7B (D-KG-L7B-EXTRACT-ITEM) — schema split reaches the writer ──────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_write_schema_and_triage_repo_reach_writer(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """L7B: when the caller (/extract-item) splits the advisory prompt schema
+    from the authoritative write schema, the orchestrator feeds the SDK with the
+    advisory `schema` but hands the WRITER the authoritative `write_schema` +
+    `triage_repo` — so the closed-edge guard + off-schema park run at the write
+    boundary (the same activation /persist-pass2 has)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = ["rel"]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1, relations=1)
+
+    advisory = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=True,
+        schema_version=2, label="p@v2",
+    )
+    authoritative = ExtractionSchema(
+        edge_predicates=("disciple_of",), allow_free_edges=False,
+        schema_version=2, label="p@v2",
+    )
+    triage_repo = MagicMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai bows to the master.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        schema=advisory,
+        write_schema=authoritative,
+        triage_repo=triage_repo,
+    )
+
+    # SDK extractors received the ADVISORY schema (hint, never pre-drops).
+    assert mock_entities.call_args.kwargs["schema"] is advisory
+    assert mock_relations.call_args.kwargs["schema"] is advisory
+    # The writer received the AUTHORITATIVE schema (real closed flag) + the
+    # triage_repo so an off-schema drop PARKS instead of vanishing.
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is authoritative
+    assert write_kwargs["triage_repo"] is triage_repo
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_write_schema_none_falls_back_to_advisory_schema_no_triage(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Back-compat: when write_schema/triage_repo are omitted (every pre-L7B
+    caller), the writer receives the single `schema` and triage_repo=None —
+    byte-identical to before the split."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+    from loreweave_extraction.schema_projection import ExtractionSchema
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = ["rel"]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1, relations=1)
+
+    schema = ExtractionSchema(
+        edge_predicates=("x",), allow_free_edges=True, schema_version=1, label="p@v1",
+    )
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        schema=schema,  # no write_schema / triage_repo
+    )
+
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["schema"] is schema  # fell back to the single schema
+    assert write_kwargs["triage_repo"] is None
+
+
 # ── C13 — glossary pinning: pinned names reach EVERY window ─────────
 
 
@@ -456,7 +554,7 @@ async def test_p2_cache_hit_skips_all_4_llm_calls(
 
     repo = MagicMock()
     cached_entity = ExtractionLeaf(
-        id=uuid4(), book_id=book_id, scene_id=chapter_id,
+        id=uuid4(), book_id=book_id, chapter_id=chapter_id, scene_id=chapter_id,
         leaf_path="p", op="entity", task_id="t-e", status="completed",
         candidates_jsonb=[{
             "name": "CachedAlice", "kind": "person", "aliases": [],
@@ -469,7 +567,7 @@ async def test_p2_cache_hit_skips_all_4_llm_calls(
     )
     def _empty_cache_leaf(op: str) -> ExtractionLeaf:
         return ExtractionLeaf(
-            id=uuid4(), book_id=book_id, scene_id=chapter_id,
+            id=uuid4(), book_id=book_id, chapter_id=chapter_id, scene_id=chapter_id,
             leaf_path="p", op=op, task_id=f"t-{op}", status="completed",
             candidates_jsonb=[],
             retried_n=0, error_message=None,
@@ -1350,6 +1448,93 @@ async def test_orchestrator_env_set_calls_recovery_before_filter(
 @patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_entity_recovery_override_wins_over_module_config(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """KN model-roles A-wire: an endpoint-resolved `entity_recovery_override`
+    ENABLES recovery even when the module-level env config is None (off), and its
+    model is the one used — proving the per-project/per-user resolution reaches
+    the recovery pass (the drift a `**kwargs`-swallowing stub would hide)."""
+    from loreweave_extraction import EntityRecoveryConfig, Pass2Candidates
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    seen_configs: list[Any] = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        seen_configs.append(kwargs.get("config"))
+        return Pass2Candidates(
+            entities=candidates.entities, relations=candidates.relations,
+            events=candidates.events, facts=candidates.facts,
+        )
+
+    # Module-level env config OFF; override supplies the model per-project.
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", None), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-2", job_id=_JOB_ID,
+            user_message="hello", assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+            entity_recovery_override=EntityRecoveryConfig(model_ref="per-project-model"),
+        )
+
+    assert len(seen_configs) == 1, "override must enable recovery despite env-off"
+    assert seen_configs[0].model_ref == "per-project-model"
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_no_override_no_env_recovery_off(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Back-compat: no override + env off → recovery does NOT run (byte-identical
+    to pre-KN default)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    called = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        called.append(True)
+        return candidates
+
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", None), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-3", job_id=_JOB_ID,
+            user_message="hello", assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    assert called == [], "recovery must stay off when nothing is configured"
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
 async def test_orchestrator_recovery_merges_glossary_anchors_as_hints(
     mock_entities, mock_relations, mock_events, mock_facts, mock_write,
 ):
@@ -1650,3 +1835,184 @@ async def test_orchestrator_recovery_filter_disabled_when_entities_not_requested
 
     assert recovery_calls == []
     assert filter_calls == []
+
+
+# ── D-KG-EXTRACTION-CANON-WIRE — quarantine gate ────────────────────
+
+
+def _canon_candidate(*, confirmed: bool | None, name: str = "Alice") -> Any:
+    from app.extraction.canon_check import ExtractionCanonCandidate
+    return ExtractionCanonCandidate(
+        kind="gone_entity_asserted_active_in_extraction", source="symbolic",
+        entity_id="e-alice", name=name, status="gone", gone_from_order=1_000_010,
+        span="Alice smiled", matched=name, confirmed=confirmed,
+        why="acting in present tense" if confirmed else "",
+    )
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.check_extraction_canon", new_callable=AsyncMock)
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_noop_when_no_gone_entities(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone, mock_check,
+):
+    """No gone entities for the project -> the judge is never called (cheap
+    early exit), no canon-flag log, write proceeds normally."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.return_value = []
+
+    job_logs_repo = MagicMock()
+    job_logs_repo.append = AsyncMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        job_logs_repo=job_logs_repo,
+    )
+
+    mock_check.assert_not_called()
+    mock_write.assert_called_once()
+    events = [c.args[4]["event"] for c in job_logs_repo.append.call_args_list]
+    assert "pass2_canon_flag" not in events
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.check_extraction_canon", new_callable=AsyncMock)
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_logs_confirmed_and_write_still_proceeds(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone, mock_check,
+):
+    """A CONFIRMED contradiction is logged (quarantine signal) but the write
+    proceeds unconditionally -- this is advisory, never a hard block."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.return_value = [
+        {"entity_id": "e-alice", "name": "Alice", "canonical_name": "alice", "from_order": 1_000_010}
+    ]
+    mock_check.return_value = [_canon_candidate(confirmed=True)]
+
+    job_logs_repo = MagicMock()
+    job_logs_repo.append = AsyncMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Alice smiled and picked up her sword.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        job_logs_repo=job_logs_repo,
+    )
+
+    mock_check.assert_called_once()
+    mock_write.assert_called_once()  # write is UNCONDITIONAL
+    flag_calls = [c for c in job_logs_repo.append.call_args_list if c.args[4]["event"] == "pass2_canon_flag"]
+    assert len(flag_calls) == 1
+    assert flag_calls[0].args[4]["entity_id"] == "e-alice"
+    assert flag_calls[0].args[4]["name"] == "Alice"
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.check_extraction_canon", new_callable=AsyncMock)
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_skips_log_when_not_confirmed(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone, mock_check,
+):
+    """confirmed=False (judge cleared it, e.g. a flashback) or confirmed=None
+    (degraded, symbolic-only) -> no canon-flag log, write proceeds."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.return_value = [
+        {"entity_id": "e-alice", "name": "Alice", "canonical_name": "alice", "from_order": 1_000_010}
+    ]
+    mock_check.return_value = [_canon_candidate(confirmed=False), _canon_candidate(confirmed=None)]
+
+    job_logs_repo = MagicMock()
+    job_logs_repo.append = AsyncMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="He remembered how Alice used to smile.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        job_logs_repo=job_logs_repo,
+    )
+
+    mock_write.assert_called_once()
+    events = [c.args[4]["event"] for c in job_logs_repo.append.call_args_list]
+    assert "pass2_canon_flag" not in events
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_degrades_safely_on_exception(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone,
+):
+    """CC4 -- a canon-check gate failure (e.g. a Neo4j hiccup on
+    list_gone_entities) must NEVER break real extraction. Write still
+    proceeds; the failure is swallowed + logged via `logger.warning`."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.side_effect = RuntimeError("neo4j hiccup")
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+    )
+
+    mock_write.assert_called_once()

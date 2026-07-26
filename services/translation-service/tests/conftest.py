@@ -1,6 +1,7 @@
 """Shared fixtures for translation-service tests."""
 import os
 import pytest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Provide required env vars before any app module is imported
@@ -13,6 +14,9 @@ os.environ.setdefault("JWT_SECRET", "test_secret_for_unit_tests_32chars!!")
 # llm_client need them set up-front.
 os.environ.setdefault("RABBITMQ_URL", "amqp://test:test@localhost:5672/")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_internal_token")
+# MCP fan-out S-TRANSL (key-split): the confirm-token signing secret is a SEPARATE
+# required config from the envelope token. Tests mint/verify confirm tokens with it.
+os.environ.setdefault("CONFIRM_TOKEN_SIGNING_SECRET", "test_confirm_signing_secret")
 
 
 @pytest.fixture(autouse=True)
@@ -132,6 +136,19 @@ def client(fake_pool, grant_stub):
     _stub_consumer.stop = AsyncMock()
     _stub_consumer.close = AsyncMock()
 
+    # MCP fan-out S-TRANSL — stub the MCP StreamableHTTP session manager so the REST
+    # `client` lifespan does NOT consume its once-per-instance `.run()`. Otherwise the
+    # real wire-path MCP tests (which run the SAME module-level `mcp_server` over a
+    # loopback server) hit "run() can only be called once per instance" depending on
+    # test order. The /mcp facade is best-effort relative to the REST API, so a no-op
+    # session manager here leaves every `/v1/translation` route fully exercised.
+    @asynccontextmanager
+    async def _noop_session_manager():
+        yield
+
+    _mcp_stub = MagicMock()
+    _mcp_stub.session_manager.run = _noop_session_manager
+
     with (
         patch("app.database.create_pool", new_callable=AsyncMock, return_value=fake_pool),
         patch("app.database.close_pool", new_callable=AsyncMock),
@@ -142,6 +159,7 @@ def client(fake_pool, grant_stub):
         patch("app.routers.jobs.publish", new_callable=AsyncMock),
         patch("app.routers.jobs.publish_event", new_callable=AsyncMock),
         patch("app.main.GlossaryStaleConsumer", return_value=_stub_consumer),
+        patch("app.main.mcp_server", _mcp_stub),
     ):
         from app.main import app
         # Override get_db to return our fake pool directly

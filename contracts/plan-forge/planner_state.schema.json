@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/planner_state.schema.json",
+  "title": "PlannerState",
+  "description": "Runtime planner variables for a book or arc entry point.",
+  "type": "object",
+  "required": ["PA", "HA", "CD", "THR"],
+  "additionalProperties": false,
+  "properties": {
+    "PA": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Perfection_Addiction — increases on perfection experiences"
+    },
+    "HA": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Humanity_Anchor — decreases as PA rises"
+    },
+    "CD": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Corruption_Debt — hidden accumulation"
+    },
+    "THR": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Than_Hon_Resonance — past-life seed leakage"
+    },
+    "tier": {
+      "type": ["string", "null"],
+      "enum": ["baseline", "tier_1", "tier_2", "tier_3", "tier_4", null]
+    }
+  }
+}

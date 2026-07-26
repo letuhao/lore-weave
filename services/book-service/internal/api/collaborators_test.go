@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -102,6 +103,46 @@ func TestGetBookAccess_BadIDs(t *testing.T) {
 	s.Router().ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("missing user_id: got %d want 400", rr.Code)
+	}
+}
+
+func TestGetBookAccess_ReturnsOwnerToGranteeOnly(t *testing.T) {
+	t.Parallel()
+	s := testServer()
+	owner := uuid.New()
+
+	// A grantee (edit) receives owner_user_id so it can resolve a cross-tenant
+	// read of the owner's per-(user,book) rows (the book-tier model settings).
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantEdit, owner, "active", nil
+	}
+	req := httptest.NewRequest(http.MethodGet, "/internal/books/"+uuid.NewString()+"/access?user_id="+uuid.NewString(), nil)
+	req.Header.Set("X-Internal-Token", "itok")
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("grantee access: got %d want 200 (%s)", rr.Code, rr.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["owner_user_id"] != owner.String() {
+		t.Fatalf("owner_user_id: got %q want %q", body["owner_user_id"], owner.String())
+	}
+
+	// A non-grantee (none) must NOT get owner_user_id — no owner/existence oracle.
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantNone, owner, "active", nil
+	}
+	req2 := httptest.NewRequest(http.MethodGet, "/internal/books/"+uuid.NewString()+"/access?user_id="+uuid.NewString(), nil)
+	req2.Header.Set("X-Internal-Token", "itok")
+	rr2 := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr2, req2)
+	var body2 map[string]string
+	_ = json.Unmarshal(rr2.Body.Bytes(), &body2)
+	if _, ok := body2["owner_user_id"]; ok {
+		t.Fatalf("owner_user_id leaked to a non-grantee: %v", body2)
 	}
 }
 

@@ -32,6 +32,23 @@ export type EntityOverride = {
   overridden_fields: Record<string, unknown>;
 };
 
+// S-04 — an entity_override row WITH its id (GET /works/{projectId}/entity-overrides).
+// The derivative-context read-projection omits `id` (it only needs the delta); the
+// editable manage-view needs the id to PATCH/DELETE a specific override.
+export type EntityOverrideRow = {
+  id: string;
+  target_entity_id: string;
+  overridden_fields: Record<string, unknown>;
+};
+
+// S-04 — partial edit of a derivative's divergence_spec. An OMITTED key is left
+// unchanged; `pov_anchor: null` explicitly CLEARS the anchor.
+export type DivergenceSpecPatch = {
+  taxonomy?: DivergenceTaxonomy;
+  pov_anchor?: string | null;
+  canon_rule?: string[];
+};
+
 export type DivergenceSpec = {
   taxonomy: DivergenceTaxonomy;
   pov_anchor: string | null;
@@ -39,9 +56,30 @@ export type DivergenceSpec = {
 };
 
 export type DeriveBody = {
+  // BE-13a — the dị bản's human name (persisted to settings.derivative_name). The
+  // wizard has always collected it; without sending it here the manage panel lists
+  // unnamed UUIDs (the F-EC3a silent-success bug). Optional at the API for non-panel
+  // callers; the wizard enforces presence.
+  name?: string;
   branch_point: number | null;
   divergence: DivergenceSpec;
   entity_overrides: EntityOverride[];
+};
+
+// WS-B2 — the DURABLE read-projection of a derivative Work's divergence spec
+// (composition-service DerivativeContextResponse). Read back on Work resolution
+// from the persisted divergence_spec + entity_override (NOT the ephemeral
+// derive-time react-query cache), so the studio banner/chips/popover + the
+// was→now grounding deltas survive a reload. `is_derivative=false` ⇒ greenfield.
+export type DerivativeContextResponse = {
+  is_derivative: boolean;
+  source_work_id: string | null;
+  source_project_id: string | null;
+  branch_point: number | null;
+  taxonomy: DivergenceTaxonomy | null;
+  pov_anchor: string | null;
+  canon_rules: string[];
+  overrides: EntityOverride[];
 };
 
 export type WorkResolution = {
@@ -50,6 +88,39 @@ export type WorkResolution = {
   candidates: Work[];
   book_project_id: string | null;
   book_project_ids: string[];
+};
+
+// Studio Quality tab (`quality-canon`) — one confirmed canon contradiction, mirrors
+// OutlineRepo.canon_issues(). chapter_title is intentionally absent (composition
+// doesn't own chapter titles — the caller resolves chapter_id via booksApi.listChapters).
+export type CanonIssue = {
+  scene_id: string;
+  scene_title: string;
+  chapter_id: string | null;
+  job_id: string;
+  created_at: string;
+  status: string | null;
+  violations: Array<{ entity_id?: string; name?: string; why?: string; span?: string; kind?: string }>;
+};
+
+// 24 PH18 — an open violation of an author-declared CANON RULE, from the critic
+// lane (`generation_job.critic.violations[]`). The SIBLING of CanonIssue, and the
+// difference is load-bearing: CanonIssue is the ENTITY-continuity lane and carries
+// no rule id at all, so it can never answer "show me violations of rule X". This
+// one can — it is what the Plan Hub's canon badge deep-links on.
+// `rule_text` is null when the rule no longer resolves (the author archived it, or
+// the judge paraphrased its id). The row is still REAL and is never dropped —
+// hiding every unattributable finding would render the panel falsely clean.
+export type RuleViolationItem = {
+  scene_id: string;
+  scene_title: string;
+  chapter_id: string | null;
+  job_id: string;
+  created_at: string;
+  rule_id: string | null;
+  rule_text: string | null;
+  span: string;
+  why: string;
 };
 
 // T0.1 — narrative-thread (promise/foreshadow) ledger row. Advisory (D4); the
@@ -73,8 +144,12 @@ export type NarrativeThread = {
 // ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
 // T1.2 Beat Sheet — a template beat: a `key` (joins to node.beat_role) + its
 // structural `purpose`. Mirrors the BE StructureTemplate.beats (plan.py).
-export type Beat = { key: string; purpose: string };
-export type StructureTemplate = { id: string; name: string; kind?: string; beats: Beat[] };
+export type Beat = { key: string; purpose: string; label?: string; order?: number };
+export type StructureTemplate = {
+  id: string; name: string; kind?: string; beats: Beat[];
+  // S-01 write side. owner_user_id null ⇒ a built-in (read-only to the user).
+  owner_user_id?: string | null; version?: number; is_archived?: boolean;
+};
 
 // Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
 // The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
@@ -114,6 +189,26 @@ export type CommitDecomposePayload = {
   idempotency_key: string;
 };
 
+// 26 IX-14 — the ONE conformance staleness read contract (GET /books/{id}/conformance/status).
+// Per-arc freshness + a book-level index-stale rollup. A scene's "dirty" chip = its arc's
+// `dirty ∧ chapter ∈ stale_chapters` (spec 26 §debugger). Advisory, VIEW-gated, cheap (no LLM).
+export type ConformanceArc = {
+  structure_node_id: string;
+  title: string;
+  kind: string;
+  computed_at: string | null;   // null ⇒ never_run
+  deep: boolean;
+  dirty: boolean;
+  dirty_reasons: string[];       // e.g. 'never_run' | 'prose_drift' | 'roster_changed' | …
+  stale_chapters: string[];      // chapter_ids that drifted since the last snapshot
+  summary: Record<string, unknown> | null;
+};
+export type ConformanceStatus = {
+  book_id: string;
+  arcs: ConformanceArc[];
+  index: { stale_chapter_count: number };
+};
+
 export type OutlineNode = {
   id: string;
   project_id: string;
@@ -127,7 +222,48 @@ export type OutlineNode = {
   synopsis: string;
   version: number;
   is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
+  /** SC11 amendment — the MAINTAINED written verdict: the manuscript scene that backs this spec
+   *  node, reconciled server-side from `scenes.source_scene_id`. null ⇒ no prose behind it.
+   *  It replaces the scene-browser's client-side `specComplete` gate: "unclaimed" used to be
+   *  ambiguous (unwritten, or its index page just hasn't loaded?) and now it never is. */
+  written_scene_id?: string | null;
   beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
+  // #02 navigator badge — non-archived DIRECT child count. Populated only by the
+  // lazy-children endpoint (list_children); null/absent from whole-tree/other reads.
+  child_count?: number | null;
+  // 22-C1 — the authoring-intent fields the scene-inspector/browser render (previously
+  // agent-writable but human-invisible, or read-only to everyone — see spec 22 §F2).
+  // OPTIONAL because the detail=summary projection (_OUTLINE_REF_FIELDS) deliberately
+  // omits them (spec 24) — a full node get/patch echoes them; a summary/children read does not.
+  goal?: string;                        // scene goal (was agent-writable, human-invisible)
+  pov_entity_id?: string | null;        // point-of-view character (glossary entity id)
+  present_entity_ids?: string[];        // characters present in the scene (drives voice-tag injection)
+  tension?: number | null;              // 0..100 — the pacing sparkline + adaptive_k gate
+  structure_node_id?: string | null;    // 23 BA2 — the arc a CHAPTER node is bound to (null on scenes)
+  // 22 SC4 — authored scene craft (the eight fields; conflict/outcome/stakes default '')
+  location_entity_id?: string | null;
+  story_time?: string | null;
+  conflict?: string;
+  outcome?: string;
+  value_shift?: number | null;          // -100..100
+  stakes?: string;
+  target_words?: number | null;         // > 0
+  exit_state?: Record<string, unknown> | null; // SC12 {v:1,…} envelope (read-mostly)
+  // 26 IX-11 — provenance for the "mined" badge: authored (human) · decompiled (import) · planforge.
+  source?: 'authored' | 'decompiled' | 'planforge';
+};
+
+// #02 nav jump / #06a Quick Open — one outline search hit (title match across the whole
+// outline). `path` is the ancestor-title breadcrumb (top-first): arc → [], chapter → [arc],
+// scene → [arc, chapter]. Mirrors composition-service search_nodes.
+export type OutlineSearchHit = {
+  id: string;
+  kind: 'arc' | 'chapter' | 'scene';
+  title: string;
+  chapter_id: string | null;
+  status: string | null;
+  story_order: number | null;
+  path: string[];
 };
 
 // T1.3 Scene Graph — a non-derivable scene edge (a causal/structural dependency
@@ -160,6 +296,74 @@ export type PublishGate = {
   can_publish: boolean;
 };
 
+// T4.2 — server-SSOT writing progress for a Work. `sparkline` is a dense
+// 30-day [today-29 .. today] series (zero-filled); the panel slices 7/30.
+// `daily_goal` is null until the user sets one (read from work.settings).
+export type ProgressPoint = { date: string; words: number };
+export type ProgressStats = {
+  today: string;
+  today_words: number;
+  book_total: number;
+  daily_goal: number | null;
+  // BE-P2 / SET-1 — WHERE the effective goal came from: the caller's own per-user goal,
+  // the legacy shared work.settings (read-through fallback), or unset.
+  daily_goal_source?: 'user' | 'work_legacy' | 'none';
+  current_streak: number;
+  sparkline: ProgressPoint[];
+};
+
+// T3.5 — prose-style steering. style_profile is per-scope (work|chapter|scene);
+// the packer resolves the most-specific for a scene. voice_profile is per-character.
+export type StyleScope = 'work' | 'chapter' | 'scene';
+export type StyleProfile = {
+  scope_type: StyleScope;
+  scope_id: string;
+  density: number; // 0-100, lean ↔ lush
+  pace: number;    // 0-100, slow ↔ fast
+};
+export type VoiceProfile = {
+  entity_id: string;
+  entity_name: string;
+  tags: string[];
+};
+
+// T3.4 — one addressable grounding item (present-entity / canon-rule / lore-source)
+// with its per-scene pin/exclude state. `id` is a stable canonical id (not a label).
+export type GroundingItemType = 'present' | 'canon' | 'lore' | 'reference';
+export type GroundingItem = {
+  type: GroundingItemType;
+  id: string;
+  label: string;
+  pinned: boolean;
+  excluded: boolean;
+};
+export type PinAction = 'pin' | 'exclude' | 'none';
+
+// T3.6 — the author's reference shelf.
+export type ReferenceSource = {
+  id: string;
+  title: string;
+  author: string;
+  source_url: string;
+  content: string;
+  embedding_model: string;
+  embedding_dim: number | null;
+  created_at: string | null;
+};
+export type ReferenceList = { references: ReferenceSource[]; embed_model_set: boolean };
+// A per-scene retrieval hit: attribution + cosine score + the scene's pin state.
+export type ReferenceHit = ReferenceSource & {
+  score: number;
+  pinned: boolean;
+  excluded: boolean;
+};
+export type ReferenceSearch = {
+  hits: ReferenceHit[];
+  embed_model_set: boolean;
+  query: string;
+  unavailable?: boolean;
+};
+
 export type Grounding = {
   blocks: Record<string, string>;
   prompt: string;
@@ -168,6 +372,8 @@ export type Grounding = {
   grounding_available: boolean;
   l4_dropped_no_position: number;
   warnings: string[];
+  // T3.4 — addressable items (may be empty for legacy/derivative paths).
+  grounding_items?: GroundingItem[];
 };
 
 export type CanonRule = {
@@ -179,6 +385,10 @@ export type CanonRule = {
   until_order: number | null;
   active: boolean;
   version: number;
+  // BE-11b — present when the list was fetched with include_archived. A soft-archived rule
+  // (DELETE is a soft-archive) is unenforced; the management UI lists it under an archived
+  // section and offers Restore. Omitted (⇒ undefined ⇒ falsy) on the default non-archived list.
+  is_archived?: boolean;
 };
 
 export type Violation = {
@@ -342,3 +552,37 @@ export type StreamEvent =
 
 // T3.2 — selection-scoped AI operations on highlighted prose.
 export type SelectionOperation = 'rewrite' | 'expand' | 'describe';
+
+// S-10 O3 — the book "problems panel" (studio Issues tab), the FE shape of the shared
+// build_book_diagnostics → diag.ranked(). Ranked error → warn → info; `counts`/`total` are EXACT
+// (never capped), only the `items` rows are capped (`refs_capped`). A failed source lands in
+// `warnings` (absent, not zero) rather than silently reporting completeness.
+export type DiagnosticSeverity = 'error' | 'warn' | 'info';
+
+export interface DiagnosticNodeRef {
+  kind: string;
+  id: string;
+  title?: string | null;
+}
+
+export interface DiagnosticItem {
+  kind: string;
+  severity: DiagnosticSeverity;
+  title: string;
+  detail?: string;
+  node_ref?: DiagnosticNodeRef;
+  /** S-10 O3 — deep-link focus params for the owning panel (differ from the node id: quality-canon-rules
+   *  focuses `focusRuleId`, quality-canon `focusChapterId`). The Issues feed spreads these into the
+   *  open-panel params so a row jumps to the exact offending row. */
+  focus?: Record<string, string>;
+  at?: string;
+}
+
+export interface BookDiagnostics {
+  book_id: string;
+  items: DiagnosticItem[];
+  counts: Record<string, number>;
+  total: number;
+  refs_capped: boolean;
+  warnings?: string[];
+}

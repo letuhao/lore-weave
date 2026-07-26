@@ -1,0 +1,1663 @@
+{
+  "title": "Writing Studio",
+  "back": "Zurück zu den Büchern",
+  "settings": "Bucheinstellungen",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Wird geladen…",
+    "empty": "Noch keine Handlungsbögen.",
+    "emptyGuided": "Noch keine Handlungsbögen vorhanden – der Plan ist die Spezifikation, die Ihr Buch steuert. Legen Sie die Handlungsbögen und Kapitel fest, um zu beginnen.",
+    "planCta": "Dieses Buch planen"
+  },
+  "welcome": {
+    "tab": "Willkommen",
+    "title": "Writing Studio",
+    "body": "Ein anheftbarer Arbeitsbereich für dieses Buch. Panels (Compose, Planner, Cast, Qualität…) werden hier nacheinander hinzugefügt. Ziehe Tabs, um sie zu teilen, zu stapeln, schweben zu lassen oder in einem eigenen Fenster zu öffnen.",
+    "openUserGuide": "Benutzerhandbuch öffnen",
+    "startGuidedTour": "Geführte Tour starten",
+    "paletteHint": "⌘⇧P → jederzeit \"Fokus wählen\" oder \"Geführte Tour starten\""
+  },
+  "panels": {
+    "arc-templates": {
+      "title": "Handlungsbögen-Vorlagen",
+      "desc": "Durchsuchen, erstellen, übernehmen und wenden Sie wiederverwendbare, mehrkapitelige Handlungsbögen an – parallele Handlungsstränge und Besetzungsrollen über einen Kapitelumfang hinweg",
+      "guideBody": "Die Bibliothek der Handlungsbögen-Vorlagen enthält wiederverwendbare, mehrkapitelige Strukturen – parallele Handlungsstränge (Rachemotiv, Romanze, Lüge des Mentors), die als Motive über einen Kapitelumfang verteilt sind, sowie die Besetzungsrollen, die der Bogen beim Anwenden festlegt. Durchsuchen Sie nach Kategorien: Ihre eigenen Vorlagen, die System-Standardvorlagen und (im Katalog) öffentliche Vorlagen anderer Nutzer. Erstellen Sie eine neue Vorlage, übernehmen Sie eine System-/öffentliche Vorlage, um Ihre eigene Kopie anzupassen, oder öffnen Sie eine Vorlage, um deren Strang-×-Kapitel-Zeitstrahl zu sehen und eine Anwendung auf dieses Buch vorabzuprobieren. Sie können auch einen bereits von Ihnen verfassten Bogen als Vorlage speichern oder eine Referenzgeschichte importieren und diese in eine neue Vorlage dekonstruieren (拆文). Das Anwenden einer Vorlage erfolgt zunächst als Vorschau – sie überschreibt Ihre Kapitel niemals, ohne dass Sie die Umsetzung explizit ausführen."
+    },
+    "arc-inspector": {
+      "title": "Bogen-Inspektor",
+      "desc": "Lesen und bearbeiten Sie EINEN Bogen oder eine Saga – deren Ziel, Status, die kaskadenartig aufgelösten Handlungsstränge und die Besetzung, den Kapitelumfang, offene Versprechen und die Herkunft der Vorlage",
+      "guideBody": "Der Bogen-Inspektor öffnet einen Knoten Ihres Buch-Spezifikationbaums – eine Saga, einen Bogen oder einen Teilbogen. Dieser Baum ist keine Dekoration: Seine Handlungsstränge und Besetzungsbindungen werden in jeden Generierungsprompt eingelesen, sodass die Bearbeitung eines Bogens hier beeinflusst, wie die KI die Kapitel entwirft. Handlungsstränge und Besetzungsslots werden kaskadenartig aufgelöst – ein Eintrag, der von einer übergeordneten Saga geerbt wurde, wird ausgegraut mit einer Option zum Überschreiben (eine Bearbeitung an dieser Stelle würde stillschweigend eine Kopie erstellen). Der Kapitelumfang, die Zusammenfassung offener Versprechen und die Herkunft der Vorlage sind schreibgeschützt. Das Archivieren eines Bogens gibt seine Kapitel in die ungeplante Liste zurück; das Wiederherstellen fügt sie wieder an. Öffnen Sie ihn über den Planungs-Hub (wählen Sie einen Bogen aus), die Befehlspalette oder den Agenten.",
+      "body": {
+        "loading": "Laden…",
+        "selectArc": "Wähle einen Handlungsbogen aus, um dessen Plan anzuzeigen.",
+        "archivedBanner": "Archiviert – die Kapitel wurden in das ungeplante Tray zurückgeführt. Wiederherstellen, um sie zu bearbeiten und erneut hinzuzufügen.",
+        "restore": "Wiederherstellen",
+        "secIdentity": "Identität",
+        "fTitle": "Titel",
+        "fGoal": "Ziel (erreicht den Prompt)",
+        "fSummary": "Zusammenfassung (eine Bezeichnung – nicht der Prompt)",
+        "fStatus": "Status",
+        "status_empty": "leer",
+        "status_outline": "Entwurf",
+        "status_drafting": "Schreiben",
+        "status_done": "erledigt",
+        "secTracks": "Tracks (Handlungsstränge → Prompt)",
+        "secRoster": "Besetzung (Charakter-Slots)",
+        "empty_track": "Noch keine Handlungsstränge vorhanden.",
+        "empty_role": "Noch keine Rollen vorhanden.",
+        "remove": "entfernen",
+        "overrideHere": "hier überschreiben",
+        "add_track": "+ Track",
+        "add_role": "+ Rolle",
+        "keyPlaceholder": "Schlüssel",
+        "labelPlaceholder": "Bezeichnung (optional)",
+        "addBtn": "hinzufügen",
+        "cancel": "Abbrechen",
+        "keyExists": "Schlüssel existiert",
+        "secChapters": "Kapitel",
+        "chaptersLabel": "Kapitel",
+        "noChapters": "Keine Kapitel zugewiesen",
+        "nonContiguous": "nicht zusammenhängend",
+        "secPromises": "Offene Versprechen",
+        "noPromises": "Hier wird kein Versprechen eröffnet.",
+        "secProvenance": "Herkunft",
+        "fromTemplate": "Aus Vorlage",
+        "authoredNoTemplate": "Aus Konversation erstellt (keine Vorlage).",
+        "secDanger": "Gefahr",
+        "archiveArc": "Handlungsbogen archivieren",
+        "blast": "archiviert auch {{count}} Sub-Bögen",
+        "archivingNote": "Durch das Archivieren werden die Kapitel in die ungeplante Ablage zurückgeführt; durch das Wiederherstellen werden sie wieder verknüpft.",
+        "secTemplate": "Vorlage"
+      }
+    },
+    "compose": {
+      "title": "Co-Autor-Chat",
+      "desc": "KI-Co-Writer Chat",
+      "guideBody": "Der KI-Co-Writer für dieses Buch – chatte mit ihm über eine Szene, bitte ihn um einen Entwurf oder eine Überarbeitung eines Abschnitts oder brainstorme, was als Nächstes passiert. Öffne ihn, wenn du einen Gesprächspartner brauchst, der die Charaktere, das Glossar und die vorangegangenen Kapitel dieses Buches bereits kennt."
+    },
+    "scene-compose": {
+      "title": "Szene verfassen",
+      "desc": "Entwirf eine Szene mit KI-Kandidaten",
+      "guideBody": "Entwirf eine Szene mit dem KI-Koautor: Wähle eine Szene und ein Modell und klicke dann auf Generieren, um einen Geister-Entwurf zu streamen – oder aktiviere Divergieren, um mehrere Kandidaten zu erhalten, die du vergleichen, bearbeiten und übernehmen kannst. Übernehmen fügt den Text in den Editor dieses Kapitels ein, und deine Entscheidungen zum Neu-Generieren/Ablehnen/Bearbeiten trainieren das Modell. Öffne es, wenn du die nächste Szene schreiben und nicht nur darüber reden willst."
+    },
+    "chapter-assemble": {
+      "title": "Kapitel zusammensetzen",
+      "desc": "Szenen zu einem Kapitel zusammensetzen oder verweben",
+      "guideBody": "Verwandle die Szenen eines Kapitels in fertige Kapitelprosa: „Kapitel generieren“ entwirft es in einem Durchgang, oder „Verweben“ führt deine fertigen Szenenentwürfe zu einem einzigen fließenden Kapitel zusammen. Prüfe die bearbeitbare Vorschau und klicke dann auf Übernehmen, um es in den Editor einzufügen – deine Entscheidungen zum Bearbeiten/Neu-Generieren/Ablehnen trainieren das Modell, dasselbe Korrektur-Schwungrad wie beim Szene-Verfassen. Öffne es, sobald die Szenen eines Kapitels entworfen sind und du sie zusammensetzen willst."
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "Manuskript-Editor",
+      "guideBody": "Der Haupt-Editor für dein Manuskript, in dem du den Text der Kapitel direkt schreibst und bearbeitest. Öffne ihn, wenn du neue Prosa entwirfst oder direkte Textänderungen vornimmst – er ist die Leinwand, in die alles andere (Compose, Planner, Steering) einfließt."
+    },
+    "planner": {
+      "title": "Planner",
+      "desc": "Das System des Romans planen",
+      "guideBody": "Lege die Struktur des Romans fest – Handlungsbögen, Kapitel, Beats und deren Verbindungen – bevor oder während du schreibst. Öffne ihn, wenn du die Form der Geschichte sehen oder überarbeiten musst und nicht nur den Satz vor dir bearbeiten willst."
+    },
+    "usage": {
+      "title": "Nutzung",
+      "desc": "Ausgaben, Token & Anforderungslog",
+      "guideBody": "Zeigt an, wie viel du für jede KI-gestützte Aktion ausgibst – Übersetzungen, Anreicherungen, Chat, Compose – aufgeschlüsselt nach Token und Anfragen über die Zeit. Öffne ihn, wenn du deine aktuellen Ausgaben mit deinem Budget abgleichen, sehen willst, welches Feature die meisten Credits verbraucht, oder wenn du die Kosten einer spezifischen Anfrage im Nachhinein prüfen möchtest."
+    },
+    "notifications": {
+      "title": "Benachrichtigungen",
+      "desc": "Job-Abschlüsse & Warnungen",
+      "guideBody": "Sammelt abgeschlossene Aufgaben, Übersetzungsdurchläufe, Anreicherungen und Systemwarnungen an einem Ort, damit du nicht ständig nach laufenden Prozessen suchen musst. Öffne ihn nach dem Start eines großen Jobs (wie der Übersetzung eines Kapitels oder einer Anreicherung), um sofort zu wissen, wenn er fertig ist, oder um Fehler zu finden, die Aufmerksamkeit erfordern."
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "desc": "Konto, Anbieter & Übersetzung",
+      "guideBody": "Verwalte dein Konto, verbinde deine eigenen KI-Anbieter (OpenAI, lokale Modelle usw.) und konfiguriere Standardeinstellungen für Übersetzungen wie Zielsprache und Glossar-Verhalten. Öffne sie vor Beginn eines neuen Projekts zur Einrichtung oder jederzeit, wenn du Anbieter wechseln, Anmeldedaten aktualisieren oder das Standardverhalten von Übersetzungen ändern möchtest."
+    },
+    "trash": {
+      "title": "Papierkorb",
+      "desc": "Gelöschte Bücher, Kapitel & mehr wiederherstellen",
+      "guideBody": "Hier werden Bücher, Kapitel und andere gelöschte Elemente aufbewahrt, damit sie wiederherstellbar bleiben, anstatt endgültig verloren zu gehen. Öffne ihn, wenn du versehentlich etwas gelöscht hast und es wiederherstellen musst, oder wenn du alte, nicht mehr benötigte Elemente dauerhaft löschen möchtest."
+    },
+    "steering": {
+      "title": "Steering",
+      "desc": "Autor-Regeln zur Steuerung der KI für dieses Buch",
+      "guideBody": "Schreibe die Regeln und Vorlieben, die festlegen, wie die KI für dieses spezifische Buch schreibt – Tonfall, POV, Dinge, die vermieden werden sollen, oder wiederkehrende Anweisungen, die du nicht in jedem Chat wiederholen möchtest. Öffne ihn einmal zu Beginn und besuche ihn erneut, wenn die Ausgabe der KI von deinen Wünschen abweicht."
+    },
+    "style-voice": {
+      "title": "Stil & Stimme",
+      "desc": "Steuern Sie die Prosadichte, das Tempo und die markante Stimme jedes Charakters – integriert in jeden Entwurfs-Prompt",
+      "guideBody": "Stil & Stimme steuert, wie die KI schreibt. Legen Sie die Prosadichte und das Tempo für das gesamte Buch fest (oder grenzen Sie dies auf ein Kapitel oder eine Szene ein) und verleihen Sie jedem Charakter eine unverwechselbare Sprechstimme. Diese Einstellungen werden in jeden Entwurfs-Prompt integriert, sodass der Schreibstil konsistent bleibt, ohne dass Sie Anweisungen wiederholen müssen. Jedes Steuerelement zeigt seinen effektiven Wert und dessen Herkunft an (Standardwert des Buches oder Überschreibung durch Kapitel/Szene). Passen Sie dies frühzeitig an, um den Hausstil festzulegen, und verfeinern Sie ihn dann pro Charakter, sobald dessen Stimme Gestalt annimmt.",
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richten Sie es ein, um Stil & Stimme hier zu steuern."
+    },
+    "glossary": {
+      "title": "Glossar",
+      "desc": "Entitäten, Suche und Massenbearbeitung für dieses Buch",
+      "guideBody": "Dein lebendiges Wörterbuch für Charaktere, Orte, Gegenstände und andere benannte Entitäten – durchsuche, filtere und bearbeite sie gesammelt an einem Ort. Öffne es, wenn du prüfen willst, was bereits etabliert wurde, wenn du einen Namen in vielen Einträgen gleichzeitig korrigieren musst oder wenn du Entitäten in Massen bereinigen willst."
+    },
+    "glossary-ontology": {
+      "title": "Ontologie",
+      "desc": "Arten, Genres & Attribute für dieses Buch",
+      "guideBody": "Definiert die Arten (Charakter, Ort, Gegenstand usw.), Genres und benutzerdefinierten Attribute, die zur Klassifizierung von Entitäten in diesem Buch zur Verfügung stehen. Öffne sie, bevor du mit dem Tagging von Entitäten beginnst, oder wann immer du eine neue Art oder ein neues Attribut hinzufügen musst, das nicht im bestehenden Set enthalten ist."
+    },
+    "glossary-unknown": {
+      "title": "Unbekannte Entitäten",
+      "desc": "Nicht erkannte Entitäten einer Art zuordnen",
+      "guideBody": "Listet Entitäten auf, die das System in deinem Text erkannt, aber nicht eindeutig einer Art zuordnen konnte. Öffne diesen Bereich regelmäßig, um diese unkannten Namen der richtigen Art zuzuweisen, damit sie korrekt im Glossar und Wiki erscheinen, anstatt in der Schwebe zu bleiben."
+    },
+    "glossary-ai-suggestions": {
+      "title": "KI-Vorschläge",
+      "desc": "KI-entwürfliche Entitäten überprüfen",
+      "guideBody": "Zeigt Entitätseinträge an, die die KI automatisch aus deinem Manuskript erstellt hat und die auf deine Überprüfung warten. Öffne ihn, um jeden Vorschlag zu akzeptieren, zu bearbeiten oder abzulehnen, bevor er Teil deines offiziellen Glossars wird."
+    },
+    "glossary-merge-candidates": {
+      "title": "Merge-Kandidaten",
+      "desc": "Wahrscheinliche Duplikate prüfen und bestätigen",
+      "guideBody": "Markiert Paare von Entitäten, von denen das System glaubt, dass sie Duplikate sein könnten (z. B. zwei Schreibweisen desselben Charakternamens). Öffne ihn, um echte Duplikate zu bestätigen und zusammenzuführen oder falsche Treffer abzulehnen, um dein Glossar sauber zu halten."
+    },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "Durchsuche und lies die generierten Wiki-Artikel dieses Buches",
+      "guideBody": "Das automatisch generierte Wiki aus lesbaren Artikeln, erstellt aus deinem Glossar und deinen Story-Inhalten – ein Artikel pro Hauptelement. Öffne es, wenn du eine erzählerische Übersicht über einen Charakter, einen Ort oder eine Fraktion möchtest, anstatt nur rohe Glossar-Felder zu sehen."
+    },
+    "wiki-editor": {
+      "title": "Wiki-Editor",
+      "desc": "Bearbeite den Fließtext, die Infobox, die Historie und die Vorschläge eines Wiki-Artikels"
+    },
+    "knowledge": {
+      "title": "Wissen",
+      "desc": "Durchsuche und öffne deine Wissensgraph-Projekte",
+      "guideBody": "Wissen ist dein Einstiegspunkt in den Wissensgraph eines Buches – die Entitäten, Ereignisse und Lore, die deine KI-Agenten extrahiert und organisiert haben. Öffne es, um das Projekt (Buch) auszuwählen, an dem du arbeiten möchtest, bevor du dich in Entitäten, Zeitlinien oder den Graphen selbst vertiefst."
+    },
+    "quality": {
+      "title": "Qualität",
+      "desc": "Offene Versprechen, Kritiker-Scores, Story-Abdeckung & Kanon-Probleme",
+      "guideBody": "Qualität ist dein Diagnose-Dashboard – rein beratend, nichts davon verändert deinen Text. Wähle eine Karte aus, um das Register der offenen Versprechen, die Kritiker-Scores pro Kapitel, die Versprechen-Abdeckung des gesamten Buches oder bestätigte Kanon-Widersprüche einzusehen."
+    },
+    "quality-promises": {
+      "title": "Versprechen",
+      "desc": "Das Register der offenen Versprechen (Setups, die noch nicht aufgelöst wurden)",
+      "guideBody": "Versprechen sind Ihr Buchhaltungssystem für narrative Schulden – jedes Setup, das die Geschichte etabliert hat, aber noch nicht eingelöst wurde. Ein Versprechen wird dort eröffnet, wo Sie es platzieren (ein angedeuteter Verrat, eine geladene Waffe, eine unerklärliche Narbe), und geschlossen, wo das Manuskript es erfüllt. Arbeiten Sie die Liste ab, bevor Sie ein Buch beenden; alles, was am Ende noch offen ist, ist ein Faden, den die Leser als vernachlässigt wahrnehmen werden."
+    },
+    "quality-critic": {
+      "title": "Kritiker",
+      "desc": "Scores für Kohärenz, Stimme, Pacing & Kanon pro Kapitel",
+      "guideBody": "Die Kritik bewertet ein Kapitel hinsichtlich Kohärenz, Stimme, Pacing und Kanon-Treue, inklusive der Begründung für jedes Urteil. Dies ist ein beratendes Tool – es bearbeitet niemals deinen Text. Nutze es, um Kapitel zu entdecken, die vom Faden abgewichen sind, bevor es der Leser tut, und nicht als Note zur Optimierung."
+    },
+    "quality-coverage": {
+      "title": "Story-Abdeckung",
+      "desc": "Vollständige Buch-Prüfung, welche Outline-Versprechen eingelöst wurden",
+      "guideBody": "Die Story-Abdeckung bietet eine Gesamtansicht des Versprechen-Verzeichnisses: Welche Plot-Punkte aus dem Entwurf wurden im Manuskript tatsächlich umgesetzt, welche stehen noch aus und wo häufen sich die Auflösungen? Lies dies, wenn ein Entwurf fertiggestellt ist, um die Akte zu finden, die mehr versprochen als geliefert haben."
+    },
+    "quality-canon": {
+      "title": "Kanon-Probleme",
+      "desc": "Bestätigte Widersprüche aus der Generierung & Wissensextraktion",
+      "guideBody": "Canon Issues sammelt bestätigte Widersprüche zwischen deinem Text und deiner etablierten Lore – ein Charakter, der an zwei Orten gleichzeitig ist, eine geänderte Augenfarbe oder eine Magieregel, die die Geschichte gerade gebrochen hat. Jedes Problem verweist auf das Kapitel und die Kanon-Regel, gegen die verstoßen wurde, damit du den Text korrigieren oder die Regel anpassen kannst."
+    },
+    "quality-canon-rules": {
+      "title": "Kanon-Regeln",
+      "desc": "Definiere die Invarianten, die die Kritik erzwingt – erstellen, bearbeiten, archivieren, wiederherstellen",
+      "guideBody": "In den Kanon-Regeln legst du die Konstanten fest, die deine Geschichte niemals verletzen darf – ein Charakter hat nach Kapitel 41 nur noch einen Arm, Geistersteine werden verbraucht und nicht zurückgegeben, die Identität des Sektmeisters bleibt bis zum Salt-Court-Arc verborgen. Dies sind die Regeln, die die Kritik und das Self-Heal bei jeder Generierung erzwingen. Wenn du sie hier festlegst, bringst du dem Co-Writer deinen Kanon bei. Es ist die andere Hälfte von Canon Issues: Das eine Panel zeigt, was gebrochen wurde, dieses hier ist der Ort, an dem du die Regel korrigierst."
+    },
+    "quality-corrections": {
+      "title": "Korrekturen",
+      "desc": "Deine Akzeptanz-, Bearbeitungs-, Regenerierungs- und Ablehnungsraten bei KI-Entwürfen – das Qualitätssignal",
+      "guideBody": "Korrekturen spiegeln deine eigene redaktionelle Arbeit wider: Jedes Mal, wenn du einen KI-Entwurf akzeptierst, bearbeitest, einen anderen Vorschlag wählst, neu generierst oder ablehnst, wird diese Entscheidung aufgezeichnet. Dieses Panel zeigt die Raten, aufgeteilt nach Diverge (K-Option) vs. Stream. Eine niedrigere Bearbeitungs-/Regenerierungs-/Ablehnungsrate (und eine höhere Akzeptanz des Originals) in Diverge bedeutet, dass sich die zusätzliche Latenz des Re-Rankers lohnt. Dies ist ein rein informatives, schreibgeschütztes Panel; es verändert niemals deinen Text – es zeigt dir lediglich, ob der Co-Writer besser auf dein Buch eingestellt ist."
+    },
+    "quality-heal": {
+      "title": "Self-heal",
+      "desc": "Führe ein Polish auf ein Kapitel aus und akzeptiere jede Korrektur, bevor sie deinen Text verändert",
+      "guideBody": "Self-heal führt einen kostengünstigen Korrekturlesedurchlauf über ein Kapitel aus und schlägt Korrekturen vor – Pronomen-Drift, Tippfehler, Logikfehler im Kanon, zu lange Beschreibungen – jede Korrektur wird als Zeile zum Annehmen oder Ablehnen angezeigt. Deterministische Korrekturen (Tippfehler, Pronomen) sind bereits vorausgewählt; semantische Umschreibungen sind nicht markiert, damit Sie diese selbst beurteilen können. Nichts wird an Ihrem Text geändert, bis Sie auf „Anwenden“ klicken; selbst dann erfolgt die Bearbeitung mit einer Versionsprüfung: Falls sich das Kapitel seit dem letzten Durchlauf von Polish geändert hat, wird das Anwenden abgelehnt, anstatt Ihre neueren Änderungen rückgängig zu machen."
+    },
+    "progress": {
+      "title": "Fortschritt",
+      "desc": "Wörter heute, Ihre Serie, die Gesamtzahl des Buches, ein Tagesziel und eine Sparkline",
+      "guideBody": "Der Fortschritt macht Ihr Schreiben zu einer sichtbaren Gewohnheit: heute geschriebene Wörter, Ihre aktuelle Serie, die laufende Gesamtzahl des Buches und eine 7- oder 30-Tage-Sparkline. Legen Sie ein persönliches Tagesziel fest, das als Referenzlinie im Diagramm markiert wird – das Ziel gehört nur Ihnen und wird nicht mit Mitwirkenden geteilt. Es liest die Wortzahlen, die der Editor beim Speichern erfasst; es verändert niemals Ihren Text."
+    },
+    "flywheel": {
+      "title": "Flywheel",
+      "desc": "Was dein letztes Veröffentlichen zum Kanon hinzugefügt hat – neue Personen, Verbindungen und Ereignisse",
+      "guideBody": "Das Flywheel ist die Belohnung für das Veröffentlichen: Wenn du ein Kapitel veröffentlichst, erweitert ein Extraktionslauf das Wissen deiner Welt. Dieses Panel zeigt an, was hinzugefügt wurde – neue Entitäten, Beziehungen und Ereignisse – mit anklickbaren Highlights, die dich direkt zum Charakter in der Besetzung, zum Link im Graphen oder zum Moment in der Timeline springen lassen. Es schließt den Kreis: Das Schreiben füttert den Kanon, und der Kanon bildet das Fundament für dein nächstes Kapitel."
+    },
+    "kg-overview": {
+      "title": "Übersicht",
+      "desc": "Projektzusammenfassung und Schnellzugriffe",
+      "guideBody": "Die Übersicht bietet dir auf einen Blick eine Momentaufnahme des Projektstatus – Entitäten-Anzahl, letzte Aktivitäten und ausstehende Aufgaben. Öffne sie zuerst, wenn du zu einem Buch zurückkehrst, um zu sehen, was Aufmerksamkeit benötigt, bevor du ein spezifisches Tool nutzt."
+    },
+    "kg-entities": {
+      "title": "Entitäten",
+      "desc": "Durchsuche und suche Wissensgraph-Entitäten, projektbezogen oder projektübergreifend",
+      "guideBody": "Entitäten listet jeden Charakter, jeden Ort, jedes Item und jedes Konzept auf, das das System extrahiert hat, inklusive Suche und Filtern nach Typ oder Projekt. Nutze es, um Details zu einer bestimmten Entität nachzuschlagen oder um zu prüfen, was der Wissensgraph aktuell über deine Welt weiß."
+    },
+    "kg-timeline": {
+      "title": "Zeitachse",
+      "desc": "Durchsuche Story-Ereignisse in chronologischer oder narrativer Reihenfolge",
+      "guideBody": "Die Zeitachse ordnet die Ereignisse deiner Geschichte – entweder in der Reihenfolge, in der sie in der Welt passieren (chronologisch), oder in der Reihenfolge, in der sie dem Leser offenbart werden (narrativ). Öffne sie, um die Konsistenz deiner Handlungsabfolge zu prüfen oder um zu sehen, was zu einem beliebigen Zeitpunkt der Geschichte bereits passiert ist."
+    },
+    "kg-evidence": {
+      "title": "Belege",
+      "desc": "Durchsuche Kapitel- und Chat-Passagen nach semantischer Ähnlichkeit",
+      "guideBody": "Belege ermöglichen es dir, deine Kapitel und den Chatverlauf nach Bedeutung statt nach exakter Wortwahl zu durchsuchen. So findest du Passagen, die ein Thema behandeln, auch wenn sie nicht dieselben Begriffe verwenden. Nutze dies, wenn du wissen willst, wo etwas erwähnt oder etabliert wurde, dich aber nicht an die exakten Worte erinnerst."
+    },
+    "kg-gap": {
+      "title": "Lücken-Bericht",
+      "desc": "Finde häufig genannte Charaktere, Orte und Konzepte, die im Glossar fehlen",
+      "guideBody": "Der Lücken-Bericht zeigt Charaktere, Orte und Konzepte an, die in deinem Text häufig vorkommen, aber noch nicht zum Glossar hinzugefügt wurden. Überprüfe ihn regelmäßig, um Lore-Elemente zu erfassen, die ohne ordentlichen Eintrag durchrutschen."
+    },
+    "kg-proposals": {
+      "title": "Vorschläge",
+      "desc": "Überprüfe ausstehende Vorschläge für Glossar, Wiki und Lore-Anreicherung für dieses Buch",
+      "guideBody": "In den Vorschlägen warten KI-generierte Ergänzungen und Änderungen für dein Glossar, dein Wiki und deine Lore auf deine Überprüfung. Öffne diesen Bereich, um jeden Vorschlag zu genehmigen, zu bearbeiten oder abzulehnen, bevor er Teil des Kanons deines Buches wird."
+    },
+    "kg-schema": {
+      "title": "Schema",
+      "desc": "Definiere, erstelle, betrachte und synchronisiere das Wissensgraph-Schema deines Buches",
+      "guideBody": "Das Schema steuert die Struktur des Wissensgraphen deines Buches – welche Arten von Entitäten und Beziehungen erkannt werden. Nutze es, um ein Start-Schema zu übernehmen, es für deine Welt anzupassen oder Änderungen im gesamten Projekt zu synchronisieren."
+    },
+    "kg-graph": {
+      "title": "Wissensgraph",
+      "desc": "Erkunde den Entitäts-Beziehungs-Graphen des Projekts",
+      "guideBody": "Der Wissensgraph bietet dir eine visuelle Karte, wie die Entitäten in deinem Projekt miteinander verbunden sind – wer wen kennt, was wohin gehört und welche Ereignisse welche Charaktere betreffen. Öffne ihn, wenn du Beziehungen räumlich statt als Liste erkunden möchtest."
+    },
+    "kg-insights": {
+      "title": "Mining Insights",
+      "desc": "Qualität der Extraktions-Konfiguration, Modellleistung & Ergebnis-Drift über Projekte hinweg",
+      "guideBody": "Mining Insights berichtet darüber, wie gut die Extraktion in deinen Projekten funktioniert – die Konfigurationsqualität, welche Modelle gute Ergebnisse liefern und wo die Ergebnisse von den Erwartungen abweichen. Prüfe dies, wenn extrahierte Entitäten oder Ereignisse ungenau scheinen, um zu diagnostizieren, ob das Modell oder die Konfiguration die Ursache ist."
+    },
+    "kg-jobs": {
+      "title": "Extraktions-Jobs",
+      "desc": "Überwache Wissensextraktions-Jobs in all deinen Projekten",
+      "guideBody": "Extraktions-Jobs zeigt den Status jedes Wissensextraktions-Laufs in all deinen Projekten an, sodass du sehen kannst, was in der Warteschlange steht, läuft, abgeschlossen ist oder fehlgeschlagen ist. Öffne ihn, um laufende Extraktionen zu überwachen oder Probleme bei unvollständigen Läufen zu beheben."
+    },
+    "kg-bio": {
+      "title": "Globale Biografie",
+      "desc": "Deine bucherübergreifende Autoren-Bio zur Steuerung von KI-Schreiben und -Analyse",
+      "guideBody": "Die Globale Biografie enthält eine kurze Autoren-Bio, die für alle deine Bücher gilt. Sie dient dazu, den KI-Schreib- und Analyse-Tools Kontext über deine Stimme und deinen Hintergrund zu geben. Einmal ausfüllen, profitiert jedes Projekt von derselben Grundlage."
+    },
+    "kg-privacy": {
+      "title": "Datenschutz & Daten",
+      "desc": "Exportiere oder lösche deine Wissensgraph-Daten dauerhaft",
+      "guideBody": "Datenschutz & Daten ermöglichen es dir, eine vollständige Kopie deiner Wissensgraph-Daten zu exportieren oder sie dauerhaft zu löschen. Nutze dies für Backups, beim Verlassen der Plattform oder wenn du die Daten eines Projekts endgültig entfernen möchtest."
+    },
+    "jobs-list": {
+      "title": "Jobs",
+      "desc": "Überwache Hintergrund-Jobs und Aufgaben",
+      "guideBody": "Zeigt die Hintergrundprozesse an, die für dieses Buch laufen – Übersetzungsdurchläufe, Anreicherungen, Exporte und andere lang laufende Aufgaben – zusammen mit ihrem aktuellen Status und Fortschritt. Öffne das Panel, um zu prüfen, ob ein Job noch läuft, ob einer fehlgeschlagen ist oder um zu bestätigen, dass eine Aufgabe abgeschlossen wurde, bevor du weitermachst."
+    },
+    "job-detail": {
+      "title": "Job",
+      "desc": "Verfolge den Live-Fortschritt eines Jobs",
+      "empty": "Öffne einen Job aus der Jobs-Liste, um ihn hier zu verfolgen."
+    },
+    "books": {
+      "title": "Bücher",
+      "desc": "Durchsuche und lies deine anderen Bücher, ohne das Studio zu verlassen",
+      "guideBody": "Öffnet eine leichtgewichtige Bibliotheksansicht deiner anderen Bücher direkt im Studio, sodass du Details prüfen, eine Passage erneut lesen oder zwischen Projekten wechseln kannst, ohne deine aktuelle Bearbeitungssitzung zu verlieren. Nutze es für schnelle Querverweise zwischen Büchern, ohne das aktuelle Schreibprojekt zu verlassen."
+    },
+    "book-reader": {
+      "title": "Reader",
+      "desc": "Ablenkungsfreie Leseansicht für ein Kapitel"
+    },
+    "leaderboard-books": {
+      "title": "Leaderboard: Bücher",
+      "desc": "Top-Bücher nach Bewertung, Lesern & Favoriten",
+      "guideBody": "Zeigt, welche Bücher in den Rankings für Bewertungen, Leseranzahl und Favoriten aufsteigen, damit du siehst, was die Leser gerade begeistert. Nutze dieses Panel, um ein Gefühl für Trends auf der Plattform zu bekommen oder um vergleichbare Titel in deinem Genre zu finden."
+    },
+    "leaderboard-authors": {
+      "title": "Leaderboard: Autoren",
+      "desc": "Top-Autoren nach Lesern & Output",
+      "guideBody": "Rankt Autoren danach, wie viele Leser sie erreicht haben und wie viel sie veröffentlicht haben. So siehst du, wer aktiv ist und wer sich ein Publikum aufbaut. Öffne es, wenn du wissen möchtest, wie dein Output und deine Reichweite im Vergleich abschneiden, oder wenn du nach produktiven Autoren suchst, denen du folgen kannst."
+    },
+    "leaderboard-translators": {
+      "title": "Leaderboard: Übersetzer",
+      "desc": "Top-Übersetzer nach Kapiteln & Sprachen",
+      "guideBody": "Rankt Übersetzer nach abgeschlossenen Kapiteln und der Anzahl der abgedeckten Sprachen und hebt hervor, wer die Übersetzungsaktivität auf der Plattform vorantreibt. Öffne dies, wenn du aktive Übersetzer für eine Zusammenarbeit finden oder einschätzen möchtest, wie viel Übersetzungsarbeit in verschiedenen Sprachen geleistet wird."
+    },
+    "leaderboard-trending": {
+      "title": "Leaderboard: Trending",
+      "desc": "Bücher, die gerade im Trend liegen",
+      "guideBody": "Zeigt Bücher an, die gerade an Dynamik gewinnen, basierend auf der aktuellen Leseraktivität statt auf lebenslangen Gesamtzahlen. Nutze es, um aufstrebende Titel frühzeitig zu entdecken oder zu sehen, was derzeit die Aufmerksamkeit auf sich zieht."
+    },
+    "context-inspector": {
+      "title": "Kontext-Inspektor",
+      "desc": "Verfolge das Kontext-Management pro Durchgang — Budget, Zuweisung, Planner→Compiler-Entscheidungen",
+      "guideBody": "Zeigt genau an, welcher Kontext für einen bestimmten Durchgang an die KI gesendet wurde — das Token-Budget, was einbezogen oder verworfen wurde und ob ein schneller Durchgang oder ein vollständiger Planungsdurchgang verwendet wurde. Öffne ihn, wenn die Antwort der KI unpassend erscheint und du sehen möchtest, was sie tatsächlich „gesehen“ hat, oder wenn du wissen möchtest, wie dein Kontext-Budget verbraucht wird."
+    },
+    "book-import": {
+      "title": "Import",
+      "desc": "Importiere Kapitel aus Text/.docx/.epub oder ein ganzes Buch aus einem PDF",
+      "intro": "Importiere bestehende Manuskriptinhalte in dieses Buch.",
+      "guideBody": "Importiere Kapitel aus Plain-Text-, .docx- oder .epub-Dateien oder ein ganzes Buch aus einem PDF (mit optionaler KI-Bildunterschrift – du wählst das Vision-Modell explizit aus). Öffne dieses Fenster, wann immer du bestehende Inhalte importieren möchtest, anstatt ganz neu zu schreiben.",
+      "text": {
+        "title": "Kapitel importieren",
+        "desc": ".txt, .docx oder .epub — eine Datei pro Kapitel"
+      },
+      "pdf": {
+        "title": "Aus PDF importieren",
+        "desc": "Zerlege ein PDF in Kapitel, mit optionaler KI-Bildunterschrift für Bilder"
+      }
+    },
+    "scene-browser": {
+      "title": "Szenen-Browser",
+      "desc": "Durchsuche jede Szene in diesem Buch – den geschriebenen Text und den Entwurf direkt nebeneinander",
+      "guideBody": "Der Szenen-Browser listet jede Szene des gesamten Buches auf, indem er zwei Wahrheiten zusammenführt: den tatsächlich geschriebenen Text (aus dem book-service) und die beabsichtigte Planung (aus der Komposition). Eine Szene kann geschrieben-und-geplant (normal), geplant-aber-noch-nicht-geschrieben oder geschrieben-aber-noch-nicht-in-einen-Plan-zerlegt sein – so werden auch die Szenen eines importierten Buches hier angezeigt, noch bevor Sie einen Plan erstellt haben.",
+      "noBook": "Öffnen Sie ein Buch, um dessen Szenen zu durchsuchen.",
+      "search": "Titel & Text suchen…",
+      "count": "{{n}} Szenen",
+      "workless": "Noch kein Plan vorhanden – Szenenabsicht (Status, POV, Spannung) ist erst verfügbar, wenn Sie einen Plan für dieses Buch erstellt haben.",
+      "intentUnavailable": "Szenenplan vorübergehend nicht verfügbar – es wird nur der geschriebene Text angezeigt.",
+      "dirty": "Kanon verschoben",
+      "dirtyTitle": "Kanon seit dem letzten Abgleich verschoben",
+      "anchorLost": "Anker verloren",
+      "empty": "Keine passenden Szenen gefunden.",
+      "loadMore": "Mehr laden",
+      "loading": "Lädt…",
+      "col": {
+        "num": "#",
+        "scene": "Szene",
+        "status": "Status",
+        "tension": "Spannung",
+        "words": "Wörter"
+      },
+      "badge": {
+        "notWritten": "noch nicht geschrieben",
+        "notPlanned": "nicht geplant",
+        "anchorLost": "Anker verloren"
+      },
+      "bulk": {
+        "count": "{{n}} ausgewählt",
+        "selectAll": "Alle auswählen",
+        "selectRow": "Szene auswählen: {{title}}",
+        "setStatus": "Status festlegen…",
+        "words": "Zielwortzahl",
+        "trash": "In den Papierkorb",
+        "clear": "Leeren",
+        "updated": "{{n}} aktualisiert",
+        "conflicted": "{{n}} Konflikte",
+        "failed": "{{n}} fehlgeschlagen"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan-Hub",
+      "desc": "Der gesamte Buchplan auf einer Grafik-Leinwand – Handlungsbögen, Kapitel, Szenen und deren Verknüpfungen",
+      "guideBody": "Der Plan-Hub stellt die gesamte Struktur Ihres Buches als Graph dar: Jede Saga/jeder Bogen/jeder Teilbogen ist eine Spur, seine Kapitel und Szenen sind Karten entlang einer chronologischen Achse, und Szenen-Links zeichnen die kausalen Verbindungen dazwischen. Öffnen Sie das Panel, um jeden Bogen als zusammengefasste Karte zu sehen; erweitern Sie einen Bogen, um seine Kapitel nachzuladen, und ein Kapitel, um seine Szenen anzuzeigen. Bewegen und zoomen Sie, um zu navigieren; Symbole für Probleme oder veraltete Daten weisen darauf hin, wo der Kanon oder Versprechen Aufmerksamkeit erfordern."
+    },
+    "decompose": {
+      "title": "Dekonstruieren",
+      "desc": "Dekonstruieren Sie Ihr Buch anhand einer Story-Struktur – Vorschau der Bogen→Kapitel→Szene-Hierarchie, Bearbeitung und Speichern",
+      "guideBody": "Die Dekonstruktion wandelt eine Story-Struktur in den Entwurf Ihres Buches um. Wählen Sie eine Ihrer eigenen Strukturen (oder eine integrierte), fügen Sie eine Prämisse hinzu, wählen Sie ein Modell und klicken Sie dann auf Vorschau: Die KI schlägt eine Bogen→Kapitel→Szene-Hierarchie vor, die Sie vor dem Speichern direkt bearbeiten können. Durch das Speichern wird der Entwurf geschrieben – Ihr Manuskript-Baum wird entsprechend aktualisiert. Öffnen Sie die Funktion über die Befehlspalette oder über eine Struktur im Panel „Strukturvorlagen“ via „In Dekonstruktion verwenden“ (wodurch diese Struktur hier vorausgewählt wird). Noch keine Struktur vorhanden? Das Panel bietet an, zuerst eine zu erstellen.",
+      "loading": "Ihr Buch wird analysiert…",
+      "loadError": "Den Plan für dieses Buch konnte nicht geladen werden – bitte versuchen Sie es erneut.",
+      "retry": "Wiederholen"
+    },
+    "plan-passes": {
+      "title": "Pass-Schiene",
+      "desc": "Erstellen Sie einen Plan Schritt für Schritt und genehmigen Sie jeden Kontrollpunkt",
+      "guideBody": "Die Pass-Schiene steuert den 7-Pass-Compiler von PlanForge – Motive, Besetzung, Welt, Beats, Charakterbögen, Szenen und Self-Heal – jeweils einen Durchgang nach dem anderen. Jeder Pass zeigt an, ob er aktuell ist (die Eingabedaten haben sich seit dem letzten Durchlauf nicht geändert) oder veraltet ist. Die Schiene zeigt Ihnen, wie weit der Compiler selbstständig fortfahren kann und welcher Pass auf Ihre Entscheidung wartet. Zwei Pässe sind blockierende Kontrollpunkte, die Sie genehmigen müssen, bevor der Compiler fortfahren kann: die Besetzung (wer Ihre Charaktere sind) und die Beats (welche Form die Geschichte annimmt). Öffnen Sie einen Pass, um das Ergebnis zu lesen, es zu bearbeiten und dann zu genehmigen oder zurückzustellen. Das Bearbeiten eines Passes setzt automatisch alle nachfolgenden Pässe als veraltet zurück, sodass der Plan niemals aus dem Gleichgewicht gerät."
+    },
+    "whatif-canvas": {
+      "title": "Was-wäre-wenn-Zweige",
+      "desc": "Erforschen Sie alternative Szenen-Versionen, ohne sich festzulegen – verzweigen, eine Alternative generieren, vergleichen und dann den Gewinner übernehmen",
+      "guideBody": "Mit der What-if-Leinwand kannst du eine Szene in einen flüchtigen Zweig aufteilen, eine alternative Fassung erstellen und die Urteils-Badges des Kritikers nebeneinander sehen – und das alles, ohne den kanonischen Entwurf zu verändern. Wenn ein Zweig der richtige ist, kannst du ihn „promoten“: Er wird zu einem echten derivativen Werk, an dem du weiterarbeiten kannst. Es wird nichts gespeichert, bevor du ihn promotest, sodass du völlig frei experimentieren kannst. Dies ist die Bearbeitungsoberfläche hinter der Schaltfläche „Promoten“; während der Plan-Hub den Plan-Graphen anzeigt, ist dies der Ort, an dem du Alternativen daran ausprobierst.",
+      "noPlan": "Dieses Buch hat noch keinen Plan – lege zuerst die Handlungsbögen und Kapitel fest und erkunde dann hier die „Was wäre wenn“-Verzweigungen."
+    },
+    "divergence": {
+      "title": "Was-wäre-Versionen",
+      "desc": "Verwalte die What-if-Derivate eines Buches – liste den Kanon und jeden Zweig auf, verschiebe das gesamte Studio in einen Zweig, archiviere einen oder erstelle einen neuen Zweig aus einem Kapitel",
+      "guideBody": "Eine Was-wäre-Version verzweigt dein Buch an einem Kapitel und divergiert – ein alternatives Universum, ein Perspektivwechsel, ein veränderter Charakter – in ein Derivat mit eigenem Wissensbereich, während das Original als schreibgeschützter Kanon bestehen bleibt. Dieses Panel listet dein kanonisches Werk und alle von dir erstellten Zweige auf. „Zu ... wechseln“ verschiebt dein gesamtes Studio – Editor, Navigator, Qualität, alles – auf diesen Zweig; die Auswahl wird pro Buch gespeichert und bleibt auch nach einem Neuladen erhalten. „Archivieren“ blendet einen Zweig aus, ohne ihn zu löschen (seine Kapitel und sein Wissen bleiben erhalten). „Neue Version“ öffnet den 4-Schritte-Assistenten zum Erstellen eines Zweigs. Wähle einen Zweig aus, um dessen Spezifikationen (Taxonomie, Verzweigungspunkt, Kanon-Regeln, Overrides) zu lesen, die bei der Erstellung festgelegt werden."
+    },
+    "reference-shelf": {
+      "title": "Referenzregal",
+      "desc": "Kuratiere die Referenzpassagen (externe Einflüsse), die dein Schreiben stützen – füge sie hinzu, bearbeite sie oder entferne sie; pro Szene werden die relevanten Passagen abgerufen und können in das Grounding-Paket gepinnt werden.",
+      "guideBody": "Das Referenzregal ist der Korpus der Einflüsse deines Buches – Passagen, Quellen und Stilvorlagen, auf die die KI beim Entwerfen zurückgreift. Füge eine Referenz mit Titel, Autor, Quell-URL und Text hinzu; der Text wird eingebettet, damit das Studio die relevantesten Passagen pro Szene abrufen kann. Bearbeite die Details einer Referenz (eine einfache Metadatenänderung) oder ihren Inhalt (was ein erneutes Einbetten auslöst). Filtere ein umfangreiches Regal mit dem Suchfeld. Die szenenspezifische Abfrage und das Pinnen erscheinen, wenn du das Regal neben einer Szene öffnest; allein dient es der Verwaltung der Bibliothek. Ein Embedding-Modell muss konfiguriert sein (füge eines in den KI-Einstellungen hinzu), damit die Abfrage funktioniert.",
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richten Sie es ein, um das Referenzregal hier zu kuratieren."
+    },
+    "canonview": {
+      "title": "Kanon zum Kapitel",
+      "desc": "Was der Kanon zum Fokus-Kapitel weiß – vorhandene/etablierte Entitäten, Kanon-Status und Timeline",
+      "guideBody": "Beantwortet die Frage: „Was weiß der Kanon zum Kapitel, an dem ich gerade arbeite?“ – die in diesem Kapitel vorhandenen oder durch es etablierten Entitäten (aus dem Glossar), plus den Kanon-Status (wie viele Entitäten sind aktiv vs. verschwunden) und die Timeline-Ereignisse bis zu diesem Zeitpunkt (aus dem Wissensgraphen). Es folgt dem Kapitel, das du im Manuskript im Fokus hast, und ist derselbe Inspector, den die „Was-wäre-wenn“-Leinwand an einem Verzweigungspunkt anzeigt – so kannst du prüfen, was bereits etabliert ist, bevor du dich abspaltest. Öffne eine Szene oder ein Kapitel, um sie in den Fokus zu rücken."
+    },
+    "scene-inspector": {
+      "title": "Szenen-Inspektor",
+      "desc": "Lesen und bearbeiten Sie jedes Feld einer Szene – Absicht, Handwerk, Spannung und Verankerung",
+      "guideBody": "Der Szenen-Inspector ist das Detailfenster für eine einzelne Szene: Wählen Sie eine Szene (im Szenen-Browser oder im Manuskript) aus, und ihr vollständiger Plan öffnet sich hier – Status, Ziel, Synopsis, Beat-Rolle, Spannung und die Handwerksfelder (Konflikt, Ausgang, Einsatz, Erzählzeit, Wertverschiebung, Zielwortzahl) – alle bearbeitbar, inklusive der eingeklappten Verankerungspunkte. Änderungen werden sofort gespeichert und vor widersprüchlichen Änderungen geschützt.",
+      "none": "Wählen Sie eine Szene aus, um ihren vollständigen Plan zu untersuchen.",
+      "loading": "Lädt…",
+      "dirty": "Der Kanon hat sich seit dem letzten Konformitätslauf geändert – dieser Plan ist möglicherweise veraltet.",
+      "section": {
+        "identity": "Identität",
+        "intent": "Absicht",
+        "cast": "Besetzung & Setting",
+        "craft": "Handwerk",
+        "links": "Verknüpfungen",
+        "grounding": "Verankerung",
+        "motifs": "Motive"
+      },
+      "links": {
+        "empty": "Noch keine kausalen Verknüpfungen vorhanden.",
+        "setup": "setup→payoff",
+        "custom": "benutzerdefiniert",
+        "remove": "Verbindung entfernen",
+        "target": "Verbindung zu Szene",
+        "pick": "Verbinden mit…",
+        "kind": "Verbindungstyp",
+        "label": "Bezeichnung",
+        "add": "Verbindung",
+        "dup": "Eine Verbindung dieses Typs existiert bereits zwischen diesen Szenen.",
+        "failed": "Verbindung konnte nicht erstellt werden."
+      },
+      "f": {
+        "title": "Titel",
+        "status": "Status",
+        "goal": "Ziel",
+        "synopsis": "Synopsis",
+        "beat": "Beat-Rolle",
+        "tension": "Spannung (0–100)",
+        "pov": "POV-Charakter",
+        "present": "Anwesende Charaktere",
+        "location": "Ort",
+        "conflict": "Konflikt",
+        "outcome": "Ausgang",
+        "stakes": "Einsatz",
+        "storyTime": "Handlungszeit",
+        "valueShift": "Werteverschiebung (−100…100)",
+        "targetWords": "Zielwörter"
+      },
+      "ref": {
+        "none": "— keine —",
+        "add": "+ hinzufügen",
+        "empty": "keine",
+        "loading": "(lädt…)",
+        "remove": "{{name}} entfernen"
+      },
+      "status": {
+        "empty": "Leer",
+        "outline": "Entwurf",
+        "drafting": "In Bearbeitung",
+        "done": "Abgeschlossen"
+      }
+    },
+    "chapter-browser": {
+      "title": "Kapitel-Browser",
+      "desc": "Sortieren, filtern, suchen und Massenbearbeitung für die Kapitel dieses Buches",
+      "mode_group": "Suchmodus",
+      "mode_title": "Titel & Dateiname",
+      "mode_content": "Inhalt (Volltext)",
+      "sort_chapter_num": "Sortieren nach: Kap. #",
+      "sort_updated": "Sortieren nach: Letzte Änderung",
+      "sort_word_count": "Sortieren nach: Wortanzahl",
+      "sort_status": "Sortieren nach: Status",
+      "view_flat": "Flache Liste",
+      "view_grouped": "Nach Handlungsbogen gruppieren",
+      "col_title": "Titel",
+      "col_lang": "Spr.",
+      "col_status": "Status",
+      "col_words": "Wörter",
+      "col_updated": "Geändert",
+      "status_all": "Status: Alle",
+      "status_draft": "Entwurf",
+      "status_published": "Veröffentlicht",
+      "status_trashed": "Papierkorb",
+      "lang_all": "Spr.: Alle",
+      "words_label": "Wörter",
+      "min": "min",
+      "max": "max",
+      "updated_within": "Geändert innerhalb von",
+      "days": "Tagen",
+      "n_selected": "{{count}} ausgewählt",
+      "clear": "leeren",
+      "translate": "Übersetzen…",
+      "set_status": "Status setzen…",
+      "set_status_hint": "Ausgewählte Kapitel wieder aktivieren",
+      "export": "Exportieren",
+      "trash": "Löschen",
+      "trash_confirm": "{{count}} Kapitel(e) in den Papierkorb verschieben?",
+      "bulk_status_ok": "{{count}} Kapitel(e) aktualisiert",
+      "bulk_status_partial": "{{okCount}} aktualisiert, {{failCount}} fehlgeschlagen",
+      "bulk_not_wired": "Demnächst verfügbar — diese Massenaktion ist noch nicht implementiert",
+      "empty": "Keine Kapitel entsprechen diesen Filtern",
+      "client_filtered_note": "Wortanzahl-/Datumsfilter gelten für die aktuell geladene Seite",
+      "chapter_count": "{{count}} Kapitel",
+      "guideBody": "Eine sortierbare und filterbare Liste aller Kapitel des Buches mit Suchfunktion und Massenaktionen (wie das erneute Taggen oder Umordnen mehrerer Kapitel gleichzeitig). Öffne sie, wenn du schnell ein bestimmtes Kapitel finden oder dieselbe Änderung an vielen Kapiteln gleichzeitig vornehmen musst."
+    },
+    "sharing": {
+      "title": "Teilen",
+      "desc": "Sichtbarkeit, ungelisteter Link und Mitwirkende für dieses Buch",
+      "guideBody": "Steuern Sie, wer dieses Buch sehen und bearbeiten kann — stellen Sie es auf privat, erstellen Sie einen ungelisteten Freigabelink für jeden mit der URL oder laden Sie spezifische Mitwirkende ein. Öffnen Sie dies, wenn Sie einen Entwurf für Feedback teilen oder die Bearbeitungsrechte übergeben möchten, ohne das Buch öffentlich zu machen."
+    },
+    "book-settings": {
+      "title": "Bucheinstellungen",
+      "desc": "Titel, Cover, Genre-Tags und World-Link für dieses Buch",
+      "guideBody": "Verwalten Sie die Kernidentität dieses Buches: seinen Titel, das Coverbild, die Genre-Tags und die Welt, mit der es verknüpft ist. Öffnen Sie dies, wenn Sie ein neues Buch einrichten oder die Kennzeichnung und Kategorisierung aktualisieren müssen, bevor Sie es teilen oder veröffentlichen."
+    },
+    "translation": {
+      "title": "Übersetzung",
+      "desc": "Coverage-Matrix, Sprachfilter, Massenübersetzung und Glossar-Extraktion für dieses Buch",
+      "guideBody": "Zeigt auf einen Blick den Übersetzungsfortschritt jeder Sprache für dieses Buch, mit einer Coverage-Matrix und Sprachfiltern, damit Sie erkennen können, was unübersetzt oder veraltet ist. Öffnen Sie es, um Massenübersetzungen zu starten oder Glossarbegriffe zu extrahieren, die während der Übersetzung entdeckt wurden, um die Terminologie über alle Sprachen hinweg konsistent zu halten."
+    },
+    "translation-versions": {
+      "title": "Übersetzungsvarianten",
+      "desc": "Verwaltung der Übersetzungsvarianten pro Kapitel (vergleichen, aktivieren, neu übersetzen)",
+      "empty": "Öffnen Sie die Übersetzungsvarianten eines Kapitels aus der Übersetzungsmatrix."
+    },
+    "translation-review": {
+      "title": "Übersetzungsprüfung",
+      "desc": "Blockweise, nebeneinander ausgerichtete Überprüfung mit Korrektur pro Block",
+      "empty": "Öffnen Sie die Überprüfung einer Variante aus dem Panel „Übersetzungsvarianten“."
+    },
+    "enrichment-compose": {
+      "title": "Enrichment erstellen",
+      "desc": "Einen neuen angereicherten Lore-Entwurf erstellen (Entwurf erweitern, Kontext einfügen, Dateien hochladen oder Absicht angeben)",
+      "guideBody": "Verwenden Sie dieses Panel, um einen neuen Lore-Entwurf zu starten, wenn dem Wiki oder Glossar ein benötigter Eintrag fehlt — erweitern Sie einen groben Entwurf, fügen Sie Referenzkontexte ein, laden Sie Quelldateien hoch oder beschreiben Sie einfach Ihre Absicht, damit die KI einen ersten Entwurf erstellt. Dies ist der Einstiegspunkt, um aus „Ich brauche eine Biografie für diesen Charakter“ einen strukturierten, bearbeitbaren Vorschlag zu machen."
+    },
+    "enrichment-proposals": {
+      "title": "Enrichment-Vorschläge",
+      "desc": "KI-vorgeschlagene Lore überprüfen — genehmigen, ablehnen oder zum Kanon machen",
+      "guideBody": "Jeder im „Compose“-Modus erstellte Entwurf (oder durch einen Enrichment-Job generierte Entwurf) landet hier zur Überprüfung, bevor er zum Kanon wird — lesen Sie jeden vorgeschlagenen Eintrag, genehmigen Sie ihn, um ihn in das Glossar aufzunehmen, oder lehnen Sie ihn ab, wenn er falsch oder unerwünscht ist. Öffnen Sie dieses Panel, wenn Sie prüfen möchten, was die KI entworfen hat, was aber noch nicht zum offiziellen Lore Ihres Buches hinzugefügt wurde."
+    },
+    "enrichment-gaps": {
+      "title": "Enrichment-Lücken",
+      "desc": "Unterbeschriebene Entitäten erkennen und automatisch als Hintergrundprozess anreichern",
+      "guideBody": "Dieses Panel scannt Ihr Buch nach Entitäten, die zwar erwähnt, aber unzureichend beschrieben werden — Charaktere, Orte oder Gegenstände mit zu wenig Details im Glossar — und kann diese für eine automatische Anreicherung als Hintergrundprozess einplanen. Öffnen Sie es, wenn Sie Lore-Lücken finden und füllen möchten, ohne manuell nach dem suchen zu müssen, was fehlt."
+    },
+    "enrichment-sources": {
+      "title": "Enrichment-Quellen",
+      "desc": "Lizenzierte Quellkorpora für Abruf und Recook-Grundlage",
+      "guideBody": "Verwalten Sie die Quellkorpora (Referenztexte, hochgeladene Dokumente, lizenziertes Material), aus denen Enrichment- und Recook-Jobs zur Fundierung ziehen, wobei jedes mit seiner Lizenz gekennzeichnet ist, damit Sie wissen, was sicher wiederverwendet werden kann. Prüfen Sie dies hier, wenn Sie sehen möchten, welches Ausgangsmaterial Ihre KI-generierten Entwürfe speist, oder um neues Fundierungsmaterial hinzuzufügen."
+    },
+    "enrichment-jobs": {
+      "title": "Enrichment-Jobs",
+      "desc": "Überwachen und Fortsetzen von kostenbegrenzten Enrichment-Jobs",
+      "guideBody": "Verfolgen Sie den Status der von Ihnen gestarteten Enrichment-Jobs — sehen Sie, was läuft, abgeschlossen oder pausiert ist, beobachten Sie die Kostenentwicklung im Verhältnis zum Limit und setzen Sie jeden Job fort, der vorzeitig gestoppt wurde. Öffnen Sie dieses Panel, wenn Sie den Fortschritt prüfen oder einen kostenbegrenzten Enrichment-Lauf wieder aufnehmen möchten."
+    },
+    "enrichment-settings": {
+      "title": "Enrichment-Profil",
+      "desc": "Erstellen Sie das De-Bias-Profil für dieses Buch (Weltanschauung, Sprache, Ära, Stimme)",
+      "guideBody": "Erstellen Sie hier das De-Bias-Profil für dieses Buch — legen Sie die beabsichtigte Weltanschauung, Sprachkonventionen, Ära und Erzählstimme fest, damit Enrichment- und Compose-Entwürfe konsistent mit dem Ton Ihres Buches statt mit einem generischen Standard erstellt werden. Richten Sie dies frühzeitig ein, noch vor dem Start von Enrichment-Jobs, damit die generierte Lore von Anfang an zu Ihrem Buch passt."
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Roh-JSON-Ansicht einer Ressource"
+    },
+    "media-version-history": {
+      "title": "Versionsverlauf",
+      "desc": "Vergleichen und Wiederherstellen früherer Versionen eines Bild- oder Videoblocks",
+      "empty": "Kein Medienblock ausgewählt."
+    },
+    "original-source": {
+      "title": "Originalquelle",
+      "desc": "Der unübersetzte Originaltext für dieses Kapitel",
+      "empty": "Öffnen Sie ein Kapitel aus dem Editor, um die Originalquelle anzuzeigen."
+    },
+    "extensions": {
+      "title": "Erweiterungen",
+      "desc": "Verwalten von Plugins, Skills, MCP-Servern, Befehlen & Hooks",
+      "guideBody": "Installieren und verwalten Sie alles, was die Fähigkeiten Ihres Agenten erweitert — Plugins, Skills, MCP-Serververbindungen, benutzerdefinierte Befehle und Hooks. Öffnen Sie es, wenn Sie ein neues Werkzeug hinzufügen möchten, das der Agent nutzen kann, wenn Sie prüfen möchten, was derzeit aktiviert ist, oder wenn Sie etwas deaktivieren möchten, das nicht korrekt funktioniert."
+    },
+    "proposals": {
+      "title": "Vorschläge",
+      "desc": "Vorgeschlagene Skills des Agenten prüfen",
+      "guideBody": "Listet Skills auf, die der Agent basierend auf Mustern in deiner Arbeit selbstständig zu erstellen vorgeschlagen hat. Du kannst sie prüfen und genehmigen, bevor sie Teil deines Toolkits werden. Öffne diesen Bereich nach einer Session, in der der Agent erwähnt hat, dass er etwas automatisieren könnte, um zu entscheiden, ob du den Vorschlag annehmen, bearbeiten oder ablehnen möchtest."
+    },
+    "skill-editor": {
+      "title": "Skill",
+      "desc": "Eine SKILL.md bearbeiten"
+    },
+    "user-guide": {
+      "title": "Benutzerhandbuch",
+      "desc": "Alle Studio-Tools, gruppiert nach Bereichen – generiert aus demselben Katalog wie die Command Palette",
+      "guideBody": "Listet alle Tools und Panels in Writing Studio auf, gruppiert nach Bereichen, mit einer leicht verständlichen Erklärung der Funktionen. Es wird direkt aus demselben Katalog generiert, der die Command Palette und das Dock speist. Wenn neue Tools hinzugefügt werden, aktualisiert sich das Handbuch automatisch – so bleibt es immer synchron mit der App."
+    },
+    "agent-mode": {
+      "title": "Agenten-Modus",
+      "desc": "Autonome mehrkapitelige Autorenschaft – Mission Control",
+      "guideBody": "Der Agenten-Modus ist die Missionszentrale für autonome, mehrkapitlige Durchläufe: Der Agent entwirft direkt basierend auf einem genehmigten Plan, während du zusiehst. Starte, pausiere und setze einen Durchlauf von hier aus fort und überprüfe jedes Kapitel, sobald es fertiggestellt ist – seinen Diff und das Urteil des Kritikers – und akzeptiere, lehne oder setze es zurück. Nichts von dem, was er schreibt, ist endgültig, bis du es akzeptierst."
+    },
+    "chapter-revision-compare": {
+      "title": "Kapitel-Revisionen vergleichen",
+      "desc": "Vollständiger Editor-Diff für ein Paar Kapitel-Revisionen",
+      "empty": "Öffne den Revisions-Diff eines Kapitels aus dem Review-Panel des Agenten-Modus."
+    },
+    "world-map": {
+      "title": "Weltkarte",
+      "desc": "Erstelle und bearbeite Referenzkarten einer Welt – lade ein Basisbild hoch, ziehe Standort-Pins per Drag-and-Drop auf die Karte und zeichne oder verändere Regionen.",
+      "guideBody": "Erstellen Sie Rasterkarten für Ihre Welt. Laden Sie ein Basisbild hoch, setzen Sie dann Pins und zeichnen Sie Regionen darauf. Ziehen Sie einen Pin, um ihn zu verschieben (ein Ziehen ist ein absoluter PATCH auf einer stabilen Marker-ID – niemals ein Löschen und Neuerstellen) und ziehen Sie einen Eckpunkt eines Polygons, um eine Region neu zu formen. Verknüpfen Sie einen Pin oder eine Region mit einem Glossar- oder KG-Ortsentität (der Picker kennzeichnet die Quelle). Jede Änderung wird im book-service gespeichert; die world_map_* Tools des Assistenten bearbeiten dieselbe Karte live. Benennen Sie eine Karte mit Optimistic Concurrency (If-Match) um, damit eine kollidierende Bearbeitung neu geladen wird, anstatt die Daten zu überschreiben."
+    },
+    "place-graph": {
+      "title": "Orts-Graph",
+      "desc": "Die Schauplätze (Orte) des Buches als verschiebbarer Knotengraph",
+      "guideBody": "Fügen Sie die Schauplätze (Orte) des Buches als Knotengraph hinzu und verbinden Sie diese. Geben Sie einen Namen ein und drücken Sie + Ort, um einen Schauplatz zu erstellen; aktivieren Sie „Orte verknüpfen“, wählen Sie zwei Knoten und ein Prädikat (enthält / grenzt an / führt nach) aus, um sie zu verbinden; ziehen Sie die Knoten an, um sie anzuordnen (serverseitig gespeichert, geräteübergreifend verfügbar); legen Sie ein Hintergrundbild fest (erfordert ein geöffnetes Kapitel). Klicken Sie auf einen Knoten, um ihn im Cast-Codex zu öffnen. Nur Orte – verwenden Sie „Andere Arten erstellen“, um Charaktere, Gegenstände und den Rest hinzuzufügen.",
+      "noWork": "Das Schreiben ist für dieses Buch noch nicht eingerichtet – richte es ein, um die Orte hier anzuordnen.",
+      "openCompose": "Compose öffnen",
+      "loading": "Weltkarte wird geladen…",
+      "authorOther": "Andere Arten erstellen →"
+    },
+    "cast": {
+      "title": "Cast",
+      "desc": "Die Besetzung des Buches – gruppiert, durchsuchbar, spoiler-sicher; Entitäten erstellen & archivieren",
+      "guideBody": "Jeder Charakter, jeder Ort, jede Organisation und jedes Konzept im Knowledge Graph dieses Buches, gruppiert nach Typ und durchsuchbar, jeweils mit seinem spoiler-sicheren Story-Status (aktiv/vergangen an Ihrer Leseposition). Erstellen Sie eine neue Entität mit + Neu, benennen Sie sie direkt um, bearbeiten Sie Aliase/Typ oder archivieren Sie eine Entität (Soft-Archiv). Klicken Sie auf das Bogen-Symbol einer Zeile, um deren Charakterbogen zu öffnen."
+    },
+    "character-arc": {
+      "title": "Charakterbogen",
+      "desc": "Die Ereignisse eines Charakters auf einer Zeitachse, der Aktiv/Inaktiv-Balken und 1-Hop-Beziehungen",
+      "guideBody": "Die Ereignisse eines Charakters in chronologischer Reihenfolge auf einem kompakten Bogen, abgeschnitten am aktuellen Lesepunkt, inklusive des Aktiv/Inaktiv-Statusbalkens und der aktuellen 1-Hop-Beziehungen. Wählen Sie einen Charakter aus, bearbeiten Sie ihn oder fügen Sie mit + link entity eine Beziehung hinzu."
+    },
+    "motif-library": {
+      "title": "Motiv-Bibliothek",
+      "desc": "Analysieren Sie Tropen (套路/爽点/打脸), übernehmen oder extrahieren Sie diese und untersuchen Sie den Motiv-Beziehungsgraph",
+      "guideBody": "Die Motiv-Bibliothek ist Ihre Werkbank für das narrative Handwerk. Durchsuchen Sie Motive nach Ebenen — Ihre eigenen, die Labels dieses Buches, die gemeinsame Buch-Ebene, die System-Seeds, den öffentlichen Katalog und Ihre extrahierten Entwürfe. Erstellen Sie ein Motiv direkt im Text, übernehmen Sie eines aus dem Katalog oder durchsuchen Sie Ihren eigenen Korpus, um wiederkehrende Muster zu entdecken. Öffnen Sie ein Motiv, um dessen Beats und Rollen zu lesen, und erweitern Sie dessen Graphen, um zu sehen, woraus es besteht, was ihm vorausgeht und welche Varianten es gibt. Verknüpfen Sie Motive über den Szenen-Inspektor mit Szenen, damit der Entwurf gezielt darauf hinarbeitet."
+    },
+    "quality-conformance": {
+      "title": "Konformität",
+      "desc": "Beat für Beat: Hat die Prosa den Plan umgesetzt? Realisiert/Nicht realisiert pro Szene + Spannungsbalken",
+      "guideBody": "Die Konformität prüft Szene für Szene, ob Ihre geschriebene Prosa tatsächlich die Motiv-Beats umgesetzt hat, die Sie für ein Kapitel geplant haben. Jede Szene zeigt an, ob die Beats realisiert wurden oder nicht, und wie die Spannung im Vergleich zum Zielwert steht. Es beantwortet die Frage Spezifikation vs. Prosa (nicht Spezifikation vs. Template — das ist die Abweichungsansicht der Bogen-Templates). Die Analyse dient als Orientierungshilfe (grob geschätzt, nicht kausal verifiziert). Generieren Sie eine Szene neu, die ihren Beat verpasst hat, oder führen Sie den gesamten Check gegen ein von Ihnen gewähltes Modell erneut aus."
+    },
+    "motif-graph": {
+      "title": "Motiv-Graph",
+      "desc": "Der buchstweiten Motiv-Beziehungsgraph als verschiebbare Leinwand – deine + buchstarken Motive und ihre Kanten (besteht aus / folgt auf / Variante von), inklusive deines eigenen gespeicherten Layouts.",
+      "guideBody": "Ein visueller DAG der Motive dieses Buches. Die Knoten sind deine Motive plus die gemeinsamen Motive des Buches; die Kanten sind die Verknüpfungen „besteht aus“ / „folgt auf“ / „Variante von“. Ziehe einen Knoten, um den Graphen anzuordnen – dein Layout wird pro Buch gespeichert und ist geräteübergreifend verfügbar (jeder Mitwirkende hat sein eigenes Arrangement). Das initiale Layout wird automatisch von links nach rechts entlang der „folgt auf“-Ketten berechnet. Erstelle und lösche Kanten in der Detailansicht eines Motivs in der Motiv-Bibliothek.",
+      "signedOut": "Melde dich an, um den Motiv-Graphen zu sehen.",
+      "noBook": "Öffne ein Buch, um dessen Motiv-Graphen anzuzeigen."
+    },
+    "structure-templates": {
+      "title": "Strukturvorlagen",
+      "desc": "Erstelle eigene Story-Strukturen (eine benannte, geordnete Liste von Beats) und zerlege dein Buch anhand dieser Strukturen – wie die integrierten Vorlagen „Save the Cat“ oder „Heldenreise“",
+      "guideBody": "Story-Strukturen sind geordnete Beat-Sheets, anhand derer du die Kapitel eines Buches analysierst. Dieses Panel listet die integrierten Strukturen (Save the Cat, Heldenreise, Kishōtenketsu, Drei-Akt-Modell, Story Circle, Web-Novel Arc — schreibgeschützt) sowie deine eigenen auf. Du kannst eine integrierte Vorlage klonen, um eine bearbeitbare Kopie zu erhalten, deren Beats du dann hinzufügen, umordnen, umbenennen oder löschen und speichern kannst. Nutze eine Struktur in der „Zerlegung“, um ihre Beats auf deine Kapitel zu übertragen. Deine benutzerdefinierten Strukturen sind privat und können für jedes Buch wiederverwendet werden; du kannst sie archivieren, um sie zu verbergen, und später wiederherstellen. Die integrierten Vorlagen bleiben für alle unverändert – du bearbeitest immer nur deine eigene Kopie."
+    },
+    "kg-triage": {
+      "title": "Triage",
+      "desc": "Überprüfen Sie extrahierte Elemente, die nicht mit Ihrem Schema übereinstimmen, und lösen Sie diese.",
+      "guideBody": "Wenn die Extraktion eine Entität, eine Beziehung oder einen Wert findet, der noch nicht in Ihrem Schema enthalten ist, wird dieser hier zwischengespeichert, anstatt zu raten. Jede Zeile bietet nur die Korrekturen an, die für sie gültig sind – ordnen Sie sie etwas zu, das Sie bereits haben, fügen Sie sie Ihrem Schema/Vokabular hinzu, korrigieren Sie einen Endpunkt oder ignorieren Sie sie."
+    },
+    "search": {
+      "title": "Suche",
+      "desc": "Durchsuche den Fließtext deines Buches (Text) oder deine Lore-Ordner (Semantik); ein Treffer öffnet direkt den Editor an dieser Stelle.",
+      "guideBody": "Die Suche verfügt über zwei Modi. „Text“ findet exakte Wörter und Phrasen in deinem Manuskript. „Semantik“ findet Textpassagen basierend auf der Bedeutung über deine Lore-Ordner hinweg (Kapitel, Chat, Glossar). Klicke auf ein Ergebnis, um den Editor im entsprechenden Kapitel zu öffnen – die Suche ist ein Weg in dein Manuskript, keine Sackgasse."
+    },
+    "workflows": {
+      "title": "Workflows",
+      "desc": "Verwalten Sie gespeicherte Workflow-Rezepte",
+      "guideBody": "Hier werden die mehrstufigen Workflow-Rezepte aufgelistet, die Ihr Agent als Schiene ausführen kann – die integrierten System-Workflows sowie Ihre eigenen. Öffnen Sie diesen Bereich, um ein Rezept für sich selbst zu aktivieren oder zu deaktivieren oder um eines Ihrer eigenen zu löschen. Neue Rezepte werden durch die Annahme eines Vorschlags im Panel „Workflow-Vorschläge“ hinzugefügt und nicht direkt hier erstellt."
+    },
+    "workflow-proposals": {
+      "title": "Workflow-Vorschläge",
+      "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
+      "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
+    }
+  },
+  "sceneRail": {
+    "title": "Szenen",
+    "toggle": "Szenen",
+    "empty": "Keine Szenen für dieses Kapitel (erstelle ein Outline im Composer).",
+    "editTitle": "Szene umbenennen",
+    "synopsisPlaceholder": "Synopsis…",
+    "stale": "anders geändert – neu geladen",
+    "notAnchored": "Szene noch nicht im Text verankert – verwende ⚓, um Überschriften zu verknüpfen.",
+    "anchored": "{{count}} verankerte(n) Szene(n), {{unmatched}} nicht zugeordnet – ⌘S zum Speichern.",
+    "anchorNoop": "{{count}} bereits verankert, {{unmatched}} ohne passende Überschrift.",
+    "anchorTitle": "Szenen mit ihren Überschriften im Text verknüpfen",
+    "add": "Szene hinzufügen",
+    "addDisabled": "Kapitel hat noch kein Outline (im Composer erstellen)",
+    "newTitlePlaceholder": "Szenentitel…",
+    "create": "Hinzufügen",
+    "deleted": "„{{title}}“ gelöscht.",
+    "undo": "Rückgängig",
+    "moveUp": "Nach oben verschieben",
+    "moveDown": "Nach unten verschieben",
+    "delete": "Szene löschen",
+    "status": {
+      "empty": "leer",
+      "outline": "Outline",
+      "drafting": "Entwurf",
+      "done": "erledigt"
+    }
+  },
+  "jsonEditor": {
+    "empty": "Öffne eine Ressource als JSON aus ihrem Panel („Als JSON öffnen“).",
+    "invalid": "ungültiges JSON",
+    "conflict": "Konflikt: {{part}}",
+    "format": "Formatieren",
+    "revert": "Rücksetzen",
+    "openAs": "Als JSON öffnen"
+  },
+  "planPasses": {
+    "comingSoon": "Die 7-Pass-Leitung wird hier geladen.",
+    "noBook": "Öffnen Sie ein Buch, um dessen Plan zu erstellen.",
+    "noRun": "Noch kein Plan durchlaufen — öffnen Sie den Planner, um einen vorzuschlagen und zu erstellen.",
+    "loading": "Durchläufe werden geladen…",
+    "notCompiled": "Dieser Durchgang hat noch kein kompiliertes Paket. Kompiliere es im Planner, bevor du die Durchläufe startest.",
+    "openPlanner": "← Planner (vorschlagen / kompilieren)",
+    "blocking": "blockierend",
+    "advisory": "beratend",
+    "running": "läuft…",
+    "done": "erledigt",
+    "failed": "fehlgeschlagen",
+    "notRun": "— nicht ausgeführt",
+    "fresh": "frisch",
+    "stale": "veraltet",
+    "run": "ausführen…",
+    "rerun": "erneut ausführen…",
+    "review": "Review →",
+    "blocked": "blockiert",
+    "blockedBy": "blockiert durch: {{blockers}}",
+    "runSpends": "{{pass}} ausführen — dies verbraucht 1 LLM-Aufruf",
+    "runNow": "{{pass}} ausführen",
+    "cancel": "Abbrechen",
+    "approve": "Genehmigen",
+    "reject": "Ablehnen",
+    "edit": "Bearbeiten",
+    "saveEdits": "Änderungen speichern",
+    "cursor": "{{done}} von {{total}}",
+    "blockedAt": "blockiert um",
+    "reviewTitle": "Review {{pass}}",
+    "reviewLoading": "Lädt…",
+    "reviewNoContent": "Keine Artefakt-Inhalte zum Anzeigen vorhanden.",
+    "reviewPrompt": "{{pass}} genehmigen? Dies ermöglicht dem Compiler, darüber hinaus zu verarbeiten.",
+    "seedUnavailable": "Glossar-Seed-Vorschlag nicht verfügbar.",
+    "seedApplied": "Glossar-Seed angewendet – Besetzung kann genehmigt werden.",
+    "seedGate": "Die Figuren deiner Besetzung müssen zum Glossar hinzugefügt werden, bevor du freigeben kannst. Wende den Seed an, um sie hinzuzufügen.",
+    "applySeed": "Seed anwenden",
+    "approveGated": "Zuerst den Glossar-Seed anwenden (PF-7)",
+    "editAdd": "Hinzufügen",
+    "editRemove": "Entfernen",
+    "editEmpty": "Noch nichts hier — füge eine Zeile hinzu."
+  },
+  "planner": {
+    "sourcePlaceholder": "Markdown des Roman-Systems einfügen…",
+    "proposeBlind": "Nur aus diesem Braindump vorgeschlagen. Bestehende Kapitel werden nicht gelesen.",
+    "propose": "Vorschlagen",
+    "model": "Modell",
+    "empty": "Füge das Markdown deines Roman-Systems ein und klicke auf „Vorschlagen“, um einen Plan-Lauf zu starten.",
+    "openAgentMode": "Autonome Agenten-Läufe →",
+    "tabList": "Läufe",
+    "tabRun": "Lauf",
+    "mode": {
+      "rules": "Regeln",
+      "llm": "LLM"
+    },
+    "list": {
+      "title": "Läufe für dieses Buch",
+      "newRun": "+ Neuer Vorschlag",
+      "loading": "Läufe werden geladen…",
+      "error": "Läufe konnten nicht geladen werden.",
+      "empty": "Noch keine Plan-Läufe für dieses Buch.",
+      "colRun": "Lauf",
+      "colMode": "Modus",
+      "colStatus": "Status",
+      "colCreated": "Erstellt"
+    },
+    "grounded": "Basierend auf {{chapters}} bestehenden Kapitel(n) + {{cast}} Besetzungsmitglied(ern); {{arcs}} bestehende Handlungsbögen werden fortgesetzt.",
+    "groundOnExisting": "Dieses Buch fortsetzen – basierend auf der bestehenden Besetzung, den Handlungsbögen & den jüngsten Kapiteln"
+  },
+  "editor": {
+    "empty": "Wähle ein Kapitel im Manuskript-Navigator aus, um es hier zu bearbeiten.",
+    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
+    "startingChapter": "Wird erstellt…",
+    "unsaved": "● unspeichern",
+    "save": "Speichern",
+    "grammar": "Grammatik",
+    "heatmap": "Heatmap",
+    "glossary": "Glossar",
+    "focus": "Fokus",
+    "translate": "Übersetzen",
+    "derivativeForked": "In einer Was-wäre-Version – dieses Kapitel ist ABGEZWEIGT und vom Kanon isoliert. Änderungen werden im Zweig gespeichert; der Kanon bleibt unberührt.",
+    "derivativeInherit": "In einer Was-wäre-Version – dieses Kapitel spiegelt noch den Kanon wider. Das Bearbeiten führt zu einer ABZWEIGUNG in den Zweig (der Kanon bleibt unberührt).",
+    "mergeToCanon": "In den Kanon integrieren",
+    "mergeConfirm": "Bestätigen – Kanon überschreiben",
+    "merging": "Zusammenführen…",
+    "mergeDone": "In den Kanon übernommen – der Zweig behält seine eigene Version.",
+    "mergeConflict": "Kanon hat sich geändert – öffne das Kapitel erneut und führe es wieder zusammen.",
+    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen."
+  },
+  "sceneCompose": {
+    "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",
+    "inserted": "In das Manuskript eingefügt.",
+    "insertFailed": "Einfügen fehlgeschlagen – klicken Sie in den Kapiteltext im Editor und versuchen Sie es erneut mit „Akzeptieren“.",
+    "openedEditor": "Editor für dieses Kapitel geöffnet – Generieren Sie erneut, um den Entwurf hier einzufügen."
+  },
+  "chapterAssemble": {
+    "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um es hier zusammenzuführen."
+  },
+  "popout": {
+    "invalid": "Dieser Pop-out-Link ist ungültig.",
+    "open": "Auslagern",
+    "openTitle": "Compose in eigenem Fenster öffnen",
+    "needChapter": "Öffne zuerst ein Kapitel – das Pop-out-Fenster öffnet das aktuelle Kapitel in einem eigenen Fenster"
+  },
+  "dock": {
+    "dock": "Dock"
+  },
+  "steering": {
+    "heading": "Steuerungsregeln",
+    "subheading": "Beständige Autoren-Anweisungen, die in die KI-Antworten für dieses Buch injiziert werden.",
+    "loading": "Steuerungsregeln werden geladen…",
+    "loadError": "Steuerungsregeln konnten nicht geladen werden.",
+    "noBook": "Öffne dieses Panel aus einem Buch heraus, um dessen Steuerungsregeln zu erstellen.",
+    "count": "{{n}} / {{max}} Regeln",
+    "add": "Regel hinzufügen",
+    "capReached": "Regellimit erreicht ({{max}}). Lösche eine Regel, um eine neue hinzuzufügen.",
+    "empty": "Noch keine Steuerungsregeln. Füge eine hinzu, um die KI für dieses Buch zu steuern.",
+    "enable": "Aktivieren",
+    "disable": "Deaktivieren",
+    "confirmDelete": "Die Steuerungsregel „{{name}}“ löschen?",
+    "autoNote": "Hinweis: 'auto' verhält sich derzeit wie 'manuell' – es wird nur inkludiert, wenn du mit #name darauf verweist. Die automatische Auswahl folgt später.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "z. B. Tonfall & Stimme",
+      "body": "Regel",
+      "bodyPlaceholder": "Schreibe die Anweisung, der die KI folgen soll…",
+      "mode": "Wann einbeziehen",
+      "matchPattern": "Szenen-Match-Muster",
+      "matchPatternPlaceholder": "z. B. Kapitel 3, Kampf, Romanze…",
+      "enabled": "Aktiviert",
+      "save": "Speichern",
+      "cancel": "Abbrechen",
+      "edit": "Regel bearbeiten",
+      "delete": "Regel löschen"
+    },
+    "mode": {
+      "always": "Immer",
+      "scene_match": "Szenen-Match",
+      "manual": "Manuell (#name)",
+      "auto": "Auto"
+    },
+    "error": {
+      "duplicate": "Eine Regel mit diesem Namen existiert bereits in diesem Buch.",
+      "cap": "Das überschreitet ein Limit (Text ≤ 8000 Zeichen, Name ≤ 200, ≤ 20 Regeln) oder ein ungültiger Modus.",
+      "other": "Regel konnte nicht gespeichert werden. Bitte versuche es erneut.",
+      "forbidden": "Du hast keine Berechtigung, die Steuerung für dieses Buch zu bearbeiten."
+    }
+  },
+  "palette": {
+    "openPanel": "Studio: {{name}} öffnen",
+    "placeholder": "Gehe zu Kapitel, Szene, Arc…",
+    "quickOpenTitle": "Gehe zu Kapitel, Szene, Arc",
+    "quickOpenPlaceholder": "Gehe zu Kapitel, Szene, Handlungsbogen…",
+    "quickOpenHint": "Suche nach Kapiteln, Szenen & Handlungsbögen",
+    "commandPlaceholder": "Befehl eingeben…",
+    "noCommands": "Keine passenden Befehle gefunden.",
+    "group": {
+      "recent": "Zuletzt verwendet",
+      "panels": "Panels",
+      "navigate": "Navigation",
+      "layout": "Layout",
+      "editor": "Editor & Kapitel",
+      "storyBible": "Story Bible",
+      "knowledge": "Wissensgraph",
+      "quality": "Qualität",
+      "translation": "Übersetzung",
+      "enrichment": "Anreicherung",
+      "sharing": "Teilen & Einstellungen",
+      "platform": "Plattform",
+      "discovery": "Entdeckung",
+      "jobs": "Jobs",
+      "help": "Hilfe"
+    },
+    "cmd": {
+      "showManuscript": "Ansicht: Manuskript anzeigen",
+      "showBible": "Ansicht: Story Bible anzeigen",
+      "showSearch": "Ansicht: Suche anzeigen",
+      "showQuality": "Ansicht: Qualität anzeigen",
+      "goToChapter": "Ansicht: Gehe zu Kapitel…",
+      "toggleSidebar": "Ansicht: Seitenleiste umschalten",
+      "toggleBottom": "Ansicht: Unteres Panel umschalten",
+      "chooseYourFocus": "Studio: Fokus wählen",
+      "startGuidedTour": "Studio: Geführte Tour starten"
+    },
+    "desc": {
+      "showManuscript": "Kapitel & Szenen",
+      "showBible": "Besetzung, Welt & Kanon",
+      "showSearch": "Volltext & semantisch",
+      "showQuality": "Kritik, Versprechen & Kanon",
+      "goToChapter": "Quick Open öffnen",
+      "toggleSidebar": "Seitenleiste ein- oder ausblenden",
+      "toggleBottom": "Jobs · Generierung · Probleme",
+      "chooseYourFocus": "Rollen-Auswahl erneut ausführen",
+      "startGuidedTour": "Eine kurze Tour durch die Kern-Panels"
+    }
+  },
+  "activity": {
+    "manuscript": "Manuskript",
+    "plan": "Plan",
+    "bible": "Story Bible",
+    "search": "Suche",
+    "quality": "Qualität"
+  },
+  "navStub": {
+    "manuscript": {
+      "title": "Manuskript",
+      "body": "Kapitel & Szenen — der Navigator für das Dock. In Kürze verfügbar."
+    },
+    "bible": {
+      "title": "Story Bible",
+      "body": "Besetzung, Welt & Kanon-Einträge. In Kürze verfügbar."
+    },
+    "search": {
+      "title": "Suche",
+      "body": "Volltext- & semantische Suche im gesamten Buch. In Kürze verfügbar."
+    },
+    "quality": {
+      "title": "Qualität",
+      "body": "Kritik-Scores, Versprechen-Threads & Kanon-Probleme. In Kürze verfügbar."
+    }
+  },
+  "quality": {
+    "noWork": "Dieses Buch hat noch keine Co-Writer-Session – schreibe zuerst ein Kapitel, dann werden hier Qualitätsdaten angezeigt.",
+    "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
+    "setupWork": "Schreiben einrichten",
+    "settingUpWork": "Einrichten…",
+    "setupWorkError": "Schreiben konnte nicht eingerichtet werden. Versuchen Sie es erneut.",
+    "setupWorkPending": "Das Schreiben wurde eingerichtet, aber das Wissensprojekt wird noch vorbereitet. Versuchen Sie es in Kürze erneut.",
+    "setupWorkRetry": "Wiederholen",
+    "pickModel": "Wähle ein Modell zur Analyse aus…",
+    "pickChapter": "Wähle ein Kapitel",
+    "pickChapterHint": "Wähle oben ein Kapitel aus, um dessen Qualität zu analysieren.",
+    "chaptersTruncated": "zeigt die ersten {{shown}} von {{total}} Kapiteln an",
+    "canonIntro": "Hinweis — bestätigte Widersprüche zu Inhalten, die früher im Buch als entfernt/geändert markiert wurden. Hier wird nichts automatisch angewendet.",
+    "canonEmpty": "Keine Kanon-Probleme gefunden.",
+    "canonCompositionError": "Konnte Kanon-Probleme aus der Generierung nicht laden — bitte erneut versuchen.",
+    "canonExtractionError": "Konnte Kanon-Flags aus der Wissensextraktion nicht laden — bitte erneut versuchen.",
+    "canonFromGeneration": "Aus der Generierung ({{n}})",
+    "canonFromExtraction": "Aus der Wissensextraktion ({{n}})",
+    "untitledScene": "Unbenannte Szene",
+    "jumpToChapter": "Kapitel öffnen",
+    "promisesTitle": "Versprechen",
+    "promisesDesc": "Offenes Buch der Versprechen-Schulden",
+    "criticTitle": "Kritiker",
+    "criticDesc": "Bewertungen zu Kohärenz, Erzählstimme, Pacing & Kanon pro Kapitel",
+    "coverageTitle": "Story-Abdeckung",
+    "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
+    "canonTitle": "Kanon-Probleme",
+    "canonDesc": "Bestätigte Widersprüche",
+    "canonRulesTitle": "Kanon-Regeln",
+    "canonRulesDesc": "Legen Sie die unveränderlichen Fakten fest, die der Kritiker erzwingt",
+    "correctionsTitle": "Korrekturen",
+    "correctionsDesc": "Ihre Akzeptanz-, Bearbeitungs-, Regenerierungs- und Ablehnungsraten",
+    "healTitle": "Selbstheilung",
+    "healDesc": "Lassen Sie die Korrektur laufen und akzeptieren Sie jede Änderung, bevor sie Ihren Text verändert",
+    "canonFromRules": "Verletzte Regeln ({{n}})",
+    "canonRuleError": "Verletzungen der Kanon-Regeln konnten nicht geladen werden – bitte erneut versuchen.",
+    "canonRuleGone": "Eine Regel, die nicht mehr existiert",
+    "canonRuleUnnamed": "diese Regel",
+    "canonRuleFocused": "Zeige zuerst Verletzungen der Regel, aus der Sie kommen ({{n}}): „{{rule}}“",
+    "canonRuleFocusedEmpty": "Die Regel, aus der Sie kommen, weist keine offenen Verstöße auf. Sie ist hier verankert, aber es wurde nichts verletzt.",
+    "canonFocused": "Das Kapitel, aus dem Sie kommen, wird zuerst angezeigt ({{n}} Fund(e)).",
+    "canonFocusedEmpty": "Das Kapitel, aus dem Sie kommen, enthält hier keine Kanon-Fundstellen.",
+    "canonUnavailable": "Der Co-Writer-Dienst konnte nicht erreicht werden — Ergebnisse aus dem Kanon zum Zeitpunkt der Generierung sind unten NICHT enthalten.",
+    "canonNoWork": "Dieses Buch hat noch keine Co-Autor-Sitzung, daher wurden die Canon-Prüfungen während der Generierung noch nicht durchgeführt. Es werden nur Ergebnisse der Wissensextraktion angezeigt.",
+    "canonRuleFocusUnknown": "Die Regel, aus der Sie kommen, konnte nicht überprüft werden, da der Co-Writer-Service nicht verfügbar ist. Es kann dennoch an anderer Stelle Verstöße geben – dies ist kein Endergebnis.",
+    "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt.",
+    "workUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher konnten die Qualitätsdaten dieses Buches nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden. Versuchen Sie es in Kürze erneut.",
+    "hubUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher können Versprechen, Kritikerbewertungen und die Story-Abdeckung derzeit nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden.",
+    "conformanceTitle": "Konformität",
+    "conformanceDesc": "Hat der Text den Plan umgesetzt? Beat-Verfolgung pro Szene",
+    "pickModelRerun": "Wählen Sie ein Modell für den erneuten Durchlauf aus…",
+    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat."
+  },
+  "sidebar": {
+    "collapse": "Einklappen",
+    "resize": "Seitenleiste skalieren"
+  },
+  "layout": {
+    "title": "Panel-Layout",
+    "hint": "Ordnet deine {{count}} geöffneten Panels an.",
+    "empty": "Öffne Panels, um sie anzuordnen.",
+    "needPanels": "Öffne zuerst mindestens zwei Panels",
+    "tooNarrow": "Fenster muss breiter sein",
+    "presets": {
+      "single": "Einzeln",
+      "cols2": "Zwei Spalten",
+      "cols3": "Drei Spalten",
+      "cols4": "Vier Spalten",
+      "grid2x2": "Raster 2×2",
+      "grid3x2": "Raster 3×2",
+      "grid4x2": "Raster 4×2",
+      "cols6": "Sechs Spalten",
+      "cols8": "Acht Spalten"
+    }
+  },
+  "bottom": {
+    "jobs": "Jobs",
+    "generation": "Generierung",
+    "issues": "Probleme",
+    "collapse": "Panel einklappen",
+    "toggle": "Unteres Panel umschalten",
+    "label": "Panel",
+    "launch": {
+      "jobs": "Der Jobs-Feed öffnet sich in einem eigenen Panel.",
+      "generation": "Der Generierungs-Feed öffnet sich in einem eigenen Panel."
+    },
+    "openJobs": "Jobs-Panel öffnen",
+    "issuesLoading": "Suche nach Problemen…",
+    "issuesError": "Das Problem-Panel konnte nicht geladen werden.",
+    "issuesEmpty": "In diesem Buch wurden keine Probleme gefunden.",
+    "issuesCapped": "zeigt die ersten {{total}} Zeilen an",
+    "sev": {
+      "error": "Fehler",
+      "warn": "Warnung",
+      "info": "Info"
+    }
+  },
+  "status": {
+    "wordsPlaceholder": "— Wörter",
+    "words": "{{count}} Wörter",
+    "modelPlaceholder": "kein Modell",
+    "notifications": "Benachrichtigungen",
+    "cost24h": "Ausgaben, letzte 24h",
+    "proposalsPending": "{{count}} ausstehende Genehmigungen"
+  },
+  "manuscript": {
+    "title": "Manuskript",
+    "openPlan": "Dieses Buch planen",
+    "collapseAll": "Alle einklappen",
+    "reload": "Neu laden",
+    "arc": "Handlungsbogen",
+    "loading": "Lädt…",
+    "filter": "Springe zu Kapitel / Szene…",
+    "searching": "Suche läuft…",
+    "noMatch": "Keine Treffer.",
+    "empty": "Noch keine Kapitel.",
+    "loadingMore": "Mehr laden…",
+    "count": "{{n}} Kapitel",
+    "statArcs": "{{n}} Handlungsbögen",
+    "statActs": "{{n}} Akt",
+    "statChapters": "{{n}} Kap.",
+    "statScenes": "{{n}} Szen.",
+    "window": "Fenster {{a}}–{{b}} / {{n}}",
+    "chapterN": "Kapitel {{number}}",
+    "newChapter": "Neues Kapitel",
+    "chapterShort": "Kapitel",
+    "startFirstChapter": "Beginnen Sie Ihr erstes Kapitel",
+    "creatingChapter": "Wird erstellt…",
+    "actShort": "Akt",
+    "actTag": "AKT",
+    "newAct": "Neuer Akt",
+    "newActPlaceholder": "Name des neuen Akts…",
+    "renameAct": "Akt umbenennen",
+    "renameActPlaceholder": "Name des Akts…",
+    "trashAct": "Akt löschen",
+    "moveActUp": "Akt nach oben verschieben",
+    "moveActDown": "Akt nach unten verschieben",
+    "untitledAct": "(unbenannter Akt)",
+    "unassignedBucket": "Nicht zugewiesen",
+    "emptyActHint": "Kapitel hierher ziehen",
+    "trashedActs": "Gelöschte Akte",
+    "restore": "Wiederherstellen",
+    "restoreActHint": "Diese Akte wiederherstellen (sie wird leer sein – ordne die Kapitel bei Bedarf neu)",
+    "actTrashed": "Akte „{{name}}“ gelöscht – ihre Kapitel verbleiben im Buch",
+    "partVsArc": "Teile gruppieren dein Manuskript. Bögen sind der Plan.",
+    "undo": "Rückgängig machen",
+    "lensParts": "Abschnitte",
+    "lensOutline": "Gliederung",
+    "lensToggle": "Ansicht",
+    "createFailed": "Abschnitt konnte nicht erstellt werden",
+    "renameFailed": "Abschnitt konnte nicht umbenannt werden",
+    "trashFailed": "Abschnitt konnte nicht in den Papierkorb verschoben werden",
+    "restoreFailed": "Abschnitt konnte nicht wiederhergestellt werden",
+    "moveFailed": "Kapitel konnte nicht in diesen Abschnitt verschoben werden",
+    "reorderFailed": "Reihenfolge konnte nicht geändert werden",
+    "partsUnavailable": "Teile sind vorübergehend nicht verfügbar – Kapitel werden in einer Liste angezeigt."
+  },
+  "intro": {
+    "title": "Willkommen im Writing Studio",
+    "subtitle": "Was möchtest du hier tun? Dies passt dein Willkommens-Panel und die kurze Tour an — ändere dies jederzeit über die Befehlspalette.",
+    "skip": "Überspringen, ich erkunde selbst",
+    "roles": {
+      "writer": {
+        "title": "Einen Roman schreiben",
+        "desc": "Kapitel mit einem KI-Co-Autor verfassen, das System planen, das Manuskript bearbeiten"
+      },
+      "worldbuilder": {
+        "title": "Welt & Lore aufbauen",
+        "desc": "Glossar-Entitäten, das Wiki und der Wissensgraph"
+      },
+      "translator": {
+        "title": "Übersetzen",
+        "desc": "Abdeckungsmatrix, Massenübersetzung, Versionen pro Kapitel"
+      },
+      "enricher": {
+        "title": "Bestehenden Text anreichern",
+        "desc": "Lücken finden, unterbeschriebene Entitäten erweitern, Quellen verwalten"
+      },
+      "manager": {
+        "title": "Verwalten & Teilen",
+        "desc": "Sichtbarkeit, Mitwirkende, Bugeinstellungen"
+      }
+    },
+    "tour": {
+      "core": {
+        "manuscript": {
+          "title": "Dein Manuskript",
+          "body": "Der Manuskript-Navigator steuert das Dock — wähle hier ein Kapitel oder eine Szene aus, um sie zu öffnen."
+        },
+        "palette": {
+          "title": "Überall hinspringen",
+          "body": "⌘P springt zu einem Kapitel/einer Szene/einem Handlungsbogen; ⌘⇧P öffnet jedes Studio-Tool per Name."
+        },
+        "compose": {
+          "title": "Verfassen",
+          "body": "Dein KI-Co-Autor — hier kannst du Entwürfe erstellen, diskutieren und Textänderungen anwenden."
+        },
+        "editor": {
+          "title": "Editor",
+          "body": "Der Manuskript-Editor — Grammatikprüfung, Glossar-Hinweise, Fokus-Modus und Auto-Speichern finden sich hier."
+        },
+        "grammar": {
+          "title": "Grammatik- & Rechtschreibprüfung",
+          "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung für die aktuelle Szene – unterstützt durch LanguageTool."
+        },
+        "heatmap": {
+          "title": "Kontinuitäts-Heatmap",
+          "body": "Markiert Zeilen, die von der etablierten Storyline abweichen könnten, damit Sie diese vor dem Veröffentlichen überprüfen können."
+        }
+      },
+      "actions": {
+        "skip": "Tour überspringen",
+        "back": "Zurück",
+        "next": "Weiter ({{current}}/{{total}})",
+        "done": "Fertig"
+      },
+      "writer": {
+        "compose": {
+          "title": "Mit deinem Co-Autor entwerfen",
+          "body": "Als Autor wirst du hier viel Zeit verbringen — frage nach einem ersten Entwurf, einer Überarbeitung oder einem Sparringspartner für das weitere Geschehen."
+        },
+        "editor": {
+          "title": "Den Text verfeinern",
+          "body": "Sobald eine Szene Text enthält, kannst du sie hier verfeinern — Grammatikprüfung, Glossar-Hinweise und Fokus-Modus sind alle in diesem Editor integriert."
+        },
+        "grammar": {
+          "title": "Tippfehler beim Schreiben erkennen",
+          "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung, ohne die Seite zu verlassen."
+        },
+        "heatmap": {
+          "title": "Abweichungen in der Kontinuität finden",
+          "body": "Markiert Zeilen, die dem etablierten Kanon widersprechen könnten – ein kurzer Blick lohnt sich, bevor Sie weiterschreiben."
+        },
+        "planner": {
+          "title": "Die Struktur der Geschichte planen",
+          "body": "Lege Handlungsbögen, Kapitel und Beats vor oder zwischen den Schreibsessions fest, damit Compose und der Editor eine Struktur zum Schreiben haben."
+        }
+      },
+      "worldbuilder": {
+        "glossary": {
+          "title": "Das Wörterbuch deiner Welt",
+          "body": "Jeder Charakter, jeder Ort und jeder Gegenstand, den du etabliert hast, lebt hier – durchsuche ihn, versehe ihn mit Tags und sorge für Konsistenz."
+        },
+        "wiki": {
+          "title": "Lesbare Welt-Artikel",
+          "body": "Das Wiki verwandelt dein Glossar in Artikel im Erzählstil – eine ideale Möglichkeit, deine Welt auf einen Blick zu überblicken."
+        },
+        "knowledge": {
+          "title": "Der Knowledge Graph",
+          "body": "Für tiefergehendes Worldbuilding verfolgt der Knowledge Graph, wie alles miteinander verbunden ist – Entitäten, Ereignisse und Beziehungen."
+        }
+      },
+      "translator": {
+        "translation": {
+          "title": "Übersetzungsstatus verfolgen",
+          "body": "Sieh auf einen Blick, welche Sprachen abgedeckt sind, welche Kapitel veraltet sind, und starte hier Massenübersetzungen."
+        },
+        "enrichmentCompose": {
+          "title": "Fehlendes Lore ergänzen",
+          "body": "Wenn eine Übersetzung eine unzureichend beschriebene Entität aufdeckt, nutze dieses Panel, um die fehlende Lore zu entwerfen, bevor du den Rest übersetzt."
+        }
+      },
+      "enricher": {
+        "gaps": {
+          "title": "Lücken finden",
+          "body": "Dieses Panel findet Entitäten, die oft erwähnt, aber kaum beschrieben werden, damit du genau weißt, was als Nächstes ergänzt werden muss."
+        },
+        "sources": {
+          "title": "Quellen verwalten",
+          "body": "Entwürfe zur Anreicherung basieren auf dem Quellmaterial, das du hier verwaltest – halte es organisiert und mit entsprechenden Lizenzen versehen."
+        }
+      },
+      "manager": {
+        "sharing": {
+          "title": "Sichtbarkeit des Buches steuern",
+          "body": "Lege die Sichtbarkeit fest, erstelle einen Freigabelink oder lade Mitwirkende ein – alles direkt hier."
+        },
+        "bookSettings": {
+          "title": "Buchdetails aktualisieren",
+          "body": "Titel, Cover, Genre-Tags und Welt-Verknüpfungen findest du in den Bugeinstellungen – aktualisiere sie jederzeit."
+        }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Grammatik- & Rechtschreibprüfung",
+          "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung für die aktuelle Szene."
+        },
+        "heatmap": {
+          "title": "Kontinuitäts-Heatmap",
+          "body": "Markiert Textstellen, die vom etablierten Kanon abweichen könnten – ein kurzer Blick lohnt sich, bevor Sie weiterschreiben."
+        },
+        "glossary": {
+          "title": "Glossar-Hervorhebung",
+          "body": "Blendet Glossar-Hinweise beim Darüberfahren mit der Maus ein und aktiviert die `[[`-Autovervollständigung während des Schreibens."
+        },
+        "focus": {
+          "title": "Fokus-Modus",
+          "body": "Dunkelt alles außer dem aktuellen Absatz ab und blendet die Seitenleisten aus – ideal für das Schreiben ohne Ablenkung."
+        },
+        "scenes": {
+          "title": "Szenen-Leiste",
+          "body": "Zeigt die Szenen dieses Kapitels an – springen Sie zwischen ihnen hin und her, ordnen Sie sie neu oder verfolgen Sie den Status."
+        },
+        "openJson": {
+          "title": "Als JSON öffnen",
+          "body": "Öffnet dieses Kapitel als strukturierte Rohdaten – es ist dasselbe Dokument, Änderungen werden in beiden Ansichten synchronisiert."
+        },
+        "originalSource": {
+          "title": "Originalquelle",
+          "body": "Eine schreibgeschützte Ansicht des Quelltextes vor der Übersetzung, falls dieses Kapitel importiert wurde."
+        },
+        "reader": {
+          "title": "Reader",
+          "body": "Öffnet dieses Kapitel in der Reader-Ansicht – so sieht es für die tatsächlichen Leser aus."
+        },
+        "translate": {
+          "title": "Übersetzen",
+          "body": "Springt direkt zu den Übersetzungsversionen dieses Kapitels – Sie müssen nicht die gesamte Übersetzungsmatrix durchlaufen."
+        },
+        "save": {
+          "title": "Speichern",
+          "body": "Speichert Ihre Änderungen. ⌘S / Strg+S funktioniert von überall im Editor aus."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Klassik- ⇄ KI-Modus",
+          "body": "Wechseln Sie zwischen einer einfachen Schreiboberfläche und einer mit verfügbaren KI-Tools (Auswahl: Umschreiben/Erweitern/Beschreiben, Weiterschreiben ab Cursor)."
+        },
+        "continueStep": {
+          "title": "Mit KI weiterschreiben",
+          "body": "Erzeugt eine KI-generierte Fortsetzung ab Ihrem Cursor. Wählen Sie stattdessen zuerst einen Text aus, um ihn umzuschreiben, zu erweitern oder zu beschreiben."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "KI-Bearbeitungs-Checkpoints",
+          "body": "Jede KI-Bearbeitung erstellt hier einen Wiederherstellungspunkt – machen Sie eine KI-Änderung rückgängig, selbst wenn Sie danach bereits weitergeschrieben haben."
+        },
+        "revisionHistory": {
+          "title": "Versionsverlauf",
+          "body": "Jedes Speichern erstellt eine Version, die Sie separat von KI-Checkpoints vorschauen und wiederherstellen können."
+        },
+        "publish": {
+          "title": "Publish-Check",
+          "body": "Vor dem Veröffentlichen wird auf ungelöste Kanon-Widersprüche und unvollständige Szenen geprüft, damit die Leser ein konsistentes Erlebnis haben."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Szenen-Leiste",
+          "body": "Listet die Szenen dieses Kapitels auf — Status, Synopsis und Umordnung erfolgen direkt hier."
+        },
+        "anchor": {
+          "title": "Anker-Szenen",
+          "body": "Verknüpft Szenentitel mit Überschriften im Text, damit die Leiste direkt dorthin springen kann."
+        },
+        "add": {
+          "title": "Szene hinzufügen",
+          "body": "Erstellt einen neuen Szeneneintrag für dieses Kapitel."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glossar",
+          "body": "Hebt bekannte Eigennamen beim Darüberfahren mit der Maus hervor. Durch Tippen von `[[` öffnet sich eine Autovervollständigung zum Einfügen oder Verlinken. Hier können Sie es deaktivieren, falls es beim Korrekturlesen stört."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Bilder",
+          "body": "Lade ein Bild hoch, ziehe es per Drag-and-Drop hinein oder füge es ein – oder generiere eines mit KI (du wählst das Modell explizit aus, niemals ein stiller Standard). Sobald es hinzugefügt wurde, kannst du es ersetzen, die Größe ändern, eine Bildunterschrift hinzufügen, Alt-Text vergeben und die Versionshistorie einsehen."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Lade eine Videodatei hoch oder generiere einen kurzen Clip mit KI (expliziter Modell-Picker). Ersetzen, Skalieren, Bildunterschrift und Versionshistorie funktionieren genauso wie bei Bildern."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Füge einen eigenständigen Audio-Block ein – lade eine Datei hoch oder generiere eine Erzählstimme mit KI. Tipp: Wenn du über EINEN Absatz fährst, erscheint zudem eine Schnellleiste zum Hochladen, Aufnehmen oder KI-Generieren, um die Erzählung direkt mit diesem Text zu verknüpfen – ohne dass ein eigener Block nötig ist."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Schreibe deinem Co-Autor",
+          "body": "Enter für Senden, Shift+Enter für eine neue Zeile. Ctrl+Enter erzwingt eine schnelle Antwort, Ctrl+Shift+Enter erzwingt tieferes Nachdenken. Tippe / für Vorlagen und Befehle, @ um Kontext inline zu verknüpfen."
+        },
+        "permissionMode": {
+          "title": "Fragen, Planen oder Schreiben",
+          "body": "Steuert, wie viel der Agent eigenständig tun kann – „Fragen“ bestätigt alles, „Planen“ legt zuerst die Schritte fest, „Schreiben“ agiert freier innerhalb seiner Whitelist. Mit Ctrl+. kannst du durch die Modi schalten."
+        },
+        "effort": {
+          "title": "Denkaufwand",
+          "body": "Wie intensiv das Modell vor der Antwort nachdenkt – Aus/Niedrig/Mittel/Hoch/Auto. Ausgeblendet bei Modellen, die nicht über Reasoning-Fähigkeiten verfügen."
+        },
+        "attachContext": {
+          "title": "Kontext hinzufügen",
+          "body": "Füge spezifische Buch-, Kapitel- oder Glossar-Einträge hinzu, damit der Agent genau den Kontext erhält, den er für diese Nachricht benötigt."
+        },
+        "send": {
+          "title": "Senden",
+          "body": "Sendet deine Nachricht. Während der Agent antwortet, wird diese Schaltfläche zum Stopp-Button."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Konversationen wechseln",
+          "body": "Wechsle zwischen den Chat-Sitzungen dieses Buches, archiviere alte oder starte eine neue — wähle ein Modell und eine Start-Persona (Romanautor/Übersetzer/Weltenbauer/Editor)."
+        },
+        "rename": {
+          "title": "Diesen Chat umbenennen",
+          "body": "Gib der Sitzung einen Namen, an den du dich später erinnern kannst."
+        },
+        "settings": {
+          "title": "Sitzungseinstellungen",
+          "body": "Modell, Composer/Planner-Modell-Überschreibungen, Memory-Grounding, System-Prompt, Temperature, Top-P und Reasoning-Effort — alles nur für diese eine Sitzung relevant."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Werkzeuge & Fähigkeiten",
+          "body": "Zeigt alle Werkzeuge und Fähigkeiten an, die der Agent in diesem Chat aktuell nutzen kann — füge weitere hinzu oder entferne solche, auf die er nicht zugreifen soll."
+        },
+        "add": {
+          "title": "Werkzeuge oder Fähigkeiten hinzufügen",
+          "body": "Durchsuche alle verfügbaren Optionen nach Kategorien und aktiviere genau das, was für diese Konversation benötigt wird."
+        },
+        "inspector": {
+          "title": "Agenten-Laufzeit-Inspektor",
+          "body": "Sieh dir an, was der Agent gerade tut – Werkzeuge entdecken, eines ausführen oder im Leerlauf – und erweitere die Ansicht für die vollständige Detailhistorie."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Kontext-Budget",
+          "body": "Zeigt an, wie viel des Kontextfensters des Modells diese Konversation nutzt. Klicke darauf, um eine vollständige Aufschlüsselung nach Kategorien zu sehen und die Konversation bei Bedarf zu komprimieren."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "KI-Bearbeitungen, vor der Anwendung überprüft",
+          "body": "Wenn der Agent eine Textänderung vorschlägt, erscheint hier eine Prüfkarte, mit der du jede Änderung einzeln annehmen oder ablehnen kannst. Riskante Aktionen (Stapelbearbeitungen, destruktive Operationen) erhalten eine eigene Bestätigungskarte mit einer Kosten-/Auswirkungs-Vorschau. Alles, was der Agent automatisch anwendet, erscheint in einer Aktivitätsleiste mit einer Ein-Klick-Rückgängig-Funktion."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Sprachmodus",
+          "body": "Sprich, anstatt zu tippen – eine vollkommen freihändige Konversation mit Live-Transkription."
+        },
+        "settings": {
+          "title": "Spracheinstellungen",
+          "body": "Wähle deine Speech-to-Text- und Text-to-Speech-Modelle, Stimme, Geschwindigkeit und das Verhalten beim automatischen Senden."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "In einem eigenen Fenster öffnen",
+          "body": "Öffnet den Editor in einem separaten OS-Fenster – ideal für einen zweiten Monitor. Änderungen, die Sie dort vornehmen, werden weiterhin in diesem Buch-Editor gespeichert."
+        }
+      }
+    }
+  },
+  "userGuide": {
+    "intro": "Jedes Tool, das Writing Studio öffnen kann, ist so gruppiert wie die Befehlspalette.",
+    "toursGroup": "Geführte Touren",
+    "toursEditor": "Editor",
+    "toursComposer": "Composer"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Editor-Grundlagen",
+      "desc": "Die Symbolleiste – Grammatik, Heatmap, Glossar, Fokus, Szenen und Schnellzugriff-Buttons."
+    },
+    "editorAiTools": {
+      "label": "KI-Schreibwerkzeuge",
+      "desc": "Fortsetzen ab Cursor, Auswahl umschreiben/erweitern/beschreiben sowie der Wechsel zwischen Klassisch- und KI-Modus."
+    },
+    "editorDataSafety": {
+      "label": "Datensicherheit",
+      "desc": "KI-Bearbeitungs-Checkpoints, Versionsverlauf und die Veröffentlichungsschranke."
+    },
+    "editorSceneRail": {
+      "label": "Szenenleiste",
+      "desc": "Verfolge Szenen, ordne sie neu an und halte die Timeline mit deinem Text synchron."
+    },
+    "editorGlossary": {
+      "label": "Glossar",
+      "desc": "Inline-Entitätshinweise und die `[[`-Autovervollständigung während des Schreibens."
+    },
+    "editorMediaImage": {
+      "label": "Medien — Bilder",
+      "desc": "Bilder hochladen oder per KI generieren, inklusive Ersetzen, Skalieren, Bildunterschrift und Versionsverlauf."
+    },
+    "editorMediaVideo": {
+      "label": "Medien — Video",
+      "desc": "Kurze Videoclips hochladen oder per KI generieren."
+    },
+    "editorMediaAudio": {
+      "label": "Medien — Audio & Narration",
+      "desc": "Eigenständige Audioblöcke sowie absatzweise Narrationen, die du hochladen, aufnehmen oder per KI generieren kannst."
+    },
+    "composerBasics": {
+      "label": "Composer-Grundlagen",
+      "desc": "Das Nachrichtenfeld, der Berechtigungsmodus, der Denkaufwand (Reasoning Effort), Kontext anhängen und Senden."
+    },
+    "composerSessions": {
+      "label": "Sitzungsverwaltung",
+      "desc": "Konversationen wechseln, umbenennen oder starten und die Einstellungen für die jeweilige Sitzung öffnen."
+    },
+    "composerAgentTools": {
+      "label": "Agenten-Tools & Fähigkeiten",
+      "desc": "Sehen und verwalten Sie, auf welche Tools und Fähigkeiten der Agent aktuell zugreifen kann."
+    },
+    "composerContextBudget": {
+      "label": "Kontext-Budget",
+      "desc": "Wie viel des Kontextfensters des Modells diese Konversation nutzt und wie Sie es komprimieren können."
+    },
+    "composerAiEditReview": {
+      "label": "KI-Bearbeitungsprüfung & Sicherheit",
+      "desc": "Wie vorgeschlagene Bearbeitungen, riskante Aktionen und automatisch angewendete Änderungen überprüft und rückgängig gemacht werden können."
+    },
+    "composerVoice": {
+      "label": "Sprachassistent",
+      "desc": "Sprechen statt tippen, mit konfigurierbarer Spracherkennung und Sprachausgabe."
+    },
+    "composerPopout": {
+      "label": "Popout-Fenster",
+      "desc": "Öffnen Sie den Editor in einem eigenen OS-Fenster für einen zweiten Monitor."
+    }
+  },
+  "planHub": {
+    "undo": "Rückgängig",
+    "empty": {
+      "title": "Noch kein Plan für dieses Buch",
+      "body": "Der Plan Hub zeigt die Spezifikation — Handlungsbögen, Kapitel, Szenen. Dieses Buch hat noch keinen. Er wird nicht automatisch aus deinem Manuskript erstellt: Extrahiere ihn oder erstelle einen neuen.",
+      "extractCta": "Plan aus dem Manuskript extrahieren",
+      "extracting": "Extrahiere...",
+      "planCta": "Plan von Grund auf erstellen",
+      "extractNote": "Beim Extrahieren werden die bereits aus deinen Kapiteln analysierten Szenen gelesen und in Spezifikationsknoten umgewandelt. Die Gruppierung in Handlungsbögen ist ein separater KI-Schritt — bitte den Agenten darum. Bis dahin liegen die extrahierten Kapitel im Bereich „Nicht zugewiesen“.",
+      "nothingParsed": "Nichts zu extrahieren — dieses Buch hat noch keine analysierten Szenen. Analysiere oder importiere zuerst die Kapitel, um dann zu extrahieren.",
+      "startArcCta": "Beginnen Sie mit Ihrem ersten Handlungsbogen",
+      "startingArc": "Wird erstellt…",
+      "arcPlaceholder": "Nennen Sie Ihren ersten Handlungsbogen…",
+      "untitledArc": "Unbenannter Handlungsbogen",
+      "extractNeedsChapters": "Kapitel werden extrahiert – dieses Buch hat noch keine."
+    },
+    "node": {
+      "unplannedTray": "Nicht geplante Kapitel",
+      "unplannedUnknown": "Nicht geplante Kapitel: unbekannt (das Manuskript konnte nicht gelesen werden)",
+      "unplannedCapped": "…und {{n}} weitere (Liste gekürzt)",
+      "unassignedStrip": "{{count}} Kapitel ohne Handlungsbogen — ziehe es in eine Spalte",
+      "unassignedStrip_other": "{{count}} Kapitel ohne Handlungsstrang — ziehe sie in eine Spalte",
+      "untitled": "Unbenannt",
+      "unassignedFlow": "{{count}} Kapitel noch nicht in einer Storyline",
+      "unassignedFlow_other": "{{count}} Kapitel noch nicht in einer Storyline"
+    },
+    "loading": "Plan wird geladen…",
+    "toolbar": {
+      "search": "Knoten suchen…",
+      "fit": "Anpassen",
+      "problems": "Probleme",
+      "askAi": "KI fragen",
+      "askAiHint": "Wähle einen Knoten aus, um Fragen dazu zu stellen",
+      "viewNarrative": "Erzählung",
+      "viewTimeline": "Zeitstrahl",
+      "viewWorldmap": "Weltkarte",
+      "viewSoon": "In einer späteren Phase verfügbar"
+    },
+    "mode": {
+      "simple": "Einfach",
+      "advanced": "Erweitert"
+    },
+    "simple": {
+      "guide": "Dein Buch, Kapitel für Kapitel. Klicke auf eines, um weiterzuschreiben, oder beginne unten mit einem neuen Kapitel.",
+      "loading": "Deine Kapitel werden geladen…",
+      "error": "Die Kapitel konnten nicht geladen werden. Versuche es in einem Moment erneut.",
+      "emptyLine": "Ein leeres Buch. Beginne mit einem Satz – die Struktur kann später folgen.",
+      "untitled": "Unbetiteltes Kapitel",
+      "words": "{{n}}w",
+      "status": {
+        "done": "erledigt",
+        "drafting": "im Entwurf",
+        "empty": "noch nicht begonnen",
+        "aiIdea": "KI-Idee"
+      },
+      "more": "+ {{n}} weitere",
+      "loadingMore": "Wird geladen…",
+      "writeCta": "Ein neues Kapitel schreiben",
+      "writing": "Wird erstellt…",
+      "doorNote": "Öffnet sofort eine leere Seite.",
+      "goAdvanced": "In Storylines organisieren →",
+      "rename": "Umbenennen",
+      "delete": "Kapitel löschen",
+      "aiDraft": "Oder lassen Sie die KI einen Entwurf erstellen →",
+      "legend": {
+        "authored": "selbst geschrieben",
+        "ai": "KI-Idee"
+      }
+    },
+    "costHint": "Das Bearbeiten der Struktur löst keine Modell-Aufrufe aus.",
+    "flow": {
+      "chNo": "Kap. {{n}}",
+      "chCount": "{{n}} Kap.",
+      "gap": "⚠ Lücke",
+      "aiCollapsed": "KI · eingeklappt",
+      "subArcTag": "Sub-Arc",
+      "untitledArc": "Unbenannter Handlungsbogen",
+      "untitledChapter": "Unbenanntes Kapitel",
+      "untitledScene": "Unbenannte Szene",
+      "addChapter": "+ Kapitel",
+      "addScene": "+ Szene",
+      "addSubArc": "+ Sub-Arc",
+      "showScenes": "▸ Szenen",
+      "moreChapters": "+ {{n}} weitere",
+      "empty": "Noch keine Handlungsstränge – füge einen Bogen aus der Symbolleiste hinzu, um zu beginnen.",
+      "status": {
+        "empty": "leer",
+        "outline": "Entwurf",
+        "drafting": "In Bearbeitung",
+        "done": "Abgeschlossen"
+      },
+      "moveTo": "verschieben nach Bogen…",
+      "unassigned": "{{count}} Kapitel ohne Storyline",
+      "unassigned_other": "{{count}} Kapitel ohne Storyline"
+    },
+    "adv": {
+      "graph": "Graph",
+      "lane": "Lane",
+      "graphHint": "Graph — Zoomen, Verschieben und Ziehen zum Bewegen (ideal für große Strukturen)",
+      "laneHint": "Lane — Gut lesbare, umbrechende Karten (kein Zoom)"
+    }
+  },
+  "structTpl": {
+    "subtitle": "Story-Strukturen, anhand derer du Kapitel zerlegst",
+    "builtin": "Integriert (schreibgeschützt)",
+    "mine": "Meine",
+    "mineEmpty": "Noch keine vorhanden – klone eine integrierte Vorlage, um zu beginnen.",
+    "loading": "Laden…",
+    "pickHint": "Wähle eine Struktur aus, um ihre Beats anzuzeigen.",
+    "beats": "Beats",
+    "builtinNote": "Dies ist eine integrierte Struktur. Klone sie, um sie anzupassen – du bearbeitest deine Kopie, das Original bleibt für alle unverändert.",
+    "cloneBuiltin": "In meine Strukturen klonen",
+    "duplicate": "Duplizieren",
+    "cloning": "Kopieren…",
+    "beatLabel": "Label",
+    "beatPurpose": "Wozu dieser Beat dient…",
+    "addBeat": "Beat hinzufügen",
+    "save": "Speichern",
+    "saving": "Speichern…",
+    "showArchived": "archiviert",
+    "archive": "Archiv",
+    "restore": "Wiederherstellen",
+    "archivedNote": "Diese Struktur ist archiviert. Wiederherstellen Sie sie, um sie zu bearbeiten oder erneut zu verwenden.",
+    "newStructure": "Neue Struktur",
+    "createStructure": "Struktur erstellen",
+    "creating": "Wird erstellt…",
+    "cancel": "Abbrechen",
+    "unsaved": "Nicht gespeichert",
+    "discard": "Verwerfen",
+    "discardTitle": "Unsaved Änderungen verwerfen?",
+    "discardBody": "Deine Bearbeitungen an dieser Struktur wurden nicht gespeichert. Wenn du jetzt gehst, gehen sie verloren.",
+    "archiveTitle": "Diese Struktur archivieren?",
+    "archiveBody": "«{{name}}» wird verschoben und archiviert – du kannst sie später wiederherstellen.",
+    "nameLabel": "Strukturname",
+    "namePlaceholder": "Name deiner Struktur…",
+    "kindLabel": "Art (freitextliche Bezeichnung)",
+    "beatKey": "Schlüssel",
+    "beatKeyLabel": "Beat-Schlüssel",
+    "beatLabelLabel": "Beat-Bezeichnung",
+    "moveUp": "Beat nach oben verschieben",
+    "moveDown": "Beat nach unten verschieben",
+    "removeBeat": "Beat entfernen",
+    "decomposeHint": "Um diese Struktur zu verwenden, öffnen Sie ein Kapitel und führen Sie den Schritt „Zersetzen“ aus – Ihre Strukturen erscheinen dann im Picker.",
+    "err": {
+      "conflict": "Diese Struktur wurde an anderer Stelle geändert – bitte laden Sie sie neu und wenden Sie Ihre Änderungen erneut an.",
+      "duplicate": "Sie haben bereits eine Struktur mit diesem Namen.",
+      "blank": "Eine Struktur benötigt einen Namen.",
+      "unknown": "Etwas ist schiefgelaufen – bitte versuchen Sie es erneut."
+    },
+    "toast": {
+      "saved": "Struktur gespeichert",
+      "archived": "Struktur archiviert",
+      "restored": "Struktur wiederhergestellt",
+      "created": "Struktur erstellt"
+    },
+    "badge": {
+      "builtin": "integriert",
+      "mine": "meine",
+      "archived": "archiviert"
+    }
+  },
+  "search": {
+    "modeLabel": "Suchmodus",
+    "mode": {
+      "text": "Text",
+      "semantic": "Semantik"
+    },
+    "rail": {
+      "placeholder": "Dein Buch durchsuchen…",
+      "go": "Suchen",
+      "hint": "Text findet exakte Wörter in deinem Fließtext; Semantik findet Passagen nach ihrer Bedeutung. Ein Treffer öffnet den Editor an dieser Stelle."
+    },
+    "semantic": {
+      "placeholder": "Bedeutung in deiner Lore suchen…",
+      "loadingProject": "Lädt…",
+      "noProject": "Dieses Buch hat noch kein Wissensprojekt – extrahiere oder erstelle zuerst Wissen.",
+      "error": "Die semantische Suche ist derzeit nicht verfügbar.",
+      "hint": "Geben Sie mindestens 3 Zeichen ein, um nach der Bedeutung zu suchen.",
+      "searching": "Suche läuft…",
+      "empty": "Keine passenden Textstellen gefunden.",
+      "openChapter": "öffnen →"
+    }
+  },
+  "setup": {
+    "firstStructureTitle": "Erster Akt",
+    "everything": "Dieses Buch vollständig einrichten",
+    "everythingBusy": "Einrichtung läuft…"
+  }
+}

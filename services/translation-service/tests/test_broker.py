@@ -78,6 +78,50 @@ async def test_publish_body_is_valid_json():
 
 
 @pytest.mark.asyncio
+async def test_publish_body_keeps_non_ascii_utf8_no_unicode_escapes():
+    """ML-5: CJK/Vietnamese prose must serialize as raw UTF-8 on the wire, not
+    inflate 2-3x to \\uXXXX escapes (ensure_ascii=False)."""
+    import app.broker as broker
+    mock_exchange = AsyncMock()
+    original = broker._jobs_exchange
+    broker._jobs_exchange = mock_exchange
+    try:
+        payload = {"title": "第一章：龍的傳人", "note": "Chương một: Lâm Uyển"}
+        await broker.publish("translation.job", payload)
+        msg: aio_pika.Message = mock_exchange.publish.call_args.args[0]
+        # Raw bytes carry the UTF-8 glyphs, not ASCII \u escapes.
+        assert "第一章".encode("utf-8") in msg.body
+        assert "Lâm Uyển".encode("utf-8") in msg.body
+        assert b"\\u" not in msg.body
+        # Still round-trips to the original dict.
+        assert json.loads(msg.body) == payload
+    finally:
+        broker._jobs_exchange = original
+
+
+@pytest.mark.asyncio
+async def test_publish_event_body_keeps_non_ascii_utf8_no_unicode_escapes():
+    """ML-5: event envelopes carry non-ASCII prose as raw UTF-8, no \\uXXXX."""
+    import app.broker as broker
+    mock_exchange = AsyncMock()
+    original = broker._events_exchange
+    broker._events_exchange = mock_exchange
+    try:
+        await broker.publish_event(
+            "user-abc",
+            {"event": "job.status_changed", "message": "翻譯完成", "payload": {}},
+        )
+        msg: aio_pika.Message = mock_exchange.publish.call_args.args[0]
+        assert "翻譯完成".encode("utf-8") in msg.body
+        assert b"\\u" not in msg.body
+        body = json.loads(msg.body)
+        assert body["user_id"] == "user-abc"
+        assert body["message"] == "翻譯完成"
+    finally:
+        broker._events_exchange = original
+
+
+@pytest.mark.asyncio
 async def test_publish_raises_assertion_if_not_connected():
     """publish() must raise AssertionError when broker is not connected."""
     import app.broker as broker

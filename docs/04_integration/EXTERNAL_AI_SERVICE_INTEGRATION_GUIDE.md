@@ -15,14 +15,15 @@
 5. [Service Contract: Speech-to-Text (STT)](#5-service-contract-speech-to-text-stt)
 6. [Service Contract: Image Generation](#6-service-contract-image-generation)
 7. [Service Contract: Video Generation](#7-service-contract-video-generation)
-8. [Authentication & Credential Flow](#8-authentication--credential-flow)
-9. [Capability Flags](#9-capability-flags)
-10. [Usage & Billing Integration](#10-usage--billing-integration)
-11. [Health Check Contract](#11-health-check-contract)
-12. [Model Discovery Contract](#12-model-discovery-contract)
-13. [Deployment & Registration](#13-deployment--registration)
-14. [Testing Your Service](#14-testing-your-service)
-15. [Reference: Existing Adapter Implementations](#15-reference-existing-adapter-implementations)
+8. [Service Contract: Web Search](#8-service-contract-web-search)
+9. [Authentication & Credential Flow](#9-authentication--credential-flow)
+10. [Capability Flags](#10-capability-flags)
+11. [Usage & Billing Integration](#11-usage--billing-integration)
+12. [Health Check Contract](#12-health-check-contract)
+13. [Model Discovery Contract](#13-model-discovery-contract)
+14. [Deployment & Registration](#14-deployment--registration)
+15. [Testing Your Service](#15-testing-your-service)
+16. [Reference: Existing Adapter Implementations](#16-reference-existing-adapter-implementations)
 
 ---
 
@@ -764,7 +765,104 @@ Statuses: `processing` → `completed` | `failed`
 
 ---
 
-## 8. Authentication & Credential Flow
+## 8. Service Contract: Web Search
+
+Powers the glossary **deep-research** feature (the assistant researches an entity on the web and
+attaches source URLs as evidence). Unlike TTS/STT/Image/Video this is **NOT OpenAI-compatible** —
+it uses a small **Tavily-compatible** shape (the de-facto AI-search standard). A service that speaks
+this wire drops in with zero LoreWeave code changes.
+
+> **Returned text is UNTRUSTED.** LoreWeave neutralizes every `title`/`content`/`answer` (strips
+> control chars, collapses whitespace, caps length) and drops non-`http(s)` URLs before anything
+> reaches a prompt or lands as evidence (INV-6). Your service should still return clean text, but
+> the consumer never trusts it.
+
+### Endpoint
+
+```
+POST {endpoint_base_url}/search
+Authorization: Bearer {decrypted_api_key}   # optional for a keyless local backend
+```
+
+### Request Body
+
+```json
+{
+  "query": "Nezha 哪吒 Investiture of the Gods deity",
+  "max_results": 5,
+  "search_depth": "basic",
+  "include_answer": true,
+  "api_key": "<ignored unless your backend IS Tavily>"
+}
+```
+| field | type | required | notes |
+|---|---|---|---|
+| `query` | string | yes | the search query (may be CJK / mixed-language) |
+| `max_results` | int | no | LoreWeave sends **1–20** (default 5). Clamp server-side. |
+| `search_depth` | string | no | `"basic"` (default) or `"advanced"` (deeper crawl / fuller `content`). Ignore if no tiers. |
+| `include_answer` | bool | no | if `true`, MAY return a synthesized `answer`. Optional. |
+| `api_key` | string | no | **ignore** unless your backend is literally Tavily (compat field). |
+
+### Response (`200`)
+
+```json
+{
+  "query": "Nezha 哪吒 ...",
+  "answer": "Nezha is a protection deity in Chinese mythology...",
+  "results": [
+    { "title": "Nezha — Wikipedia", "url": "https://en.wikipedia.org/wiki/Nezha", "content": "Nezha is a protection deity ...", "score": 0.95 },
+    { "title": "Investiture of the Gods",  "url": "https://example.org/fsyy",        "content": "Nezha appears in the novel ...",   "score": 0.81 }
+  ]
+}
+```
+| field | type | required | notes |
+|---|---|---|---|
+| `results` | array | yes | ranked **best-first**; LoreWeave takes the top `max_results`. Empty `[]` + `200` = "nothing found" (not an error). |
+| `results[].title` | string | yes | page title (may be empty) |
+| `results[].url` | string | yes | **absolute http(s) URL** — LoreWeave drops any non-http(s) result |
+| `results[].content` | string | yes | clean text snippet/extract (the evidence text); `advanced` ⇒ longer |
+| `results[].score` | number | no | relevance ∈ `[0,1]`; omit ⇒ keep array order |
+| `answer` | string | no | optional synthesized answer |
+
+These exact keys (`answer`, `results[].{title,url,content,score}`) are what LoreWeave's adapter parses; extra fields are ignored.
+
+### Errors
+| status | meaning (LoreWeave behavior) |
+|---|---|
+| 400 `{"error":"validation"}` | empty query etc. |
+| 401 `{"error":"unauthorized"}` | bad bearer (when a secret is set) |
+| 429 `{"error":"rate_limited","retry_after_s":N}` | backend quota |
+| 5xx `{"error":"upstream"}` | backend failed |
+
+LoreWeave treats any non-2xx as a provider error (no in-turn retry), surfaces a clean message, and the assistant degrades to "search unavailable" — it never blocks the chat. **No VRAM/model-lifecycle layer is required** (web search is stateless per request).
+
+### Recommended backend: **SearXNG** (local + free) ⭐ — reference impl built
+
+[SearXNG](https://github.com/searxng/searxng) is an OSS metasearch engine (aggregates Google/Bing/DuckDuckGo/Brave/…), one Docker container, **no API key, no account, no per-query cost**. Build a thin shim that accepts `POST /search` above, calls SearXNG `GET /search?q=…&format=json`, and maps its `results[]` (`title`/`url`/`content`) → the response. Optionally fetch+extract page text (`trafilatura`) for richer `content` on `advanced`. (Alternatives: a **Tavily proxy** — Tavily already speaks this shape — or **Brave/SerpAPI/Exa** wrappers.)
+
+> **Reference impl: `local-web-search-service`.** SearXNG + a FastAPI shim conforming to this §8, with passing contract tests and a `docker-compose.yml` that runs both. It *additionally* exposes the same search as an **MCP tool** (`/mcp` → `web_search`) for direct Cursor/agent use — note this is orthogonal: LoreWeave always calls `POST /search`, never MCP. Details + the MCP surface: **`docs/04_integration/2026-06-21-web-search-service-integration.md` §7**.
+>
+> It also adds a **companion `web_fetch` capability** (`POST /fetch` + `fetch_page`/`fetch_pages` MCP tools) backed by a **Scrapling** sidecar (browser / anti-bot), for reading the full clean content of a specific page — the natural follow-up to a search hit. The LoreWeave consumer for `web_fetch` is **not built yet**; see **§10** of the integration doc for the forward contract.
+
+### Usage Reporting
+
+No per-call usage body is required. Pricing is a **per-search** rate on the LoreWeave side
+(`user_models.pricing`); a free local backend ⇒ price `0`. The service does not bill.
+
+### Registration
+
+- **Provider Kind:** `web_search` · **Endpoint Base URL:** `http://<host>:<port>` (e.g. `http://local-web-search-service:8090`, empty secret for keyless SearXNG).
+- **Capability flag:** `{"web_search": true}` — **strict** (must be explicit; never inferred). `is_favorite` makes it the preferred web_search model (LoreWeave picks `is_favorite DESC, created_at ASC`).
+- **`provider_model_name`** is an optional backend/profile label (e.g. `searxng-default`); a single-backend service ignores it.
+
+> **Consumer side is already built** in LoreWeave (`provider-registry` `web_search` adapter +
+> `POST /internal/web-search` BYOK route + the `glossary_deep_research` class-C tool with INV-6
+> neutralization + URL-safety + evidence attach). The external service only implements this §8.
+> Full deep-dive + sequence diagram + build checklist: **`docs/04_integration/2026-06-21-web-search-service-integration.md`**.
+
+---
+
+## 9. Authentication & Credential Flow
 
 ### How LoreWeave stores credentials
 
@@ -804,7 +902,7 @@ If your `provider_kind` is not one of the built-in types (`openai`, `anthropic`,
 
 ---
 
-## 9. Capability Flags
+## 10. Capability Flags
 
 When users create a model entry, they set capability flags:
 
@@ -852,7 +950,7 @@ LoreWeave can sync these when the user clicks "Refresh Models" in the provider s
 
 ---
 
-## 10. Usage & Billing Integration
+## 11. Usage & Billing Integration
 
 LoreWeave handles billing automatically. Your service does NOT need to implement billing.
 
@@ -884,7 +982,7 @@ If your response includes usage data, LoreWeave will use it instead of calculati
 
 ---
 
-## 11. Health Check Contract
+## 12. Health Check Contract
 
 ### Endpoint
 
@@ -914,7 +1012,7 @@ Any 200 response is acceptable. Recommended:
 
 ---
 
-## 12. Model Discovery Contract
+## 13. Model Discovery Contract
 
 ### Endpoint
 
@@ -952,7 +1050,7 @@ LoreWeave uses this to:
 
 ---
 
-## 13. Deployment & Registration
+## 14. Deployment & Registration
 
 ### Step 1: Deploy your service
 
@@ -1004,7 +1102,7 @@ my-tts-service:
 
 ---
 
-## 14. Testing Your Service
+## 15. Testing Your Service
 
 ### Quick test with curl
 
@@ -1071,7 +1169,7 @@ curl -X POST http://localhost:3123/v1/llm/jobs \
 
 ---
 
-## 15. Reference: Existing Adapter Implementations
+## 16. Reference: Existing Adapter Implementations
 
 ### Built-in adapters in LoreWeave
 

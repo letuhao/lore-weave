@@ -5,6 +5,7 @@ import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { EchoRoom } from './rooms/EchoRoom.js';
 import { assertWsAuthConfig } from './ws/auth.js';
+import { log } from './log.js';
 
 // Entry: Express HTTP (for matchmake + health) + Colyseus WS attached.
 //
@@ -42,16 +43,12 @@ gameServer.define('echo', EchoRoom);
 assertWsAuthConfig();
 
 gameServer.listen(PORT).then(() => {
-  // eslint-disable-next-line no-console
-  console.log(`[game-server] listening on :${PORT}`);
-  // eslint-disable-next-line no-console
-  console.log(`[game-server] CORS allowed origins: ${CORS_ORIGINS.join(', ')}`);
+  log.info('game-server listening', { port: PORT, cors_origins: CORS_ORIGINS });
 });
 
 // Graceful shutdown so docker stop doesn't leave hanging sockets.
 const shutdown = (signal: string): void => {
-  // eslint-disable-next-line no-console
-  console.log(`[game-server] received ${signal}, shutting down...`);
+  log.info('game-server shutting down', { signal });
   gameServer.gracefullyShutdown().then(() => {
     process.exit(0);
   });

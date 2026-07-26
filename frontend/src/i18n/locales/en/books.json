@@ -5,6 +5,7 @@
   "search_placeholder": "Search books...",
   "all_languages": "All languages",
   "all_states": "All states",
+  "select_language": "Select language…",
   "book_count": "{{count}} book",
   "book_count_other": "{{count}} books",
   "translated_to": "Translated to: {{langs}}",
@@ -29,6 +30,7 @@
     "no_language": "No language set"
   },
   "detail": {
+    "open_studio": "Studio",
     "not_found": "Book not found",
     "updated": "Updated {{date}}",
     "readers": "{{count}} reader",
@@ -37,6 +39,7 @@
       "chapters": "Chapters",
       "translation": "Translation",
       "glossary": "Glossary",
+      "kgOntology": "Graph Schema",
       "enrichment": "Enrichment",
       "wiki": "Wiki",
       "sharing": "Sharing",
@@ -113,6 +116,7 @@
     "count": "{{count}} chapter",
     "count_other": "{{count}} chapters",
     "import": "Import",
+    "importPdf": "Import PDF",
     "new": "New Chapter",
     "col": {
       "title": "Title",
@@ -122,6 +126,7 @@
     },
     "action": {
       "edit": "Edit",
+      "translations": "View translations",
       "extract": "Extract Glossary",
       "download": "Download",
       "trash": "Trash"
@@ -196,7 +201,8 @@
     "status": {
       "draft": "Draft",
       "active": "Active",
-      "inactive": "Inactive"
+      "inactive": "Inactive",
+      "rejected": "Rejected"
     },
     "bulk": {
       "select_row": "Select entity",
@@ -204,10 +210,17 @@
       "selected": "{{count}} selected",
       "activate": "Activate",
       "deactivate": "Deactivate",
+      "reject": "Reject",
       "clear": "Clear",
       "done": "{{count}} entities set to {{status}}",
       "select_all_matching": "Select all {{count}} matching",
-      "cap_note": "Selection capped at {{cap}} entities"
+      "cap_note": "Selection capped at {{cap}} entities",
+      "delete": "Delete",
+      "deleted": "{{count}} entities deleted",
+      "delete_confirm": {
+        "title": "Delete {{count}} entities?",
+        "description": "{{count}} selected entities will be moved to the recycle bin."
+      }
     },
     "clear_filters": "Clear all filters",
     "deleted": "Entity deleted",
@@ -216,6 +229,7 @@
       "description": "Create your first glossary entity — characters, places, items, and more."
     },
     "untitled": "Untitled",
+    "scope_label_title": "Scope — disambiguates this entity from others sharing the same name",
     "alive_title": "Alive — click to mark dead",
     "dead_title": "Dead — click to revive",
     "alive": "alive",

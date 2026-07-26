@@ -22,7 +22,40 @@
     "hint": "滾動以縮放 · 拖曳空白處以平移 · 點擊節點查看詳情 · ⊞ 以展開",
     "loading": "正在載入圖譜…",
     "loadFailed": "載入圖譜失敗：{{error}}",
-    "empty": "尚無知識圖譜 — 建立此專案以探索其網路。"
+    "empty": "尚無知識圖譜 — 建立此專案以探索其網路。",
+    "emptyLens": "沒有符合此視圖的關係 — 請嘗試其他視圖、較早的章節，或清除篩選條件。",
+    "truncatedLens": "正在顯示此視圖的前 {{n}} 條關係",
+    "hintLens": "滾動縮放 · 拖曳平移 · 點擊節點查看詳情",
+    "lens": {
+      "view": "視圖",
+      "noView": "所有關係",
+      "asOf": "截至章節",
+      "latest": "最新",
+      "clear": "清除篩選"
+    }
+  },
+  "schemaSection": {
+    "title": "綱要",
+    "subtitle": "定義此專案知識圖譜的綱要——節點類型、關係類型、事實類型與詞彙。編輯會套用到此專案的圖譜。",
+    "editCta": "編輯綱要",
+    "freeEdges": "允許詞彙外的關係（自由邊）。",
+    "closedEdges": "關係僅限已宣告的關係類型；其餘進入待處理。",
+    "error": "無法載入此專案的綱要。",
+    "emptyHelp": "此專案尚無綱要。可從零開始、複製範本或採用一個範本。",
+    "newBlank": "新的空白綱要",
+    "schemaNamePlaceholder": "綱要名稱",
+    "createBlankButton": "建立空白綱要",
+    "created": "已建立綱要",
+    "cloneTemplate": "複製範本",
+    "pickTemplate": "選擇範本…",
+    "cloneButton": "複製到我的綱要",
+    "cloned": "已複製範本",
+    "adoptTemplate": "採用範本",
+    "adoptHelp": "將範本複製到此專案（會先檢查詞彙表）。",
+    "adoptCta": "在書籍的 Ontology 分頁採用",
+    "adoptBooklessHint": "採用僅適用於與書籍關聯的專案。",
+    "forbidden": "你需要此專案的「管理」權限才能定義綱要。",
+    "createFailed": "無法建立綱要。"
   },
   "shell": {
     "backToProjects": "所有專案",
@@ -35,6 +68,7 @@
       "proposals": "提案",
       "gap": "缺口",
       "insights": "洞察",
+      "schema": "綱要",
       "graph": "建構／探索圖譜"
     },
     "notFound": "找不到專案。",
@@ -46,8 +80,10 @@
       "extraction": "擷取",
       "extractionEnabled": "已啟用",
       "extractionDisabled": "已停用",
-      "bookId": "書籍",
-      "none": "—"
+      "book": "書籍",
+      "world": "世界觀",
+      "none": "—",
+      "triageNudge": "有 {{count}} 個擷取的元素需要進行分類"
     },
     "placeholder": {
       "proposals": "待處理提案將顯示於此（C11）。",
@@ -215,7 +251,12 @@
       "matchLabel": "匹配度",
       "openLabel": "以{{score}}匹配度開啟{{sourceType}}抽屜",
       "hubBadge": "摘要",
-      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。"
+      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。",
+      "langHint": "來源語言：{{lang}}"
+    },
+    "coverage": {
+      "partial": "{{total}} 筆結果中有 {{count}} 筆是您的語言（{{lang}}）；其餘以來源語言顯示。",
+      "none": "沒有您語言（{{lang}}）的結果；改以來源語言顯示。"
     },
     "detail": {
       "title": "抽屜",
@@ -272,7 +313,8 @@
       "chapterLabel": "章",
       "chapterUnresolved": "章 ID {{id}} — 標題未解析",
       "participantsMore": "+{{count}} 位",
-      "confidenceLabel": "信心度"
+      "confidenceLabel": "信心度",
+      "timeLabel": "故事內時間"
     },
     "detail": {
       "summary": "摘要",
@@ -285,7 +327,16 @@
       "refreshing": "重新整理中…",
       "prev": "上一頁",
       "next": "下一頁",
-      "backToFirst": "回到第一頁"
+      "backToFirst": "回到第一頁",
+      "pageSize": "每頁"
+    },
+    "localization": {
+      "sourceMarker": "以原始語言顯示 — 翻譯處理中"
+    },
+    "search": {
+      "placeholder": "搜尋事件…",
+      "label": "搜尋事件",
+      "clear": "清除搜尋"
     }
   },
   "entities": {
@@ -342,7 +393,11 @@
       "loading": "正在載入實體…",
       "loadFailed": "無法載入實體：{{error}}",
       "close": "關閉",
+      "edit": "編輯",
+      "merge": "合併到其他實體",
       "metadata": "中繼資料",
+      "description": "描述",
+      "descriptionSource": "來自連結的詞彙表項目",
       "aliases": "別名",
       "relations": "關係 ({{count}})",
       "truncated": "顯示 {{shown}} / {{total}} 筆——請在表格中篩選或搜尋",
@@ -360,10 +415,9 @@
         "global": "全域",
         "confidence": "信心度",
         "mentions": "提及次數",
-        "anchor": "錨定分數"
+        "anchor": "錨定分數",
+        "scope": "範圍"
       },
-      "edit": "編輯",
-      "merge": "合併到其他實體",
       "promote": "提升至詞彙表",
       "promoteHint": "已發現的實體。提升後會建立一份待審的 AI 建議詞彙表草稿。",
       "promotePending": "提升中…",
@@ -379,8 +433,32 @@
         "decision": "決定",
         "preference": "偏好",
         "milestone": "里程碑",
-        "negation": "否定"
-      }
+        "negation": "否定",
+        "statement": "陳述",
+        "commitment": "承諾"
+      },
+      "addFact": "新增事實",
+      "addFactTitle": "新增關於此實體的相關事實",
+      "factContentLabel": "事實內容",
+      "factContentPlaceholder": "例如：在背叛後對議會失去信任",
+      "factTypeLabel": "類型",
+      "factPredicatePlaceholder": "謂詞（選填，例如：loyal_to）",
+      "factObjectPlaceholder": "受詞（選填，例如：House Vaeth）",
+      "addFactSave": "儲存事實",
+      "addFactCancel": "取消",
+      "addFactSuccess": "事實已新增",
+      "addFactFailed": "無法新增事實：{{error}}",
+      "markWrong": "標記為錯誤",
+      "markWrongConfirm": "要將此事實標記為錯誤嗎？它將被作廢（從複習中移除），但會保留在歷史紀錄中。",
+      "markWrongSuccess": "事實已標記為錯誤",
+      "markWrongFailed": "無法作廢事實：{{error}}",
+      "factTypeHelp": "這是什麼類型的事實？",
+      "factAdvancedToggle": "連結至另一個實體（選填）",
+      "replaceFact": "替換此事實",
+      "replaceFactSave": "儲存替換",
+      "replaceFactSuccess": "事實已替換",
+      "markWrongUndo": "復原",
+      "markWrongUndoFailed": "無法復原：{{error}}"
     },
     "edit": {
       "title": "編輯實體",
@@ -420,6 +498,41 @@
       "errArchived": "無法合併已封存的實體。請先還原。",
       "errGlossaryConflict": "兩個實體分別錨定在不同的詞彙表條目。請先解決詞彙表錨點衝突。",
       "errUnknown": "合併失敗：{{reason}}"
+    },
+    "create": {
+      "title": "新實體",
+      "description": "手動建立知識圖譜實體。初始狀態為「已發現」；稍後可將其錨定為「規範實體」。",
+      "newButton": "新增實體",
+      "needsProject": "請先選擇一個專案",
+      "field": {
+        "name": "名稱",
+        "kind": "類型"
+      },
+      "save": "建立",
+      "saving": "建立中…",
+      "cancel": "取消",
+      "success": "實體已建立 — {{name}} ({{kind}})",
+      "dedup": "實體已存在 — 顯示 {{name}} ({{kind}})",
+      "failed": "無法建立實體 — {{error}}",
+      "discoveredHint": "新實體初始狀態為「已發現」。透過與術語表建立關聯即可獲得「標準」狀態。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地點",
+      "organization": "組織",
+      "concept": "概念",
+      "item": "物品"
+    },
+    "archive": {
+      "action": "封存",
+      "confirm": "要隱藏此實體嗎？其關聯與術語表錨點將予以保留，但會從活動清單中消失。您可以在操作後立即「復原」，或透過「已封存」篩選器再次將其顯示。",
+      "success": "實體已封存。",
+      "failed": "無法封存 — {{error}}",
+      "undo": "復原"
+    },
+    "restore": {
+      "success": "實體已還原。",
+      "failed": "無法還原 — {{error}}"
     }
   },
   "jobs": {
@@ -545,7 +658,9 @@
         "oldest": "最舊優先",
         "name_asc": "名稱 (A–Z)",
         "name_desc": "名稱 (Z–A)"
-      }
+      },
+      "thisBookOnly": "僅此書",
+      "showAllBooks": "顯示所有書籍"
     },
     "card": {
       "staticMemory": "靜態記憶",
@@ -557,35 +672,6 @@
       "delete": "刪除",
       "tuneExtraction": "調整抽取",
       "bookId": "book_id"
-    },
-    "extractionTuning": {
-      "title": "調整抽取",
-      "description": "各小說的抽取設定。變更套用於本專案的下一次抽取執行。",
-      "filterEnabled": "精確度過濾（捨棄低支持度的抽取）",
-      "category": {
-        "entity": "實體",
-        "relation": "關係",
-        "event": "事件"
-      },
-      "categoriesRequired": "至少選擇一個類別，或關閉過濾器。",
-      "partialPolicy": "部分匹配：",
-      "policyKeep": "保留",
-      "policyDrop": "捨棄",
-      "recoveryEnabled": "實體復原（找回遺漏的實體）",
-      "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
-      "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
-      "promptPlaceholder": "留空以使用預設提示",
-      "prompt": {
-        "entity": "實體抽取提示",
-        "relation": "關係抽取提示",
-        "event": "事件抽取提示",
-        "fact": "事實抽取提示"
-      },
-      "save": "儲存",
-      "saving": "儲存中…",
-      "cancel": "取消",
-      "saved": "已儲存抽取設定。",
-      "failed": "儲存失敗：{{error}}"
     },
     "form": {
       "createTitle": "新增專案",
@@ -617,7 +703,7 @@
         "success": "{{model}} 的基準測試完成 (recall@3 {{recall}})。",
         "errorNoModel": "執行基準測試前請先選擇一個嵌入模型。",
         "errorUnknownModel": "這個嵌入模型不受基準測試工具支援。",
-        "errorNotBenchmarkProject": "基準測試必須在專用專案上執行。請先建立新專案再執行。",
+        "errorNotBenchmarkProject": "基準測試無法在沙箱中啟動，請稍後再試。",
         "errorAlreadyRunning": "此專案已有基準測試正在執行。請稍候再試。",
         "errorProviderFlake": "嵌入服務提供者在執行期間失敗。請重試。",
         "errorGeneric": "基準測試失敗: {{message}}"
@@ -697,12 +783,15 @@
           "durationMin": "約 {{n}} 分鐘"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} 項",
+          "progress": "{{processed}} / {{total}} 項（章節＋聊天＋詞彙表）",
           "elapsed": "已過：{{elapsed}}",
           "spent": "已花費：${{spent}}",
           "spentOfBudget": "已花費：${{spent}} / ${{budget}}",
           "concurrencyLabel": "並行呼叫數",
-          "concurrencyApply": "套用"
+          "concurrencyApply": "套用",
+          "stagesTitle": "建構階段",
+          "stages": "實體 → 關係 · 事件 · 事實 → 摘要",
+          "stagesNote": "各階段依此順序執行。事實與摘要會在實體與關係完成後才執行，因此在完整建構中會較晚出現——提早停止會略過它們。"
         },
         "building_paused_user": {
           "body": "你已暫停此作業。準備好時恢復,或取消以保留部分圖譜。"
@@ -849,6 +938,43 @@
       "failed": "變更失敗: {{error}}",
       "alreadyAtModel": "模型已設為 {{model}} — 可能被其他裝置變更。"
     },
+    "extractionTuning": {
+      "title": "調整抽取",
+      "description": "各小說的抽取設定。變更套用於本專案的下一次抽取執行。",
+      "filterEnabled": "精確度過濾（捨棄低支持度的抽取）",
+      "category": {
+        "entity": "實體",
+        "relation": "關係",
+        "event": "事件"
+      },
+      "categoriesRequired": "至少選擇一個類別，或關閉過濾器。",
+      "partialPolicy": "部分匹配：",
+      "policyKeep": "保留",
+      "policyDrop": "捨棄",
+      "defaultModel": "預設擷取模型",
+      "defaultModelNone": "使用我的全域預設",
+      "defaultModelHint": "除非在下方覆寫，否則每個擷取步驟都使用此模型。留空時，各角色會回退到您的全域預設模型（設定），再退到本次建置執行的模型。",
+      "recoveryEnabled": "實體復原（找回遺漏的實體）",
+      "recoveryModel": "復原模型（選填）",
+      "recoveryModelNone": "使用預設擷取模型",
+      "recoveryModelHint": "找回主流程遺漏之實體的 LLM。維持預設時，會沿用上方的預設擷取模型。",
+      "recoveryBatch": "批次大小",
+      "recoveryBatchHint": "每次分類呼叫的名稱數（1-20；預設 5）",
+      "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
+      "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
+      "promptPlaceholder": "留空以使用預設提示",
+      "prompt": {
+        "entity": "實體抽取提示",
+        "relation": "關係抽取提示",
+        "event": "事件抽取提示",
+        "fact": "事實抽取提示"
+      },
+      "save": "儲存",
+      "saving": "儲存中…",
+      "cancel": "取消",
+      "saved": "已儲存抽取設定。",
+      "failed": "儲存失敗：{{error}}"
+    },
     "confirmDestructive": {
       "cancel": "取消",
       "deleteGraph": {
@@ -902,6 +1028,7 @@
       "noModels": "您沒有註冊的聊天模型。請先在 AI 模型中新增一個。",
       "costHint": "預估費用：少量（<$0.05）。輸出上限為 500 個代幣。",
       "editLockHint": "最近 30 天內的手動編輯受保護——如您最近有編輯，重新生成將被略過。",
+      "disabledDirty": "請先儲存或重設未保存的編輯，再進行重新生成——當您有未保存的變更時，重新生成的結果不會出現在編輯器中。",
       "editLockDefault": "您最近的手動編輯在 30 天內受保護，不會被重新生成。",
       "confirm": "重新生成",
       "regenerating": "重新生成中…",
@@ -912,8 +1039,7 @@
       "concurrentEdit": "手動編輯與重新生成發生衝突。請查看當前簡介並再試一次。",
       "guardrailFailed": "重新生成未通過品質檢查：{{reason}}",
       "providerError": "您的 AI 服務商傳回錯誤：{{reason}}",
-      "unknownError": "重新生成失敗：{{reason}}",
-      "disabledDirty": "請先儲存或重設未保存的編輯，再進行重新生成——當您有未保存的變更時，重新生成的結果不會出現在編輯器中。"
+      "unknownError": "重新生成失敗：{{reason}}"
     },
     "preferences": {
       "title": "已學到的偏好",
@@ -1024,9 +1150,34 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "連結實體",
+      "description": "建立從 {{subject}} 到您另一個實體的關係。",
+      "action": "連結實體",
+      "subject": "從",
+      "predicate": "關係",
+      "object": "至",
+      "objectPlaceholder": "搜尋您的實體…",
+      "noMatches": "無符合的實體。",
+      "save": "建立連結",
+      "saving": "連結中…",
+      "cancel": "取消",
+      "success": "關係已建立。",
+      "notYours": "無法建立連結 — 端點並非您的實體之一。",
+      "selfLoop": "實體不能與自身建立關係。",
+      "failed": "無法建立連結 — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "新增事件",
+      "description": "為此角色撰寫一個新的時間線事件。",
+      "success": "事件已新增。",
+      "failed": "新增失敗：{{error}}",
+      "saving": "新增中…",
+      "save": "新增事件"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1102,5 +1253,64 @@
       "divergent": "發散"
     },
     "totalRuns": "共 {{count}} 次執行"
+  },
+  "triage": {
+    "loading": "正在載入分流隊列…",
+    "loadFailed": "無法載入分流隊列：{{error}}",
+    "empty": "無須分流 — 所有提取的元素皆符合您的架構。",
+    "resolved": "已處理 {{count}} 個項目",
+    "resolveFailed": "無法處理：{{error}}",
+    "handoffToGlossary": "正在開啟術語表，以便在您的法典中完成此項工作…",
+    "itemType": {
+      "unknown_node_kind": "不明實體類型",
+      "unknown_edge_type": "不明關係類型",
+      "edge_kind_mismatch": "關係端點不匹配",
+      "unknown_vocab_value": "超出詞彙表範圍的值",
+      "edge_cardinality_conflict": "衝突的活動關係"
+    },
+    "action": {
+      "map": "映射至現有項目",
+      "add_to_vocab": "加入詞彙表",
+      "add_to_schema": "加入結構定義",
+      "re_target": "修正端點",
+      "widen_target_kinds": "擴大允許類型",
+      "drop_edge": "捨棄",
+      "close_previous": "關閉前一個",
+      "set_multi_active": "允許複數個",
+      "promote_to_glossary_kind": "提升為術語類型",
+      "demote_to_attribute": "降級為屬性",
+      "dismiss": "忽略"
+    },
+    "prompt": {
+      "target_entity_id": "已修正的目標實體 ID",
+      "map_to": "映射至 (留空則使用偵測到的值)"
+    },
+    "itemDismissed": "項目已移除",
+    "confirmSchemaWrite": "要將此內容新增至您的架構（Schema）中嗎？這會改變未來擷取內容的驗證方式。",
+    "evidence": {
+      "unknown_edge_type": "關係「{{predicate}}」尚未包含在您的架構中。",
+      "unknown_vocab_value": "值「{{value}}」尚未包含在「{{set}}」清單中。",
+      "edge_kind_mismatch": "「{{predicate}}」被用於 {{source}} 與 {{target}} 之間，這不符合您的架構規範。",
+      "unknown_node_kind": "類型「{{kind}}」尚未包含在您的架構中。",
+      "edge_cardinality_conflict": "存在衝突的「{{predicate}}」活動關係。",
+      "generic": "此擷取元素與您的架構不符。"
+    },
+    "retarget": {
+      "title": "指向正確的實體",
+      "description": "搜尋您的實體，並選擇此關係應指向的對象。",
+      "searchPlaceholder": "按名稱搜尋實體…",
+      "noMatches": "無符合的實體。",
+      "cancel": "取消",
+      "confirm": "重新指向"
+    },
+    "map": {
+      "title": "對應至現有項目",
+      "description": "請選擇此非結構化元素應被視為哪一個架構項目。",
+      "label": "對應至",
+      "keepDetected": "保留偵測到的值",
+      "cancel": "取消",
+      "confirm": "對應"
+    },
+    "emptyHint": "Triage 會收集所有尚未符合您架構的擷取內容 — 佇列清空代表所有內容都已歸位。"
   }
 }

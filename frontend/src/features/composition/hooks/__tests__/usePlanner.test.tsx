@@ -62,6 +62,21 @@ describe('usePlanner', () => {
     expect(payload.chapters[0].scenes[0]).not.toHaveProperty('present_entity_names_unresolved');
   });
 
+  it('a successful commit surfaces the committed chapter ids (Shape A binding surface); a fresh preview clears them', async () => {
+    const { result } = renderHook(() => usePlanner('p1', 'tok'), { wrapper });
+    act(() => { result.current.setTemplateId('t1'); result.current.setPremise('p'); });
+    act(() => { result.current.runPreview({ modelRef: 'm1' }); });
+    await waitFor(() => expect(result.current.draft).not.toBeNull());
+    expect(result.current.committedChapterIds).toEqual([]);
+
+    act(() => { result.current.commit(); });
+    await waitFor(() => expect(result.current.committedChapterIds).toEqual(['ch1']));
+
+    // a new plan supersedes the prior commit's binding surface.
+    act(() => { result.current.runPreview({ modelRef: 'm1' }); });
+    await waitFor(() => expect(result.current.committedChapterIds).toEqual([]));
+  });
+
   it('add/remove scene mutates the draft', async () => {
     const { result } = renderHook(() => usePlanner('p1', 'tok'), { wrapper });
     act(() => { result.current.setTemplateId('t1'); result.current.setPremise('p'); });

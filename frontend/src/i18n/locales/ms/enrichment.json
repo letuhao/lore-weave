@@ -1,0 +1,349 @@
+{
+  "header": "Semakan Pengayaan",
+  "subtitle": "Semak lore cadangan AI untuk entiti yang kurang diperincikan, kemudian promosikan apa yang anda luluskan ke dalam kanon buku ini. Draf yang diperkaya adalah varian peribadi sehingga anda mempromosikannya.",
+  "untitled": "Tanpa Tajuk",
+  "panel": {
+    "compose": "Cipta",
+    "proposals": "Cadangan",
+    "gaps": "Lompang",
+    "sources": "Sumber",
+    "jobs": "Tugasan",
+    "settings": "Profil"
+  },
+  "compose": {
+    "title": "Cipta pengayaan",
+    "subtitle": "Mulakan pengayaan mengikut cara anda — kembangkan draf yang telah anda tulis, atau isi lompang yang dikesan. Segala yang anda cipta adalah varian diperkaya sehingga anda mempromosikannya.",
+    "soon": "tidak lama lagi",
+    "mode_soon": "Akan hadir dalam kemas kini akan datang.",
+    "mode": {
+      "draft": "Daripada draf",
+      "gap": "Isi lompang",
+      "intent": "Daripada idea",
+      "context": "Tampal konteks",
+      "files": "Lampirkan fail"
+    },
+    "draft": {
+      "label": "Draf anda",
+      "placeholder": "Tampal atau tulis draf anda untuk entiti ini. Ia akan dikembangkan mengikut dimensi buku, dalam gaya bahasa buku...",
+      "expand_mode": "Cara pengembangan",
+      "rewrite": "Tulis semula",
+      "rewrite_hint": "Tulis semula + selaraskan gaya dengan buku, sambil mengekalkan maksud anda; isi semua dimensi.",
+      "add_only": "Tambah sahaja",
+      "add_only_hint": "Kekalkan prosa anda secara verbatim; hanya tambah dimensi yang hilang."
+    },
+    "context": {
+      "label": "Teks rujukan",
+      "placeholder": "Tampal teks rujukan tentang entiti ini. Ia akan dimasukkan sebagai asas dan pengayaan akan dijana daripadanya (dalam gaya bahasa buku).",
+      "license_label": "Lesen sumber",
+      "license": {
+        "public_domain": "Domain awam",
+        "licensed": "Berlesen untuk penggunaan ini",
+        "owned": "Saya memiliki / menulis ini",
+        "copyrighted": "Berhak cipta (tidak boleh digunakan)"
+      },
+      "copyrighted_warning": "Bahan berhak cipta tidak boleh dimasukkan. Gunakan teks domain awam, berlesen, atau teks anda sendiri.",
+      "responsibility": "Anda bertanggungjawab ke atas hak teks ini. Bukan nasihat undang-undang."
+    },
+    "files": {
+      "license_label": "Lesen fail",
+      "dropzone": "Lepaskan fail di sini atau klik untuk melayari",
+      "accept": ".txt .md .pdf .docx .epub — PDF imbasan akan melalui OCR",
+      "ready": "{{chars}} aksara{{ocr}}",
+      "ocr": "OCR",
+      "processing": "mengekstrak...",
+      "failed": "gagal",
+      "responsibility": "Saya mempunyai hak ke atas fail ini (milik sendiri / berlesen / domain awam). Bukan nasihat undang-undang."
+    },
+    "intent": {
+      "label": "Apa yang anda ingin cipta?",
+      "placeholder": "Gambarkan dalam kata-kata anda sendiri — cth. \"penasihat bijak yang membantu raja mengasaskan dinasti\".",
+      "resolve": "Selesaikan",
+      "resolving": "Menyelesaikan...",
+      "resolve_hint": "Mencadangkan sasaran di bawah — semak & edit, kemudian Jalankan."
+    },
+    "target": {
+      "existing": "Entiti sedia ada",
+      "new": "Entiti baharu",
+      "name": "Nama",
+      "name_placeholder": "cth. 碧遊宮",
+      "kind": "Jenis",
+      "existing_hint": "Memperkaya entiti glosari sedia ada dengan nama ini.",
+      "new_hint": "Mencipta entiti baharu — tiada apa yang ditulis ke dalam glosari anda sehingga anda mempromosikan cadangan tersebut."
+    },
+    "kind": {
+      "character": "Watak",
+      "location": "Lokasi",
+      "item": "Item",
+      "faction": "Faksi",
+      "event": "Peristiwa",
+      "generic": "Umum"
+    },
+    "config": {
+      "gen_model": "Model penjanaan",
+      "embed_model": "Model embedding",
+      "select_model": "Pilih...",
+      "max_spend": "Maksimum penggunaan (token)",
+      "no_cap": "tiada had",
+      "top_k": "Top-K",
+      "technique": "Teknik",
+      "technique_opt": {
+        "retrieval": "Retrieval (P1)",
+        "fabrication": "Fabrikasi (P2)",
+        "recook": "Re-cook (P3)"
+      },
+      "eval_gate_warning": "P2/P3 memerlukan kelulusan gerbang penilaian — tugasan akan ditolak sehingga ia lulus.",
+      "dimensions": {
+        "auto": "Auto — perkayakan semua dimensi yang hilang"
+      }
+    },
+    "safety": "① lesen · ② abstrak · ③ penjaga regurgitasi · ④ anda promosikan — pengayaan kekal sebagai varian sehingga anda mempromosikannya.",
+    "run_hint": "Berjalan sebagai tugasan latar belakang — cadangan akan muncul di bawah Cadangan apabila sedia.",
+    "save_corpus": "Simpan ke sumber (kekalkan — jangan padam automatik)",
+    "run": "Cipta draf",
+    "composing": "Memulakan...",
+    "enqueued": "Pengayaan bermula — cadangan akan muncul di bawah Cadangan."
+  },
+  "h0": {
+    "marker": "varian",
+    "tooltip": "Varian diperkaya — tidak akan menjadi kanon rasmi sehingga anda mempromosikannya."
+  },
+  "technique": {
+    "template": "templat",
+    "retrieval": "retrieval",
+    "fabrication": "fabrikasi",
+    "recook": "re-cook"
+  },
+  "review": {
+    "proposed": "Dicadangkan",
+    "author_reviewing": "Sedang menyemak",
+    "approved": "Diluluskan",
+    "promoted": "Dipromosikan",
+    "rejected": "Ditolak"
+  },
+  "verify": {
+    "none": "Tiada anotasi pengesahan.",
+    "clean": "Disahkan bersih — tiada percanggahan, anakronisme, suntikan, atau regurgitasi ditemui.",
+    "degraded": "Pengesahan terjejas — kanon tidak tersedia, jadi percanggahan tidak dapat disemak sepenuhnya.",
+    "status": {
+      "verified_clean": "disahkan",
+      "needs_review": "perlu disemak",
+      "quarantined": "kuarantin",
+      "degraded": "terjejas",
+      "auto_rejected": "ditolak automatik"
+    },
+    "flag": {
+      "contradiction": "Percanggahan dengan kanon",
+      "anachronism": "Anakronisme",
+      "injection": "Suntikan prompt",
+      "regurgitation": "Regurgitasi sumber"
+    },
+    "severity": {
+      "low": "rendah",
+      "medium": "sederhana",
+      "high": "tinggi"
+    }
+  },
+  "prov": {
+    "technique": "Teknik",
+    "confidence": "Keyakinan",
+    "origin": "Asal",
+    "entity_kind": "Jenis",
+    "model": "Model",
+    "recook_abstracted": "Dimasak semula daripada fakta abstrak — dijana daripada poin fakta neutral, bukan prosa sumber (②).",
+    "grounding": "Sumber pembumian",
+    "skipped": "Sumber yang dilewati (tiada lesen)"
+  },
+  "license": {
+    "public_domain": "domain awam",
+    "public-domain": "domain awam",
+    "licensed": "berlesen",
+    "unlicensed": "tiada lesen",
+    "copyrighted": "berhak cipta",
+    "restricted": "terhad",
+    "unknown": "tidak diketahui"
+  },
+  "detail": {
+    "h0_note": "Ini adalah varian diperkaya (origin=enrichment, confidence<1.0). Ia hanya menjadi kanon apabila anda mempromosikannya.",
+    "h0_banner": "Ini adalah varian diperkaya — bukan kanon asal. Ia hanya menjadi kanon apabila anda mempromosikannya.",
+    "dimensions": "{{count}} dimensi",
+    "show_more": "+ tunjuk {{count}} lagi",
+    "show_less": "Tunjuk kurang",
+    "content": "Lore yang dijana",
+    "verify": "Pengesahan",
+    "provenance": "Asal-usul & sumber"
+  },
+  "card": {
+    "confidence": "conf {{value}}",
+    "summary": "{{dims}} dimensi · berteraskan {{sources}} sumber",
+    "advisory": "⚠ {{count}} tanda amaran",
+    "auto_rejected": "Ditolak secara automatik"
+  },
+  "proposals": {
+    "search": "Cari cadangan…",
+    "status_all": "Semua",
+    "technique": "Teknik",
+    "project": "Projek",
+    "all_projects": "Semua",
+    "none": "Tiada cadangan sepadan.",
+    "error": "Tidak dapat memuatkan cadangan. Sila cuba lagi.",
+    "empty": {
+      "title": "Belum ada cadangan",
+      "description": "Kesan jurang dan perkayakan secara automatik untuk menjana cadangan bagi buku ini."
+    }
+  },
+  "actions": {
+    "promote": "Promosikan ke kanon",
+    "approve": "Lulus",
+    "edit": "Edit",
+    "reject": "Tolak",
+    "reject_reason": "Sebab penolakan (pilihan)",
+    "reject_confirm": "Sahkan penolakan",
+    "retract": "Tarik balik dari kanon",
+    "retract_confirm_title": "Tarik balik dari kanon?",
+    "retract_confirm_desc": "Ini akan membuang suplemen yang diperkaya daripada kanon buku ini. Entiti asal dikekalkan — anda boleh mempromosikannya semula kemudian.",
+    "author_only": "Hanya penulis buku boleh menyemak dan mempromosikan pengayaan.",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "already_promoted": "Telah dipromosikan ke kanon.",
+    "rejected_note": "Cadangan ini telah ditolak.",
+    "approved": "Cadangan diluluskan",
+    "rejected": "Cadangan ditolak",
+    "edited": "Cadangan dikemas kini",
+    "promoted": "Telah dipromosikan ke kanon",
+    "retracted": "Telah ditarik balik"
+  },
+  "promote": {
+    "title": "Promosikan ke kanon",
+    "h0": "Varian diperkaya ini akan menjadi kanon penulis untuk buku ini. Penanda asal kekal dikekalkan, jadi ia tetap boleh dikesan sebagai pengayaan asal.",
+    "responsibility": "Dengan mempromosikan, anda menerima kandungan ini sebagai penulis dan mengesahkan anda memegang hak ke atas sumber yang membina kandungan tersebut. Bukan nasihat undang-undang.",
+    "confirm": "Promosikan",
+    "promoting": "Mempromosikan…"
+  },
+  "gaps": {
+    "title": "Jurang",
+    "subtitle": "Entiti yang kurang diperincikan dalam glosari buku ini, disusun mengikut kepentingan. Kesan, kemudian perkayakan jurang terpilih secara automatik sebagai tugas latar belakang.",
+    "detect": "Kesan jurang",
+    "detect_hint": "Klik \"Kesan jurang\" untuk mengimbas liputan glosari buku ini.",
+    "none": "Tiada jurang dikesan — setiap entiti diperincikan dengan baik.",
+    "extract_first": "Belum ada entiti — ekstrak buku ini terlebih dahulu (Tab Pengetahuan). Pengayaan mengisi jurang dalam entiti yang sudah diketahui oleh platform.",
+    "extract_cta": "Ekstrak entiti sekarang",
+    "technique": "Teknik",
+    "gen_model": "Model penjanaan",
+    "embed_model": "Model pembenaman",
+    "select_model": "Pilih…",
+    "max_gaps": "Maks jurang",
+    "max_spend": "Maks perbelanjaan (token)",
+    "no_cap": "tiada had",
+    "top_k": "Top-K",
+    "gate_note": "Fabrikasi P2 / Masak semula P3 memerlukan kelulusan gerbang penilaian (juri pelbagai).",
+    "auto_enrich": "Perkayakan automatik",
+    "enrich_one": "Perkayakan",
+    "enrich_one_hint": "Pilih model penjanaan + pembenaman di bawah untuk memperkayakan.",
+    "enriching": "Memasukkan dalam giliran…",
+    "enqueued": "Memasukkan {{count}} jurang ke dalam giliran pengayaan",
+    "col": {
+      "entity": "Entiti",
+      "kind": "Jenis",
+      "missing": "Dimensi hilang",
+      "rank": "Peringkat",
+      "action": "Tindakan"
+    }
+  },
+  "sources": {
+    "title": "Sumber",
+    "subtitle": "Korpus bertanda lesen untuk pengambilan / masak semula.",
+    "register": "Daftar sumber",
+    "name": "Nama",
+    "kind": "Jenis",
+    "license": "Lesen",
+    "embed_model": "Model pembenaman",
+    "ingest": "Masukkan teks",
+    "ingesting": "Memasukkan…",
+    "ingested": "Dimasukkan — {{count}} bahagian telah dibenamkan",
+    "ingest_placeholder": "Tampal teks sumber domain awam / berlesen untuk pemecahan + pembenaman…",
+    "chunks": "{{count}} bahagian",
+    "embedded": "dibenamkan ✓",
+    "partial": "{{done}}/{{total}} dibenamkan",
+    "none": "Tiada sumber didaftarkan lagi.",
+    "recook_ok": "masak-semula-OK",
+    "recook_refused": "masak-semula ditolak (tolak-lalai)",
+    "default_deny": "Tolak-lalai: hanya sumber domain awam / berlesen boleh dimasak semula. Anda bertanggungjawab atas lesen sumber yang anda daftar.",
+    "registered": "Sumber didaftarkan",
+    "grounded": "Dibumikan — {{count}} bab telah dibenamkan"
+  },
+  "ground": {
+    "title": "Pembumian daripada bab",
+    "subtitle": "Pilih bab khusus untuk dibenamkan sebagai korpus pembumian — prosa mentah di luar apa yang dicakupi oleh RAG pengetahuan + kanon glosari. Teks ini adalah milik anda sendiri.",
+    "no_chapters": "Buku ini belum mempunyai bab.",
+    "showing": "Menunjukkan {{shown}} daripada {{total}} bab — laluan pembumian utama (RAG pengetahuan) sudah merangkumi semua bab; ini adalah untuk pemilihan tambahan secara sengaja.",
+    "ingest": "Bumikan {{count}} bab",
+    "ingesting": "Membenamkan…"
+  },
+  "jobs": {
+    "none": "Belum ada tugas pengayaan.",
+    "resume": "Sambung",
+    "resumed": "Tugas sambungan dimasukkan ke dalam giliran",
+    "col": {
+      "technique": "Teknik",
+      "status": "Status",
+      "proposals": "Cadangan",
+      "cost": "Kos",
+      "created": "Dicipta"
+    },
+    "status": {
+      "pending": "Menunggu",
+      "estimating": "Menganggarkan",
+      "running": "Sedang berjalan",
+      "paused": "Dijeda",
+      "completed": "Selesai",
+      "failed": "Gagal",
+      "cancelled": "Dibatalkan"
+    },
+    "error": {
+      "gateLocked": "Dikunci oleh gerbang penilaian — jalankan penilaian pengayaan terlebih dahulu.",
+      "internal": "Pengayaan gagal (ralat dalaman). Halakan tetikus untuk butiran.",
+      "insufficientGrounding": "Tiada asas korpus yang boleh digunakan untuk entiti ini — tampal konteks rujukan atau gunakan Fabrication."
+    }
+  },
+  "settings": {
+    "title": "Profil pengayaan",
+    "subtitle": "Pandangan dunia bagi setiap buku yang mengurangkan bias penjanaan — bahasa, era, suara, dan dimensi yang diisi oleh pengayaan. Suntingan akan terpakai pada tugasan baharu.",
+    "error": "Tidak dapat memuatkan profil. Sila cuba lagi.",
+    "worldview": "Pandangan dunia",
+    "language": "Bahasa output",
+    "voice": "Suara",
+    "era_policy": "Polisi era",
+    "era_hint": "Kekangan era/anakronisme, cth. \"tiada teknologi pasca-Shang-Zhou\". Kosong = semakan anakronisme dimatikan.",
+    "markers": "Penanda anakronisme",
+    "markers_placeholder": "istilah | sebab (satu setiap baris)",
+    "markers_hint": "Satu setiap baris sebagai \"istilah | sebab\". Ini adalah istilah yang ditandakan oleh semakan anakronisme. Mengosongkannya akan mematikan semakan tersebut.",
+    "dimensions": "Pertindihan dimensi",
+    "kind": {
+      "character": "Watak",
+      "location": "Lokasi",
+      "item": "Item",
+      "faction": "Faksi",
+      "event": "Peristiwa"
+    },
+    "add_dimension": "Tambah dimensi",
+    "no_extra_dims": "Menggunakan dimensi terbina dalam untuk jenis ini.",
+    "dim_id": "id",
+    "dim_label": "label",
+    "dim_weight": "berat",
+    "dim_required": "diperlukan",
+    "remove_dimension": "Buang dimensi",
+    "hide": "Sembunyi",
+    "suggest": "Cadangkan daripada buku",
+    "suggesting": "Menganalisis…",
+    "suggest_model": "Model cadangan",
+    "select_model": "Pilih model…",
+    "suggest_hint": "AI membaca metadata buku + bab untuk mencadangkan draf yang boleh anda sunting. Tiada apa yang disimpan sehingga anda menekan Simpan.",
+    "suggested": "Draf dicadangkan — semak, kemudian Simpan",
+    "saving": "Menyimpan…",
+    "saved": "Profil disimpan",
+    "source": "Sumber: {{source}}",
+    "source_seed": "benih",
+    "source_ai_suggested": "Dicadangkan oleh AI",
+    "source_manual": "manual"
+  }
+}

@@ -4,6 +4,7 @@
 // state churn.
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { JSX } from 'react';
 
 export interface Session {
   userId: string;

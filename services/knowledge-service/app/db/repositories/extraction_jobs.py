@@ -172,7 +172,8 @@ _SELECT_COLS = """
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
-  targets, concurrency_level, pinned_entity_ids
+  targets, concurrency_level, pinned_entity_ids, reasoning_effort,
+  mcp_key_id, spend_cap_usd
 """
 
 
@@ -207,6 +208,13 @@ class ExtractionJob(BaseModel):
     billing_embedding_model: str | None = None
     billing_llm_model: str | None = None
 
+    # D-PMCP-WORKER-CARRIER: public-MCP-key attribution for a kg_build_graph started
+    # by a public key. Ride the row → resume_state → worker re-set so the extraction
+    # spend tags job_meta with the key (+ its cap). NULL ⇒ first-party. spend_cap_usd
+    # is float (DOUBLE PRECISION column), NOT Decimal — asyncpg rejects float→numeric.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
+
     # C12 — target-typed extraction. The subset of Pass-2 passes this job
     # runs (entities/relations/events/facts/summaries). The DB column is
     # NOT NULL DEFAULT all-five, so a row always carries a concrete set;
@@ -221,6 +229,9 @@ class ExtractionJob(BaseModel):
     # extraction window's known_entities. NULL/None ⇒ no pins (back-compat).
     # Stored as a JSONB array; the worker fetches the names + prepends them.
     pinned_entity_ids: list[str] | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped graded reasoning effort for the extraction LLM.
+    # worker-ai honors it via D-KG-WORKER-GRADED-EFFORT; 'none' ⇒ no thinking (back-compat).
+    reasoning_effort: str = "none"
 
     items_total: int | None = None
     items_processed: int = 0
@@ -284,6 +295,13 @@ class ExtractionJobCreate(BaseModel):
     concurrency_level: Annotated[int, Field(ge=1, le=64)] | None = None
     # C13 — pinned glossary entity ids. None / empty ⇒ no pins (back-compat).
     pinned_entity_ids: list[str] | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort persisted on the job. Default 'none'.
+    reasoning_effort: str = "none"
+    # D-PMCP-WORKER-CARRIER: public-MCP-key attribution (set only by the kg confirm
+    # replay for a public-key kg_build_graph). spend_cap_usd is float (DOUBLE
+    # PRECISION column), NOT Decimal — asyncpg rejects a float→numeric bind.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -346,9 +364,9 @@ class ExtractionJobsRepo:
           (user_id, project_id, scope, scope_range, llm_model,
            embedding_model, max_spend_usd, items_total, campaign_id,
            billing_user_id, billing_embedding_model, billing_llm_model,
-           targets, concurrency_level, pinned_entity_ids)
+           targets, concurrency_level, pinned_entity_ids, reasoning_effort)
         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15::jsonb)
+                $13, $14, $15::jsonb, $16)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -375,13 +393,32 @@ class ExtractionJobsRepo:
                     # C13 — pinned glossary entity ids as a JSONB array (NULL ⇒ no
                     # pins, back-compat).
                     json.dumps(data.pinned_entity_ids) if data.pinned_entity_ids else None,
+                    # D-RE-OTHER-AGENTIC-EFFORT — the clamped reasoning effort.
+                    data.reasoning_effort,
                 )
                 job = _row_to_job(row)
+                # bug #37 — estimated LLM-call budget for the Jobs GUI ("done / total").
+                # Per item: 1 entity call + one each for the requested relation/event/fact
+                # trio (recovery/precision-filter add realized calls the estimate omits, so
+                # realized can exceed it — "estimate, not quote"). Null-safe: omitted when
+                # items_total is unknown (backfill enumeration). The worker advances
+                # llm_calls_done; the projection merges params so neither wipes the other.
+                _job_params = None
+                if data.items_total:
+                    # None OR empty ⇒ "run all" (the SDK's normalize_targets semantics) ⇒
+                    # entity + the full relation/event/fact trio. `if data.targets` is falsy
+                    # for both None and [] → defaults to all, matching the worker.
+                    _eff_targets = list(data.targets) if data.targets else list(DEFAULT_TARGETS)
+                    _calls_per_item = 1 + sum(
+                        1 for _t in _eff_targets if _t in ("relations", "events", "facts")
+                    )
+                    _job_params = {"estimated_llm_calls": data.items_total * _calls_per_item}
                 # Unified Job Control Plane P1 — emit the initial lifecycle event.
                 await emit_job_event(
                     conn, service=_JOB_SERVICE, job_id=str(job.job_id),
                     owner_user_id=str(user_id), kind=_JOB_KIND,
                     status=_canonical_job_status(job.status),
+                    params=_job_params,
                 )
         return job
 
@@ -580,20 +617,28 @@ class ExtractionJobsRepo:
                 cc_idx = len(params) - 2   # $N for cur_completed_at
                 cr_idx = len(params) - 1   # $N for cur_created_at
                 cj_idx = len(params)       # $N for cur_job_id
+                # K27 (2026-07-24) — every ${cc_idx} carries an explicit ::timestamptz cast.
+                # cur_completed_at is nullable, and its FIRST textual use is `${cc_idx} IS NOT
+                # NULL` — a context from which Postgres cannot infer the parameter's type at
+                # PREPARE time, so asyncpg raised `AmbiguousParameterError: could not determine
+                # data type of parameter $N` on EVERY second page of history pagination (a live
+                # bug: the endpoint 500s past page 1). Unit tests mock the SQL so never saw it;
+                # the integration test that would have never ran in CI (K28). The cast makes the
+                # type determinable regardless of branch. (feedback_asyncpg_case_branch_needs_explicit_cast)
                 cursor_clause = f"""
                   AND (
                     -- cursor and row both non-null: seek lower completed_at
                     -- or (equal AND lower tiebreak).
-                    (j.completed_at IS NOT NULL AND ${cc_idx} IS NOT NULL
-                      AND j.completed_at < ${cc_idx})
-                    OR (j.completed_at IS NOT NULL AND ${cc_idx} IS NOT NULL
-                      AND j.completed_at = ${cc_idx}
+                    (j.completed_at IS NOT NULL AND ${cc_idx}::timestamptz IS NOT NULL
+                      AND j.completed_at < ${cc_idx}::timestamptz)
+                    OR (j.completed_at IS NOT NULL AND ${cc_idx}::timestamptz IS NOT NULL
+                      AND j.completed_at = ${cc_idx}::timestamptz
                       AND (j.created_at, j.job_id) < (${cr_idx}, ${cj_idx}))
                     -- cursor non-null, row null: null ranks after non-null
                     -- under NULLS LAST so the null row is "after" the cursor.
-                    OR (j.completed_at IS NULL AND ${cc_idx} IS NOT NULL)
+                    OR (j.completed_at IS NULL AND ${cc_idx}::timestamptz IS NOT NULL)
                     -- both null: tiebreak by (created_at, job_id).
-                    OR (j.completed_at IS NULL AND ${cc_idx} IS NULL
+                    OR (j.completed_at IS NULL AND ${cc_idx}::timestamptz IS NULL
                       AND (j.created_at, j.job_id) < (${cr_idx}, ${cj_idx}))
                   )
                 """

@@ -66,7 +66,7 @@ def _app(pool) -> FastAPI:
 
 
 def _bearer(sub: str = OWNER) -> str:
-    return pyjwt.encode({"sub": sub}, "x", algorithm="HS256")
+    return pyjwt.encode({"sub": sub, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 def _client(pool):

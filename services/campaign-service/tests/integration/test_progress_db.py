@@ -73,7 +73,9 @@ async def test_list_progress_done_counts_translation_settled(pool):
     await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')      # counts
     await _chapter(pool, cid, 2, kn='done', tr='skipped', ev='pending')  # counts (skipped)
     await _chapter(pool, cid, 3, kn='done', tr='dispatched', ev='pending')  # not yet
-    rows = await repo.list_campaigns(pool, owner)
+    # K27 (2026-07-24): list_campaigns is now keyword-only (E0-4b) — pass
+    # owner_user_id= explicitly (the router's "my campaigns" branch does the same).
+    rows = await repo.list_campaigns(pool, owner_user_id=owner)
     assert len(rows) == 1
     assert rows[0]["progress_done"] == 2
 
@@ -116,9 +118,11 @@ async def test_chapters_page_inflight_filter(pool):
     assert att_total == 3 and 4 in [r["chapter_sort"] for r in att]
 
 
-async def test_update_campaign_fields_partial_and_scoped(pool):
+async def test_update_campaign_fields_partial(pool):
     # D-FACTORY-SWITCH-MODEL-RESUME — update_campaign_fields sets ONLY the given
-    # columns (leaves others intact) and is owner-scoped.
+    # columns (leaves others intact). K27 (2026-07-24): the owner-scope half was
+    # removed — E0-4b scopes by campaign_id (PK), owner/grant gating is the router's
+    # job (_grant_campaign MANAGE), covered by test_campaigns_api / test_grant_adopt.
     owner = uuid4()
     cid = await pool.fetchval(
         "INSERT INTO campaigns (owner_user_id, book_id, name, status, "
@@ -129,16 +133,16 @@ async def test_update_campaign_fields_partial_and_scoped(pool):
     new_model = uuid4()
     # switch only the translation model — budget must be untouched
     row = await repo.update_campaign_fields(
-        pool, cid, owner, {"translation_model_ref": new_model})
+        pool, cid, {"translation_model_ref": new_model})
     assert row is not None
     assert row["translation_model_ref"] == new_model
     assert row["budget_usd"] == __import__('decimal').Decimal("10")  # left intact
 
-    # wrong owner → None (not updated)
-    assert await repo.update_campaign_fields(pool, cid, uuid4(), {"translation_model_ref": uuid4()}) is None
-    # no valid field → None
-    assert await repo.update_campaign_fields(pool, cid, owner, {"bogus": 1}) is None
-    # the wrong-owner attempt did not change the model
+    # an unknown campaign_id → None (not updated)
+    assert await repo.update_campaign_fields(pool, uuid4(), {"translation_model_ref": uuid4()}) is None
+    # no whitelisted field → None (the column whitelist rejects unknown keys)
+    assert await repo.update_campaign_fields(pool, cid, {"bogus": 1}) is None
+    # the not-found attempt did not change the model
     check = await pool.fetchval("SELECT translation_model_ref FROM campaigns WHERE campaign_id=$1", cid)
     assert check == new_model
 

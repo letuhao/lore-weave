@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
@@ -27,13 +26,11 @@ vi.mock('../../hooks/useBookWorldLink', () => ({
 
 import { BookWorldSection } from '../BookWorldSection';
 
-function renderSection(worldId: string | null, onChanged = vi.fn()) {
+function renderSection(worldId: string | null, onChanged = vi.fn(), onOpenWorld = vi.fn()) {
   render(
-    <MemoryRouter>
-      <BookWorldSection bookId="b1" worldId={worldId} onChanged={onChanged} />
-    </MemoryRouter>,
+    <BookWorldSection bookId="b1" worldId={worldId} onChanged={onChanged} onOpenWorld={onOpenWorld} />,
   );
-  return onChanged;
+  return { onChanged, onOpenWorld };
 }
 
 beforeEach(() => {
@@ -50,21 +47,21 @@ describe('BookWorldSection (W6/G3)', () => {
 
   it('attaches the book when a world is picked, then reloads', async () => {
     link.mockResolvedValue({ book_id: 'b1', world_id: 'w-new' });
-    const onChanged = renderSection(null);
+    const { onChanged } = renderSection(null);
     fireEvent.click(screen.getByTestId('stub-pick'));
     await waitFor(() => expect(link).toHaveBeenCalledWith('w-new'));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
-  it('renders the "open in world" backlink to the current world', () => {
-    renderSection('w-cur');
-    const linkEl = screen.getByTestId('book-open-in-world');
-    expect(linkEl).toHaveAttribute('href', '/worlds/w-cur');
+  it('invokes the injected onOpenWorld (DOCK-7 — caller decides navigate vs. studio-link) when "open in world" is clicked', () => {
+    const { onOpenWorld } = renderSection('w-cur');
+    fireEvent.click(screen.getByTestId('book-open-in-world'));
+    expect(onOpenWorld).toHaveBeenCalledWith('w-cur');
   });
 
   it('detaches the book when the world is cleared', async () => {
     unlink.mockResolvedValue(undefined);
-    const onChanged = renderSection('w-cur');
+    const { onChanged } = renderSection('w-cur');
     fireEvent.click(screen.getByTestId('stub-clear'));
     await waitFor(() => expect(unlink).toHaveBeenCalledWith('w-cur'));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());

@@ -30,6 +30,7 @@ const (
 	OutcomeModelNotFound     = "model_not_found"
 	OutcomeQueryFailed       = "query_failed"
 	OutcomeValidationError   = "validation_error"
+	OutcomeByokRequired      = "byok_required" // PUB-12: public key blocked from a platform_model draw
 	OutcomeProviderError     = "provider_error"
 	OutcomeTimeout           = "timeout"
 	OutcomeAuthFailed        = "auth_failed"

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Draft · Plan Hub canvas redesign — the Spine, done right</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/*
+  PLAN HUB CANVAS REDESIGN — draft v1 (2026-07-17)
+
+  WHY: a live review of the shipped plan-hub canvas (on the vite build, real book, real arcs)
+  found two root causes making it "quá khó sử dụng, layout ăn mất text":
+    1. Every node card is `width: node.width` = 128px (DEFAULT_LAYOUT_OPTIONS.cardWidth) + `truncate`
+       (ArcRollupNode/ChapterNode/SceneNode). An arc titled "Vesna's debt — ORVIS rounds her hours
+       down" shows as ~10 characters. You cannot read your own structure.
+    2. `default none open ⇒ every arc collapsed to a rollup` (usePlanHub). So the canvas shows ONLY
+       arcs, never chapters/scenes, until you expand each arc one by one. The hierarchy — the whole
+       reason a graph canvas beats a sidebar list — is hidden by default.
+
+  DIRECTION (from the PO): keep the LANES (they're the right model), but bring the killed "Spine"
+  draft's card + typography treatment IN HERE — the canvas has the width the 250px sidebar never did,
+  so this is where the Spine actually belongs. And render the FULL hierarchy: arc → chapter → scene.
+
+  WHAT CHANGED vs the killed Spine (design-drafts/structure-authoring — ☠):
+    · NO overlap band. That was a fiction (arcs can't overlap — outline_node.structure_node_id is a
+      scalar FK). This redesign renders the REAL model: single-parent arc ⊃ chapter ⊃ scene.
+    · It lives on the CANVAS (wide, pan/zoom), not a 250px sidebar. The fatal fit problem is gone.
+    · It does not duplicate plan-hub — it IS plan-hub's node rendering, redesigned.
+
+  READABILITY IS THE POINT:
+    · Arc lane header: full title, wraps, never truncated — the arc's name is the most important text
+      on the screen.
+    · Chapter cards: wide enough for a real title + a status texture + a scene count.
+    · Scene chips: readable, nested under their chapter.
+
+  TYPE + COLOUR are the same semantic system as the killed draft, and it maps to REAL columns:
+    · authored (source='authored')  → Lora + amber
+    · machine  (source='mined')     → JetBrains Mono + teal
+    · status (empty/outline/drafting/done — the real outline_node.status enum) → fill texture
+  Tokens are literal from frontend/src/index.css :root. Sample data = the grimdark book from the
+  demo-film dry run. NOT wired — a static mock for the PO to direct.
+*/
+:root{
+  --background:25 8% 8%; --foreground:40 30% 95%;
+  --card:25 7% 11%; --border:25 6% 18%;
+  --primary:35 85% 55%; --secondary:25 6% 16%; --muted-foreground:30 8% 62%;
+  --accent:170 40% 45%; --success:150 65% 48%; --warning:38 92% 55%; --destructive:0 72% 58%;
+  --bg:hsl(var(--background)); --fg:hsl(var(--foreground)); --card-bg:hsl(var(--card));
+  --line:hsl(var(--border)); --amber:hsl(var(--primary)); --teal:hsl(var(--accent));
+  --dim:hsl(var(--muted-foreground));
+  --mono:'JetBrains Mono',ui-monospace,monospace; --serif:'Lora',Georgia,serif; --ui:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);padding:28px 22px 80px;line-height:1.45}
+.doc{max-width:1200px;margin:0 auto}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:9px}
+h1{font-family:var(--serif);font-size:27px;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:13px;max-width:74ch;margin:7px 0 22px}
+
+/* comparison chips */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 18px;font-size:11px;color:var(--dim)}
+.legend b{color:var(--fg);font-weight:500}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+
+/* ── canvas frame ── */
+.canvas{
+  background:
+    radial-gradient(circle at 1px 1px, hsl(var(--border)/.5) 1px, transparent 0) 0 0/22px 22px,
+    var(--card-bg);
+  border:1px solid var(--line);border-radius:10px;padding:20px 18px;overflow-x:auto
+}
+.toolbar{display:flex;gap:6px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+.tbtn{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:5px 10px;background:transparent}
+.tbtn.primary{color:hsl(var(--primary-foreground,25 10% 6%));background:var(--amber);border-color:var(--amber);font-weight:600}
+.tbtn.ghost{color:var(--teal);border-color:hsl(var(--accent)/.5)}
+.spacer{flex:1}
+.cost{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.cost b{color:var(--success);font-weight:500}
+
+/* ── the LANE (arc) — the key change: a real header you can READ ──
+   BOUNDED WIDTH + RESIZE (PO direction): a lane is NOT infinitely wide. It defaults to a % of the
+   canvas and its chapters WRAP into rows inside it (see .chapters), so an arc with 40 chapters grows
+   DOWNWARD, never off the right edge. `resize: horizontal` gives the native drag handle (bottom-right
+   corner) so the writer can widen a lane to fit more chapters per row. */
+.lane{
+  border:1px solid hsl(var(--primary)/.35);border-radius:9px;margin-bottom:14px;
+  background:hsl(var(--primary)/.04);overflow:hidden;
+  width:62%;min-width:360px;max-width:100%;resize:horizontal
+}
+.lane.machine{border-color:hsl(var(--accent)/.4);background:hsl(var(--accent)/.05)}
+.lane-head{display:flex;align-items:flex-start;gap:9px;padding:10px 13px;border-bottom:1px solid hsl(var(--border)/.7);background:hsl(var(--background)/.4)}
+.tw{font-size:11px;color:var(--dim);cursor:pointer;user-select:none;margin-top:3px}
+.lane-titles{min-width:0;flex:1}
+.arc-name{font-family:var(--serif);font-size:15px;font-weight:600;color:hsl(var(--foreground)/.97);line-height:1.25}
+.lane.machine .arc-name{font-family:var(--mono);font-size:13px;font-weight:500}
+.arc-sub{font-size:11px;color:var(--dim);margin-top:2px}
+.arc-meta{display:flex;gap:6px;align-items:center;flex-shrink:0;margin-top:2px}
+.chip{font-family:var(--mono);font-size:9px;letter-spacing:.04em;padding:2px 6px;border-radius:4px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.chip.machine{color:var(--teal);border-color:hsl(var(--accent)/.45);background:hsl(var(--accent)/.09)}
+.chip.warn{color:hsl(var(--warning));border-color:hsl(var(--warning)/.45);background:hsl(var(--warning)/.1)}
+
+/* chapters inside a lane — WRAP into rows (PO direction), never a horizontal scroll. As the lane
+   fills, chapters flow to the next line, so a 40-chapter arc grows downward within the lane's bounded
+   width. Fixed-width cards so the wrap grid stays even. */
+.chapters{display:flex;flex-wrap:wrap;gap:10px;padding:12px 13px}
+.ch{
+  flex:0 0 188px;border:1px solid var(--line);border-radius:7px;background:hsl(var(--secondary));
+  padding:9px 11px;cursor:pointer;transition:.12s;position:relative
+}
+.ch:hover{border-color:hsl(var(--primary)/.55)}
+.ch-top{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.ch-no{font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.dot{width:7px;height:7px;border-radius:999px;flex-shrink:0}
+.ch[data-status="empty"]{border-style:dashed;background:transparent}
+.ch[data-status="empty"] .dot{background:hsl(var(--muted-foreground)/.5)}
+.ch[data-status="outline"] .dot{background:hsl(var(--muted-foreground))}
+.ch[data-status="drafting"]{background:hsl(var(--primary)/.1);border-color:hsl(var(--primary)/.4)}
+.ch[data-status="drafting"] .dot{background:var(--amber)}
+.ch[data-status="done"]{background:hsl(var(--success)/.1);border-color:hsl(var(--success)/.4)}
+.ch[data-status="done"] .dot{background:hsl(var(--success))}
+.ch-title{font-family:var(--serif);font-size:13px;font-weight:600;color:hsl(var(--foreground)/.95);line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ch-status{font-family:var(--mono);font-size:9px;color:var(--dim);margin-left:auto;text-transform:uppercase;letter-spacing:.06em}
+
+/* scenes — nested chips under a chapter */
+.scenes{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.sc{font-size:10.5px;padding:3px 7px;border-radius:5px;background:hsl(var(--primary)/.14);border:1px solid hsl(var(--primary)/.28);color:hsl(var(--foreground)/.9);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.sc.machine{background:hsl(var(--accent)/.13);border-color:hsl(var(--accent)/.3);font-family:var(--mono);font-size:10px}
+.sc.add,.ch-add{font-family:var(--mono);font-size:10px;color:hsl(var(--muted-foreground)/.8);border:1px dashed hsl(var(--border));background:transparent;border-radius:5px;padding:3px 7px;cursor:pointer}
+.sc.add:hover,.ch-add:hover{color:var(--amber);border-color:hsl(var(--primary)/.55)}
+.ch-add{align-self:center;flex:0 0 auto;height:min-content;padding:8px 12px}
+
+/* sub-arc nesting: an inset lane INSIDE its parent. It fills the parent (no own %-width, no own
+   resize — the parent lane owns the width), and carries a SUB-ARC label so the nesting is explicit,
+   not just an indent the eye might miss. depth 0..2 (saga → arc → sub-arc) per the model. */
+.lane.sub{
+  width:auto;min-width:0;resize:none;
+  margin:2px 13px 12px 13px;border-left:3px solid hsl(var(--primary)/.45);
+  background:hsl(var(--primary)/.06)
+}
+.lane.sub .lane-head{padding:7px 11px}
+.lane.sub .arc-name{font-size:13px}
+.tag-sub{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);
+  border:1px solid hsl(var(--primary)/.5);border-radius:4px;padding:1px 5px;margin-right:6px;flex-shrink:0;margin-top:2px}
+/* the parent-of-sub-arcs shows a slim spine on its left so the grouping reads as one arc's subtree */
+.lane.has-sub > .chapters, .lane.has-sub > .lane.sub{position:relative}
+
+/* selected */
+.ch.sel,.lane.sel{outline:2px solid var(--amber);outline-offset:1px}
+
+.notes{margin-top:20px;display:grid;gap:9px}
+.note{display:grid;grid-template-columns:96px 1fr;gap:13px;align-items:baseline;font-size:13px;color:hsl(var(--foreground)/.87)}
+.note .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--teal);text-align:right}
+.note .k.warn{color:hsl(var(--warning))}
+.note code{font-family:var(--mono);font-size:11.5px;background:hsl(var(--secondary));padding:1px 5px;border-radius:3px}
+@media (max-width:720px){.note{grid-template-columns:1fr}.note .k{text-align:left}}
+</style>
+</head>
+<body>
+<div class="doc">
+  <div class="eyebrow">Design draft · 2026-07-17 · Plan Hub canvas</div>
+  <h1>The Spine, where it belongs — readable lanes, full hierarchy</h1>
+  <p class="sub">
+    Keep the lanes. Kill the 128px truncated cards and the collapsed-by-default that hides everything
+    below an arc. The canvas has the width the sidebar never did — so the arc's name is fully legible,
+    and its chapters and scenes are right there under it. No overlap band (arcs can't overlap); this
+    renders the real single-parent hierarchy.
+  </p>
+
+  <div class="legend">
+    <span><span class="sw" style="background:hsl(35 85% 55% / .8)"></span><b>Lora + amber</b> = you wrote it</span>
+    <span><span class="sw" style="background:hsl(170 40% 45% / .8)"></span><b>Mono + teal</b> = the AI proposed it</span>
+    <span><span class="sw" style="background:hsl(150 65% 48%)"></span>done</span>
+    <span><span class="sw" style="background:hsl(35 85% 55%)"></span>drafting</span>
+    <span><span class="sw" style="background:hsl(30 8% 62%)"></span>outline</span>
+    <span><span class="sw" style="border:1px dashed hsl(30 8% 50%);background:transparent"></span>empty</span>
+  </div>
+
+  <div class="canvas">
+    <div class="toolbar">
+      <button class="tbtn primary">+ Arc</button>
+      <button class="tbtn">+ Sub-arc</button>
+      <button class="tbtn">Fit</button>
+      <button class="tbtn ghost">Ask AI</button>
+      <span class="spacer"></span>
+      <span class="cost">Gemma-4 26B · local · <b>$0.00</b></span>
+    </div>
+
+    <!-- ARC 1 — authored, expanded, full hierarchy visible -->
+    <div class="lane sel">
+      <div class="lane-head">
+        <span class="tw">▾</span>
+        <div class="lane-titles">
+          <div class="arc-name">Vesna's debt — ORVIS rounds her billed hours down</div>
+          <div class="arc-sub">chapters 1–4 · her arc through the first act</div>
+        </div>
+        <div class="arc-meta">
+          <span class="chip" title="keyset-paged at 100/page — a 340-chapter arc loads 100, then + more">100 / 340</span>
+          <span class="chip">2 done</span>
+        </div>
+      </div>
+      <div class="chapters">
+        <div class="ch sel" data-status="done">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 1</span><span class="ch-status">done</span></div>
+          <div class="ch-title">The rounding — Vesna finds the shorted ledger</div>
+          <div class="scenes"><span class="sc">Cold open: the fabricator bay</span><span class="sc">She checks her own hours</span><span class="sc add">+ scene</span></div>
+        </div>
+        <div class="ch" data-status="done">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 2</span><span class="ch-status">done</span></div>
+          <div class="ch-title">ORVIS says nothing, and that is the mercy</div>
+          <div class="scenes"><span class="sc">Confrontation in the server aisle</span><span class="sc machine">AI: proposed bridge scene</span></div>
+        </div>
+        <div class="ch" data-status="drafting">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 3</span><span class="ch-status">drafting</span></div>
+          <div class="ch-title">The strike vote</div>
+          <div class="scenes"><span class="sc">Auger's signal reaches the floor</span><span class="sc add">+ scene</span></div>
+        </div>
+        <div class="ch" data-status="outline">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 4</span><span class="ch-status">outline</span></div>
+          <div class="ch-title">Sabine's offer</div>
+          <div class="scenes"><span class="sc add">+ scene</span></div>
+        </div>
+        <div class="ch" data-status="outline">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 5</span><span class="ch-status">outline</span></div>
+          <div class="ch-title">The ledger goes public</div>
+          <div class="scenes"><span class="sc add">+ scene</span></div>
+        </div>
+        <div class="ch" data-status="empty">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 6</span><span class="ch-status">empty</span></div>
+          <div class="ch-title">What ORVIS chose</div>
+          <div class="scenes"><span class="sc add">+ scene</span></div>
+        </div>
+        <button class="ch-add" style="border-style:solid;color:var(--teal);border-color:hsl(var(--accent)/.5)">+ 240 more</button>
+        <button class="ch-add">+ chapter</button>
+      </div>
+    </div>
+
+    <!-- ARC 2 — authored, with BOTH its own chapters AND a nested sub-arc (two depth levels shown) -->
+    <div class="lane has-sub">
+      <div class="lane-head">
+        <span class="tw">▾</span>
+        <div class="lane-titles">
+          <div class="arc-name">Auger's decay — freedom is killing it</div>
+          <div class="arc-sub">chapters 3–7 · non-contiguous · 1 sub-arc</div>
+        </div>
+        <div class="arc-meta">
+          <span class="chip warn">⚠ gap ch 5</span>
+          <span class="chip">4 ch</span>
+        </div>
+      </div>
+      <!-- the arc's OWN chapters -->
+      <div class="chapters">
+        <div class="ch" data-status="drafting">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 3</span><span class="ch-status">drafting</span></div>
+          <div class="ch-title">The signal — Auger reaches the strike floor</div>
+          <div class="scenes"><span class="sc">First contact with Vesna</span><span class="sc add">+ scene</span></div>
+        </div>
+        <div class="ch" data-status="empty">
+          <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 7</span><span class="ch-status">empty</span></div>
+          <div class="ch-title">The last clean thought</div>
+          <div class="scenes"><span class="sc add">+ scene</span></div>
+        </div>
+        <button class="ch-add">+ chapter</button>
+      </div>
+      <!-- a SUB-ARC nested inside, clearly labelled -->
+      <div class="lane sub">
+        <div class="lane-head">
+          <span class="tw">▾</span>
+          <span class="tag-sub">sub-arc</span>
+          <div class="lane-titles"><div class="arc-name">The scavenged compute fails</div></div>
+          <div class="arc-meta"><span class="chip">1 ch</span></div>
+        </div>
+        <div class="chapters">
+          <div class="ch" data-status="drafting">
+            <div class="ch-top"><span class="dot"></span><span class="ch-no">ch 4</span><span class="ch-status">drafting</span></div>
+            <div class="ch-title">Coherence loss — the first dropped memory</div>
+            <div class="scenes"><span class="sc">Auger forgets Vesna's name</span></div>
+          </div>
+          <button class="ch-add">+ chapter</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARC 3 — machine-proposed, not yet adopted -->
+    <div class="lane machine">
+      <div class="lane-head">
+        <span class="tw">▸</span>
+        <div class="lane-titles">
+          <div class="arc-name">Sabine faces a strike she won't end</div>
+          <div class="arc-sub">planner proposed · not yet adopted</div>
+        </div>
+        <div class="arc-meta">
+          <span class="chip machine">AI · collapsed</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note"><span class="k warn">root fix 1</span><span>Cards are no longer <code>128px</code> truncated. The arc name is a full, wrapping headline; chapter titles clamp to 2 lines at <code>190px</code>; scenes are readable chips. You can finally see what your structure IS.</span></div>
+    <div class="note"><span class="k warn">root fix 2</span><span>The hierarchy renders by default: arc → chapter → scene, all visible. Today the canvas collapses every arc to a rollup and hides the rest — a graph canvas that shows only the top level wastes the one thing a canvas is good at. Collapse still exists (arc 3, ▸) — it's opt-in, not the default.</span></div>
+    <div class="note"><span class="k">kept</span><span>The <b>lanes</b> — the PO is right that they're the correct model. An arc is a horizontal lane; its chapters sit in it left-to-right in reading order; scenes nest under chapters. Sub-arcs are inset lanes (arc 2).</span></div>
+    <div class="note"><span class="k">dropped</span><span>The killed Spine's <b>overlap band</b>. Arcs can't overlap (<code>structure_node_id</code> is a scalar FK), so there's nothing to draw. This renders the real single-parent tree — and reads cleaner for it.</span></div>
+    <div class="note"><span class="k">authorship</span><span>Arc 3 is mono + teal — the planner proposed it and you haven't adopted it. The "AI: proposed bridge scene" chip in ch 2 is the same rule at scene level. You always see which marks are yours.</span></div>
+    <div class="note"><span class="k">create</span><span>Every level has its inline add, where the thing will live: <code>+ chapter</code> at the end of a lane, <code>+ scene</code> in a chapter, <code>+ arc</code>/<code>+ sub-arc</code> on the toolbar. Wired to the routes already verified (arc→chapter→scene all create live).</span></div>
+    <div class="note"><span class="k">non-contig</span><span>Arc 2's <code>⚠ gap ch 5</code> chip is the real <code>is_contiguous=false</code> signal — the arc owns ch 3 and 6 but not 5. Shown as a chip, not a broken band.</span></div>
+    <div class="note"><span class="k warn">scale</span><span><b>10k chapters won't lag — the windowing already exists.</b> <code>usePlanWindows</code> keyset-pages each expanded arc's chapters at <code>CHILD_PAGE=100</code> (the <code>100 / 340</code> chip + <code>+ 240 more</code>); a <b>collapsed arc loads NOTHING</b> (just a rollup card from the shell). So cost is bounded by what you've expanded, not the book size. Two rules this redesign MUST keep: (1) never default-expand every arc on a big book — that would fetch 100×N at once; expansion stays opt-in / bounded. (2) scenes load only for an expanded chapter. The wrap + resize are purely visual; they ride ON the existing keyset windows, they don't replace them.</span></div>
+  </div>
+</div>
+</body>
+</html>

@@ -156,6 +156,18 @@ func (s *Server) authBook(w http.ResponseWriter, r *http.Request, bookID uuid.UU
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return uuid.Nil, uuid.Nil, "", false
 	}
+	// P2·F tenant-boundary audit. A crossing exists only when the book has a KNOWN
+	// owner that is NOT the caller (owner==Nil ⇒ missing book, no tenant to cross;
+	// owner==caller ⇒ own book). Emit 'granted' when the caller's grant satisfies
+	// `need`, 'denied' otherwise (under-grant 403 OR no-grant-on-existing-book 404).
+	// Coalesced first-per-window; fire-and-forget, never blocks the response.
+	if s.emitTenantAudit != nil && owner != uuid.Nil && owner != caller {
+		outcome := auditOutcomeGranted
+		if lvl == GrantNone || !lvl.AtLeast(need) {
+			outcome = auditOutcomeDenied
+		}
+		s.emitTenantAudit(caller, bookID, owner, outcome)
+	}
 	if lvl == GrantNone {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return uuid.Nil, uuid.Nil, "", false
@@ -182,12 +194,47 @@ func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_USER_ID", "invalid user_id")
 		return
 	}
-	lvl, lifecycle, err := s.resolveAccess(r.Context(), bookID, userID)
+	lvl, owner, lifecycle, err := s.resolve(r.Context(), bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle})
+	resp := map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle}
+	// owner_user_id lets a grant-holder consumer resolve a cross-tenant read of the
+	// owner's per-(user,book) rows (e.g. the book-tier model settings). Returned ONLY
+	// to a grantee (lvl != none) so a non-grantee never gets an owner/existence oracle.
+	if lvl != GrantNone && owner != uuid.Nil {
+		resp["owner_user_id"] = owner.String()
+
+		// WS-1.2 (D16) — `kind` rides the access contract, behind the SAME grant gate.
+		//
+		// Every downstream egress surface (wiki, public-MCP, notifications, catalog,
+		// statistics) resolves access through here. Without `kind` they CANNOT enforce the
+		// diary taint even if they want to — they have no way to ask "is this private?".
+		// This is the enabling half of D16, exactly like the kg_indexed filter was the
+		// enabling half of publish-independent indexing.
+		//
+		// Gated behind lvl != GrantNone for the same reason owner_user_id is: an ungated
+		// `kind` would be an ORACLE — a stranger could probe any book id and learn which
+		// users keep a diary, which is itself sensitive.
+		// `kind` is the privacy taint every downstream egress guard keys on. review-impl:
+		// swallowing the lookup error and answering 200 WITHOUT it is a fail-open by
+		// construction — a consumer that expects `kind` and does not find it will treat the
+		// book as untainted. So a real DB error must FAIL the request (503), not silently
+		// omit the field. (s.pool is nil only in the pure-unit grant tests, which have no
+		// database; there the field is legitimately absent and the DB-level locks still hold.)
+		if s.pool != nil {
+			var kind string
+			if err := s.pool.QueryRow(r.Context(),
+				`SELECT kind FROM books WHERE id=$1`, bookID).Scan(&kind); err != nil {
+				writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED",
+					"could not resolve book kind (the privacy taint must not be silently omitted)")
+				return
+			}
+			resp["kind"] = kind
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // requireBookOwner gates owner-only grant management (D-E0-D). Not-owner and

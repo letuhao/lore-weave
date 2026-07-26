@@ -156,6 +156,131 @@ def _mock_llm_client():
     return MagicMock()
 
 
+# ── D-KG-WORKER-GRADED-EFFORT — sync path threads job effort to the SDK ─────
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_threads_reasoning_effort(mock_pass2):
+    """_extract_and_persist(reasoning_effort='high') forwards it to extract_pass2."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+        reasoning_effort="high",
+    )
+    assert mock_pass2.call_args.kwargs["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_default_effort_is_none(mock_pass2):
+    """Omitting reasoning_effort (chat_turn/glossary callers) defaults to 'none'."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+    )
+    assert mock_pass2.call_args.kwargs["reasoning_effort"] == "none"
+
+
+def test_jobrow_default_reasoning_effort_is_none():
+    """A JobRow built without the field defaults to 'none' (synthetic/test rows)."""
+    assert _job().reasoning_effort == "none"
+    assert _job(reasoning_effort="high").reasoning_effort == "high"
+
+
+# ── bug #34 — immediate-cancel hook threaded into the SDK ──────────────
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_forwards_cancel_check(mock_pass2):
+    """bug #34 — _extract_and_persist(cancel_check=...) forwards it to extract_pass2."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+
+    async def _cancel() -> bool:
+        return False
+
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+        cancel_check=_cancel,
+    )
+    assert mock_pass2.call_args.kwargs["cancel_check"] is _cancel
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_default_cancel_check_is_none(mock_pass2):
+    """bug #34 — omitting cancel_check forwards None (back-compat)."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+    )
+    assert mock_pass2.call_args.kwargs["cancel_check"] is None
+
+
+@pytest.mark.asyncio
+async def test_start_decoupled_chunk_stashes_effort_into_resume_state():
+    """D-KG-WORKER-GRADED-EFFORT — the decoupled dispatch MUST stash the job's
+    effort into resume_state (the spec's flagged 'silently drops effort on the
+    decoupled flow' failure mode); the consumer rebuilds the trio submits from
+    it on resume. Locks the dispatch stash directly (the assemble-side is tested
+    separately given an rs that already carries the key)."""
+    import json as _json
+    from unittest.mock import MagicMock as _MM
+    from app.runner import _start_decoupled_chunk
+
+    job = _job(scope="chapters", reasoning_effort="high")
+    pool = AsyncMock()
+    captured = {}
+
+    async def _exec(sql, *args):
+        if "resume_state" in sql:
+            captured["rs"] = _json.loads(args[1])  # $2 = json.dumps(rs)
+    pool.execute = AsyncMock(side_effect=_exec)
+
+    llm = _MM()
+    llm.submit_job = AsyncMock(return_value=_MM(job_id="pj-1"))
+
+    snap = _MM()
+    snap.model_ref = "m"; snap.model_source = "user_model"
+    snap.entity_recovery = None; snap.precision_filter = None
+    snap.prompts = {}; snap.writer_autocreate = None; snap.prompt_versions = {}
+
+    ch = _MM(); ch.chapter_id = "ch-1"
+
+    await _start_decoupled_chunk(
+        pool, llm, job=job, ch=ch, text="Kai walks.", book_id=_TEST_BOOK_ID,
+        run_snapshot=snap, run_cfg_hash="h", run_base_version="v",
+        p3_hierarchy_paths=None, p3_chapter_index=0, p3_book_parts=None, p3_is_last=False,
+    )
+
+    assert captured["rs"]["reasoning_effort"] == "high"
+
+
 def _mock_book_client(chapters=None, text="Chapter text here."):
     client = AsyncMock(spec=BookClient)
     if chapters is None:
@@ -181,11 +306,14 @@ def _mock_chat_client(text=""):
     return client
 
 
-def _mock_provider_client(model_name=None):
+def _mock_provider_client(model_name=None, context_length=None):
     """FD-27 — mock ProviderRegistryClient. Default get_model_name returns None
-    (advisory off); pass a name to exercise the reasoning-model advisory."""
+    (advisory off); pass a name to exercise the reasoning-model advisory. Default
+    get_context_length returns None (unresolved — the chapter branch's ContextBudget
+    stays unset); pass an int to exercise model-context-aware chunk sizing."""
     client = AsyncMock(spec=ProviderRegistryClient)
     client.get_model_name = AsyncMock(return_value=model_name)
+    client.get_context_length = AsyncMock(return_value=context_length)
     return client
 
 
@@ -546,7 +674,13 @@ async def test_process_job_chat_records_spending_on_success(mock_extract_persist
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+    # The turns must carry TEXT. D-EXTRACTION-SILENT-NOOP later made an empty turn a
+    # deliberate skip that is not charged, so `_mock_chat_client()`'s default of no text
+    # stopped exercising the success path this test names — it was asserting the spend of
+    # a branch it no longer entered. Non-empty text puts it back on the paid path.
+    chat = _mock_chat_client(text="Kai told Master Lin he would leave the sect.")
+
+    await process_job(pool, kc, llm, bc, gc, chat, _mock_provider_client(), job)
 
     spending_calls = [
         c for c in pool.execute.call_args_list
@@ -1605,6 +1739,9 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "targets": None,
         "concurrency_level": None,
         "pinned_entity_ids": None,
+        "reasoning_effort": "none",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1639,6 +1776,9 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "targets": None,
         "concurrency_level": None,
         "pinned_entity_ids": None,
+        "reasoning_effort": "none",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1672,6 +1812,9 @@ async def test_get_running_jobs_threads_billing_identity():
         "targets": None,
         "concurrency_level": None,
         "pinned_entity_ids": None,
+        "reasoning_effort": "none",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1707,11 +1850,16 @@ async def test_get_running_jobs_threads_pinned_entity_ids():
         "concurrency_level": None,
         # JSONB returned as a raw JSON string (the asyncpg default codec).
         "pinned_entity_ids": '["g-1", "g-2"]',
+        "reasoning_effort": "high",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert jobs[0].pinned_entity_ids == ["g-1", "g-2"]
+    # D-KG-WORKER-GRADED-EFFORT — the stored graded effort threads onto JobRow.
+    assert jobs[0].reasoning_effort == "high"
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
@@ -2487,23 +2635,37 @@ def _full_hierarchy(chapter_id: str) -> ChapterHierarchy:
 
 
 @pytest.mark.asyncio
-async def test_enumerate_chapters_requests_published_and_skips_null_revision():
-    """CM3c: _enumerate_chapters asks book-service for editorial_status=
-    'published' (server-side draft gate) and skips any published chapter
-    whose published_revision_id is NULL (can't pin canon — R2-NEW-2 edge)."""
+async def test_enumerate_chapters_requests_kg_indexed_and_skips_null_revision():
+    """WS-0.6 (spec 2026-07-11-publish-independent-kg-indexing §3.5, red-team P0-2).
+
+    _enumerate_chapters asks book-service for the chapters that are IN THE KNOWLEDGE
+    GRAPH (``kg_indexed=True``), NOT the ones that happen to be published. This
+    REPLACES the old CM3c canon=published gate.
+
+    Publishing no longer decides KG membership: a draft can be explicitly indexed, and
+    a kind='diary' book never publishes at all. Asking the publish question here would
+    enumerate ZERO of a user's 50 indexed drafts, and the rebuild would report success
+    having extracted nothing — the user's explicit act silently undone.
+
+    The null-revision skip is KEPT and is load-bearing: with ``revision_id=None`` the
+    per-chapter fetch falls back to the LIVE DRAFT text, which would extract unreviewed
+    prose and break the pinned-revision guarantee.
+    """
     book_id = uuid4()
     bc = AsyncMock(spec=BookClient)
     bc.list_chapters = AsyncMock(return_value=[
+        # a DRAFT chapter the user explicitly indexed — the case the old gate dropped
         ChapterInfo(chapter_id="ch-1", title="C1", sort_order=1,
-                    revision_id="rev-1", editorial_status="published"),
-        # published but no pinned revision → must be skipped (with a WARNING)
+                    revision_id="rev-1", editorial_status="draft"),
+        # in the graph but no pinned revision → must be skipped (with a WARNING),
+        # never silently read from the live draft
         ChapterInfo(chapter_id="ch-2", title="C2", sort_order=2,
                     revision_id=None, editorial_status="published"),
     ])
 
     result = await _enumerate_chapters(bc, book_id, None)
 
-    bc.list_chapters.assert_awaited_once_with(book_id, editorial_status="published")
+    bc.list_chapters.assert_awaited_once_with(book_id, kg_indexed=True)
     assert [c.chapter_id for c in result] == ["ch-1"]  # null-revision dropped
 
 

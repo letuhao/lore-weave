@@ -83,7 +83,7 @@ fn pick_terrain(zone: &ZoneBuildState, template: &TilemapTemplate, seed: Tilemap
     // per-(zone, modificator) sub-stream (spec D1).
     let label = format!("mod:terrain_painter:{}", zone.id.0);
     let mut rng = ChaCha8Rng::seed_from_u64(sub_seed(seed, &label));
-    SURFACE_TERRAINS[rng.gen_range(0..SURFACE_TERRAINS.len())]
+    SURFACE_TERRAINS[rng.random_range(0..SURFACE_TERRAINS.len())]
 }
 
 #[cfg(test)]

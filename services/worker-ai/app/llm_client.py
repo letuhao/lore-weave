@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loreweave_llm.client import Client as SDKClient
@@ -107,6 +108,12 @@ class LLMClient:
         trace_id: str | None = None,
         job_meta: dict[str, Any] | None = None,
         transient_retry_budget: int = 1,
+        # bug #34 — optional immediate-cancel hook. The loreweave_extraction
+        # extractors ALWAYS forward this kwarg (default None), so this concrete
+        # wrapper MUST accept it or every extraction dies with `TypeError:
+        # unexpected keyword argument 'cancel_check'` (same SDK-mirror drift the
+        # knowledge-service wrapper had). Forwarded to wait_terminal.
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> Job:
         """Submit job + wait_terminal with one retry on transient
         upstream errors (LLM_RATE_LIMITED / LLM_UPSTREAM_ERROR).
@@ -154,6 +161,7 @@ class LLMClient:
                         submit.job_id,
                         user_id=user_id,
                         transient_retry_budget=1,
+                        cancel_check=cancel_check,
                     )
                 except LLMTransientRetryNeededError as exc:
                     if attempts >= max_attempts:

@@ -41,7 +41,7 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
       await expect(panel.publishButton).toBeDisabled();
 
       // U3 — co-write: generate → ghost → accept (inserts into the editor)
-      await panel.modelSelect.selectOption(drafter.user_model_id);
+      await panel.selectModel(drafter.user_model_id);
       await panel.reasoningSelect.selectOption('off');
       await expect(panel.generate).toBeEnabled();
       await panel.generate.click();

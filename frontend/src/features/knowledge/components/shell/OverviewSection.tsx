@@ -1,15 +1,30 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Globe2 } from 'lucide-react';
 import type { Project } from '../../types';
 import { useProjectBacklinks } from '../../hooks/useProjectBacklinks';
+import { useProjects } from '../../hooks/useProjects';
 import { ProjectRow } from '../ProjectRow';
+import { ProjectFormModal } from '../ProjectFormModal';
 
 interface Props {
   project: Project | null;
   // C6 (G6) — deep-link from the complete-card "Explore graph" CTA +
   // clickable stats into the shell's entities/graph section.
   onExploreGraph: () => void;
+  // 14_kg_panels.md DOCK-7 fix — this section used to hard-code <Link>s to
+  // the book/world detail routes. Threaded as callbacks (same extraction
+  // shape as ProjectsBrowser's `onOpen`, 14_kg_panels.md A2) so the classic
+  // `ProjectDetailShell` route can still navigate() while a studio panel
+  // (`KgOverviewPanel`) instead goes through the studio link resolver (F3)
+  // without this component importing react-router at all.
+  onOpenBook: (bookId: string) => void;
+  onOpenWorld: (worldId: string) => void;
+  // S-05 — optional triage deep-link (studio only). When `triageCount > 0` and
+  // `onOpenTriage` is provided, a "N need triage →" nudge opens the kg-triage
+  // panel. The classic route omits both → no nudge (presentational-only here).
+  triageCount?: number;
+  onOpenTriage?: () => void;
 }
 
 // C6 (G6 / KN-2 / KN-20) — the project-detail shell's Overview section:
@@ -18,11 +33,26 @@ interface Props {
 // actions keep working unchanged, then threads the Explore-graph deep
 // link through. Config is read-only here; full edit stays on ProjectsTab
 // (no new BE, no scope creep into C7).
-export function OverviewSection({ project, onExploreGraph }: Props) {
+export function OverviewSection({
+  project,
+  onExploreGraph,
+  onOpenBook,
+  onOpenWorld,
+  triageCount,
+  onOpenTriage,
+}: Props) {
   const { t } = useTranslation('knowledge');
   // D-WORLD-PROJECT-BACKLINK (G3) — resolve the project's book + world so the
   // overview cross-links out instead of showing a raw book UUID.
   const backlinks = useProjectBacklinks(project?.book_id);
+
+  // The detail-view edit affordance (KN — the pen button used to be a dead
+  // no-op here). ProjectDetailShell already mounts useProjects(false) to
+  // resolve this project, so the same react-query cache serves createProject/
+  // updateProject with NO extra fetch (dedup by queryKey). Same modal +
+  // If-Match update the ProjectsTab browser uses.
+  const { createProject, updateProject } = useProjects(false);
+  const [editing, setEditing] = useState(false);
 
   if (!project) {
     return (
@@ -35,20 +65,43 @@ export function OverviewSection({ project, onExploreGraph }: Props) {
     );
   }
 
-  const noop = () => {};
-
   return (
     <div className="space-y-4" data-testid="shell-overview">
+      {/* S-05 — triage nudge (studio only, count-gated): a deep-link INTO the
+          kg-triage panel when there are off-schema elements to resolve. */}
+      {onOpenTriage && (triageCount ?? 0) > 0 && (
+        <button
+          type="button"
+          onClick={onOpenTriage}
+          className="flex w-full items-center justify-between rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-[12px] text-warning transition-colors hover:bg-warning/10"
+          data-testid="shell-overview-triage-nudge"
+        >
+          <span>{t('shell.overview.triageNudge', { count: triageCount })}</span>
+          <span aria-hidden>→</span>
+        </button>
+      )}
       {/* Reuse the project state card (build/extract/model dialogs all
-          wired) — CRUD toolbar handlers are no-ops in the detail shell;
-          project CRUD stays on the projects browser (C7). */}
+          wired). Edit opens the project form modal in-place (KN — the pen
+          was previously a dead no-op here). Archive/restore/delete stay on
+          the projects browser (destructive CRUD lives with the list) — so we
+          OMIT those handlers and ProjectRow hides the buttons. Passing `noop`
+          here (what this did until the 2026-07-17 audit) rendered a live
+          Archive + Delete that silently did nothing on click. */}
       <ProjectRow
         project={project}
-        onEdit={noop}
-        onArchive={noop}
-        onRestore={noop}
-        onDelete={noop}
+        onEdit={() => setEditing(true)}
         onExploreGraph={onExploreGraph}
+      />
+
+      <ProjectFormModal
+        open={editing}
+        onOpenChange={setEditing}
+        mode="edit"
+        project={project}
+        onCreate={createProject}
+        onUpdate={(projectId, payload, expectedVersion) =>
+          updateProject({ projectId, payload, expectedVersion })
+        }
       />
 
       <section
@@ -88,14 +141,15 @@ export function OverviewSection({ project, onExploreGraph }: Props) {
                 {t('shell.overview.book', { defaultValue: 'Book' })}
               </dt>
               <dd>
-                <Link
-                  to={`/books/${project.book_id}`}
+                <button
+                  type="button"
+                  onClick={() => onOpenBook(project.book_id!)}
                   data-testid="overview-book-link"
                   className="inline-flex items-center gap-1.5 text-primary hover:underline"
                 >
                   <BookOpen className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{backlinks.bookTitle ?? project.book_id}</span>
-                </Link>
+                </button>
               </dd>
 
               {backlinks.worldId && (
@@ -104,14 +158,15 @@ export function OverviewSection({ project, onExploreGraph }: Props) {
                     {t('shell.overview.world', { defaultValue: 'World' })}
                   </dt>
                   <dd>
-                    <Link
-                      to={`/worlds/${backlinks.worldId}`}
+                    <button
+                      type="button"
+                      onClick={() => onOpenWorld(backlinks.worldId!)}
                       data-testid="overview-world-link"
                       className="inline-flex items-center gap-1.5 text-primary hover:underline"
                     >
                       <Globe2 className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{backlinks.worldName ?? backlinks.worldId}</span>
-                    </Link>
+                    </button>
                   </dd>
                 </>
               )}

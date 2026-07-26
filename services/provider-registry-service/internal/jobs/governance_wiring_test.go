@@ -16,7 +16,7 @@ import (
 
 type spyGov struct{ acquired, released int }
 
-func (g *spyGov) Acquire(ctx context.Context, kind string) (func(), error) {
+func (g *spyGov) Acquire(ctx context.Context, concClass string, limit int) (func(), error) {
 	g.acquired++
 	return func() { g.released++ }, nil
 }
@@ -43,7 +43,7 @@ func TestStreamWithRetry_InvokesGovernorAndBreaker(t *testing.T) {
 	emit := func(c provider.StreamChunk) error { agg.Accept(c); return nil }
 
 	err := w.streamWithRetry(context.Background(), agg, adapter,
-		"ollama", "", "", "", map[string]any{}, emit, w.logger)
+		"ollama", 1, "", "", "", map[string]any{}, emit, w.logger)
 	if err != nil {
 		t.Fatalf("unexpected err %v", err)
 	}
@@ -67,7 +67,7 @@ func TestStreamWithRetry_OpenBreakerFailsFastWithoutCallingProvider(t *testing.T
 	emit := func(c provider.StreamChunk) error { agg.Accept(c); return nil }
 
 	err := w.streamWithRetry(context.Background(), agg, adapter,
-		"openai", "", "", "", map[string]any{}, emit, w.logger)
+		"openai", 8, "", "", "", map[string]any{}, emit, w.logger)
 	if err == nil {
 		t.Fatal("open circuit must surface an error")
 	}

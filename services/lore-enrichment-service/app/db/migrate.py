@@ -232,9 +232,13 @@ CREATE TABLE IF NOT EXISTS enrichment_job (
                                                   --   GUI; project_id stays the GENERAL
                                                   --   scope. Nullable (cross-DB, no FK;
                                                   --   legacy rows predate it).
-  estimated_cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
-  actual_cost_usd    NUMERIC(10,4) NOT NULL DEFAULT 0,
-  max_spend_usd      NUMERIC(10,4),               -- cost guardrail (C8)
+  -- D-JOURNEY-ENRICH-COST-UNITS: these are denominated in REAL TOKENS, not USD
+  -- (the per-job cost-cap is a token count per the C1 PO ruling — see app/jobs/
+  -- tokens.py / cost.py). The columns were originally misnamed `*_usd`; renamed to
+  -- `*_tokens` (a guarded rename below brings already-deployed tables across).
+  estimated_cost_tokens NUMERIC(14,2) NOT NULL DEFAULT 0,
+  actual_cost_tokens    NUMERIC(14,2) NOT NULL DEFAULT 0,
+  max_spend_tokens      NUMERIC(14,2),            -- token cost guardrail (C8)
   proposals_total    INT NOT NULL DEFAULT 0,
   error_message      TEXT,
   started_at      TIMESTAMPTZ,
@@ -254,6 +258,32 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_job_active
 -- Unified Job Control Plane reconcile source: GET /internal/lore_enrichment/jobs?since=
 -- filters enrichment_job by updated_at — index it so the periodic sweep isn't a seq-scan.
 CREATE INDEX IF NOT EXISTS idx_enrichment_job_updated_at ON enrichment_job(updated_at);
+
+-- ── D-JOURNEY-ENRICH-COST-UNITS: rename the misnamed *_usd cost columns to *_tokens
+-- (they always held TOKEN counts per the C1 PO ruling, never dollars) AND widen them
+-- (a token count can exceed the old USD-sized NUMERIC(10,4) ≈ 1M cap). Guarded so an
+-- ALREADY-DEPLOYED table is brought across in place (CREATE TABLE IF NOT EXISTS skips
+-- the new column names on it), and a FRESH table (already *_tokens) is a no-op. ──────
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='enrichment_job' AND column_name='estimated_cost_usd') THEN
+    ALTER TABLE enrichment_job RENAME COLUMN estimated_cost_usd TO estimated_cost_tokens;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='enrichment_job' AND column_name='actual_cost_usd') THEN
+    ALTER TABLE enrichment_job RENAME COLUMN actual_cost_usd TO actual_cost_tokens;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='enrichment_job' AND column_name='max_spend_usd') THEN
+    ALTER TABLE enrichment_job RENAME COLUMN max_spend_usd TO max_spend_tokens;
+  END IF;
+END $$;
+
+ALTER TABLE enrichment_job
+  ALTER COLUMN estimated_cost_tokens TYPE NUMERIC(14,2),
+  ALTER COLUMN actual_cost_tokens    TYPE NUMERIC(14,2),
+  ALTER COLUMN max_spend_tokens      TYPE NUMERIC(14,2);
 
 -- ── book scope (additive) ────────────────────────────────────────────────────
 -- Enrichment is book-bound; persist the book_id so the review GUI can list a

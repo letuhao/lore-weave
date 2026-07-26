@@ -1,33 +1,98 @@
 #!/usr/bin/env sh
-# LoreWeave pre-commit. Checks only STAGED files (fast).
-# Bypass in a true emergency with `git commit --no-verify`.
+# LoreWeave pre-commit — enforce key invariants (CLAUDE.md › Key Rules):
+#   • Provider gateway invariant: no direct provider-SDK usage outside the gateway
+#   • No hardcoded model names in runtime code
+#   • INV-KAL (table-read half): no direct glossary-EAV / Neo4j read outside the owning
+#     services — read entity/KG knowledge through the knowledge-gateway (KAL).
+#   • INV-KAL (HTTP-surface half): no consumer hits the owning services' bi-temporal
+#     knowledge /internal endpoints (facts/canonical/timeline/attr-values/search/
+#     neighborhood/retrieve) — read them through the KAL. (Both halves now ENFORCED.)
+#   • I3 language rule (PRR-16 / PRR-21): services/<name>/ detected language must match
+#     contracts/language-rule.yaml, and a service present on disk with NO row is a FAIL.
+#   • _boundaries/ single-writer mutex: a _boundaries/ edit must carry an evidenced
+#     claim+release cycle.
+# Checks only STAGED files (fast), except where noted. Bypass in a true emergency with
+# `git commit --no-verify`.
 #
 # Activate (per checkout):  git config core.hooksPath .githooks
-#
-#   1. AI provider invariants (CLAUDE.md › Key Rules)
-#        • Provider gateway invariant: no direct provider-SDK usage outside the gateway
-#        • No hardcoded model names in runtime code
-#   2. I3 language rule (PRR-16 / PRR-21)
-#        • services/<name>/ detected language must match contracts/language-rule.yaml
-#        • a service present on disk with NO row is a FAIL (completeness)
-#   3. _boundaries/ single-writer mutex
-#        • a _boundaries/ edit must carry an evidenced claim+release cycle
-#
-# Checks 2 and 3 were added 2026-07-26 after two failures in one day that both had
-# the same shape — a documented rule with no enforcement point:
-#   • jobs-service landed 2026-06-15 with no language-rule row; the lint had been
-#     FAILing for ~6 weeks because it sat on no commit path.
-#   • Three _boundaries/ changelog entries asserted lock cycles that never happened,
-#     and a peer wrote 99_changelog.md while another session held the lock.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY=python
 command -v python >/dev/null 2>&1 || PY=python3
-
 "$PY" "$ROOT/scripts/ai-provider-gate.py" --staged
+"$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
+"$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
 
-# Repo-wide, not staged-scoped: PRR-21 completeness is a property of the tree
-# (a service can be added with no row by a commit that touches no yaml at all).
+# I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
+# completeness is a property of the tree, since a service can be added with no row by a
+# commit that touches no yaml at all. That is exactly how jobs-service landed 2026-06-15
+# with no row while the lint sat on no commit path.
 sh "$ROOT/scripts/language-rule-lint.sh"
 
+# _boundaries/ single-writer mutex (added 2026-07-26). Checks for EVIDENCE OF A CYCLE, not
+# for Owner != None — the normal combined claim+release commit ends with Owner: None by
+# design, so a naive owner check would reject every legitimate commit. Added after three
+# changelog entries were found asserting lock cycles that never happened, and a peer wrote
+# 99_changelog.md while another session held the lock.
 "$PY" "$ROOT/scripts/boundaries-lock-gate.py" --staged
+
+# Context Budget Law OUT-2 — a LIST-returning MCP tool (has both `detail` + `limit`) must
+# DEFAULT to the small shape (detail=summary, limit<=25); full/big-limit are opt-ins. The
+# runtime size gate only WARNS (nobody acted → jobs_list dumped 45.6 KB for weeks, K36); this
+# makes the defaults that produce those payloads a commit failure. Exemptions: ALLOW in the
+# gate (current offenders seeded as FLIP-PENDING debt, K37).
+"$PY" "$ROOT/scripts/context-budget-defaults-lint.py" --staged
+# Destructive DB ops in tests — block an unscoped DELETE/TRUNCATE/DROP in a test file, or a
+# *_TEST_*_URL pointing at a bare production DB name (the loreweave_book wipe). CLAUDE.md ›
+# "Destructive DB ops in tests". Exempt a real false positive with a `db-safety-gate: ok` pragma.
+"$PY" "$ROOT/scripts/db-safety-gate.py" --staged
+
+# No ABSOLUTE HOST PATH hardcoded in committed code. Such a path resolves on exactly one
+# machine; everywhere else the script dies or — worse — the path happens to exist and it
+# silently reads a STALE COPY from a sibling checkout (four POC exporters pointed at a
+# different repo, `lore-weave-mvp`). In-repo target -> derive from __file__; external
+# target -> os.environ.get(VAR, default) AND fail loudly when absent.
+"$PY" "$ROOT/scripts/no-absolute-host-paths.py"
+
+# ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
+# must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
+# scripts/i18n_translate.py (gap-fill), never hand-edited into a locale, never a one-off translator.
+if git diff --cached --name-only | grep -qE 'frontend/src/i18n/locales/.*\.json'; then
+  "$PY" "$ROOT/scripts/i18n-completeness-gate.py" --staged
+fi
+
+# Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
+# (Tier-R auto-runs with no confirm/Undo — a mutation tagged R is a silent-write). Runs when a
+# tool-registration file (or the gate itself) is staged; it scans the whole tree, so this
+# condition only skips it on commits that can't affect a tool's tier.
+if git diff --cached --name-only | grep -qE 'NewToolMeta|mcp_server\.go|_tools\.go|tool_discovery|tier-tag-gate'; then
+  "$PY" "$ROOT/scripts/tier-tag-gate.py"
+fi
+
+# Context Budget Law §13c — keep the §11a Inspector coverage manifest un-gameable:
+# whenever the spec or any Inspector test/component is staged, every §11a checklist
+# item must still bind to an existing proving test (static, no suite execution).
+if git diff --cached --name-only | grep -qE '2026-07-03-context-budget-law\.md|features/chat/inspector/|context-inspector'; then
+  "$PY" "$ROOT/scripts/context-inspector-checklist-gate.py"
+fi
+
+# Spec 30 §8.3 / X-8 — destructive+warning token drift in the studio design drafts.
+# The original audit grepped token NAMES and so missed a 5th drift wearing a THIRD name
+# (`--error: #e85a5a`), a raw hex with no token at all, and an `rgba(217,93,93)` that is
+# #d95d5d spelled in decimal. This lint greps by the COLOR (HSL), not by the name.
+# Runs only when a studio draft is staged (same conditional shape as the gate above).
+if git diff --cached --name-only | grep -qE 'design-drafts/screens/studio/.*\.html'; then
+  "$PY" "$ROOT/scripts/design-draft-token-lint.py"
+fi
+
+# SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans
+# only the staged diff (`protect --staged`) so this stays fast. gitleaks is an
+# optional local tool — if it isn't installed we warn and continue (CI's
+# all-branch `secrets` job in foundation-ci.yml is the backstop); if it IS
+# installed, a finding fails the commit (set -e). Bypass in a true emergency
+# with `git commit --no-verify`.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --config "$ROOT/.gitleaks.toml"
+else
+  echo "pre-commit: gitleaks not installed — skipping staged secret scan (install: https://github.com/gitleaks/gitleaks; CI still scans on push)." >&2
+fi

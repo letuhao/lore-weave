@@ -1312,10 +1312,13 @@ def test_patch_embedding_model_rejected_on_project_with_graph(
     client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
 ):
     """D-EMB-MODEL-REF-04: PATCH /{id} cannot change embedding_model
-    when the project already has a graph (extraction_status != 'disabled').
-    Without this guard, the old vectors stay in Neo4j tagged with the
-    old model UUID while Mode-3 retrieval queries the new model space —
-    silent zero-recall."""
+    when the project still holds :Passage vectors. Without this guard, the
+    old vectors stay in Neo4j tagged with the old model UUID while Mode-3
+    retrieval queries the new model space — silent zero-recall.
+
+    2026-07-23: the "has a graph" test is a passage-existence probe, not
+    `extraction_status != 'disabled'` — that column cannot tell a graph
+    DELETE apart from a graph-PRESERVING `POST /extraction/disable`."""
     old_uuid = "11111111-1111-1111-1111-111111111111"
     new_uuid = "22222222-2222-2222-2222-222222222222"
     proj = _make_project(
@@ -1325,11 +1328,17 @@ def test_patch_embedding_model_rejected_on_project_with_graph(
     )
     repo.seed(proj)
 
-    resp = client.patch(
-        f"/v1/knowledge/projects/{proj.project_id}",
-        json={"embedding_model": new_uuid},
-        headers=_im(proj.version),
-    )
+    from unittest.mock import AsyncMock, patch
+
+    with patch(
+        "app.db.neo4j_repos.graph_state.project_has_embedded_passages",
+        AsyncMock(return_value=True),
+    ):
+        resp = client.patch(
+            f"/v1/knowledge/projects/{proj.project_id}",
+            json={"embedding_model": new_uuid},
+            headers=_im(proj.version),
+        )
     assert resp.status_code == 422
     detail = resp.json()["detail"]
     assert "embedding-model?confirm=true" in detail
@@ -1601,6 +1610,52 @@ def test_put_extraction_config_no_change_no_emit(
     )
     assert resp.status_code == 200
     assert captured_emits == []
+
+
+def test_put_extraction_config_preserves_rerank_keys_when_omitted(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    # Track 4 P2 (review MED): the FE structural editor doesn't know the rerank
+    # knobs — a save that OMITS them must not silently clear them.
+    p = _make_project(auth_user_id, version=1)
+    p = p.model_copy(update={"extraction_config": {
+        "cross_encoder_rerank_model": "0" * 8, "rerank_model": "1" * 8,
+    }})
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"entity_recovery": {"enabled": True}},  # editor save, no rerank keys
+    )
+    assert resp.status_code == 200
+    cfg = resp.json()["extraction_config"]
+    assert cfg["cross_encoder_rerank_model"] == "0" * 8  # preserved
+    assert cfg["rerank_model"] == "1" * 8                # preserved
+    assert cfg["entity_recovery"] == {"enabled": True}
+
+
+def test_put_extraction_config_sets_and_clears_rerank_keys_explicitly(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    p = p.model_copy(update={"extraction_config": {"cross_encoder_rerank_model": "old"}})
+    repo.seed(p)
+    # explicit value → set
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"cross_encoder_rerank_model": "new-model-uuid"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["extraction_config"]["cross_encoder_rerank_model"] == "new-model-uuid"
+    # explicit empty string → clear (present in body ⇒ no carry-over)
+    resp2 = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"2"'},
+        json={"cross_encoder_rerank_model": ""},
+    )
+    assert resp2.status_code == 200
+    assert "cross_encoder_rerank_model" not in resp2.json()["extraction_config"]
 
 
 def test_put_extraction_config_empty_subobject_dropped(

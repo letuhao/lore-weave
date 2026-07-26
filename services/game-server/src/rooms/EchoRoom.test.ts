@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { authenticate, expectedToken, EchoRoom, __setEchoEdgeForTest } from './EchoRoom.js';
-import { ServerError } from 'colyseus';
+import { ServerError, CloseCode } from 'colyseus';
 import { CLOSE_RATE_LIMIT, CLOSE_CONNECTION_LIMIT } from '../ws/auth.js';
 import type { WsAuditSink, WsAuditEvent } from '../ws/audit.js';
 
@@ -155,7 +155,7 @@ describe('EchoRoom lifecycle wiring', () => {
     const { room } = makeRoom();
     const c = fakeClient('u1', 's1');
     room.onJoin(c as never);
-    await room.onLeave(c as never, true);
+    await room.onLeave(c as never, CloseCode.CONSENTED);
     assert.equal(e.connectionCap.active('u1'), 0);
     const closed = sink.events.find((ev) => ev.kind === 'ws.connection.closed');
     assert.ok(closed && closed.kind === 'ws.connection.closed' && closed.reason === 'consented');
@@ -166,8 +166,8 @@ describe('EchoRoom lifecycle wiring', () => {
     const { room } = makeRoom();
     const c = fakeClient('u1', 's1');
     room.onJoin(c as never);
-    await room.onLeave(c as never, true);
-    await room.onLeave(c as never, true); // second leave must be a no-op
+    await room.onLeave(c as never, CloseCode.CONSENTED);
+    await room.onLeave(c as never, CloseCode.CONSENTED); // second leave must be a no-op
     assert.equal(e.connectionCap.active('u1'), 0); // NOT -1
   });
 
@@ -205,7 +205,7 @@ describe('EchoRoom lifecycle wiring', () => {
     });
     const c = fakeClient('u1', 's1');
     room.onJoin(c as never);
-    await room.onLeave(c as never, false);
+    await room.onLeave(c as never, CloseCode.ABNORMAL_CLOSURE);
     assert.equal(e.connectionCap.active('u1'), 0); // released after reconnect window
   });
 
@@ -217,7 +217,7 @@ describe('EchoRoom lifecycle wiring', () => {
     });
     const c = fakeClient('u1', 's1');
     room.onJoin(c as never);
-    await room.onLeave(c as never, false);
+    await room.onLeave(c as never, CloseCode.ABNORMAL_CLOSURE);
     assert.equal(e.connectionCap.active('u1'), 1); // slot retained for the reconnected client
   });
 });

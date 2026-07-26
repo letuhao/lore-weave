@@ -501,6 +501,128 @@ def test_cosine_zero_magnitude_is_safe():
     assert _cosine([0.0, 0.0], 0.0, [0.0, 0.0], 0.0) == 0.0
 
 
+# -- M1b working-scope boost ---------------------------------------
+
+
+def test_working_scope_boost_math_linear_falloff():
+    """`_apply_post_filters` boost: ×(1+boost) at the open chapter,
+    linear falloff over (window+1), untouched beyond the window."""
+    from app.context.selectors.passages import _apply_post_filters
+
+    # recency_weight=0 so ONLY the boost term is exercised.
+    def score(ci: int, wc: int | None, boost: float, window: int = 2) -> float:
+        return _apply_post_filters(
+            _hit("t", 0.70, chapter_index=ci), hub_penalty=1.0,
+            recency_weight=0.0, current_chapter=None,
+            working_chapter=wc, working_boost=boost, working_window=window,
+        )
+
+    # dist 0 → full boost (×1.3).
+    assert score(10, 10, 0.30) == pytest.approx(0.70 * 1.30)
+    # dist 2 (window edge) → ×(1 + 0.3 * (1 - 2/3)) = ×1.1.
+    assert score(12, 10, 0.30) == pytest.approx(0.70 * 1.10)
+    # dist 3 (beyond window) → untouched.
+    assert score(13, 10, 0.30) == pytest.approx(0.70)
+    # boost 0.0 (kill-switch) → untouched even at dist 0.
+    assert score(10, 10, 0.0) == pytest.approx(0.70)
+    # no working chapter resolved → untouched.
+    assert score(10, None, 0.30) == pytest.approx(0.70)
+
+
+def test_working_scope_boost_no_chapter_index_is_inert():
+    """A passage with chapter_index=None is never boosted (can't measure dist)."""
+    from app.context.selectors.passages import _apply_post_filters
+    s = _apply_post_filters(
+        _hit("t", 0.70, chapter_index=None), hub_penalty=1.0,
+        recency_weight=0.0, current_chapter=None,
+        working_chapter=10, working_boost=0.30, working_window=2,
+    )
+    assert s == pytest.approx(0.70)
+
+
+@pytest.mark.asyncio
+async def test_working_scope_boost_promotes_open_chapter_passage(monkeypatch):
+    """A lower-cosine passage IN the open chapter outranks a higher-cosine
+    distant passage once the boost applies (GENERAL intent, recency off)."""
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result())
+    hits = [
+        _hit("Distant lore.", 0.80, pid="far", chapter_index=100),
+        _hit("What I'm editing now.", 0.70, pid="near", chapter_index=10),
+    ]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+    result = await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="what happens here",
+        intent=_intent(intent=Intent.GENERAL, recency_weight=0.0),
+        embedding_model="bge-m3", embedding_dim=1024,
+        user_uuid=USER_UUID,
+        current_chapter_index=10,
+        working_scope_boost=0.30, working_scope_window=2,
+    )
+    # near (0.70 × 1.3 = 0.91) beats far (0.80).
+    assert result[0].text == "What I'm editing now."
+
+
+@pytest.mark.asyncio
+async def test_working_scope_boost_does_not_override_strong_relevance(monkeypatch):
+    """Regression guard: a MATERIALLY more relevant distant passage still
+    wins — the boost is bounded, so it can't bury the true far answer."""
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result())
+    hits = [
+        _hit("Strongly-relevant distant answer.", 0.90, pid="far", chapter_index=100),
+        _hit("Weakly-relevant open chapter.", 0.65, pid="near", chapter_index=10),
+    ]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+    result = await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="q",
+        intent=_intent(intent=Intent.GENERAL, recency_weight=0.0),
+        embedding_model="bge-m3", embedding_dim=1024,
+        user_uuid=USER_UUID,
+        current_chapter_index=10,
+        working_scope_boost=0.30, working_scope_window=2,
+    )
+    # near boosted = 0.65 × 1.3 = 0.845 < 0.90 → far still wins.
+    assert result[0].text == "Strongly-relevant distant answer."
+
+
+@pytest.mark.asyncio
+async def test_working_scope_boost_disabled_is_byte_identical(monkeypatch):
+    """boost=0.0 → ordering identical to the no-boost path (kill-switch)."""
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result())
+    hits = [
+        _hit("Distant lore.", 0.80, pid="far", chapter_index=100),
+        _hit("Open chapter.", 0.70, pid="near", chapter_index=10),
+    ]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+    result = await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="q",
+        intent=_intent(intent=Intent.GENERAL, recency_weight=0.0),
+        embedding_model="bge-m3", embedding_dim=1024,
+        user_uuid=USER_UUID,
+        current_chapter_index=10,
+        working_scope_boost=0.0,  # kill-switch
+    )
+    # No boost → raw cosine ordering: far (0.80) first.
+    assert result[0].text == "Distant lore."
+
+
 # -- D-K18.3-02 generative rerank (SDK path) -----------------------
 
 

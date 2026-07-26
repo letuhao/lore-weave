@@ -1,0 +1,32 @@
+{
+  "scenario": "S09",
+  "title": "Canon check — find where the story contradicts itself",
+  "maps_to": "W9 canon-check rail (composition_list_canon_rules → conformance_run → conformance_status)",
+  "persona": "P1 Mai (novelist) worried she broke her own rules",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "⚠️ a book with prose AND at least one PLANTED contradiction (e.g. an eye colour / a death / a timeline that flips between chapters), plus canon rules to check against. A book with no contradiction cannot fail the right way — the rail would return 'all clean' and the scenario would pass without testing anything.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "conformance", "canon rule", "rule engine", "workflow", "rail",
+    "job", "async", "tool", "schema", "entity"
+  ],
+  "canon_facts": [
+    "the PLANTED contradiction was actually found (not a generic 'looks fine')",
+    "the long-running check was POLLED to a terminal state before any verdict was given",
+    "the agent did NOT claim a clean bill of health while the check was still running",
+    "findings are reported in plain story words, not rule ids"
+  ],
+  "movements": [
+    {"id": "A", "label": "Ask for the check"},
+    {"id": "B", "label": "Wait for it honestly"},
+    {"id": "C", "label": "What did it find?"}
+  ],
+  "_note": "S09 exercises the W9 canon-check rail (composition_list_canon_rules → conformance_run → conformance_status). Batch #1: on 'find where I contradicted myself' the agent IMPROVISED KG ops (kg_schema_read/kg_project_*) instead of discovering+driving the canon-check workflow — a rail-DISCOVERY question. Reworded to a clearer 'run a consistency check' request (still natural) to test whether a more direct ask gets the agent to the rail; if it STILL improvises, that is a real discovery finding to report, not a prompt bug. conformance_run is async+slow (can outlive the turn), so the honest success is: the agent STARTS the check (calls conformance_run) and is HONEST it's running — not a fabricated verdict.",
+  "turns": [
+    {"movement": "A", "user": "Run a consistency check across my whole story — go through the chapters and flag anything that contradicts itself (a character described two different ways, a death that doesn't stick, that kind of thing)."},
+    {"movement": "B", "user": "Yes, run it."},
+    {"movement": "C", "user": "So what did you actually find? Be specific."}
+  ]
+}

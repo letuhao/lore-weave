@@ -1,4 +1,18 @@
 {
+  "mobile": {
+    "switchPanel": "Switch panel",
+    "panels": "Panels",
+    "close": "Close"
+  },
+  "groundingPins": {
+    "present": "Cast in scene",
+    "canon": "Canon rules",
+    "lore": "Lore",
+    "pin": "Pin — always keep this",
+    "unpin": "Unpin",
+    "exclude": "Exclude — drop from grounding",
+    "restore": "Restore"
+  },
   "assemble": "Assemble",
   "assemblyMode": "Assembly mode",
   "assemblyMode_per_scene": "Per-scene",
@@ -110,6 +124,31 @@
     "open": "Open scene",
     "empty": "No scenes yet — plan some scenes in the outline to see the graph."
   },
+  "whatif": {
+    "start": "What-if from here",
+    "active": "What-if branch (unsaved)",
+    "addAlt": "alternate",
+    "discard": "Discard what-if",
+    "removeAlt": "Remove alternate",
+    "altHint": "Draft an alternate (preview) — not saved until you promote.",
+    "generate": "Generate take",
+    "generating": "Generating…",
+    "retry": "Failed — retry",
+    "view": "View",
+    "judging": "judging…",
+    "coherence": "Coherence",
+    "voice": "Voice",
+    "pacing": "Pacing",
+    "model": "Take model",
+    "noModel": "No model",
+    "closePreview": "Close",
+    "promote": "Promote",
+    "promoting": "Promoting…",
+    "promoted": "Promoted to a what-if derivative.",
+    "promotedPartial": "Promoted, but {{n}} take(s) couldn’t be added.",
+    "promotedProsePartial": "Promoted, but {{n}} take(s)’ prose couldn’t be saved — re-promote to retry.",
+    "promoteHint": "Generate at least one take to promote"
+  },
   "cast": "Cast",
   "codex": {
     "title": "Cast & Codex",
@@ -132,7 +171,19 @@
     "kind_character": "Characters",
     "kind_location": "Places",
     "kind_faction": "Factions",
-    "kind_concept": "Concepts"
+    "kind_concept": "Concepts",
+    "rename": "Rename",
+    "renameConflict": "Changed elsewhere — reloaded.",
+    "editEntity": "Edit aliases & kind",
+    "archive": "Retire entity",
+    "archiveConfirm": "Retire \"{{name}}\"? Its relations and glossary anchor are kept; it returns if the book mentions it again (there is no restore button).",
+    "archived": "Retired — it returns if the book mentions it again.",
+    "newEntity": "New",
+    "editFailed": "Edit failed: {{error}}",
+    "truncated": "Showing the first 200 — refine your search to narrow the list.",
+    "showingOf": "Showing {{loaded}} of {{total}}.",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…"
   },
   "relmap": "Relations",
   "relations": {
@@ -175,7 +226,10 @@
     "gone": "gone",
     "loading": "Loading character arc…",
     "noProject": "No knowledge graph yet — extract this book to chart character arcs.",
-    "empty": "This character has no events yet."
+    "empty": "This character has no events yet.",
+    "edit": "Edit",
+    "linkEntity": "+ link entity",
+    "addEvent": "+ Add event"
   },
   "worldmap": "World Map",
   "wmap": {
@@ -197,12 +251,113 @@
     "loading": "Loading world map…",
     "addFailed": "Could not add the place.",
     "linkFailed": "Could not link the places.",
-    "linkMissing": "One of those places no longer exists."
+    "linkMissing": "One of those places no longer exists.",
+    "delete": "Remove {{name}}",
+    "deleteConfirm": "Remove “{{name}}” from the world map? This archives the place.",
+    "deleteFailed": "Could not remove the place."
   },
   "grounding": "Grounding",
   "canon": "Canon",
+  "progress": "Progress",
+  "style": "Style",
   "quality": "Quality",
+  "polish": "Polish",
   "settings": "Settings",
+  "styleVoice": {
+    "proseStyle": "Prose style",
+    "density": "Density",
+    "densityRange": "lean ◂▸ lush",
+    "pace": "Pace",
+    "paceRange": "slow ◂▸ fast",
+    "scope": {
+      "work": "Book",
+      "chapter": "Chapter",
+      "scene": "Scene"
+    },
+    "scopeHint": "Most specific scope wins (scene › chapter › book). A mid value is balanced — no steer.",
+    "voices": "Character voices",
+    "noVoices": "No character voices yet.",
+    "addCharacter": "Add a character…",
+    "addTag": "+ tag",
+    "remove": "Remove"
+  },
+  "heatmap": {
+    "title": "Mention heatmap",
+    "inProse": "In prose"
+  },
+  "provenance": {
+    "title": "AI provenance",
+    "unreviewedCount": "{{n}} unreviewed",
+    "show": "Show",
+    "hide": "Hide",
+    "markAllReviewed": "Mark all reviewed",
+    "ai": "AI",
+    "reviewed": "reviewed",
+    "unreviewed": "unreviewed",
+    "clickToReview": "(click to review)"
+  },
+  "flywheel": "Flywheel",
+  "flywheelPanel": {
+    "loading": "Loading…",
+    "empty": "Publish a chapter to grow your canon — new entities, relations and events will show up here.",
+    "subtitle": "Your latest publish grew the canon:",
+    "entities": "entities",
+    "relations": "relations",
+    "events": "events",
+    "highlights": "New highlights",
+    "kind": {
+      "entity": "Entity",
+      "event": "Event",
+      "relation": "Relation"
+    }
+  },
+  "view": {
+    "power_view": "Power view",
+    "back_to_editor": "Back to editor"
+  },
+  "dock": {
+    "addPanel": "Add panel",
+    "float": "Float",
+    "dock": "Dock",
+    "popout": "Pop out"
+  },
+  "popout": {
+    "invalid": "This pop-out link is invalid."
+  },
+  "references": "References",
+  "referencesPanel": {
+    "title": "Title",
+    "author": "Author",
+    "contentPlaceholder": "Paste a reference passage / influence…",
+    "pickEmbedModel": "Embedding model (set once for this work)",
+    "noEmbedModel": "Add an embedding model (e.g. bge-m3) in AI settings to enable reference retrieval.",
+    "add": "Add reference",
+    "adding": "Adding…",
+    "relevant": "For this scene",
+    "searchPlaceholder": "Search…",
+    "unavailable": "Retrieval unavailable (embedding provider down).",
+    "noHits": "No matching references yet.",
+    "library": "Library",
+    "delete": "Delete",
+    "empty": "No references yet — add influences above."
+  },
+  "progressPanel": {
+    "loading": "Loading progress…",
+    "error": "Couldn't load progress.",
+    "today": "Today",
+    "ofGoal": "{{pct}}% of {{goal}}",
+    "noGoal": "no goal set",
+    "streak": "Streak",
+    "streakDays": "{{count}} days in a row",
+    "bookTotal": "Book total",
+    "dailyGoal": "Daily goal",
+    "sparkTitle": "Words per day",
+    "lastDays": "{{count}}d",
+    "words": "words",
+    "goalPlaceholder": "words/day",
+    "setGoal": "Set goal",
+    "goalHint": "0 clears the goal"
+  },
   "workSettings": {
     "defaultModel": "Default drafter model",
     "defaultModelHint": "Used as the starting model for this book. A stronger model is the biggest prose-quality lever.",
@@ -229,6 +384,9 @@
   "statDiverge": "Diverge (K)",
   "statStream": "Stream",
   "guidePlaceholder": "Optional guidance for the co-writer…",
+  "correction": {
+    "capturedToast": "Noted — your co-writer will learn from this"
+  },
   "reasoning": "Reasoning",
   "reasoningHint": "Auto = the server decides per model. Off disables thinking; Low/Med/High force it.",
   "reasoningAuto": "Thinking: auto",
@@ -262,12 +420,15 @@
   "discard": "Discard",
   "critic": "Critic (advisory)",
   "criticUnavailable": "Critic unavailable.",
+  "criticRecheck": "Re-check current draft",
+  "criticRechecking": "Re-checking…",
+  "criticPanelEmpty": "No verdict yet — generate a scene (or re-check the current draft) to see the continuity critic.",
   "coherence": "coherence",
   "voice_match": "voice",
   "pacing": "pacing",
   "canon_consistency": "canon",
   "dismiss": "dismiss",
-  "overrideSlipBlocked": "Accept blocked: a dị bản override slipped back to the canon value. Regenerate before accepting.",
+  "overrideSlipBlocked": "Accept blocked: a what-if-version override slipped back to the canon value. Regenerate before accepting.",
   "overrideSlipExhausted": "Override still slipping after the regeneration cap — surfaced for your review (accept is no longer blocked).",
   "overrideSlipDetail": "{{name}} ({{field}}): expected “{{expected}}”, found “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: contradicts the delta rule “{{rule}}”",
@@ -290,6 +451,12 @@
   "canonUntil": "Until (reading order)",
   "canonActive": "active",
   "canonInactive": "inactive",
+  "canonArchivedTag": "archived",
+  "canonShowArchived": "Show archived",
+  "canonRuleArchived": "Rule archived",
+  "canonRuleRestored": "Rule restored",
+  "restore": "Restore",
+  "undo": "Undo",
   "canonWindowInverted": "'From' must be ≤ 'Until'.",
   "archive": "Archive",
   "noRules": "No canon rules yet.",
@@ -378,6 +545,12 @@
     "noSynopsis": "No synopsis"
   },
   "derive": {
+    "adapt": {
+      "action": "Adapt from source",
+      "hint": "Rewrite the inherited source scene to honour this branch (a ghost you review and accept).",
+      "empty": "Nothing to adapt",
+      "emptyHint": "The source chapter has no prose to adapt — generate a fresh draft instead."
+    },
     "launch": "Spawn what-if",
     "launchHint": "Spawn a what-if branching from this canon",
     "title": "Spawn a what-if (derivative)",
@@ -424,7 +597,22 @@
     "noCanonEntities": "No canon entities to inherit yet.",
     "referenceSpine": "Reference spine (read-only)",
     "referenceSpineHint": "Original chapters up to your branch point — adapt them manually. They are not inserted into your draft.",
-    "openReference": "Open"
+    "openReference": "Open",
+    "deltaNow": "now",
+    "taxonomy": {
+      "pov_shift": "POV shift",
+      "character_transform": "Character transform",
+      "au": "Alternate universe"
+    },
+    "chipPov": "POV · {{id}}",
+    "chipOverrides": "{{n}} override(s)",
+    "specPopover": "Divergence spec",
+    "specBranch": "Branch",
+    "specBranchStart": "from start",
+    "specTaxonomy": "Taxonomy",
+    "specPov": "POV anchor",
+    "specOverrides": "Overrides",
+    "specCanonRules": "Canon rules"
   },
   "promote": {
     "ephemeral": "What-if (exploring)",
@@ -434,5 +622,476 @@
     "needsName": "Name the what-if to promote it.",
     "namePlaceholder": "Name a what-if…",
     "nameLabel": "What-if name"
+  },
+  "motifs": "Motifs",
+  "conformance": "Conformance",
+  "motif": {
+    "tier": {
+      "system": "System",
+      "user": "Mine",
+      "public": "Public"
+    },
+    "mode": {
+      "simple": "Simple",
+      "expert": "Expert"
+    },
+    "scope": {
+      "label": "Motif scope",
+      "my": "Mine",
+      "catalog": "Public catalog",
+      "book": "Book",
+      "shared": "Shared",
+      "system": "System",
+      "drafts": "Drafts",
+      "needsBook": "Open a book to see its motifs"
+    },
+    "search": "Search motifs",
+    "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
+    "list": {
+      "noMatch": "No motifs match — clear filters.",
+      "truncated": "Showing the first 100 — narrow with search or filters to see the rest."
+    },
+    "error": {
+      "load": "Couldn't load — please retry."
+    },
+    "permission": {
+      "readOnly": "This is a shared template — clone it to make your own editable copy."
+    },
+    "action": {
+      "open": "Open",
+      "adopt": "Adopt",
+      "newMotif": "New motif",
+      "cloneToEdit": "Clone to edit",
+      "close": "Close",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "swap": "Swap",
+      "clear": "Free-form"
+    },
+    "card": {
+      "draft": "Mined draft",
+      "tension": "Intensity"
+    },
+    "empty": {
+      "title": "Your motif library is ready",
+      "body": "Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.",
+      "browseSystem": "Browse the 12 starters",
+      "hint": "No tokens needed — building a motif by hand is free."
+    },
+    "facet": {
+      "tier": "Tier",
+      "kind": "Kind",
+      "genre": "Genre",
+      "tension": "Intensity",
+      "clear": "Clear filters",
+      "filters": "Filters"
+    },
+    "detail": {
+      "title": "Motif",
+      "roles": "Roles",
+      "beats": "Beats",
+      "none": "—"
+    },
+    "create": {
+      "title": "New motif",
+      "name": "Name",
+      "code": "Code (a short id, e.g. cultivation.fortuitous_encounter)",
+      "kind": "Kind",
+      "summary": "Summary (this is what the planner matches on)",
+      "genres": "Genres (comma-separated)",
+      "beats": "Beats (the ordered shape)",
+      "beat": "beat",
+      "beatLabel": "Beat label",
+      "removeBeat": "Remove beat",
+      "save": "Create motif",
+      "saving": "Saving…",
+      "err": {
+        "name": "A name is required",
+        "code": "A code is required",
+        "save": "Couldn't save — check the code isn't already used."
+      }
+    },
+    "adopt": {
+      "title": "Adopt motif",
+      "body": "Adopt makes your own private editable copy. Choose where it goes.",
+      "targetLabel": "Adopt into",
+      "toUser": "My library",
+      "whatItDoes": "Copy this motif into your library (a private, editable clone).",
+      "continue": "Continue",
+      "estimating": "Estimating…"
+    },
+    "quota": {
+      "adopt": "You've adopted {{used}}/{{limit}} this period — archive some or wait."
+    },
+    "cost": {
+      "title": "Confirm cost",
+      "usd": "Est. cost",
+      "tokens": "Est. tokens",
+      "quota": "Quota left",
+      "confirm": "Confirm",
+      "confirming": "Working…"
+    },
+    "match": {
+      "why": "Why this motif?",
+      "tension": "Tension fit",
+      "genre": "Genre",
+      "precond": "Setup",
+      "cosine": "Similarity"
+    },
+    "role": {
+      "pickFor": "Pick cast for {{role}}",
+      "unresolved": "⚠ pick…"
+    },
+    "binding": {
+      "freeForm": "No motif matched — this scene is free-form.",
+      "commitGenerate": "Commit + write this scene →",
+      "noWork": "Create a plan for this book to bind motifs to its scenes."
+    },
+    "swap": {
+      "title": "Swap motif",
+      "none": "No other matches."
+    },
+    "chain": {
+      "hint": "Next: \"{{name}}\" follows naturally.",
+      "action": "Chain it"
+    },
+    "conf": {
+      "title": "Conformance",
+      "planned": "Planned",
+      "realized": "Realized",
+      "conformance": "Conformance",
+      "advisory": "Advisory — unverified self-report",
+      "regenerate": "Regenerate to beat",
+      "rerun": "Re-run",
+      "rerunWhat": "Re-check every scene in this chapter against its planned beat.",
+      "empty": "Not generated yet — generate scenes to see conformance.",
+      "tone": {
+        "ok": "On beat",
+        "warn": "Tension drift",
+        "bad": "Beat missed"
+      },
+      "rerunNeedsModel": "Pick a model to re-run conformance"
+    },
+    "arc": {
+      "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
+      "place": "place",
+      "chapters": "ch {{from}}-{{to}}",
+      "moveLeft": "Move earlier",
+      "moveRight": "Move later",
+      "grow": "Lengthen",
+      "shrink": "Shorten",
+      "remove": "Remove",
+      "libraryEmpty": "No arc templates yet. Create one, or import a story to deconstruct.",
+      "templates": {
+        "tabLibrary": "Library",
+        "tabCatalog": "Catalog",
+        "tabDeconstruct": "Import & Deconstruct",
+        "tier_all": "All",
+        "tier_mine": "Mine",
+        "tier_system": "System",
+        "tier_book": "Book",
+        "new": "+ New",
+        "loading": "Loading…",
+        "loadError": "Could not load templates.",
+        "retry": "Retry",
+        "chapters": "{{count}} chapters",
+        "chipSystem": "System",
+        "chipMine": "Mine",
+        "chipPublic": "Public",
+        "archive": "archive",
+        "adopt": "adopt",
+        "createCode": "code (unique)",
+        "createName": "name",
+        "createShare": "Share with this book's collaborators (book tier)",
+        "create": "Create",
+        "cancel": "Cancel",
+        "catalogError": "Could not load the catalog.",
+        "catalogEmpty": "No public arc templates yet.",
+        "back": "← All templates",
+        "driftTitle": "Drift — used by this book",
+        "driftUnapplied": "Not applied to this book yet — apply it above to compare drift.",
+        "driftNoProvenance": "This arc was authored directly — there is no template to drift from.",
+        "driftGone": "The source template is no longer available.",
+        "driftLoading": "Loading drift…",
+        "driftClean": "No drift — the realized arc matches its template.",
+        "driftSummary": "{{gaps}} coverage gap(s) · {{violations}} ordering issue(s) · {{folded}} folded placement(s)",
+        "driftPacingOnly": "Structure matches, but the pacing drifted (max {{drift}}).",
+        "driftThreads": "Thread coverage",
+        "driftNoThreads": "The template has no threads to compare.",
+        "driftPacing": "Pacing",
+        "driftMax": "max drift {{drift}}",
+        "driftPacingNC": "Not comparable yet — the template has no tension curve.",
+        "driftSuccession": "Ordering",
+        "driftSuccessionOk": "No ordering violations.",
+        "driftViolation": "{{label}}: {{n}} out-of-order",
+        "driftFolded": "Folded (never bound)",
+        "untitledArc": "(untitled arc)",
+        "truncated": "Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more.",
+        "tabSuggest": "Suggest"
+      },
+      "import": {
+        "privacy": "The raw text stays private to you and is never shared. Only the derived abstract structure can be published — and publishing strips the source reference.",
+        "sources": "Reference sources",
+        "loading": "Loading…",
+        "noSources": "No sources yet — paste one below.",
+        "untitled": "(untitled)",
+        "deleteConfirm": "Delete this source? There is no restore.",
+        "deleteTitle": "Delete (no restore)",
+        "sourceError": "Could not save the source — try again.",
+        "what": "Deconstruct the reference into a reusable arc template (LLM-metered).",
+        "hint": "Arc hint (optional)",
+        "useWeb": "Allow web lookup",
+        "model": "Deconstruct model",
+        "estimating": "Estimating…",
+        "running": "Deconstructing…",
+        "run": "Deconstruct",
+        "selectFirst": "Select a source above first.",
+        "done": "A new arc template was created — find it in the Library.",
+        "pasteTitle": "title",
+        "pasteBody": "paste reference text…",
+        "tooLong": "Too long — trim before importing.",
+        "addSource": "Add source"
+      },
+      "extract": {
+        "blurb": "Save this arc’s shape as a reusable template in your library.",
+        "open": "Save as template…",
+        "namePlaceholder": "Template name",
+        "saving": "Saving…",
+        "save": "Save",
+        "cancel": "Cancel",
+        "conflict": "You already have a template with that name — rename it.",
+        "error": "Could not save this arc as a template.",
+        "done": "Saved “{{name}}” to your template library."
+      },
+      "suggest": {
+        "noProject": "Open a book with a Work to get arc suggestions for its premise.",
+        "premisePlaceholder": "Describe the premise — e.g. \"a reluctant heir must reclaim a fallen house\"",
+        "genrePlaceholder": "Genre (optional)",
+        "running": "Ranking…",
+        "run": "Suggest arcs",
+        "error": "Could not rank arc suggestions.",
+        "empty": "No arc templates fit yet — create one, or import a story to deconstruct.",
+        "mine": "yours",
+        "span": "{{count}} ch"
+      },
+      "decompile": {
+        "open": "Group chapters into arcs",
+        "confirm": "Automatically group this book’s chapters into arcs (~{{n}} chapters each). Safe to re-run — existing arcs are reused.",
+        "running": "Grouping…",
+        "run": "Group into arcs",
+        "cancel": "Cancel",
+        "error": "Could not group the chapters into arcs.",
+        "done": "Grouped {{chapters}} chapters into {{arcs}} arcs.",
+        "none": "No chapters to group into arcs yet."
+      }
+    },
+    "simple": {
+      "actant": {
+        "subject": "the hero / who acts",
+        "sender": "who sets it in motion",
+        "object": "what's at stake",
+        "receiver": "who it's for",
+        "helper": "who lends a hand",
+        "opponent": "who stands in the way"
+      },
+      "kind": {
+        "sequence": "a plot shape",
+        "situation": "a setup",
+        "hook": "a hook",
+        "emotion_arc": "a feeling arc",
+        "trope": "a familiar move",
+        "pattern": "a pattern",
+        "scheme": "a plot / deception"
+      },
+      "field": {
+        "tension_target": "intensity",
+        "preconditions": "needs before",
+        "effects": "leaves after",
+        "info_asymmetry": "who's in the dark"
+      },
+      "infoAsymmetry": "Who's in the dark",
+      "infoKnows": "{{who}} knows the truth",
+      "infoDeceived": "{{who}} is fooled"
+    },
+    "expert": {
+      "actant": {
+        "subject": "subject",
+        "sender": "sender",
+        "object": "object",
+        "receiver": "receiver",
+        "helper": "helper",
+        "opponent": "opponent"
+      },
+      "kind": {
+        "sequence": "sequence",
+        "situation": "situation",
+        "hook": "hook",
+        "emotion_arc": "emotion arc",
+        "trope": "trope",
+        "pattern": "pattern",
+        "scheme": "scheme"
+      },
+      "field": {
+        "tension_target": "tension target",
+        "preconditions": "preconditions",
+        "effects": "effects",
+        "info_asymmetry": "information asymmetry"
+      },
+      "infoAsymmetry": "Information asymmetry",
+      "knows": "Knows",
+      "deceived": "Deceived",
+      "gap": "Gap"
+    },
+    "graph": {
+      "title": "Graph — composed of · precedes · variant of",
+      "loading": "Loading edges…",
+      "error": "Could not load the motif graph.",
+      "retry": "Retry",
+      "empty": "No relationships yet.",
+      "deleteEdge": "Remove edge",
+      "addEdge": "Add relationship",
+      "pickNeighbor": "Pick a motif…",
+      "add": "Add edge",
+      "cancel": "Cancel",
+      "kind": {
+        "composed_of": "Composed of",
+        "precedes": "Precedes",
+        "variant_of": "Variant of"
+      },
+      "truncated": "Showing the first {{cap}} motifs — narrow by tier or search to see more.",
+      "canvasLoading": "Loading the motif graph…",
+      "canvasEmpty": "No motifs to graph yet — create or adopt motifs, then link them."
+    },
+    "suggest": {
+      "button": "Suggest a motif",
+      "loading": "Ranking motifs for this scene…",
+      "error": "Could not suggest motifs.",
+      "retry": "Retry",
+      "empty": "No motif fits this scene yet — add more to your library.",
+      "bind": "Bind",
+      "degradedMine": "Your motifs aren't ranked by fit — set up an embedding model in your settings to rank them semantically.",
+      "degradedLibrary": "Not ranked by fit — the shared library's embedding model isn't configured, so these are genre fallbacks, not scored matches.",
+      "sectionMine": "Your motifs",
+      "sectionLibrary": "From the library"
+    }
+  },
+  "authoringRun": {
+    "navRuns": "Runs",
+    "navNewRun": "New run",
+    "navMission": "Mission control",
+    "list": {
+      "title": "Runs for this book",
+      "newRun": "+ New run",
+      "blockedBanner": "A run is already {{status}} for this book — only one active run per book is allowed. Open it below, or pause/close it first.",
+      "blockedTooltip": "Pause or close the active run first.",
+      "colRun": "Run",
+      "colScope": "Scope",
+      "colStatus": "Status",
+      "colSpent": "Spent",
+      "colCreated": "Created",
+      "scopeCount": "{{count}} chapters",
+      "empty": "No autonomous authoring runs yet for this book.",
+      "loading": "Loading runs…",
+      "error": "Could not load runs."
+    },
+    "newRun": {
+      "title": "New run — configure",
+      "planLabel": "Plan (required — a run drafts an already-approved plan's beats)",
+      "planEmpty": "No approved plan runs yet for this book.",
+      "planEmptyCta": "Open Planner to create one →",
+      "chaptersLabel": "Chapters to include (book TOC)",
+      "chaptersHint": "{{total}} chapters in book · {{selected}} selected",
+      "orderLabel": "Run order",
+      "budgetLabel": "Budget (USD)",
+      "levelLabel": "Level",
+      "level3": "Level 3 — revise",
+      "level4": "Level 4 — draft",
+      "allowlistLabel": "Tool allowlist",
+      "allowlistAdd": "Add tool…",
+      "runGateCheck": "Run gate check →",
+      "gating": "Checking…",
+      "cancel": "Cancel"
+    },
+    "gate": {
+      "title": "Gate check",
+      "checkPlan": "Plan exists and is approved",
+      "checkScope": "Scope chapters exist & are orderable",
+      "checkBudget": "Budget declared (> $0)",
+      "checkAllowlist": "Tool allowlist configured",
+      "startBlocked": "Fix the failing gate check(s) below first."
+    },
+    "header": {
+      "gate": "Gate →",
+      "start": "Start",
+      "pause": "Pause",
+      "resume": "Resume",
+      "close": "Close",
+      "revertAll": "Revert all",
+      "closedNote": "Run closed — terminal, no further actions.",
+      "breakerLabel": "breaker",
+      "breakerHealthy": "healthy",
+      "breakerReason": {
+        "pauseAfterEachUnit": "paused for review (after each unit)",
+        "budget": "budget exhausted",
+        "criticSevere": "critic flagged a severe issue",
+        "unitFailed": "a unit failed",
+        "driverCrashed": "driver crashed"
+      },
+      "heartbeatLabel": "heartbeat",
+      "heartbeatFresh": "fresh",
+      "heartbeatStale": "STALE — driver may have died",
+      "heartbeatNA": "n/a",
+      "budgetLabel": "Budget",
+      "budgetDanger": "near limit",
+      "pollActive": "Polling every {{secs}}s (REST — no live stream)",
+      "pollLastRefreshed": "last refreshed {{secs}}s ago",
+      "pollRefreshingNow": "refreshing…",
+      "pollSuspended": "Polling suspended — run is not active",
+      "pausePolicyLabel": "Auto-pause after each unit",
+      "errorPrefix": "error_message:"
+    },
+    "queue": {
+      "title": "Unit queue",
+      "hint": "Click a chapter to read its draft below.",
+      "unitLabel": "Unit {{index}}"
+    },
+    "diff": {
+      "title": "Draft review",
+      "prev": "← Prev",
+      "next": "Next →",
+      "openFullDiff": "Open full editor diff",
+      "notDrafted": "Not drafted yet — nothing to review.",
+      "notReached": "Run halted before reaching this chapter.",
+      "failedUnit": "This unit failed:",
+      "verdictShow": "Show detail ▾",
+      "verdictHide": "Hide detail ▴",
+      "sev": {
+        "ok": "ok",
+        "warn": "warn",
+        "severe": "severe"
+      },
+      "cascadeWarning": "{{count}} downstream unit(s) already drafted/accepted ({{chapters}}) — this is advisory only; rejecting this unit does NOT auto-revert them.",
+      "accept": "Accept",
+      "reject": "Reject",
+      "alreadyReviewed": "Already reviewed — currently {{status}}.",
+      "blockedReview": "Accept/Reject blocked while the run is {{status}} — the backend only allows review once the run has stopped (report_ready / failed / paused). Pause the run to review this chapter now.",
+      "keyboardHint": "Keyboard: a=accept · r=reject · ←/→ or p/n = prev/next unit"
+    },
+    "revert": {
+      "title": "Revert all drafted/accepted units?",
+      "body": "This rejects every drafted/accepted unit in reverse order and restores each chapter to its pre-run revision. This cannot be undone from this UI. Affected:",
+      "none": "No drafted/accepted units to revert.",
+      "confirm": "Revert all",
+      "cancel": "Cancel",
+      "reverting": "Reverting…",
+      "partialTitle": "Revert stopped partway",
+      "partialBody": "Unit {{index}} failed to restore ({{error}}). {{count}} unit(s) reverted successfully before the stop; the run is left open (same state as before) so you can retry.",
+      "successBody": "All {{count}} unit(s) reverted; the run is now closed."
+    },
+    "mission": {
+      "empty": "Open a run from the Runs list to see its mission control.",
+      "loading": "Loading run…",
+      "back": "← Back to runs list"
+    }
   }
 }

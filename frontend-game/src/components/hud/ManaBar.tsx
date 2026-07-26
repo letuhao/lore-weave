@@ -1,4 +1,5 @@
 import { useGameStore } from '@/store/game-store';
+import type { JSX } from 'react';
 
 export function ManaBar(): JSX.Element {
   const mp = useGameStore((s) => s.mp);

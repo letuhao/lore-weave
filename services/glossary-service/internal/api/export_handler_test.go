@@ -48,6 +48,19 @@ func newExportServer(t *testing.T, pool *pgxpool.Pool) *Server {
 	return NewServer(pool, cfg)
 }
 
+// testPoolMaxConns caps EACH test's own pgxpool (openTestDB is called once per
+// test function, not shared) at a small, fixed size — 2026-07-08 test-suite
+// parallelization: pgxpool's own default MaxConns is max(4, runtime.NumCPU()),
+// so on this machine's 32 logical CPUs, every un-capped pool could open up to
+// 32 connections. Once many t.Parallel() tests run concurrently (the whole
+// point of parallelizing), that multiplies fast against the shared dev
+// Postgres's max_connections=100 — a budget ALSO used by every other locally
+// running service, not just this test binary. A small fixed cap per test pool
+// keeps the aggregate bounded regardless of how many tests run at once;
+// each test's own DB traffic is simple sequential CRUD, never needing more
+// than a couple of connections at a time.
+const testPoolMaxConns = 3
+
 // openTestDB opens a pgxpool for integration tests; skips if env not set.
 func openTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -55,7 +68,12 @@ func openTestDB(t *testing.T) *pgxpool.Pool {
 	if dbURL == "" {
 		t.Skip("GLOSSARY_TEST_DB_URL not set — skipping DB integration test")
 	}
-	pool, err := pgxpool.New(context.Background(), dbURL)
+	cfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		t.Fatalf("openTestDB: parse config: %v", err)
+	}
+	cfg.MaxConns = testPoolMaxConns
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("openTestDB: %v", err)
 	}
@@ -74,6 +92,7 @@ func runMigrations(t *testing.T, pool *pgxpool.Pool) {
 // ── snapshotToRAGEntity unit tests (no DB required) ──────────────────────────
 
 func TestSnapshotToRAGEntityBasic(t *testing.T) {
+	t.Parallel()
 	raw := `{
 		"schema_version": "1.0",
 		"entity_id": "aaaa-bbbb",
@@ -154,6 +173,7 @@ func TestSnapshotToRAGEntityBasic(t *testing.T) {
 }
 
 func TestSnapshotToRAGEntitySkipsEmptyAttributes(t *testing.T) {
+	t.Parallel()
 	raw := `{
 		"entity_id": "e1",
 		"kind": {"code": "location"},
@@ -184,6 +204,7 @@ func TestSnapshotToRAGEntitySkipsEmptyAttributes(t *testing.T) {
 }
 
 func TestSnapshotToRAGEntityNilTagsBecomeEmptySlice(t *testing.T) {
+	t.Parallel()
 	raw := `{"entity_id":"e2","kind":{"code":"item"},"status":"draft",
 	         "attributes":[],"chapter_links":[]}`
 	ent, err := snapshotToRAGEntity([]byte(raw))
@@ -199,6 +220,7 @@ func TestSnapshotToRAGEntityNilTagsBecomeEmptySlice(t *testing.T) {
 }
 
 func TestSnapshotToRAGEntityDisplayNameFromTermCode(t *testing.T) {
+	t.Parallel()
 	raw := `{
 		"entity_id": "e3",
 		"kind": {"code": "terminology"},
@@ -221,6 +243,7 @@ func TestSnapshotToRAGEntityDisplayNameFromTermCode(t *testing.T) {
 }
 
 func TestSnapshotToRAGEntityEmptyArraysNotNull(t *testing.T) {
+	t.Parallel()
 	raw := `{
 		"entity_id": "e4",
 		"kind": {"code": "event"},
@@ -249,6 +272,7 @@ func TestSnapshotToRAGEntityEmptyArraysNotNull(t *testing.T) {
 }
 
 func TestSnapshotToRAGEntityInvalidJSON(t *testing.T) {
+	t.Parallel()
 	_, err := snapshotToRAGEntity([]byte(`{not valid json`))
 	if err == nil {
 		t.Error("expected error for invalid JSON, got nil")
@@ -591,6 +615,7 @@ func TestExportEmptyResult(t *testing.T) {
 // TestSnapshotToRAGEntityMatchesOldHandlerOutput verifies the new mapper produces
 // the same field shapes as the old 5-query handler assembly.
 func TestSnapshotToRAGEntityMatchesOldHandlerOutput(t *testing.T) {
+	t.Parallel()
 	// Build a snapshot that matches what the DB trigger would produce.
 	snap := `{
 		"schema_version": "1.0",
@@ -915,13 +940,28 @@ func TestSnapshotChapterLinkOrder(t *testing.T) {
 
 // TestExportQueryChapterFilter verifies the export SQL correctly filters by chapter_id.
 // Tests at query level directly (bypasses book-service verifyBookOwner).
+//
+// D-EXPORT-TEST-ROW-ACCUMULATION (found + fixed 2026-07-08): this test used to
+// hardcode both bookID and chapterID AND register its t.Cleanup AFTER the
+// len(results)!=1 assertion (the old Fatalf below). t.Fatalf calls
+// runtime.Goexit() immediately, so on ANY failure the Cleanup registration
+// was never reached — the inserted rows were never deleted. Against the
+// shared, never-reset dev Postgres this is self-perpetuating: one failure
+// leaves stale rows under the same hardcoded book_id, which makes the NEXT
+// run's count assertion fail too (observed growing 3 -> 4 -> 5 across
+// repeated runs), permanently, since cleanup can never fire again either.
+// Fixed two ways: (1) t.Cleanup is now registered immediately after the
+// inserts, before any assertion that could fail-fast, so it ALWAYS runs;
+// (2) book_id/chapter_id are now fresh uuid.New() per run (defense in depth —
+// this also removes the only reason this test couldn't run with t.Parallel()
+// alongside the rest of the suite, unlike most tests in this package which
+// already use fresh per-test ids via newActionFixture).
 func TestExportQueryChapterFilter(t *testing.T) {
 	pool := openTestDB(t)
 	ctx := context.Background()
 	runMigrations(t, pool)
 
-	bookID := "00000000-0000-0000-0000-00000000000c"
-	bid := uuid.MustParse(bookID)
+	bid := uuid.New()
 	adoptTestBook(t, pool, bid)
 	kindID := bookKindID(t, pool, bid, "character")
 
@@ -929,13 +969,17 @@ func TestExportQueryChapterFilter(t *testing.T) {
 	var entA, entB string
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entA)
 	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bid, kindID).Scan(&entB)
+	// Registered NOW, before any assertion — must run regardless of pass/fail.
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE book_id=$1`, bid) //nolint:errcheck
+	})
 
 	// Force snapshot on both
 	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, entA)
 	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, entB)
 
 	// Link only entA to a chapter
-	chapterID := "dddddddd-0000-0000-0000-000000000001"
+	chapterID := uuid.New()
 	pool.Exec(ctx, `INSERT INTO chapter_entity_links(entity_id,chapter_id,chapter_title,relevance) VALUES($1,$2,'Ch 1','major')`, entA, chapterID)
 
 	// Query with chapter filter — same SQL as the handler
@@ -949,7 +993,7 @@ func TestExportQueryChapterFilter(t *testing.T) {
 		      SELECT 1 FROM chapter_entity_links
 		      WHERE entity_id = glossary_entities.entity_id
 		        AND chapter_id = $2
-		  )`, bookID, chapterID)
+		  )`, bid, chapterID)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -969,10 +1013,6 @@ func TestExportQueryChapterFilter(t *testing.T) {
 	if results[0].EntityID != entA {
 		t.Errorf("wrong entity returned: want %s, got %s", entA, results[0].EntityID)
 	}
-
-	t.Cleanup(func() {
-		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
-	})
 }
 
 // TestExportQuerySnapshotIsNull verifies entities with NULL snapshot are excluded from export query.
@@ -1022,6 +1062,7 @@ func TestExportQuerySnapshotIsNull(t *testing.T) {
 
 // TestExportEndpointRequiresAuth verifies the export endpoint returns 401 without token.
 func TestExportEndpoint_RequiresAuth(t *testing.T) {
+	t.Parallel()
 	srv := newExportServer(t, nil)
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/glossary/books/00000000-0000-0000-0000-000000000001/export", nil)

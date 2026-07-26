@@ -148,7 +148,7 @@ func TestRevertMerge_RestoresSupersededArticle(t *testing.T) {
 	if sb := wikiSupersededBy(t, f.pool, f.ctx, loserArt); sb == nil {
 		t.Fatal("precondition: loser article should be superseded after merge")
 	}
-	if reason, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid); err != nil || reason != "" {
+	if reason, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid, uuid.Nil); err != nil || reason != "" {
 		t.Fatalf("revertMergeCore: reason=%q err=%v", reason, err)
 	}
 	if sb := wikiSupersededBy(t, f.pool, f.ctx, loserArt); sb != nil {

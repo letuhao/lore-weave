@@ -5,6 +5,14 @@
     "failed": "failed",
     "pending": "pending"
   },
+  "error": {
+    "retryable": "Couldn't load translations — the translation service may be unavailable. Try again.",
+    "forbidden": "You don't have access to this book's translations.",
+    "notfound": "These translations could not be found.",
+    "retry": "Retry",
+    "chapters_failed": "Couldn't load the chapter list.",
+    "chapters_timeout": "Loading the chapter list timed out — the service may be slow or down."
+  },
   "page": {
     "breadcrumb_book": "Book",
     "breadcrumb_chapters": "Chapters",
@@ -81,7 +89,8 @@
     "original_label": "Original — {{lang}}",
     "translation_label": "Translation — {{lang}}",
     "source_fallback": "Source",
-    "no_translated": "(No translated content)"
+    "no_translated": "(No translated content)",
+    "original_unavailable": "The original text is currently unavailable."
   },
   "block_review": {
     "unchanged": "Unchanged",
@@ -129,6 +138,7 @@
     "cell_changed_title": "{{count}} segment(s) changed — review & re-translate",
     "legend_stale": "{{count}} affected",
     "select_affected_title": "Select the chapters affected by glossary changes to re-translate",
+    "loading": "Loading translation coverage…",
     "no_chapters_title": "No chapters to translate",
     "no_chapters_desc": "Create chapters first, then come back to translate them.",
     "title": "Translation Matrix",
@@ -138,6 +148,8 @@
     "filter": "Filter",
     "show_languages": "Show languages",
     "reset_auto": "Reset to auto",
+    "all_filtered_title": "All languages are filtered out",
+    "all_filtered_desc": "Re-enable a language in the filter to see its coverage.",
     "no_translations_title": "No translations yet",
     "no_translations_desc": "Start by translating your chapters into another language.",
     "start_translation": "Start Translation",
@@ -151,6 +163,13 @@
     "show_filter": "show filter",
     "chapters_selected": "{{count}} chapters selected",
     "translate_selected": "Translate Selected",
+    "translate_cta": "Translate…",
+    "translate_no_edit": "You have view-only access — ask the owner for edit access to translate.",
+    "select_all_chapters": "Select all chapters",
+    "orphan_footnote": "{{count}} translation(s) belong to chapters that are no longer active.",
+    "page": "Page",
+    "prev": "Previous page",
+    "next": "Next page",
     "extract_glossary": "Extract Glossary",
     "clear": "Clear"
   },
@@ -164,6 +183,7 @@
     "needs_count": "{{count}} segment(s) need re-translation",
     "retranslate_changed": "Re-translate changed ({{count}})",
     "retranslate_started": "Re-translation started",
+    "retranslate_failed": "Re-translation could not be started. Please try again.",
     "empty": "No segments built yet.",
     "close": "Close"
   }

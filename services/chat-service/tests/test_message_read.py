@@ -55,3 +55,18 @@ def test_tool_calls_passthrough_when_already_decoded():
     decoded = [{"tool": "memory_forget", "ok": False}]
     msg = _row_to_message(_row(tool_calls=decoded))
     assert msg.tool_calls == decoded
+
+
+def test_finish_reason_surfaced_when_present():
+    """DBT-CHAT-PERSIST — the FE needs finish_reason to badge an incomplete
+    reply (interrupted/error) instead of it looking like a finished answer."""
+    assert _row_to_message(_row(finish_reason="interrupted")).finish_reason == "interrupted"
+    assert _row_to_message(_row(finish_reason="error")).finish_reason == "error"
+    assert _row_to_message(_row(finish_reason="stop")).finish_reason == "stop"
+
+
+def test_finish_reason_degrades_to_none_before_migration():
+    """A row read before the finish_reason column exists (or a partial test
+    record) must degrade to None via `.get`, never KeyError."""
+    msg = _row_to_message(_row())  # _row() has no finish_reason key
+    assert msg.finish_reason is None

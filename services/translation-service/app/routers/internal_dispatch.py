@@ -24,7 +24,12 @@ from ..config import settings as app_settings
 from ..deps import get_db
 from ..grant_deps import GrantLevel, authorize_book
 from ..grant_client import get_grant_client
-from ..models import CreateJobPayload
+from ..llm_client import LLMClient, get_llm_client
+from ..models import CreateJobPayload, TranslateTextRequest, TranslateTextResponse
+from ..workers.extraction_blobstore import get_blob_store
+from ..workers.extraction_cache import offload_raw_responses, purge_stale_raw_outputs
+from ..workers.extraction_outcomes import reconcile_from_rows
+from ..workers.extraction_replay import replay_chapter_from_cache, rerun_merge_book
 from ..workers.segment_store import ensure_chapter_segments
 from ..workers.segment_status import compute_segment_status
 from .jobs import _resolve_and_create_job, _cancel_job_core, _pause_job_core, _resume_job_core
@@ -381,6 +386,176 @@ async def reconcile_jobs(
     return {"jobs": out}
 
 
+@router.get("/extraction-jobs/{job_id}/reconcile", dependencies=[Depends(require_internal_token)])
+async def reconcile_extraction_job(
+    job_id: UUID,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """OBS/M2 reconciliation sweep (INV-O12): re-derive an extraction job's stats from the
+    `extraction_batch_outcomes` SSOT rows and compare to the cached counters on
+    `extraction_jobs`. The outcome rows are the truth; the job-row counters are a cache a
+    mid-update crash can skew. Report-only by design — it surfaces drift (so a sweeper / ops
+    dashboard can detect a divergence) without auto-correcting the convergence-critical
+    completed/failed counters, which are chapter-grained and must not be clobbered by a
+    batch-grained re-derivation mid-flight. Internal-token; any owner."""
+    job = await db.fetchrow(
+        "SELECT status, completed_chapters, failed_chapters, total_chapters "
+        "FROM extraction_jobs WHERE job_id=$1", job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail={"code": "EXTRACT_JOB_NOT_FOUND", "message": "Job not found"})
+    rows = await db.fetch(
+        "SELECT chapter_id, status FROM extraction_batch_outcomes WHERE job_id=$1", job_id)
+    ssot = reconcile_from_rows([(r["chapter_id"], r["status"]) for r in rows])
+    # A chapter is "finished" in the SSOT when it has any outcome rows; compare that count to
+    # the job row's completed_chapters (clean + with-errors both count as finished).
+    derived_finished = ssot["chapters_completed"] + ssot["chapters_with_errors"]
+    return {
+        "job_id": str(job_id),
+        "ssot": ssot,
+        "job_row": {
+            "status": job["status"],
+            "completed_chapters": job["completed_chapters"],
+            "failed_chapters": job["failed_chapters"],
+            "total_chapters": job["total_chapters"],
+        },
+        "drift": derived_finished != (job["completed_chapters"] or 0),
+    }
+
+
+class ReplayPayload(BaseModel):
+    # The asserted caller (verified service forwards the real user_id). Re-checked for an
+    # EDIT grant on the book; replay reads ONLY this user's own cache rows (INV-9).
+    user_id: UUID
+    book_id: UUID
+    chapter_id: UUID
+    # Two-step write gate: confirm=False (default) returns a dry-run PREVIEW (no glossary
+    # write); confirm=True performs the idempotent whole-chapter writeback.
+    confirm: bool = False
+    # HEAL mode (D-EXTRACT-ATTR-MERGE-DEFAULTS M3): re-merge under the attributes' AUTHORED
+    # merge_strategy (append/overwrite) instead of the source job's frozen `fill` actions —
+    # unfreezes attributes extracted before the merge-defaults fix. Default off = faithful replay.
+    use_authored_strategy: bool = False
+
+
+@router.post("/extraction-cache/replay", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_replay(
+    payload: ReplayPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """CACHE/M6 replay (architecture §8.1): re-apply a chapter's CACHED extraction parse to
+    glossary at $0 LLM. Grant-gated (the asserted user must hold EDIT on the book — the
+    internal token authenticates the SERVICE, this confirms the USER claim), tenancy-scoped
+    (reads only the caller's own cache rows, writes attributed to the caller — INV-9), and
+    confirm-gated (a write happens only when `confirm=True`; otherwise a dry-run preview).
+
+    Faithful-by-construction: it only proceeds when the current chapter text + source-job
+    profile still hash to the cached generation (else it returns a no-cache/profile status
+    and the caller runs a fresh extraction)."""
+    caller = str(payload.user_id)
+    await authorize_book(get_grant_client(), payload.book_id, payload.user_id, GrantLevel.EDIT)
+    return await replay_chapter_from_cache(
+        db,
+        caller_user_id=caller,
+        book_id=str(payload.book_id),
+        chapter_id=str(payload.chapter_id),
+        confirm=payload.confirm,
+        use_authored_strategy=payload.use_authored_strategy,
+    )
+
+
+class RerunMergePayload(BaseModel):
+    # Asserted caller (re-checked for EDIT on the book); heal reads ONLY this user's cache (INV-9).
+    user_id: UUID
+    book_id: UUID
+    confirm: bool = False
+    # Optional subset; omitted = every chapter with a cached parse for this book+owner.
+    chapter_ids: list[UUID] | None = None
+
+
+@router.post("/extraction-cache/rerun-merge", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_rerun_merge(
+    payload: RerunMergePayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """HEAL a whole book (D-EXTRACT-ATTR-MERGE-DEFAULTS M3): re-merge every chapter that has a
+    faithful cached parse under the attributes' AUTHORED merge_strategy — unfreezing attributes
+    that were extracted under the old `fill` default — at $0 LLM. Same grant/tenancy/confirm gates
+    as the per-chapter replay (EDIT on the book; reads only the caller's own cache; confirm=False
+    is a bounded dry-run). For a large book this iterates synchronously over the cached chapters;
+    the response is bounded (status counts + a capped problem sample)."""
+    caller = str(payload.user_id)
+    await authorize_book(get_grant_client(), payload.book_id, payload.user_id, GrantLevel.EDIT)
+    return await rerun_merge_book(
+        db,
+        caller_user_id=caller,
+        book_id=str(payload.book_id),
+        confirm=payload.confirm,
+        chapter_ids=[str(c) for c in payload.chapter_ids] if payload.chapter_ids else None,
+    )
+
+
+class CacheRetentionPayload(BaseModel):
+    # All optional — unfiltered = the GLOBAL retention sweep (the scheduled job); the
+    # scope fields narrow it to one tenant/book/chapter for a targeted compaction.
+    keep: int = 3
+    owner_user_id: UUID | None = None
+    book_id: UUID | None = None
+    chapter_id: UUID | None = None
+
+
+@router.post("/extraction-cache/retention", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_retention(
+    payload: CacheRetentionPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """CACHE/M6 retention (architecture §8.1): purge stale `extraction_raw_outputs`
+    generations, keeping the latest `keep` content-hash versions per (owner, book,
+    chapter). This is the maintenance seam a scheduler/cron hits — internal-token only
+    (it is a platform housekeeping op, not a user action; no grant gate, every owner's
+    cache is in scope when unfiltered). The optional scope fields target one tenant/book/
+    chapter. Best-effort: a purge failure returns deleted=0, never raises (retention must
+    not break a cron run). When MinIO is configured, a purged row's cold-archived raw_response
+    body is deleted too (no orphan blobs)."""
+    deleted = await purge_stale_raw_outputs(
+        db,
+        keep=payload.keep,
+        owner_user_id=str(payload.owner_user_id) if payload.owner_user_id else None,
+        book_id=str(payload.book_id) if payload.book_id else None,
+        chapter_id=str(payload.chapter_id) if payload.chapter_id else None,
+        store=get_blob_store(),
+    )
+    return {"deleted": deleted, "keep": payload.keep}
+
+
+class CacheOffloadPayload(BaseModel):
+    # Archive raw_response of rows older than this (defaults to the configured hot window).
+    older_than_days: int | None = None
+    limit: int = 500
+    owner_user_id: UUID | None = None
+    book_id: UUID | None = None
+
+
+@router.post("/extraction-cache/offload", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_offload(
+    payload: CacheOffloadPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD): cold-archive the bulky verbatim
+    `raw_response` of aging rows to object storage, then NULL the DB column — shrinking the hot
+    table while preserving an auditable copy. Internal-token only (a platform housekeeping op).
+    No-op (offloaded=0, disabled=true) when MinIO is unconfigured. The cache + replay are
+    unaffected (raw_response is never read on the replay path)."""
+    store = get_blob_store()
+    days = payload.older_than_days if payload.older_than_days is not None else app_settings.raw_offload_age_days
+    return await offload_raw_responses(
+        db, store,
+        older_than_days=days,
+        limit=payload.limit,
+        owner_user_id=str(payload.owner_user_id) if payload.owner_user_id else None,
+        book_id=str(payload.book_id) if payload.book_id else None,
+    )
+
+
 class JobControlPayload(BaseModel):
     # The asserted OWNER (jobs-service forwards the verified JWT sub). Re-verified
     # against the row by the owner-scoped cancel cores — M4.
@@ -476,14 +651,23 @@ async def _cancel_secondary_core(
     return {"job_id": str(job_id), "status": "cancelling"}
 
 
-async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+async def _retry_job_core(
+    db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID,
+    *, mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
+) -> dict:
     """D-JOBS-P4-RETRY — re-submit a FAILED translation job as a FRESH job (new job_id),
     reusing the failed row's model/language/pipeline/QA params. Owner-scoped (M4 re-check:
     404 if not owned). 409 unless the job is `failed` (retry is only offered there). The
     retried job is created STANDALONE (campaign_id=None) — a user retry is detached from any
     original campaign saga, which orchestrates its own jobs. `force_retranslate=True` re-runs
     the stored chapter set regardless of the skip-gate. Prompts + any unset params resolve
-    from the user's CURRENT settings (the model/language/pipeline choices are preserved)."""
+    from the user's CURRENT settings (the model/language/pipeline choices are preserved).
+
+    D-PMCP-WORKER-CARRIER: retry is a NET-NEW re-spend initiated by the CONFIRMING caller, so
+    the public-MCP key + cap come from the confirm route (NOT the failed row's original
+    carrier — the new spend is attributed + capped to whoever drives the retry NOW). Omitting
+    them was a per-key-cap BYPASS: a public agent whose job hit MCP_KEY_CAP_EXCEEDED (→ status
+    'failed') could retry into a fresh UNCAPPED job. None ⇒ a first-party (FE/JWT) retry."""
     row = await db.fetchrow(
         "SELECT * FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
         job_id, owner_user_id,
@@ -530,6 +714,49 @@ async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -
     )
     new_job = await _resolve_and_create_job(
         db, row["book_id"], payload, str(owner_user_id), campaign_id=None,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
     )
     return {"job_id": str(new_job.job_id), "status": new_job.status,
             "retried_from": str(job_id)}
+
+
+# ── KG-TL M3 — internal text translate (on-demand event-text cache fill) ──────
+class InternalTranslateTextPayload(BaseModel):
+    """Service-asserted translate-text request. The internal token authenticates
+    the SERVICE; ``user_id`` is the VERIFIED user whose translation prefs/model
+    (BYOK, provider-registry) resolve the actual MT call. No book scope — event
+    summaries are book-agnostic free text (mirrors the public /translate-text)."""
+
+    user_id: UUID
+    text: str
+    source_language: str = "auto"
+    target_language: str | None = None
+
+
+@router.post(
+    "/translate-text",
+    response_model=TranslateTextResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def internal_translate_text(
+    payload: InternalTranslateTextPayload,
+    db: asyncpg.Pool = Depends(get_db),
+    llm_client: LLMClient = Depends(get_llm_client),
+) -> TranslateTextResponse:
+    """Translate a single free-text string ON BEHALF OF ``user_id``.
+
+    knowledge-service's Timeline on-demand cache fill calls this to translate an
+    :Event ``summary`` / ``time_cue`` / ``title`` lazily. It reuses the public
+    route's exact core (``translate_text_core``) so the user's saved translation
+    model resolves via provider-registry — knowledge-service never imports a
+    provider SDK nor hardcodes a model (provider-gateway invariant, AC-T8)."""
+    from .translate import translate_text_core
+
+    body = TranslateTextRequest(
+        text=payload.text,
+        source_language=payload.source_language,
+        target_language=payload.target_language,
+    )
+    return await translate_text_core(
+        body, user_id=str(payload.user_id), db=db, llm_client=llm_client
+    )

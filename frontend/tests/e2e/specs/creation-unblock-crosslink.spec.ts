@@ -31,9 +31,9 @@ test.describe('Creation-unblock — book↔world↔project cross-links (G3)', ()
 
       await settings.attachToWorld(worldName);
 
-      // the "Open in world" backlink appears + points at the world workspace…
+      // the "Open in world" backlink appears (DOCK-7 — it's an onClick-driven button now,
+      // not a raw <a href>; the click below proves it targets the right world workspace)…
       await expect(settings.openInWorld).toBeVisible({ timeout: 15_000 });
-      await expect(settings.openInWorld).toHaveAttribute('href', `/worlds/${world.world_id}`);
       // …and the server reflects the grouping (book.world_id set).
       await expect.poll(async () => (await getBookApi(request, token, book)).world_id, { timeout: 15_000 })
         .toBe(world.world_id);

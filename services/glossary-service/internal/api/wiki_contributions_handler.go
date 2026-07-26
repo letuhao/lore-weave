@@ -15,7 +15,7 @@ import (
 type wikiContributionItem struct {
 	ArticleID         string      `json:"article_id"`
 	EntityID          string      `json:"entity_id"`
-	BookID            string      `json:"book_id"`
+	BookID            string      `json:"book_id,omitempty"`
 	DisplayName       string      `json:"display_name"`
 	Kind              kindSummary `json:"kind"`
 	Status            string      `json:"status"`

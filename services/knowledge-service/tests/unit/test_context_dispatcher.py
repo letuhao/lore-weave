@@ -129,6 +129,71 @@ async def test_missing_project_raises_not_found(monkeypatch):
         )
 
 
+# ── T5 (Context Budget Law D2): grounding intent gate routing ───────────────
+
+
+@pytest.mark.asyncio
+async def test_grounding_false_routes_full_eligible_to_static(monkeypatch):
+    """The gate: an extraction-enabled (full-mode) project with grounding=False
+    serves the LIGHT static path — skipping the expensive passage/semantic/LLM
+    retrieval — instead of full mode. Default (grounding=True) still routes full."""
+    p1 = _project(extraction_enabled=True)
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(return_value=p1)
+    static = AsyncMock(return_value=MagicMock(mode="static"))
+    full = AsyncMock(return_value=MagicMock(mode="full"))
+    monkeypatch.setattr("app.context.builder.build_static_mode", static)
+    monkeypatch.setattr("app.context.builder.build_full_mode", full)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=uuid4(),
+        message="give me a plan", embedding_client=MagicMock(), grounding=False,
+    )
+    static.assert_awaited_once()
+    full.assert_not_called()
+    _, kwargs = static.await_args
+    assert kwargs["project"] is p1
+
+
+@pytest.mark.asyncio
+async def test_grounding_false_routes_multi_to_light_first_project(monkeypatch):
+    """A multi-KG union with grounding=False skips the expensive cross-project rank
+    and serves the light static path for the first resolved project."""
+    p1, p2 = _project(), _project()
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(side_effect=[p1, p2])
+    multi = AsyncMock(return_value=MagicMock(mode="multi"))
+    static = AsyncMock(return_value=MagicMock(mode="static"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_static_mode", static)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="what can you do", project_ids=[p1.project_id, p2.project_id],
+        grounding=False,
+    )
+    static.assert_awaited_once()
+    multi.assert_not_called()
+    _, kwargs = static.await_args
+    assert kwargs["project"] is p1
+
+
+@pytest.mark.asyncio
+async def test_grounding_false_with_no_project_still_mode1(monkeypatch):
+    """No project + grounding=False → still the cheapest no_project mode (the gate
+    doesn't change the no-project path)."""
+    m1 = AsyncMock(return_value=MagicMock(mode="no_project"))
+    monkeypatch.setattr("app.context.builder.build_no_project_mode", m1)
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=MagicMock(),
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", grounding=False,
+    )
+    m1.assert_awaited_once()
+
+
 # ── K21.12-BE (design D9): ContextBuildResponse carries the flag ────────────
 
 
@@ -155,6 +220,37 @@ def test_context_build_response_carries_tool_calling_enabled():
     resp_on = ContextBuildResponse.model_validate(built_on)
     assert resp_on.tool_calling_enabled is True
 
+
+def test_context_build_response_carries_canon_capture_enabled():
+    """WS-4C Half A — the capture toggle crosses to chat-service on this same
+    `model_validate(from_attributes)` wire. If the field is ever renamed on either
+    side, from_attributes silently falls back to the response DEFAULT and capture
+    goes permanently, silently off with nothing red. Pin both states + the default.
+
+    The default is FALSE, unlike tool_calling_enabled's True: capture spends the
+    user's BYOK tokens, so an unset value must never be read as consent."""
+    from app.context.modes.no_project import BuiltContext
+    from app.routers.context import ContextBuildResponse
+
+    built_on = BuiltContext(
+        mode="full", context="<memory/>", recent_message_count=20,
+        token_count=3, canon_capture_enabled=True,
+    )
+    assert ContextBuildResponse.model_validate(built_on).canon_capture_enabled is True
+
+    built_off = BuiltContext(
+        mode="full", context="<memory/>", recent_message_count=20,
+        token_count=3, canon_capture_enabled=False,
+    )
+    assert ContextBuildResponse.model_validate(built_off).canon_capture_enabled is False
+
+    # A BuiltContext that never sets it (an older builder, or a renamed attribute)
+    # must fail CLOSED, not inherit "spend the user's money".
+    class _Legacy:
+        mode, context, recent_message_count, token_count = "full", "", 20, 3
+
+    assert ContextBuildResponse.model_validate(_Legacy()).canon_capture_enabled is False
+
     # Defaulting half: a builder result that never set the field still
     # validates, and the response defaults the flag to True.
     built_default = BuiltContext(
@@ -164,3 +260,83 @@ def test_context_build_response_carries_tool_calling_enabled():
     assert ContextBuildResponse.model_validate(
         built_default
     ).tool_calling_enabled is True
+
+
+# ── Track B B1(2): multi-project (multi-KG) dispatch ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_multiple_projects_route_to_multi_mode(monkeypatch):
+    """>=2 readable projects union via the multi-project mode (not the single full mode)."""
+    p1, p2 = _project(), _project()
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(side_effect=[p1, p2])
+    multi = AsyncMock(return_value=MagicMock(mode="multi"))
+    full = AsyncMock(return_value=MagicMock(mode="full"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_full_mode", full)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", project_ids=[p1.project_id, p2.project_id],
+    )
+    multi.assert_awaited_once()
+    full.assert_not_called()
+    _, kwargs = multi.await_args
+    assert kwargs["projects"] == [p1, p2]
+
+
+@pytest.mark.asyncio
+async def test_single_project_in_list_routes_to_single_mode(monkeypatch):
+    """A project_ids of length 1 still uses the richer single-project full mode."""
+    p1 = _project(extraction_enabled=True)
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(return_value=p1)
+    multi = AsyncMock()
+    full = AsyncMock(return_value=MagicMock(mode="full"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_full_mode", full)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", project_ids=[p1.project_id],
+    )
+    full.assert_awaited_once()
+    multi.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_multi_skips_stale_ids_but_unions_the_readable(monkeypatch):
+    """A stale/foreign id in the set is filtered; the >=2 readable ones still union."""
+    p1, p2 = _project(), _project()
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(side_effect=[p1, None, p2])  # middle id is stale
+    multi = AsyncMock(return_value=MagicMock(mode="multi"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_full_mode", AsyncMock())
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", project_ids=[p1.project_id, uuid4(), p2.project_id],
+    )
+    multi.assert_awaited_once()
+    _, kwargs = multi.await_args
+    assert kwargs["projects"] == [p1, p2]
+
+
+@pytest.mark.asyncio
+async def test_multi_all_stale_raises_not_found(monkeypatch):
+    """If NONE of the requested projects resolve, it is a 404 (like the single path)."""
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(return_value=None)
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", AsyncMock())
+
+    with pytest.raises(ProjectNotFound):
+        await build_context(
+            summaries_repo=MagicMock(), projects_repo=projects_repo,
+            glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+            message="hi", project_ids=[uuid4(), uuid4()],
+        )

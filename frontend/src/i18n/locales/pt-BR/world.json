@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Mundos",
+    "subtitle": "Construa um mundo a partir de seu lore — personagens, lugares, facções — sem a necessidade de um manuscrito.",
+    "loading": "Carregando mundos..."
+  },
+  "empty": {
+    "title": "Nenhum mundo ainda",
+    "description": "Crie seu primeiro mundo para começar a escrever o lore — não são necessários capítulos."
+  },
+  "card": {
+    "books": "{{count}} livros"
+  },
+  "create": {
+    "cta": "Novo mundo",
+    "title": "Novo mundo",
+    "description": "Dê um nome ao seu mundo. Você pode escrever o lore imediatamente.",
+    "nameLabel": "Nome do mundo",
+    "namePlaceholder": "ex: Os Reinos Fragmentados",
+    "descLabel": "Descrição (opcional)",
+    "cancel": "Cancelar",
+    "submit": "Criar mundo",
+    "creating": "Criando...",
+    "error": "Falha ao criar o mundo"
+  },
+  "workspace": {
+    "back": "Todos os mundos",
+    "loading": "Carregando mundo...",
+    "error": "Mundo não encontrado."
+  },
+  "lore": {
+    "title": "Bíblia do mundo",
+    "extractionOptional": "Escreva o lore diretamente — personagens, lugares, facções. Sem necessidade de manuscrito. A extração de prosa é opcional; esta bíblia do mundo é a âncora.",
+    "anchorUnavailable": "Este mundo ainda não possui uma âncora de bíblia — a escrita de lore está indisponível.",
+    "kindLabel": "Tipo",
+    "kindPlaceholder": "Escolha um tipo...",
+    "add": "Adicionar lore",
+    "adding": "Adicionando...",
+    "added": "Lore adicionado à sua bíblia do mundo.",
+    "error": "Falha ao adicionar lore"
+  },
+  "graph": {
+    "title": "Grafo do mundo",
+    "subtitle": "Uma visualização de apenas leitura de como o lore do seu mundo se conecta.",
+    "rollupSubtitle": "Um resumo de apenas leitura do grafo canônico de cada livro membro, renderizado junto como ilhas por livro.",
+    "counts": "{{nodes}} nós · {{edges}} relações",
+    "sources": "consolidado de {{count}} livro(s)",
+    "truncated": "mostrando os {{n}} principais — um livro grande pode sobrecarçar um menor",
+    "hint": "Role para zoom · arraste o espaço vazio para panear · clique em um nó para detalhes",
+    "loading": "Carregando o grafo do mundo...",
+    "loadFailed": "Falha ao carregar o grafo do mundo: {{error}}",
+    "empty": "Nenhum conhecimento do mundo ainda — construa a bíblia ou extraia um livro membro para consolidar o grafo aqui."
+  },
+  "timeline": {
+    "title": "Linha do tempo do mundo",
+    "subtitle": "Um resumo de apenas leitura da linha do tempo canônica de cada livro membro, em ordem narrativa.",
+    "counts": "{{count}} eventos",
+    "sources": "em {{count}} livro(s)",
+    "truncated": "mostrando os primeiros {{n}}",
+    "chapterLabel": "Capítulo",
+    "loading": "Carregando a linha do tempo do mundo...",
+    "loadFailed": "Falha ao carregar a linha do tempo do mundo: {{error}}",
+    "empty": "Nenhum evento de linha do tempo ainda — extraia um livro membro para consolidar a linha do tempo aqui."
+  },
+  "populate": {
+    "addBook": "Adicionar um livro",
+    "createWhatIf": "Criar um 'e se'",
+    "whatIfHint": "Crie um desvio (what-if) a partir de uma obra canônica",
+    "whatIfNeedsCanon": "Adicione um livro com uma obra canônica primeiro — um 'e se' deriva do cânone.",
+    "pickCanon": "Desviar de...",
+    "addBookTitle": "Adicionar um livro a este mundo",
+    "addBookDesc": "Anexe um livro existente ou crie um novo — ele se une à linha do tempo e ao grafo do mundo.",
+    "tabAttach": "Anexar existente",
+    "tabCreate": "Criar novo",
+    "pickBook": "Livro",
+    "bookTitle": "Título",
+    "bookTitlePlaceholder": "Novo título do livro...",
+    "bookDesc": "Descrição (opcional)",
+    "attach": "Anexar livro",
+    "createAttach": "Criar e adicionar",
+    "adding": "Adicionando...",
+    "cancel": "Cancelar",
+    "addFailed": "Não foi possível adicionar o livro: {{error}}"
+  },
+  "living": {
+    "heading": "Mundo vivo",
+    "subtitle": "O cânone do seu mundo e seus desvios 'e se' como uma linha do tempo navegável. Clique em uma obra para abri-la.",
+    "title": "Mundo vivo",
+    "counts": "{{canon}} cânone · {{branches}} desvios 'e se'",
+    "hint": "Role para zoom · arraste o espaço vazio para panear · clique em uma obra para abri-la",
+    "loading": "Carregando o mundo vivo...",
+    "loadFailed": "Falha ao carregar o mundo vivo: {{error}}",
+    "empty": "Nenhuma obra neste mundo ainda — comece um livro ou um 'e se' para expandir sua linha do tempo.",
+    "canonBadge": "Cânone",
+    "branchBadge": "E se",
+    "canonAria": "Cânone: {{title}}",
+    "branchAria": "Desvio 'e se' no capítulo {{ch}}: {{title}}",
+    "branchAt": "desvia no cap. {{ch}}",
+    "orphan": "· fonte fora deste mundo",
+    "edgeLabel": "cap. {{ch}}"
+  }
+}

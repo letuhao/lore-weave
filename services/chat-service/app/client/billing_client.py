@@ -1,9 +1,10 @@
 import logging
 from uuid import uuid4
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
+from app.middleware.trace_id import trace_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,14 @@ class BillingClient:
         message_id: str,
         input_payload: dict | list | None = None,
         output_payload: dict | str | None = None,
+        purpose: str = "chat",
+        cost_usd: float | None = None,
     ) -> None:
+        # WS-4.2b — `purpose` lets voice record STT/TTS usage under a distinct lane
+        # ('voice_stt' / 'voice_tts') instead of masquerading as chat. STT is metered by
+        # audio-seconds, TTS by characters (NOT tokens) — those raw counts ride in the
+        # payload; token fields stay 0 so the token-priced cost is not FAKED (precise
+        # per-minute/per-char pricing is the billing cost-model follow-on, tracked).
         payload = {
             "request_id": str(uuid4()),
             "owner_user_id": user_id,
@@ -42,16 +50,24 @@ class BillingClient:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "request_status": "success",
-            "purpose": "chat",
+            "purpose": purpose,
             "input_payload": input_payload or {},
             "output_payload": output_payload if isinstance(output_payload, dict) else {"content": output_payload or ""},
         }
+        # C6 — an authoritative per-invocation cost (e.g. the STT/TTS $ resolved from provider-registry's
+        # per_second/per_kchar rate). usage-billing honours `total_cost_usd` verbatim (its override path),
+        # so a priced voice record no longer lands at $0. Omitted ⇒ the token-based fallback (chat).
+        if cost_usd is not None:
+            payload["total_cost_usd"] = cost_usd
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+            async with build_internal_client(
+                self._base, internal_token=self._token,
+                timeout_s=10, trace_id_provider=trace_id_var.get,
+            ) as client:
                 resp = await client.post(
                     f"{self._base}/internal/model-billing/record",
                     json=payload,
-                    headers={"X-Internal-Token": self._token},
                 )
                 if resp.status_code >= 400:
                     logger.warning("Billing record failed (%d): %s", resp.status_code, resp.text[:200])

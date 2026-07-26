@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const ontologyState = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock('../../../hooks/useBookOntology', () => ({ useBookOntology: () => ontologyState.value }));
@@ -44,19 +44,19 @@ describe('CreateEntityModal', () => {
     expect(screen.getByTestId('tiered-form')).toHaveTextContent('bk2');
   });
 
-  it('closes on Escape', () => {
+  it('closes on Escape', async () => {
     const onClose = vi.fn();
     render(<CreateEntityModal bookId="book-1" onClose={onClose} onCreated={vi.fn()} />);
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it('does NOT close on Escape while a create is in flight', () => {
+  it('does NOT close on Escape while a create is in flight', async () => {
     const onClose = vi.fn();
     render(<CreateEntityModal bookId="book-1" onClose={onClose} onCreated={vi.fn()} />);
     fireEvent.click(screen.getByTestId('create-pick-kind-character'));
     fireEvent.click(screen.getByTestId('go-busy')); // form signals busy
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
   });
 });

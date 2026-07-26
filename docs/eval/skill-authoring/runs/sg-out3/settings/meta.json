@@ -1,0 +1,9 @@
+{
+  "label": "settings",
+  "model_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1",
+  "user": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+  "scenario_file": "/tmp/scen_settings.json",
+  "scenario_count": 8,
+  "run_id": "ae5f86e9f1b9",
+  "started_epoch": 1783444619
+}

@@ -35,7 +35,41 @@ __all__ = [
     "authorize_book",
     "book_for_chapter",
     "require_book_grant",
+    "clamp_effort_to_grant",
 ]
+
+# RE-Q11 / INV-T11 (effort-auth — spend authorization). Reasoning effort is paid
+# compute; a non-owner must not be able to escalate spend on a book they were only
+# granted limited access to past their grant ceiling. The ceiling per grant tier:
+_EFFORT_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3}
+_EFFORT_CEILING_BY_GRANT = {
+    GrantLevel.NONE: "none",
+    GrantLevel.VIEW: "none",
+    GrantLevel.EDIT: "medium",
+    GrantLevel.MANAGE: "high",
+    GrantLevel.OWNER: "high",
+}
+
+
+def clamp_effort_to_grant(requested: str | None, grant_level: int) -> tuple[str, bool]:
+    """Clamp a requested reasoning effort to the caller's per-book grant ceiling
+    (View=none, Edit=medium, Manage/Owner=high). Returns (clamped_effort, was_capped).
+    Unknown/empty effort → "none"; "off" is treated as "none". Applied at BOTH the
+    confirm-token mint AND re-applied at confirm time (a grant downgrade in the TTL
+    window can't replay a now-too-high effort)."""
+    req = (requested or "none").strip().lower()
+    if req == "off":
+        req = "none"
+    if req not in _EFFORT_RANK:
+        req = "none"
+    try:
+        gl = GrantLevel(grant_level)
+    except ValueError:
+        gl = GrantLevel.NONE
+    ceiling = _EFFORT_CEILING_BY_GRANT.get(gl, "none")
+    if _EFFORT_RANK[req] > _EFFORT_RANK[ceiling]:
+        return ceiling, True
+    return req, False
 
 
 def _not_found() -> HTTPException:

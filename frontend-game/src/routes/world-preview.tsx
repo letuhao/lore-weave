@@ -4,6 +4,7 @@ import { Button } from '@/components/shared/Button';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { GlobeViewer } from '@/components/globe/GlobeViewer';
 import { WORLDS, DEFAULT_WORLD, resolveWorld } from '@/components/globe/worlds';
+import type { JSX } from 'react';
 
 // World-preview route — a full-screen 3D globe of a generated world (the
 // `world-gen` `.glb`), with a picker for the bundled worlds. V1 is static

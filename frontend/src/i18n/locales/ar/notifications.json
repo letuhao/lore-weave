@@ -1,0 +1,60 @@
+{
+  "title": "الإشعارات",
+  "markAllRead": "تحديد الكل كمقروء",
+  "markRead": "تحديد كمقروء",
+  "delete": "حذف",
+  "empty": "لا توجد إشعارات بعد",
+  "loading": "جاري التحميل...",
+  "justNow": "الآن",
+  "minsAgo": "منذ {{count}} دقيقة",
+  "hrsAgo": "منذ {{count}} ساعة",
+  "daysAgo": "منذ {{count}} يوم",
+  "viewAll": "عرض كل الإشعارات",
+  "loadMore": "تحميل المزيد",
+  "pageTitle": "الإشعارات",
+  "notif": {
+    "translation": {
+      "completed": "اكتملت الترجمة — {{count}} فصول من \"{{book}}\"",
+      "partial": "ترجمة جزئية — تم إنجاز {{done}}، وفشل {{failed}}",
+      "failed": "فشلت الترجمة — \"{{book}}\""
+    },
+    "social": {
+      "followed": "بدأ {{name}} بمتابعتك"
+    },
+    "llm_job": {
+      "completed": "اكتملت عملية {{operation}}",
+      "failed": "فشلت عملية {{operation}}",
+      "cancelled": "تم إلغاء عملية {{operation}}",
+      "unknown": "{{operation}}"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "دردشة",
+      "completion": "إكمال",
+      "embedding": "تضمين",
+      "entity_extraction": "استخراج الكيانات",
+      "fact_extraction": "استخراج الحقائق",
+      "relation_extraction": "استخراج العلاقات",
+      "event_extraction": "استخراج الأحداث",
+      "translation": "ترجمة",
+      "image_gen": "توليد صور",
+      "video_gen": "توليد فيديو"
+    },
+    "status": {
+      "completed": "اكتملت",
+      "failed": "فشلت",
+      "cancelled": "ملغاة",
+      "running": "قيد التشغيل",
+      "pending": "قيد الانتظار"
+    }
+  },
+  "category": {
+    "all": "الكل",
+    "translation": "ترجمة",
+    "social": "اجتماعي",
+    "wiki": "ويكي",
+    "system": "النظام"
+  }
+}

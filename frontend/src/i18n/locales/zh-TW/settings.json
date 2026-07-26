@@ -4,10 +4,129 @@
     "tabs_aria": "設定分頁",
     "tab": {
       "account": "帳號",
+      "chat-ai": "聊天與 AI",
       "providers": "模型供應商",
       "translation": "翻譯",
       "reading": "閱讀",
-      "language": "語言"
+      "language": "語言",
+      "mcp": "MCP 存取",
+      "workflow-bindings": "工作流自動設定"
+    }
+  },
+  "mcp": {
+    "heading": "MCP 存取金鑰",
+    "subtitle": "建立 API 金鑰，讓外部代理透過 MCP 使用平台而無需介面。每把金鑰會以你的身分執行，並遵循你設定的範圍與限制。",
+    "create_key": "建立金鑰",
+    "loading": "正在載入金鑰…",
+    "empty": "尚無 MCP 金鑰。建立一把以讓外部代理連線。",
+    "scopes_label": "範圍：{{scopes}}",
+    "domains_label": "領域：{{domains}}",
+    "last_used": "上次使用：{{date}}",
+    "expires_label": "到期：{{date}}",
+    "revoke_aria": "撤銷金鑰 {{name}}",
+    "revoke_title": "撤銷金鑰",
+    "edit_aria": "編輯金鑰 {{name}}",
+    "edit_title": "編輯限制",
+    "status": {
+      "active": "啟用中",
+      "revoked": "已撤銷"
+    },
+    "scope": {
+      "read": "讀取",
+      "paid_read": "付費讀取",
+      "write_auto": "自動寫入",
+      "write_confirm": "需確認寫入"
+    },
+    "domain": {
+      "book": "書籍",
+      "glossary": "詞彙表",
+      "knowledge": "知識",
+      "translation": "翻譯",
+      "composition": "創作",
+      "jobs": "任務",
+      "settings": "設定",
+      "lore_enrichment": "設定集擴充",
+      "catalog": "目錄"
+    },
+    "create": {
+      "title": "建立 MCP 金鑰",
+      "subtitle": "密鑰只會顯示一次，請妥善保存。",
+      "name": "名稱",
+      "name_ph": "例如：my-research-agent",
+      "scopes": "範圍",
+      "scopes_hint": "金鑰可執行的操作。先只用讀取，必要時再增加。",
+      "domains": "領域",
+      "domains_hint": "金鑰可存取的範疇。未選擇任何領域的金鑰將無法呼叫任何工具。",
+      "rate_limit": "速率限制（次/分鐘）",
+      "spend_cap": "支出上限（USD）",
+      "spend_cap_ph": "無上限",
+      "expires": "到期（選填）",
+      "self_confirm": "允許自行確認寫入操作",
+      "self_confirm_hint": "關閉時，需確認的寫入操作必須由你核准。除非這是受信任的自動化代理，否則請保持關閉。",
+      "cancel": "取消",
+      "submit": "建立金鑰",
+      "creating": "建立中…",
+      "secret_note": "密鑰會在建立時自動產生，並非由你設定。建立後只會顯示一次。"
+    },
+    "edit": {
+      "title": "編輯「{{name}}」",
+      "subtitle": "調整此金鑰的限制。密鑰與可存取範圍不會改變。",
+      "scopes_locked": "範圍與領域在建立時即固定。若要變更可存取範圍，請撤銷並建立新金鑰。",
+      "expires_hint": "留空表示不過期。",
+      "cancel": "取消",
+      "submit": "儲存變更",
+      "saving": "儲存中…"
+    },
+    "reveal": {
+      "title": "已建立金鑰",
+      "subtitle": "請立即複製此密鑰——它不會再次顯示。",
+      "copy": "複製金鑰",
+      "warning": "僅顯示一次",
+      "done": "完成"
+    },
+    "revoke": {
+      "title": "撤銷 {{name}}？",
+      "desc": "金鑰會立即（約 60 秒內）停止運作。使用中的代理將失去存取權。此操作無法復原。",
+      "confirm": "撤銷"
+    },
+    "audit": {
+      "toggle_aria": "{{name}} 的近期呼叫",
+      "toggle_title": "呼叫紀錄",
+      "loading": "正在載入近期呼叫…",
+      "empty": "尚未記錄任何呼叫。",
+      "outcome": {
+        "relayed": "已轉送",
+        "denied_scope": "已拒絕（範圍）",
+        "rate_limited": "已限流",
+        "unauthorized": "未授權",
+        "upstream_error": "上游錯誤",
+        "tool_error": "工具錯誤"
+      }
+    },
+    "approvals": {
+      "heading": "待核准的代理操作 ({{count}})",
+      "subtitle": "使用您金鑰的代理請求了這些操作。核准即執行（費用計入該金鑰），或拒絕以捨棄。",
+      "key_label": "金鑰 {{key}}…",
+      "cost_label": "預估 ${{cost}}",
+      "approve": "核准",
+      "deny": "拒絕",
+      "toast": {
+        "approved": "已核准並執行操作",
+        "denied": "已拒絕操作",
+        "reprice": "費用已變動 — 請讓代理重新提出",
+        "approve_failed": "無法核准此操作",
+        "deny_failed": "無法拒絕此操作"
+      }
+    },
+    "toast": {
+      "load_failed": "載入 MCP 金鑰失敗",
+      "created": "已建立金鑰「{{name}}」",
+      "create_failed": "建立金鑰失敗",
+      "revoked": "已撤銷金鑰",
+      "revoke_failed": "撤銷金鑰失敗",
+      "updated": "已更新金鑰",
+      "update_failed": "更新金鑰失敗",
+      "audit_failed": "載入呼叫紀錄失敗"
     }
   },
   "account": {
@@ -124,6 +243,9 @@
       "api_key_ph_keep": "••••••••  （留空以保留目前金鑰）",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "留空以保留現有金鑰。",
+      "max_concurrency": "最大並行請求數",
+      "max_concurrency_ph": "無限制",
+      "max_concurrency_hint": "此供應商同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時（例如本機 GPU）才設定數字。",
       "cancel": "取消",
       "saving": "儲存中...",
       "submit": "儲存變更"
@@ -251,6 +373,71 @@
       "moderation": "內容審核"
     }
   },
+  "services": {
+    "heading": "外部服務",
+    "subtitle": "你自備（BYOK）的非模型 AI 服務 — 例如網路搜尋。與模型一樣透過 provider-registry 連接。",
+    "add": "新增服務",
+    "empty": "尚無外部服務。新增一個（例如網路搜尋）以啟用深度研究。",
+    "keyless": "免金鑰",
+    "no_endpoint": "無端點",
+    "no_model": "無模型",
+    "test": "測試",
+    "activate_aria": "啟用服務",
+    "deactivate_aria": "停用服務",
+    "delete_aria": "刪除 {{name}}",
+    "edit_aria": "編輯 {{name}}",
+    "type": {
+      "web_search": {
+        "label": "網路搜尋",
+        "desc": "從網路搜尋深度研究的佐證來源（例如 SearXNG、Tavily）。"
+      }
+    },
+    "add_dialog": {
+      "aria": "新增外部服務",
+      "title": "新增外部服務",
+      "type": "服務",
+      "endpoint": "端點 URL",
+      "endpoint_hint": "服務的基底 URL — provider-registry 會在伺服器端呼叫。若服務在主機上執行，請用 host.docker.internal，不要用 localhost（容器內的 localhost 指容器自己）。",
+      "key": "API 金鑰",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "免金鑰的本地服務請留空",
+      "key_hint": "服務的 Bearer 密鑰。",
+      "key_hint_keyless": "選填 — 免金鑰的本地後端（例如 SearXNG）請留空。",
+      "label": "標籤",
+      "label_ph": "例如 searxng-default",
+      "alias": "別名",
+      "alias_ph": "顯示名稱（選填）",
+      "cancel": "取消",
+      "submit": "新增服務",
+      "adding": "新增中…"
+    },
+    "edit_dialog": {
+      "aria": "編輯外部服務",
+      "title": "編輯 {{name}}",
+      "endpoint": "端點 URL",
+      "key": "API 金鑰",
+      "key_ph_keep": "留空以保留目前的金鑰",
+      "key_keep_hint": "留空則保留現有金鑰。",
+      "max_concurrency": "最大並行請求數",
+      "max_concurrency_ph": "無限制",
+      "max_concurrency_hint": "此服務同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時才設定數字。",
+      "cancel": "取消",
+      "submit": "儲存",
+      "saving": "儲存中…"
+    },
+    "toast": {
+      "added": "已新增 {{name}}",
+      "add_failed": "新增服務失敗",
+      "updated": "已更新服務",
+      "update_failed": "更新服務失敗",
+      "removed": "已移除服務",
+      "remove_failed": "移除服務失敗",
+      "toggle_failed": "切換服務失敗",
+      "verify_ok": "服務可連線（{{ms}}ms）",
+      "verify_failed": "驗證失敗：{{error}}",
+      "unknown_error": "未知錯誤"
+    }
+  },
   "tags": {
     "label": "標籤",
     "placeholder": "新增標籤...（例如：翻譯、聊天）",
@@ -306,6 +493,18 @@
       "testing": "測試中...",
       "reverify": "重新驗證",
       "verify": "驗證",
+      "pricing_title": "定價 (每 100 萬 token 之 USD 費用)",
+      "pricing_input": "輸入",
+      "pricing_output": "輸出",
+      "pricing_free_local": "免費 — 在您自己的硬體上執行",
+      "pricing_hint": "建立時已預填。若供應商的公開費率有所變動，請進行編輯，或前往 OpenRouter 查看即時估算值。",
+      "pricing_check": "檢查 OpenRouter",
+      "pricing_checking": "檢查中...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 輸入 ${{input}} / 輸出 ${{output}}",
+      "pricing_apply": "套用",
+      "pricing_not_found": "在 OpenRouter 上找不到匹配的模型 — 無法從此來源獲取定價。",
+      "pricing_check_failed": "無法檢查 OpenRouter 定價",
+      "pricing_negative_error": "定價必須為大於或等於零的數值",
       "delete_model": "刪除模型",
       "confirm_delete": "確認刪除",
       "deleting": "刪除中...",

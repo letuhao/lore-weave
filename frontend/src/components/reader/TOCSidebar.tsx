@@ -25,6 +25,14 @@ interface TOCSidebarProps {
   onLanguageChange: (lang: string) => void;
   /** Reading progress per chapter (from analytics API) */
   readProgress?: ReadingProgress[];
+  /**
+   * Studio dock panels (docs/standards/dockable-gui.md DOCK-7) must never route-navigate.
+   * When supplied, a chapter click calls this instead of the default route push — the
+   * `book-reader` panel passes a callback that retargets its own params via
+   * `props.api.updateParameters` (14_utility_panels.md Phase C4). Omitted ⇒ unchanged
+   * original behavior (the standalone ReaderPage route).
+   */
+  onNavigateChapter?: (chapterId: string) => void;
 }
 
 export function TOCSidebar({
@@ -40,6 +48,7 @@ export function TOCSidebar({
   activeLanguage,
   onLanguageChange,
   readProgress,
+  onNavigateChapter,
 }: TOCSidebarProps) {
   const navigate = useNavigate();
 
@@ -47,8 +56,14 @@ export function TOCSidebar({
 
   return (
     <>
-      <div className="fixed inset-0 z-30 bg-black/50" onClick={onClose} />
-      <div className="fixed bottom-0 left-0 top-0 z-[31] w-80 border-r bg-card shadow-xl flex flex-col">
+      {/* D-READER-RESPONSIVE: `absolute` (not `fixed`) so this confines itself to the
+          nearest positioned ancestor — the full viewport for the standalone ReaderPage
+          route (already `relative h-screen`), but the STUDIO PANEL's own bounds when
+          reused inside BookReaderPanel. `fixed` was pinning this to the browser
+          window's edge regardless of where the dock panel actually sits (e.g. docked
+          right, narrower than the window), which is the "poor responsive" bug. */}
+      <div className="absolute inset-0 z-30 bg-black/50" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 top-0 z-[31] w-80 max-w-full border-r bg-card shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between border-b p-4">
           <div>
@@ -82,7 +97,11 @@ export function TOCSidebar({
             return (
               <button
                 key={ch.chapter_id}
-                onClick={() => { navigate(`/books/${bookId}/chapters/${ch.chapter_id}/read`); onClose(); }}
+                onClick={() => {
+                  if (onNavigateChapter) onNavigateChapter(ch.chapter_id);
+                  else navigate(`/books/${bookId}/chapters/${ch.chapter_id}/read`);
+                  onClose();
+                }}
                 className={cn(
                   'flex w-full items-center gap-3 border-b px-4 py-2.5 text-left text-xs transition-colors',
                   isCurrent

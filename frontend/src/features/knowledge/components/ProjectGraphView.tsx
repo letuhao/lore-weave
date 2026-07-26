@@ -15,6 +15,7 @@
 // fetch/cache/merge logic lives in useProjectSubgraph (FE MVC).
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { GraphCanvas, type Pos } from '@/features/composition/components/GraphCanvas';
 import {
   GraphEntityNode,
@@ -28,6 +29,9 @@ import {
   type GraphEdge,
 } from '@/features/composition/hooks/useRelationshipMap';
 import { useProjectSubgraph } from '../hooks/useProjectSubgraph';
+import { useProjectGraphSlice } from '../hooks/useProjectGraphSlice';
+import { useGraphViews } from '../hooks/useGraphViews';
+import type { GraphView } from '../types/ontology';
 import { EntityDetailPanel } from './EntityDetailPanel';
 
 export interface ProjectGraphViewProps {
@@ -40,24 +44,42 @@ export interface ProjectGraphViewProps {
 
 export function ProjectGraphView({ projectId, bookId }: ProjectGraphViewProps) {
   const { t } = useTranslation('knowledge');
-  const sg = useProjectSubgraph(projectId);
 
-  // Map the C18 projection onto the shared node/edge view shapes (reuse).
+  // S-09 W3 (F-12) — the "lens": a saved view + an as-of-chapter cut. When
+  // EITHER is set the panel reads the view-aware `/graph` reader (whole
+  // filtered slice, no expand-hop); with neither it keeps the C18 `/subgraph`
+  // top-N + click-to-expand behaviour. The two data hooks are both always
+  // called (hooks can't be conditional) but each is `enabled` only for its
+  // mode, so they never double-fetch.
+  const views = useGraphViews(projectId ?? '');
+  const [viewCode, setViewCode] = useState<string>('');
+  const [asOfText, setAsOfText] = useState<string>('');
+  const asOfChapter = useMemo(() => {
+    const n = parseInt(asOfText, 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }, [asOfText]);
+  const lensActive = viewCode !== '' || asOfChapter != null;
+
+  const sg = useProjectSubgraph(projectId, !lensActive);
+  const slice = useProjectGraphSlice(projectId, viewCode || null, asOfChapter, lensActive);
+  const graph = lensActive ? slice : sg;
+
+  // Map the projection onto the shared node/edge view shapes (reuse).
   const nodes: GraphNode[] = useMemo(
-    () => sg.nodes.map((n) => ({ id: n.id, name: n.name, kind: n.kind })),
-    [sg.nodes],
+    () => graph.nodes.map((n) => ({ id: n.id, name: n.name, kind: n.kind })),
+    [graph.nodes],
   );
   const edges: GraphEdge[] = useMemo(
     () =>
-      sg.edges.map((e) => ({
+      graph.edges.map((e) => ({
         id: e.id,
         from: e.source,
         to: e.target,
         predicate: e.predicate,
-        pending: false, // subgraph returns only active edges (C18)
+        pending: false, // both readers return only active edges
         confidence: e.confidence,
       })),
-    [sg.edges],
+    [graph.edges],
   );
 
   // Hand-rolled radial layout (reused from the ego-network), seeded from the
@@ -78,30 +100,60 @@ export function ProjectGraphView({ projectId, bookId }: ProjectGraphViewProps) {
   // Read-only selection → reuse the existing entity detail slide-over.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  if (sg.isLoading) {
-    return <Hint>{t('graph.loading', { defaultValue: 'Loading graph…' })}</Hint>;
-  }
-  if (sg.error) {
+  // The lens toolbar renders in EVERY non-fatal state (loading / empty /
+  // populated) so a user can always change or clear the lens — an empty
+  // as-of-chapter slice must not trap them behind a bare "no graph" hint.
+  const toolbar = (
+    <LensToolbar
+      t={t}
+      views={views.views}
+      viewCode={viewCode}
+      onViewCode={setViewCode}
+      asOfText={asOfText}
+      onAsOfText={setAsOfText}
+      active={lensActive}
+      onClear={() => { setViewCode(''); setAsOfText(''); }}
+    />
+  );
+
+  if (graph.isLoading) {
     return (
-      <div
-        role="alert"
-        className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-[12px] text-destructive"
-        data-testid="project-graph-error"
-      >
-        {t('graph.loadFailed', { defaultValue: 'Failed to load graph: {{error}}', error: sg.error.message })}
+      <div className="flex h-[70vh] flex-col rounded-md border" data-testid="project-graph-view">
+        {toolbar}
+        <Hint>{t('graph.loading', { defaultValue: 'Loading graph…' })}</Hint>
+      </div>
+    );
+  }
+  if (graph.error) {
+    return (
+      <div className="flex flex-col rounded-md border" data-testid="project-graph-view">
+        {toolbar}
+        <div
+          role="alert"
+          className="m-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-[12px] text-destructive"
+          data-testid="project-graph-error"
+        >
+          {t('graph.loadFailed', { defaultValue: 'Failed to load graph: {{error}}', error: graph.error.message })}
+        </div>
       </div>
     );
   }
   if (nodes.length === 0) {
     return (
-      <Hint>
-        {t('graph.empty', { defaultValue: 'No knowledge graph yet — build this project to explore its network.' })}
-      </Hint>
+      <div className="flex flex-col rounded-md border" data-testid="project-graph-view">
+        {toolbar}
+        <Hint>
+          {lensActive
+            ? t('graph.emptyLens', { defaultValue: 'No relations match this lens — try another view or an earlier chapter, or clear the lens.' })
+            : t('graph.empty', { defaultValue: 'No knowledge graph yet — build this project to explore its network.' })}
+        </Hint>
+      </div>
     );
   }
 
   return (
     <div className="flex h-[70vh] flex-col rounded-md border" data-testid="project-graph-view">
+      {toolbar}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-[11px]">
         <span className="font-medium text-foreground">
           {t('graph.title', { defaultValue: 'Knowledge graph' })}
@@ -113,20 +165,32 @@ export function ProjectGraphView({ projectId, bookId }: ProjectGraphViewProps) {
             edges: edges.length,
           })}
         </span>
-        {sg.truncated && (
+        {graph.truncated && (
           <span data-testid="project-graph-truncated" className="text-amber-600 dark:text-amber-400">
-            {t('graph.truncated', { defaultValue: 'showing the top {{n}} — expand a node to load more', n: nodes.length })}
+            {lensActive
+              ? t('graph.truncatedLens', { defaultValue: 'showing the first {{n}} relations of this lens', n: edges.length })
+              : t('graph.truncated', { defaultValue: 'showing the top {{n}} — expand a node to load more', n: nodes.length })}
           </span>
         )}
-        {sg.expandingId && (
+        {!lensActive && sg.expandingId && (
           <span data-testid="project-graph-expanding" className="text-primary">
             {t('graph.expanding', { defaultValue: 'expanding…' })}
           </span>
         )}
         <span className="ml-auto text-muted-foreground/70">
-          {t('graph.hint', { defaultValue: 'Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand' })}
+          {lensActive
+            ? t('graph.hintLens', { defaultValue: 'Scroll to zoom · drag to pan · click a node for detail' })
+            : t('graph.hint', { defaultValue: 'Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand' })}
         </span>
       </div>
+      {lensActive && slice.warnings.length > 0 && (
+        <div
+          data-testid="project-graph-warnings"
+          className="flex-shrink-0 border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+        >
+          {slice.warnings.join(' · ')}
+        </div>
+      )}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <GraphCanvas<GraphEdge>
@@ -154,12 +218,13 @@ export function ProjectGraphView({ projectId, bookId }: ProjectGraphViewProps) {
                 node={n}
                 pos={positions[id]}
                 isFocus={id === selectedId}
-                expanded={sg.expandedIds.includes(id)}
+                expanded={!lensActive && sg.expandedIds.includes(id)}
                 onPointerDown={h.onPointerDown}
                 onActivate={() => setSelectedId(id)}
                 // Expand-hop fired DIRECTLY from the click handler (FE event
-                // rule: never a useEffect reacting to state).
-                onExpand={() => void sg.expand(id)}
+                // rule: never a useEffect reacting to state). Undefined in lens
+                // mode (the lens is the whole scope) → GraphEntityNode hides ⊞.
+                onExpand={lensActive ? undefined : () => void sg.expand(id)}
               />
             );
           }}
@@ -202,3 +267,73 @@ const Hint = ({ children }: { children: React.ReactNode }) => (
     {children}
   </div>
 );
+
+// S-09 W3 — the lens controls: pick a saved view (the lenses ViewBuilder
+// authors) + scrub an as-of-chapter cut. Empty view + empty chapter = the
+// default `/subgraph` mode. A "Clear" button escapes the lens (so an empty
+// filtered slice is never a dead end). Pure presentational — all state lives
+// in the parent (FE MVC).
+function LensToolbar({
+  t,
+  views,
+  viewCode,
+  onViewCode,
+  asOfText,
+  onAsOfText,
+  active,
+  onClear,
+}: {
+  t: TFunction<'knowledge'>;
+  views: GraphView[];
+  viewCode: string;
+  onViewCode: (code: string) => void;
+  asOfText: string;
+  onAsOfText: (text: string) => void;
+  active: boolean;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      data-testid="project-graph-lens"
+      className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-2 text-[11px]"
+    >
+      <label className="flex items-center gap-1.5">
+        <span className="text-muted-foreground">{t('graph.lens.view', { defaultValue: 'View' })}</span>
+        <select
+          data-testid="project-graph-view-select"
+          value={viewCode}
+          onChange={(e) => onViewCode(e.target.value)}
+          className="rounded border bg-background px-1.5 py-1 text-[11px]"
+        >
+          <option value="">{t('graph.lens.noView', { defaultValue: 'All relations' })}</option>
+          {views.map((v) => (
+            <option key={v.code} value={v.code}>{v.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5">
+        <span className="text-muted-foreground">{t('graph.lens.asOf', { defaultValue: 'As of chapter' })}</span>
+        <input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          data-testid="project-graph-asof-input"
+          value={asOfText}
+          onChange={(e) => onAsOfText(e.target.value)}
+          placeholder={t('graph.lens.latest', { defaultValue: 'latest' })}
+          className="w-20 rounded border bg-background px-1.5 py-1 text-[11px]"
+        />
+      </label>
+      {active && (
+        <button
+          type="button"
+          data-testid="project-graph-lens-clear"
+          onClick={onClear}
+          className="rounded border px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+        >
+          {t('graph.lens.clear', { defaultValue: 'Clear lens' })}
+        </button>
+      )}
+    </div>
+  );
+}

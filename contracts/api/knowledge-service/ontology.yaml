@@ -1,0 +1,530 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Knowledge Service — Graph Ontology API
+  version: 0.1.0
+  description: |
+    The KG **graph-schema** surface (customizable ontology epic, 2026-06-20).
+    Spec: `docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md`;
+    build plan: `docs/plans/2026-06-20-knowledge-graph-ontology-build.md`.
+    FROZEN at S0/C0 — lanes LC/LE/LF build against this shape.
+
+    ## Model
+    A **graph schema** declares "what kinds of relations / facts / vocab this
+    graph has". Three TIERS — **System** (platform templates, admin-only write,
+    everyone reads) · **User** (a user's own templates) · **Project** (the
+    ontology a single project actually uses). A project **adopts** a system/user
+    template by copy-down (deep-copy schema + its children), then edits the copy
+    freely (boundary independence). **Sync** diffs the adopted copy against its
+    upstream source by `content_hash` and applies per-node `keep_mine`/`take_theirs`.
+
+    Schema children: **edge types** (relation vocab) · **fact types** (narrative
+    state-deltas) · **vocab sets + values** (e.g. the closed `drive` set) ·
+    **expected node-kinds** (anchored to glossary; carry adopt `strength`).
+
+    ## Tenancy (CLAUDE.md › User Boundaries)
+    System tier is **READ-ONLY** over the public API (admin writes via the
+    separate CMS/admin surface). User/Project writes are owner/grant-gated and
+    land only in the caller's tier — never mutate a shared System row. Every
+    table is scope-keyed `UNIQUE (scope, scope_id, code)`.
+
+    ## M1 adopt-gate (LOCKED S0, per-kind strength)
+    Adopt is **gated per node-kind strength**. A template's expected node-kinds
+    carry `strength ∈ {required, optional}`. If the project's glossary is missing
+    a `required` kind → adopt fails **422 `needs_glossary`** (deep-link to fix);
+    a missing `optional` kind does NOT block — runtime mismatches park to triage
+    (`unknown_node_kind`, see `triage.yaml`). No hidden cross-service write; KG
+    only READS glossary node-kinds (dependency `_deps/glossary-ontology-read.yaml`).
+
+    ## Auth
+    All routes require a Bearer JWT (the caller's user id). Project routes are
+    grant-gated (View/Manage); user-tier routes are owner-scoped. System write
+    routes are admin-only and stubbed behind a `requireAdmin` placeholder in v1.
+
+servers:
+  - url: http://api-gateway-bff:3000
+    description: Docker Compose dev (via gateway, prefix-proxied /v1/kg)
+  - url: https://api.loreweave.dev
+    description: Production
+
+tags:
+  - name: graph-schemas
+    description: Tiered graph-schema list/read + per-tier CRUD + recycle bin (deprecate). Manage-gated writes.
+  - name: schema-children
+    description: Edge types · fact types · vocab sets/values · expected node-kinds. Additive edits + deprecate-only (M3). Bumps schema_version.
+  - name: adopt
+    description: Project adopt (copy-down) of a system/user template. Adopt-gated per node-kind strength (M1).
+  - name: sync
+    description: Tree-granular diff/apply of an adopted project schema vs its upstream source (content_hash change-detection). View-gated diff; Manage-gated apply. Rule-only forward, no retro-recompute (M3).
+  - name: resolved
+    description: The resolved effective schema for a project (system→user→project merge). Read-only.
+  - name: system-admin
+    description: System-tier template write (admin-only; v1 behind requireAdmin placeholder).
+
+paths:
+  /v1/kg/graph-schemas:
+    get:
+      tags: [graph-schemas]
+      summary: List graph schemas visible to the caller (merged by scope)
+      description: |
+        Returns schemas the caller may adopt/read: System templates (read-only)
+        + the caller's User templates + (when `project_id` given) the project's
+        adopted schema. Higher scope shadows lower by `code`.
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [system, user, project, all], default: all } }
+        - { name: project_id, in: query, schema: { type: string }, description: Required when scope=project or all-with-project. }
+        - { name: include_deprecated, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Visible schema list (summaries)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/GraphSchemaSummary' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kg/graph-schemas/{schema_id}:
+    parameters:
+      - { name: schema_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [graph-schemas]
+      summary: Read one graph schema with all children (full tree)
+      responses:
+        '200':
+          description: Full schema tree
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GraphSchemaTree' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [graph-schemas]
+      summary: Edit schema metadata (name/description). User/Project tier only.
+      description: Manage-gated for project tier; owner for user tier. System tier is read-only (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GraphSchemaPatch' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/GraphSchemaSummary' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [graph-schemas]
+      summary: Soft-deprecate a user/project schema (recycle bin, not a hard drop)
+      description: Sets `deprecated_at` for boundary independence + sync. System tier 403.
+      responses:
+        '204': { description: Deprecated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/kg/projects/{project_id}/schema:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [resolved]
+      summary: Resolved effective schema for the project (system→user→project merge)
+      description: |
+        The merged "active" schema used by extraction/validation/query. Shadows
+        by `code`: project > user > system. View-gated.
+      responses:
+        '200':
+          description: Resolved schema
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolvedSchema' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/kg/projects/{project_id}/adopt:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [adopt]
+      summary: Adopt (copy-down) a system/user template into the project. Manage-gated.
+      description: |
+        Deep-copies the source schema + all children into a project-scoped row
+        (`source_ref`, `source_hash`). **Adopt-gated per node-kind strength (M1):**
+        if the project's glossary is missing a `required` expected node-kind →
+        **422 `needs_glossary`** with the kinds to add (FE deep-links to glossary);
+        missing `optional` kinds proceed (warn, runtime → triage). Idempotent on
+        re-check after the glossary gap is filled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_schema_id]
+              properties:
+                source_schema_id: { type: string, format: uuid }
+                acknowledge_optional_gaps:
+                  type: boolean
+                  default: false
+                  description: When true, proceed past missing `optional` kinds without re-warning.
+      responses:
+        '201':
+          description: Adopted — project schema created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GraphSchemaSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: Adopt blocked — glossary missing one or more `required` node-kinds (M1)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NeedsGlossary' }
+
+  /v1/kg/projects/{project_id}/sync/available:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [sync]
+      summary: Tree-granular diff of the project schema vs its upstream source
+      description: |
+        Compares the adopted project schema's `source_hash` against the upstream
+        source's current `content_hash`. Returns a per-node tree diff
+        (added / modified / removed_upstream) at child granularity. View-gated.
+      responses:
+        '200':
+          description: Sync diff (empty `changes` when up to date)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncDiff' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/kg/projects/{project_id}/sync/apply:
+    parameters:
+      - { name: project_id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [sync]
+      summary: Apply per-node sync decisions (keep_mine / take_theirs). Manage-gated.
+      description: |
+        Applies the caller's per-change decisions. **Rule-only, forward (M3):**
+        changes the schema going forward; does NOT retro-recompute already-extracted
+        data (recompute is a separate opt-in action). Optimistic-concurrency on
+        `base_source_hash` — 409 if the upstream moved since `available` was read.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncApply' }
+      responses:
+        '200':
+          description: Applied; returns the new project schema_version + source_hash
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: integer }
+                  source_hash: { type: string }
+                  applied: { type: integer, description: number of changes applied }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/kg/graph-schemas/{schema_id}/edge-types:
+    parameters:
+      - { name: schema_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [schema-children]
+      summary: Add an edge type (additive). Bumps schema_version. Manage-gated.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EdgeTypeCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/EdgeType' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+
+  /v1/kg/graph-schemas/{schema_id}/edge-types/{code}:
+    parameters:
+      - { name: schema_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: code, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [schema-children]
+      summary: Deprecate an edge type (deprecate-only, M3 — never hard-drop a type with data)
+      responses:
+        '204': { description: Deprecated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/kg/graph-schemas/{schema_id}/fact-types:
+    parameters:
+      - { name: schema_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [schema-children]
+      summary: Add a fact/state type (additive). Bumps schema_version. Manage-gated.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FactTypeCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/FactType' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+
+  /v1/kg/graph-schemas/{schema_id}/vocab-sets/{set_code}/values:
+    parameters:
+      - { name: schema_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: set_code, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [schema-children]
+      summary: Add a controlled-vocab value (additive). Bumps schema_version. Manage-gated.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VocabValueCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/VocabValue' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+
+  /v1/kg/graph-schemas/{schema_id}/node-kinds:
+    parameters:
+      - { name: schema_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [schema-children]
+      summary: Add/declare an expected node-kind with adopt strength. Manage-gated.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SchemaNodeKindCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SchemaNodeKind' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/DuplicateCode' }
+
+  /v1/kg/system/graph-schemas:
+    post:
+      tags: [system-admin]
+      summary: Create a System-tier template (admin-only; v1 behind requireAdmin placeholder)
+      description: |
+        System writes are admin-authority only (RS256 via the CMS/admin surface in
+        a later phase). v1 returns 501 behind a `requireAdmin` placeholder until the
+        admin-identity epic lands. Documented here to freeze the route shape.
+      responses:
+        '501': { description: Not implemented in v1 (requireAdmin placeholder) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: The caller's grant/tier does not permit this write
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found or not visible to the caller
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    DuplicateCode:
+      description: A child with this code already exists in the schema
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Optimistic-concurrency conflict (upstream moved since diff was read)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Scope:
+      type: string
+      enum: [system, user, project]
+    Strength:
+      type: string
+      enum: [required, optional]
+    Cardinality:
+      type: string
+      enum: [single_active, multi_active]
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: KG_NOT_FOUND }
+        message: { type: string }
+    GraphSchemaSummary:
+      type: object
+      required: [schema_id, scope, code, name, schema_version, allow_free_edges]
+      properties:
+        schema_id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/Scope' }
+        scope_id: { type: string, nullable: true, description: NULL for system; user_id for user; project_id for project }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        schema_version: { type: integer }
+        allow_free_edges: { type: boolean, description: "Q2 (LOCKED): true => off-vocab predicates allowed (today's behavior); false => closed to edge types (off-vocab → triage)" }
+        content_hash: { type: string, nullable: true }
+        source_ref: { type: string, nullable: true }
+        source_hash: { type: string, nullable: true }
+        deprecated_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    GraphSchemaTree:
+      allOf:
+        - $ref: '#/components/schemas/GraphSchemaSummary'
+        - type: object
+          properties:
+            edge_types: { type: array, items: { $ref: '#/components/schemas/EdgeType' } }
+            fact_types: { type: array, items: { $ref: '#/components/schemas/FactType' } }
+            vocab_sets: { type: array, items: { $ref: '#/components/schemas/VocabSet' } }
+            node_kinds: { type: array, items: { $ref: '#/components/schemas/SchemaNodeKind' } }
+    GraphSchemaPatch:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        allow_free_edges: { type: boolean }
+    ResolvedSchema:
+      type: object
+      description: Merged effective schema (system→user→project shadow by code).
+      properties:
+        project_id: { type: string }
+        schema_version: { type: integer }
+        allow_free_edges: { type: boolean }
+        edge_types: { type: array, items: { $ref: '#/components/schemas/EdgeType' } }
+        fact_types: { type: array, items: { $ref: '#/components/schemas/FactType' } }
+        vocab_sets: { type: array, items: { $ref: '#/components/schemas/VocabSet' } }
+        node_kinds: { type: array, items: { $ref: '#/components/schemas/SchemaNodeKind' } }
+    EdgeType:
+      type: object
+      required: [code, label, directed, temporal, cardinality]
+      properties:
+        edge_type_id: { type: string, format: uuid }
+        code: { type: string, example: LOVER_OF }
+        label: { type: string }
+        directed: { type: boolean }
+        source_node_kinds: { type: array, items: { type: string }, description: glossary kind codes (soft ref) }
+        target_node_kinds: { type: array, items: { type: string } }
+        temporal: { type: boolean, description: true => every instance requires valid_from + EVIDENCED_BY }
+        provenance_required: { type: boolean }
+        cardinality: { $ref: '#/components/schemas/Cardinality' }
+        description: { type: string, nullable: true }
+        deprecated_at: { type: string, format: date-time, nullable: true }
+    EdgeTypeCreate:
+      type: object
+      required: [code, label]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        directed: { type: boolean, default: true }
+        source_node_kinds: { type: array, items: { type: string } }
+        target_node_kinds: { type: array, items: { type: string } }
+        temporal: { type: boolean, default: false }
+        provenance_required: { type: boolean, default: false }
+        cardinality: { $ref: '#/components/schemas/Cardinality' }
+        description: { type: string }
+    FactType:
+      type: object
+      required: [code, label]
+      properties:
+        fact_type_id: { type: string, format: uuid }
+        code: { type: string, example: realm_change }
+        label: { type: string }
+        description: { type: string, nullable: true }
+        deprecated_at: { type: string, format: date-time, nullable: true }
+    FactTypeCreate:
+      type: object
+      required: [code, label]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        description: { type: string }
+    VocabSet:
+      type: object
+      required: [code, label, closed]
+      properties:
+        vocab_set_id: { type: string, format: uuid }
+        code: { type: string, example: drive }
+        label: { type: string }
+        description: { type: string, nullable: true }
+        closed: { type: boolean, description: true => extractor may only assign, not coin new values }
+        values: { type: array, items: { $ref: '#/components/schemas/VocabValue' } }
+    VocabValue:
+      type: object
+      required: [code, label]
+      properties:
+        vocab_value_id: { type: string, format: uuid }
+        code: { type: string, example: revenge }
+        label: { type: string }
+        metadata: { type: object, additionalProperties: true, description: "e.g. { axis, has_target, archetype } for drive" }
+    VocabValueCreate:
+      type: object
+      required: [code, label]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        metadata: { type: object, additionalProperties: true }
+    SchemaNodeKind:
+      type: object
+      required: [kind_code, strength]
+      properties:
+        schema_node_kind_id: { type: string, format: uuid }
+        kind_code: { type: string, example: character }
+        strength: { $ref: '#/components/schemas/Strength' }
+        deprecated_at: { type: string, format: date-time, nullable: true }
+    SchemaNodeKindCreate:
+      type: object
+      required: [kind_code, strength]
+      properties:
+        kind_code: { type: string }
+        strength: { $ref: '#/components/schemas/Strength' }
+    NeedsGlossary:
+      type: object
+      required: [code, message, needs_glossary]
+      properties:
+        code: { type: string, example: KG_ADOPT_NEEDS_GLOSSARY }
+        message: { type: string }
+        needs_glossary:
+          type: object
+          required: [kinds]
+          properties:
+            book_id: { type: string, nullable: true, description: present when the project has a book; else kinds resolve against user glossary standards }
+            kinds:
+              type: array
+              description: the missing `required` node-kind codes the user must add in glossary first
+              items: { type: string }
+    SyncDiff:
+      type: object
+      required: [source_ref, has_updates, changes]
+      properties:
+        source_ref: { type: string, nullable: true }
+        source_hash_current: { type: string, nullable: true, description: upstream source's current content_hash }
+        project_source_hash: { type: string, nullable: true, description: hash frozen at adopt/last-sync }
+        has_updates: { type: boolean }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/SyncChange' }
+    SyncChange:
+      type: object
+      required: [node_type, code, change]
+      description: One node of the schema tree that differs from upstream.
+      properties:
+        node_type: { type: string, enum: [edge_type, fact_type, vocab_set, vocab_value, node_kind] }
+        parent_code: { type: string, nullable: true, description: e.g. the vocab_set code for a vocab_value change }
+        code: { type: string }
+        change: { type: string, enum: [added, modified, removed_upstream] }
+        fields_changed: { type: array, items: { type: string } }
+        upstream: { type: object, nullable: true, additionalProperties: true }
+        mine: { type: object, nullable: true, additionalProperties: true }
+    SyncApply:
+      type: object
+      required: [base_source_hash, decisions]
+      properties:
+        base_source_hash: { type: string, description: the source_hash_current returned by /sync/available (optimistic-concurrency token) }
+        decisions:
+          type: array
+          items:
+            type: object
+            required: [node_type, code, choice]
+            properties:
+              node_type: { type: string, enum: [edge_type, fact_type, vocab_set, vocab_value, node_kind] }
+              parent_code: { type: string, nullable: true }
+              code: { type: string }
+              choice: { type: string, enum: [keep_mine, take_theirs] }
+
+security:
+  - bearerAuth: []

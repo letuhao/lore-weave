@@ -1,0 +1,283 @@
+[
+  {
+    "code": "intrigue.planted_evidence_scheme",
+    "language": "en",
+    "kind": "scheme",
+    "category": "intrigue.frame",
+    "name": "Planted-Evidence Scheme",
+    "summary": "A doctored proof is slipped where the rival will find and 'expose' it, baiting the victim into acting on a false belief and walking into a deniable trap.",
+    "genre_tags": ["intrigue", "cung-dau", "court", "scheme"],
+    "roles": [
+      {"key": "schemer", "actant": "subject", "label": "the schemer", "constraints": ["plants the false proof"]},
+      {"key": "victim", "actant": "opponent", "label": "the targeted victim", "constraints": ["acts on the false belief"]},
+      {"key": "agent", "actant": "helper", "label": "the unwitting agent", "constraints": ["carries the bait unknowingly"]},
+      {"key": "authority", "actant": "receiver", "label": "the deciding authority", "constraints": ["judges on the visible proof"]}
+    ],
+    "beats": [
+      {"key": "plant", "label": "Plant false proof", "intent": "place doctored evidence where it will be found", "tension_target": 2, "order": 1},
+      {"key": "bait", "label": "Bait the victim to act", "intent": "lure the victim into reacting", "tension_target": 3, "order": 2},
+      {"key": "act", "label": "Victim acts on the false belief", "intent": "the victim commits to the trap", "tension_target": 4, "order": 3},
+      {"key": "reveal", "label": "Deniable reveal", "intent": "the 'proof' surfaces, schemer untouched", "tension_target": 3, "order": 4},
+      {"key": "counter", "label": "Counter", "intent": "the fallout is steered to the schemer's gain", "tension_target": 4, "order": 5}
+    ],
+    "preconditions": [
+      {"text": "the schemer can place evidence the authority will trust"}
+    ],
+    "effects": [
+      {"text": "the victim is discredited or condemned on false grounds"},
+      {"text": "the schemer's hand stays hidden"}
+    ],
+    "info_asymmetry": {
+      "knows": ["schemer"],
+      "deceived": ["victim", "authority"],
+      "gap": "the authority believes the victim is the culprit; the proof was planted by the schemer"
+    },
+    "annotations": {
+      "info_asymmetry": {
+        "knows": ["schemer"],
+        "deceived": ["victim", "authority"],
+        "gap": "the authority believes the victim is the culprit; the proof was planted by the schemer"
+      }
+    },
+    "tension_target": 4,
+    "emotion_target": "dread",
+    "examples": [
+      {"text": "A doctored ledger is slipped where the rival will find and 'expose' it — walking straight into the trap that names them."}
+    ],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "intrigue.feigned_alliance",
+    "language": "en",
+    "kind": "scheme",
+    "category": "intrigue.alliance",
+    "name": "Feigned Alliance",
+    "summary": "An earnest pact and a shared secret just true enough to trust, until the moment it pays to break it at the pivot.",
+    "genre_tags": ["intrigue", "cung-dau", "court", "scheme"],
+    "roles": [
+      {"key": "schemer", "actant": "subject", "label": "the schemer", "constraints": ["offers a false pact"]},
+      {"key": "false_ally", "actant": "receiver", "label": "the deceived ally", "constraints": ["relies on the pact"]},
+      {"key": "advantage", "actant": "object", "label": "the advantage sought", "constraints": ["the prize of the betrayal"]}
+    ],
+    "beats": [
+      {"key": "offer", "label": "Offer alliance", "intent": "propose a pact the ally will accept", "tension_target": 2, "order": 1},
+      {"key": "share", "label": "Share partial truth", "intent": "reveal just enough to be believed", "tension_target": 2, "order": 2},
+      {"key": "rely", "label": "Ally relies on it", "intent": "the ally commits resources or trust", "tension_target": 3, "order": 3},
+      {"key": "betray", "label": "Betray at the pivot", "intent": "break the pact when it pays", "tension_target": 5, "order": 4},
+      {"key": "realign", "label": "Realign", "intent": "convert the betrayal into position", "tension_target": 3, "order": 5}
+    ],
+    "preconditions": [
+      {"text": "the schemer and the target share a plausible common goal"}
+    ],
+    "effects": [
+      {"text": "the ally is discarded at the moment of greatest leverage"},
+      {"text": "the schemer gains the advantage"}
+    ],
+    "info_asymmetry": {
+      "knows": ["schemer"],
+      "deceived": ["false_ally"],
+      "gap": "the ally thinks they share a goal; the schemer plans to discard them at the pivot"
+    },
+    "annotations": {
+      "info_asymmetry": {
+        "knows": ["schemer"],
+        "deceived": ["false_ally"],
+        "gap": "the ally thinks they share a goal; the schemer plans to discard them at the pivot"
+      },
+      "alliance_shift": {"a": "schemer", "b": "false_ally", "from": "allied", "to": "opposed"}
+    },
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {"text": "An earnest pact, a shared secret just true enough to trust — until the moment it pays to break it."}
+    ],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "intrigue.whisper_campaign",
+    "language": "en",
+    "kind": "scheme",
+    "category": "intrigue.rumor",
+    "name": "Whisper Campaign",
+    "summary": "A single planted doubt, repeated by mouths that do not know its origin, isolates the target until their patron withdraws support.",
+    "genre_tags": ["intrigue", "cung-dau", "court", "scheme"],
+    "roles": [
+      {"key": "schemer", "actant": "subject", "label": "the schemer", "constraints": ["authors the rumor"]},
+      {"key": "target", "actant": "opponent", "label": "the target", "constraints": ["isolated by the rumor"]},
+      {"key": "court", "actant": "receiver", "label": "the court or board", "constraints": ["carries the rumor unwittingly"]}
+    ],
+    "beats": [
+      {"key": "seed", "label": "Seed the rumor", "intent": "plant a single doubt", "tension_target": 2, "order": 1},
+      {"key": "spread", "label": "Rumor spreads", "intent": "the doubt repeats through unwitting mouths", "tension_target": 3, "order": 2},
+      {"key": "isolate", "label": "Target isolated", "intent": "the target loses standing", "tension_target": 3, "order": 3},
+      {"key": "withdraw", "label": "Patron withdraws support", "intent": "the target's protector steps back", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the target depends on a patron's or court's regard"}
+    ],
+    "effects": [
+      {"text": "the target is isolated and loses their patron"},
+      {"text": "the rumor's true source stays hidden"}
+    ],
+    "info_asymmetry": {
+      "knows": ["schemer"],
+      "deceived": ["court", "patron"],
+      "gap": "the court believes the rumor is independent; a single source authored it"
+    },
+    "annotations": {
+      "info_asymmetry": {
+        "knows": ["schemer"],
+        "deceived": ["court", "patron"],
+        "gap": "the court believes the rumor is independent; a single source authored it"
+      }
+    },
+    "tension_target": 3,
+    "emotion_target": "unease",
+    "examples": [
+      {"text": "A single planted doubt, repeated by mouths that don't know its origin, until the target stands alone."}
+    ],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "intrigue.loyalty_test_trap",
+    "language": "en",
+    "kind": "scheme",
+    "category": "intrigue.test",
+    "name": "Loyalty-Test Trap",
+    "summary": "A door left invitingly open is really a test; who steps through reveals exactly what the watcher needed to know.",
+    "genre_tags": ["intrigue", "cung-dau", "court", "scheme"],
+    "roles": [
+      {"key": "power_holder", "actant": "subject", "label": "the power-holder", "constraints": ["stages the temptation"]},
+      {"key": "loyalty_proof", "actant": "object", "label": "the proof of loyalty", "constraints": ["what the test extracts"]},
+      {"key": "suspect", "actant": "opponent", "label": "the suspected traitor", "constraints": ["the tested party"]}
+    ],
+    "beats": [
+      {"key": "stage", "label": "Stage a temptation", "intent": "set a baited opportunity", "tension_target": 2, "order": 1},
+      {"key": "observe", "label": "Observe the response", "intent": "watch who takes the bait", "tension_target": 3, "order": 2},
+      {"key": "verdict", "label": "Loyal pass or fail", "intent": "the test resolves trust or betrayal", "tension_target": 4, "order": 3},
+      {"key": "act", "label": "Reward or purge", "intent": "act on the revealed truth", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the power-holder suspects a hidden disloyalty"}
+    ],
+    "effects": [
+      {"text": "the tested party's true loyalty is revealed"},
+      {"text": "the power-holder rewards or purges accordingly"}
+    ],
+    "info_asymmetry": {
+      "knows": ["power_holder"],
+      "deceived": ["suspect"],
+      "gap": "the tested party thinks the opportunity is real; it is a staged trap"
+    },
+    "annotations": {
+      "info_asymmetry": {
+        "knows": ["power_holder"],
+        "deceived": ["suspect"],
+        "gap": "the tested party thinks the opportunity is real; it is a staged trap"
+      }
+    },
+    "tension_target": 3,
+    "emotion_target": "suspense",
+    "examples": [
+      {"text": "A door left invitingly open is really a test; who steps through reveals exactly what the watcher needed to know."}
+    ],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "intrigue.double_agent_reveal",
+    "language": "en",
+    "kind": "scheme",
+    "category": "intrigue.mole",
+    "name": "Double-Agent Reveal",
+    "summary": "A leak too precise to be chance; a baited false secret proves who carries tales — and to whom — then turns the mole.",
+    "genre_tags": ["intrigue", "cung-dau", "court", "scheme"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the one who suspects", "constraints": ["quietly hunting the leak"]},
+      {"key": "mole", "actant": "opponent", "label": "the mole", "constraints": ["trusted insider"]},
+      {"key": "confidant", "actant": "helper", "label": "the confidant", "constraints": ["helps set the bait"]}
+    ],
+    "beats": [
+      {"key": "insider_acts", "label": "Trusted insider acts", "intent": "the household relies on the insider", "tension_target": 3, "order": 1},
+      {"key": "note", "label": "Small inconsistency noted", "intent": "a leak too precise to be chance", "tension_target": 3, "order": 2},
+      {"key": "trap", "label": "Trap set to confirm", "intent": "a baited false secret is planted", "tension_target": 4, "order": 3},
+      {"key": "unmask", "label": "Unmask and turn", "intent": "confirm the mole and flip them", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "a precise leak suggests a trusted insider is compromised"}
+    ],
+    "effects": [
+      {"text": "the mole is identified and turned or removed"},
+      {"text": "the household's trust is restructured"}
+    ],
+    "info_asymmetry": {
+      "knows": ["protagonist"],
+      "deceived": ["mole", "household"],
+      "gap": "the household trusts the insider; the protagonist has quietly confirmed the leak"
+    },
+    "annotations": {
+      "info_asymmetry": {
+        "knows": ["protagonist"],
+        "deceived": ["mole", "household"],
+        "gap": "the household trusts the insider; the protagonist has quietly confirmed the leak"
+      }
+    },
+    "tension_target": 4,
+    "emotion_target": "suspense",
+    "examples": [
+      {"text": "A leak too precise to be chance; a baited false secret proves who carries tales — and to whom."}
+    ],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "intrigue.scapegoat_substitution",
+    "language": "en",
+    "kind": "scheme",
+    "category": "intrigue.frame",
+    "name": "Scapegoat Substitution",
+    "summary": "When blame must land somewhere, the clever hand makes sure it lands on a lesser party while the true actor walks free.",
+    "genre_tags": ["intrigue", "cung-dau", "court", "scheme"],
+    "roles": [
+      {"key": "schemer", "actant": "subject", "label": "the schemer", "constraints": ["the true actor"]},
+      {"key": "scapegoat", "actant": "opponent", "label": "the scapegoat", "constraints": ["a lesser, blamable party"]},
+      {"key": "investigators", "actant": "receiver", "label": "the investigators", "constraints": ["steered to the wrong target"]}
+    ],
+    "beats": [
+      {"key": "must_pin", "label": "Crime must be pinned", "intent": "blame must land on someone", "tension_target": 3, "order": 1},
+      {"key": "frame", "label": "Frame a lesser party", "intent": "select a blamable scapegoat", "tension_target": 4, "order": 2},
+      {"key": "steer", "label": "Evidence steered", "intent": "guide the inquiry to the scapegoat", "tension_target": 3, "order": 3},
+      {"key": "walk_free", "label": "True actor walks free", "intent": "the real culprit escapes notice", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "a crime demands a culprit and the true actor must stay hidden"}
+    ],
+    "effects": [
+      {"text": "the scapegoat takes the blame"},
+      {"text": "the true actor escapes accountability"}
+    ],
+    "info_asymmetry": {
+      "knows": ["schemer"],
+      "deceived": ["investigators", "scapegoat"],
+      "gap": "the investigators believe the scapegoat acted; the true actor arranged it"
+    },
+    "annotations": {
+      "info_asymmetry": {
+        "knows": ["schemer"],
+        "deceived": ["investigators", "scapegoat"],
+        "gap": "the investigators believe the scapegoat acted; the true actor arranged it"
+      },
+      "alliance_shift": {"a": "schemer", "b": "scapegoat", "from": "neutral", "to": "opposed"}
+    },
+    "tension_target": 4,
+    "emotion_target": "dread",
+    "examples": [
+      {"text": "When blame must land somewhere, the clever hand makes sure it lands on someone else."}
+    ],
+    "source": "authored",
+    "source_version": 1
+  }
+]

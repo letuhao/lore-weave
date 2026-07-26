@@ -13,6 +13,27 @@ type Config struct {
 	UsageBillingServiceURL string
 	InternalServiceToken   string
 
+	// AdminJWTPublicKeyPEM (D-JWT-ROLE-GATE) — the RS256 public key that verifies
+	// admin tokens for the System-tier platform-model write endpoints
+	// (contracts/adminjwt, glossary's requireAdminScope pattern). Optional: when
+	// unset those admin endpoints fail closed (503). PEM or base64-PEM.
+	AdminJWTPublicKeyPEM string
+
+	// C-CONFIRM key-split — the settings Tier-W confirm token (mint/verify in
+	// mcp_server.go + settings_actions.go) signs with a DEDICATED secret, NOT
+	// JWTSecret. JWTSecret gates the auth() user-JWT route; reusing it for the
+	// confirm token conflates two trust domains (a leaked confirm secret would
+	// also forge user sessions, and vice versa). Required + ≥32 chars, fail-closed.
+	ConfirmTokenSigningSecret string
+
+	// S-SETTINGS (MCP fan-out) — auth-service internal base URL. The settings MCP
+	// server's profile tools (settings_get_profile / settings_update_profile) call
+	// auth's token-gated /internal/users/{id}/full-profile route here (each service
+	// owns its DB — no cross-service SQL). Optional: empty disables the two profile
+	// tools' backing call (they return "profile service not configured"); the model
+	// tools, which are the bulk of the catalog, work without it.
+	AuthServiceInternalURL string
+
 	// Phase 2c — optional. Empty = NoopNotifier (terminal events not
 	// published anywhere; caller can still poll). Set in production
 	// docker-compose; tests + dev-without-RabbitMQ keep working.
@@ -101,6 +122,19 @@ type Config struct {
 	// 0 = disabled. Env LLM_RUNNING_SWEEP_TIMEOUT_S / LLM_RUNNING_SWEEP_INTERVAL_S.
 	LLMRunningSweepTimeoutS  int
 	LLMRunningSweepIntervalS int
+
+	// P2·B2 — plaintext retention sweeper. Periodically DELETEs terminal llm_jobs
+	// past expires_at (the 7-day default set at INSERT), purging the plaintext
+	// input/result JSONB; the durable encrypted audit copy remains in usage_logs.
+	// Interval 0 = disabled. Batch bounds one DELETE so a backlog can't lock the
+	// table. Env LLM_RETENTION_SWEEP_INTERVAL_S / LLM_RETENTION_SWEEP_BATCH.
+	LLMRetentionSweepIntervalS int
+	LLMRetentionSweepBatch     int
+	// Published usage_outbox/job_event_outbox rows carry PLAINTEXT payloads and are
+	// never republished; the same sweeper prunes those older than this window (they
+	// only need to survive briefly for consumer-lag/redelivery after publish). Env
+	// LLM_OUTBOX_RETENTION_HOURS; 0 disables the outbox half of the sweep.
+	LLMOutboxRetentionHours int
 }
 
 func Load() (*Config, error) {
@@ -108,8 +142,11 @@ func Load() (*Config, error) {
 		HTTPAddr:               getEnv("HTTP_ADDR", ":8085"),
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
+		AdminJWTPublicKeyPEM:   os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
 		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
-		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		InternalServiceToken:      os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		ConfirmTokenSigningSecret: os.Getenv("CONFIRM_TOKEN_SIGNING_SECRET"),
+		AuthServiceInternalURL:    os.Getenv("AUTH_SERVICE_INTERNAL_URL"),
 		RabbitMQURL:            os.Getenv("RABBITMQ_URL"),
 		// Phase 5e-β.2 — audio_gen URL-mode staging.
 		MinioEndpoint:    os.Getenv("MINIO_ENDPOINT"),
@@ -127,6 +164,9 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if len(c.ConfirmTokenSigningSecret) < 32 {
+		return nil, fmt.Errorf("CONFIRM_TOKEN_SIGNING_SECRET must be at least 32 characters")
 	}
 	if c.UsageBillingServiceURL == "" {
 		return nil, fmt.Errorf("USAGE_BILLING_SERVICE_URL is required")
@@ -211,6 +251,19 @@ func Load() (*Config, error) {
 		c.LLMRunningSweepTimeoutS = 1800
 	}
 	if c.LLMRunningSweepIntervalS, err = getEnvInt("LLM_RUNNING_SWEEP_INTERVAL_S", 60); err != nil {
+		return nil, err
+	}
+	// P2·B2 — retention sweeper. Default hourly, 1000 rows/batch; 0 disables.
+	if c.LLMRetentionSweepIntervalS, err = getEnvInt("LLM_RETENTION_SWEEP_INTERVAL_S", 3600); err != nil {
+		return nil, err
+	}
+	if c.LLMRetentionSweepBatch, err = getEnvInt("LLM_RETENTION_SWEEP_BATCH", 1000); err != nil {
+		return nil, err
+	}
+	if c.LLMRetentionSweepBatch <= 0 {
+		c.LLMRetentionSweepBatch = 1000
+	}
+	if c.LLMOutboxRetentionHours, err = getEnvInt("LLM_OUTBOX_RETENTION_HOURS", 24); err != nil {
 		return nil, err
 	}
 	return c, nil

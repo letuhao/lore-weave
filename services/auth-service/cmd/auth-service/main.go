@@ -23,7 +23,9 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "auth-service"))
+	// P2·A1 — shared JSON slog logger that injects otel_trace_id from the active
+	// span on ctx-carrying log calls (slog.*Context). Replaces the bare SetDefault.
+	observability.SetupLogging("auth-service")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -110,6 +112,24 @@ func main() {
 		}
 		srv.EnableAdminIssuance(signer, adminprincipal.New(pool), cfg.AdminTokenIssuerSecret, cfg.AdminAuditHMACKey, cfg.AdminTokenTTL)
 		slog.Info("admin-JWT issuance enabled", "kid", signer.KID())
+
+		// P5 public-MCP OAuth 2.1 (slice 1): reuse the SAME RS256 signer to mint
+		// audience-bound access tokens with a DISTINCT issuer; the edge verifies them
+		// via /oauth/jwks. On only when the public MCP flag is also set.
+		if cfg.OAuthEnabled {
+			srv.EnableOAuth(signer, api.OAuthOptions{
+				Issuer:         cfg.OAuthIssuer,
+				Resource:       cfg.OAuthResource,
+				AccessTTL:      cfg.OAuthAccessTTL,
+				DefaultRPM:     cfg.OAuthDefaultRPM,
+				CodeTTL:        cfg.OAuthCodeTTL,
+				RefreshTTL:     cfg.OAuthRefreshTTL,
+				ConsentURL:     cfg.OAuthConsentURL,
+				DCREnabled:     cfg.OAuthDCREnabled,
+				DCRRatePerHour: cfg.OAuthDCRRatePerHour,
+			})
+			slog.Info("public-MCP OAuth enabled", "issuer", cfg.OAuthIssuer, "resource", cfg.OAuthResource, "kid", signer.KID(), "dcr", cfg.OAuthDCREnabled)
+		}
 	}
 
 	httpSrv := &http.Server{

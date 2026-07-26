@@ -6,6 +6,7 @@ import { useAuth } from '@/auth';
 import { getLanguageName } from '@/lib/languages';
 import { glossaryTranslateApi } from './api';
 import { isSameLanguageTarget } from './useGlossaryTranslateState';
+import type { EffortLevel } from '@/components/ai-task';
 import type { OverwriteMode, GlossaryTranslateCostEstimate } from './types';
 
 interface StepConfirmProps {
@@ -14,7 +15,7 @@ interface StepConfirmProps {
   overwriteMode: OverwriteMode;
   modelRef: string;
   selectedModelName: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   sourceLanguage?: string;
   onJobCreated: (jobId: string, totalEntities: number, costEstimate: GlossaryTranslateCostEstimate) => void;
   onEditConfig: () => void;
@@ -32,7 +33,7 @@ export function StepConfirm({
   overwriteMode,
   modelRef,
   selectedModelName,
-  thinkingEnabled,
+  effort,
   sourceLanguage,
   onJobCreated,
   onEditConfig,
@@ -40,6 +41,9 @@ export function StepConfirm({
   const { t } = useTranslation('glossaryTranslate');
   const { accessToken } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+  // bug #4: how many entities translate in parallel. 1 = sequential (default). Raise it if
+  // your model/GPU serves concurrent requests (mirrors the glossary-extraction wizard).
+  const [concurrency, setConcurrency] = useState(1);
   const sameLanguage = isSameLanguageTarget(sourceLanguage, targetLanguage);
 
   const handleStart = async () => {
@@ -53,7 +57,8 @@ export function StepConfirm({
           model_source: 'user_model',
           model_ref: modelRef,
           overwrite_mode: overwriteMode,
-          thinking_enabled: thinkingEnabled,
+          reasoning_effort: effort,
+          ...(concurrency > 1 ? { concurrency_level: concurrency } : {}),
         },
         accessToken,
       );
@@ -84,8 +89,30 @@ export function StepConfirm({
       </div>
 
       <p className="text-[11px] text-muted-foreground text-center">
-        {thinkingEnabled ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
+        {effort !== 'off' ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
       </p>
+
+      {/* bug #4 — parallel entity translation. */}
+      <div className="flex items-center justify-center gap-2">
+        <label htmlFor="glossary-translate-concurrency" className="text-[11px] font-medium">
+          {t('confirm.concurrency', { defaultValue: 'Parallel LLM calls' })}
+        </label>
+        <input
+          id="glossary-translate-concurrency"
+          type="number"
+          min={1}
+          max={16}
+          value={concurrency}
+          onChange={(e) => setConcurrency(Math.min(16, Math.max(1, Number(e.target.value) || 1)))}
+          className="w-16 rounded-md border bg-background px-2 py-1 text-center text-xs"
+          data-testid="glossary-translate-concurrency"
+        />
+        <span className="text-[10px] text-muted-foreground">
+          {t('confirm.concurrencyHint', {
+            defaultValue: '1 = sequential. Raise it if your model serves concurrent requests.',
+          })}
+        </span>
+      </div>
 
       <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2">
         <p className="text-[10px] text-amber-500">{t('confirm.estimateNote')}</p>

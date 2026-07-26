@@ -66,6 +66,33 @@ async def test_get_latest_with_model_uses_three_way_filter():
 
 
 @pytest.mark.asyncio
+async def test_get_latest_for_model_is_model_scoped_not_project_scoped():
+    """R1 (D-JOURNEY-KG-BENCHMARK-UX) — the MODEL-scoped gate lookup filters on
+    (user, embedding_model) and must NOT filter on project_id, so a passing run
+    on the user's benchmark sandbox unlocks every project using that model."""
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=_fake_row())
+    repo = BenchmarkRunsRepo(_pool(conn))
+
+    result = await repo.get_latest_for_model(uuid4(), "bge-m3")
+
+    assert isinstance(result, BenchmarkRun)
+    sql = conn.fetchrow.await_args.args[0]
+    assert "p.user_id = $1" in sql
+    assert "b.embedding_model = $2" in sql
+    assert "b.project_id" not in sql  # the whole point: NOT project-scoped
+    assert "LIMIT 1" in sql
+
+
+@pytest.mark.asyncio
+async def test_get_latest_for_model_returns_none_when_empty():
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=None)
+    repo = BenchmarkRunsRepo(_pool(conn))
+    assert await repo.get_latest_for_model(uuid4(), "bge-m3") is None
+
+
+@pytest.mark.asyncio
 async def test_get_latest_without_model_omits_model_filter():
     conn = AsyncMock()
     conn.fetchrow = AsyncMock(return_value=_fake_row())

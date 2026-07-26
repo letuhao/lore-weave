@@ -129,7 +129,7 @@ async def _seed_job(store, pool, *, project, user, gen_ref, embed_ref, targets):
     body = {
         "project_id": project, "embedding_model_ref": embed_ref,
         "generation_model_ref": gen_ref, "targets": targets, "book_id": None,
-        "technique": "retrieval", "max_spend_usd": None,
+        "technique": "retrieval", "max_spend_tokens": None,
         "eval_reserve_fraction": 0.15, "top_k": 5, "user_id": user,
     }
     await save_job_request(pool=pool, job_id=uuid.UUID(job_id), request=body)

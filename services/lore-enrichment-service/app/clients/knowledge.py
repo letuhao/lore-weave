@@ -32,6 +32,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 __all__ = [
     "GraphStats",
@@ -42,17 +43,14 @@ __all__ = [
 ]
 
 
-class KnowledgeServiceError(Exception):
+# P3 SDK-first: subclass the shared InternalClientError (`.retryable` derived from
+# `.status_code`); name kept so `except KnowledgeServiceError` sites are unchanged.
+class KnowledgeServiceError(InternalClientError):
     """Raised on any knowledge-service / provider-registry read failure.
 
     `retryable` flags transient conditions (timeout, 502/503/429) so the
     port/cache layer can decide whether to degrade to empties (Q6) or retry.
     """
-
-    def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-        self.status_code = status_code
 
 
 @dataclass(frozen=True)
@@ -233,7 +231,6 @@ class KnowledgeClient:
         if resp.status_code == 200:
             return resp
 
-        retryable = resp.status_code in (502, 503, 429)
         detail = resp.text[:200]
         try:
             detail = resp.json().get("detail", detail)
@@ -241,6 +238,5 @@ class KnowledgeClient:
             pass
         raise KnowledgeServiceError(
             f"{method} {url} failed ({resp.status_code}): {detail}",
-            retryable=retryable,
             status_code=resp.status_code,
         )

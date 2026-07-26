@@ -22,10 +22,66 @@ from loreweave_extraction.prompts import (
 SYSTEM_ONLY_PROMPT_NAMES = sorted(
     {n for n in ALLOWED_PROMPT_NAMES if n.endswith("_system")}
 )
-TEXT_BEARING_PROMPT_NAMES = sorted(ALLOWED_PROMPT_NAMES - set(SYSTEM_ONLY_PROMPT_NAMES))
+
+
+def _placeholders(name: str) -> set[str]:
+    """The `{placeholder}` names a template actually declares.
+
+    `{{...}}` is an ESCAPED literal brace (the templates embed JSON examples), so the
+    lookarounds keep those out.
+    """
+    import re
+
+    from loreweave_extraction.prompts import _load_raw
+
+    return set(re.findall(r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})", _load_raw(name)))
+
+
+# Family membership is DERIVED from the placeholders a template really declares, not from
+# its name. The suffix split assumed exactly two families — text-bearing extraction and
+# `*_system` — and broke the moment a third arrived: `summarize_level` takes
+# {level}/{child_texts}/{entity_names} and no {text}, so a name-based split filed it under
+# "text-bearing" and three tests went red for a prompt that is perfectly correct. Deriving
+# keeps the original per-family guarantees AND survives family number four.
+TEXT_BEARING_PROMPT_NAMES = sorted(
+    n for n in ALLOWED_PROMPT_NAMES
+    if n not in SYSTEM_ONLY_PROMPT_NAMES and "text" in _placeholders(n)
+)
+#: Prompts that are neither extraction-text nor extraction-system (e.g. the summariser).
+#: They carry no shared placeholder contract — the invariant that still applies to them is
+#: "loads and fully substitutes", asserted below.
+OTHER_PROMPT_NAMES = sorted(
+    set(ALLOWED_PROMPT_NAMES)
+    - set(SYSTEM_ONLY_PROMPT_NAMES)
+    - set(TEXT_BEARING_PROMPT_NAMES)
+)
 
 
 # happy path: every prompt loads and substitutes
+
+
+def test_every_prompt_is_classified_into_exactly_one_family():
+    """No prompt may fall through the taxonomy unnoticed — that is how `summarize_level`
+    ended up asserted against a contract it never had."""
+    families = (
+        set(SYSTEM_ONLY_PROMPT_NAMES)
+        | set(TEXT_BEARING_PROMPT_NAMES)
+        | set(OTHER_PROMPT_NAMES)
+    )
+    assert families == set(ALLOWED_PROMPT_NAMES)
+    assert not (set(SYSTEM_ONLY_PROMPT_NAMES) & set(TEXT_BEARING_PROMPT_NAMES))
+
+
+@pytest.mark.parametrize("name", sorted(ALLOWED_PROMPT_NAMES))
+def test_every_prompt_fully_substitutes_its_own_placeholders(name):
+    """The one invariant that holds for EVERY family: feed a template exactly the
+    placeholders it declares and nothing is left un-substituted. A half-substituted prompt
+    reaches the model with a literal `{level}` in it."""
+    kwargs = {ph: f"<{ph}>" for ph in _placeholders(name)}
+    out = load_prompt(name, **kwargs)
+    for ph in kwargs:
+        assert f"{{{ph}}}" not in out, f"{name}: {{{ph}}} survived substitution"
+        assert f"<{ph}>" in out, f"{name}: {{{ph}}} was never substituted"
 
 
 @pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)

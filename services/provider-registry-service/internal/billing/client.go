@@ -48,10 +48,11 @@ func NewGuardrailClient(baseURL, internalToken string, hc *http.Client) *Guardra
 type ReserveResult struct {
 	ReservationID     uuid.UUID
 	Insufficient      bool    // true → usage-billing returned 402
-	Code              string  // the 402 `code` — INSUFFICIENT_BUDGET | PLATFORM_BALANCE_EXHAUSTED
+	Code              string  // the 402 `code` — INSUFFICIENT_BUDGET | PLATFORM_BALANCE_EXHAUSTED | MCP_KEY_CAP_EXCEEDED
 	DailyAvailable    float64 // populated when Insufficient (Subsystem A)
 	MonthlyAvailable  float64 // populated when Insufficient (Subsystem A)
 	PlatformAvailable float64 // populated when Code == PLATFORM_BALANCE_EXHAUSTED (Subsystem B)
+	KeyAvailable      float64 // populated when Code == MCP_KEY_CAP_EXCEEDED (per-key sub-cap, H-K)
 	Requested         float64 // populated when Insufficient
 }
 
@@ -63,13 +64,22 @@ type ReserveResult struct {
 // modelSource ("user_model" | "platform_model") selects the gates: a
 // platform_model reservation also checks + holds Subsystem B (the platform
 // resale ledger) in the same transaction (Phase 6a-β).
-func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.UUID, estimatedUSD float64, modelSource string) (ReserveResult, error) {
-	status, raw, err := c.post(ctx, "/internal/billing/guardrail/reserve", map[string]any{
+func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.UUID, estimatedUSD float64, modelSource string, mcpKeyID *uuid.UUID, spendCapUSD *float64) (ReserveResult, error) {
+	body := map[string]any{
 		"owner_user_id": ownerUserID,
 		"job_id":        jobID,
 		"estimated_usd": estimatedUSD,
 		"model_source":  modelSource,
-	})
+	}
+	// Public MCP P4/Wave-C (H-K) — pass the per-key cap so usage-billing can hold
+	// against it (omitted for first-party jobs, which carry neither).
+	if mcpKeyID != nil {
+		body["mcp_key_id"] = *mcpKeyID
+	}
+	if spendCapUSD != nil {
+		body["spend_cap_usd"] = *spendCapUSD
+	}
+	status, raw, err := c.post(ctx, "/internal/billing/guardrail/reserve", body)
 	if err != nil {
 		return ReserveResult{}, err
 	}
@@ -103,6 +113,7 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 			DailyAvailable    float64 `json:"daily_available"`
 			MonthlyAvailable  float64 `json:"monthly_available"`
 			PlatformAvailable float64 `json:"platform_available"`
+			KeyAvailable      float64 `json:"key_available"`
 			Requested         float64 `json:"requested"`
 		}
 		_ = json.Unmarshal(raw, &out)
@@ -112,6 +123,7 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 			DailyAvailable:    out.DailyAvailable,
 			MonthlyAvailable:  out.MonthlyAvailable,
 			PlatformAvailable: out.PlatformAvailable,
+			KeyAvailable:      out.KeyAvailable,
 			Requested:         out.Requested,
 		}, nil
 	default:
@@ -169,6 +181,17 @@ type UsageRecord struct {
 	// this the audit ledger mis-bills: a flat rate under-counts cloud models (gpt-4o
 	// output is 4× input) AND wrongly charges local ($0) models.
 	TotalCostUSD *float64
+
+	// P0-2 (B1/B2/B4 — full request/response logging). RequestStatus is the terminal
+	// outcome the audit row records: "success" | "provider_error" | "aborted" |
+	// "cancelled". Empty → "success" (back-compat). InputPayload / OutputPayload are
+	// the assembled provider request (post-injection) + the response (the accumulated
+	// streamed completion, or the embed/rerank result). usage-billing encrypts them at
+	// rest with its dedicated payload KEK; a nil map omits the field (no payload logged,
+	// e.g. tts). Callers bound their size before setting them.
+	RequestStatus string
+	InputPayload  map[string]any
+	OutputPayload map[string]any
 }
 
 // RecordUsage posts a model-level usage entry to usage-billing's
@@ -181,6 +204,13 @@ type UsageRecord struct {
 // usage-billing's stale provider_kind CHECK is dropped in the 6a-β migration
 // so an empty value is now accepted.
 func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) error {
+	// P0-2 — request_status is now carried from the caller (the terminal outcome),
+	// not hardcoded "success", so an aborted/errored/cancelled stream records its real
+	// status. Empty falls back to "success" for back-compat callers.
+	reqStatus := rec.RequestStatus
+	if reqStatus == "" {
+		reqStatus = "success"
+	}
 	payload := map[string]any{
 		"request_id":     rec.RequestID,
 		"owner_user_id":  rec.OwnerUserID,
@@ -189,13 +219,21 @@ func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) erro
 		"model_ref":      rec.ModelRef,
 		"input_tokens":   rec.InputTokens,
 		"output_tokens":  rec.OutputTokens,
-		"request_status": "success",
+		"request_status": reqStatus,
 		"purpose":        rec.Operation,
 	}
 	// Send the authoritative per-model cost when the caller resolved it; absent →
 	// usage-billing uses its flat fallback (back-compat).
 	if rec.TotalCostUSD != nil {
 		payload["total_cost_usd"] = *rec.TotalCostUSD
+	}
+	// P0-2 — the assembled request + response payloads (usage-billing encrypts them).
+	// nil maps are omitted so a payload-less caller (or tts) stores no payload.
+	if rec.InputPayload != nil {
+		payload["input_payload"] = rec.InputPayload
+	}
+	if rec.OutputPayload != nil {
+		payload["output_payload"] = rec.OutputPayload
 	}
 	status, raw, err := c.post(ctx, "/internal/model-billing/record", payload)
 	if err != nil {

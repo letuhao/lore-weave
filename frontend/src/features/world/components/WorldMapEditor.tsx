@@ -1,0 +1,629 @@
+import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { MapPin } from 'lucide-react';
+import type { WorldMapMarker, WorldMapRegion } from '../types';
+import { useWorldMapEditor, type EditorMode } from '../hooks/useWorldMapEditor';
+
+// S7·2 — the world-map editor VIEW (MVC "view"): tool rail + map rail + canvas + marker popover.
+// Render-only; all logic (selection, writes, optimistic drag) lives in useWorldMapEditor. Reuses
+// WorldMapsSection's overlay math: regions in a 0..100 viewBox (preserveAspectRatio none), pins
+// absolutely positioned by normalized coords. Adds drag, click-to-drop, region drawing, and the
+// relabel/rebind/unbind/delete popover.
+
+type Ctl = ReturnType<typeof useWorldMapEditor>;
+
+/** Normalized [0,1] canvas coords from a pointer event, clamped so a drag off-canvas stays valid. */
+function coordsFromEvent(el: HTMLElement, clientX: number, clientY: number): { x: number; y: number } {
+  const rect = el.getBoundingClientRect();
+  const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  const y = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+  return { x, y };
+}
+
+export function WorldMapEditor({ ctl }: { ctl: Ctl }) {
+  const { t } = useTranslation('world');
+
+  if (ctl.needsWorldPicker) {
+    return <WorldPicker ctl={ctl} t={t} />;
+  }
+  if (ctl.isError) {
+    return (
+      <div data-testid="world-map-error" className="p-4 text-sm text-rose-600">
+        {t('mapEditor.error', { defaultValue: 'Could not load this map.' })}
+      </div>
+    );
+  }
+  if (ctl.isEmpty) {
+    return (
+      <div data-testid="world-map-empty" className="flex flex-col items-center gap-3 p-8 text-center text-sm">
+        <p className="text-muted-foreground">
+          {t('mapEditor.empty', { defaultValue: 'No maps yet — draw the world your story lives in.' })}
+        </p>
+        <CreateMapButton ctl={ctl} t={t} />
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="world-map-editor" className="flex h-full min-h-0 flex-col">
+      <ToolRail ctl={ctl} t={t} />
+      <div className="flex min-h-0 flex-1">
+        <MapRail ctl={ctl} t={t} />
+        <div className="relative min-w-0 flex-1 p-2">
+          <Canvas ctl={ctl} t={t} />
+        </div>
+      </div>
+      <Footer ctl={ctl} />
+      {/* key per id so selecting a DIFFERENT marker/region remounts the popover — otherwise the
+          form's useState keeps the PREVIOUS row's label/entity and a Save clobbers the new row. */}
+      {ctl.selectedMarker && (
+        <MarkerPopover key={ctl.selectedMarker.marker_id} ctl={ctl} marker={ctl.selectedMarker} t={t} />
+      )}
+      {ctl.selectedRegion && (
+        <RegionPopover key={ctl.selectedRegion.region_id} ctl={ctl} region={ctl.selectedRegion} t={t} />
+      )}
+    </div>
+  );
+}
+
+function ToolRail({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<string, unknown>) => string }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const modes: EditorMode[] = ['select', 'pin', 'region'];
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b p-2" data-testid="world-map-toolrail">
+      <div className="inline-flex overflow-hidden rounded-md border">
+        {modes.map((m) => (
+          <button
+            key={m}
+            type="button"
+            data-testid={`world-map-mode-${m}`}
+            aria-pressed={ctl.mode === m}
+            onClick={() => ctl.setMode(m)}
+            className={`px-3 py-1 text-xs ${ctl.mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t(`mapEditor.mode.${m}`, { defaultValue: m })}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        data-testid="world-map-upload"
+        disabled={!ctl.selectedMapId}
+        onClick={() => fileRef.current?.click()}
+        className="rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+      >
+        {t('mapEditor.uploadImage', { defaultValue: 'Upload base image' })}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        className="hidden"
+        data-testid="world-map-file-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) ctl.uploadImage.mutate(f);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+function MapRail({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<string, unknown>) => string }) {
+  return (
+    <aside className="w-40 shrink-0 overflow-auto border-r p-2 text-xs" data-testid="world-map-rail">
+      <ul className="flex flex-col gap-1">
+        {ctl.maps.map((m) => (
+          <li key={m.map_id}>
+            <button
+              type="button"
+              data-testid={`world-map-tab-${m.map_id}`}
+              onClick={() => ctl.selectMap(m.map_id)}
+              className={`w-full rounded px-2 py-1 text-left ${m.map_id === ctl.selectedMapId ? 'bg-muted font-semibold' : 'hover:bg-muted/50'}`}
+            >
+              {m.name}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2">
+        <CreateMapButton ctl={ctl} t={t} />
+      </div>
+    </aside>
+  );
+}
+
+function CreateMapButton({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<string, unknown>) => string }) {
+  return (
+    <button
+      type="button"
+      data-testid="world-map-new"
+      onClick={() => {
+        const name = window.prompt(t('mapEditor.newMapPrompt', { defaultValue: 'Name the new map' }));
+        if (name && name.trim()) ctl.createMap.mutate(name.trim());
+      }}
+      className="rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+    >
+      {t('mapEditor.newMap', { defaultValue: '+ New map' })}
+    </button>
+  );
+}
+
+// A pin/vertex "drag" is only a drag if the pointer actually moved beyond this normalized epsilon.
+// Below it, treat the gesture as a click (select only) — otherwise a plain click to open a pin's
+// popover would PATCH the pin to the cursor position (the pin renders OFFSET from its anchor).
+const DRAG_EPSILON = 0.005;
+
+// D-WORLDMAP-POLY-SIMPLIFY — a bounded cap on interactive reshape handles. A very-high-vertex region
+// otherwise renders one draggable handle PER vertex with no ceiling — a silent degradation (hundreds
+// of absolutely-positioned buttons + pointer listeners). Above the cap we keep the polygon (still
+// renders, still selectable/deletable) but SWAP the N handles for a NOTICE — announce the cap, don't
+// silently choke (mirrors the cast paging notice). NOT a Douglas-Peucker simplify (that stays deferred).
+const MAX_INTERACTIVE_VERTICES = 60;
+
+function Canvas({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<string, unknown>) => string }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<number[][]>([]); // region-mode vertices in progress
+  // Live vertex-reshape draft for the SELECTED region (commits on pointer-up). null = not reshaping.
+  const [reshape, setReshape] = useState<{ regionId: string; polygon: number[][] } | null>(null);
+  const [vertexDrag, setVertexDrag] = useState<number | null>(null);
+  // A gesture is a DRAG only if a pointermove fired between down and up. A pure click fires none,
+  // so it must select (not relocate) — the guard against a click PATCHing a pin to the cursor.
+  const movedRef = useRef(false);
+
+  const onCanvasClick = (e: React.MouseEvent) => {
+    if (!canvasRef.current || !ctl.selectedMapId) return;
+    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
+    if (ctl.mode === 'pin') {
+      ctl.addMarker.mutate(
+        { label: 'New marker', x, y },
+        { onSuccess: (res) => ctl.setSelectedMarkerId(res.marker.marker_id) },
+      );
+    } else if (ctl.mode === 'region') {
+      setDraft((d) => [...d, [x, y]]);
+    }
+  };
+
+  const onPinPointerDown = (markerId: string) => (e: React.PointerEvent) => {
+    if (ctl.mode !== 'select') return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    movedRef.current = false;
+    setDragId(markerId);
+    ctl.setSelectedRegionId(null);
+    ctl.setSelectedMarkerId(markerId);
+  };
+  const onPinPointerMove = (markerId: string) => () => {
+    if (dragId === markerId) movedRef.current = true;
+  };
+  const onPinPointerUp = (markerId: string) => (e: React.PointerEvent) => {
+    if (dragId !== markerId || !canvasRef.current) return;
+    setDragId(null);
+    // A pure click (no pointermove) must NOT relocate the pin — it only selects (done on down).
+    if (!movedRef.current) return;
+    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
+    // Idempotent guard: don't PATCH if the pin didn't actually change position (a tiny jitter).
+    // One atomic PATCH of the ABSOLUTE coord on the stable marker_id — never delete+recreate.
+    const m = ctl.markers.find((mm) => mm.marker_id === markerId);
+    if (m && Math.abs(m.x - x) < DRAG_EPSILON && Math.abs(m.y - y) < DRAG_EPSILON) return;
+    ctl.moveMarker.mutate({ markerId, x, y });
+  };
+
+  // ── region vertex reshape (select mode, on the selected region) ──
+  const activePolygon = (r: WorldMapRegion): number[][] =>
+    reshape && reshape.regionId === r.region_id ? reshape.polygon : r.polygon;
+  const onVertexDown = (regionId: string, polygon: number[][], i: number) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setReshape({ regionId, polygon: polygon.map((p) => [...p]) });
+    setVertexDrag(i);
+  };
+  const onVertexMove = (i: number) => (e: React.PointerEvent) => {
+    if (vertexDrag !== i || !canvasRef.current || !reshape) return;
+    const { x, y } = coordsFromEvent(canvasRef.current, e.clientX, e.clientY);
+    setReshape((prev) =>
+      prev ? { ...prev, polygon: prev.polygon.map((p, idx) => (idx === i ? [x, y] : p)) } : prev,
+    );
+  };
+  const onVertexUp = (regionId: string, i: number) => (e: React.PointerEvent) => {
+    if (vertexDrag !== i) return;
+    e.stopPropagation();
+    setVertexDrag(null);
+    const poly = reshape?.polygon;
+    setReshape(null);
+    if (poly) ctl.reshapeRegion.mutate({ regionId, polygon: poly });
+  };
+
+  const selectRegion = (regionId: string) => {
+    ctl.setSelectedMarkerId(null);
+    ctl.setSelectedRegionId(regionId);
+  };
+
+  const finishRegion = () => {
+    if (draft.length >= 3) {
+      ctl.addRegion.mutate(
+        { name: 'New region', polygon: draft },
+        { onSuccess: (res) => selectRegion(res.region.region_id) },
+      );
+    }
+    setDraft([]);
+  };
+
+  const map = ctl.map;
+  const selectedRegion = ctl.selectedRegion;
+  return (
+    <div className="flex h-full flex-col gap-2">
+      {ctl.mode === 'region' && draft.length > 0 && (
+        <div className="flex items-center gap-2 text-xs">
+          <span data-testid="world-map-region-draft">{draft.length} pts</span>
+          <button
+            type="button"
+            data-testid="world-map-region-finish"
+            disabled={draft.length < 3}
+            onClick={finishRegion}
+            className="rounded border px-2 py-0.5 disabled:opacity-50"
+          >
+            Finish region
+          </button>
+          <button type="button" onClick={() => setDraft([])} className="rounded border px-2 py-0.5">
+            Cancel
+          </button>
+        </div>
+      )}
+      <div
+        ref={canvasRef}
+        onClick={onCanvasClick}
+        className="relative w-full flex-1 overflow-hidden rounded-md border bg-muted/30"
+        data-testid="world-map-canvas"
+        data-map-id={map?.map_id}
+        style={{ cursor: ctl.mode === 'select' ? 'default' : 'crosshair' }}
+      >
+        {map?.image_url ? (
+          <img src={map.image_url} alt={map.name} className="pointer-events-none block h-full w-full object-contain" />
+        ) : (
+          <div className="flex h-full min-h-[240px] w-full items-center justify-center text-xs text-muted-foreground">
+            <span data-testid="world-map-no-image">No base image — upload one, or place pins on the field.</span>
+          </div>
+        )}
+
+        <RegionOverlay
+          regions={ctl.regions}
+          draft={draft}
+          selectedRegionId={ctl.selectedRegionId}
+          selectable={ctl.mode === 'select'}
+          onSelect={selectRegion}
+          activePolygon={activePolygon}
+        />
+
+        {/* Vertex handles for the selected region (select mode only) — drag one to reshape.
+            BOUNDED (D-WORLDMAP-POLY-SIMPLIFY): above MAX_INTERACTIVE_VERTICES, render a notice
+            instead of N handles. The polygon itself (RegionOverlay above) is unaffected — still
+            visible, still selectable/deletable; only per-vertex reshape is capped. */}
+        {ctl.mode === 'select' &&
+          selectedRegion &&
+          (activePolygon(selectedRegion).length > MAX_INTERACTIVE_VERTICES ? (
+            <div
+              data-testid="world-map-vertex-cap-notice"
+              className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-700 shadow dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+            >
+              {t('mapEditor.vertexCapNotice', {
+                defaultValue:
+                  '{{count}} vertices — reshape disabled above {{max}} for performance.',
+                count: activePolygon(selectedRegion).length,
+                max: MAX_INTERACTIVE_VERTICES,
+              })}
+            </div>
+          ) : (
+            activePolygon(selectedRegion).map((pt, i) => (
+              <button
+                key={i}
+                type="button"
+                data-testid={`world-map-vertex-${i}`}
+                onPointerDown={onVertexDown(selectedRegion.region_id, selectedRegion.polygon, i)}
+                onPointerMove={onVertexMove(i)}
+                onPointerUp={onVertexUp(selectedRegion.region_id, i)}
+                onClick={(e) => e.stopPropagation()}
+                className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-primary shadow"
+                style={{ left: `${pt[0] * 100}%`, top: `${pt[1] * 100}%`, touchAction: 'none' }}
+                aria-label={`vertex ${i + 1}`}
+              />
+            ))
+          ))}
+
+        {ctl.markers.map((m) => (
+          <button
+            key={m.marker_id}
+            type="button"
+            data-testid={`world-map-marker-${m.marker_id}`}
+            data-entity-bound={m.entity_id ? 'true' : undefined}
+            onPointerDown={onPinPointerDown(m.marker_id)}
+            onPointerMove={onPinPointerMove(m.marker_id)}
+            onPointerUp={onPinPointerUp(m.marker_id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              ctl.setSelectedRegionId(null);
+              ctl.setSelectedMarkerId(m.marker_id);
+            }}
+            className="absolute -translate-x-1/2 -translate-y-full"
+            style={{ left: `${m.x * 100}%`, top: `${m.y * 100}%`, touchAction: 'none' }}
+            title={m.label}
+          >
+            <MapPin className={`h-4 w-4 drop-shadow ${m.entity_id ? 'text-violet-500' : 'text-primary'}`} />
+            <span className="absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[10px] leading-tight">
+              {m.label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RegionOverlay({
+  regions,
+  draft,
+  selectedRegionId,
+  selectable,
+  onSelect,
+  activePolygon,
+}: {
+  regions: WorldMapRegion[];
+  draft: number[][];
+  selectedRegionId: string | null;
+  selectable: boolean;
+  onSelect: (regionId: string) => void;
+  activePolygon: (r: WorldMapRegion) => number[][];
+}) {
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      data-testid="world-map-regions"
+    >
+      {regions.map((r) => {
+        const selected = r.region_id === selectedRegionId;
+        return (
+          <polygon
+            key={r.region_id}
+            data-testid={`world-map-region-${r.region_id}`}
+            points={activePolygon(r)
+              .map(([x, y]) => `${x * 100},${y * 100}`)
+              .join(' ')}
+            className={`${selected ? 'fill-primary/25 stroke-primary' : 'fill-primary/15 stroke-primary/60'} ${
+              selectable ? 'pointer-events-auto cursor-pointer' : ''
+            }`}
+            strokeWidth={selected ? 0.7 : 0.4}
+            onClick={(e) => {
+              if (!selectable) return;
+              e.stopPropagation();
+              onSelect(r.region_id);
+            }}
+          >
+            <title>{r.name}</title>
+          </polygon>
+        );
+      })}
+      {draft.length > 0 && (
+        <polyline
+          points={draft.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
+          className="fill-none stroke-amber-500"
+          strokeWidth={0.5}
+          strokeDasharray="1 1"
+        />
+      )}
+    </svg>
+  );
+}
+
+function Footer({ ctl }: { ctl: Ctl }) {
+  return (
+    <div className="border-t px-3 py-1 text-[11px] text-muted-foreground" data-testid="world-map-footer">
+      {ctl.markers.length} pins · {ctl.regions.length} regions · owner-scoped
+    </div>
+  );
+}
+
+function MarkerPopover({
+  ctl,
+  marker,
+  t,
+}: {
+  ctl: Ctl;
+  marker: WorldMapMarker;
+  t: (k: string, o?: Record<string, unknown>) => string;
+}) {
+  const [label, setLabel] = useState(marker.label);
+  const [entityId, setEntityId] = useState(marker.entity_id ?? '');
+  const [source, setSource] = useState<'glossary' | 'kg'>('glossary');
+  return (
+    <div
+      data-testid="world-map-marker-popover"
+      className="absolute right-4 top-16 z-10 w-64 space-y-2 rounded-md border bg-background p-3 text-xs shadow-lg"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">{t('mapEditor.marker', { defaultValue: 'Marker' })}</span>
+        <button type="button" onClick={() => ctl.setSelectedMarkerId(null)} aria-label="close">
+          ×
+        </button>
+      </div>
+      <label className="block">
+        {t('mapEditor.label', { defaultValue: 'Label' })}
+        <input
+          data-testid="world-map-marker-label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="mt-0.5 w-full rounded border px-1 py-0.5"
+        />
+      </label>
+      {/* 🔒 SEALED PO#2 — bind a glossary `location` OR a KG entity; the source is LABELLED so the
+          user knows which layer this pin ties into. Soft untyped entity_id (no FK). */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-1">
+          <span>{t('mapEditor.bind', { defaultValue: 'Bind entity' })}</span>
+          <select
+            data-testid="world-map-marker-source"
+            value={source}
+            onChange={(e) => setSource(e.target.value as 'glossary' | 'kg')}
+            className="rounded border px-1"
+          >
+            <option value="glossary">glossary</option>
+            <option value="kg">KG</option>
+          </select>
+        </div>
+        <input
+          data-testid="world-map-marker-entity"
+          value={entityId}
+          placeholder={t('mapEditor.entityPlaceholder', { defaultValue: 'location entity id' })}
+          onChange={(e) => setEntityId(e.target.value)}
+          className="w-full rounded border px-1 py-0.5"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button
+          type="button"
+          data-testid="world-map-marker-save"
+          onClick={() =>
+            ctl.patchMarker.mutate({
+              markerId: marker.marker_id,
+              payload: { label, entity_id: entityId.trim() || null },
+            })
+          }
+          className="rounded bg-primary px-2 py-0.5 text-primary-foreground"
+        >
+          {t('mapEditor.save', { defaultValue: 'Save' })}
+        </button>
+        <button
+          type="button"
+          data-testid="world-map-marker-unbind"
+          onClick={() => ctl.patchMarker.mutate({ markerId: marker.marker_id, payload: { entity_id: null } })}
+          className="rounded border px-2 py-0.5"
+        >
+          {t('mapEditor.unbind', { defaultValue: 'Unbind' })}
+        </button>
+        <button
+          type="button"
+          data-testid="world-map-marker-delete"
+          onClick={() => ctl.deleteMarker.mutate(marker.marker_id)}
+          className="rounded border border-rose-300 px-2 py-0.5 text-rose-600"
+        >
+          {t('mapEditor.delete', { defaultValue: 'Delete' })}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RegionPopover({
+  ctl,
+  region,
+  t,
+}: {
+  ctl: Ctl;
+  region: WorldMapRegion;
+  t: (k: string, o?: Record<string, unknown>) => string;
+}) {
+  const [name, setName] = useState(region.name);
+  const [entityId, setEntityId] = useState(region.entity_id ?? '');
+  const [source, setSource] = useState<'glossary' | 'kg'>('glossary');
+  return (
+    <div
+      data-testid="world-map-region-popover"
+      className="absolute right-4 top-16 z-10 w-64 space-y-2 rounded-md border bg-background p-3 text-xs shadow-lg"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">{t('mapEditor.region', { defaultValue: 'Region' })}</span>
+        <button type="button" onClick={() => ctl.setSelectedRegionId(null)} aria-label="close">
+          ×
+        </button>
+      </div>
+      <label className="block">
+        {t('mapEditor.name', { defaultValue: 'Name' })}
+        <input
+          data-testid="world-map-region-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="mt-0.5 w-full rounded border px-1 py-0.5"
+        />
+      </label>
+      {/* 🔒 SEALED PO#2 — bind a glossary `location` OR a KG entity; the source is LABELLED. Soft
+          untyped entity_id (no FK). Drag a vertex on the canvas to reshape the outline. */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-1">
+          <span>{t('mapEditor.bind', { defaultValue: 'Bind entity' })}</span>
+          <select
+            data-testid="world-map-region-source"
+            value={source}
+            onChange={(e) => setSource(e.target.value as 'glossary' | 'kg')}
+            className="rounded border px-1"
+          >
+            <option value="glossary">glossary</option>
+            <option value="kg">KG</option>
+          </select>
+        </div>
+        <input
+          data-testid="world-map-region-entity"
+          value={entityId}
+          placeholder={t('mapEditor.entityPlaceholder', { defaultValue: 'location entity id' })}
+          onChange={(e) => setEntityId(e.target.value)}
+          className="w-full rounded border px-1 py-0.5"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button
+          type="button"
+          data-testid="world-map-region-save"
+          onClick={() =>
+            ctl.patchRegion.mutate({
+              regionId: region.region_id,
+              payload: { name, entity_id: entityId.trim() || null },
+            })
+          }
+          className="rounded bg-primary px-2 py-0.5 text-primary-foreground"
+        >
+          {t('mapEditor.save', { defaultValue: 'Save' })}
+        </button>
+        <button
+          type="button"
+          data-testid="world-map-region-unbind"
+          onClick={() => ctl.patchRegion.mutate({ regionId: region.region_id, payload: { entity_id: null } })}
+          className="rounded border px-2 py-0.5"
+        >
+          {t('mapEditor.unbind', { defaultValue: 'Unbind' })}
+        </button>
+        <button
+          type="button"
+          data-testid="world-map-region-delete"
+          onClick={() => ctl.deleteRegion.mutate(region.region_id)}
+          className="rounded border border-rose-300 px-2 py-0.5 text-rose-600"
+        >
+          {t('mapEditor.delete', { defaultValue: 'Delete' })}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorldPicker({ ctl, t }: { ctl: Ctl; t: (k: string, o?: Record<string, unknown>) => string }) {
+  return (
+    <div data-testid="world-map-world-picker" className="flex flex-col gap-2 p-4 text-sm">
+      <p className="text-muted-foreground">{t('mapEditor.pickWorld', { defaultValue: 'Pick a world to map.' })}</p>
+      <ul className="flex flex-col gap-1">
+        {ctl.worldOptions.map((w) => (
+          <li key={w.world_id}>
+            <button
+              type="button"
+              data-testid={`world-map-world-${w.world_id}`}
+              onClick={() => ctl.pickWorld(w.world_id)}
+              className="w-full rounded border px-2 py-1 text-left hover:bg-muted/50"
+            >
+              {w.name}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

@@ -1,16 +1,23 @@
 """Acting-principal dependency (Q3 scope + H0 promotion authority seam).
 
-Even at the contract-freeze stage the route signatures MUST carry the acting
-principal — the adversary focus for C3 calls out that promote (and every scoped
-route) must not be anonymous. We decode the bearer JWT to surface a `user_id`
-WITHOUT enforcing verification yet (real auth/authorization is wired in a later
-cycle). This keeps the principal load-bearing in the shape while leaving
-behaviour (signature verification, owner check) for C13's review gate.
+Every scoped route MUST carry the acting principal — the adversary focus for C3
+calls out that promote (and every user-scoped route) must not be anonymous. We
+decode the bearer JWT to surface a `user_id`.
 
-The decode is best-effort and unverified: a missing/garbage token yields an
-anonymous principal (user_id=None) rather than a 401, so stub routes stay
-reachable (200/501, never 500) per the C3 acceptance gate. The promote handler
-documents — but does not yet enforce — that only the book/project owner may act.
+**P3 SDK-first: the signature IS now verified** via the shared
+`loreweave_authn.verify_access_token` (HS256-pinned, `exp` required, `sub`→UUID) —
+the same verifier the other 8 Python user-facing services use, closing the prior
+`verify_signature=False` gap (`D-P3-LORE-ENRICH-JWT`). This matters because the
+real user-scoped routes (compose/gaps/book_profile) use this `user_id` for BYOK
+model resolution [PAID calls] and user-scoped data access — an UNVERIFIED `sub`
+let a forged token act as any user.
+
+The decode stays best-effort at the dependency level: a missing/garbage/forged/
+expired token yields an anonymous principal (user_id=None) rather than a 401 (the
+`auto_error=False` posture), so stub routes stay reachable (200/501, never 500)
+while the real routes — which already gate on `user_id is None` — now REJECT a
+forged `sub`. Owner-authorization (only the book/project owner may act) is still
+C13's concern; this closes only the authentication (signature) half.
 """
 
 from __future__ import annotations
@@ -18,9 +25,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-import jwt as pyjwt
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from loreweave_authn import InvalidAccessToken, verify_access_token
+
+from app.config import settings
 
 # auto_error=False → a missing Authorization header does not 401 here; the stub
 # routes must remain reachable during the contract freeze. Real enforcement is
@@ -43,19 +52,18 @@ class Principal:
 
 
 def _extract_user_id(token: str) -> UUID | None:
-    """Best-effort, UNVERIFIED decode of the JWT `sub` claim. Signature is NOT
-    checked here (C3 freeze); returns None on any failure."""
+    """VERIFIED decode of the JWT `sub` claim via the shared loreweave_authn
+    verifier (HS256 signature + `exp` + `sub`→UUID). Returns None on ANY failure
+    — missing/garbage/forged/expired token or a non-UUID `sub` — preserving the
+    anonymous-principal posture for stub routes while rejecting a forged `sub`."""
     try:
-        claims = pyjwt.decode(token, options={"verify_signature": False})
-    except pyjwt.PyJWTError:
+        claims = verify_access_token(token, settings.jwt_secret)
+    except InvalidAccessToken:
         return None
-    sub = claims.get("sub")
-    if not sub:
-        return None
-    try:
-        return UUID(str(sub))
-    except (ValueError, TypeError):
-        return None
+    # `claims.subject` is a STR (the verifier validated it parses as a UUID but
+    # exposes it as text); the callers/owner-checks compare a UUID, so convert —
+    # matching the prior `UUID(str(sub))` return type (`-> UUID | None`).
+    return UUID(claims.subject)
 
 
 async def require_principal(

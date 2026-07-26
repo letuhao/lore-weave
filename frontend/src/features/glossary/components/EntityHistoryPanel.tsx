@@ -11,7 +11,14 @@ interface EntityHistoryPanelProps {
   entityId: string;
   /** Called after a successful restore so the editor re-fetches the entity. */
   onRestored: () => void;
-  onClose: () => void;
+  /** Overlay-close handler. Required when NOT embedded; ignored when embedded. */
+  onClose?: () => void;
+  /**
+   * Render as inline tab content (no overlay header / no own scroll container)
+   * so a host like EntityEditorModal can drop it straight into a tab body. When
+   * false (default) it renders as the standalone full-height overlay panel.
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -19,7 +26,7 @@ interface EntityHistoryPanelProps {
  * lets the user inspect a revision's full snapshot, and restore to it (behind a
  * confirm). All logic lives in useEntityRevisions.
  */
-export function EntityHistoryPanel({ bookId, entityId, onRestored, onClose }: EntityHistoryPanelProps) {
+export function EntityHistoryPanel({ bookId, entityId, onRestored, onClose, embedded = false }: EntityHistoryPanelProps) {
   const { t } = useTranslation('glossaryEditor');
   const { revisions, isLoading, error, restore } = useEntityRevisions(bookId, entityId);
   const [viewId, setViewId] = useState<string | null>(null);
@@ -42,22 +49,25 @@ export function EntityHistoryPanel({ bookId, entityId, onRestored, onClose }: En
   };
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      <div className="flex items-center justify-between border-b px-4 py-3 flex-shrink-0">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <History className="h-4 w-4" />
-          {t('history.title')}
+    <div className={embedded ? 'flex flex-col' : 'flex h-full flex-col bg-background'}>
+      {!embedded && (
+        <div className="flex items-center justify-between border-b px-4 py-3 flex-shrink-0">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <History className="h-4 w-4" />
+            {t('history.title')}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label={t('history.close')}
+            className="inline-flex items-center rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          aria-label={t('history.close')}
-          className="inline-flex items-center rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Embedded mode lets the host's tab body own the scroll (no nested scroller). */}
+      <div className={embedded ? '' : 'flex-1 overflow-y-auto'}>
         {isLoading ? (
           <p className="px-4 py-6 text-xs text-muted-foreground">{t('history.loading')}</p>
         ) : error ? (

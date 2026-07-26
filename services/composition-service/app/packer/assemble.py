@@ -17,8 +17,12 @@ from app.packer.budget import Segment
 from app.packer.lenses import LensBundle
 from app.packer.sanitize import sanitize_guide, sanitize_lore
 
-# Canonical block order for rendering (§2.4).
-_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "memory", "lore", "guide"]
+# Canonical block order for rendering (§2.4). T3.6 — <references> (author influences)
+# renders after <lore> and before the author <guide>.
+# M1 — <source_scene> (the inherited prose the adapt op rewrites) renders right
+# after the immediate <recent> prose and before <memory>/<lore>, so the model sees
+# the material to adapt next to the scene's own recent context.
+_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "source_scene", "memory", "lore", "references", "guide"]
 
 
 def assert_project_scoped(project_id: UUID | None) -> None:
@@ -42,10 +46,20 @@ def assert_derivative_scoped(project_id: UUID | None, source_project_id: UUID | 
         )
 
 
-def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
+def build_segments(
+    bundle: LensBundle, *, guide: str = "", pinned_lore_ids: set[str] | None = None,
+    pinned_reference_ids: set[str] | None = None,
+) -> list[Segment]:
     """Flatten a LensBundle (+ author guide) into prioritised, sanitised
-    Segments for the budget pass."""
+    Segments for the budget pass.
+
+    T3.4: a lore hit whose `source_id` is in `pinned_lore_ids` is emitted
+    `protected=True` so the budget keeps it even under a tight trim (present/canon
+    are already protected, so a pin there needs no change here).
+    T3.6: a reference whose `id` is in `pinned_reference_ids` is likewise protected."""
     segs: list[Segment] = []
+    _pinned_lore = pinned_lore_ids or set()
+    _pinned_refs = pinned_reference_ids or set()
 
     for r in bundle.canon:
         segs.append(Segment("canon", r.text, B.PRIO_CANON, protected=True))
@@ -69,8 +83,23 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
             segs.append(Segment("present", line, B.PRIO_PRESENT_CORE, protected=True))
 
     beat = bundle.beat or {}
+    # Part A (2026-07-18 spec, PO-2 explicit render) — resolve the scene's effective POV
+    # (a GLOSSARY anchor: the scene's own pov_entity_id, or a POV-shift derivative's
+    # pov_anchor default-filled upstream) to its NAME from the present set and render an
+    # explicit `pov=<name>` steer. Closes the pre-existing gap where pov_entity_id reached
+    # the prompt only implicitly as a <present> cast member. The POV entity is folded into
+    # present_ids (pack.py), so its bio is in `bundle.present` and the name resolves here.
+    # A pov id NOT in present (e.g. a foreign/book-scope-missed anchor) → no pov line (safe:
+    # no leak — the book-scoped present lens never surfaced it).
+    pov_id = beat.get("pov_entity_id")
+    pov_name = (
+        next((p.get("name") for p in bundle.present
+              if str(p.get("entity_id")) == str(pov_id) and p.get("name")), None)
+        if pov_id else None
+    )
     beat_line = " | ".join(
         x for x in [
+            f'pov={pov_name}' if pov_name else "",
             f'beat={beat.get("beat_role")}' if beat.get("beat_role") else "",
             f'goal={beat.get("goal")}' if beat.get("goal") else "",
             f'synopsis={beat.get("synopsis")}' if beat.get("synopsis") else "",
@@ -116,6 +145,16 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
             protected=is_last,
         ))
 
+    # M1 — the inherited SOURCE scene's prose for the adapt op. PROTECTED (it is the
+    # material the model rewrites; dropping it would defeat the op), and emitted
+    # per-paragraph in order so the budget keeps as much as fits. Sanitised: source
+    # prose is author/book content (untrusted, SEC3) so it's neutralised for
+    # delimiter safety like <recent>/<lore>. Empty for every non-adapt pack → no block.
+    for para in bundle.source_scene:
+        txt = sanitize_lore(para)
+        if txt:
+            segs.append(Segment("source_scene", txt, B.PRIO_RECENT_IMMEDIATE, protected=True))
+
     for e in bundle.timeline:
         line = f'{e.get("title", "")}: {e.get("summary", "")}'.strip(": ").strip()
         if line:
@@ -124,7 +163,30 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
     for h in bundle.lore:
         txt = sanitize_lore(h.get("text", ""))
         if txt:
-            segs.append(Segment("lore", txt, B.PRIO_LORE))
+            # T3.4 — a pinned lore source is protected so a tight budget keeps it.
+            pinned = str(h.get("source_id")) in _pinned_lore
+            segs.append(Segment("lore", txt, B.PRIO_LORE, protected=pinned))
+
+    # T3.6 — author reference passages. The content is author-supplied (untrusted
+    # like <lore>/<guide>) so it's neutralised via sanitize_lore. A short attribution
+    # prefix (title — author) precedes the passage when present. A PINNED reference is
+    # protected so a tight budget keeps it; otherwise it's the softest, first-trimmed tier.
+    for h in bundle.references:
+        raw = (h.get("content") or "").strip()
+        if not raw:  # whitespace-only / empty reference → no block
+            continue
+        body = sanitize_lore(raw)
+        if not body:
+            continue
+        # SEC3 — title/author are author-supplied (untrusted), so they're neutralised
+        # too: an un-sanitised attribution could forge a </references>/<guide> delimiter
+        # or inject. Each part is escaped before composing the line (not just `body`).
+        attribution = " — ".join(
+            x for x in [sanitize_lore(str(h.get("title") or "").strip()),
+                        sanitize_lore(str(h.get("author") or "").strip())] if x)
+        line = f"[{attribution}] {body}" if attribution else body
+        pinned = str(h.get("id")) in _pinned_refs
+        segs.append(Segment("references", line, B.PRIO_REFERENCES, protected=pinned))
 
     if guide:
         segs.append(Segment("guide", sanitize_guide(guide), B.PRIO_CANON, protected=True))

@@ -364,3 +364,23 @@ async def test_tier3_multi_batch_maps_local_decisions_to_global_names() -> None:
 async def test_config_validates_batch_size() -> None:
     with pytest.raises(ValueError, match="max_items_per_batch"):
         EntityRecoveryConfig(model_ref="x", max_items_per_batch=0)
+
+
+# ── Model-context-aware output clamp (build_recovery_submit_kwargs) ────────────
+
+def test_recovery_submit_kwargs_unclamped_when_context_length_unknown():
+    from loreweave_extraction.entity_recovery import build_recovery_submit_kwargs
+    kw = build_recovery_submit_kwargs(
+        config=_config(), system="s", user="u", n_items=50,
+    )
+    assert kw["input"]["max_tokens"] == 1024 + 200 * 50  # unclamped, today's behavior
+
+
+def test_recovery_submit_kwargs_clamps_for_small_context_window():
+    """A large batch against a small-context model must NOT request more output
+    than the model's real window can structurally host (input + output together)."""
+    from loreweave_extraction.entity_recovery import build_recovery_submit_kwargs
+    kw = build_recovery_submit_kwargs(
+        config=_config(), system="s", user="u", n_items=50, context_length=4000,
+    )
+    assert kw["input"]["max_tokens"] == int(4000 * 0.8)

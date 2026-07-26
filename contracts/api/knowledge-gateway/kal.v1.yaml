@@ -1,0 +1,600 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Knowledge Access Layer (KAL) — unified temporal knowledge read/write
+  version: 1.0.0
+  description: |
+    The **single versioned read/write boundary** for entity/lore/KG knowledge (spec §6D / §9 dec-9).
+    Spec: `docs/specs/2026-06-29-incremental-temporal-knowledge-architecture.md` — §12 + §12.7.8 govern.
+    Plan: `docs/plans/2026-06-30-temporal-knowledge-architecture-impl.md`.
+
+    ## What this is
+    A **typed gateway** (`services/knowledge-gateway`, TypeScript — I3 gateway tier) federating
+    **glossary-service** (Postgres SSOT projection of `entity_facts`) + **knowledge-service** (Neo4j KG)
+    behind ONE contract. The existing federated MCP tools (`glossary_search`,
+    `kg_graph_query(as_of_chapter)`, `kg_entity_edge_timeline`) become **one client of the KAL**, not the
+    contract itself. `glossary_client`/`knowledge_client` in consumers become thin adapters that call here.
+
+    ## INV-KAL (enforced like the gateway/provider invariants)
+    No service reads or writes the glossary EAV or the KG (Neo4j) except through the KAL. No direct
+    `entity_attribute_values`/Cypher reads outside the owning services; no new bespoke per-consumer read
+    endpoint. Two-mechanism enforcement (§12.5.5): (i) `scripts/knowledge-access-gate.py` greps direct
+    table/Cypher reads (owning-svc + KAL allowlisted); (ii) an HTTP-surface lint that no consumer client
+    targets the owning services' `/internal/*` knowledge endpoints — **tracked, not yet enforcing**
+    (DEFERRED `D-KAL-HTTP-SURFACE-LINT`).
+
+    ## Bounded BY CONSTRUCTION
+    Every read returns a bounded result — there is **no `list_all` / unbounded dump**. `roster` and
+    `list_attr_values` are *bounded-per-page, complete-in-aggregate* (cursor-drained), never the monolith.
+    This makes context bloat structurally impossible (§12.0 INV-FACTS corollary).
+
+    ## Temporal model (v1 == current projection; temporal is additive)
+    v1 semantics equal **today's current-projection** (latest-valid facts where `invalidated_at IS NULL`),
+    so consumers migrate with NO behavior change. Temporal is an additive `as_of` (chapter ordinal) param.
+    Interval convention is half-open `[valid_from_ordinal, valid_to_ordinal)`; an open fact has
+    `valid_to_ordinal = NULL` meaning +∞. As-of-N predicate everywhere:
+    `valid_from_ordinal <= N AND (valid_to_ordinal IS NULL OR N < valid_to_ordinal)` (§12.3.1).
+
+    ## Per-substrate `as_of` gating (§12.5.1 / A5)
+    `as_of` is **NOT** uniformly honorable. Each read returns a `temporal_capability` per source. Until the
+    KG carries a unified story-ordinal valid-time (foundation F3), the KG branch returns
+    `temporal_unsupported` for `as_of` (degrade-safe) rather than transaction-time-contaminated rows.
+
+    ## Auth
+    Bearer JWT (book/project View-gated) **or** `X-Internal-Token` + `X-User-Id` for service-to-service.
+    Writes are owner/grant-gated on the book.
+
+servers:
+  - url: http://knowledge-gateway:3000
+    description: Docker Compose dev (in-cluster)
+  - url: http://api-gateway-bff:3000
+    description: Dev via gateway (prefix-proxied /v1/kal)
+  - url: https://api.loreweave.dev
+    description: Production
+
+tags:
+  - name: reads
+    description: Bounded knowledge reads. Every result is bounded; `as_of` is additive + per-substrate gated.
+  - name: writes
+    description: The only mutators. Encode the two write paths (A append / B retract) + merge/split (§4, §12.4).
+
+paths:
+  # ─────────────────────────────── READS ───────────────────────────────
+  /v1/kal/books/{book_id}/entities/{entity_id}/canonical:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: as_of
+        in: query
+        required: false
+        description: Chapter ordinal. Omitted = current head. Below the fold head, projected from facts (§12.1).
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [reads]
+      summary: get_canonical — the bounded canonical snapshot (current, or as-of chapter N)
+      description: |
+        Returns the bounded prose synthesis (≤ canonicalMaxRunes). May carry
+        `canonical_status='unbuildable'` (degrade-safe, §12.1 B4) — consumers fall back to `get_facts`.
+      responses:
+        '200':
+          description: Bounded canonical snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CanonicalSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/canonical-translation:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: lang
+        in: query
+        required: true
+        description: Target display language (BCP-47 primary subtag). A REAL target — the FE shows the original canonical when the reader picks the source/as-authored language, so this never gets source==target.
+        schema: { type: string }
+      - name: as_of
+        in: query
+        required: false
+        description: Chapter ordinal (parity with get_canonical; the underlying read returns the fold head today).
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [reads]
+      summary: get_canonical_translation — the as-of canonical translated into `lang`, on-demand + cached (§6B/§7.6)
+      description: |
+        On-demand, immutable per (content, language) translation of the entity's folded canonical
+        (mirror of KG-TL M3). Read-through with a single-flight background fill that calls
+        translation-service (BYOK MT via provider-registry — no LLM in glossary). The FE polls while
+        `status='translating'`. Degrade-safe: `unbuildable` (no canonical), `failed` (+ error_code:
+        no_model | quota | provider | no_user | unconfigured).
+      responses:
+        '200':
+          description: The translated canonical (or its translating/failed/unbuildable state)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CanonicalTranslation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: "Missing required `lang` query param" }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/facts:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: as_of
+        in: query
+        required: false
+        description: Chapter ordinal; latest-valid when omitted. Half-open predicate (§12.3.1).
+        schema: { type: integer, format: int64 }
+      - name: attrs
+        in: query
+        required: false
+        description: Restrict to these attribute/predicate codes (per-attribute bounded). CSV.
+        schema: { type: string }
+    get:
+      tags: [reads]
+      summary: get_facts — latest-valid (or valid-at-N) facts, per-attribute bounded
+      responses:
+        '200':
+          description: Per-attribute latest-valid facts + temporal capability
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, temporal_capability]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Fact' } }
+                  temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/timeline:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: before_order, in: query, required: false, schema: { type: integer, format: int64 } }
+      - { name: after_order, in: query, required: false, schema: { type: integer, format: int64 } }
+      - { name: cursor, in: query, required: false, schema: { type: string } }
+      - { name: limit, in: query, required: false, schema: { type: integer, default: 50, maximum: 200 } }
+    get:
+      tags: [reads]
+      summary: timeline — windowed change history (newest-first page; fact-opens/invalidations w/ citations §7-3)
+      responses:
+        '200':
+          description: One bounded page of the change feed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TimelineEntry' } }
+                  next_cursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/attr-values:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: attr, in: query, required: true, description: "Multi-valued attr code (aliases/tags/appears_in)", schema: { type: string } }
+      - { name: cursor, in: query, required: false, schema: { type: string } }
+      - { name: as_of, in: query, required: false, schema: { type: integer, format: int64 } }
+    get:
+      tags: [reads]
+      summary: list_attr_values — paginated STRUCTURED multi-valued facts, never folded prose (§12.5.3 / D9)
+      responses:
+        '200':
+          description: One bounded page of structured attr-value facts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Fact' } }
+                  next_cursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/roster:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: fields, in: query, required: false, description: "Projection-restricted; id+name only (CSV)", schema: { type: string, default: "id,name" } }
+      - { name: cursor, in: query, required: false, description: "Keyset cursor; caller DRAINS to completion", schema: { type: string } }
+      - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+    get:
+      tags: [reads]
+      summary: roster — bounded-per-page, COMPLETE-in-aggregate cast list (§12.5.2 / D4)
+      description: |
+        The one bounded-but-complete read (the composition planner's legitimate full-cast need). Keyset
+        cursor on a monotonic id (§12.7.3): the roster is a **snapshot as-of drain-start**; entities created
+        mid-drain may be omitted (tolerated by the planner's commit-time unresolved-name check). NEVER full
+        attributes — projection-restricted to id+name. Carved into INV-KAL as an allowed shape.
+      responses:
+        '200':
+          description: One page; drain `next_cursor` to completion for the full cast
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RosterEntry' } }
+                  next_cursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/retrieve:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [reads]
+      summary: retrieve — semantic top-K over embedded episodes/segments (deep-dive, not scroll §5B-3)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                scope: { type: string, description: "entity_id, or 'book' for whole-book retrieval", nullable: true }
+                k: { type: integer, default: 8, maximum: 50 }
+                as_of: { type: integer, format: int64, nullable: true }
+      responses:
+        '200':
+          description: Top-K relevant segments (bounded)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, temporal_capability]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RetrievedSegment' } }
+                  temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/search:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: query, in: query, required: true, schema: { type: string } }
+      - { name: k, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
+    get:
+      tags: [reads]
+      summary: search — entity search (bounded top-K)
+      responses:
+        '200':
+          description: Bounded entity matches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RosterEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/neighborhood:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: hops, in: query, required: false, schema: { type: integer, default: 1, maximum: 2 } }
+      - { name: cap, in: query, required: false, schema: { type: integer, default: 50, maximum: 200 } }
+      - { name: as_of, in: query, required: false, schema: { type: integer, format: int64 } }
+    get:
+      tags: [reads]
+      summary: neighborhood — KG 1-hop (capped). `as_of` gated per substrate (KG temporal_unsupported pre-F3).
+      responses:
+        '200':
+          description: Capped KG neighborhood + temporal capability
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [edges, temporal_capability]
+                properties:
+                  edges: { type: array, items: { $ref: '#/components/schemas/Edge' } }
+                  temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ─────────────────────────────── WRITES ───────────────────────────────
+  /v1/kal/books/{book_id}/episodes:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: ingest_episode — immutable episode; mints a new revision on content-hash change (§12.2.5)
+      description: |
+        `UNIQUE(chapter_id, content_hash)` → a re-run with same text resumes, never re-mints (C6). Seals
+        `status='pending'` in tx-1; facts written + flip to `reconciled` in tx-2 (same writeback_key).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chapter_id, chapter_ordinal, content_hash]
+              properties:
+                chapter_id: { type: string, format: uuid }
+                chapter_ordinal: { type: integer, format: int64 }
+                content_hash: { type: string }
+                char_range: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+                token_count: { type: integer }
+                writeback_key: { type: string }
+      responses:
+        '200': { description: "Episode (existing or newly minted), with status", content: { application/json: { schema: { $ref: '#/components/schemas/Episode' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/resolve-entity:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: resolve_entity — cross-kind resolver (#43) + bi-temporal alias-set match (§12.4.3)
+      description: |
+        Matches the full across-all-time alias set so a ch.4000 mention resolves to the ch.1 entity.
+        Cold path bootstrap (§12.7.4): no alias match → create + seed name/alias facts at the current ordinal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind, at_ordinal]
+              properties:
+                name: { type: string }
+                kind: { type: string }
+                at_ordinal: { type: integer, format: int64 }
+      responses:
+        '200': { description: "Resolved or freshly-created entity", content: { application/json: { schema: { $ref: '#/components/schemas/RosterEntry' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/facts:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: append_fact — open a bi-temporal fact (Path A); idempotent by content-addressed natural key
+      description: |
+        `INSERT … ON CONFLICT DO NOTHING` on
+        `UNIQUE(entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal, source_episode_id)`
+        (§12.2.2). The in-tx EAV projection upsert is part of this write (§12.2.1). Interval maintenance via
+        the single `maintain_chain` routine under the per-`(entity,attr)` chain lock (§12.7.8).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppendFactRequest' }
+      responses:
+        '200': { description: "The fact (existing on conflict, or newly opened)", content: { application/json: { schema: { $ref: '#/components/schemas/Fact' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/facts/close:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: close_fact — valid-time close (supersede) via the ordinal-aware interval-split (§12.3.2)
+      description: NOT the KG `single_active` close — ordinal-aware so backfill/parallel-merge don't invert intervals.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fact_id, valid_to_ordinal]
+              properties:
+                fact_id: { type: string, format: uuid }
+                valid_to_ordinal: { type: integer, format: int64 }
+      responses:
+        '200': { description: "Updated fact chain", content: { application/json: { schema: { $ref: '#/components/schemas/Fact' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/retract:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: retract — Path B transaction-time close + chain re-stitch (§12.3.3 / A3)
+      description: |
+        Content-hash-gated: a text edit (new episode revision) diffs vs the prior revision's contribution and
+        transaction-time-closes dropped facts, then re-stitches the chain (B.3.5). Same-text re-run is
+        update-only (no retract) unless `allow_retract_on_remodel` (§12.3.5 / D7).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [episode_revision_id, dropped_facts]
+              properties:
+                episode_revision_id: { type: string, format: uuid }
+                dropped_facts: { type: array, items: { type: string, format: uuid } }
+                allow_retract_on_remodel: { type: boolean, default: false }
+      responses:
+        '200': { description: Retraction result + re-stitched chain summary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/merge:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: merge_entities — fact-chain merge over append-only history (NET-NEW, not "#43 done") §12.4.1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [winner, loser]
+              properties:
+                winner: { type: string, format: uuid }
+                loser: { type: string, format: uuid }
+      responses:
+        '200': { description: Merge result + journal id (revertible) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/split:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: split_entity — the inverse of merge; re-attribute facts by source_episode provenance (§12.4.2 / D2)
+      description: Append-only-safe — originals invalidated with a `split` reason, new facts opened on the new entity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, by]
+              properties:
+                source: { type: string, format: uuid }
+                by:
+                  type: object
+                  description: Predicate selecting facts to move (e.g. source_episode_id set).
+                  properties:
+                    source_episode_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200': { description: The new entity + moved-fact summary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/fold:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: fold_canonical — trigger the bounded snapshot fold (canonical_dirty mechanism, compare-and-clear)
+      responses:
+        '200': { description: Fold result (built / unchanged / quarantined-unbuildable) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  schemas:
+    TemporalCapability:
+      type: object
+      description: Per-substrate `as_of` honorability (§12.5.1 / A5).
+      required: [glossary, kg]
+      properties:
+        glossary: { type: string, enum: [ordinal_valid_time, current_only], description: glossary honors as_of from foundation onward }
+        kg: { type: string, enum: [ordinal_valid_time, from_order_only, temporal_unsupported], description: temporal_unsupported until foundation F3 unifies the KG ordinal axis }
+    CanonicalSnapshot:
+      type: object
+      required: [entity_id, content, as_of_ordinal, fold_algo_version, canonical_status]
+      properties:
+        entity_id: { type: string, format: uuid }
+        attr_scope: { type: string, default: narrative }
+        as_of_ordinal: { type: integer, format: int64, nullable: true }
+        content: { type: string, description: Bounded prose (≤ canonicalMaxRunes); empty when unbuildable }
+        content_hash: { type: string }
+        fold_algo_version: { type: integer }
+        fact_coverage_txid: { type: string, nullable: true }
+        canonical_status: { type: string, enum: [current, stale, unbuildable], description: degrade-safe (§12.1 B4) }
+    CanonicalTranslation:
+      type: object
+      description: |
+        On-demand translation of the folded canonical into `language_code`. `status` drives the FE:
+        ready (translated `content`, `cached`), translating (original `content`; FE polls), failed
+        (original `content` + `error_code`), unbuildable (no canonical), original (selected lang is
+        the source — the FE renders the original canonical and never calls this).
+      required: [entity_id, language_code, content, translated, status]
+      properties:
+        entity_id: { type: string, format: uuid }
+        language_code: { type: string }
+        content: { type: string, description: Translated prose when ready; the original canonical otherwise }
+        translated: { type: boolean, description: true only when status=ready }
+        status: { type: string, enum: [ready, translating, failed, unbuildable] }
+        error_code: { type: string, enum: ["", no_model, quota, provider, no_user, unconfigured], description: Set only when status=failed }
+        cached: { type: boolean, description: true when served from the immutable cache }
+        as_of_ordinal: { type: integer, format: int64, nullable: true }
+        canonical_status: { type: string, enum: [current, stale, unbuildable] }
+        source: { type: string, description: 'snapshot-translation' }
+    Fact:
+      type: object
+      required: [fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality]
+      properties:
+        fact_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        fact_kind: { type: string, enum: [attribute, relation, event, name, alias] }
+        attr_or_predicate: { type: string }
+        value: { type: string }
+        value_hash: { type: string }
+        valid_from_ordinal: { type: integer, format: int64 }
+        valid_to_ordinal: { type: integer, format: int64, nullable: true, description: NULL = +∞ (open) }
+        cardinality: { type: string, enum: [single, multi], default: single }
+        source_episode_id: { type: string, format: uuid, nullable: true }
+        evidence: { $ref: '#/components/schemas/Evidence' }
+        invalidated_at: { type: string, format: date-time, nullable: true }
+    Evidence:
+      type: object
+      description: Quote + chapter citation (anti-hallucination, §3.2).
+      properties:
+        chapter_id: { type: string, format: uuid, nullable: true }
+        chapter_title: { type: string, nullable: true }
+        quote: { type: string, nullable: true }
+    TimelineEntry:
+      type: object
+      required: [kind, fact, at_ordinal]
+      properties:
+        kind: { type: string, enum: [open, invalidate, close] }
+        fact: { $ref: '#/components/schemas/Fact' }
+        at_ordinal: { type: integer, format: int64 }
+    Episode:
+      type: object
+      required: [episode_id, chapter_id, content_hash, status]
+      properties:
+        episode_id: { type: string, format: uuid }
+        chapter_id: { type: string, format: uuid }
+        chapter_ordinal: { type: integer, format: int64 }
+        content_hash: { type: string }
+        status: { type: string, enum: [pending, reconciled] }
+    RosterEntry:
+      type: object
+      required: [entity_id, name]
+      properties:
+        entity_id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string, nullable: true }
+    RetrievedSegment:
+      type: object
+      required: [text, score]
+      properties:
+        text: { type: string }
+        score: { type: number }
+        episode_id: { type: string, format: uuid, nullable: true }
+        chapter_ordinal: { type: integer, format: int64, nullable: true }
+    Edge:
+      type: object
+      properties:
+        predicate: { type: string }
+        from_entity: { type: string, format: uuid }
+        to_entity: { type: string, format: uuid }
+        valid_from_ordinal: { type: integer, format: int64, nullable: true }
+        valid_to_ordinal: { type: integer, format: int64, nullable: true }
+    AppendFactRequest:
+      type: object
+      required: [entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, source_episode_id]
+      properties:
+        entity_id: { type: string, format: uuid }
+        fact_kind: { type: string, enum: [attribute, relation, event, name, alias] }
+        attr_or_predicate: { type: string }
+        value: { type: string }
+        valid_from_ordinal: { type: integer, format: int64 }
+        source_episode_id: { type: string, format: uuid }
+        cardinality: { type: string, enum: [single, multi], default: single }
+        evidence: { $ref: '#/components/schemas/Evidence' }
+        writeback_key: { type: string, description: Path-A idempotency gate (reused, §12.2.2) }
+  responses:
+    Unauthorized: { description: Missing/invalid auth }
+    Forbidden: { description: Caller lacks a View/Edit grant on the book }
+    NotFound: { description: Entity/episode not found }
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    internalToken: { type: apiKey, in: header, name: X-Internal-Token }
+
+security:
+  - bearerAuth: []
+  - internalToken: []

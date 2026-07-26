@@ -18,10 +18,12 @@ future translation/chat-service consumers) is responsible for:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
 from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.context_budget import ContextBudget
 from loreweave_extraction.extractors.entity import (
     LLMEntityCandidate,
     extract_entities,
@@ -38,6 +40,7 @@ from loreweave_extraction.extractors.relation import (
     LLMRelationCandidate,
     extract_relations,
 )
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "Pass2Candidates",
@@ -145,6 +148,37 @@ async def extract_pass2(
     # (current behaviour, back-compat). A positive int gates the gather with
     # an asyncio.Semaphore so at most N of the requested trio ops run at once.
     concurrency_level: int | None = None,
+    # KG customizable-ontology (lane LB) — the resolved project schema projection.
+    # None (default — worker-ai + translation never pass it) → byte-identical
+    # static prompts + Literal validation. A non-None ExtractionSchema activates
+    # the dynamic prompt/validation path in every per-op extractor.
+    schema: ExtractionSchema | None = None,
+    # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort applied to the core
+    # entity/relation/event/fact extraction LLM calls. Default "none" emits NO
+    # reasoning wire fields, so every existing caller (worker-ai + translation +
+    # knowledge pass2 consumers that don't pass it) is byte-identical. A graded
+    # value (low/medium/high) spreads {reasoning_effort, chat_template_kwargs}
+    # into each op's input. The recovery + precision-filter passes are NOT graded
+    # (they stay force-thinking-off — cheap structural passes; see the worker spec
+    # D1 carve-out). The value is trusted as-is (already clamped to the caller's
+    # grant at mint time, knowledge-side) — the SDK does no re-clamp.
+    reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook threaded down to EVERY core
+    # extraction submit_and_wait (entity + relation/event/fact). The base
+    # loreweave_llm.Client.wait_terminal polls it so an in-flight LLM call is
+    # aborted the moment the owning KG-build job is cancelled. None (default —
+    # worker-ai chat/glossary callers + translation + knowledge pass2 consumers
+    # that don't opt in) ⇒ no cancellation polling, byte-identical behaviour.
+    # NOT applied to the recovery/precision-filter passes (cheap structural
+    # passes, same carve-out as reasoning_effort).
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    # Model-context-aware chunk sizing (see loreweave_extraction.context_budget).
+    # None (default — every existing caller that doesn't pass it) keeps the legacy
+    # flat 15-paragraph chunk size, byte-identical behavior. A caller that resolves
+    # the target model's real context window should build one via
+    # `_build_budget_for_model` and pass it here so chunk size scales with the
+    # model actually in use instead of assuming a fixed window for every model.
+    context_budget: ContextBudget | None = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -206,6 +240,10 @@ async def extract_pass2(
         llm_client=llm_client,
         on_dropped=on_dropped,
         prompt_override_system=_sys("entity"),
+        schema=schema,
+        reasoning_effort=reasoning_effort,
+        cancel_check=cancel_check,
+        context_budget=context_budget,
     )
 
     # Gate: if no entities, nothing to anchor.
@@ -226,6 +264,10 @@ async def extract_pass2(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=on_dropped,
+        schema=schema,
+        reasoning_effort=reasoning_effort,
+        cancel_check=cancel_check,
+        context_budget=context_budget,
     )
 
     # C12 — build the gather task-list CONDITIONALLY. Only the requested
@@ -274,6 +316,10 @@ async def extract_pass2(
         facts=_results["facts"],
     )
 
+    # Model-context-aware output clamp for the recovery/filter classifier calls —
+    # never request more output than the model's real window can structurally host.
+    _ctx_len = context_budget.model_context if context_budget is not None else None
+
     # Cycle 73d — optional entity recovery (runs BEFORE precision filter).
     # Promotes "real" entities the extractor missed (so writer doesn't
     # cascade-skip relations referencing them) and drops relations whose
@@ -289,6 +335,7 @@ async def extract_pass2(
             project_id=project_id,
             llm_client=llm_client,
             on_decision=on_recovery_decision,
+            context_length=_ctx_len,
         )
 
     # Cycle 72 — optional precision filter pass.
@@ -304,6 +351,7 @@ async def extract_pass2(
             user_id=user_id,
             llm_client=llm_client,
             on_decision=on_filter_decision,
+            context_length=_ctx_len,
         )
 
     return candidates

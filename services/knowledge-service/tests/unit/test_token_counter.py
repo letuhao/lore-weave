@@ -1,9 +1,11 @@
-"""D-T2-01 — tiktoken-backed estimate_tokens tests.
+"""D-T2-01 / M3 — tiktoken-backed estimate_tokens tests.
 
-The module now delegates to tiktoken's cl100k_base encoding (with a
-`len/4` fallback only when tiktoken can't be imported). Tests target
-observable behavior — defensives, non-zero for non-empty input, CJK
-now counted proportionally to bytes rather than at 0.25 tokens/char.
+The module delegates to tiktoken's o200k_base encoding (GPT-4o /
+modern-model tokenizer; M3 swap from cl100k_base to stop over-counting
+CJK ~40%), with a cl100k→`len/4` fallback chain. Tests target observable
+behavior — defensives, non-zero for non-empty input, CJK counted far
+above the old 0.25 tokens/char heuristic — NOT a tokenizer-specific
+per-char ratio (o200k compresses CJK to <1 token/char, unlike cl100k).
 """
 
 from app.context.formatters.token_counter import estimate_tokens
@@ -43,11 +45,14 @@ def test_cjk_counted_higher_than_old_heuristic():
     assert estimate_tokens(text) > len(text) // 4
 
 
-def test_cjk_counted_at_least_one_per_char():
-    # A crude lower bound that catches regressions toward the old
-    # heuristic without locking in tiktoken's exact BPE output.
+def test_cjk_counted_well_above_old_heuristic():
+    # A crude lower bound that catches regressions toward the old len/4
+    # heuristic without locking in a per-char ratio. o200k_base compresses
+    # CJK to <1 token/char (e.g. this 6-char string → 4 tokens), so the
+    # old `>= len(text)` bound no longer holds — but it must still be well
+    # above len//4 (the pre-tiktoken floor this regression test guards).
     text = "中文测试句子"  # 6 CJK chars
-    assert estimate_tokens(text) >= len(text)
+    assert estimate_tokens(text) > len(text) // 4
 
 
 def test_monotonic_with_length():

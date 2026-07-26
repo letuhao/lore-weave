@@ -16,9 +16,15 @@
       "translations": "{{count}} bản dịch",
       "evidences": "{{count}} dẫn chứng"
     },
+    "scope_label": {
+      "placeholder": "Phân biệt (ví dụ: thế giới/cõi)...",
+      "aria": "Nhãn phạm vi — dùng để phân biệt các thực thể trùng tên trong các ngữ cảnh khác nhau của câu chuyện",
+      "duplicate": "Một thực thể có cùng tên, loại và phạm vi này đã tồn tại trong cuốn sách này"
+    },
     "tab": {
       "attributes": "Thuộc tính",
-      "evidences": "Dẫn chứng"
+      "evidences": "Dẫn chứng",
+      "history": "Lịch sử"
     },
     "viewing_in_language": "Đang xem bằng {{lang}}",
     "viewing_original": "Gốc ({{lang}})",
@@ -33,12 +39,20 @@
       "saved": "Đã lưu thực thể",
       "status_changed": "Đã đổi trạng thái thành {{status}}",
       "invalid_lang": "Mã ngôn ngữ không hợp lệ (ví dụ: en, zh, zh-tw)"
-    }
+    },
+    "remove_attr_confirm": "Xóa giá trị thuộc tính này? Bạn có thể thêm lại sau.",
+    "remove_attr_success": "Đã xóa giá trị thuộc tính",
+    "add_attr_heading": "Thêm giá trị cho một thuộc tính khác",
+    "add_attr_pick": "Chọn một thuộc tính…",
+    "add_attr_value_placeholder": "Giá trị",
+    "add_attr_button": "Thêm",
+    "add_attr_success": "Đã thêm thuộc tính"
   },
   "attr_card": {
     "required": "*bắt buộc",
     "modified": "đã sửa",
-    "has_translations": "Có bản dịch"
+    "has_translations": "Có bản dịch",
+    "remove": "Xóa giá trị này"
   },
   "translation_row": {
     "confidence": {
@@ -52,6 +66,7 @@
     "save": "Lưu",
     "delete_aria": "Xóa bản dịch",
     "placeholder": "Bản dịch {{lang}}...",
+    "tags_add": "+ Thêm bí danh",
     "delete_title": "Xóa bản dịch?",
     "delete_desc": "Bản dịch {{lang}} cho thuộc tính này sẽ bị xóa vĩnh viễn.",
     "delete_confirm": "Xóa",
@@ -66,6 +81,14 @@
       "quote": "Trích dẫn",
       "summary": "Tóm tắt",
       "reference": "Tham chiếu"
+    },
+    "provenance": {
+      "ambiguous": "Khớp chưa chắc",
+      "ambiguous_hint": "Trích dẫn này khớp với văn bản nguồn ở nhiều vị trí — không chắc vị trí chính xác.",
+      "unmatched": "Không thấy trong nguồn",
+      "unmatched_hint": "Không tìm thấy trích dẫn này trong nội dung chương — có thể bị diễn giải lại hoặc bịa ra. Hãy kiểm chứng trước khi tin.",
+      "unverified": "Chưa kiểm chứng",
+      "unverified_hint": "Trích dẫn này chưa được đối chiếu với văn bản nguồn."
     },
     "filter": {
       "all": "Tất cả",
@@ -110,6 +133,7 @@
       "cancel": "Hủy",
       "save": "Lưu",
       "edit_title": "Sửa",
+      "open_source": "Mở chương nguồn",
       "delete_title": "Xóa",
       "translated": "Đã dịch ({{lang}})",
       "note_label": "Ghi chú: {{note}}"
@@ -119,6 +143,11 @@
       "clear_filters": "Xóa bộ lọc",
       "prev_page": "Trang trước",
       "next_page": "Trang sau",
+      "first_page": "Trang đầu",
+      "last_page": "Trang cuối",
+      "jump_to_page": "Tới trang",
+      "page_size": "Số dòng mỗi trang",
+      "per_page": "{{n}} / trang",
       "delete_title": "Xóa dẫn chứng?",
       "delete_desc": "Dẫn chứng từ \"{{attr}}\" sẽ bị xóa vĩnh viễn.",
       "delete_confirm": "Xóa"
@@ -129,5 +158,12 @@
       "created": "Đã tạo dẫn chứng",
       "text_required": "Văn bản gốc là bắt buộc"
     }
+  },
+  "summarize": {
+    "canonical_label": "Tóm tắt đã gộp",
+    "pending_dirty": "Sẽ tóm tắt lại sau lần trích xuất tiếp theo",
+    "pending_new": "Sẽ được tóm tắt sau lần trích xuất tiếp theo",
+    "sources": "Lần nhắc gốc ({{count}})",
+    "empty": "Chưa có lần nhắc nào"
   }
 }

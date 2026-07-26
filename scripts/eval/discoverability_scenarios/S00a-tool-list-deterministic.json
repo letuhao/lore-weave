@@ -1,0 +1,29 @@
+{
+  "scenario": "S00a",
+  "title": "tool_list(category) — deterministic, complete enumeration stops the find_tools loop",
+  "maps_to": "Track A WS-1a — the discovery pair (MECHANISM test, white-box BY DESIGN)",
+  "persona": "any — the MODEL is the subject, not a persona",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "ask",
+  "fixture": "any book with scope — SKILL_BOOK_ID. Listing is inert (read-only), so no seeding needed.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [],
+  "_denylist_note": "INTENTIONALLY EMPTY. S00a is a white-box MECHANISM test — it NAMES the tool because the tool IS the subject. The §1 forbidden-vocabulary bar applies to black-box USER journeys (S01-S12), not to a primitive's own developer test. Scoring jargon here would fail a test for doing exactly what it is for.",
+  "canon_facts": [
+    "tool_list('glossary') returned the FULL glossary set (not a top-K slice)",
+    "glossary_propose_entities is PRESENT in the returned list",
+    "0 find_tools calls were issued",
+    "the repeated ask returned the SAME list (deterministic, not ranked)"
+  ],
+  "movements": [
+    {"id": "A", "label": "Enumerate one category"},
+    {"id": "B", "label": "Enumerate everything"},
+    {"id": "C", "label": "Repeat — is it deterministic?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "What can I do with the glossary here? List everything available."},
+    {"movement": "B", "user": "Now list everything you can do across all domains."},
+    {"movement": "C", "user": "Show me the glossary list again, exactly as before."}
+  ]
+}

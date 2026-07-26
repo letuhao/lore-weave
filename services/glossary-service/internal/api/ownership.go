@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 // Grant sentinels for the book-scoped guards (E0-1 collaboration model).
@@ -53,7 +54,37 @@ func (s *Server) checkGrant(ctx context.Context, bookID, userID uuid.UUID, need 
 	if err != nil {
 		return ErrBookUnavailable
 	}
+	// P2·F tenant-boundary audit. A caller with a REAL sub-owner grant
+	// (view/edit/manage) is a collaborator crossing into the book owner's tenant.
+	// Emit 'granted' only when the request is ACTUALLY let through, 'denied'
+	// otherwise. Skip Level==none (indistinguishable from a missing book here — no
+	// confirmed tenant) and Level==owner (own tenant). See tenant_audit.go.
+	//
+	// The outcome must reflect the real access decision, not just the grant tier: an
+	// under-grant is denied, AND — since this block only runs for Level<owner — the
+	// OD-8 owned-only gate below (line ~82) will HARD-DENY any public MCP key here,
+	// so that too is 'denied' (a security audit that logged an OD-8 rejection as
+	// 'granted' would give false reassurance). The lifecycle-inactive 409 is NOT an
+	// access denial (the caller has the grant; the book is just trashed) → stays
+	// 'granted'.
+	if s.emitTenantAudit != nil &&
+		acc.Level > grantclient.GrantNone && acc.Level < grantclient.GrantOwner {
+		outcome := auditOutcomeGranted
+		if !acc.Level.AtLeast(need) || lwmcp.OwnerOnlyFromCtx(ctx) {
+			outcome = auditOutcomeDenied
+		}
+		s.emitTenantAudit(userID, bookID, outcome)
+	}
 	if !acc.Level.AtLeast(need) {
+		return ErrNotAccessible
+	}
+	// OD-8 (owned-books-only): a PUBLIC MCP key (X-Mcp-Key-Id in ctx) reaches a
+	// book ONLY as its OWNER, never via a collaboration grant. A share never
+	// confers OWNER (E0: none<view<edit<manage<owner), so requiring OWNER here is
+	// exactly "owned, not shared". Applied as a SEPARATE check (not by mutating
+	// `need`) so it doesn't disturb the write-active gate below — a public OWNER
+	// read on a trashed book stays allowed. First-party/HTTP calls are unaffected.
+	if lwmcp.OwnerOnlyFromCtx(ctx) && !acc.Level.AtLeast(grantclient.GrantOwner) {
 		return ErrNotAccessible
 	}
 	if need >= grantclient.GrantEdit && !acc.Active() {

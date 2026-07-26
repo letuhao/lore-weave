@@ -1,0 +1,1003 @@
+[
+  {
+    "tool": "book_audio_generate",
+    "ask": "read aloud",
+    "verdict": "HIT",
+    "picked": "book_audio_generate",
+    "answer": "book_audio_generate"
+  },
+  {
+    "tool": "book_chapter_bulk_create",
+    "ask": "add many chapters",
+    "verdict": "HIT",
+    "picked": "book_chapter_bulk_create",
+    "answer": "book_chapter_bulk_create"
+  },
+  {
+    "tool": "book_chapter_create",
+    "ask": "new chapter",
+    "verdict": "HIT",
+    "picked": "book_chapter_create",
+    "answer": "book_chapter_create"
+  },
+  {
+    "tool": "book_chapter_delete",
+    "ask": "delete chapter",
+    "verdict": "HIT",
+    "picked": "book_chapter_delete",
+    "answer": "book_chapter_delete"
+  },
+  {
+    "tool": "book_chapter_publish",
+    "ask": "make canon",
+    "verdict": "HIT",
+    "picked": "book_chapter_publish",
+    "answer": "book_chapter_publish"
+  },
+  {
+    "tool": "book_chapter_purge",
+    "ask": "permanently delete chapter",
+    "verdict": "HIT",
+    "picked": "book_chapter_purge",
+    "answer": "book_chapter_purge"
+  },
+  {
+    "tool": "book_chapter_restore_revision",
+    "ask": "restore revision",
+    "verdict": "HIT",
+    "picked": "book_chapter_restore_revision",
+    "answer": "book_chapter_restore_revision"
+  },
+  {
+    "tool": "book_chapter_save_draft",
+    "ask": "edit chapter text",
+    "verdict": "HIT",
+    "picked": "book_chapter_save_draft",
+    "answer": "book_chapter_save_draft"
+  },
+  {
+    "tool": "book_chapter_unpublish",
+    "ask": "revert canon",
+    "verdict": "HIT",
+    "picked": "book_chapter_unpublish",
+    "answer": "book_chapter_unpublish"
+  },
+  {
+    "tool": "book_chapter_update_meta",
+    "ask": "reorder chapter",
+    "verdict": "MISS",
+    "picked": "composition_outline_node_move",
+    "answer": "composition_outline_node_move"
+  },
+  {
+    "tool": "book_create",
+    "ask": "start a novel",
+    "verdict": "HIT",
+    "picked": "book_create",
+    "answer": "book_create"
+  },
+  {
+    "tool": "book_delete",
+    "ask": "delete book",
+    "verdict": "HIT",
+    "picked": "book_delete",
+    "answer": "book_delete"
+  },
+  {
+    "tool": "book_get",
+    "ask": "book detail",
+    "verdict": "HIT",
+    "picked": "book_get",
+    "answer": "book_get"
+  },
+  {
+    "tool": "book_get_chapter",
+    "ask": "read chapter text",
+    "verdict": "HIT",
+    "picked": "book_get_chapter",
+    "answer": "book_get_chapter"
+  },
+  {
+    "tool": "book_list",
+    "ask": "my library",
+    "verdict": "HIT",
+    "picked": "book_list",
+    "answer": "book_list"
+  },
+  {
+    "tool": "book_list_chapters",
+    "ask": "table of contents",
+    "verdict": "HIT",
+    "picked": "book_list_chapters",
+    "answer": "book_list_chapters"
+  },
+  {
+    "tool": "book_list_revisions",
+    "ask": "revisions",
+    "verdict": "HIT",
+    "picked": "book_list_revisions",
+    "answer": "book_list_revisions"
+  },
+  {
+    "tool": "book_media_generate",
+    "ask": "generate image",
+    "verdict": "HIT",
+    "picked": "book_media_generate",
+    "answer": "book_media_generate"
+  },
+  {
+    "tool": "book_purge",
+    "ask": "permanently delete book",
+    "verdict": "HIT",
+    "picked": "book_purge",
+    "answer": "book_purge"
+  },
+  {
+    "tool": "book_scene_get",
+    "ask": "scene detail",
+    "verdict": "HIT",
+    "picked": "book_scene_get",
+    "answer": "book_scene_get"
+  },
+  {
+    "tool": "book_scene_list",
+    "ask": "scene index",
+    "verdict": "HIT",
+    "picked": "book_scene_list",
+    "answer": "book_scene_list"
+  },
+  {
+    "tool": "book_search",
+    "ask": "where in the book does it say",
+    "verdict": "MISS",
+    "picked": "story_search",
+    "answer": "story_search"
+  },
+  {
+    "tool": "book_set_cover",
+    "ask": "book cover",
+    "verdict": "HIT",
+    "picked": "book_set_cover",
+    "answer": "book_set_cover"
+  },
+  {
+    "tool": "book_steering_delete",
+    "ask": "delete steering",
+    "verdict": "HIT",
+    "picked": "book_steering_delete",
+    "answer": "book_steering_delete"
+  },
+  {
+    "tool": "book_steering_list",
+    "ask": "writing rules",
+    "verdict": "HIT",
+    "picked": "book_steering_list",
+    "answer": "book_steering_list"
+  },
+  {
+    "tool": "book_steering_set",
+    "ask": "remember this steering rule",
+    "verdict": "HIT",
+    "picked": "book_steering_set",
+    "answer": "book_steering_set"
+  },
+  {
+    "tool": "book_update_meta",
+    "ask": "rename book",
+    "verdict": "HIT",
+    "picked": "book_update_meta",
+    "answer": "book_update_meta"
+  },
+  {
+    "tool": "catalog_get_book",
+    "ask": "public book detail",
+    "verdict": "HIT",
+    "picked": "catalog_get_book",
+    "answer": "catalog_get_book"
+  },
+  {
+    "tool": "catalog_list_public_books",
+    "ask": "discover novels",
+    "verdict": "HIT",
+    "picked": "catalog_list_public_books",
+    "answer": "catalog_list_public_books"
+  },
+  {
+    "tool": "composition_arc_apply",
+    "ask": "apply arc template",
+    "verdict": "HIT",
+    "picked": "composition_arc_apply",
+    "answer": "composition_arc_apply"
+  },
+  {
+    "tool": "composition_arc_assign_chapters",
+    "ask": "group chapters under arc",
+    "verdict": "HIT",
+    "picked": "composition_arc_assign_chapters",
+    "answer": "composition_arc_assign_chapters"
+  },
+  {
+    "tool": "composition_arc_create",
+    "ask": "create story arc",
+    "verdict": "HIT",
+    "picked": "composition_arc_create",
+    "answer": "composition_arc_create"
+  },
+  {
+    "tool": "composition_arc_delete",
+    "ask": "delete story arc",
+    "verdict": "HIT",
+    "picked": "composition_arc_delete",
+    "answer": "composition_arc_delete"
+  },
+  {
+    "tool": "composition_arc_extract_template",
+    "ask": "extract arc template",
+    "verdict": "HIT",
+    "picked": "composition_arc_extract_template",
+    "answer": "composition_arc_extract_template"
+  },
+  {
+    "tool": "composition_arc_get",
+    "ask": "resolved tracks",
+    "verdict": "HIT",
+    "picked": "composition_arc_get",
+    "answer": "composition_arc_get"
+  },
+  {
+    "tool": "composition_arc_import_analyze",
+    "ask": "reverse-engineer arc",
+    "verdict": "HIT",
+    "picked": "composition_arc_import_analyze",
+    "answer": "composition_arc_import_analyze"
+  },
+  {
+    "tool": "composition_arc_list",
+    "ask": "book architecture",
+    "verdict": "HIT",
+    "picked": "composition_arc_list",
+    "answer": "composition_arc_list"
+  },
+  {
+    "tool": "composition_arc_move",
+    "ask": "restructure book",
+    "verdict": "MISS",
+    "picked": "composition_arc_list",
+    "answer": "composition_arc_list"
+  },
+  {
+    "tool": "composition_arc_restore",
+    "ask": "unarchive saga",
+    "verdict": "HIT",
+    "picked": "composition_arc_restore",
+    "answer": "composition_arc_restore"
+  },
+  {
+    "tool": "composition_arc_suggest",
+    "ask": "multi-chapter structure",
+    "verdict": "MISS",
+    "picked": "composition_arc_list",
+    "answer": "composition_arc_list"
+  },
+  {
+    "tool": "composition_arc_template_drift",
+    "ask": "how far from the template",
+    "verdict": "HIT",
+    "picked": "composition_arc_template_drift",
+    "answer": "composition_arc_template_drift"
+  },
+  {
+    "tool": "composition_arc_update",
+    "ask": "set arc status",
+    "verdict": "HIT",
+    "picked": "composition_arc_update",
+    "answer": "composition_arc_update"
+  },
+  {
+    "tool": "composition_authoring_run_accept_unit",
+    "ask": "accept authoring unit",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_accept_unit",
+    "answer": "composition_authoring_run_accept_unit"
+  },
+  {
+    "tool": "composition_authoring_run_close",
+    "ask": "cancel autonomous run",
+    "verdict": "MISS",
+    "picked": "jobs_cancel",
+    "answer": "jobs_cancel"
+  },
+  {
+    "tool": "composition_authoring_run_create",
+    "ask": "draft chapters unattended",
+    "verdict": "MISS",
+    "picked": "composition_authoring_run_start",
+    "answer": "composition_authoring_run_start"
+  },
+  {
+    "tool": "composition_authoring_run_gate",
+    "ask": "validate authoring run",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_gate",
+    "answer": "composition_authoring_run_gate"
+  },
+  {
+    "tool": "composition_authoring_run_get",
+    "ask": "mission control detail",
+    "verdict": "MISS",
+    "picked": "composition_authoring_run_list",
+    "answer": "composition_authoring_run_list"
+  },
+  {
+    "tool": "composition_authoring_run_list",
+    "ask": "list authoring runs",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_list",
+    "answer": "composition_authoring_run_list"
+  },
+  {
+    "tool": "composition_authoring_run_pause",
+    "ask": "halt autonomous drafting",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_pause",
+    "answer": "composition_authoring_run_pause"
+  },
+  {
+    "tool": "composition_authoring_run_reject_unit",
+    "ask": "reject authoring unit",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_reject_unit",
+    "answer": "composition_authoring_run_reject_unit"
+  },
+  {
+    "tool": "composition_authoring_run_resume",
+    "ask": "continue autonomous drafting",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_resume",
+    "answer": "composition_authoring_run_resume"
+  },
+  {
+    "tool": "composition_authoring_run_revert_all",
+    "ask": "discard all drafted chapters",
+    "verdict": "MISS",
+    "picked": "book_chapter_delete",
+    "answer": "book_chapter_delete"
+  },
+  {
+    "tool": "composition_authoring_run_start",
+    "ask": "begin autonomous drafting",
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_start",
+    "answer": "composition_authoring_run_start"
+  },
+  {
+    "tool": "composition_canon_rule_create",
+    "ask": "declare lore rule",
+    "verdict": "HIT",
+    "picked": "composition_canon_rule_create",
+    "answer": "composition_canon_rule_create"
+  },
+  {
+    "tool": "composition_canon_rule_delete",
+    "ask": "delete canon rule",
+    "verdict": "HIT",
+    "picked": "composition_canon_rule_delete",
+    "answer": "composition_canon_rule_delete"
+  },
+  {
+    "tool": "composition_canon_rule_update",
+    "ask": "toggle canon rule",
+    "verdict": "HIT",
+    "picked": "composition_canon_rule_update",
+    "answer": "composition_canon_rule_update"
+  },
+  {
+    "tool": "composition_conformance_run",
+    "ask": "did the AI follow the arc",
+    "verdict": "HIT",
+    "picked": "composition_conformance_run",
+    "answer": "composition_conformance_run"
+  },
+  {
+    "tool": "composition_conformance_status",
+    "ask": "did the book move since conformance",
+    "verdict": "HIT",
+    "picked": "composition_conformance_status",
+    "answer": "composition_conformance_status"
+  },
+  {
+    "tool": "composition_create_work",
+    "ask": "new writing project",
+    "verdict": "MISS",
+    "picked": "book_create",
+    "answer": "book_create"
+  },
+  {
+    "tool": "composition_generate",
+    "ask": "generate prose",
+    "verdict": "HIT",
+    "picked": "composition_generate",
+    "answer": "composition_generate"
+  },
+  {
+    "tool": "composition_get_generation_job",
+    "ask": "is the chapter done",
+    "verdict": "MISS",
+    "picked": "book_get_chapter",
+    "answer": "book_get_chapter"
+  },
+  {
+    "tool": "composition_get_mine_job",
+    "ask": "motif job status",
+    "verdict": "HIT",
+    "picked": "composition_get_mine_job",
+    "answer": "composition_get_mine_job"
+  },
+  {
+    "tool": "composition_get_outline_node",
+    "ask": "read chapter node",
+    "verdict": "HIT",
+    "picked": "composition_get_outline_node",
+    "answer": "composition_get_outline_node"
+  },
+  {
+    "tool": "composition_get_work",
+    "ask": "the book's authoring workspace",
+    "verdict": "MISS",
+    "picked": "composition_create_work",
+    "answer": "composition_create_work"
+  },
+  {
+    "tool": "composition_list_canon_rules",
+    "ask": "canon rules",
+    "verdict": "HIT",
+    "picked": "composition_list_canon_rules",
+    "answer": "composition_list_canon_rules"
+  },
+  {
+    "tool": "composition_list_outline",
+    "ask": "story structure",
+    "verdict": "MISS",
+    "picked": "composition_arc_suggest",
+    "answer": "composition_arc_suggest"
+  },
+  {
+    "tool": "composition_motif_adopt",
+    "ask": "copy trope to my library",
+    "verdict": "HIT",
+    "picked": "composition_motif_adopt",
+    "answer": "composition_motif_adopt"
+  },
+  {
+    "tool": "composition_motif_archive",
+    "ask": "remove a motif from my library",
+    "verdict": "HIT",
+    "picked": "composition_motif_archive",
+    "answer": "composition_motif_archive"
+  },
+  {
+    "tool": "composition_motif_bind",
+    "ask": "attach pattern to chapter",
+    "verdict": "HIT",
+    "picked": "composition_motif_bind",
+    "answer": "composition_motif_bind"
+  },
+  {
+    "tool": "composition_motif_book_list",
+    "ask": "collaborator motifs",
+    "verdict": "HIT",
+    "picked": "composition_motif_book_list",
+    "answer": "composition_motif_book_list"
+  },
+  {
+    "tool": "composition_motif_create",
+    "ask": "add motif to my library",
+    "verdict": "MISS",
+    "picked": "composition_motif_adopt",
+    "answer": "composition_motif_adopt"
+  },
+  {
+    "tool": "composition_motif_get",
+    "ask": "motif detail",
+    "verdict": "HIT",
+    "picked": "composition_motif_get",
+    "answer": "composition_motif_get"
+  },
+  {
+    "tool": "composition_motif_link_create",
+    "ask": "compose pattern",
+    "verdict": "MISS",
+    "picked": "composition_motif_create",
+    "answer": "composition_motif_create"
+  },
+  {
+    "tool": "composition_motif_link_delete",
+    "ask": "remove motif edge",
+    "verdict": "HIT",
+    "picked": "composition_motif_link_delete",
+    "answer": "composition_motif_link_delete"
+  },
+  {
+    "tool": "composition_motif_link_list",
+    "ask": "what follows this motif",
+    "verdict": "HIT",
+    "picked": "composition_motif_link_list",
+    "answer": "composition_motif_link_list"
+  },
+  {
+    "tool": "composition_motif_mine",
+    "ask": "find motifs in my books",
+    "verdict": "HIT",
+    "picked": "composition_motif_mine",
+    "answer": "composition_motif_mine"
+  },
+  {
+    "tool": "composition_motif_patch",
+    "ask": "change motif summary",
+    "verdict": "HIT",
+    "picked": "composition_motif_patch",
+    "answer": "composition_motif_patch"
+  },
+  {
+    "tool": "composition_motif_search",
+    "ask": "narrative device",
+    "verdict": "HIT",
+    "picked": "composition_motif_search",
+    "answer": "composition_motif_search"
+  },
+  {
+    "tool": "composition_motif_suggest_for_chapter",
+    "ask": "motif for this chapter",
+    "verdict": "HIT",
+    "picked": "composition_motif_suggest_for_chapter",
+    "answer": "composition_motif_suggest_for_chapter"
+  },
+  {
+    "tool": "composition_motif_unbind",
+    "ask": "clear chapter motif",
+    "verdict": "HIT",
+    "picked": "composition_motif_unbind",
+    "answer": "composition_motif_unbind"
+  },
+  {
+    "tool": "composition_outline_node_create",
+    "ask": "create outline node",
+    "verdict": "HIT",
+    "picked": "composition_outline_node_create",
+    "answer": "composition_outline_node_create"
+  },
+  {
+    "tool": "composition_outline_node_delete",
+    "ask": "archive chapter",
+    "verdict": "MISS",
+    "picked": "composition_arc_delete",
+    "answer": "composition_arc_delete"
+  },
+  {
+    "tool": "composition_outline_node_move",
+    "ask": "reorder outline node",
+    "verdict": "HIT",
+    "picked": "composition_outline_node_move",
+    "answer": "composition_outline_node_move"
+  },
+  {
+    "tool": "composition_outline_node_restore",
+    "ask": "unarchive chapter",
+    "verdict": "MISS",
+    "picked": "composition_arc_restore",
+    "answer": "composition_arc_restore"
+  },
+  {
+    "tool": "composition_outline_node_update",
+    "ask": "rename chapter",
+    "verdict": "MISS",
+    "picked": "book_chapter_update_meta",
+    "answer": "book_chapter_update_meta"
+  },
+  {
+    "tool": "composition_scene_link_create",
+    "ask": "connect scenes",
+    "verdict": "HIT",
+    "picked": "composition_scene_link_create",
+    "answer": "composition_scene_link_create"
+  },
+  {
+    "tool": "composition_scene_link_delete",
+    "ask": "remove scene link",
+    "verdict": "HIT",
+    "picked": "composition_scene_link_delete",
+    "answer": "composition_scene_link_delete"
+  },
+  {
+    "tool": "glossary_entity_delete",
+    "ask": "clean up duplicate entity",
+    "verdict": "MISS",
+    "picked": "glossary_list_merge_candidates",
+    "answer": "glossary_list_merge_candidates"
+  },
+  {
+    "tool": "glossary_entity_rename",
+    "ask": "give an entity a new name",
+    "verdict": "HIT",
+    "picked": "glossary_entity_rename",
+    "answer": "glossary_entity_rename"
+  },
+  {
+    "tool": "glossary_entity_restore",
+    "ask": "undo entity delete",
+    "verdict": "HIT",
+    "picked": "glossary_entity_restore",
+    "answer": "glossary_entity_restore"
+  },
+  {
+    "tool": "glossary_entity_set_attributes",
+    "ask": "change an existing entity's attribute",
+    "verdict": "HIT",
+    "picked": "glossary_entity_set_attributes",
+    "answer": "glossary_entity_set_attributes"
+  },
+  {
+    "tool": "glossary_extract_entities_from_doc",
+    "ask": "extract characters places and terms from notes",
+    "verdict": "HIT",
+    "picked": "glossary_extract_entities_from_doc",
+    "answer": "glossary_extract_entities_from_doc"
+  },
+  {
+    "tool": "glossary_ontology_delete",
+    "ask": "trash an attribute",
+    "verdict": "HIT",
+    "picked": "glossary_ontology_delete",
+    "answer": "glossary_ontology_delete"
+  },
+  {
+    "tool": "glossary_ontology_upsert",
+    "ask": "add an attribute",
+    "verdict": "MISS",
+    "picked": "glossary_propose_new_attribute",
+    "answer": "glossary_propose_new_attribute"
+  },
+  {
+    "tool": "glossary_propose_entities",
+    "ask": "add an entity with attribute values",
+    "verdict": "HIT",
+    "picked": "glossary_propose_entities",
+    "answer": "glossary_propose_entities"
+  },
+  {
+    "tool": "jobs_cancel",
+    "ask": "stop a running job",
+    "verdict": "MISS",
+    "picked": "jobs_pause",
+    "answer": "jobs_pause"
+  },
+  {
+    "tool": "jobs_get",
+    "ask": "job detail",
+    "verdict": "HIT",
+    "picked": "jobs_get",
+    "answer": "jobs_get"
+  },
+  {
+    "tool": "jobs_list",
+    "ask": "background jobs",
+    "verdict": "HIT",
+    "picked": "jobs_list",
+    "answer": "jobs_list"
+  },
+  {
+    "tool": "jobs_pause",
+    "ask": "pause a running job",
+    "verdict": "HIT",
+    "picked": "jobs_pause",
+    "answer": "jobs_pause"
+  },
+  {
+    "tool": "jobs_summary",
+    "ask": "active jobs count",
+    "verdict": "HIT",
+    "picked": "jobs_summary",
+    "answer": "jobs_summary"
+  },
+  {
+    "tool": "lore_enrichment_auto_enrich",
+    "ask": "flesh out entities",
+    "verdict": "MISS",
+    "picked": "glossary_deep_research",
+    "answer": "glossary_deep_research"
+  },
+  {
+    "tool": "plan_apply_revision",
+    "ask": "apply revision",
+    "verdict": "HIT",
+    "picked": "plan_apply_revision",
+    "answer": "plan_apply_revision"
+  },
+  {
+    "tool": "plan_compile",
+    "ask": "planning package",
+    "verdict": "HIT",
+    "picked": "plan_compile",
+    "answer": "plan_compile"
+  },
+  {
+    "tool": "plan_handoff_autofix",
+    "ask": "handoff autofix",
+    "verdict": "HIT",
+    "picked": "plan_handoff_autofix",
+    "answer": "plan_handoff_autofix"
+  },
+  {
+    "tool": "plan_interpret_feedback",
+    "ask": "interpret feedback",
+    "verdict": "HIT",
+    "picked": "plan_interpret_feedback",
+    "answer": "plan_interpret_feedback"
+  },
+  {
+    "tool": "plan_propose_spec",
+    "ask": "novel system spec",
+    "verdict": "HIT",
+    "picked": "plan_propose_spec",
+    "answer": "plan_propose_spec"
+  },
+  {
+    "tool": "plan_review_checkpoint",
+    "ask": "approve checkpoint",
+    "verdict": "HIT",
+    "picked": "plan_review_checkpoint",
+    "answer": "plan_review_checkpoint"
+  },
+  {
+    "tool": "plan_self_check",
+    "ask": "self check plan",
+    "verdict": "HIT",
+    "picked": "plan_self_check",
+    "answer": "plan_self_check"
+  },
+  {
+    "tool": "plan_validate",
+    "ask": "validate plan",
+    "verdict": "HIT",
+    "picked": "plan_validate",
+    "answer": "plan_validate"
+  },
+  {
+    "tool": "registry_get_skill",
+    "ask": "read skill",
+    "verdict": "HIT",
+    "picked": "registry_get_skill",
+    "answer": "registry_get_skill"
+  },
+  {
+    "tool": "registry_get_workflow",
+    "ask": "workflow steps",
+    "verdict": "MISS",
+    "picked": "registry_list_workflows",
+    "answer": "registry_list_workflows"
+  },
+  {
+    "tool": "registry_list_skills",
+    "ask": "list skills",
+    "verdict": "HIT",
+    "picked": "registry_list_skills",
+    "answer": "registry_list_skills"
+  },
+  {
+    "tool": "registry_list_workflows",
+    "ask": "list workflows",
+    "verdict": "HIT",
+    "picked": "registry_list_workflows",
+    "answer": "registry_list_workflows"
+  },
+  {
+    "tool": "registry_propose_skill",
+    "ask": "author a reusable skill",
+    "verdict": "HIT",
+    "picked": "registry_propose_skill",
+    "answer": "registry_propose_skill"
+  },
+  {
+    "tool": "registry_propose_workflow",
+    "ask": "remember this as a workflow",
+    "verdict": "HIT",
+    "picked": "registry_propose_workflow",
+    "answer": "registry_propose_workflow"
+  },
+  {
+    "tool": "registry_set_skill_enabled",
+    "ask": "turn off skill",
+    "verdict": "HIT",
+    "picked": "registry_set_skill_enabled",
+    "answer": "registry_set_skill_enabled"
+  },
+  {
+    "tool": "registry_update_skill",
+    "ask": "update skill",
+    "verdict": "HIT",
+    "picked": "registry_update_skill",
+    "answer": "registry_update_skill"
+  },
+  {
+    "tool": "registry_update_workflow",
+    "ask": "update workflow",
+    "verdict": "HIT",
+    "picked": "registry_update_workflow",
+    "answer": "registry_update_workflow"
+  },
+  {
+    "tool": "settings_get_defaults",
+    "ask": "default embedding",
+    "verdict": "HIT",
+    "picked": "settings_get_defaults",
+    "answer": "settings_get_defaults"
+  },
+  {
+    "tool": "settings_get_profile",
+    "ask": "display name",
+    "verdict": "HIT",
+    "picked": "settings_get_profile",
+    "answer": "settings_get_profile"
+  },
+  {
+    "tool": "settings_list_models",
+    "ask": "registered models",
+    "verdict": "HIT",
+    "picked": "settings_list_models",
+    "answer": "settings_list_models"
+  },
+  {
+    "tool": "settings_list_providers",
+    "ask": "list providers",
+    "verdict": "HIT",
+    "picked": "settings_list_providers",
+    "answer": "settings_list_providers"
+  },
+  {
+    "tool": "settings_model_delete",
+    "ask": "delete model",
+    "verdict": "HIT",
+    "picked": "settings_model_delete",
+    "answer": "settings_model_delete"
+  },
+  {
+    "tool": "settings_model_register",
+    "ask": "register model",
+    "verdict": "HIT",
+    "picked": "settings_model_register",
+    "answer": "settings_model_register"
+  },
+  {
+    "tool": "settings_model_set_active",
+    "ask": "deactivate model",
+    "verdict": "HIT",
+    "picked": "settings_model_set_active",
+    "answer": "settings_model_set_active"
+  },
+  {
+    "tool": "settings_model_set_default",
+    "ask": "set my default model",
+    "verdict": "HIT",
+    "picked": "settings_model_set_default",
+    "answer": "settings_model_set_default"
+  },
+  {
+    "tool": "settings_model_set_favorite",
+    "ask": "mark model as favorite",
+    "verdict": "HIT",
+    "picked": "settings_model_set_favorite",
+    "answer": "settings_model_set_favorite"
+  },
+  {
+    "tool": "settings_model_update",
+    "ask": "set context length",
+    "verdict": "HIT",
+    "picked": "settings_model_update",
+    "answer": "settings_model_update"
+  },
+  {
+    "tool": "settings_provider_inventory",
+    "ask": "models this provider offers",
+    "verdict": "HIT",
+    "picked": "settings_provider_inventory",
+    "answer": "settings_provider_inventory"
+  },
+  {
+    "tool": "settings_update_profile",
+    "ask": "update profile",
+    "verdict": "HIT",
+    "picked": "settings_update_profile",
+    "answer": "settings_update_profile"
+  },
+  {
+    "tool": "translation_coverage",
+    "ask": "translation progress",
+    "verdict": "MISS",
+    "picked": "translation_job_status",
+    "answer": "translation_job_status"
+  },
+  {
+    "tool": "translation_job_control",
+    "ask": "restart translation",
+    "verdict": "MISS",
+    "picked": "translation_retranslate_dirty",
+    "answer": "translation_retranslate_dirty"
+  },
+  {
+    "tool": "translation_job_status",
+    "ask": "is my translation done",
+    "verdict": "MISS",
+    "picked": "jobs_list",
+    "answer": "jobs_list"
+  },
+  {
+    "tool": "translation_list_versions",
+    "ask": "translation versions",
+    "verdict": "HIT",
+    "picked": "translation_list_versions",
+    "answer": "translation_list_versions"
+  },
+  {
+    "tool": "translation_patch_block",
+    "ask": "correct one translated paragraph",
+    "verdict": "HIT",
+    "picked": "translation_patch_block",
+    "answer": "translation_patch_block"
+  },
+  {
+    "tool": "translation_retranslate_dirty",
+    "ask": "update stale translation",
+    "verdict": "HIT",
+    "picked": "translation_retranslate_dirty",
+    "answer": "translation_retranslate_dirty"
+  },
+  {
+    "tool": "translation_save_edited_version",
+    "ask": "save my translation",
+    "verdict": "HIT",
+    "picked": "translation_save_edited_version",
+    "answer": "translation_save_edited_version"
+  },
+  {
+    "tool": "translation_segment_status",
+    "ask": "which segments are outdated",
+    "verdict": "HIT",
+    "picked": "translation_segment_status",
+    "answer": "translation_segment_status"
+  },
+  {
+    "tool": "translation_set_active_version",
+    "ask": "make this the active version",
+    "verdict": "HIT",
+    "picked": "translation_set_active_version",
+    "answer": "translation_set_active_version"
+  },
+  {
+    "tool": "translation_start_extraction",
+    "ask": "scan chapters for entities",
+    "verdict": "HIT",
+    "picked": "translation_start_extraction",
+    "answer": "translation_start_extraction"
+  },
+  {
+    "tool": "translation_start_job",
+    "ask": "translate chapters",
+    "verdict": "HIT",
+    "picked": "translation_start_job",
+    "answer": "translation_start_job"
+  },
+  {
+    "tool": "translation_update_settings",
+    "ask": "configure translation",
+    "verdict": "HIT",
+    "picked": "translation_update_settings",
+    "answer": "translation_update_settings"
+  },
+  {
+    "tool": "web_search",
+    "ask": "search the web",
+    "verdict": "HIT",
+    "picked": "web_search",
+    "answer": "web_search"
+  }
+]

@@ -16,9 +16,15 @@
       "translations": "{{count}} 件の翻訳",
       "evidences": "{{count}} 件の根拠"
     },
+    "scope_label": {
+      "placeholder": "曖昧さを回避（例：世界/領域）...",
+      "aria": "スコープラベル — 物語内の異なる文脈における同名エンティティを区別します",
+      "duplicate": "この名前、種類、およびスコープを持つエンティティがこの書籍内に既に存在します"
+    },
     "tab": {
       "attributes": "属性",
-      "evidences": "根拠"
+      "evidences": "根拠",
+      "history": "履歴"
     },
     "viewing_in_language": "{{lang}}で表示中",
     "viewing_original": "原文（{{lang}}）",
@@ -33,12 +39,20 @@
       "saved": "エンティティを保存しました",
       "status_changed": "ステータスを {{status}} に変更しました",
       "invalid_lang": "無効な言語コードです（例: en、zh、zh-tw）"
-    }
+    },
+    "remove_attr_confirm": "この属性値を削除しますか？後で再度追加できます。",
+    "remove_attr_success": "属性値を削除しました",
+    "add_attr_heading": "別の属性の値を追加",
+    "add_attr_pick": "属性を選択…",
+    "add_attr_value_placeholder": "値",
+    "add_attr_button": "追加",
+    "add_attr_success": "属性を追加しました"
   },
   "attr_card": {
     "required": "*必須",
     "modified": "変更済み",
-    "has_translations": "翻訳あり"
+    "has_translations": "翻訳あり",
+    "remove": "この値を削除"
   },
   "translation_row": {
     "confidence": {
@@ -52,6 +66,7 @@
     "save": "保存",
     "delete_aria": "翻訳を削除",
     "placeholder": "{{lang}} の翻訳...",
+    "tags_add": "+ 別名を追加",
     "delete_title": "翻訳を削除しますか？",
     "delete_desc": "この属性の {{lang}} 翻訳は完全に削除されます。",
     "delete_confirm": "削除",
@@ -66,6 +81,14 @@
       "quote": "引用",
       "summary": "要約",
       "reference": "参照"
+    },
+    "provenance": {
+      "ambiguous": "一致が不確実",
+      "ambiguous_hint": "この引用は原文の複数箇所に一致しました — 正確な位置は不確実です。",
+      "unmatched": "原文に見つかりません",
+      "unmatched_hint": "この引用は章の本文に見つかりませんでした — 言い換えや創作の可能性があります。信頼する前に確認してください。",
+      "unverified": "未検証",
+      "unverified_hint": "この引用は原文と照合されていません。"
     },
     "filter": {
       "all": "すべて",
@@ -110,6 +133,7 @@
       "cancel": "キャンセル",
       "save": "保存",
       "edit_title": "編集",
+      "open_source": "出典の章を開く",
       "delete_title": "削除",
       "translated": "翻訳済み（{{lang}}）",
       "note_label": "メモ: {{note}}"
@@ -119,6 +143,11 @@
       "clear_filters": "フィルターをクリア",
       "prev_page": "前のページ",
       "next_page": "次のページ",
+      "first_page": "最初のページ",
+      "last_page": "最後のページ",
+      "jump_to_page": "ページへ移動",
+      "page_size": "1ページの行数",
+      "per_page": "{{n}} / ページ",
       "delete_title": "根拠を削除しますか？",
       "delete_desc": "\"{{attr}}\" の根拠は完全に削除されます。",
       "delete_confirm": "削除"
@@ -129,5 +158,12 @@
       "created": "根拠を作成しました",
       "text_required": "原文は必須です"
     }
+  },
+  "summarize": {
+    "canonical_label": "統合サマリー",
+    "pending_dirty": "次の抽出後に再要約されます",
+    "pending_new": "次の抽出後に要約されます",
+    "sources": "元の記述 ({{count}})",
+    "empty": "まだ記述がありません"
   }
 }

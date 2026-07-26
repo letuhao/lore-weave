@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { useViewerStore } from '@/store/viewer-store';
 import { TerrainKind, terrainKindTag } from '@/types/tilemap';
 import {

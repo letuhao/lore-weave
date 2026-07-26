@@ -1,0 +1,88 @@
+constraint_ledger:
+  - "PA not coupled to cultivation realm"
+  - "THR no early explain in arc 2"
+  - "arc_2 arc_kind must stay discovery"
+  - "Keep Vietnamese event titles and trait labels"
+
+revisions:
+  - checkpoint: analyze
+    intent: completeness
+    instruction: >
+      Bổ sung đủ 5 traits §1.3 (VN) vào consistency_anchors: Thực dụng, Bình dị,
+      Tự giác giới hạn, Giữ lý trí trong khủng hoảng, Hài hước khô. Thêm chi tiết mundane §1.2
+      (mì, mùi đất, cửa sổ) vào anchors hoặc document_summary.
+    scope: [consistency_anchors, document_summary]
+    frozen_paths: [variables, arcs]
+    expect_contains: ["Bình dị", "lý trí"]
+    source_excerpt: |
+      ### ② Bình dị trong tâm hồn
+      - Bát mì ven đường lúc sáng sớm
+      - Mùi đất ẩm sau mưa
+      ### ④ Giữ lý trí trong khủng hoảng
+
+  - checkpoint: analyze
+    intent: completeness
+    instruction: >
+      Đảm bảo arc_2 có đủ 7 events VN. Event 3 Thử Nghiệm: synopsis bám bullet
+      thử nghiệm hệ thống + goal "scene thử nghiệm dựa trên logic nhân vật".
+    scope: [events]
+    frozen_paths: [variables, arcs]
+    expect_contains: ["Thử Nghiệm", "logic nhân vật"]
+    source_excerpt: |
+      ### Event 3 — Thử Nghiệm
+      - Tốc độ tu luyện tối đa là bao nhiêu?
+      **Goal:** Planner tự tạo scene thử nghiệm dựa trên logic nhân vật.
+
+  - checkpoint: spec
+    intent: completeness
+    instruction: >
+      layers.characters[0]: 5 traits VN từ §1.3, baseline_notes >=200 chars với §1.1–§1.3.
+      Giữ charter consistency_anchors đồng bộ.
+    scope: [layers, charter]
+    frozen_paths: [variables, arcs, charter.forbids]
+    expect_contains: ["thực dụng", "bình dị"]
+    source_excerpt: |
+      ## 1.3 Tính Cách Cốt Lõi
+      ① Thực dụng ② Bình dị ③ Tự giác giới hạn ④ Giữ lý trí ⑤ Hài hước khô
+
+  - checkpoint: spec
+    intent: completeness
+    instruction: >
+      Bổ sung mechanics từ §2–§3: ít nhất 3 mechanics, mỗi cái >=2 rules,
+      planner_secrets có THR/tiền kiếp. Không đổi variables.
+    scope: [layers]
+    frozen_paths: [variables, arcs, events, charter.forbids]
+    expect_contains: ["THR", "đạo hóa"]
+    source_excerpt: |
+      ## 2.2 Planner Secret 1
+      ## 3.4 Cơ Chế Perfection Addiction Counter
+      ## 3.5 Lực Kéo Ngược — Humanity Anchor
+
+  - checkpoint: spec
+    intent: completeness
+    instruction: >
+      Mở rộng 7 event synopses arc_2 (>=80 chars mỗi event), titles VN,
+      bám Goal/Planner bullets source. Thử Nghiệm không chỉ meta "Lore Weave generates".
+    scope: [events, links]
+    frozen_paths: [variables, arcs, charter.forbids]
+    expect_contains: ["Thử Nghiệm", "Nhập Môn"]
+    source_excerpt: |
+      ### Event 1 — Nhập Môn: thất bại, hy vọng đầu tiên
+      ### Event 3 — Thử Nghiệm: thử nghiệm hệ thống, logic nhân vật
+      ### Event 7 — Quyết Định Tiếp Tục: tiếp tục luyện
+
+  - checkpoint: spec
+    intent: completeness
+    instruction: >
+      Polish: baseline_notes phải tiếng Việt (>=35% ký tự VN), không dùng "Female Protagonist".
+      Event 3 Thử Nghiệm: synopsis liệt kê bullet tốc độ tu luyện, linh thạch, âm dương khí, logic nhân vật.
+      Mechanics rules: ít nhất 50% rules có ký tự tiếng Việt.
+    scope: [layers, events]
+    frozen_paths: [variables, arcs, charter.forbids]
+    expect_contains: ["Thử Nghiệm", "linh thạch"]
+    source_excerpt: |
+      ### Event 3 — Thử Nghiệm
+      - Tốc độ tu luyện tối đa là bao nhiêu?
+      - Linh thạch có tăng tốc không?
+      - Âm khí và dương khí, cái nào hiệu quả hơn?
+      ## 1.1 Hồ Sơ Cơ Bản — nữ chính xuyên không, mất linh căn

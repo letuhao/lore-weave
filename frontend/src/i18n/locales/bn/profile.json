@@ -1,0 +1,49 @@
+{
+  "anonymous": "অজ্ঞাত",
+  "joined": "{{date}} এ যোগ দিয়েছেন",
+  "followers": "অনুসারী",
+  "following": "অনুসরণ করছেন",
+  "follow": "অনুসরণ করুন",
+  "unfollow": "অনুসরণ করছেন",
+  "editProfile": "প্রোফাইল এডিট করুন",
+  "loading": "লোড হচ্ছে...",
+  "noBooks": "এখনো কোনো বই প্রকাশিত হয়নি।",
+  "noTranslations": "এখনো কোনো অনুবাদ নেই।",
+  "errorLoading": "প্রোফাইল লোড করা সম্ভব হয়নি।",
+  "followError": "ব্যবহারকারীকে অনুসরণ করা সম্ভব হয়নি।",
+  "unfollowError": "ব্যবহারকারীকে আনফলো করা সম্ভব হয়নি।",
+  "userNotFound": "ব্যবহারকারী পাওয়া যায়নি।",
+  "achievements": "অর্জিত সাফল্য",
+  "chapters": "অধ্যায়",
+  "readers": "পাঠক",
+  "recentActivity": "সাম্প্রতিক কার্যক্রম",
+  "last7d": "গত ৭ দিন",
+  "last30d": "গত ৩০ দিন",
+  "translationLanguages": "অনুবাদের ভাষা",
+  "stats": {
+    "books": "বই",
+    "chaptersTranslated": "অনুবাদিত অধ্যায়",
+    "totalReaders": "মোট পাঠক",
+    "followers": "অনুসারী",
+    "totalTranslations": "মোট অনুবাদ",
+    "languages": "ভাষা"
+  },
+  "achievement": {
+    "booksPublished": "{{count}}টি বই প্রকাশিত",
+    "booksPublished_other": "{{count}}টি বই প্রকাশিত",
+    "kReaders": "{{count}}K+ পাঠক",
+    "hundredReaders": "১০০+ পাঠক",
+    "followers": "{{count}} জন অনুসারী",
+    "multiLangTranslator": "{{count}}-ভাষার অনুবাদক",
+    "fiftyChapters": "৫০+ অধ্যায় অনূদিত"
+  },
+  "loadError": "বই লোড করা সম্ভব হয়নি।",
+  "noWiki": "এখনো কোনো উইকি অবদান নেই।",
+  "wikiError": "উইকি অবদান লোড করা সম্ভব হয়নি।",
+  "untitled": "শিরোনামহীন",
+  "tabs": {
+    "books": "বই",
+    "translations": "অনুবাদ",
+    "wiki": "উইকি অবদান"
+  }
+}

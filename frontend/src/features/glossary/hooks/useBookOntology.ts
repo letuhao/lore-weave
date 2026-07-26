@@ -93,6 +93,20 @@ export function useBookOntology(bookId: string) {
     void invalidate();
   };
 
+  // ── revert an adopted row to its parent tier (G-U1) ──
+  const revertGenre = async (genreId: string) => {
+    await tieringApi.revertBookGenre(bookId, genreId, accessToken!);
+    void invalidate();
+  };
+  const revertKind = async (kindId: string) => {
+    await tieringApi.revertBookKind(bookId, kindId, accessToken!);
+    void invalidate();
+  };
+  const revertAttribute = async (attrId: string) => {
+    await tieringApi.revertBookAttribute(bookId, attrId, accessToken!);
+    void invalidate();
+  };
+
   const setActiveGenres = async (genreIds: string[]) => {
     const r = await tieringApi.setActiveGenres(bookId, genreIds, accessToken!);
     void invalidate();
@@ -121,6 +135,9 @@ export function useBookOntology(bookId: string) {
     createAttribute,
     patchAttribute,
     deleteAttribute,
+    revertGenre,
+    revertKind,
+    revertAttribute,
     setActiveGenres,
   };
 }

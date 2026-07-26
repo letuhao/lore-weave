@@ -29,7 +29,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
+
+if TYPE_CHECKING:
+    from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "PromptName",
@@ -37,6 +40,8 @@ __all__ = [
     "ALLOWED_PROMPT_NAMES",
     "OUTPUT_CONTRACT_REMINDER",
     "apply_prompt_override",
+    "build_schema_constraints",
+    "append_schema_constraints",
 ]
 
 # B2-B-b2 — the SDK-controlled output-contract block. ALWAYS appended LAST to a
@@ -141,3 +146,116 @@ def load_prompt(name: PromptName, **substitutions: str) -> str:
     """
     template = _load_raw(name)
     return template.format_map(_StrictDict(substitutions))
+
+
+# ── Dynamic schema injection (KG customizable-ontology, lane LB) ──────
+#
+# BACKWARD-COMPAT INVARIANT: `load_prompt` + the `.md` templates above are
+# UNTOUCHED. The dynamic path NEVER mutates the static prompt — it APPENDS a
+# schema-constraints section AFTER it. So `schema=None` (worker-ai + translation
+# never pass a schema) yields a byte-identical prompt; the dynamic block is
+# only ever present when knowledge-service passes a resolved ExtractionSchema.
+
+# The op → (which projected vocabs to inject) map. Each op injects only the
+# vocab it actually constrains: entity→kinds, relation→edge predicates,
+# event→event kinds, fact→fact types.
+_SCHEMA_OPS: frozenset[str] = frozenset({"entity", "relation", "event", "fact"})
+
+
+def _vocab_line(label: str, codes: list[str]) -> str | None:
+    if not codes:
+        return None
+    return f"- {label}: {', '.join(codes)}"
+
+
+def build_schema_constraints(op: str, schema: "ExtractionSchema") -> str:
+    """The schema-constraints block appended to an op's system prompt (§10-B1).
+
+    Returns ``""`` when the schema projects no relevant vocab for ``op`` (so an
+    empty/degenerate schema appends nothing — the prompt stays byte-identical to
+    the static one). The block lists ONLY the projected vocab for ``op``, soft-
+    capped per :class:`ExtractionSchema` (which `log()`s on truncation), and
+    states whether off-vocab values are allowed (edge predicates honor
+    ``allow_free_edges``; node/event/fact vocab is advisory — extraction
+    discovers from text, the closed-set decision is the write/triage path's).
+    """
+    base = op[:-len("_system")] if op.endswith("_system") else op
+    if base not in _SCHEMA_OPS:
+        return ""
+
+    lines: list[str] = []
+    if base == "entity":
+        line = _vocab_line(
+            "Allowed entity `kind` values (this project's ontology)",
+            schema.render_entity_kinds(),
+        )
+        if line:
+            lines.append(line)
+            lines.append(
+                "Prefer these `kind` values. If none fit, use the closest one; "
+                "do not invent unrelated kinds."
+            )
+    elif base == "relation":
+        line = _vocab_line(
+            "Preferred `predicate` vocabulary (this project's edge types)",
+            schema.render_edge_predicates(),
+        )
+        if line:
+            lines.append(line)
+            if schema.allow_free_edges:
+                lines.append(
+                    "Prefer these predicates; you MAY coin a new snake_case "
+                    "predicate when none fit."
+                )
+            else:
+                lines.append(
+                    "This project's edge set is CLOSED — use ONLY predicates "
+                    "from the list above. Omit relations whose predicate is not "
+                    "in the list."
+                )
+    elif base == "event":
+        line = _vocab_line(
+            "Allowed event `kind` values (this project's ontology)",
+            schema.render_event_kinds(),
+        )
+        if line:
+            lines.append(line)
+            lines.append(
+                "Prefer these `kind` values. If none fit, use the closest one."
+            )
+    elif base == "fact":
+        line = _vocab_line(
+            "Allowed fact `type` values (this project's ontology)",
+            schema.render_fact_types(),
+        )
+        if line:
+            lines.append(line)
+            lines.append(
+                "Prefer these `type` values. If none fit, use the closest one."
+            )
+
+    if not lines:
+        return ""
+    body = "\n".join(lines)
+    return (
+        "\n\n## Project ontology (custom schema)\n\n"
+        + body
+    )
+
+
+def append_schema_constraints(
+    default_system: str, op: str, schema: "ExtractionSchema | None",
+) -> str:
+    """Append the op's schema-constraints block to ``default_system``.
+
+    ``schema=None`` → returns ``default_system`` UNCHANGED (byte-identical to
+    the static path). A non-None schema appends :func:`build_schema_constraints`
+    (which itself may be empty → still byte-identical). The append happens
+    BEFORE the output-contract reminder is applied by the caller so the JSON-
+    only discipline always lands LAST (mirrors ``apply_prompt_override``)."""
+    if schema is None:
+        return default_system
+    block = build_schema_constraints(op, schema)
+    if not block:
+        return default_system
+    return default_system.rstrip() + block

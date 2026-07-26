@@ -140,7 +140,7 @@ class ComposeBody(BaseModel):
     # output config (shared with auto-enrich). draft FORCES compose_draft; gap may
     # pick retrieval/fabrication/recook (gate-enforced downstream).
     technique: str | None = None
-    max_spend_usd: float | None = Field(default=None, ge=0.0)
+    max_spend_tokens: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -297,7 +297,7 @@ async def _create_and_enqueue(
         book_id=str(body.book_id),
         technique=technique,
         entity_kind=entity_kind,
-        max_spend=body.max_spend_usd,
+        max_spend=body.max_spend_tokens,
         estimated_cost=0.0,
     )
     request: dict = {
@@ -310,7 +310,7 @@ async def _create_and_enqueue(
         "technique": technique,
         "top_k": body.top_k,
         "eval_reserve_fraction": body.eval_reserve_fraction,
-        "max_spend_usd": body.max_spend_usd,
+        "max_spend_tokens": body.max_spend_tokens,
         "entity_kind": entity_kind,
         "targets": targets,
         "user_id": user_id,

@@ -2,12 +2,16 @@ FROM golang:1.25-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
 
-# Phase 6c — repo-root build context so the go.mod `replace
-# github.com/loreweave/observability => ../../sdks/go/observability`
-# directive resolves inside the container. The compose file sets
-# context: .. and dockerfile: services/catalog-service/Dockerfile.
-# Copy the shared module first (separate cache layer), then service files.
+# Phase 6c — repo-root build context so the go.mod `replace` directives resolve
+# inside the container. The compose file sets context: .. and dockerfile:
+# services/catalog-service/Dockerfile. Copy the shared modules first (separate
+# cache layer), then service files. P5 OD-7: catalog now also hosts an MCP server
+# (loreweave_mcp kit), which replaces grantclient + (transitively) llmgw — all
+# must be in the build context for `go mod download`.
 COPY sdks/go/observability /src/sdks/go/observability
+COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
+COPY sdks/go/grantclient /src/sdks/go/grantclient
+COPY sdks/go/llmgw /src/sdks/go/llmgw
 COPY services/catalog-service /src/services/catalog-service
 
 WORKDIR /src/services/catalog-service

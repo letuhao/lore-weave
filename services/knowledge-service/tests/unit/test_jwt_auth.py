@@ -32,6 +32,13 @@ def _make_app() -> FastAPI:
 
 
 def _encode(payload: dict, secret: str | None = None) -> str:
+    # The shared SDK verifier REQUIRES `exp`, so default a valid one unless the
+    # test supplies its own (e.g. the expired case) or explicitly opts out with
+    # `exp=None` (the missing-exp rejection case).
+    if "exp" not in payload:
+        payload = {**payload, "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}
+    elif payload["exp"] is None:
+        payload = {k: v for k, v in payload.items() if k != "exp"}
     return jwt.encode(
         payload, secret or settings.jwt_secret, algorithm="HS256"
     )
@@ -51,15 +58,17 @@ def test_valid_token_returns_user_id():
     assert UUID(resp.json()["user_id"]) == uid
 
 
-def test_valid_token_without_exp_still_works():
-    """exp is optional — auth-service may issue non-expiring service tokens."""
+def test_token_without_exp_rejected():
+    """SDK migration: `exp` is now REQUIRED (loreweave_authn / Go platformjwt
+    parity). A user token without it is rejected uniformly. This reverses the
+    pre-SDK behavior where a missing `exp` was accepted."""
     uid = uuid4()
-    token = _encode({"sub": str(uid)})
+    token = _encode({"sub": str(uid), "exp": None})
 
     client = TestClient(_make_app())
     resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
 
-    assert resp.status_code == 200
+    assert resp.status_code == 401
 
 
 # ── failure modes ─────────────────────────────────────────────────────────
@@ -92,7 +101,8 @@ def test_expired_token_returns_401():
     resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
 
     assert resp.status_code == 401
-    assert "expired" in resp.json()["detail"].lower()
+    # SDK maps every failure mode to a uniform terse 401 (no mode leak).
+    assert resp.json()["detail"] == "invalid token"
 
 
 def test_wrong_signature_returns_401():
@@ -112,7 +122,7 @@ def test_missing_sub_claim_returns_401():
     resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
 
     assert resp.status_code == 401
-    assert "sub" in resp.json()["detail"].lower()
+    assert resp.json()["detail"] == "invalid token"
 
 
 def test_empty_sub_claim_returns_401():
@@ -131,7 +141,7 @@ def test_non_uuid_sub_claim_returns_401():
     resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
 
     assert resp.status_code == 401
-    assert "sub" in resp.json()["detail"].lower()
+    assert resp.json()["detail"] == "invalid token"
 
 
 def test_non_string_sub_claim_returns_401():

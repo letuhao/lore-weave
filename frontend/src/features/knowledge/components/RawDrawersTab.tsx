@@ -50,7 +50,7 @@ interface RawDrawersTabProps {
 }
 
 export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
-  const { t } = useTranslation('knowledge');
+  const { t, i18n } = useTranslation('knowledge');
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [projectFilter, setProjectFilter] = useState<string>(
@@ -72,6 +72,7 @@ export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
     embeddingPromptTokens,
     embeddingCostUsd,
     sourceTypeCounts,
+    coverage,
     disabled,
     isLoading,
     isFetching,
@@ -81,6 +82,10 @@ export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
     query: debouncedQuery,
     limit: LIMIT,
     source_type: sourceType ?? undefined,
+    // KG-ML M7 (C12) — the reader's language = the app UI language. Soft
+    // matched-first ordering + a coverage note; the BE folds to the primary
+    // subtag (zh-TW → zh). A reader sees in-language passages first.
+    language: i18n.language || undefined,
   });
 
   const parsedError = error ? parseDrawersError(error) : null;
@@ -274,6 +279,22 @@ export function RawDrawersTab({ scopedProjectId }: RawDrawersTabProps = {}) {
 
       {!disabled && !error && !isLoading && hits.length > 0 && (
         <>
+          {/* KG-ML M7 (C12) — honest reader-language coverage. BE sets the note
+              only when coverage is partial (some results are source-language). */}
+          {coverage?.note && (
+            <p
+              className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-muted-foreground"
+              data-testid="drawers-coverage"
+            >
+              {coverage.in_language === 0
+                ? t('drawers.coverage.none', { lang: coverage.reader_lang })
+                : t('drawers.coverage.partial', {
+                    count: coverage.in_language,
+                    total: coverage.total,
+                    lang: coverage.reader_lang,
+                  })}
+            </p>
+          )}
           <ul
             className="divide-y overflow-hidden rounded-md border"
             data-testid="drawers-list"

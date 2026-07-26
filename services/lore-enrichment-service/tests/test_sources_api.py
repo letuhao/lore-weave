@@ -46,7 +46,7 @@ def _app() -> FastAPI:
 
 
 def _bearer() -> str:
-    return pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    return pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 def test_create_source_requires_auth():

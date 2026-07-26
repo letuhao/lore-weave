@@ -17,15 +17,24 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
+
+from loreweave_llm import no_thinking_fields
+
+from loreweave_context.budget import scale_by_window
 
 from loreweave_extraction._types import LLMClientProtocol
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
+
+# A summarizer emits structured JSON — a reasoning model must NOT think out loud
+# (hidden reasoning would burn the 1024-token budget → empty → ExtractionError).
+_NO_THINKING = no_thinking_fields()
 
 __all__ = ["LevelSummary", "summarize_level"]
 
@@ -55,6 +64,14 @@ async def summarize_level(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClientProtocol,
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    # Model-context-aware input sizing. None (default — every existing caller)
+    # keeps the flat _MAX_CHILD_TEXT_CHARS. A caller that resolves the target
+    # model's real context window gets a proportionally larger input budget instead
+    # of every model, including a 1M-context one, being truncated at the same flat
+    # 8000 chars (see loreweave_context.budget.scale_by_window).
+    context_length: int | None = None,
 ) -> LevelSummary:
     """Generate a 2-3 sentence summary of *level* via the BYOK LLM.
 
@@ -63,7 +80,7 @@ async def summarize_level(
         child_texts: text content from the children of this level
             (chapter -> joined scene leaf_texts; part -> chapter
             summaries; book -> part summaries). Truncated to
-            _MAX_CHILD_TEXT_CHARS before sending.
+            _MAX_CHILD_TEXT_CHARS (scaled by context_length) before sending.
         entity_names: top entities at this level (e.g. top-30 by
             mention frequency). Included in prompt for grounding.
         user_id, project_id, model_source, model_ref, llm_client:
@@ -85,8 +102,9 @@ async def summarize_level(
     joined = "\n\n".join(t.strip() for t in child_texts if t.strip())
     if not joined:
         raise ValueError("child_texts joined to empty string")
-    if len(joined) > _MAX_CHILD_TEXT_CHARS:
-        joined = joined[:_MAX_CHILD_TEXT_CHARS] + "\n[...truncated]"
+    max_child_chars = scale_by_window(_MAX_CHILD_TEXT_CHARS, context_length)
+    if len(joined) > max_child_chars:
+        joined = joined[:max_child_chars] + "\n[...truncated]"
 
     capped_entities = entity_names[:_MAX_ENTITY_NAMES]
     safe_entities = json.dumps(capped_entities, ensure_ascii=False).replace(
@@ -107,6 +125,7 @@ async def summarize_level(
         model_source=model_source,
         model_ref=model_ref,
         prompt=prompt,
+        cancel_check=cancel_check,
     )
     return _postprocess(raw)
 
@@ -119,6 +138,8 @@ async def _call_llm(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     prompt: str,
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Submit summarize_level job via the gateway; return raw response dict.
 
@@ -149,12 +170,16 @@ async def _call_llm(
                 # Pydantic max_length=2000 → 1024 tokens output is
                 # generous even with reasoning-capable judges.
                 "max_tokens": 1024,
+                # Disable hidden reasoning — a reasoning model would otherwise
+                # spend the 1024-token budget thinking and return empty prose.
+                **_NO_THINKING,
             },
             job_meta={
                 "extractor": "summarize_level",
                 "project_id": project_id or "",
             },
             transient_retry_budget=1,
+            cancel_check=cancel_check,
         )
     except Exception as exc:
         # Per LLMClientProtocol — re-raise as ExtractionError so caller can

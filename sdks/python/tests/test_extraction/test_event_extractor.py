@@ -785,3 +785,19 @@ def test_event_prompt_includes_status_effects_schema_and_rule():
     # example shows both the empty case and a death
     assert '"status_effects": []' in p
     assert '"entity_ref": "Zhao", "status": "gone"' in p
+
+
+def test_event_prompt_keeps_summary_in_source_language():
+    """#10 regression: event summaries were stored in English for a Chinese
+    book because the only few-shot example was English (so the GENERATED summary
+    defaulted to English while copied participant names stayed zh). The prompt
+    must now (a) emphatically require source-language output incl. the generated
+    summary, and (b) carry a non-English (CJK) few-shot example."""
+    from loreweave_extraction.prompts import load_prompt
+
+    p = load_prompt("event_system", known_entities='["林凯"]')
+    # strengthened instruction — generated fields must match TEXT's language
+    assert "NEVER translate or romanise" in p
+    assert "GENERATED" in p
+    # a non-English (Chinese) few-shot example summary keeps the source script
+    assert "林凯于拂晓时分带着玉玺离开北城" in p

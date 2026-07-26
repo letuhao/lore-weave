@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — World container + World Map (studio dock panels, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     WORLD (`world`) + WORLD MAP (`world-map`)
+     Spec: docs/specs/2026-07-01-writing-studio/38_kg_and_world.md  (slice 8b)
+
+     WHY THESE EXIST — a complete CRUD domain with ZERO public REST
+     book-service ships 8 world-map MCP tools (mcp_maps.go:465-515) over 3 real
+     tables (migrate.go:401-434 — `world_maps`, `map_markers`, `map_regions`),
+     with owner-scoping, CASCADE cleanup, MinIO blob handling and an
+     enumeration-oracle-free error model. It is GOOD CODE. A human cannot touch
+     any of it. Three facts, each verified against source:
+
+       ① THE PUBLIC REST SURFACE FOR MAPS IS ZERO ROUTES. server.go:381-391
+          mounts /v1/worlds with create/list/get/patch/delete + books-membership.
+          There is no `/maps` anywhere.
+       ② THE ONE MAP ROUTE IS UNREACHABLE FROM A BROWSER BY CONSTRUCTION.
+          POST /internal/worlds/maps/{map_id}/image (server.go:200) sits behind
+          requireInternalToken and takes identity from a `?user_id` QUERY PARAM
+          (maps_image.go:35). The gateway proxies /v1/worlds* only. And
+          `grep -rn "worlds/maps" services/ frontend/src` (minus book-service's
+          own handler) returns ZERO HITS. The route is DEAD ON ARRIVAL — not
+          merely unreachable: nothing, anywhere, has ever called it.
+       ③ 🔴 UPDATE DOES NOT EXIST AT ANY LAYER. The tool set is add/remove-only.
+          No world_map_update_*, no PATCH, no repo method. RENAMING A MAP,
+          DRAGGING A PIN, OR RESHAPING A REGION HAS NO IMPLEMENTATION.
+
+     ⚠ AND `world-map` HAS NO HOST. `features/world/**` is a full domain
+       (WorldsBrowser, LivingWorldTree, WorldRollupGraph, worldsApi…) routed at
+       /worlds and /worlds/:worldId (App.tsx:190-191) — and NONE of it is a dock
+       panel. studioLinks.ts has NO /worlds mapping (PATH_PANELS :45-66), so
+       resolveStudioLink('/worlds/…') falls through to { kind:'external' } (:113)
+       and KgOverviewPanel's own World backlink (:44) POPS A NEW BROWSER TAB OUT
+       OF THE STUDIO TODAY. Every path into a map is therefore a route hop —
+       a DOCK-7 teardown, the AddModelCta bug class. So:
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       `world` is a PREREQUISITE, not a feature. It is a CONTAINER panel
+       (DOCK-8: a launcher, it hosts no capability's content) that RESOLVES ITS
+       OWN SCOPE — the book row already carries `world_id`, exactly as
+       kg-overview resolves the book's KG project via useBookKnowledgeProject.
+       ⇒ `world` is openable by a BARE ID. That is the answer to plan 30's X-12,
+         and it is strictly better than `hiddenFromPalette`: it goes into the
+         ui_open_studio_panel enum, the Command Palette, and the User Guide.
+       `world-map` takes params.mapId OPTIONALLY — with no param it resolves the
+         book's world and selects the most recent map.
+       🔴 BUT "it always lands somewhere real" WOULD BE A LIE, and the DoD leans
+         on it (§9.4 opens `world-map` BARE from a chat turn). THREE resolutions
+         have nothing to select, and EACH IS A RENDERED STATE, not a blank panel
+         (a blank panel behind a `shown:true` is the silent-success class this
+         whole plan exists to kill):
+           • book is in NO world     → the "Link this book to a world" state,
+                                       REUSED from `world` (don't fork it)
+           • world is FOREIGN        → the uniform no-access card
+           • world has NO maps       → the Maps empty state + a focused `+ New map`
+           • mapId given but 404     → drop the param, fall back to the rail, say
+                                       "that map is gone" — NEVER silently show a
+                                       DIFFERENT map as if it were the one asked for
+       Both are category `storyBible` — DELIBERATELY NOT a new category:
+         CATEGORY_ORDER is still missing 'quality' (X-2) and an unlisted category
+         sorts to the TOP of the palette via indexOf → -1.
+
+     ⚠ THE THIRD MACHINE GUARD — `panels/__tests__/dockablePanelHygiene.test.ts`
+       recursively scans EVERY .tsx under `panels/**` and REDS on:
+         DOCK-7  any `useNavigate(` / `useParams<|(` / `<Link` — and the "Open the
+                 full world workspace" escape hatch below is EXACTLY the shape a
+                 builder writes as `<Link to="/worlds/{id}">`. It MUST be
+                 `followStudioLink(...)` (which window.open()s a new tab).
+         DOCK-9  a hand-rolled viewport overlay (`fixed` + `inset-0` as TOKENS —
+                 the regex is deliberately not adjacency-based). These two panels
+                 carry FIVE dialog surfaces (world picker · create world · new map
+                 · delete confirms · image dropzone) and every one must go through
+                 `@/components/shared` (FormDialog / ConfirmDialog) or Radix.
+       Neither the plan's GG-8 checklist nor its verify block names this test.
+       It is named here so it is not discovered at commit time.
+
+     ⚠ NAME COLLISION, stated up front so the next agent does not re-raise it:
+       three unrelated things are called "world map" in this repo —
+         world_maps/map_markers/map_regions  = A DRAWN MAP (this spec, book-svc)
+         composition_work.settings.world_map = a place GRAPH (useWorldMap.ts,
+                                               the legacy ChapterEditorPage)
+         the KG subgraph                     = the graph itself (knowledge-svc)
+       Plan 30 §10 already refuted "useWorldMap.ts IS book-service's world maps".
+       DO NOT RE-RAISE IT.
+
+     BACKEND WORK THESE SCREENS IMPLY (flagged up front, not silently)
+       • 12 NEW PUBLIC REST ROUTES on book-service — not the 8-10 the audit
+         estimated; it forgot the 3 PATCHes and the public image upload:
+           BE-15a POST   /v1/worlds/{world_id}/maps
+           BE-15b GET    /v1/worlds/{world_id}/maps      (+ marker_count /
+                         region_count — a LEFT JOIN … GROUP BY; the rail needs
+                         them and a per-map GET-storm is not acceptable)
+           BE-15c GET    /v1/worlds/maps/{map_id}        (map+markers+regions,
+                         the world_map_get shape verbatim, one round-trip)
+           BE-15d PATCH  /v1/worlds/maps/{map_id}        🔴 NEW SEMANTICS
+           BE-15e DELETE /v1/worlds/maps/{map_id}
+           BE-15f POST   /v1/worlds/maps/{map_id}/image  (PUBLIC sibling of the
+                         dead internal route — identity from the JWT, not ?user_id)
+           BE-15g POST   …/markers        BE-15h PATCH …/markers/{id} 🔴
+           BE-15i DELETE …/markers/{id}
+           BE-15j POST   …/regions        BE-15k PATCH …/regions/{id} 🔴
+           BE-15l DELETE …/regions/{id}
+         ⇒ ZERO GATEWAY CHANGES: worldsProxy already forwards every /v1/worlds*
+           path (gateway-setup.ts:86-90), and multipart through the gateway is
+           already proven by booksApi.uploadChapterMedia.
+       • MIGRATION (migrate.go, forward-only + idempotent):
+           ALTER TABLE world_maps  ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
+           ALTER TABLE map_markers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+           ALTER TABLE map_regions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+         ⚠ ADD COLUMN IF NOT EXISTS NEVER REVISITS A BAD DEFAULT on an
+           already-migrated DB. Get the defaults right the first time.
+       • BE-15m — 3 NEW MCP TOOLS (world_map_update / _update_marker /
+         _update_region). WITHOUT THEM 8b CREATES A NEW INVERSE GAP: the human
+         could move a pin and the agent could not.
+       • RETIRE the dead internal image route (OQ-3) once BE-15f lands.
+       ✗ NO setting (SET-1..8 untriggered — zoom/pan/selected-map are per-device
+         UI state, i.e. panel `params`, never localStorage user data and never a
+         server preference). ✗ NO cost gate — nothing here spends a token, so do
+         NOT route any of it through propose→confirm and above all DO NOT INVENT
+         A PER-ACTION ESTIMATE ROUTE (plan 30 §3.3 documents three invented
+         estimate routes that 404 in production today).
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① BEFORE — no host. The World backlink pops a browser tab out of the
+          studio; studioLinks' PATH_PANELS has no /worlds row (struck through);
+          the dead internal image route; and UPDATE missing at every layer.
+       ② `world` — the container, with the maps rail that makes it a launcher.
+       ③ `world` DEGRADED — book not in a world · 🔴 world owned by someone else
+          (a REAL state: worlds have NO collaborators while books do) · world
+          with no maps.
+       ④ `world-map` — rail + canvas (base image, pins, region polygons) +
+          inspector; a pin mid-drag with its serialized PATCH in flight.
+       ⑤ `world-map` — no base image yet (a dropzone; markers can still exist,
+          because the row is authored independently of the blob).
+       ⑥ Rename → 412. The ONLY OCC in this design, and it is deliberate.
+       ⑦ 🔴 `world-map` OPENED BARE ON A BOOK WITH NO WORLD — the degraded path
+          the happy-path smoke will never touch, and the one the agent's own
+          `ui_open_studio_panel {panel_id:"world-map"}` hits first on a fresh
+          book. It reuses `world`'s link-to-a-world state rather than rendering
+          an empty rail.
+
+     SCALE — a few hundred pins render as absolutely-positioned divs over the
+     image; above ~500 markers, cull to the viewport. Regions are ONE <svg> with
+     one <path> each. No virtualization needed at expected scale — said plainly
+     rather than over-engineered.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain: the two things you draw ON a map */
+    --pin: #e8b87e; --region: #b482e0; --region-fill: rgba(180,130,224,.16);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.new { color: var(--primary); border-color: var(--primary-muted); background: var(--primary-muted); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.pin { background: var(--pin); } .swatch.reg { background: var(--region); } .swatch.occ { background: var(--info); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; align-items: center; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+
+  .p-world  { width: 520px; height: 540px; }
+  .p-map    { width: 1180px; max-width: 100%; height: 640px; }
+  .mini     { width: 300px; height: 330px; }
+
+  /* ── Buttons / controls ───────────────────────────────────────────────── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); font-family: inherit; }
+  .btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.danger { color: var(--destructive); border-color: var(--destructive-muted); }
+  .btn.sm { height: 22px; padding: 0 8px; font-size: 11px; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted-fg); font-weight: 500; }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .select-wrap { position: relative; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 5px 24px 5px 8px; border-radius: 6px; cursor: pointer; width: 100%; }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .hint { font-size: 10.5px; color: var(--muted-fg); line-height: 1.55; }
+  .hint code, .hint .mono { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--accent-fg); }
+  .hint b { color: var(--foreground); font-weight: 600; }
+
+  /* ── `world` container panel ──────────────────────────────────────────── */
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 9px 12px 7px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .n { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9.5px; text-transform: none; letter-spacing: 0; }
+  .sect-body { padding: 0 12px 11px; }
+
+  .idcard { display: flex; gap: 11px; align-items: center; padding: 12px; }
+  .globe { width: 44px; height: 44px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--accent-muted); color: var(--accent); border: 1px solid var(--accent); }
+  .globe svg { width: 22px; height: 22px; }
+  .idcard .nm { font-size: 14px; font-weight: 600; }
+  .idcard .meta { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); margin-top: 4px; }
+
+  .brow { display: flex; align-items: center; gap: 8px; padding: 7px 0; font-size: 12px; cursor: pointer; }
+  .brow:hover .bt { color: var(--info); text-decoration: underline; }
+  .brow .bt { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brow .self { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--primary);
+    background: var(--primary-muted); border-radius: 3px; padding: 2px 5px; }
+  .brow .ext { color: var(--muted-fg); }
+  .brow .ext svg { width: 12px; height: 12px; }
+
+  .maprow { display: flex; align-items: center; gap: 10px; padding: 8px 0; cursor: pointer; border-radius: 6px; }
+  .maprow:hover { background: var(--card-hover); }
+  .maprow.sel { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+  .thumb { width: 52px; height: 36px; border-radius: 5px; flex-shrink: 0; border: 1px solid var(--border);
+    background: linear-gradient(160deg,#2b2723 0%,#3a3128 42%,#26302c 100%); position: relative; overflow: hidden; }
+  .thumb::after { content: ''; position: absolute; left: 30%; top: 45%; width: 4px; height: 4px; border-radius: 50%; background: var(--pin); }
+  .thumb.empty { background: var(--background); display: flex; align-items: center; justify-content: center; }
+  .thumb.empty::after { display: none; }
+  .thumb.empty svg { width: 15px; height: 15px; color: var(--border-hover); }
+  .maprow .mn { flex: 1; min-width: 0; }
+  .maprow .mn .t { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .maprow .mn .c { display: flex; gap: 9px; margin-top: 4px; font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .maprow .mn .c .p { color: var(--pin); } .maprow .mn .c .r { color: var(--region); }
+
+  .empty-block { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    text-align: center; padding: 22px 16px; }
+  .empty-block .ill { width: 34px; height: 34px; color: var(--border-hover); }
+  .empty-block h4 { font-size: 12.5px; font-weight: 600; }
+  .empty-block p { font-size: 11px; color: var(--muted-fg); line-height: 1.6; max-width: 300px; }
+
+  /* ── `world-map` panel ────────────────────────────────────────────────── */
+  .map-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 300px; }
+  .rail { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--background-alt); }
+  .rail-head { padding: 8px 10px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted-fg); border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+  .rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
+  .rail-foot { border-top: 1px solid var(--border); padding: 7px; }
+
+  .canvas-wrap { position: relative; min-height: 0; overflow: hidden; background: var(--background);
+    display: flex; align-items: center; justify-content: center; }
+  /* the base image, faked with gradients — a real one is a MinIO object (image_url) */
+  .base-img { position: relative; width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse 30% 22% at 26% 30%, #4a5a4e 0%, transparent 60%),
+      radial-gradient(ellipse 20% 26% at 68% 62%, #5a4a3a 0%, transparent 62%),
+      radial-gradient(ellipse 40% 18% at 50% 88%, #2f4048 0%, transparent 70%),
+      radial-gradient(circle at 82% 22%, #6b5a44 0%, transparent 34%),
+      linear-gradient(155deg, #2e2a26 0%, #3a3229 45%, #26302f 100%);
+  }
+  .base-img::before { content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(38deg, rgba(255,255,255,.014) 0 2px, transparent 2px 7px); }
+  .grid-hint { position: absolute; left: 8px; bottom: 7px; font-family: 'JetBrains Mono'; font-size: 9px; color: rgba(245,239,232,.4);
+    background: rgba(15,12,11,.6); padding: 2px 6px; border-radius: 3px; }
+
+  .pin { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; cursor: grab; }
+  .pin .head { width: 15px; height: 15px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--pin);
+    border: 1.5px solid #141010; box-shadow: 0 2px 6px rgba(0,0,0,.55); }
+  .pin .lbl { margin-top: 4px; font-size: 10px; font-weight: 500; white-space: nowrap; background: rgba(15,12,11,.78);
+    padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); }
+  .pin.sel .head { background: var(--primary); box-shadow: 0 0 0 3px rgba(232,168,50,.28), 0 2px 6px rgba(0,0,0,.55); }
+  .pin.sel .lbl { border-color: var(--primary); color: var(--primary); }
+  .pin.dragging { cursor: grabbing; }
+  .pin.dragging .head { background: var(--primary); box-shadow: 0 0 0 5px rgba(232,168,50,.2), 0 6px 12px rgba(0,0,0,.6); }
+  .pin.ghost { opacity: .32; }
+  .pin.ghost .lbl { display: none; }
+  .drag-trail { position: absolute; border-top: 1.5px dashed var(--primary); opacity: .55; }
+
+  .region-lbl { position: absolute; font-size: 10px; font-weight: 500; color: #d9c6f2; background: rgba(15,12,11,.7);
+    border: 1px solid var(--region); border-radius: 3px; padding: 1px 5px; white-space: nowrap; }
+  .vertex { position: absolute; width: 7px; height: 7px; border-radius: 2px; background: var(--foreground);
+    border: 1.5px solid var(--region); transform: translate(-50%,-50%); cursor: grab; }
+
+  .cv-tools { position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px;
+    background: rgba(24,20,18,.9); border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+  .tool { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .tool svg { width: 14px; height: 14px; }
+  .tool:hover { background: var(--secondary); color: var(--foreground); }
+  .tool.on { background: var(--primary); color: var(--primary-fg); }
+  .cv-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 4px;
+    background: rgba(24,20,18,.9); border: 1px solid var(--border); border-radius: 7px; padding: 3px 4px; }
+  .cv-zoom .z { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); padding: 0 4px; }
+
+  /* the in-flight write indicator — proves the PATCH is real, not optimistic-only */
+  .inflight { position: absolute; right: 10px; top: 10px; display: flex; align-items: center; gap: 7px;
+    background: rgba(24,20,18,.94); border: 1px solid var(--primary); border-radius: 7px; padding: 6px 9px; font-size: 10.5px; }
+  .inflight .spin { width: 11px; height: 11px; border: 1.5px solid var(--primary-muted); border-top-color: var(--primary);
+    border-radius: 50%; animation: sp .7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .inflight .mono { font-size: 9.5px; color: var(--muted-fg); }
+
+  .insp { border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--background-alt); }
+  .insp-body { flex: 1; min-height: 0; overflow-y: auto; }
+  .field { display: grid; grid-template-columns: 66px 1fr; gap: 9px; align-items: center; margin-bottom: 9px; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .coord { display: flex; gap: 7px; }
+  .coord .cbox { flex: 1; display: flex; align-items: center; gap: 5px; background: var(--background); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; }
+  .coord .cbox span { font-size: 10px; color: var(--muted-fg); }
+  .coord .cbox b { font-family: 'JetBrains Mono'; font-size: 11.5px; font-weight: 500; }
+  .insp-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; white-space: nowrap; }
+  .b-lww { background: var(--secondary); color: var(--muted-fg); }
+  .b-occ { background: #23303f; color: #8ab6e8; }
+  .b-glos { background: var(--accent-muted); color: var(--accent-fg); }
+
+  /* dropzone (no base image) */
+  .dropzone { position: absolute; inset: 20px; border: 2px dashed var(--border-hover); border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; text-align: center; }
+  .dropzone svg { width: 34px; height: 34px; color: var(--border-hover); }
+  .dropzone h4 { font-size: 13px; font-weight: 600; }
+  .dropzone p { font-size: 11px; color: var(--muted-fg); line-height: 1.6; max-width: 340px; }
+  .dropzone .fmt { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+
+  .conflict { border: 1px solid var(--info); background: #1a2430; border-radius: 8px; padding: 10px 11px; font-size: 11px; line-height: 1.6; }
+  .conflict b { color: var(--foreground); }
+  .conflict .mono { font-size: 9.5px; color: #8ab6e8; }
+
+  /* ── Before / after minis ─────────────────────────────────────────────── */
+  .strike { text-decoration: line-through; opacity: .5; }
+  .codeblk { font-family: 'JetBrains Mono'; font-size: 10px; line-height: 1.65; background: var(--background); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; color: var(--muted-fg); white-space: pre; overflow-x: auto; }
+  .codeblk .c { color: #6b5f56; } .codeblk .r { color: var(--destructive); } .codeblk .g { color: var(--success); } .codeblk .k { color: var(--accent-fg); }
+  .tabstrip { display: flex; gap: 2px; padding: 5px 6px; background: var(--background); border-bottom: 1px solid var(--border); }
+  .dtab { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 5px; font-size: 10.5px; color: var(--muted-fg); }
+  .dtab.on { background: var(--background-alt); color: var(--foreground); box-shadow: inset 0 -2px 0 var(--primary); }
+  .teardown { padding: 14px; text-align: center; }
+  .teardown .warnbox { border: 1px solid var(--destructive); background: var(--destructive-muted); border-radius: 8px;
+    padding: 10px; font-size: 10.5px; line-height: 1.6; color: var(--foreground); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout.good { border-left-color: var(--success); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .callout ol { margin: 6px 0 0 18px; } .callout li { margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<h1>World container &amp; World Map <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panels, draft</span></h1>
+<p class="sub">
+  Spec: <b>38_kg_and_world.md</b>, slice <b>8b</b>. book-service ships <b>8 world-map MCP tools</b> over <b>3 real tables</b> with
+  owner-scoping, CASCADE cleanup and MinIO blobs — <b>and zero public REST routes</b>. The one map route that exists
+  (<code>POST /internal/worlds/maps/{id}/image</code>) is behind <code>requireInternalToken</code>, takes its identity from a
+  <code>?user_id</code> query param, and has <b>zero callers repo-wide</b>. It is <b>dead on arrival</b>.
+  🔴 And <b>UPDATE does not exist at any layer</b>: renaming a map, dragging a pin, and reshaping a region have <b>no implementation</b>.
+  Before any of that can be reached from the Studio, <b><code>world</code> — a container panel — has to exist</b>, because
+  <code>/worlds</code> is a classic route and a route hop out of the dock is a DOCK-7 teardown.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch pin"></span><b>Marker</b> · <code class="mono" style="font-size:10px">x,y ∈ [0,1]</code> relative · <span class="badge b-lww">LWW</span> no OCC — a drag is not a rename</div>
+  <div class="item"><span class="swatch reg"></span><b>Region</b> · polygon ≥3 points, each in <code class="mono" style="font-size:10px">[0,1]</code> · <span class="badge b-lww">LWW</span></div>
+  <div class="item"><span class="swatch occ"></span><b>Map rename</b> · <span class="badge b-occ">If-Match</span> 428 / 412 — rare, human-paced, conflict-worthy</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① BEFORE — the panel has no host
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Before — <span class="tag">no host</span> the World link pops a tab out of the Studio</h2>
+<p class="sub">
+  <code>features/world/**</code> is a complete domain — <code>WorldsBrowser</code>, <code>LivingWorldTree</code>,
+  <code>WorldRollupGraph</code>, <code>worldsApi</code> — routed at <code>/worlds</code> and <code>/worlds/:worldId</code>.
+  <b>None of it is a dock panel.</b> <code>studioLinks.ts</code>'s <code>PATH_PANELS</code> has no <code>/worlds</code> row, so
+  <code>resolveStudioLink('/worlds/…')</code> falls through to <code>{ kind: 'external' }</code> — and
+  <code>KgOverviewPanel</code>'s own <b>World backlink</b> therefore <b>opens a new browser tab</b>, tearing down the whole dock.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — today</span></div>
+    <div class="tabstrip">
+      <div class="dtab on">Editor</div><div class="dtab">Scenes</div><div class="dtab">KG Overview</div>
+    </div>
+    <div class="body">
+      <div style="padding:11px 12px">
+        <div class="hint" style="margin-bottom:8px"><b>kg-overview</b> · backlinks</div>
+        <div class="brow" style="border:1px solid var(--border);border-radius:6px;padding:7px 9px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--accent)"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg>
+          <span class="bt" style="color:var(--info);text-decoration:underline">World: Tứ Hải</span>
+          <span class="ext"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span>
+        </div>
+      </div>
+      <div class="teardown">
+        <div class="warnbox">
+          <b style="color:var(--destructive)">Click →</b> a <b>new browser tab</b> at <code class="mono" style="font-size:9.5px">/worlds/…</code><br />
+          The dock unmounts. Editor state, agent session, open panels — <b>gone</b>.<br />
+          <span style="color:var(--muted-fg)">This is DOCK-7 · the <code class="mono" style="font-size:9.5px">AddModelCta</code> bug class.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">studioLinks.ts — the missing row</span></div>
+    <div class="body" style="padding:11px">
+      <div class="codeblk"><span class="c">// PATH_PANELS  (:45-66)</span>
+'/books/:id/glossary'   → 'glossary'
+'/knowledge/projects/:id' → 'kg-overview'
+'/books/:id/chapters'   → 'chapter-browser'
+<span class="r">// '/worlds/:worldId'   →  ✗ NOT THERE</span>
+
+<span class="c">// :113 — the fallthrough</span>
+return { kind: <span class="r">'external'</span> };</div>
+      <div class="hint" style="margin-top:10px;line-height:1.7">
+        <span class="strike">open the world in the dock</span><br />
+        <span class="strike">open a map in the dock</span><br />
+        <span class="strike">pin an entity to a place</span><br />
+        <span class="strike">rename a map</span> — <b style="color:var(--destructive)">no route at any layer</b><br />
+        <span class="strike">drag a pin</span> — <b style="color:var(--destructive)">no route at any layer</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--warning)">The one map route that exists</span></div>
+    <div class="body" style="padding:11px">
+      <div class="codeblk" style="white-space:pre-wrap"><span class="c">// server.go:200, inside r.Route("/internal")</span>
+<span class="c">// :185-186  r.Use(s.requireInternalToken)</span>
+POST /internal/worlds/maps/{id}/image
+  <span class="c">// maps_image.go:35 — identity from</span>
+  userID := q.Get(<span class="r">"user_id"</span>)   <span class="c">// ?!</span></div>
+      <div class="hint" style="margin-top:10px;line-height:1.7">
+        The gateway proxies <code>/v1/worlds*</code> <b>only</b>. <code>/internal</code> is not public.<br /><br />
+        <code>grep -rn "worlds/maps" services/ frontend/src</code><br />
+        <b style="color:var(--destructive)">→ zero hits.</b><br /><br />
+        Not merely unreachable — <b>nothing has ever called it</b>.
+        <b>Dead on arrival</b> (OQ-3: retire it once BE-15f lands).
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>🔴 UPDATE DOES NOT EXIST — and "delete + recreate" is REJECTED, not deferred.</b> The tool set is add/remove-only at every layer.
+  The naive fallback fails on four independent grounds:
+  <ol>
+    <li><b>It churns ids.</b> A marker id is the handle for its inspector selection, its deep link, and the agent's undo hint. Recreating on every drag invalidates all three.</li>
+    <li><b>It is not atomic.</b> DELETE succeeds, POST fails on a network blip ⇒ <b>the user's pin is gone.</b> There is no transaction across two HTTP calls.</li>
+    <li><b>It is a write storm.</b> A drag is a <i>continuous</i> gesture. Delete+create is 2 writes per drop and unbounded per drag-frame.</li>
+    <li><b>It destroys ordering.</b> Both children sort by <code>created_at</code> (<code>mcp_maps.go:280, 303</code>), so a "move" would silently jump the pin to the end of the render order.</li>
+  </ol>
+  <b>Therefore: real PATCH routes with partial semantics</b> — an absent key means <i>unchanged</i>; an explicit <code>null</code> on
+  <code>entity_id</code> / <code>marker_type</code> means <i>clear</i>.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② The `world` container — the prerequisite
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② <span class="tag new">world</span> <span class="tag">category: storyBible</span> <span class="tag">bare-id openable</span> — the container, and the answer to X-12</h2>
+<p class="sub">
+  <b>It resolves its own scope.</b> The book row already carries <code>world_id</code> — exactly as <code>kg-overview</code> resolves the
+  book's KG project via <code>useBookKnowledgeProject</code>. So <code>world</code> needs <b>no param</b> and goes into the
+  <code>ui_open_studio_panel</code> enum, the Command Palette and the User Guide. That is strictly better than plan 30's
+  <code>hiddenFromPalette</code> workaround: a panel that can resolve itself should not be hidden from the human just because an agent
+  might not know its id. Per <b>DOCK-8</b> it is a <b>launcher</b> — it hosts no capability's content, it opens the panels that do.
+</p>
+
+<div class="stack">
+<div class="panel p-world">
+  <div class="panel-head">
+    <span>World — Tứ Hải</span>
+    <div class="acts">
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="sect">
+      <div class="idcard">
+        <div class="globe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg></div>
+        <div style="flex:1;min-width:0">
+          <div class="nm">Tứ Hải</div>
+          <div class="meta">3 books · 2 maps · created 14 Mar 2026</div>
+        </div>
+        <button class="btn sm ghost">Open workspace
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-head">Member books <span class="n">3</span></div>
+      <div class="sect-body">
+        <div class="brow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--muted-fg)"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/></svg>
+          <span class="bt" style="color:var(--foreground);text-decoration:none">Nghịch thiên</span>
+          <span class="self">this book</span>
+        </div>
+        <div class="brow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--muted-fg)"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/></svg>
+          <span class="bt">山海遺聞</span>
+          <span class="ext"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span>
+        </div>
+        <div class="brow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--muted-fg)"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/></svg>
+          <span class="bt">Thiên Kiếm Lục</span>
+          <span class="ext"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></span>
+        </div>
+        <div class="hint" style="margin-top:6px">
+          Another book's row uses <code>followStudioLink('/books/{id}/studio')</code> — <b>a different book is a different studio</b>,
+          so that hop is correctly <i>external</i>. The current book's row is not a link at all.
+        </div>
+      </div>
+    </div>
+
+    <div class="sect" style="border-bottom:none">
+      <div class="sect-head">
+        Maps <span class="n">2</span>
+        <button class="btn sm primary" style="margin-left:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New map</button>
+      </div>
+      <div class="sect-body">
+        <div class="maprow sel">
+          <div class="thumb"></div>
+          <div class="mn">
+            <div class="t">Bản đồ Bắc Vực</div>
+            <div class="c"><span class="p">● 12 markers</span><span class="r">▲ 3 regions</span><span>v4</span></div>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--muted-fg)"><path d="m9 18 6-6-6-6"/></svg>
+        </div>
+        <div class="maprow">
+          <div class="thumb" style="background:linear-gradient(200deg,#33302b 0%,#4a3f30 50%,#2b3538 100%)"></div>
+          <div class="mn">
+            <div class="t">山海圖 · The Mountain-Sea Chart</div>
+            <div class="c"><span class="p">● 41 markers</span><span class="r">▲ 7 regions</span><span>v1</span></div>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--muted-fg)"><path d="m9 18 6-6-6-6"/></svg>
+        </div>
+        <div class="hint" style="margin-top:8px">
+          A row opens <b>world-map</b> with <code>params.mapId</code> — <b>in the dock</b>, no route hop.
+          The counts come from <b>BE-15b</b>'s <code>LEFT JOIN … GROUP BY</code>: a per-map GET-storm to render a rail is not acceptable.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Timeline · rollup graph · lore stay on the <b style="color:var(--muted-fg);font-weight:500">classic page</b> — out of scope, on purpose
+    </div>
+    <span class="mono">world 7c1e…4b2</span>
+  </div>
+</div>
+
+<div class="panel" style="width:400px;height:540px">
+  <div class="panel-head"><span style="color:var(--primary)">Why a container, and not "just open the map"</span></div>
+  <div class="body" style="padding:12px">
+    <div class="hint" style="line-height:1.75">
+      <b>DOCK-8: a launcher hosts no capability's content.</b> The <code>world</code> panel does not draw a map, a timeline, or a rollup
+      graph. It answers three questions and hands off:
+      <br /><br />
+      <b>1 · Which world is this book in?</b> — resolved from <code>book.world_id</code>. No param, so the panel is
+      <b>bare-id openable</b> and lands in the palette, the enum and the guide.
+      <br /><br />
+      <b>2 · What else is in it?</b> — the member books. Another book is a <b>different studio</b>, so that hop is correctly
+      <i>external</i>.
+      <br /><br />
+      <b>3 · What maps exist?</b> — the rail that makes <code>world-map</code> reachable <b>without a route hop</b>.
+    </div>
+    <div class="codeblk" style="margin-top:12px;white-space:pre-wrap"><span class="c">// catalog.ts — BOTH keys are mandatory</span>
+{ id: <span class="g">'world'</span>,
+  category: <span class="k">'storyBible'</span>,   <span class="c">// NOT a new category</span>
+  guideBodyKey: <span class="k">'panels.world.guideBody'</span> }</div>
+    <div class="hint" style="margin-top:10px;line-height:1.7">
+      <b>Why not a <code>world</code> category?</b> <code>CATEGORY_ORDER</code> is <b>still missing <code>'quality'</code></b> (X-2), and
+      an unlisted category sorts to the <b>TOP</b> of the palette via <code>indexOf → -1</code>. Adding a category before that lands
+      would shove World above Editor for every user. <b>Reuse an existing member.</b>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span class="mono">panel_id: world</span>
+    <span class="mono">no params</span>
+  </div>
+</div>
+</div>
+
+<div class="callout warn">
+  <b><code>studioLinks.ts</code> gains one rule — and it is <i>not</i> one line, and there is <i>no</i> existing rule to mirror.</b>
+  What we want: <code>/worlds/{worldId}</code> → <code>openPanel('world')</code> <b>only when it is this book's world</b>, else
+  <code>external</code>. 🔴 <b>That is not implementable against today's signature.</b> <code>resolveStudioLink</code> is a
+  <b>pure, synchronous</b> function (no React, no fetch — by design, <code>studioLinks.ts:1-11</code>) and its
+  <code>StudioLinkContext</code> carries <b>only</b> <code>{ bookId, titleFor? }</code> (<code>:19-24</code>). It has no way to
+  <i>learn</i> the book's world. So the change is <b>three files</b>:
+  <b>(1)</b> <code>studioLinks.ts</code> — add <code>worldId?: string</code> to the context; match <code>/^\/worlds\/([^/]+)/</code>;
+  resolve to the panel <b>only</b> when <code>ctx.worldId === worldId</code>; <b>when <code>ctx.worldId</code> is absent, fall through
+  to <code>external</code></b> (today's behaviour exactly ⇒ no caller regresses, and no silent no-op).
+  <b>(2)</b> <code>KgOverviewPanel.tsx:44</code> — <b>mandatory, not optional</b>: <code>onOpenWorld</code> currently calls
+  <code>followStudioLink('/worlds/'+worldId, host, { bookId: host.bookId })</code> and <b>throws the world id away</b>. Pass
+  <code>{ bookId: host.bookId, worldId }</code>. <b>Without this line the new rule is dead code and the papercut is still there.</b>
+  <b>(3)</b> <code>host/__tests__/studioLinks.test.ts</code> — matching world ⇒ studio · a different id ⇒ external ·
+  <b>ctx.worldId absent ⇒ external</b> (the degrade branch a builder forgets).
+  ⚠ And <code>studioLinks.ts:51-57</code> is <b>a comment explaining why <code>/knowledge/projects/:id</code> is deliberately NOT
+  mapped</b> — it is the <i>reasoning</i> to copy, not a rule.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ the world panel's DEGRADED states — all three, rendered
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ The <span class="tag new">world</span> panel's degraded states — <span class="tag">no world</span> <span class="tag">foreign world</span> <span class="tag">no maps</span></h2>
+<p class="sub">
+  A container that only works in the happy path is not a container. All three are rendered, because each one is the difference between
+  a panel that <b>degrades</b> and a panel that <b>404-loops</b>.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--warning)">Book is not in a world</span></div>
+    <div class="body">
+      <div class="empty-block">
+        <svg class="ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M12 8v8M8 12h8"/></svg>
+        <h4>Nghịch thiên isn't in a world yet</h4>
+        <p>A world groups books that share a setting — and it is what <b style="color:var(--foreground)">owns the maps</b>.</p>
+        <div style="display:flex;gap:7px">
+          <button class="btn primary sm">Link to a world</button>
+          <button class="btn sm">Create a world</button>
+        </div>
+        <div class="hint" style="max-width:250px;margin-top:2px">
+          Both act <b>in place</b> (<code>useBookWorldLink.link</code>) — <b>not</b> a route hop to <code>/worlds</code>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">🔴 The world is someone else's</span></div>
+    <div class="body">
+      <div class="empty-block">
+        <svg class="ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--destructive);opacity:.7"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <h4>This book belongs to a world you don't have access to.</h4>
+        <p>
+          <b style="color:var(--foreground)">A real state, not a 404 loop.</b> Worlds have <b style="color:var(--foreground)">no
+          collaborators</b> (<code class="mono" style="font-size:9.5px;color:var(--accent-fg)">server.go:379-380</code>) — books do
+          (E0 grants). A collaborator with EDIT on this book gets <b style="color:var(--foreground)">404 from every world route</b>.
+        </p>
+        <div class="hint" style="max-width:260px">
+          <b>Uniform. No oracle.</b> We do not distinguish <i>missing</i> from <i>foreign</i>. And this is
+          <b>not a bug to fix by widening the world routes</b> — worlds are owner-only on purpose.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>World, no maps</span></div>
+    <div class="body">
+      <div class="sect" style="border-bottom:1px solid var(--border)">
+        <div class="idcard" style="padding:10px">
+          <div class="globe" style="width:34px;height:34px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:17px;height:17px"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg></div>
+          <div style="flex:1;min-width:0">
+            <div class="nm" style="font-size:12.5px">Tứ Hải</div>
+            <div class="meta">3 books · 0 maps</div>
+          </div>
+        </div>
+      </div>
+      <div class="empty-block" style="padding:18px 14px">
+        <svg class="ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>
+        <h4>No maps in Tứ Hải yet</h4>
+        <p>A map is a base image with pins and regions. The image is optional — you can start with pins.</p>
+        <button class="btn primary sm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New map</button>
+        <div class="hint" style="max-width:240px">
+          The <b>empty world</b> and the <b>empty map</b> are different states, and both are reachable — neither is an error.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ world-map — the panel itself
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ <span class="tag new">world-map</span> <span class="tag">params.mapId — OPTIONAL</span> — rail · canvas · inspector</h2>
+<p class="sub">
+  With no param it resolves the book's world and selects the <b>most recent map</b>, so a bare
+  <code>ui_open_studio_panel {panel_id:"world-map"}</code> <b>always lands somewhere real</b> — an agent never has to guess a UUID to open
+  a panel. Coordinates are <b>relative <code>[0,1]</code></b>, never pixels: the base image can be replaced at a different resolution, and
+  that is <i>why</i> the schema is relative (<code>migrate.go:418</code>). The canvas converts on render; every write clamps.
+</p>
+
+<div class="panel p-map">
+  <div class="panel-head">
+    <span>World Map — Bản đồ Bắc Vực</span>
+    <div class="acts">
+      <div class="ico" title="Fit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="map-grid">
+    <!-- RAIL -->
+    <div class="rail">
+      <div class="rail-head">Maps · Tứ Hải <span style="margin-left:auto" class="mono">2</span></div>
+      <div class="rail-body">
+        <div class="maprow sel" style="padding:7px 6px">
+          <div class="thumb" style="width:44px;height:31px"></div>
+          <div class="mn">
+            <div class="t" style="font-size:11.5px">Bản đồ Bắc Vực</div>
+            <div class="c"><span class="p">● 12</span><span class="r">▲ 3</span></div>
+          </div>
+        </div>
+        <div class="maprow" style="padding:7px 6px">
+          <div class="thumb" style="width:44px;height:31px;background:linear-gradient(200deg,#33302b 0%,#4a3f30 50%,#2b3538 100%)"></div>
+          <div class="mn">
+            <div class="t" style="font-size:11.5px">山海圖</div>
+            <div class="c"><span class="p">● 41</span><span class="r">▲ 7</span></div>
+          </div>
+        </div>
+        <div class="maprow" style="padding:7px 6px">
+          <div class="thumb empty" style="width:44px;height:31px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+          </div>
+          <div class="mn">
+            <div class="t" style="font-size:11.5px">Hải đồ (chưa có ảnh)</div>
+            <div class="c"><span class="p">● 2</span><span class="r">▲ 0</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="rail-foot">
+        <button class="btn sm" style="width:100%;justify-content:center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New map</button>
+      </div>
+    </div>
+
+    <!-- CANVAS -->
+    <div class="canvas-wrap">
+      <div class="base-img">
+        <!-- regions: ONE svg, one path per region -->
+        <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M12,18 L34,12 L41,30 L28,42 L10,34 Z" fill="rgba(180,130,224,.16)" stroke="#b482e0" stroke-width=".35" vector-effect="non-scaling-stroke"/>
+          <path d="M58,52 L80,48 L86,66 L70,76 L55,68 Z" fill="rgba(180,130,224,.16)" stroke="#b482e0" stroke-width=".35" vector-effect="non-scaling-stroke"/>
+          <path d="M30,74 L52,70 L58,86 L34,90 Z" fill="rgba(180,130,224,.16)" stroke="#b482e0" stroke-width=".35" stroke-dasharray="2 1.4" vector-effect="non-scaling-stroke"/>
+        </svg>
+
+        <div class="region-lbl" style="left:16%;top:22%">Bắc Vực · the Northern Waste</div>
+        <div class="region-lbl" style="left:60%;top:56%">鹽庭領地 · Salt Court demesne</div>
+        <div class="region-lbl" style="left:33%;top:78%;border-style:dashed">drawing… 4 points · ⏎ to close</div>
+        <!-- vertices of the region being reshaped -->
+        <div class="vertex" style="left:30%;top:74%"></div>
+        <div class="vertex" style="left:52%;top:70%"></div>
+        <div class="vertex" style="left:58%;top:86%"></div>
+        <div class="vertex" style="left:34%;top:90%"></div>
+
+        <!-- markers -->
+        <div class="pin ghost" style="left:41.2%;top:68.8%"><div class="head"></div></div>
+        <div class="drag-trail" style="left:41.2%;top:66%;width:11%;transform:rotate(-14deg)"></div>
+        <div class="pin dragging sel" style="left:52.4%;top:63.1%">
+          <div class="head"></div><div class="lbl">Ironhold · Thiết Bảo</div>
+        </div>
+
+        <div class="pin" style="left:22%;top:29%"><div class="head"></div><div class="lbl">Ash Gate</div></div>
+        <div class="pin" style="left:74%;top:24%"><div class="head"></div><div class="lbl">山海關</div></div>
+        <div class="pin" style="left:35%;top:47%"><div class="head"></div><div class="lbl">Nine-Year Silence</div></div>
+        <div class="pin" style="left:66%;top:80%"><div class="head"></div><div class="lbl">Market of Small Gods</div></div>
+        <div class="pin" style="left:16%;top:60%"><div class="head"></div><div class="lbl">Cửa Muối</div></div>
+
+        <!-- tools -->
+        <div class="cv-tools">
+          <div class="tool" title="Select"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></div>
+          <div class="tool on" title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+          <div class="tool" title="Region"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7 12 3l8 4-3 12H7z"/></svg></div>
+          <div class="tool" title="Pan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></div>
+        </div>
+
+        <div class="inflight">
+          <div class="spin"></div>
+          <div>
+            <div><b style="font-weight:600">PATCH marker · in flight</b></div>
+            <div class="mono">x .412 → .524 · serialized per marker id</div>
+          </div>
+        </div>
+
+        <div class="cv-zoom">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></div>
+          <span class="z">86%</span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div>
+        </div>
+        <div class="grid-hint">image 2048 × 1365 · coords relative [0,1] · never pixels</div>
+      </div>
+    </div>
+
+    <!-- INSPECTOR -->
+    <div class="insp">
+      <div class="rail-head">Marker <span style="margin-left:auto" class="mono">m · 3f8a…c21</span></div>
+      <div class="insp-body" style="padding:11px 12px">
+        <div class="field"><label>Label</label><input class="inp" value="Ironhold · Thiết Bảo" /></div>
+        <div class="field"><label>Type</label>
+          <div class="select-wrap">
+            <select><option>city</option><option>landmark</option><option>ruin</option><option>battle</option><option>—  free text…</option></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </div>
+        <div class="hint" style="margin:-4px 0 10px 0">
+          ⚠ <b>Not a closed set.</b> <code>marker_type</code> is a free string with <b>no vocabulary anywhere</b> in the backend
+          (<code>'city'</code> / <code>'landmark'</code> appear only in a tool <i>description</i>). v1 ships a small FE vocabulary
+          <b>plus a free-text escape</b>, and says so out loud rather than pretending the BE enforces it.
+          Filed: <b>D-WORLD-MARKER-TYPE-VOCAB</b>.
+        </div>
+
+        <div class="field"><label>Entity</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="badge b-glos">Thiết Bảo</span>
+            <span class="ico" style="width:16px;height:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+          </div>
+        </div>
+        <div class="hint" style="margin:-4px 0 10px 0">
+          🔴 This is a <b>GLOSSARY</b> entity id, <b>not a knowledge one</b>. <code>map_markers.entity_id</code> is a
+          <b>soft cross-service UUID</b> into glossary-service (<code>migrate.go:416</code>) and <b>nullable</b>.
+          Wiring the <i>knowledge</i> picker here would create a dangling id that <b>nothing validates</b> — the FK is soft
+          <i>by design</i>. Source order: the world's <b>bible book</b> <code>location</code> entities, then each member book's glossary.
+          <span style="color:var(--warning)">OQ-2 — verify the world-bible model before M8b.3.</span>
+        </div>
+
+        <div class="field" style="grid-template-columns:66px 1fr"><label>Position</label>
+          <div class="coord">
+            <div class="cbox"><span>x</span><b>0.524</b></div>
+            <div class="cbox"><span>y</span><b>0.631</b></div>
+          </div>
+        </div>
+        <div class="hint" style="margin:-4px 0 12px 0">
+          <span class="badge b-lww">LWW</span> <b>No OCC on a positional write — this is a decision, not an omission.</b>
+          A drag is a continuous gesture; OCC over a drag produces a <b>412 storm</b> and self-conflicts on the second rapid edit of the
+          same object (<code>instant-commit-control-over-occ-entity</code>). Instead: <b>last-write-wins</b>, with the FE
+          <b>serializing writes per marker id</b> (chain the next PATCH off the previous one's promise), and a debounced save that
+          <b>captures WHICH marker it is saving</b> (<code>debounced-write-must-bind-its-target-entity</code>).
+          <code>updated_at</code> is added for observability only.
+        </div>
+
+        <div class="hint" style="border-top:1px solid var(--border);padding-top:10px">
+          <b>A PATCH against a deleted marker returns 404</b> ⇒ the FE drops its optimistic pin and refetches.
+          <b>It must not re-create it.</b>
+        </div>
+      </div>
+      <div class="insp-foot">
+        <span class="mono" style="font-size:10px;color:var(--muted-fg);margin-right:auto">updated 2s ago</span>
+        <button class="btn danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      12 markers · 3 regions · <b style="color:var(--muted-fg);font-weight:500">every child route JOINs <code class="mono" style="font-size:9.5px">world_maps</code> and gates on the ROW's parent</b> — a marker from another map under your map id must <b style="color:var(--muted-fg);font-weight:500">404, not patch</b>
+    </div>
+    <span class="mono">GET /v1/worlds/maps/{id} · 1 round-trip</span>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>The scope gate is the trap this repo has already been bitten by.</b> Every child route must verify <b>both</b>
+  <code>world_maps.owner_user_id == caller</code> <b>and</b> <code>marker.map_id == {map_id}</code> — expressed in SQL exactly as the
+  existing deletes do (<code>mcp_maps.go:432</code>: <code>UPDATE … FROM world_maps wm WHERE m.id=$1 AND m.map_id=wm.id AND
+  wm.owner_user_id=$2</code>), treating <code>RowsAffected() == 0</code> as the <b>uniform not-found</b>.
+  A handler that trusts a bare <code>marker_id</code> is a <b>tenancy defect</b>, not a shortcut
+  (<code>gate-must-derive-scope-from-the-loaded-row</code>). Markers and regions carry <b>no owner column</b> — their tier is inherited
+  through <code>map_id → world_maps.owner_user_id</code>, so the JOIN <i>is</i> the tenancy boundary.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ no base image  +  ⑥ the 412
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ No base image yet <span class="tag">markers can still exist</span> &nbsp;·&nbsp; ⑥ Rename → 412 <span class="tag">the only OCC here</span></h2>
+<p class="sub">
+  The map row is authored <b>independently of the blob</b> — you can create a map, add markers, and upload the image later (or replace it
+  at a different resolution, which is exactly why coords are relative). And the <b>one</b> place OCC belongs: a rename is rare,
+  human-paced and conflict-worthy, so it gets <code>If-Match</code> — <b>428</b> without it, <b>412 + the current row</b> on mismatch.
+</p>
+
+<div class="stack">
+<div class="panel" style="width:640px;height:400px">
+  <div class="panel-head"><span>World Map — Hải đồ · no base image</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="canvas-wrap" style="flex:1">
+    <div style="position:absolute;inset:0;background:var(--background)"></div>
+    <!-- the two markers that exist WITHOUT an image -->
+    <div class="pin" style="left:33%;top:40%;opacity:.85"><div class="head"></div><div class="lbl">Cửa Muối</div></div>
+    <div class="pin" style="left:62%;top:62%;opacity:.85"><div class="head"></div><div class="lbl">舟中人</div></div>
+    <div class="dropzone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+      <h4>Drop a base image, or click to choose</h4>
+      <p>
+        <b style="color:var(--foreground)">The 2 markers above already exist.</b> The row is authored independently of the blob —
+        a map with pins and no picture is a legitimate state, not an error.
+      </p>
+      <button class="btn primary">Upload base image</button>
+      <div class="fmt">png · jpg · gif · webp &nbsp;·&nbsp; 413 too large · 415 unsupported · 503 no MinIO</div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      ⚠ <b style="color:var(--muted-fg);font-weight:500">WebP stores NULL pixel dims</b> (no stdlib decoder — <code class="mono">maps_image.go:16-19</code>). Harmless for relative coords — but the inspector must never render <b style="color:var(--muted-fg);font-weight:500">"0 × 0"</b>
+    </div>
+    <span class="mono">POST /v1/worlds/maps/{id}/image</span>
+  </div>
+</div>
+
+<div class="panel" style="width:400px;height:400px">
+  <div class="panel-head"><span style="color:var(--info)">Rename — 412 Precondition Failed</span></div>
+  <div class="body" style="padding:12px">
+    <div style="margin-bottom:11px">
+      <div class="hint" style="margin-bottom:5px"><b>Map name</b></div>
+      <input class="inp" value="Bản đồ Bắc Vực (bản nháp)" style="border-color:var(--info)" />
+    </div>
+
+    <div class="conflict">
+      <b>Renamed on another device.</b><br />
+      Its name is now <b>“Bắc Vực — bản chính thức”</b> (v5).<br />
+      <span class="mono">If-Match: 4 · server has version 5</span><br /><br />
+      Re-apply your change, or keep theirs.
+      <div style="display:flex;gap:7px;margin-top:9px">
+        <button class="btn sm">Keep theirs</button>
+        <button class="btn sm primary">Re-apply mine</button>
+      </div>
+    </div>
+
+    <div class="hint" style="margin-top:12px;line-height:1.7">
+      <b>428 without an <code>If-Match</code>. 412 WITH THE CURRENT ROW AS THE BODY</b> — the same contract knowledge-service's entity
+      PATCH already uses (<code>entities.py:1035</code>), so the panel <b>resets its baseline from the 412 body</b>.
+      <span class="strike">Never re-GET.</span> <span class="strike">Never retry blindly.</span>
+    </div>
+
+    <div class="hint" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--border);line-height:1.7">
+      <b>And this is the ONLY OCC in the design.</b> <code>world_maps</code> gains a <code>version INT</code>; markers and regions
+      <b>deliberately do not</b>. Written here so a reviewer does not "add OCC for consistency" and re-create the 412 storm on every drag.
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span class="mono">PATCH /v1/worlds/maps/{id}</span>
+    <span class="badge b-occ">If-Match</span>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ world-map OPENED BARE on a book with no world — the degraded path
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ 🔴 <span class="tag new">world-map</span> opened <span class="tag">BARE</span> — the state the happy-path smoke never touches</h2>
+<p class="sub">
+  The DoD has the agent call <code>ui_open_studio_panel {panel_id:"world-map"}</code> with <b>no params</b>. On a fresh book that
+  resolves to <b>nothing</b> — no world, therefore no maps, therefore no map to select. <b>"It always lands somewhere real" is only
+  true if this is drawn</b>, and a blank panel behind a <code>shown:true</code> is the exact
+  <code>silent-success-is-a-bug</code> class. So <code>world-map</code> <b>reuses <code>world</code>'s link-to-a-world block</b>
+  rather than forking a second empty state — the panel that <i>can</i> fix the problem is one click away, in the dock, not a route hop.
+</p>
+
+<div class="stack">
+  <div class="panel" style="width:640px;height:290px">
+    <div class="panel-head"><span>World Map — Nghịch thiên</span>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+    </div>
+    <div class="body">
+      <div class="empty-block">
+        <svg class="ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--warning);opacity:.8"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M12 8v8M8 12h8"/></svg>
+        <h4>There is no map here yet — because there is no world yet.</h4>
+        <p style="max-width:400px">
+          Maps belong to a <b style="color:var(--foreground)">world</b>, and <b style="color:var(--foreground)">Nghịch thiên</b>
+          isn't in one. This is the <b style="color:var(--foreground)">same block the <code>world</code> panel renders</b> —
+          reused, not forked.
+        </p>
+        <div style="display:flex;gap:7px">
+          <button class="btn primary sm">Link to a world</button>
+          <button class="btn sm">Create a world</button>
+        </div>
+        <div class="hint" style="max-width:400px;margin-top:4px">
+          The other two dead ends get the same treatment: a <b>foreign</b> world → the uniform no-access card (no oracle);
+          a world with <b>no maps</b> → the Maps empty state with a focused <code>+ New map</code>; a
+          <code>mapId</code> that <b>404s</b> → drop the param, fall back to the rail, and say <b>"that map is gone"</b> —
+          <b style="color:var(--destructive)">never</b> silently select a different map as if it were the one asked for.
+        </div>
+      </div>
+    </div>
+    <div class="panel-foot">
+      <span class="mono">ui_open_studio_panel {panel_id:"world-map"} · no params</span>
+      <span class="mono" style="color:var(--warning)">rendered, not blank</span>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>This state is a DoD line, not a nicety.</b> The live smoke must open <code>world-map</code> bare <b>on a book that is in no
+  world</b> and assert this block renders. Every other E2E leg in §9 walks the happy path and would stay green while the agent's
+  very first call on a fresh book returned <code>shown:true</code> over an empty panel — which is how
+  <code>agent-gui-loop-needs-live-browser-smoke-not-raw-stream</code> got written in the first place.
+</div>
+
+<div class="callout good">
+  <b>MCP parity is not optional, and 8b would otherwise CREATE an inverse gap (GG-2).</b> Ship <b>BE-15m</b> in the same slice:
+  <code>world_map_update</code> · <code>world_map_update_marker</code> · <code>world_map_update_region</code> — Tier-A, reversible (the
+  inverse patch with the prior values, stated in the description as the existing tools do). Without them the human could move a pin and
+  <b>the agent could not</b>, which is exactly the asymmetry this whole wave exists to close, just pointing the other way.
+  ⚠ Go MCP args carry <code>jsonschema</code> tags — any closed set added later must ship as an <code>enum</code>.
+</div>
+
+<div class="callout">
+  <b>Registration (GG-8) — the guards go 57 == 57 == 57 → 59 == 59 == 59.</b> Two panel ids (<code>world</code>, <code>world-map</code>)
+  across nine files: the two panel components · <code>catalog.ts</code> (<code>category</code> <b>and</b> <code>guideBodyKey</code> are both
+  mandatory) · <code>en/studio.json</code> + 17 locales via <code>scripts/i18n_translate.py</code> (never hand-written) ·
+  <code>frontend_tools.py</code> (the <code>panel_id</code> <b>enum</b> <i>and</i> the description prose — that gloss is the model's only
+  hint) · <code>contracts/frontend-tools.contract.json</code> (<b>never hand-edit — regenerate</b> with
+  <code>WRITE_FRONTEND_CONTRACT=1 pytest</code>, committed in the same commit) · <code>studioLinks.ts</code>
+  <b>+ its <code>StudioLinkContext</code> + <code>KgOverviewPanel.tsx:44</code> + <code>studioLinks.test.ts</code></b>
+  (three files, not one — see the rule callout above) ·
+  and a new <code>worldEffects.ts</code> Lane-B handler — matching <b>writes only</b>
+  (<code>/^world_(map_)?(create|delete|update|rename|add_marker|…)/</code>). <b>Reads must NOT match</b>: a chatty
+  <code>world_map_get</code> loop would thrash the cache on every agent turn.
+  🔴 <b>And a THIRD guard nobody's checklist names:</b> <code>panels/__tests__/dockablePanelHygiene.test.ts</code> scans every
+  <code>.tsx</code> under <code>panels/**</code> for <b>DOCK-7</b> (<code>useNavigate</code>/<code>useParams</code>/<code>&lt;Link&gt;</code>)
+  and <b>DOCK-9</b> (a hand-rolled <code>fixed</code>+<code>inset-0</code> overlay). Both new panels trip it if built naively — the
+  "Open the full world workspace" link and five dialog surfaces. Put it in the verify block.
+</div>
+
+<div class="callout warn">
+  <b><code>updated_at</code> must be READ, or this spec ships a write-only column.</b> The migration adds
+  <code>updated_at</code> to <code>map_markers</code> + <code>map_regions</code> — and "for observability" is <b>not a consumer</b>.
+  A stored-but-unread field is the bug class CLAUDE.md bans, and a PATCH that forgets to bump it is a bug no test would catch.
+  So, in the same slice: every PATCH sets <code>updated_at = now()</code>; <b>BE-15c returns it on each marker and region</b>;
+  the inspector renders it (<i>"edited 4m ago"</i>) — which is <b>also what makes the drag-PATCH visibly LAND</b> rather than
+  merely repaint. A Go test asserts the timestamp <b>advances</b> across a PATCH.
+  <i>(<code>world_maps</code> already has <code>updated_at</code> — <code>migrate.go:409</code>. Only <code>version</code> is new there.)</i>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b> It does <b>not</b> port <code>features/composition/components/WorldMap.tsx</code> — the
+  <i>place-graph</i> over knowledge entities on the legacy <code>ChapterEditorPage</code>. That is a <b>third, unrelated "world map"</b>
+  (a React-Flow node canvas backed by <code>composition_work.settings.world_map</code>), and plan 30 §10 already refuted the claim that it
+  <i>is</i> book-service's world maps. It stays where it is this wave. It is also — today — the <b>only human writer of
+  <code>knowledgeApi.createEntity</code></b>, which is precisely why slice <b>8a</b> must land before that page can be retired.
+</div>
+
+<script>
+  /* the one interactive bit: arm a canvas tool */
+  document.querySelectorAll('.cv-tools .tool').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.cv-tools .tool').forEach(o => o.classList.remove('on'));
+    t.classList.add('on');
+  }));
+</script>
+</body>
+</html>

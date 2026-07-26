@@ -28,5 +28,11 @@
   "index_drafts_error": "Lập chỉ mục bản nháp thất bại.",
   "copy": "Sao chép",
   "copied": "Đã sao chép",
-  "degraded": "Một số kết quả có thể bị giới hạn — một backend tìm kiếm không khả dụng."
+  "degraded": "Một số kết quả có thể bị giới hạn — một backend tìm kiếm không khả dụng.",
+  "content_view": {
+    "chapter_label": "Ch. {{n}}",
+    "block_position": "khối {{n}}",
+    "passage_position": "đoạn {{n}}",
+    "jump": "Đến nguồn"
+  }
 }

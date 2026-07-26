@@ -1,0 +1,49 @@
+{
+  "anonymous": "ไม่ระบุชื่อ",
+  "joined": "เข้าร่วมเมื่อ {{date}}",
+  "followers": "ผู้ติดตาม",
+  "following": "กำลังติดตาม",
+  "follow": "ติดตาม",
+  "unfollow": "กำลังติดตาม",
+  "editProfile": "แก้ไขโปรไฟล์",
+  "loading": "กำลังโหลด...",
+  "noBooks": "ยังไม่มีหนังสือที่ตีพิมพ์",
+  "noTranslations": "ยังไม่มีผลงานแปล",
+  "errorLoading": "โหลดโปรไฟล์ไม่สำเร็จ",
+  "followError": "ติดตามผู้ใช้ไม่สำเร็จ",
+  "unfollowError": "เลิกติดตามผู้ใช้ไม่สำเร็จ",
+  "userNotFound": "ไม่พบผู้ใช้",
+  "achievements": "ความสำเร็จ",
+  "chapters": "ตอน",
+  "readers": "ผู้อ่าน",
+  "recentActivity": "กิจกรรมล่าสุด",
+  "last7d": "7 วันที่ผ่านมา",
+  "last30d": "30 วันที่ผ่านมา",
+  "translationLanguages": "ภาษาที่ใช้แปล",
+  "stats": {
+    "books": "หนังสือ",
+    "chaptersTranslated": "ตอนที่แปลแล้ว",
+    "totalReaders": "จำนวนผู้อ่านทั้งหมด",
+    "followers": "ผู้ติดตาม",
+    "totalTranslations": "จำนวนผลงานแปลทั้งหมด",
+    "languages": "ภาษา"
+  },
+  "achievement": {
+    "booksPublished": "ตีพิมพ์แล้ว {{count}} เล่ม",
+    "booksPublished_other": "ตีพิมพ์แล้ว {{count}} เล่ม",
+    "kReaders": "ผู้อ่าน {{count}}K+",
+    "hundredReaders": "ผู้อ่าน 100+",
+    "followers": "{{count}} ผู้ติดตาม",
+    "multiLangTranslator": "นักแปล {{count}} ภาษา",
+    "fiftyChapters": "แปลแล้ว 50+ ตอน"
+  },
+  "loadError": "โหลดหนังสือไม่สำเร็จ",
+  "noWiki": "ยังไม่มีการร่วมเขียน Wiki",
+  "wikiError": "โหลดข้อมูล Wiki ไม่สำเร็จ",
+  "untitled": "ไม่มีชื่อเรื่อง",
+  "tabs": {
+    "books": "หนังสือ",
+    "translations": "ผลงานแปล",
+    "wiki": "การร่วมเขียน Wiki"
+  }
+}

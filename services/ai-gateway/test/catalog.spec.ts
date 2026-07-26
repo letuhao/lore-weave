@@ -1,8 +1,9 @@
 import { computeCatalog, ProviderResult } from '../src/federation/catalog.js';
-import { ProviderConfig } from '../src/config/config.js';
+import { EXTRA_PREFIX_MAP, ProviderConfig } from '../src/config/config.js';
 
 const knowledge: ProviderConfig = { name: 'knowledge', mcpUrl: 'http://k/mcp' };
 const glossary: ProviderConfig = { name: 'glossary', mcpUrl: 'http://g/mcp' };
+const book: ProviderConfig = { name: 'book', mcpUrl: 'http://b/mcp', prefix: 'book_' };
 
 const tool = (name: string, schema: unknown = { type: 'object' }) => ({
   name,
@@ -58,5 +59,168 @@ describe('computeCatalog', () => {
     const c = computeCatalog([]);
     expect(c.toolList).toEqual([]);
     expect(c.partial).toBe(false);
+    expect(c.providers).toEqual([]);
+  });
+
+  it('drops + warns a mis-prefixed tool, keeps the correctly-prefixed one (C-GW)', () => {
+    const warn = jest.fn();
+    const c = computeCatalog(
+      [{ provider: book, tools: [tool('book_create'), tool('memory_search')] }],
+      warn,
+    );
+    expect(c.toolList.map((t) => t.name)).toEqual(['book_create']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('memory_search'));
+  });
+
+  it('keeps tools matching ANY of a provider\'s prefixes (memory_ + kg_ + story_) — drops the rest (HIGH-1)', () => {
+    const warn = jest.fn();
+    const knowledgeMulti: ProviderConfig = {
+      name: 'knowledge',
+      mcpUrl: 'http://k/mcp',
+      prefix: 'memory_',
+      extraPrefixes: ['kg_', 'story_'],
+    };
+    const c = computeCatalog(
+      [
+        {
+          provider: knowledgeMulti,
+          // story_search = the universal manuscript find; it was silently dropped in
+          // prod until story_ was added to knowledge's extraPrefixes. Pin that it survives.
+          tools: [tool('memory_search'), tool('kg_graph_query'), tool('kg_schema_edit'), tool('story_search'), tool('glossary_x')],
+        },
+      ],
+      warn,
+    );
+    // all three namespaces survive; the foreign-namespace tool is dropped + warned
+    expect(c.toolList.map((t) => t.name)).toEqual(['kg_graph_query', 'kg_schema_edit', 'memory_search', 'story_search']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('glossary_x'));
+  });
+
+  it('an admin provider declaring kg_ keeps kg_admin_* tools (MED-2 mechanism)', () => {
+    const knowledgeAdmin: ProviderConfig = {
+      name: 'knowledge-admin',
+      mcpUrl: 'http://k/mcp/admin',
+      prefix: 'kg_',
+    };
+    const c = computeCatalog(
+      [{ provider: knowledgeAdmin, tools: [tool('kg_admin_template_read'), tool('kg_admin_propose_template')] }],
+      jest.fn(),
+    );
+    expect(c.toolList.map((t) => t.name)).toEqual(['kg_admin_propose_template', 'kg_admin_template_read']);
+  });
+
+  it('does not police a provider with no prefix (legacy/unmapped)', () => {
+    const c = computeCatalog([{ provider: knowledge, tools: [tool('anything_goes')] }], jest.fn());
+    expect(c.toolList.map((t) => t.name)).toEqual(['anything_goes']);
+  });
+
+  it('reports per-provider availability — a down provider reads available:false (H10)', () => {
+    const c = computeCatalog([
+      { provider: knowledge, tools: [tool('memory_search')] },
+      { provider: glossary, error: new Error('down') },
+    ]);
+    expect(c.providers).toEqual([
+      { name: 'knowledge', available: true },
+      { name: 'glossary', available: false },
+    ]);
+    expect(c.partial).toBe(true);
+  });
+});
+
+// Track D Wave 0 (0d) — the C-GW prefix gate is a *silent* warn-and-drop, so the
+// universal `web_search` tool hosted on provider-registry (logical name `settings`)
+// needs `web_` in EXTRA_PREFIX_MAP.settings or it vanishes from the federated catalog.
+// This is exactly how `story_search` was once lost (see config.ts EXTRA_PREFIX_MAP docs).
+describe('C-GW prefix gate — universal `web_search` on the settings provider', () => {
+  const settingsNoExtra: ProviderConfig = { name: 'settings', mcpUrl: 'http://p/mcp', prefix: 'settings_' };
+  const settingsWithWeb: ProviderConfig = {
+    name: 'settings',
+    mcpUrl: 'http://p/mcp',
+    prefix: 'settings_',
+    extraPrefixes: ['web_'],
+  };
+
+  it('WITHOUT `web_` the gate silently drops web_search (the failure mode)', () => {
+    const c = computeCatalog([
+      { provider: settingsNoExtra, tools: [tool('settings_list_models'), tool('web_search')] },
+    ]);
+    expect(c.toolList.map((t) => t.name)).toEqual(['settings_list_models']);
+    expect(c.toolToProvider.get('web_search')).toBeUndefined();
+  });
+
+  it('WITH `web_` the tool survives and routes to provider-registry', () => {
+    const c = computeCatalog([
+      { provider: settingsWithWeb, tools: [tool('settings_list_models'), tool('web_search')] },
+    ]);
+    expect(c.toolList.map((t) => t.name)).toContain('web_search');
+    expect(c.toolToProvider.get('web_search')).toBe(settingsWithWeb);
+  });
+
+  it('EXTRA_PREFIX_MAP.settings declares `web_` (the real config, not a fixture)', () => {
+    expect(EXTRA_PREFIX_MAP.settings).toContain('web_');
+  });
+});
+
+// ── Outage visibility (2026-07-23) — federation degradation tracking ─────────
+//
+// A provider can vanish from the catalog while the platform keeps serving. The only
+// evidence was a WARN reprinted identically every refresh: un-alertable, and it can't
+// date the outage. The glossary de-federation ran undetected until a live E2E tripped
+// over it. These pin the SUSTAINED-not-instant threshold and the transition semantics.
+describe('federationStatus — degradation is sustained, not instant', () => {
+  const { FederationService } = require('../src/federation/federation.service.js');
+
+  function svcWithRefreshes(partialSequence: boolean[], threshold = 3) {
+    const svc: any = Object.create(FederationService.prototype);
+    svc.consecutivePartial = 0;
+    svc.lastAvailability = new Map();
+    svc.log = { log: () => {}, warn: () => {}, error: () => {} };
+    (svc as any).cfg = { federationDegradedAfterRefreshes: threshold, providers: [] };
+    for (const partial of partialSequence) {
+      svc.state = { partial, providers: [{ name: 'glossary', available: !partial }], toolList: [] };
+      svc.trackAvailabilityTransitions();
+    }
+    return svc;
+  }
+
+  it('a single blip is NOT degraded — a routine provider restart must not page anyone', () => {
+    const s = svcWithRefreshes([true]).federationStatus();
+    expect(s.partial).toBe(true);
+    expect(s.degraded).toBe(false);
+    expect(s.consecutivePartialRefreshes).toBe(1);
+  });
+
+  it('a SUSTAINED partial catalog is degraded once the threshold is met', () => {
+    const s = svcWithRefreshes([true, true, true]).federationStatus();
+    expect(s.degraded).toBe(true);
+    expect(s.unavailableProviders).toEqual(['glossary']);
+    expect(typeof s.partialSinceMs).toBe('number');
+  });
+
+  it('recovery clears the streak and the outage start time', () => {
+    const s = svcWithRefreshes([true, true, true, false]).federationStatus();
+    expect(s.degraded).toBe(false);
+    expect(s.consecutivePartialRefreshes).toBe(0);
+    expect(s.partialSinceMs).toBeUndefined();
+  });
+
+  it('logs a provider LOSS at error level, and only on the TRANSITION', () => {
+    const seen: string[] = [];
+    const svc: any = Object.create(FederationService.prototype);
+    svc.consecutivePartial = 0;
+    svc.lastAvailability = new Map();
+    svc.log = { log: (m: string) => seen.push(`LOG ${m}`), warn: () => {}, error: (m: string) => seen.push(`ERR ${m}`) };
+    svc.cfg = { federationDegradedAfterRefreshes: 3, providers: [] };
+    for (const available of [true, false, false, false, true]) {
+      svc.state = { partial: !available, providers: [{ name: 'glossary', available }], toolList: [] };
+      svc.trackAvailabilityTransitions();
+    }
+    // 5 refreshes, but only 2 TRANSITIONS — not 4 repeated lines.
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toContain('ERR');
+    expect(seen[0]).toContain('UNAVAILABLE');
+    expect(seen[1]).toContain('RECOVERED');
   });
 });

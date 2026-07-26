@@ -14,6 +14,7 @@ hard violations, no revise), NEVER blocks a generate (F1).
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
@@ -40,6 +41,7 @@ async def run_canon_reflect(
     prompt_estimate: int, max_output_tokens: int,
     max_iters: int = 1, reasoning_effort: str | None = None,
     trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, ReflectResult, int]:
     """Run the canon check→revise loop on `draft`. Returns
     (final_text, ReflectResult, revise_output_tokens)."""
@@ -73,6 +75,7 @@ async def run_canon_reflect(
             model_source=str(judge_source) if distinct else "",
             model_ref=str(judge_ref) if distinct else "",
             source_language=source_language, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
 
     revise_out_tokens = 0

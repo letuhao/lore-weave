@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoreWeave — Mobile home / super-app shell (draft)</title>
+<style>
+/* ============================================================================
+   LoreWeave — the PLATFORM mobile home + app shell (draft).
+   The platform is a super app: one identity, several workflows (write · worlds ·
+   translate · explore · read · assistant · coaching). On a phone the Assistant is
+   the front door, so it's the hero card AND the raised centre tab.
+   Honors the house system (draft.css): warm near-black, amber primary, teal accent,
+   Iowan serif. Adds a warm-paper light theme. Self-contained · draft only.
+   ============================================================================ */
+:root{
+  --bg:hsl(25 8% 8%); --bg-2:hsl(25 9% 5%);
+  --card:hsl(25 7% 11%); --card-2:hsl(25 7% 15%);
+  --fg:hsl(40 30% 95%); --muted-fg:hsl(30 9% 68%);
+  --primary:hsl(35 85% 56%); --primary-soft:hsl(35 85% 55% / .16); --primary-fg:hsl(25 10% 6%);
+  --accent:hsl(170 44% 58%); --accent-soft:hsl(170 40% 45% / .2);
+  --violet:hsl(255 45% 66%); --violet-soft:hsl(255 45% 60% / .18);
+  --border:hsl(25 6% 19%); --border-2:hsl(25 6% 27%);
+  --danger:hsl(4 66% 63%);
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+  --page:hsl(25 9% 4%); --page-fg:hsl(40 20% 90%); --page-muted:hsl(30 7% 62%);
+  --frame:#0b0a09; --frame-edge:hsl(25 8% 22%);
+}
+@media (prefers-color-scheme: light){ :root{
+  --bg:hsl(38 34% 96%); --bg-2:hsl(38 30% 92%);
+  --card:hsl(40 45% 99%); --card-2:hsl(38 28% 93%);
+  --fg:hsl(24 16% 14%); --muted-fg:hsl(28 11% 33%);
+  --primary:hsl(30 84% 40%); --primary-soft:hsl(33 82% 50% / .16); --primary-fg:hsl(40 60% 98%);
+  --accent:hsl(172 50% 28%); --accent-soft:hsl(172 42% 40% / .16);
+  --violet:hsl(255 42% 46%); --violet-soft:hsl(255 45% 55% / .14);
+  --border:hsl(35 16% 85%); --border-2:hsl(35 14% 76%);
+  --danger:hsl(4 64% 44%);
+  --page:hsl(36 22% 87%); --page-fg:hsl(24 14% 18%); --page-muted:hsl(28 8% 36%);
+  --frame:#e7e2d7; --frame-edge:hsl(35 14% 70%);
+}}
+:root[data-theme="light"]{ --bg:hsl(38 34% 96%); --bg-2:hsl(38 30% 92%); --card:hsl(40 45% 99%); --card-2:hsl(38 28% 93%); --fg:hsl(24 16% 14%); --muted-fg:hsl(28 11% 33%); --primary:hsl(30 84% 40%); --primary-soft:hsl(33 82% 50% / .16); --primary-fg:hsl(40 60% 98%); --accent:hsl(172 50% 28%); --accent-soft:hsl(172 42% 40% / .16); --violet:hsl(255 42% 46%); --violet-soft:hsl(255 45% 55% / .14); --border:hsl(35 16% 85%); --border-2:hsl(35 14% 76%); --danger:hsl(4 64% 44%); --page:hsl(36 22% 87%); --page-fg:hsl(24 14% 18%); --page-muted:hsl(28 8% 36%); --frame:#e7e2d7; --frame-edge:hsl(35 14% 70%); }
+:root[data-theme="dark"]{ --bg:hsl(25 8% 8%); --bg-2:hsl(25 9% 5%); --card:hsl(25 7% 11%); --card-2:hsl(25 7% 15%); --fg:hsl(40 30% 95%); --muted-fg:hsl(30 9% 68%); --primary:hsl(35 85% 56%); --primary-soft:hsl(35 85% 55% / .16); --primary-fg:hsl(25 10% 6%); --accent:hsl(170 44% 58%); --accent-soft:hsl(170 40% 45% / .2); --violet:hsl(255 45% 66%); --violet-soft:hsl(255 45% 60% / .18); --border:hsl(25 6% 19%); --border-2:hsl(25 6% 27%); --danger:hsl(4 66% 63%); --page:hsl(25 9% 4%); --page-fg:hsl(40 20% 90%); --page-muted:hsl(30 7% 62%); --frame:#0b0a09; --frame-edge:hsl(25 8% 22%); }
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer}
+body{font-family:var(--sans);background:var(--page);color:var(--page-fg);line-height:1.5;-webkit-font-smoothing:antialiased;background-image:radial-gradient(hsl(35 85% 55% / .05) 1px,transparent 1px);background-size:26px 26px}
+.serif{font-family:var(--serif);font-weight:600;letter-spacing:-.01em}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+
+.intro{max-width:940px;margin:0 auto;padding:44px 22px 6px}
+.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--primary);font-weight:700}
+.intro h1{font-family:var(--serif);font-size:34px;line-height:1.1;margin:10px 0 6px;text-wrap:balance;color:var(--page-fg)}
+.intro .lede{max-width:66ch;color:var(--page-muted);font-size:15.5px}
+.intro .lede b{color:var(--page-fg);font-weight:600}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.ip{border:1px solid var(--frame-edge);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--page-muted)}
+.ip b{color:var(--page-fg)}
+
+.toggle{position:fixed;top:16px;right:16px;z-index:60;display:flex;gap:2px;background:color-mix(in srgb,var(--page) 70%,transparent);border:1px solid var(--frame-edge);border-radius:999px;padding:3px;backdrop-filter:blur(8px)}
+.toggle button{border:0;background:transparent;color:var(--page-muted);font-size:12.5px;padding:7px 13px;border-radius:999px;min-height:34px}
+.toggle button.on{background:var(--primary);color:var(--primary-fg);font-weight:600}
+
+.strip{display:flex;gap:30px;overflow-x:auto;scroll-snap-type:x proximity;padding:24px 22px 70px;align-items:flex-start;scrollbar-width:thin;scrollbar-color:var(--frame-edge) transparent}
+.strip::-webkit-scrollbar{height:10px}.strip::-webkit-scrollbar-thumb{background:var(--frame-edge);border-radius:99px}
+.slide{scroll-snap-align:center;flex:0 0 auto;width:352px;display:flex;flex-direction:column;gap:14px}
+.cap{padding:0 6px}
+.cap .n{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);font-weight:700}
+.cap h3{font-family:var(--serif);font-size:18px;margin:3px 0 4px;color:var(--page-fg)}
+.cap p{font-size:12.5px;color:var(--page-muted);line-height:1.5}
+.cap .why{margin-top:7px;display:flex;gap:7px;font-size:11.5px;color:var(--page-muted)}
+.cap .why b{color:var(--accent);font-weight:600;flex:none}
+
+.device{width:352px;background:var(--frame);border-radius:46px;padding:11px;box-shadow:0 30px 60px -20px rgba(0,0,0,.55),0 0 0 1px var(--frame-edge);position:relative}
+.screen{position:relative;height:740px;border-radius:36px;overflow:hidden;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;font-size:14px}
+.island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:104px;height:26px;background:#000;border-radius:99px;z-index:40}
+:root[data-theme="light"] .island{background:#1a1712}
+.statusbar{height:44px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 6px;font-size:13px;font-weight:600}
+.statusbar .icons{display:flex;gap:6px;align-items:center}.statusbar svg{width:16px;height:16px}
+.homebar{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:120px;height:5px;border-radius:99px;background:var(--fg);opacity:.28;z-index:45}
+.appbody{flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.scroll{flex:1;overflow:hidden;padding:8px 16px 14px}
+
+/* top bar */
+.topbar{flex:none;display:flex;align-items:center;gap:11px;padding:6px 14px 10px 16px}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:800;font-family:var(--serif);flex:none}
+.topbar .hi{flex:1;min-width:0}
+.topbar .hi .g{font-family:var(--serif);font-size:17px;line-height:1.1}
+.topbar .hi .d{font-size:11.5px;color:var(--muted-fg)}
+.tibtn{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--card);border:1px solid var(--border);color:var(--fg);flex:none;position:relative}
+.tibtn svg{width:20px;height:20px}
+.tibtn .n{position:absolute;top:-2px;right:-2px;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:var(--accent);color:var(--bg);font-size:9px;font-weight:800;display:grid;place-items:center}
+
+.sech{display:flex;align-items:baseline;justify-content:space-between;margin:18px 2px 9px}
+.sech .t{font-size:13px;font-weight:700}
+.sech .m{font-size:11.5px;color:var(--muted-fg)}
+.muted{color:var(--muted-fg)}
+
+/* assistant hero */
+.hero{border-radius:18px;padding:16px;background:linear-gradient(150deg,var(--primary-soft),var(--accent-soft));border:1px solid var(--border);position:relative;overflow:hidden}
+.hero .badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--primary);letter-spacing:.04em;text-transform:uppercase}
+.hero .badge svg{width:14px;height:14px}
+.hero h2{font-family:var(--serif);font-size:20px;line-height:1.15;margin:8px 0 4px}
+.hero p{font-size:13px;color:var(--muted-fg);max-width:30ch}
+.hero .row{display:flex;align-items:center;gap:10px;margin-top:14px}
+.talkbtn{display:inline-flex;align-items:center;gap:8px;background:var(--primary);color:var(--primary-fg);border:0;border-radius:12px;padding:12px 16px;font-size:14px;font-weight:600;min-height:48px}
+.talkbtn svg{width:17px;height:17px}
+.micmini{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--bg) 55%,transparent);border:1px solid var(--border);color:var(--fg)}
+.micmini svg{width:20px;height:20px}
+.hero .status{font-size:11.5px;color:var(--muted-fg);margin-top:11px;display:inline-flex;align-items:center;gap:6px}
+.hero .status .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+
+/* continue cards (horizontal) */
+.hscroll{display:flex;gap:11px;overflow-x:hidden;padding-bottom:2px}
+.ccard{flex:0 0 168px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;text-align:left}
+.ccard .kind{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.ccard .kind svg{width:13px;height:13px}
+.ccard.write .kind{color:var(--primary)} .ccard.tr .kind{color:var(--accent)} .ccard.world .kind{color:var(--violet)}
+.ccard .ct{font-family:var(--serif);font-size:14.5px;line-height:1.2;margin:8px 0 3px}
+.ccard .cm{font-size:11.5px;color:var(--muted-fg)}
+.ccard .bar{height:5px;border-radius:99px;background:color-mix(in srgb,var(--muted-fg) 22%,transparent);margin-top:9px;overflow:hidden}
+.ccard .bar>span{display:block;height:100%;border-radius:99px}
+.ccard.write .bar>span{background:var(--primary)} .ccard.tr .bar>span{background:var(--accent)}
+
+/* app launcher grid */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:15px;padding:14px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;min-height:82px}
+.tile .ti{width:38px;height:38px;border-radius:11px;display:grid;place-items:center}
+.tile .ti svg{width:20px;height:20px}
+.tile .tl{font-size:12px;font-weight:600}
+.i-write{background:var(--primary-soft);color:var(--primary)} .i-world{background:var(--violet-soft);color:var(--violet)}
+.i-tr{background:var(--accent-soft);color:var(--accent)} .i-explore{background:var(--accent-soft);color:var(--accent)}
+.i-read{background:var(--primary-soft);color:var(--primary)} .i-coach{background:var(--violet-soft);color:var(--violet)}
+.i-studio{background:var(--primary-soft);color:var(--primary)} .i-wiki{background:var(--accent-soft);color:var(--accent)}
+.i-jobs{background:var(--card-2);color:var(--muted-fg)} .i-bill{background:var(--card-2);color:var(--muted-fg)} .i-set{background:var(--card-2);color:var(--muted-fg)}
+
+/* activity feed */
+.feed{display:flex;flex-direction:column}
+.frow{display:flex;gap:11px;align-items:flex-start;padding:12px 2px;border-bottom:1px solid var(--border);text-align:left;width:100%}
+.frow .fi{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none}
+.frow .fi svg{width:18px;height:18px}
+.frow .fb{flex:1;min-width:0}
+.frow .fb .ft{font-size:13px;line-height:1.4}
+.frow .fb .ft b{font-weight:600}
+.frow .fb .fm{font-size:11px;color:var(--muted-fg);margin-top:2px}
+.frow .unread{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;margin-top:14px}
+
+/* you / account */
+.acard{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.arow{display:flex;align-items:center;gap:12px;padding:14px;width:100%;text-align:left;border:0;background:transparent;border-bottom:1px solid var(--border)}
+.arow:last-child{border-bottom:0}
+.arow .ai{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--card-2);color:var(--fg);flex:none}
+.arow .ai svg{width:17px;height:17px}
+.arow .at{flex:1;min-width:0}
+.arow .at .n{font-size:13.5px;font-weight:500}
+.arow .at .s{font-size:11.5px;color:var(--muted-fg)}
+.arow .chev{color:var(--muted-fg)}.arow .chev svg{width:17px;height:17px}
+.planbar{height:7px;border-radius:99px;background:color-mix(in srgb,var(--muted-fg) 22%,transparent);overflow:hidden;margin-top:8px}
+.planbar>span{display:block;height:100%;background:var(--primary);border-radius:99px}
+
+/* bottom tab bar with raised centre Assistant */
+.tabbar{flex:none;display:flex;align-items:flex-end;padding:6px 6px calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--bg-2);position:relative}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;color:var(--muted-fg);font-size:10.5px;font-weight:600;background:transparent;border:0;position:relative}
+.tab svg{width:23px;height:23px}
+.tab.on{color:var(--primary);font-weight:800}
+.tab.on::before{content:"";position:absolute;top:0;width:20px;height:3px;border-radius:99px;background:var(--primary)}
+.tab.center{flex:0 0 74px}
+.tab.center .fab{width:58px;height:58px;border-radius:50%;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;transform:translateY(-16px);box-shadow:0 8px 20px -6px hsl(35 85% 45% / .6),0 0 0 5px var(--bg-2)}
+.tab.center .fab svg{width:26px;height:26px}
+.tab.center .cl{transform:translateY(-14px);color:var(--primary);font-weight:800}
+
+.footer{max-width:940px;margin:0 auto;padding:8px 22px 60px;color:var(--page-muted);font-size:12.5px;line-height:1.6}
+.footer b{color:var(--page-fg)} .footer code{background:color-mix(in srgb,var(--page) 60%,transparent);padding:1px 5px;border-radius:5px;font-size:11.5px}
+.spacer{flex:1;min-height:8px}
+
+/* ---- push: permission prompt ---- */
+.permillo{flex:1;display:grid;place-items:center;padding:26px}
+.bell{width:96px;height:96px;border-radius:28px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;position:relative}
+.bell>svg{width:46px;height:46px}
+.bell .b2{position:absolute;top:-7px;right:-7px;min-width:26px;height:26px;padding:0 6px;border-radius:99px;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:800}
+.permcard{background:var(--bg-2);border-top:1px solid var(--border-2);border-radius:24px 24px 0 0;padding:22px 20px calc(20px + env(safe-area-inset-bottom))}
+.permcard h2{font-family:var(--serif);font-size:22px;line-height:1.2;text-wrap:balance}
+.permcard p{color:var(--muted-fg);font-size:13.5px;margin-top:8px}
+.permlist{margin:14px 0 6px;display:flex;flex-direction:column;gap:10px}
+.permlist .pl{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4}
+.permlist .pl svg{width:18px;height:18px;color:var(--accent);flex:none;margin-top:1px}
+.permbtns{display:flex;gap:10px;margin-top:16px}
+
+/* ---- push: lock screen ---- */
+.lockscreen{flex:1;border-radius:0;background:linear-gradient(168deg,hsl(250 32% 20%),hsl(25 30% 13%));padding:26px 16px 30px;color:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column}
+:root[data-theme="light"] .lockscreen{background:linear-gradient(168deg,hsl(220 34% 40%),hsl(30 32% 46%))}
+.lockscreen .lock{width:22px;height:22px;margin:0 auto;opacity:.85}
+.lockscreen .lt{text-align:center;font-size:64px;font-weight:250;line-height:1;margin-top:6px}
+.lockscreen .ld{text-align:center;font-size:15px;opacity:.85;margin-top:2px}
+.notifstack{margin-top:auto;display:flex;flex-direction:column;gap:9px}
+.notifstack .grp{font-size:11px;opacity:.7;padding:0 4px 2px;font-weight:600}
+.pnotif{background:rgba(255,255,255,.17);backdrop-filter:blur(12px);border-radius:17px;padding:11px 12px;display:flex;gap:10px;align-items:flex-start}
+.pnotif .ni{width:32px;height:32px;border-radius:9px;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;font-weight:800;flex:none;font-family:var(--serif)}
+.pnotif .ni.tr{background:var(--accent);color:#06201c}
+.pnotif .nt{flex:1;min-width:0;font-size:13px;line-height:1.35}
+.pnotif .nh{display:flex;justify-content:space-between;gap:8px}
+.pnotif .nh b{font-weight:700}
+.pnotif .tm{opacity:.75;font-size:11px;flex:none}
+.pnotif .nb{opacity:.92;margin-top:1px}
+
+/* ---- push: settings ---- */
+.switch{width:52px;height:32px;border-radius:99px;background:color-mix(in srgb,var(--muted-fg) 45%,transparent);position:relative;flex:none;border:0}
+.switch.on{background:var(--accent)}
+.switch i{position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:left .15s}
+.switch.on i{left:23px}
+@media (prefers-reduced-motion:reduce){.switch i{transition:none}}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 2px;border-bottom:1px solid var(--border)}
+.setrow .st{flex:1;min-width:0}
+.setrow .st .n{font-size:14px}
+.setrow .st .s{font-size:12px;color:var(--muted-fg);margin-top:2px}
+.cfree{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);font-weight:600}
+.cfree svg{width:14px;height:14px}
+</style>
+</head>
+<body>
+
+<div class="toggle" role="group" aria-label="Theme"><button id="tl">Light</button><button id="td" class="on">Dark</button></div>
+
+<section class="intro">
+  <div class="eyebrow">LoreWeave · platform · mobile shell · draft</div>
+  <h1>One app, many workshops — Assistant at the door.</h1>
+  <p class="lede">LoreWeave is a <b>super app</b>: a single identity over several distinct workshops — write a
+  book, build a world, translate, explore your knowledge graph, read, and the <b>work assistant</b>. This is the
+  platform’s first real mobile design: a home that’s a <b>launcher + a personal feed</b>, with the Assistant as
+  the hero card and the <b>raised centre tab</b>, because journaling on the go is the thing you’ll open a phone for.</p>
+  <div class="pills">
+    <span class="ip"><b>Home</b> = hero + jump-back-in + apps + feed</span>
+    <span class="ip"><b>Assistant</b> is the centre tab, not one icon among many</span>
+    <span class="ip"><b>Feed</b> unifies every workshop’s activity (jobs, reflections, enrichment)</span>
+    <span class="ip">Same house tokens · light + dark</span>
+  </div>
+</section>
+
+<div class="strip" aria-label="Screen flow — swipe">
+
+  <!-- ============ 1 · HOME / DASHBOARD ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 16h3v4H2zm5-3h3v7H7zm5-3h3v10h-3zm5-4h3v14h-3z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="20" height="10" rx="3"/><rect x="3" y="9" width="14" height="6" rx="1.5" fill="currentColor"/><path d="M23 10v4" stroke-width="2.4"/></svg>
+      </span></div>
+      <div class="appbody">
+        <div class="topbar">
+          <button class="avatar" aria-label="Your account">H</button>
+          <div class="hi"><div class="g">Good afternoon, Hao</div><div class="d">Thursday, 9 July</div></div>
+          <button class="tibtn" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></button>
+          <button class="tibtn" aria-label="Notifications, 2 unread"><span class="n">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 3h16z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg></button>
+        </div>
+        <div class="scroll">
+          <!-- hero: the assistant, first feature -->
+          <div class="hero">
+            <span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg> Your assistant</span>
+            <h2>Talk through your day.</h2>
+            <p>I’ll quietly notice the people, projects and decisions — kept private, saved only when you review.</p>
+            <div class="row">
+              <button class="talkbtn">Start talking<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+              <button class="micmini" aria-label="Talk by voice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+            </div>
+            <div class="status"><span class="dot"></span> 3 noticed today · nothing saved yet</div>
+          </div>
+
+          <div class="sech"><span class="t">Jump back in</span><span class="m">See all</span></div>
+          <div class="hscroll">
+            <button class="ccard write"><span class="kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M4 20l1-4L16 5l3 3L8 19z"/></svg>Writing</span><div class="ct">The Empty Throne</div><div class="cm">Chapter 12 · 1,240 words today</div><div class="bar"><span style="width:64%"></span></div></button>
+            <button class="ccard tr"><span class="kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h7M8 3v2M6 5c0 4 2 6 5 7M11 5c0 5-3 7-6 8M13 19l4-9 4 9M14.5 16h5"/></svg>Translating</span><div class="ct">Sông Núi → EN</div><div class="cm">Chapter 3 of 5 · running</div><div class="bar"><span style="width:60%"></span></div></button>
+            <button class="ccard world"><span class="kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>World</span><div class="ct">Ashfall</div><div class="cm">3 entities enriched · review</div></button>
+          </div>
+
+          <div class="sech"><span class="t">Do something</span><span class="m">All apps</span></div>
+          <div class="grid">
+            <button class="tile"><span class="ti i-write"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M4 20l1-4L16 5l3 3L8 19z"/></svg></span><span class="tl">Write</span></button>
+            <button class="tile"><span class="ti i-world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span><span class="tl">Worlds</span></button>
+            <button class="tile"><span class="ti i-tr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h7M8 3v2M6 5c0 4 2 6 5 7M11 5c0 5-3 7-6 8M13 19l4-9 4 9M14.5 16h5"/></svg></span><span class="tl">Translate</span></button>
+            <button class="tile"><span class="ti i-explore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="9" r="2.4"/><circle cx="9" cy="18" r="2.4"/><path d="M8 7l8 1.5M8 8l1 8M16 11l-6 6"/></svg></span><span class="tl">Explore</span></button>
+            <button class="tile"><span class="ti i-read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6c-2-1.5-5-1.5-8 0v13c3-1.5 6-1.5 8 0M12 6c2-1.5 5-1.5 8 0v13c-3-1.5-6-1.5-8 0z"/></svg></span><span class="tl">Read</span></button>
+            <button class="tile"><span class="ti i-coach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg></span><span class="tl">Coaching</span></button>
+          </div>
+
+          <div class="sech"><span class="t">Recent</span></div>
+          <div class="feed">
+            <button class="frow"><span class="fi i-tr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 6"/></svg></span><span class="fb"><span class="ft"><b>Translation finished</b> — “Sông Núi” chapter 3 → English</span><span class="fm">2 hours ago · review the draft</span></span><span class="unread"></span></button>
+            <button class="frow"><span class="fi i-coach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg></span><span class="fb"><span class="ft"><b>Weekly reflection ready</b></span><span class="fm">Sunday · a quiet, good week</span></span></button>
+          </div>
+        </div>
+        <nav class="tabbar" aria-label="Platform">
+          <button class="tab on" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Create</button>
+          <button class="tab center"><span class="fab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg></span><span class="cl">Assistant</span></button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M9 4v14"/></svg>Library</button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>You</button>
+        </nav>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">1 · Home</div>
+      <h3>Launcher + feed, Assistant on top</h3>
+      <p>The Assistant is the hero card and the raised centre tab. Below it: <b>jump back in</b> (the book, translation, world you left), an app launcher, and a unified <b>recent</b> feed.</p>
+      <div class="why"><b>Why</b><span>A super-app home is a front page, not a menu: what’s in progress + what needs you, first. The one thing you open a phone to do — talk — is a single tap from anywhere.</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 2 · ACTIVITY / NOTIFICATIONS ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 16h3v4H2zm5-3h3v7H7zm5-3h3v10h-3zm5-4h3v14h-3z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="20" height="10" rx="3"/><rect x="3" y="9" width="14" height="6" rx="1.5" fill="currentColor"/><path d="M23 10v4" stroke-width="2.4"/></svg>
+      </span></div>
+      <div class="appbody">
+        <div class="topbar"><div class="hi" style="flex:1"><div class="g">Activity</div><div class="d">Across everything you’re making</div></div>
+          <button class="tibtn" aria-label="Mark all read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/></svg></button></div>
+        <div class="scroll">
+          <div class="sech"><span class="t">Needs you</span></div>
+          <div class="feed">
+            <button class="frow"><span class="fi i-tr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 6"/></svg></span><span class="fb"><span class="ft"><b>Translation finished</b> — “Sông Núi” ch. 3 → English</span><span class="fm">2h · review &amp; publish the draft</span></span><span class="unread"></span></button>
+            <button class="frow"><span class="fi i-coach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg></span><span class="fb"><span class="ft"><b>Your assistant checked in</b> — ready for your weekly reflection?</span><span class="fm">Sun · content-free · opens in Assistant</span></span><span class="unread"></span></button>
+          </div>
+          <div class="sech"><span class="t">Earlier</span></div>
+          <div class="feed">
+            <button class="frow"><span class="fi i-explore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="9" r="2.4"/><circle cx="9" cy="18" r="2.4"/><path d="M8 7l8 1.5M8 8l1 8M16 11l-6 6"/></svg></span><span class="fb"><span class="ft"><b>Knowledge enriched</b> — 2 entities in “Ashfall” gained relationships</span><span class="fm">Yesterday</span></span></button>
+            <button class="frow"><span class="fi i-write"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M4 20l1-4L16 5l3 3L8 19z"/></svg></span><span class="fb"><span class="ft"><b>Draft saved</b> — “The Empty Throne”, chapter 12</span><span class="fm">Yesterday · 1,240 words</span></span></button>
+            <button class="frow"><span class="fi i-bill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v10H3z"/><path d="M3 11h18"/></svg></span><span class="fb"><span class="ft"><b>Assistant lane</b> is at 60% of this month’s budget</span><span class="fm">Mon · you set the cap</span></span></button>
+            <button class="frow"><span class="fi i-world" style="background:var(--violet-soft);color:var(--violet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="3.2"/><path d="M6 21a6 6 0 0 1 12 0"/><path d="M17 4l1.5 1.5M20 7l-1.5-1.5" /></svg></span><span class="fb"><span class="ft"><b>@mai_writes</b> started following you</span><span class="fm">2 days ago</span></span></button>
+          </div>
+        </div>
+        <nav class="tabbar" aria-label="Platform">
+          <button class="tab on" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Create</button>
+          <button class="tab center"><span class="fab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg></span><span class="cl">Assistant</span></button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M9 4v14"/></svg>Library</button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>You</button>
+        </nav>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">2 · Activity</div>
+      <h3>One feed for every workshop</h3>
+      <p>Translation jobs, the assistant’s content-free check-in, knowledge enrichment, drafts, budget, follows — the super-app payoff is a <b>single place</b> the whole platform reports into.</p>
+      <div class="why"><b>Why</b><span>“Needs you” (a finished translation, a reflection) leads; passive updates follow. The assistant nudge routes into the Assistant, never spilling diary text on the way.</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 3 · ALL APPS ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 16h3v4H2zm5-3h3v7H7zm5-3h3v10h-3zm5-4h3v14h-3z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="20" height="10" rx="3"/><rect x="3" y="9" width="14" height="6" rx="1.5" fill="currentColor"/><path d="M23 10v4" stroke-width="2.4"/></svg>
+      </span></div>
+      <div class="appbody">
+        <div class="topbar"><div class="hi" style="flex:1"><div class="g">All apps</div><div class="d">Everything LoreWeave makes</div></div>
+          <button class="tibtn" aria-label="Search apps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></button></div>
+        <div class="scroll">
+          <div class="sech"><span class="t">Create</span></div>
+          <div class="grid">
+            <button class="tile"><span class="ti i-write"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M4 20l1-4L16 5l3 3L8 19z"/></svg></span><span class="tl">Write</span></button>
+            <button class="tile"><span class="ti i-world"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span><span class="tl">Worlds</span></button>
+            <button class="tile"><span class="ti i-studio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="tl">Compose</span></button>
+          </div>
+          <div class="sech"><span class="t">Understand</span></div>
+          <div class="grid">
+            <button class="tile"><span class="ti i-explore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="9" r="2.4"/><circle cx="9" cy="18" r="2.4"/><path d="M8 7l8 1.5M8 8l1 8M16 11l-6 6"/></svg></span><span class="tl">Explore</span></button>
+            <button class="tile"><span class="ti i-wiki"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span><span class="tl">Wiki</span></button>
+            <button class="tile"><span class="ti i-tr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h7M8 3v2M6 5c0 4 2 6 5 7M11 5c0 5-3 7-6 8M13 19l4-9 4 9M14.5 16h5"/></svg></span><span class="tl">Translate</span></button>
+            <button class="tile"><span class="ti i-read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6c-2-1.5-5-1.5-8 0v13c3-1.5 6-1.5 8 0M12 6c2-1.5 5-1.5 8 0v13c-3-1.5-6-1.5-8 0z"/></svg></span><span class="tl">Read</span></button>
+          </div>
+          <div class="sech"><span class="t">Grow</span></div>
+          <div class="grid">
+            <button class="tile" style="border-color:var(--primary);background:var(--primary-soft)"><span class="ti i-write"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg></span><span class="tl">Assistant</span></button>
+            <button class="tile"><span class="ti i-coach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg></span><span class="tl">Coaching</span></button>
+          </div>
+          <div class="sech"><span class="t">Manage</span></div>
+          <div class="grid">
+            <button class="tile"><span class="ti i-jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg></span><span class="tl">Jobs</span></button>
+            <button class="tile"><span class="ti i-bill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v10H3z"/><path d="M3 11h18"/></svg></span><span class="tl">Usage</span></button>
+            <button class="tile"><span class="ti i-set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg></span><span class="tl">Settings</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">3 · All apps</div>
+      <h3>The mini-apps, grouped by intent</h3>
+      <p>Every surface, clustered by what you’re trying to do — <b>Create · Understand · Grow · Manage</b>. The Assistant sits in “Grow”, highlighted, mirroring its front-door status.</p>
+      <div class="why"><b>Why</b><span>A super app needs a real drawer, but grouped-by-intent beats an alphabet soup of icons — it maps to why you came, not to the org chart.</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 4 · YOU / ACCOUNT ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 16h3v4H2zm5-3h3v7H7zm5-3h3v10h-3zm5-4h3v14h-3z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="20" height="10" rx="3"/><rect x="3" y="9" width="14" height="6" rx="1.5" fill="currentColor"/><path d="M23 10v4" stroke-width="2.4"/></svg>
+      </span></div>
+      <div class="appbody">
+        <div class="scroll">
+          <div style="display:flex;align-items:center;gap:13px;padding:10px 2px 4px">
+            <span class="avatar" style="width:56px;height:56px;font-size:22px">H</span>
+            <div><div class="serif" style="font-size:20px">Le Tu Hao</div><div class="muted" style="font-size:12.5px">hao@loreweave.dev · Creator plan</div></div>
+          </div>
+
+          <div class="acard" style="margin-top:14px">
+            <div style="padding:14px">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px"><span class="muted">This month’s usage</span><span style="font-weight:600">$12.40 / $30</span></div>
+              <div class="planbar"><span style="width:41%"></span></div>
+              <div class="muted" style="font-size:11.5px;margin-top:7px">Assistant lane 60% · translation 22% · the rest interactive</div>
+            </div>
+          </div>
+
+          <div class="acard" style="margin-top:12px">
+            <button class="arow"><span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16v12H4z"/><path d="M4 10h16"/></svg></span><span class="at"><span class="n">Workspaces</span><span class="s">3 books · 1 world</span></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></button>
+            <button class="arow"><span class="ai" style="color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span class="at"><span class="n">Assistant data &amp; privacy</span><span class="s">See what’s remembered · forget · erase</span></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></button>
+            <button class="arow"><span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16v12H4z"/></svg></span><span class="at"><span class="n">Models &amp; keys</span><span class="s">Your BYOK providers · defaults</span></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></button>
+          </div>
+
+          <div class="acard" style="margin-top:12px">
+            <button class="arow"><span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span><span class="at"><span class="n">Appearance</span><span class="s">Theme · language · text size</span></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></button>
+            <button class="arow"><span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 3h16z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg></span><span class="at"><span class="n">Notifications</span><span class="s">Per-app · content-free on the lock screen</span></span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></button>
+          </div>
+
+          <div class="spacer"></div>
+          <div class="muted" style="text-align:center;font-size:11.5px;margin-top:16px">LoreWeave · Creator plan · v2 draft</div>
+        </div>
+        <nav class="tabbar" aria-label="Platform">
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Create</button>
+          <button class="tab center"><span class="fab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg></span><span class="cl">Assistant</span></button>
+          <button class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M9 4v14"/></svg>Library</button>
+          <button class="tab on" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>You</button>
+        </nav>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">4 · You</div>
+      <h3>Account, usage, and the data spine</h3>
+      <p>Plan &amp; per-lane usage, workspaces, models/keys — and a first-class <b>Assistant data &amp; privacy</b> row that leads straight to see-what’s-remembered / forget / erase.</p>
+      <div class="why"><b>Why</b><span>The privacy control the assistant promises has a permanent home here, and per-lane usage (B1) makes “what am I spending on the assistant vs translation” answerable.</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 5 · PUSH PERMISSION ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 16h3v4H2zm5-3h3v7H7zm5-3h3v10h-3zm5-4h3v14h-3z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="20" height="10" rx="3"/><rect x="3" y="9" width="14" height="6" rx="1.5" fill="currentColor"/><path d="M23 10v4" stroke-width="2.4"/></svg>
+      </span></div>
+      <div class="appbody">
+        <div class="permillo">
+          <div class="bell"><span class="b2">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 3h16z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg></div>
+        </div>
+        <div class="permcard">
+          <h2>Want a nudge when it matters?</h2>
+          <p>We’ll let you know here — the app doesn’t have to be open.</p>
+          <div class="permlist">
+            <div class="pl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/></svg> Your weekly reflection, when it’s ready</div>
+            <div class="pl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 6"/></svg> A translation or import finishing</div>
+            <div class="pl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Never your diary text — only that there’s something to see</div>
+          </div>
+          <div class="permbtns">
+            <button class="btn" style="flex:1" onclick="return false">Not now</button>
+            <button class="talkbtn" style="flex:1;justify-content:center">Turn on</button>
+          </div>
+        </div>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">5 · Push · ask</div>
+      <h3>Earn the prompt, then ask</h3>
+      <p>A soft pre-prompt shown <b>after</b> the user has seen value — never on first launch — that says exactly what they’ll get and, critically, <b>what they won’t</b> (no diary text). “Turn on” then triggers the OS permission.</p>
+      <div class="why"><b>Why</b><span>A blind day-one OS prompt gets denied and can’t be re-asked. Framing the value first — and the content-free promise — is what earns the yes; “Not now” leaves it re-askable later.</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 6 · PUSH LOCK SCREEN ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="lockscreen">
+        <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <div class="lt">9:41</div>
+        <div class="ld">Sunday, 14 July</div>
+        <div class="notifstack">
+          <div class="grp">Notifications</div>
+          <div class="pnotif"><span class="ni">L</span><span class="nt"><span class="nh"><b>LoreWeave</b><span class="tm">now</span></span><span class="nb">Time for your weekly reflection</span></span></div>
+          <div class="pnotif"><span class="ni tr"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l5 5L20 6"/></svg></span><span class="nt"><span class="nh"><b>LoreWeave</b><span class="tm">2h</span></span><span class="nb">A translation finished — ready to review</span></span></div>
+        </div>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">6 · Push · delivered</div>
+      <h3>Content-free on the lock screen</h3>
+      <p>What actually lands, even with the app closed: a stable title and “there’s something to see” — <b>no names, no notes, no decisions</b>. Two examples: the assistant check-in and a finished job.</p>
+      <div class="why"><b>Why</b><span>This is R3’s discipline made literal: the push carries a title + an i18n key, never diary text — safe over a shoulder or on a shared device. Tapping routes into the right screen.</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 7 · PUSH SETTINGS ============ -->
+  <div class="slide">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="icons" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 16h3v4H2zm5-3h3v7H7zm5-3h3v10h-3zm5-4h3v14h-3z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="20" height="10" rx="3"/><rect x="3" y="9" width="14" height="6" rx="1.5" fill="currentColor"/><path d="M23 10v4" stroke-width="2.4"/></svg>
+      </span></div>
+      <div class="appbody">
+        <div class="topbar" style="align-items:center">
+          <button class="tibtn" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <div class="hi" style="flex:1"><div class="g" style="font-size:16px">Notifications</div></div>
+        </div>
+        <div class="scroll">
+          <div class="cfree" style="margin:4px 0 2px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Lock-screen text is always content-free — you choose only which categories buzz.</div>
+
+          <div class="sech"><span class="t">Assistant</span></div>
+          <div class="setrow"><span class="st"><span class="n">Weekly check-in</span><span class="s">A nudge when your reflection is ready</span></span><button class="switch on" role="switch" aria-checked="true" aria-label="Weekly check-in"><i></i></button></div>
+          <div class="setrow"><span class="st"><span class="n">End-of-day reminder</span><span class="s">A gentle prompt to wrap up your day</span></span><button class="switch" role="switch" aria-checked="false" aria-label="End-of-day reminder"><i></i></button></div>
+
+          <div class="sech"><span class="t">Your work</span></div>
+          <div class="setrow"><span class="st"><span class="n">Jobs finished</span><span class="s">Translations, imports, distillation</span></span><button class="switch on" role="switch" aria-checked="true" aria-label="Jobs finished"><i></i></button></div>
+          <div class="setrow"><span class="st"><span class="n">Social</span><span class="s">Follows and mentions</span></span><button class="switch" role="switch" aria-checked="false" aria-label="Social"><i></i></button></div>
+          <div class="setrow"><span class="st"><span class="n">Billing &amp; limits</span><span class="s">When a spend lane nears its cap</span></span><button class="switch on" role="switch" aria-checked="true" aria-label="Billing and limits"><i></i></button></div>
+
+          <div class="card" style="padding:12px 14px;margin-top:18px;display:flex;gap:10px;align-items:center">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--muted-fg)" stroke-width="2" style="flex:none"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+            <span style="font-size:12px" class="muted">This device is registered for push. <b style="color:var(--fg)">Signing out</b> or erasing removes it — no stray buzzes on an old phone.</span>
+          </div>
+        </div>
+      </div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="cap">
+      <div class="n">7 · Push · control</div>
+      <h3>Per-category, per-device</h3>
+      <p>Toggle each category (the opt-out backend already exists). One banner states the invariant: <b>lock-screen text is always content-free</b> — the switches only decide which categories buzz.</p>
+      <div class="why"><b>Why</b><span>Ties to the notification-service per-category preference + the push_subscriptions the device registers. Sign-out / erase must drop the subscription — an edge case the spec now pins.</span></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <b>Draft · not production.</b> The platform’s first mobile design — a super-app home. Reuses the house tokens
+  (warm-black, amber primary, teal accent, Iowan serif) + a warm-paper light theme. The <b>Assistant</b> is the hero card
+  and the raised centre tab; <b>Home</b> is launcher + feed; <b>Activity</b> unifies every workshop; <b>All apps</b> is the
+  grouped drawer; <b>You</b> holds the plan, per-lane usage (B1) and the assistant data/privacy spine.
+  <b>Push</b> (frames 5–7): a value-first permission ask, a content-free lock screen, and per-category / per-device controls.
+  Deep-dive of the assistant’s own screens: <code>design-drafts/work-assistant/mobile/index.html</code>.
+  <br><b>Open decisions for you:</b> is the centre tab “Assistant” or a generic “＋ Create”? Do we ship mobile as
+  a PWA or native shell first? Which workshops are mobile-viewable vs mobile-first (writing a novel is likely desktop-first)?
+</div>
+
+<script>
+  const root=document.documentElement,tl=document.getElementById('tl'),td=document.getElementById('td');
+  function set(t){root.setAttribute('data-theme',t);tl.classList.toggle('on',t==='light');td.classList.toggle('on',t==='dark');}
+  tl.addEventListener('click',()=>set('light'));td.addEventListener('click',()=>set('dark'));
+  set(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+</script>
+</body>
+</html>

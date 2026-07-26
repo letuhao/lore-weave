@@ -104,7 +104,7 @@ async def test_create_job_emits_pending(monkeypatch):
     assert kw["model"] == "qwen2.5-7b-instruct"
     assert kw["params"]["technique"] == "retrieval"
     assert kw["params"]["entity_kind"] == "location"
-    assert kw["params"]["estimated_cost_usd"] == 0.0
+    assert kw["params"]["estimated_cost_tokens"] == 0.0
 
 
 # ── enrichment_job: PgProposalStore.mark_job_status (UPDATE → status) ─────────
@@ -115,7 +115,7 @@ async def test_mark_job_status_emits_transition(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ps, "emit_job_event", spy)
     row = {"user_id": USER, "status": "completed", "error_message": None,
-           "actual_cost_usd": 0.21}
+           "actual_cost_tokens": 0.21}
     repo = PgProposalStore(FakePool(FakeConn(fetchrow=row)))
     await repo.mark_job_status(job_id=str(JOB), status="completed")
     spy.assert_awaited_once()
@@ -134,7 +134,7 @@ async def test_mark_job_status_failed_passes_error(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(ps, "emit_job_event", spy)
     row = {"user_id": USER, "status": "failed", "error_message": "boom",
-           "actual_cost_usd": None}
+           "actual_cost_tokens": None}
     repo = PgProposalStore(FakePool(FakeConn(fetchrow=row)))
     await repo.mark_job_status(job_id=str(JOB), status="failed", error_message="boom")
     kw = spy.await_args.kwargs

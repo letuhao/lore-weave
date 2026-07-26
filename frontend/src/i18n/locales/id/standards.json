@@ -1,0 +1,119 @@
+{
+  "title": "Standar Glosarium",
+  "subtitle": "Genre, jenis, dan atribut yang dapat digunakan kembali. Duplikat setelan sistem ke tier Anda untuk menyesuaikannya, atau buat milik Anda sendiri.",
+  "tabs_aria": "Bagian standar",
+  "tab": {
+    "genres": "Genre",
+    "kinds": "Jenis",
+    "attributes": "Atribut"
+  },
+  "loading": "Memuat standar…",
+  "error": "Tidak dapat memuat standar Anda. Coba lagi.",
+  "empty": {
+    "genres": "Belum ada genre.",
+    "kinds": "Belum ada jenis."
+  },
+  "action": {
+    "clone": "Duplikat ke tier saya",
+    "yours": "Milik Anda",
+    "edit": "Edit",
+    "delete": "Hapus"
+  },
+  "genres": {
+    "new": "Genre baru"
+  },
+  "kinds": {
+    "new": "Jenis baru"
+  },
+  "toast": {
+    "cloned": "Berhasil menduplikasi “{{name}}” ke standar Anda",
+    "cloneError": "Tidak dapat menduplikasi “{{name}}”",
+    "created": "Berhasil membuat “{{name}}”",
+    "createError": "Tidak dapat membuatnya",
+    "saved": "Tersimpan",
+    "saveError": "Tidak dapat menyimpan",
+    "deleted": "Memindahkan “{{name}}” ke tempat sampah",
+    "deleteError": "Tidak dapat menghapus “{{name}}”",
+    "attrCreated": "Menambahkan “{{name}}”",
+    "attrError": "Tidak dapat menambahkan “{{name}}”",
+    "linksSaved": "Genre diperbarui",
+    "linksError": "Tidak dapat memperbarui genre"
+  },
+  "attributes": {
+    "no_user_kinds": "Duplikat atau buat jenis terlebih dahulu — atribut terikat pada jenis milik Anda sendiri.",
+    "no_user_genres": "Duplikat atau buat genre terlebih dahulu — atribut terikat pada genre milik Anda sendiri.",
+    "pick_kind": "Pilih jenis…",
+    "pick_genre": "Pilih genre…",
+    "pick_both": "Pilih jenis dan genre untuk melihat serta menambah atribut.",
+    "new": "Atribut baru",
+    "empty": "Belum ada atribut untuk pasangan ini.",
+    "system_ref": "Dari sistem (hanya baca)",
+    "your_attrs": "Atribut Anda"
+  },
+  "attrform": {
+    "title_create": "Atribut baru",
+    "title_edit": "Edit atribut",
+    "name": "Nama",
+    "name_placeholder": "mis. Peringkat",
+    "name_required": "Nama wajib diisi",
+    "code": "Kode",
+    "code_hint": "Opsional — diambil dari nama jika dikosongkan.",
+    "field_type": "Tipe bidang",
+    "required": "Wajib",
+    "options": "Opsi",
+    "options_hint": "Satu per baris (untuk pilihan / tag).",
+    "cancel": "Batal",
+    "create": "Tambah atribut",
+    "save": "Simpan",
+    "saving": "Menyimpan…",
+    "ft": {
+      "text": "Teks",
+      "textarea": "Teks panjang",
+      "select": "Pilihan",
+      "number": "Angka",
+      "date": "Tanggal",
+      "tags": "Tag",
+      "url": "URL",
+      "boolean": "Ya / Tidak"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Genre baru",
+    "title_edit_genre": "Edit genre",
+    "title_create_kind": "Jenis baru",
+    "title_edit_kind": "Edit jenis",
+    "name": "Nama",
+    "name_required": "Nama wajib diisi",
+    "icon": "Ikon",
+    "color": "Warna",
+    "code": "Kode",
+    "code_hint": "Opsional — diambil dari nama jika dikosongkan.",
+    "description": "Deskripsi",
+    "cancel": "Batal",
+    "create": "Buat",
+    "save": "Simpan",
+    "saving": "Menyimpan…"
+  },
+  "links": {
+    "edit": "Genre",
+    "title": "Genre untuk {{name}}",
+    "save": "Simpan",
+    "saving": "Menyimpan…",
+    "empty": "Tidak ada genre pengguna untuk dihubungkan. Duplikat atau buat genre terlebih dahulu.",
+    "cancel": "Batal"
+  },
+  "trash": {
+    "open": "Tempat sampah",
+    "title": "Tempat sampah",
+    "close": "Tutup",
+    "genres": "Genre",
+    "kinds": "Jenis",
+    "empty_section": "Tidak ada apa-apa di sini.",
+    "restore": "Pulihkan",
+    "purge": "Hapus selamanya",
+    "restored": "Berhasil dipulihkan",
+    "restoreError": "Tidak dapat memulihkan",
+    "purged": "Dihapus secara permanen",
+    "purgeError": "Tidak dapat menghapus"
+  }
+}

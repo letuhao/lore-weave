@@ -194,6 +194,82 @@ class TestSendMessage:
     @patch("app.routers.messages.get_provider_client")
     @patch("app.routers.messages.get_billing_client")
     @patch("app.routers.messages.stream_response")
+    async def test_edit_below_compact_boundary_clears_the_compact(
+        self, mock_stream, mock_billing, mock_provider, client, mock_pool
+    ):
+        """W3×edit interplay (review-impl H1): editing a message INSIDE the
+        compacted region rewrites the summarized timeline AND re-anchors new
+        seqs BELOW the boundary (the splice would then load zero user
+        messages) — the edit must clear the session's compact."""
+        conn = mock_pool._conn
+        mock_pool.fetchrow.return_value = make_session_record(
+            compact_summary="old summary", compacted_before_seq=20,
+        )
+        conn.fetchval.side_effect = [str(uuid4()), 1, 6]  # parent, branch, seq
+        conn.execute.return_value = "UPDATE 2"
+
+        from app.models import ProviderCredentials
+        mock_provider.return_value.resolve = AsyncMock(return_value=ProviderCredentials(
+            provider_kind="openai", provider_model_name="gpt-4",
+            base_url="https://api.openai.com", api_key="sk-test",
+            context_length=8192,
+        ))
+
+        async def fake_stream(**kwargs):
+            yield "data: [DONE]\n\n"
+
+        mock_stream.return_value = fake_stream()
+
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages",
+            json={"content": "Edited", "edit_from_sequence": 5},  # 5 < 20
+        )
+        assert resp.status_code == 200
+        clears = [c for c in conn.execute.call_args_list
+                  if "compact_summary = NULL" in str(c)]
+        assert len(clears) == 1
+
+    @pytest.mark.asyncio
+    @patch("app.routers.messages.get_provider_client")
+    @patch("app.routers.messages.get_billing_client")
+    @patch("app.routers.messages.stream_response")
+    async def test_edit_above_compact_boundary_keeps_the_compact(
+        self, mock_stream, mock_billing, mock_provider, client, mock_pool
+    ):
+        """An edit at/after the boundary leaves the compact intact — the
+        summarized region is untouched."""
+        conn = mock_pool._conn
+        mock_pool.fetchrow.return_value = make_session_record(
+            compact_summary="old summary", compacted_before_seq=20,
+        )
+        conn.fetchval.side_effect = [str(uuid4()), 1, 26]
+        conn.execute.return_value = "UPDATE 1"
+
+        from app.models import ProviderCredentials
+        mock_provider.return_value.resolve = AsyncMock(return_value=ProviderCredentials(
+            provider_kind="openai", provider_model_name="gpt-4",
+            base_url="https://api.openai.com", api_key="sk-test",
+            context_length=8192,
+        ))
+
+        async def fake_stream(**kwargs):
+            yield "data: [DONE]\n\n"
+
+        mock_stream.return_value = fake_stream()
+
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages",
+            json={"content": "Edited", "edit_from_sequence": 25},  # 25 >= 20
+        )
+        assert resp.status_code == 200
+        clears = [c for c in conn.execute.call_args_list
+                  if "compact_summary = NULL" in str(c)]
+        assert clears == []
+
+    @pytest.mark.asyncio
+    @patch("app.routers.messages.get_provider_client")
+    @patch("app.routers.messages.get_billing_client")
+    @patch("app.routers.messages.stream_response")
     async def test_normal_send_has_no_parent_message_id(
         self, mock_stream, mock_billing, mock_provider, client, mock_pool
     ):

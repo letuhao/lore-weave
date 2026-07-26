@@ -2,7 +2,6 @@ import { apiJson } from '../../api';
 import type {
   EntityKind,
   EntityNameEntry,
-  GenreGroup,
   GlossaryEntity,
   GlossaryEntityListResponse,
   FilterState,
@@ -16,9 +15,19 @@ import type {
   EntityRevisionSummary,
   EntityRevisionDetail,
   ActionPreview,
+  TranslationCandidatesResponse,
+  ApplyTranslationsResponse,
+  ApplyTranslationItem,
 } from './types';
 
 const BASE = '/v1/glossary';
+
+/** One keyset page of the widened entity-names endpoint (F-H9/PH26). */
+type EntityNamesPage = {
+  items: EntityNameEntry[];
+  truncated: boolean;
+  next_cursor: string | null;
+};
 
 export const glossaryApi = {
   getKinds(token: string): Promise<EntityKind[]> {
@@ -29,6 +38,36 @@ export const glossaryApi = {
     return apiJson<{ languages: string[] }>(
       `${BASE}/books/${bookId}/translation-languages`,
       { token },
+    );
+  },
+
+  // S4 — batch translate: list entities with untranslated attrs for a target language.
+  listTranslationCandidates(
+    bookId: string,
+    targetLanguage: string,
+    opts: { overwriteMode?: 'missing_only' | 'refresh_machine'; limit?: number; offset?: number },
+    token: string,
+  ): Promise<TranslationCandidatesResponse> {
+    const qs = new URLSearchParams({ target_language: targetLanguage });
+    if (opts.overwriteMode) qs.set('overwrite_mode', opts.overwriteMode);
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.offset) qs.set('offset', String(opts.offset));
+    return apiJson<TranslationCandidatesResponse>(
+      `${BASE}/books/${bookId}/translation-candidates?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  // S4 — batch translate: write draft translations (never overwrites verified; per-item
+  // partial-failure report).
+  applyTranslations(
+    bookId: string,
+    req: { target_language: string; items: ApplyTranslationItem[] },
+    token: string,
+  ): Promise<ApplyTranslationsResponse> {
+    return apiJson<ApplyTranslationsResponse>(
+      `${BASE}/books/${bookId}/apply-translations`,
+      { method: 'POST', body: JSON.stringify(req), token },
     );
   },
 
@@ -118,7 +157,13 @@ export const glossaryApi = {
   patchEntity(
     bookId: string,
     entityId: string,
-    changes: { status?: string; tags?: string[]; alive?: boolean; short_description?: string | null },
+    changes: {
+      status?: string;
+      tags?: string[];
+      alive?: boolean;
+      short_description?: string | null;
+      scope_label?: string;
+    },
     token: string,
     // Glossary-assistant P3 (H5): when set, sent as `If-Match` so the PATCH is
     // optimistic-concurrency checked — 412 if the entity changed since read.
@@ -137,13 +182,28 @@ export const glossaryApi = {
    *  actually updated (book-scoped; absent/foreign ids are ignored). */
   bulkSetStatus(
     bookId: string,
-    status: 'active' | 'inactive' | 'draft',
+    status: 'active' | 'inactive' | 'draft' | 'rejected',
     entityIds: string[],
     token: string,
   ): Promise<{ updated: number }> {
     return apiJson<{ updated: number }>(`${BASE}/books/${bookId}/entities/bulk-status`, {
       method: 'POST',
       body: JSON.stringify({ status, entity_ids: entityIds }),
+      token,
+    });
+  },
+
+  /** Bulk soft-delete many entities in one request (clean up duplicate/unwanted
+   *  entities). Returns the count actually deleted (book-scoped; absent/foreign/
+   *  already-deleted ids are ignored — the partial-success report). */
+  bulkDeleteEntities(
+    bookId: string,
+    entityIds: string[],
+    token: string,
+  ): Promise<{ deleted: number }> {
+    return apiJson<{ deleted: number }>(`${BASE}/books/${bookId}/entities/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ entity_ids: entityIds }),
       token,
     });
   },
@@ -185,9 +245,47 @@ export const glossaryApi = {
     );
   },
 
-  /** Lightweight names-only list for editor decoration scanning */
-  listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
-    return apiJson<EntityNameEntry[]>(`${BASE}/books/${bookId}/entity-names`, { token });
+  /** Lightweight names-only list for editor decoration scanning + the Plan Hub
+   *  badge name map. The backend endpoint is now KEYSET-paginated (F-H9/PH26) and
+   *  returns ALL non-deleted entities (draft/inactive/active), not just active —
+   *  so we follow next_cursor until truncated=false and accumulate every page.
+   *
+   *  `complete` is the load-bearing half for PH26. The safety cap below can, in
+   *  principle, stop paging with entities still unread — and then an id that is
+   *  ABSENT from the map means "we didn't fetch it", not "it doesn't exist". The
+   *  Hub renders those two completely differently (a MISSING-entity warning chip vs
+   *  a neutral unresolved one), so collapsing them would make it accuse the user's
+   *  glossary of losing an entity it merely hadn't loaded — the
+   *  `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug class. */
+  async listEntityNamesWithMeta(
+    bookId: string,
+    token: string,
+  ): Promise<{ items: EntityNameEntry[]; complete: boolean }> {
+    const acc: EntityNameEntry[] = [];
+    let cursor: string | null = null;
+    // Safety cap: 500/page × 500 pages = 250k entities before we bail (never hit
+    // in practice; guards against a misbehaving server looping forever).
+    for (let page = 0; page < 500; page++) {
+      const params = new URLSearchParams({ limit: '500' });
+      if (cursor) params.set('cursor', cursor);
+      const res = await apiJson<EntityNamesPage>(
+        `${BASE}/books/${bookId}/entity-names?${params.toString()}`,
+        { token },
+      );
+      if (res.items?.length) acc.push(...res.items);
+      // Exhausted ⇒ the map is the WHOLE book's entity set.
+      if (!res.truncated || !res.next_cursor) return { items: acc, complete: true };
+      cursor = res.next_cursor;
+    }
+    // Fell out of the loop ⇒ the cap tripped ⇒ there is more we never read.
+    return { items: acc, complete: false };
+  },
+
+  /** The names alone — for consumers (editor decoration, the compose picker) that only ever look ids
+   *  UP and never reason about an ABSENT one. ONE implementation: it delegates. */
+  async listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
+    const { items } = await glossaryApi.listEntityNamesWithMeta(bookId, token);
+    return items;
   },
 
   deleteEntity(bookId: string, entityId: string, token: string): Promise<void> {
@@ -386,13 +484,31 @@ export const glossaryApi = {
     );
   },
 
-  // ── Genre Groups ────────────────────────────────────────────────────────────
+  // S-06 — add a value for an attr-def added to the ontology AFTER this entity existed (the
+  // "add-later" path that was MCP-only). 409 if a value row already exists (edit it via PATCH).
+  addAttributeValue(
+    bookId: string,
+    entityId: string,
+    payload: { attribute_def_id: string; value: string },
+    token: string,
+  ) {
+    return apiJson(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
 
-  // Old-model genre-groups read — still used by SettingsTab's genre-tag picker.
-  // The write fns (createGenre/patchGenre/deleteGenre) retired with GenreGroupsPanel
-  // in G6f; the book genre tier is now managed via tieringApi + useBookOntology.
-  listGenres(bookId: string, token: string): Promise<GenreGroup[]> {
-    return apiJson<GenreGroup[]>(`${BASE}/books/${bookId}/genres`, { token });
+  // S-06 — remove a value ROW entirely (distinct from PATCH-to-empty which keeps a blank row).
+  deleteAttributeValue(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    token: string,
+  ) {
+    return apiJson<void>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
+      { method: 'DELETE', token },
+    );
   },
 
   // ── Attribute Translations ────────────────────────────────────────────────
@@ -500,4 +616,56 @@ export const glossaryApi = {
       { method: 'DELETE', token },
     );
   },
+
+  // ── M6 (canon-at-chapter inspector) — public, View-grant gated read routes ──
+
+  /** Entities canon has ESTABLISHED by chapter N (windowed by `before_chapter_index`),
+   *  with first/last appearance + coverage. Bare array. */
+  knownEntitiesAsOf(
+    bookId: string,
+    params: { beforeChapterIndex?: number; minFrequency?: number; limit?: number },
+    token: string,
+  ): Promise<KnownEntityAsOf[]> {
+    const qs = new URLSearchParams();
+    if (params.beforeChapterIndex != null) qs.set('before_chapter_index', String(params.beforeChapterIndex));
+    if (params.minFrequency != null) qs.set('min_frequency', String(params.minFrequency));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<KnownEntityAsOf[]>(`${BASE}/books/${bookId}/known-entities${q ? `?${q}` : ''}`, { token });
+  },
+
+  /** Entities PRESENT IN a specific chapter (chapter→entities), with relevance +
+   *  per-chapter mention_count (0 until M7 backfill). Bare array. */
+  chapterEntities(
+    bookId: string,
+    chapterId: string,
+    token: string,
+  ): Promise<ChapterEntity[]> {
+    return apiJson<ChapterEntity[]>(
+      `${BASE}/books/${bookId}/chapter-entities?chapter_id=${encodeURIComponent(chapterId)}`,
+      { token },
+    );
+  },
+};
+
+/** M6 — `known-entities` row (entities established by chapter N). */
+export type KnownEntityAsOf = {
+  entity_id: string;
+  name: string;
+  kind_code: string;
+  aliases: string[];
+  frequency: number;
+  first_chapter_index: number | null;
+  last_chapter_index: number | null;
+  coverage_pct: number;
+};
+
+/** M6 — `chapter-entities` row (entities present in chapter N). */
+export type ChapterEntity = {
+  entity_id: string;
+  name: string;
+  kind_code: string;
+  relevance: 'major' | 'appears' | 'mentioned';
+  chapter_index: number | null;
+  mention_count: number;
 };

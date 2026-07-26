@@ -60,6 +60,8 @@ __all__ = [
     "upsert_extraction_source",
     "get_extraction_source",
     "add_evidence",
+    "EvidenceCitation",
+    "list_evidence_for_target",
     "remove_evidence_for_source",
     "remove_evidence_for_natural_key",
     "delete_source_cascade",
@@ -308,12 +310,22 @@ ON CREATE SET
   e.extracted_at = datetime(),
   e.extraction_model = $extraction_model,
   e.confidence = $confidence,
+  // F3 — the EXACT supporting quote (verbatim span from the source chapter), so
+  // a KG fact/edge is evidence-grounded like the glossary `evidences` table
+  // (original_text). NULL when the extractor didn't surface a quote (legacy /
+  // positionless). Stored on the per-(target, source, job) citation edge so two
+  // sources citing the same fact each keep their own quote.
+  e.quote = $quote,
   e._just_created = true,
   target.evidence_count = coalesce(target.evidence_count, 0) + 1,
   target.mention_count = coalesce(target.mention_count, 0) + 1,
   target.updated_at = datetime()
 ON MATCH SET
   e.extracted_at = datetime(),
+  // F3 — backfill the quote on a re-extraction that DOES carry one (an edge
+  // first written quoteless keeps NULL until a quote-bearing re-mention);
+  // coalesce so a quoteless re-run never wipes an existing quote.
+  e.quote = coalesce($quote, e.quote),
   e._just_created = false
 WITH target, e, coalesce(e._just_created, false) AS created
 REMOVE e._just_created
@@ -348,11 +360,18 @@ async def add_evidence(
     extraction_model: str,
     confidence: float,
     job_id: str,
+    quote: str | None = None,
 ) -> EvidenceWriteResult | None:
     """Attach an EVIDENCED_BY edge from `target` to the
     extraction source. Idempotent on `(target, source, job_id)`
     — re-running the same extraction job is a no-op against the
     counters.
+
+    F3 — `quote` is the EXACT supporting span (verbatim from the source
+    chapter) stored on the citation edge so a KG fact/edge is evidence-grounded
+    like the glossary `evidences.original_text`. `None` (default) keeps today's
+    behaviour (no quote); a quote-bearing re-extraction backfills a previously
+    quoteless edge (coalesce, never wipes an existing quote).
 
     The atomic counter increment is the K11.8 critical primitive.
     Bypassing this function (e.g., writing the edge directly via
@@ -390,6 +409,9 @@ async def add_evidence(
         extraction_model=extraction_model,
         confidence=confidence,
         job_id=job_id,
+        # F3 — empty string normalizes to None so a blank quote isn't stored as ""
+        # (keeps coalesce backfill semantics clean).
+        quote=(quote or None),
     )
     record = await result.single()
     if record is None:
@@ -399,6 +421,93 @@ async def add_evidence(
         mention_count=int(record["mention_count"]),
         created=bool(record["created"]),
     )
+
+
+# ── list_evidence_for_target (F3 — exact-quote citations read) ─────────
+
+
+class EvidenceCitation(BaseModel):
+    """One EVIDENCED_BY citation for a target node — the source it was extracted
+    from plus the F3 exact quote (verbatim supporting span), so a consumer can
+    render an evidence-grounded citation (chapter + quote), like the glossary
+    `evidences` table. `quote` is None for legacy / quoteless evidence."""
+
+    source_id: str
+    source_type: str
+    raw_source_id: str
+    job_id: str | None = None
+    extraction_model: str | None = None
+    confidence: float | None = None
+    quote: str | None = None
+
+
+def _build_list_evidence_cypher(label: str) -> str:
+    # Same closed-label safety argument as `_build_add_evidence_cypher`: `label`
+    # is from TARGET_LABELS (closed Literal), validated before dispatch, never
+    # caller input. A label parameter can't use the per-label index.
+    return f"""
+MATCH (target:{label} {{id: $target_id}})-[e:EVIDENCED_BY]->(src:ExtractionSource)
+WHERE target.user_id = $user_id
+  AND src.user_id = $user_id
+RETURN src.id AS source_id,
+       src.source_type AS source_type,
+       src.source_id AS raw_source_id,
+       e.job_id AS job_id,
+       e.extraction_model AS extraction_model,
+       e.confidence AS confidence,
+       e.quote AS quote
+ORDER BY e.extracted_at DESC
+LIMIT $limit
+"""
+
+
+_LIST_EVIDENCE_CYPHER: dict[str, str] = {
+    label: _build_list_evidence_cypher(label) for label in TARGET_LABELS
+}
+
+
+async def list_evidence_for_target(
+    session: CypherSession,
+    *,
+    user_id: str,
+    target_label: str,
+    target_id: str,
+    limit: int = 50,
+) -> list[EvidenceCitation]:
+    """F3 — list the citations (source + exact quote) backing a target node.
+
+    Makes the exact-quote evidence-grounding READABLE: the moment an extractor
+    surfaces a quote it is persisted on the EVIDENCED_BY edge (`add_evidence`,
+    `quote=`) and surfaced here. Tenant-scoped on both target and source. Bounded
+    by `limit`. `quote` is None for legacy / quoteless evidence.
+    """
+    if target_label not in _LIST_EVIDENCE_CYPHER:
+        raise ValueError(
+            f"target_label must be one of {TARGET_LABELS}, got {target_label!r}"
+        )
+    if not target_id:
+        raise ValueError("target_id must be a non-empty string")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _LIST_EVIDENCE_CYPHER[target_label],
+        user_id=user_id,
+        target_id=target_id,
+        limit=limit,
+    )
+    return [
+        EvidenceCitation(
+            source_id=str(record["source_id"]),
+            source_type=str(record["source_type"]),
+            raw_source_id=str(record["raw_source_id"]),
+            job_id=record["job_id"],
+            extraction_model=record["extraction_model"],
+            confidence=record["confidence"],
+            quote=record["quote"],
+        )
+        async for record in result
+    ]
 
 
 # ── remove_evidence_for_source ────────────────────────────────────────

@@ -658,3 +658,21 @@ async def test_multi_batch_maps_local_verdicts_to_global_indices() -> None:
     # didn't collapse every batch onto local idx 0/1.
     assert [e.name for e in result.entities] == ["A", "C", "E"]
     assert result.filter_coverage["entity"] == 1.0  # all 5 judged across the 3 batches
+
+
+# ── Model-context-aware output clamp (build_filter_submit_kwargs) ──────────────
+
+def test_filter_submit_kwargs_unclamped_when_context_length_unknown():
+    from loreweave_extraction.pass2_filter import build_filter_submit_kwargs
+    kw = build_filter_submit_kwargs(config=_config(), system="s", user="u", n_items=50)
+    assert kw["input"]["max_tokens"] == 1536 + 256 * 50  # unclamped, today's behavior
+
+
+def test_filter_submit_kwargs_clamps_for_small_context_window():
+    """A large batch against a small-context model must NOT request more output
+    than the model's real window can structurally host."""
+    from loreweave_extraction.pass2_filter import build_filter_submit_kwargs
+    kw = build_filter_submit_kwargs(
+        config=_config(), system="s", user="u", n_items=50, context_length=4000,
+    )
+    assert kw["input"]["max_tokens"] == int(4000 * 0.8)

@@ -154,27 +154,38 @@ class BenchmarkReport:
     thresholds: dict[str, float]
     per_query: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
-    def passes_thresholds(self) -> bool:
+    def gate_failures(self) -> list[str]:
+        """The named gates this run FAILED, in check order — empty list == passed.
+        R2 (D-JOURNEY-KG-BENCHMARK-UX): lets a caller distinguish an INCONCLUSIVE
+        short run (``insufficient_runs``) from a genuine quality miss, so the UI
+        stops mislabelling a perfect ``runs=1`` (``recall@3=1.0``) as
+        'low-quality results'."""
         t = self.thresholds
+        fails: list[str] = []
         if self.runs < int(t.get("min_runs", 3)):
-            return False
+            fails.append("insufficient_runs")
         if self.recall_at_3 < t["recall_at_3"]:
-            return False
+            fails.append("low_recall")
         if self.mrr < t["mrr"]:
-            return False
+            fails.append("low_mrr")
         if self.avg_score_positive < t["avg_score_positive"]:
-            return False
+            fails.append("low_avg_score")
         if self.negative_control_max_score > t["negative_control_max_score"]:
-            return False
+            fails.append("negative_control_too_high")
         # Gate on the worse of recall/MRR stddev — spec phrasing
         # "stddev across runs" doesn't name a metric, so we enforce
         # the stricter interpretation: both must be stable.
         if max(self.stddev_recall, self.stddev_mrr) > t["max_stddev"]:
-            return False
-        return True
+            fails.append("unstable")
+        return fails
+
+    def passes_thresholds(self) -> bool:
+        return not self.gate_failures()
 
     def to_json(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["gate_failures"] = self.gate_failures()
+        return data
 
 
 # ── Runner ────────────────────────────────────────────────────────────

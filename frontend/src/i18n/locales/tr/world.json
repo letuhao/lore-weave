@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Dünyalar",
+    "subtitle": "Taslak metne gerek duymadan; karakterler, mekanlar ve gruplar gibi unsurlarla kendi evreninizi kurgulayın.",
+    "loading": "Dünyalar yükleniyor…"
+  },
+  "empty": {
+    "title": "Henüz dünya yok",
+    "description": "Kurgunuzu yazmaya başlamak için ilk dünyanızı oluşturun — bölümlere gerek yok."
+  },
+  "card": {
+    "books": "{{count}} kitap"
+  },
+  "create": {
+    "cta": "Yeni dünya",
+    "title": "Yeni dünya",
+    "description": "Dünyanıza bir isim verin. Kurgunuzu hemen oluşturmaya başlayabilirsiniz.",
+    "nameLabel": "Dünya adı",
+    "namePlaceholder": "Örn. Parçalanmış Diyarlar",
+    "descLabel": "Açıklama (isteğe bağlı)",
+    "cancel": "İptal",
+    "submit": "Dünyayı oluştur",
+    "creating": "Oluşturuluyor…",
+    "error": "Dünya oluşturulamadı"
+  },
+  "workspace": {
+    "back": "Tüm dünyalar",
+    "loading": "Dünya yükleniyor…",
+    "error": "Dünya bulunamadı."
+  },
+  "lore": {
+    "title": "Dünya ansiklopedisi",
+    "extractionOptional": "Kurgunuzu doğrudan oluşturun — karakterler, mekanlar, gruplar. Taslak metne gerek yok. Metinden veri çıkarma isteğe bağlıdır; bu dünya ansiklopedisi ana referans noktasıdır.",
+    "anchorUnavailable": "Bu dünyanın henüz bir ansiklopedi referansı yok — kurgu oluşturma özelliği kullanılamıyor.",
+    "kindLabel": "Tür",
+    "kindPlaceholder": "Bir tür seçin…",
+    "add": "Kurgu ekle",
+    "adding": "Ekleniyor…",
+    "added": "Kurgu dünya ansiklopedisine eklendi.",
+    "error": "Kurgu eklenemedi"
+  },
+  "graph": {
+    "title": "Dünya grafiği",
+    "subtitle": "Dünya kurgunuzun nasıl bağlandığını gösteren salt okunur bir görünüm.",
+    "rollupSubtitle": "Her bir kitabın kanonik grafiğinin, kitap bazlı adalar olarak birlikte sunulan salt okunur bir özeti.",
+    "counts": "{{nodes}} düğüm · {{edges}} ilişki",
+    "sources": "{{count}} kitaptan derlendi",
+    "truncated": "en üstteki {{n}} gösteriliyor — büyük bir kitap, daha küçük bir olanı kalabalıklaştırabilir",
+    "hint": "Yakınlaştırmak için kaydırın · hareket ettirmek için boş alanı sürükleyin · detay için bir düğüme tıklayın",
+    "loading": "Dünya grafiği yükleniyor…",
+    "loadFailed": "Dünya grafiği yüklenemedi: {{error}}",
+    "empty": "Henüz dünya bilgisi yok — ansiklopediyi oluşturun veya bir kitabın grafiğini buraya aktarmak için bir kitap seçin."
+  },
+  "timeline": {
+    "title": "Dünya zaman çizelgesi",
+    "subtitle": "Her bir kitabın kanonik zaman çizelgesinin anlatı sırasına göre sunulan salt okunur bir özeti.",
+    "counts": "{{count}} olay",
+    "sources": "{{count}} kitap boyunca",
+    "truncated": "ilk {{n}} gösteriliyor",
+    "chapterLabel": "Bölüm",
+    "loading": "Dünya zaman çizelgesi yükleniyor…",
+    "loadFailed": "Dünya zaman çizelgesi yüklenemedi: {{error}}",
+    "empty": "Henüz zaman çizelgesi olayı yok — zaman çizelgesini buraya aktarmak için bir kitap seçin."
+  },
+  "populate": {
+    "addBook": "Kitap ekle",
+    "createWhatIf": "Alternatif senaryo oluştur",
+    "whatIfHint": "Kanonik bir eserden alternatif bir dal oluşturun",
+    "whatIfNeedsCanon": "Önce kanonik bir eser ekleyin — alternatif senaryolar kanonik eserlerden dallanır.",
+    "pickCanon": "Şuradan dallan…",
+    "addBookTitle": "Bu dünyaya kitap ekle",
+    "addBookDesc": "Mevcut bir kitabı bağlayın veya yeni bir tane oluşturun — bu kitap dünyanın zaman çizelgesine ve grafiğine dahil olur.",
+    "tabAttach": "Mevcut olanı bağla",
+    "tabCreate": "Yeni oluştur",
+    "pickBook": "Kitap",
+    "bookTitle": "Başlık",
+    "bookTitlePlaceholder": "Yeni kitap başlığı…",
+    "bookDesc": "Açıklama (isteğe bağlı)",
+    "attach": "Kitabı bağla",
+    "createAttach": "Oluştur ve ekle",
+    "adding": "Ekleniyor…",
+    "cancel": "İptal",
+    "addFailed": "Kitap eklenemedi: {{error}}"
+  },
+  "living": {
+    "heading": "Yaşayan dünya",
+    "subtitle": "Dünyanızın kanon akışı ve alternatif senaryo dalları, gezilebilir bir zaman çizelgesi olarak. Bir eseri açmak için üzerine tıklayın.",
+    "title": "Yaşayan dünya",
+    "counts": "{{canon}} kanon · {{branches}} alternatif senaryo dalı",
+    "hint": "Yakınlaştırmak için kaydırın · hareket ettirmek için boş alanı sürükleyin · bir eseri açmak için üzerine tıklayın",
+    "loading": "Yaşayan dünya yükleniyor…",
+    "loadFailed": "Yaşayan dünya yüklenemedi: {{error}}",
+    "empty": "Bu dünyada henüz eser yok — zaman çizelgesini büyütmek için bir kitap veya alternatif senaryo başlatın.",
+    "canonBadge": "Kanon",
+    "branchBadge": "Alternatif",
+    "canonAria": "Kanon: {{title}}",
+    "branchAria": "Bölüm {{ch}}'de dallanan alternatif senaryo: {{title}}",
+    "branchAt": "bölüm {{ch}}'de dallanıyor",
+    "orphan": "· bu dünyanın dışında bir kaynak",
+    "edgeLabel": "böl. {{ch}}"
+  }
+}

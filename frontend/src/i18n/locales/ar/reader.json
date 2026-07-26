@@ -1,0 +1,146 @@
+{
+  "loading": "جاري التحميل...",
+  "chapter_of": "الفصل {{current}} من {{total}}",
+  "stop_reading": "إيقاف القراءة",
+  "read_aloud": "القراءة بصوت عالٍ",
+  "reading_theme": "مظهر القراءة",
+  "edit_chapter": "تعديل هذا الفصل",
+  "back_to_book": "العودة للكتاب",
+  "chapter_label": "الفصل {{n}}",
+  "chars": "حرف",
+  "words": "كلمة",
+  "min_read": "~{{minutes}} دقيقة للقراءة",
+  "loading_translation": "جاري تحميل الترجمة...",
+  "empty_chapter": "فصل فارغ — لم يُكتب فيه شيء بعد.",
+  "end_of_chapter": "نهاية الفصل {{n}}",
+  "next_in": "الفصل التالي خلال {{seconds}} ثانية...",
+  "cancel": "إلغاء",
+  "progress": "الفصل {{current}} من {{total}} · اكتمل بنسبة {{percent}}%",
+  "ch_short": "فصل {{n}}",
+  "history": {
+    "title": "سجل القراءة",
+    "subtitle": "الكتب والفصول التي قرأتها مؤخراً.",
+    "empty": "لا يوجد سجل قراءة بعد. ابدأ بقراءة فصل!",
+    "chapters_read": "تمت قراءة {{count}} فصول",
+    "fully_read": "تمت قراءتها بالكامل بنسبة {{percent}}%",
+    "last_read": "آخر قراءة {{date}}",
+    "continue": "استمرار"
+  },
+  "theme": {
+    "title": "مظهر القراءة",
+    "presets": "القوالب الجاهزة",
+    "preset": {
+      "dark": {
+        "name": "داكن",
+        "desc": "خلفية داكنة مريحة"
+      },
+      "light": {
+        "name": "فاتح",
+        "desc": "خلفية بيضاء ناصعة"
+      },
+      "sepia": {
+        "name": "سيبيا",
+        "desc": "لون الورق الدافئ"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "أسود حقيقي لشاشات OLED"
+      },
+      "parchment": {
+        "name": "رقّ",
+        "desc": "ملمس الورق الكلاسيكي"
+      },
+      "forest": {
+        "name": "الغابة",
+        "desc": "مريح للعين ليلاً"
+      }
+    },
+    "font": "الخط",
+    "typography": "تنسيق الخطوط",
+    "font_size": "حجم الخط",
+    "line_height": "ارتفاع السطر",
+    "text_width": "عرض النص",
+    "spacing": "التباعد",
+    "reading_mode": "وضع القراءة",
+    "show_indices": "إظهار مؤشرات الكتل (وضع المترجم)",
+    "auto_next": "تحميل الفصل التالي تلقائياً",
+    "auto_scroll": "التمرير التلقائي مع القراءة الصوتية"
+  },
+  "tts": {
+    "source": {
+      "attached": "مرفق",
+      "ai": "ذكاء اصطناعي (AI)",
+      "browser": "المتصفح",
+      "inline": "صوت مدمج"
+    },
+    "prev_block": "الكتلة السابقة (Shift+Left)",
+    "play": "تشغيل (Space)",
+    "pause": "إيقاف مؤقت (Space)",
+    "next_block": "الكتلة التالية (Shift+Right)",
+    "cycle_speed": "تبديل السرعة",
+    "autoscroll_on": "التمرير التلقائي: مفعل",
+    "autoscroll_off": "التمرير التلقائي: معطل",
+    "settings": "إعدادات القراءة الصوتية",
+    "stop": "إيقاف (Escape)",
+    "speed": "السرعة",
+    "browser_voice": "صوت المتصفح",
+    "default": "افتراضي",
+    "no_voices": "لا توجد أصوات متاحة. قد لا يدعم متصفحك واجهة Web Speech API.",
+    "ai_model": "نموذج الذكاء الاصطناعي",
+    "none_browser": "لا يوجد (صوت المتصفح فقط)",
+    "no_models": "لم يتم إعداد أي نماذج. أضف مزوداً من الإعدادات > المزودون.",
+    "ai_voice": "صوت الذكاء الاصطناعي",
+    "openai_voices": "أصوات OpenAI: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "السلوك",
+    "autoscroll_active": "التمرير التلقائي للكتلة النشطة",
+    "highlight_active": "تمييز الكتلة النشطة",
+    "now_playing": "يتم التشغيل الآن",
+    "block_label": "الكتلة: {{id}}",
+    "status": {
+      "playing": "جاري التشغيل",
+      "paused": "متوقف مؤقتاً",
+      "loading": "جاري التحميل"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "مرفق",
+      "ai": "ذكاء اصطناعي (AI)",
+      "browser": "المتصفح",
+      "inline": "كتلة صوتية",
+      "none": "لا يوجد"
+    },
+    "coverage": "التغطية الصوتية",
+    "summary": "{{speakable}} كتل قابلة للقراءة · {{missing}} باستخدام صوت المتصفح",
+    "generate_missing": "توليد الصوت المفقود",
+    "block_chars": "{{count}} كتلة · ~{{chars}} حرف",
+    "block_chars_other": "{{count}} كتل · ~{{chars}} حرف",
+    "est_cost": "التكلفة التقديرية ${{cost}}",
+    "generating": "جاري التوليد... {{progress}}/{{total}}",
+    "select_model_alert": "يرجى اختيار نموذج TTS أولاً من إعدادات القراءة الصوتية.",
+    "generate_all": "توليد الكل ({{count}})",
+    "blocks": "الكتل",
+    "audio_block_preview": "معاينة الكتلة الصوتية"
+  },
+  "block": {
+    "audio_unavailable": "الصوت غير متاح",
+    "audio_fallback": "متصفحك لا يدعم عنصر الصوت.",
+    "image_unavailable": "الصورة غير متاحة",
+    "video_unavailable": "الفيديو غير متاح"
+  },
+  "indicator": {
+    "pause": "إيقاف مؤقت",
+    "play": "تشغيل الصوت المرفق",
+    "mismatch": "النص الصوتي يختلف عن نص الكتلة"
+  },
+  "citation": {
+    "aria": "اقتباس {{n}}",
+    "jump": "الانتقال للمصدر",
+    "relevance": "الصلة",
+    "source": {
+      "glossary": "المسرد",
+      "kg": "المعرفة",
+      "passage": "الفقرة"
+    }
+  }
+}

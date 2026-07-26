@@ -1,5 +1,6 @@
 import { useUiStore } from '@/store/ui-store';
 import type { ReactNode } from 'react';
+import type { JSX } from 'react';
 
 // Modal placeholder — Session D wires real Settings/Confirm/Dialog
 // content per spec §3 modal/ namespace.

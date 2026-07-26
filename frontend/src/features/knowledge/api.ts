@@ -30,6 +30,22 @@ export type ExtractionJobScopeWire =
   | 'chat'
   | 'glossary_sync';
 
+// T4.1 — the canon-growth delta surfaced by the composition Flywheel panel.
+export interface FlywheelItemWire {
+  kind: 'entity' | 'event' | 'relation';
+  id: string;
+  name: string;
+}
+export interface FlywheelDeltaWire {
+  has_delta: boolean;
+  job_id: string | null;
+  completed_at: string | null;
+  entities_added: number;
+  relations_added: number;
+  events_added: number;
+  new_items: FlywheelItemWire[];
+}
+
 export interface ExtractionJobWire {
   job_id: string;
   user_id: string;
@@ -150,6 +166,11 @@ export interface ExtractionStartPayload {
   targets?: ExtractionTarget[];
   // C12 — passthrough cap on parallel LLM calls. Omitted ⇒ unbounded.
   concurrency_level?: number;
+  // Reasoning enable/disable for the extraction LLM. 'none' (default) disables
+  // hidden thinking — best for the JSON extraction pipeline (thinking can burn the
+  // output budget / corrupt the array). 'medium' enables it for hard content. The
+  // BE clamps to the caller's grant. Omitted ⇒ BE default ('none').
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high';
   // C13 — glossary entity ids to pin (force-inject into every extraction
   // window's known_entities). Omitted / empty ⇒ no pins (back-compat).
   pinned_glossary_entity_ids?: string[];
@@ -179,6 +200,17 @@ export interface RebuildPayload {
   llm_model: string;
   embedding_model: string;
   max_spend_usd?: string;
+}
+
+// bug #14 — without `?confirm=true` the rebuild BE returns this destructive
+// preview (carrying live node counts) and deletes NOTHING; with it, the
+// rebuild runs and returns the new ExtractionJob.
+export interface RebuildWarning {
+  warning: string;
+  entity_count: number;
+  fact_count: number;
+  event_count: number;
+  action_required: 'confirm';
 }
 
 // K19a.6 — discriminated return type for PUT /embedding-model.
@@ -272,6 +304,15 @@ export interface JobLogsResponse {
   next_cursor: number | null;
 }
 
+// Studio Quality tab (`quality-canon`) / D-KG-CANON-FLAG-REVIEW-UI — a JobLog row
+// whose context carries a confirmed pass2_canon_flag; same shape as JobLog, listed
+// separately from the raw job-logs stream (project-wide, event-filtered).
+export type CanonFlag = JobLog;
+
+export interface CanonFlagsResponse {
+  flags: CanonFlag[];
+}
+
 // K19b.6 — GET /v1/knowledge/costs response shape. Decimal fields land
 // as JSON strings; callers cast via Number() for display arithmetic.
 // `monthly_budget_usd` and `monthly_remaining_usd` are null when the
@@ -363,6 +404,10 @@ export interface EntitiesListParams {
   sort_by?: EntitySortBy;
   limit?: number;
   offset?: number;
+  /** W11 reader spoiler window: restrict to entities met by this chapter
+   *  (a fact established by it). Fail-closed on an unresolvable chapter →
+   *  empty list. Omit for the editor/curation view (whole cast). */
+  before_chapter_id?: string;
 }
 
 export interface EntitiesBrowseResponse {
@@ -497,7 +542,16 @@ export interface EntityStatusesResponse {
   window_available: boolean;
 }
 
-export type EntityFactType = 'decision' | 'preference' | 'milestone' | 'negation';
+// S-05 — the FULL closed set (mirrors BE `FactType` = `get_args(FactType)`, 6 values).
+// Was 4 here while the BE had 6, so a `statement`/`commitment` fact rendered a blank
+// label; the author form now offers all 6, so all 6 must be renderable.
+export type EntityFactType =
+  | 'decision'
+  | 'preference'
+  | 'milestone'
+  | 'negation'
+  | 'statement'
+  | 'commitment';
 
 /** A known fact ABOUT an entity (decision/preference/…). Spoiler-windowed by
  *  `from_order` server-side. Mirrors the BE Fact projection (subset the codex
@@ -509,6 +563,21 @@ export interface EntityFact {
   confidence: number;
   source_chapter: string | null;
   from_order: number | null;
+  // S-05b (F8) — the optional s/p/o triple the BE Fact carries (both NULL for a
+  // coarse fact). The route serializes them, so Replace can prefill them instead
+  // of silently dropping the predicate/object the original fact had.
+  predicate?: string | null;
+  object?: string | null;
+}
+
+/** S-05 — payload to author a fact ABOUT an entity (POST /entities/{id}/facts).
+ *  `fact_type` is the closed 6-value set; the server 422s an out-of-set value. */
+export interface CreateEntityFactPayload {
+  fact_type: EntityFactType;
+  content: string;
+  predicate?: string | null;
+  object?: string | null;
+  event_date_iso?: string | null;
 }
 
 export interface EntityFactsResponse {
@@ -534,9 +603,10 @@ export interface EntityUpdatePayload {
 
 // ── T2.5 World Map — manual entity / relation authoring ──────────────
 
-/** Create a user-authored entity (World Map "+ add place"). `kind` is one of
- *  character|location|faction|concept (BE-enforced). Idempotent on (name, kind)
- *  within the project. */
+/** Create a user-authored entity (World Map "+ add place" / KG "+ New Entity").
+ *  `kind` is one of the authorable closed set — see AUTHORABLE_ENTITY_KINDS in
+ *  lib/entityKinds.ts (character|location|organization|concept|item), BE-enforced
+ *  against the same gate. Idempotent on (name, kind) within the project. */
 export interface CreateEntityPayload {
   project_id: string;
   name: string;
@@ -620,6 +690,31 @@ export interface TimelineEvent {
    *  (the common case — the long tail is NOT mislabeled). The rail badges
    *  only the non-null `major`/`pivotal` events. */
   importance: EventImportance | null;
+
+  // ── KG-TL (timeline localization) — DERIVED, response-only Layer-2 fields ──
+  // Populated ONLY when a reader language resolves on the read path; null/absent
+  // on the canonical (no-language) response. Source `title`/`summary`/`time_cue`/
+  // `participants` above stay source-language (Layer-1 untouched). The row
+  // renders the `*_localized` value and an explicit "source" marker whenever the
+  // matching `*_translated` flag is false (AC-T1 — never a silent mix).
+  /** M2 — participant names in the reader language; same length+order as
+   *  `participants`. Each slot is the translated name when the glossary had it,
+   *  else the source name. Null when no reader language resolved. */
+  participants_localized?: string[] | null;
+  /** M2 — per-slot translated flag (parallel to `participants_localized`).
+   *  false ⇒ that chip is showing the source name + gets a marker. */
+  participants_translated?: boolean[] | null;
+  /** M3 — summary in the reader language (COALESCE(cache, source)). */
+  summary_localized?: string | null;
+  /** M3 — true ⇒ `summary_localized` is a real translation; false ⇒ it is the
+   *  source text awaiting the on-demand cache fill (render a "pending" marker). */
+  summary_translated?: boolean | null;
+  /** M3 — time_cue in the reader language (COALESCE(cache, source)). */
+  time_cue_localized?: string | null;
+  time_cue_translated?: boolean | null;
+  /** M3 — title in the reader language (COALESCE(cache, source)). */
+  title_localized?: string | null;
+  title_translated?: boolean | null;
 }
 
 // C14 — closed importance enum mirroring the BE EVENT_IMPORTANCE tuple
@@ -655,6 +750,20 @@ export interface EventUpdatePayload {
   event_date_iso?: string;
 }
 
+/** D-KG-EVENT-CREATE-ROUTE — author a new user-created timeline event. `project_id`
+ *  scopes it to the book's KG; `chapter_id` (optional) anchors narrative order + the
+ *  spoiler cutoff; `participants` are the display names it involves (pass the focused
+ *  character's name so it lands on that character's arc). */
+export interface EventCreatePayload {
+  project_id: string;
+  title: string;
+  summary?: string;
+  time_cue?: string;
+  event_date_iso?: string;
+  chapter_id?: string | null;
+  participants?: string[];
+}
+
 export interface TimelineListParams {
   project_id?: string;
   /** Strict `event_order > after_order`. BE defers wall-clock date
@@ -685,6 +794,14 @@ export interface TimelineListParams {
    *  on `event_date_iso`. Events with NULL date are excluded when either is set. */
   event_date_from?: string;
   event_date_to?: string;
+  /** #12: free-text search over event title + summary (case-insensitive
+   *  substring, matched against SOURCE text). Empty/whitespace ignored. */
+  q?: string;
+  /** KG-TL — reader language for localizing the timeline (chapter heading +
+   *  participant names + summary/time_cue/title). Sourced from the active UI
+   *  language; the BE folds it to the primary subtag and resolves the stored
+   *  reader-language pref when omitted. Omit ⇒ canonical source-language list. */
+  language?: string;
   limit?: number;
   offset?: number;
 }
@@ -723,6 +840,20 @@ export interface DrawerSearchHit {
   chapter_index: number | null;
   created_at: string | null;
   raw_score: number;
+  /** KG-ML M7 (C12): the passage's source language (M1/M2). "unknown" for
+   *  legacy untagged passages. Lets the card badge each hit's language. */
+  source_lang?: string;
+}
+
+/** KG-ML M7 (C12): reader-language coverage for a drawer/raw search. Mirrors
+ *  the BE ``language_coverage`` shape. ``note`` is null when coverage is full
+ *  or no results; the FE shows it only when present. */
+export interface LanguageCoverage {
+  reader_lang: string;
+  total: number;
+  in_language: number;
+  partial: boolean;
+  note: string | null;
 }
 
 /** C8 (D-K19e-γa-01): closed enum mirrored from the BE's
@@ -740,6 +871,9 @@ export interface DrawerSearchParams {
   limit?: number;
   /** C8: optional filter. Omit for "Any". */
   source_type?: DrawerSourceType;
+  /** KG-ML M7 (C12): reader-language preference. Soft matched-first ordering
+   *  (not a filter) + a coverage note. Omit for no preference. */
+  language?: string;
 }
 
 export interface DrawerSearchResponse {
@@ -753,6 +887,9 @@ export interface DrawerSearchResponse {
    *  FE pill row stays layout-stable. Reflects project-wide totals
    *  filtered to the project's current embedding_model. */
   source_type_counts: Record<string, number>;
+  /** KG-ML M7 (C12): reader-language coverage when ?language= was set; null
+   *  otherwise (or when nothing to flag). */
+  coverage?: LanguageCoverage | null;
   /** D-K19e-γa-02: per-search embedding cost transparency. Both null until
    *  the query was actually embedded, AND when the provider didn't report
    *  token usage (e.g. Ollama → "unknown", not "$0"). A genuinely-free
@@ -1152,6 +1289,14 @@ export const knowledgeApi = {
     );
   },
 
+  // T4.1 — the canon-growth delta from the latest completed extraction job.
+  getFlywheel(projectId: string, token: string): Promise<FlywheelDeltaWire> {
+    return apiJson<FlywheelDeltaWire>(
+      `${BASE}/projects/${projectId}/flywheel`,
+      { token },
+    );
+  },
+
   // K19b.1 + C11 — user-scoped cross-project list, grouped by status,
   // with cursor pagination.
   // Powers the Jobs tab (no per-project fanout). BE validates
@@ -1261,13 +1406,17 @@ export const knowledgeApi = {
     );
   },
 
+  // bug #14 — destructive guard. Without `confirm`, the BE returns a
+  // RebuildWarning preview (node counts) and deletes nothing; the FE shows a
+  // typed confirmation, then re-calls with `confirm=true` to commit.
   rebuildGraph(
     projectId: string,
     payload: RebuildPayload,
     token: string,
-  ): Promise<ExtractionJobWire> {
-    return apiJson<ExtractionJobWire>(
-      `${BASE}/projects/${projectId}/extraction/rebuild`,
+    confirm = false,
+  ): Promise<ExtractionJobWire | RebuildWarning> {
+    return apiJson<ExtractionJobWire | RebuildWarning>(
+      `${BASE}/projects/${projectId}/extraction/rebuild${confirm ? '?confirm=true' : ''}`,
       { method: 'POST', body: JSON.stringify(payload), token },
     );
   },
@@ -1322,6 +1471,15 @@ export const knowledgeApi = {
     });
   },
 
+  // D-KG-ENTITY-RESTORE (S7) — the inverse of archiveMyEntity, so a hidden
+  // entity can come back (archive is otherwise a one-way trap). 204 on success.
+  restoreMyEntity(entityId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/me/entities/${entityId}/restore`, {
+      method: 'POST',
+      token,
+    });
+  },
+
   // ── K19b.8 — extraction job logs ───────────────────────────────────────
 
   listJobLogs(
@@ -1337,6 +1495,14 @@ export const knowledgeApi = {
       `${BASE}/extraction/jobs/${jobId}/logs${q ? `?${q}` : ''}`,
       { token },
     );
+  },
+
+  // Studio Quality tab (`quality-canon`) / D-KG-CANON-FLAG-REVIEW-UI — every
+  // judge-confirmed canon contradiction flagged during KG extraction for this
+  // project, newest first.
+  listCanonFlags(projectId: string, token: string, limit?: number): Promise<CanonFlagsResponse> {
+    const q = limit != null ? `?limit=${limit}` : '';
+    return apiJson<CanonFlagsResponse>(`${BASE}/extraction/projects/${projectId}/canon-flags${q}`, { token });
   },
 
   // ── K19b.6 — user-wide costs & budget ──────────────────────────────────
@@ -1398,6 +1564,9 @@ export const knowledgeApi = {
     if (params.sort_by != null) qs.set('sort_by', params.sort_by);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
+    // W11 reader spoiler window — restricts the list to entities met by this chapter.
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
     const q = qs.toString();
     return apiJson<EntitiesBrowseResponse>(
       `${BASE}/entities${q ? `?${q}` : ''}`,
@@ -1627,6 +1796,16 @@ export const knowledgeApi = {
 
   // ── Phase B C — event corrections ────────────────────────────────────
 
+  /** D-KG-EVENT-CREATE-ROUTE — author a new timeline event. 201 → the created
+   *  Event (idempotent on (project, chapter, title) server-side). */
+  createEvent(body: EventCreatePayload, token: string): Promise<TimelineEvent> {
+    return apiJson<TimelineEvent>(`${BASE}/events`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   updateEvent(
     eventId: string,
     body: EventUpdatePayload,
@@ -1737,6 +1916,8 @@ export const knowledgeApi = {
       qs.set('event_date_from', params.event_date_from);
     if (params.event_date_to != null)
       qs.set('event_date_to', params.event_date_to);
+    if (params.q && params.q.trim()) qs.set('q', params.q.trim());
+    if (params.language) qs.set('language', params.language);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();
@@ -1787,16 +1968,49 @@ export const knowledgeApi = {
   /** The known-facts list ABOUT one entity, spoiler-windowed by chapter. */
   getEntityFacts(
     entityId: string,
-    params: { before_chapter_id?: string },
+    params: { before_chapter_id?: string; curation?: boolean },
     token: string,
   ): Promise<EntityFactsResponse> {
     const qs = new URLSearchParams();
     if (params.before_chapter_id != null)
       qs.set('before_chapter_id', params.before_chapter_id);
+    // S-05 — the studio curation view reads whole-book (no spoiler window) so
+    // authored + extracted facts both show; without it the server fails closed
+    // (before_order=-1) and the list is always empty.
+    if (params.curation) qs.set('curation', 'true');
     const q = qs.toString();
     return apiJson<EntityFactsResponse>(
       `${BASE}/entities/${encodeURIComponent(entityId)}/facts${q ? `?${q}` : ''}`,
       { token },
+    );
+  },
+
+  /** S-05 — author a fact ABOUT an entity (direct-write, 201). The fact lands
+   *  committed + high-confidence so it appears at once in the curation list. */
+  createEntityFact(
+    entityId: string,
+    payload: CreateEntityFactPayload,
+    token: string,
+  ): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/facts`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  /** S-05 — mark a committed fact wrong → soft-invalidate (fact_corrected). */
+  invalidateFact(factId: string, token: string): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/facts/${encodeURIComponent(factId)}/invalidate`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** S-05b — UNDO a mark-wrong: clear valid_until so the fact re-appears. */
+  revalidateFact(factId: string, token: string): Promise<EntityFact> {
+    return apiJson<EntityFact>(
+      `${BASE}/facts/${encodeURIComponent(factId)}/revalidate`,
+      { method: 'POST', token },
     );
   },
 
@@ -1811,6 +2025,7 @@ export const knowledgeApi = {
     qs.set('query', params.query);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.source_type != null) qs.set('source_type', params.source_type);
+    if (params.language) qs.set('language', params.language);
     return apiJson<DrawerSearchResponse>(
       `${BASE}/drawers/search?${qs.toString()}`,
       { token },

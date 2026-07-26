@@ -36,11 +36,12 @@ export function ThemeCustomizer({
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-30" onClick={onClose} />
+      {/* Backdrop — D-READER-RESPONSIVE: `absolute`, see TOCSidebar for why (panel-scoped,
+          not window-scoped, when reused inside BookReaderPanel's dock panel). */}
+      <div className="absolute inset-0 z-30" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed top-0 right-0 bottom-0 z-[31] w-[340px] border-l bg-card shadow-xl flex flex-col">
+      <div className="absolute top-0 right-0 bottom-0 z-[31] w-[340px] max-w-full border-l bg-card shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-4 py-3">
           <span className="text-sm font-semibold">{t('theme.title')}</span>

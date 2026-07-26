@@ -14,20 +14,25 @@ from uuid import UUID
 
 import asyncpg
 import httpx
+from loreweave_internal_client import build_internal_client
 from fastapi import APIRouter, Depends, HTTPException
 from loreweave_jobs import emit_job_event
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..broker import publish, publish_event
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
+from ..grant_client import get_grant_client
 from ..grant_deps import (
     GrantLevel,
     authorize_book,
+    clamp_effort_to_grant,
     get_grant_client_dep,
     require_book_grant,
 )
 from ..model_name import resolve_model_name
+from ..book_client import build_chapters_meta
+from ..workers.extraction_model import get_model_context_window
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
 
@@ -49,7 +54,20 @@ class CreateExtractionJobPayload(BaseModel):
     model_ref: UUID | None = None
     context_filters: dict | None = None
     max_entities_per_kind: int = 30
+    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (none|low|medium|high). Clamped to the
+    # caller's grant ceiling in the core (INV-T11). `thinking_enabled` is the deprecated bool
+    # alias (True→medium) kept for back-compat; `reasoning_effort` wins when set.
+    reasoning_effort: str = "none"
     thinking_enabled: bool = False
+    # Graded reasoning effort (none|low|medium|high). The SSOT once set; the worker
+    # honors low/high (not just medium-or-none). `thinking_enabled` stays as the
+    # back-compat bool alias (True ⇒ medium) when reasoning_effort is omitted.
+    reasoning_effort: str | None = None
+    # D-EXTRACTION-BATCH-CONCURRENCY: cap on CONCURRENT LLM calls per chapter (the
+    # window×batch fan-out). Omitted/None ⇒ 1 (sequential, the prior behavior). The
+    # worker clamps to a hard ceiling; chapters still run sequentially (entity
+    # accumulation is per-chapter) — only the batches within a chapter fan out.
+    concurrency_level: int | None = Field(default=None, ge=1, le=64)
 
 
 class CancelJobResponse(BaseModel):
@@ -67,16 +85,31 @@ async def create_extraction_job(
     _grant: UUID = Depends(require_book_grant(GrantLevel.EDIT)),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    uid = UUID(user_id)
+    return await _create_extraction_job_core(db, book_id, UUID(user_id), payload)
 
+
+async def _create_extraction_job_core(
+    db: asyncpg.Pool,
+    book_id: UUID,
+    uid: UUID,
+    payload: CreateExtractionJobPayload,
+    *,
+    mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
+) -> dict:
+    """Resolve the model + extraction profile, estimate cost, atomically create the
+    job (+ chapter-result rows + the 'pending' JobEvent), and publish to the worker
+    queue. The single source of truth for the HTTP `create_extraction_job` handler
+    AND the `translation.start_extraction` confirm effect (the MCP path) — the caller
+    owns the grant/identity check (HTTP via the EDIT dep; confirm via re-authorize +
+    chapter-binding). Returns the job-handle dict."""
     # The grant gate already authorized + proved the book exists (a missing book
     # resolves to `none` → 404). Fetch the projection only for source_language
     # (original_language); ownership is no longer decided here.
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with build_internal_client(app_settings.book_service_internal_url, internal_token=app_settings.internal_service_token, timeout_s=10) as client:
         try:
             r = await client.get(
                 f"{app_settings.book_service_internal_url}/internal/books/{book_id}/projection",
-                headers={"X-Internal-Token": app_settings.internal_service_token},
             )
         except httpx.RequestError:
             raise HTTPException(status_code=502, detail={"code": "EXTRACT_BOOK_SERVICE_UNAVAILABLE", "message": "Book service unavailable"})
@@ -118,12 +151,49 @@ async def create_extraction_job(
         )
     kinds_metadata = profile_data["kinds"]
 
+    # The MCP path (translation_start_extraction) does NOT supply an extraction_profile —
+    # the agent can't reasonably author the full kind→attr→action map, and shouldn't (it's
+    # book config, not an agent decision). Derive it from the book's auto-selected ontology
+    # (every non-skip attr on each auto-selected kind), i.e. the same profile the FE would
+    # have built. The HTTP/FE path sends a user-customized profile (kinds/attrs may be
+    # deselected) → respect it as-is. Without this, the worker gets {} → 0 batches → 0
+    # entities (the MCP extraction path silently no-ops).
+    extraction_profile = payload.extraction_profile
+    if not extraction_profile:
+        # "default" defers to each attribute's authored merge_strategy
+        # (D-EXTRACT-ATTR-MERGE-DEFAULTS) — NOT "fill", which froze every already-filled
+        # attribute on re-extraction. The seeded heuristic (append/overwrite/fill) then
+        # governs so a recurring entity accumulates new knowledge across chapters.
+        extraction_profile = {
+            k["code"]: {a["code"]: "default" for a in k.get("attributes", [])}
+            for k in kinds_metadata
+            if k.get("auto_selected", True) and k.get("attributes")
+        }
+
     # Compute cost estimate
-    # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
-    # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
-    chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
+    # #36: feed the planner the REAL per-chapter sizes (best-effort) so oversized chapters
+    # window the SAME way the executor windows them — the flat 8000-char placeholder made the
+    # windowing-aware planner blind to chapter size and systematically undercounted LLM calls.
+    # Still "estimate, not quote" (design §6.7.1): an unfetchable size falls back to 8000.
+    # D-CACHE-PLANNER-WIRING: resolve the REAL model context so the planner-backed quote
+    # windows oversized chapters against the SAME budget the executor will use (not the SDK's
+    # conservative default, which would over-split every chapter). Best-effort → fallback.
+    model_context_window = await get_model_context_window(model_source, str(model_ref) if model_ref else None)
+
+    # D-RE-WORKER-GRADED-EFFORT: resolve the graded reasoning effort, CLAMPED to the caller's
+    # grant ceiling (INV-T11 — effort is paid compute; a non-owner must not escalate spend past
+    # their grant). The MCP/confirm paths already clamp, so re-clamping here is idempotent for
+    # them AND secures the direct HTTP path (whose payload effort is unclamped). `reasoning_effort`
+    # wins; `thinking_enabled` is the deprecated bool alias (True→medium).
+    effort_raw = (payload.reasoning_effort or "").strip().lower() or ("medium" if payload.thinking_enabled else "none")
+    _grant_level = await get_grant_client().resolve_grant(book_id, uid)
+    reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
+
+    chapters_meta = await build_chapters_meta(book_id, payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
-        chapters_meta, payload.extraction_profile, kinds_metadata
+        chapters_meta, extraction_profile, kinds_metadata,
+        model_context_window=model_context_window,
+        reasoning_effort=reasoning_effort,
     )
 
     context_filters = payload.context_filters or {}
@@ -137,7 +207,31 @@ async def create_extraction_job(
         "source_language": source_language,
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
+        # bug #37 — surface the planner's estimated LLM-call budget on the Jobs GUI
+        # (the worker advances llm_calls_done on each progress emit). None-safe downstream.
+        "estimated_llm_calls": cost_estimate.get("llm_calls"),
     }
+
+    # D-EXTRACTION-ADMISSION-CONTROL: cap CONCURRENT extraction jobs per user. P5 fair-scheduling
+    # is translation-chapter-only — it does NOT bound extraction fan-out, so without this a user
+    # could launch unbounded concurrent jobs (each holds HTTP clients + contends the glossary
+    # per-book advisory lock → pool pressure). 0 ⇒ disabled. Checked here so BOTH the HTTP and the
+    # MCP-confirm paths (which share this core) are bounded.
+    _cap = app_settings.extraction_max_concurrent_jobs_per_user
+    if _cap > 0:
+        active = await db.fetchval(
+            "SELECT count(*) FROM extraction_jobs WHERE owner_user_id=$1 "
+            "AND status IN ('pending','running')",
+            uid,
+        )
+        if (active or 0) >= _cap:
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "EXTRACT_TOO_MANY_JOBS",
+                        "message": f"You already have {active} extraction job(s) running "
+                                   f"(max {_cap}). Wait for one to finish or cancel it."},
+            )
 
     # Insert job + chapter result rows + emit the 'pending' lifecycle event in ONE tx
     # (H1: the JobEvent commits atomically with the row). The chapter-results are a SINGLE
@@ -150,16 +244,19 @@ async def create_extraction_job(
                 """
                 INSERT INTO extraction_jobs
                   (book_id, owner_user_id, status, source_language, model_source, model_ref,
-                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate)
-                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10)
+                   extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate,
+                   reasoning_effort, mcp_key_id, spend_cap_usd)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
-                json.dumps(payload.extraction_profile),
+                json.dumps(extraction_profile),
                 json.dumps(context_filters),
                 payload.chapter_ids,
                 len(payload.chapter_ids),
                 json.dumps(cost_estimate),
+                reasoning_effort,
+                mcp_key_id, spend_cap_usd,
             )
             job_id = job_row["job_id"]
 
@@ -178,10 +275,10 @@ async def create_extraction_job(
     # Publish job to broker
     await publish("extraction.job", {
         "job_id": str(job_id),
-        "user_id": user_id,
+        "user_id": str(uid),
         "book_id": str(book_id),
         "chapter_ids": [str(c) for c in payload.chapter_ids],
-        "extraction_profile": payload.extraction_profile,
+        "extraction_profile": extraction_profile,
         "kinds_metadata": kinds_metadata,
         "context_filters": context_filters,
         "source_language": source_language,
@@ -189,6 +286,13 @@ async def create_extraction_job(
         "model_ref": str(model_ref),
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
+        # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap (None ⇒ 1).
+        "concurrency": payload.concurrency_level,
+        # D-PMCP-WORKER-CARRIER: ride the public-MCP key + cap so the extraction
+        # worker re-sets the attribution contextvar before each provider call.
+        "mcp_key_id": mcp_key_id,
+        "spend_cap_usd": spend_cap_usd,
     })
 
     return {

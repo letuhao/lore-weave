@@ -46,7 +46,7 @@ func TestProposeCandidate_CreatesRowWithMemberDetail(t *testing.T) {
 		t.Fatalf("propose: status=%q id=%q reason=%q", res.Status, res.CandidateID, res.Reason)
 	}
 
-	views, err := f.srv.loadMergeCandidates(f.ctx, f.bookID, "proposed")
+	views, err := f.srv.loadMergeCandidates(f.ctx, f.bookID, "proposed", 0)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestProposeCandidate_IdempotentBySetKey(t *testing.T) {
 		t.Errorf("want 1 row, got %d", n)
 	}
 	// the update took effect (score/rationale refreshed on the proposed row)
-	views, _ := f.srv.loadMergeCandidates(f.ctx, f.bookID, "proposed")
+	views, _ := f.srv.loadMergeCandidates(f.ctx, f.bookID, "proposed", 0)
 	if len(views) != 1 || views[0].Score != 0.9 || views[0].Rationale != "stronger" {
 		t.Errorf("upsert did not refresh: %+v", views)
 	}
@@ -237,5 +237,42 @@ func TestMarkCandidatesMerged_ClosesInbox(t *testing.T) {
 	// dismissed stays dismissed
 	if st := f.candidateStatus(t, uuid.MustParse(rDismissed.CandidateID)); st != "dismissed" {
 		t.Errorf("dismissed candidate flipped: status=%q (want dismissed)", st)
+	}
+}
+
+// TestLoadMergeCandidates_LimitCapsLoad proves the `limit` arg caps the SQL load
+// (D-PLAN-MERGE-CONTEXT-COST): with 3 proposed clusters, limit=2 returns the 2
+// highest-score ones (so the planner's per-call context is bounded regardless of
+// backlog size) while limit=0 returns all 3 (the FE inbox path is unchanged).
+func TestLoadMergeCandidates_LimitCapsLoad(t *testing.T) {
+	f := newMergeFixture(t, "00000000c007")
+	// 3 distinct 2-member clusters with distinct scores (so the score-ordering is testable).
+	mk := func(n1, n2 string, score float64) {
+		a := f.mkEntity(t, n1, nil)
+		b := f.mkEntity(t, n2, nil)
+		if r := f.srv.proposeOneCandidate(f.ctx, f.bookID, proposeCandidateInput{
+			MemberEntityIDs: []string{a.String(), b.String()}, Score: score,
+		}); r.Status != "proposed" {
+			t.Fatalf("seed candidate (%s/%s): status=%q", n1, n2, r.Status)
+		}
+	}
+	mk("甲", "乙", 0.9)
+	mk("丙", "丁", 0.8)
+	mk("戊", "己", 0.7)
+
+	// limit=0 → all 3 (FE inbox behaviour).
+	if all, err := f.srv.loadMergeCandidates(f.ctx, f.bookID, "proposed", 0); err != nil || len(all) != 3 {
+		t.Fatalf("limit=0: want 3 candidates, got %d (err=%v)", len(all), err)
+	}
+	// limit=2 → exactly the 2 highest-score clusters (0.9, 0.8), score-descending.
+	capped, err := f.srv.loadMergeCandidates(f.ctx, f.bookID, "proposed", 2)
+	if err != nil {
+		t.Fatalf("limit=2: %v", err)
+	}
+	if len(capped) != 2 {
+		t.Fatalf("limit=2: want 2 candidates, got %d", len(capped))
+	}
+	if capped[0].Score != 0.9 || capped[1].Score != 0.8 {
+		t.Errorf("limit=2: want the top-2 by score (0.9, 0.8), got %.2f, %.2f", capped[0].Score, capped[1].Score)
 	}
 }

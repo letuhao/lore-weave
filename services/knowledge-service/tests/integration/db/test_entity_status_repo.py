@@ -11,6 +11,7 @@ from app.db.neo4j_repos.entity_status import (
     STATUS_VALUES,
     delete_entity_status_with_zero_evidence,
     entity_status_id,
+    list_gone_entities,
     merge_entity_status,
     status_at_order,
 )
@@ -25,6 +26,10 @@ async def test_user(neo4j_driver):
         async with neo4j_driver.session() as session:
             await session.run(
                 "MATCH (s:EntityStatus {user_id: $user_id}) DETACH DELETE s",
+                user_id=user_id,
+            )
+            await session.run(
+                "MATCH (e:Entity {user_id: $user_id}) DETACH DELETE e",
                 user_id=user_id,
             )
 
@@ -138,3 +143,95 @@ async def test_delete_zero_evidence_and_isolation(neo4j_driver, test_user):
     async with neo4j_driver.session() as session:
         r = await session.run("MATCH (s:EntityStatus {user_id:$u}) RETURN count(s) AS n", u=test_user)
         assert (await r.single())["n"] == 1  # only the evidenced one survives
+
+
+# ── list_gone_entities (D-KG-EXTRACTION-CANON-WIRE) ────────────────────
+
+async def _entity_node(driver, *, user_id, project_id, entity_id, name, canonical_name):
+    async with driver.session() as session:
+        await session.run(
+            "MERGE (e:Entity {id: $id}) SET e.user_id=$u, e.project_id=$p, "
+            "e.name=$name, e.canonical_name=$cn",
+            id=entity_id, u=user_id, p=project_id, name=name, cn=canonical_name,
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_gone_entities_returns_only_currently_gone(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        gone = await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                         entity_id="e-1", status="gone", from_order=1_000_010)
+        # e-2 dies then revives -- latest transition is 'active', must NOT appear.
+        e2_gone = await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                            entity_id="e-2", status="gone", from_order=1_000_010)
+        e2_back = await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                            entity_id="e-2", status="active", from_order=1_000_020)
+    await _evidence(neo4j_driver, gone.id, 1)
+    await _evidence(neo4j_driver, e2_gone.id, 1)
+    await _evidence(neo4j_driver, e2_back.id, 1)
+
+    async with neo4j_driver.session() as session:
+        result = await list_gone_entities(session, user_id=test_user, project_id="p-1")
+    ids = {r["entity_id"] for r in result}
+    assert ids == {"e-1"}
+    assert next(r for r in result if r["entity_id"] == "e-1")["from_order"] == 1_000_010
+
+
+@pytest.mark.asyncio
+async def test_list_gone_entities_joins_entity_name(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        gone = await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                         entity_id="e-1", status="gone", from_order=1_000_010)
+    await _evidence(neo4j_driver, gone.id, 1)
+    await _entity_node(neo4j_driver, user_id=test_user, project_id="p-1",
+                       entity_id="e-1", name="Alice", canonical_name="alice")
+
+    async with neo4j_driver.session() as session:
+        result = await list_gone_entities(session, user_id=test_user, project_id="p-1")
+    assert result == [{"entity_id": "e-1", "name": "Alice", "canonical_name": "alice",
+                       "from_order": 1_000_010}]
+
+
+@pytest.mark.asyncio
+async def test_list_gone_entities_tolerates_missing_entity_node(neo4j_driver, test_user):
+    """No :Entity node found -- name/canonical_name are None, not a crash."""
+    async with neo4j_driver.session() as session:
+        gone = await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                         entity_id="e-orphan", status="gone", from_order=1_000_010)
+    await _evidence(neo4j_driver, gone.id, 1)
+
+    async with neo4j_driver.session() as session:
+        result = await list_gone_entities(session, user_id=test_user, project_id="p-1")
+    assert result == [{"entity_id": "e-orphan", "name": None, "canonical_name": None,
+                       "from_order": 1_000_010}]
+
+
+@pytest.mark.asyncio
+async def test_list_gone_entities_excludes_unevidenced(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                  entity_id="e-1", status="gone", from_order=1_000_010)
+        result = await list_gone_entities(session, user_id=test_user, project_id="p-1")
+    assert result == []  # evidence_count=0 by default -- un-evidenced ignored
+
+
+@pytest.mark.asyncio
+async def test_list_gone_entities_scoped_to_project(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        p1 = await merge_entity_status(session, user_id=test_user, project_id="p-1",
+                                       entity_id="e-1", status="gone", from_order=1_000_010)
+        p2 = await merge_entity_status(session, user_id=test_user, project_id="p-2",
+                                       entity_id="e-2", status="gone", from_order=1_000_010)
+    await _evidence(neo4j_driver, p1.id, 1)
+    await _evidence(neo4j_driver, p2.id, 1)
+
+    async with neo4j_driver.session() as session:
+        result = await list_gone_entities(session, user_id=test_user, project_id="p-1")
+    assert {r["entity_id"] for r in result} == {"e-1"}
+
+
+@pytest.mark.asyncio
+async def test_list_gone_entities_empty_when_none_gone(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        result = await list_gone_entities(session, user_id=test_user, project_id="p-1")
+    assert result == []

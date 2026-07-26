@@ -12,7 +12,36 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.grant_deps import GrantLevel, authorize_book, require_book_grant
+from app.grant_deps import (
+    GrantLevel,
+    authorize_book,
+    clamp_effort_to_grant,
+    require_book_grant,
+)
+
+
+# ── RE-Q11: effort-auth grant ceiling (spend authorization, the HIGH finding) ──
+
+
+def test_clamp_effort_ceilings_by_grant():
+    # View → none (can't spend any reasoning budget).
+    assert clamp_effort_to_grant("high", int(GrantLevel.VIEW)) == ("none", True)
+    # Edit caps at medium — a high request is CLAMPED (the escalation the finding kills).
+    assert clamp_effort_to_grant("high", int(GrantLevel.EDIT)) == ("medium", True)
+    assert clamp_effort_to_grant("medium", int(GrantLevel.EDIT)) == ("medium", False)
+    assert clamp_effort_to_grant("low", int(GrantLevel.EDIT)) == ("low", False)
+    # Manage / Owner → high allowed.
+    assert clamp_effort_to_grant("high", int(GrantLevel.MANAGE)) == ("high", False)
+    assert clamp_effort_to_grant("high", int(GrantLevel.OWNER)) == ("high", False)
+
+
+def test_clamp_effort_normalizes_inputs():
+    # "off"/unknown/empty → "none"; never raises on junk grant ints.
+    assert clamp_effort_to_grant("off", int(GrantLevel.OWNER)) == ("none", False)
+    assert clamp_effort_to_grant("garbage", int(GrantLevel.OWNER)) == ("none", False)
+    assert clamp_effort_to_grant(None, int(GrantLevel.EDIT)) == ("none", False)
+    assert clamp_effort_to_grant("high", 999)[0] == "none"  # unknown grant → fail-closed
+    assert clamp_effort_to_grant("high", int(GrantLevel.NONE)) == ("none", True)
 
 
 class _GC:

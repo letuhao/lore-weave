@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/planning_package.schema.json",
+  "title": "PlanningPackage",
+  "description": "Compiled unit for composition-service planning_pipeline per arc.",
+  "type": "object",
+  "required": ["arc_id", "premise", "canon", "planner_state", "constraints", "events", "chapters"],
+  "additionalProperties": false,
+  "properties": {
+    "arc_id": { "type": "string" },
+    "premise": { "type": "string", "maxLength": 4000 },
+    "canon": { "type": "string" },
+    "planner_state": { "$ref": "planner_state.schema.json" },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "synopsis"],
+        "properties": {
+          "id": { "type": "string" },
+          "synopsis": { "type": "string" },
+          "planner_notes": { "type": "array", "items": { "type": "string" } },
+          "var_deltas": { "type": "array" }
+        }
+      }
+    },
+    "genre_tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "ordinal"],
+        "properties": {
+          "title": { "type": "string" },
+          "ordinal": { "type": "integer", "minimum": 1 },
+          "event_id": { "type": "string" }
+        }
+      }
+    }
+  }
+}

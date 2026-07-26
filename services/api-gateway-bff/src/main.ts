@@ -3,6 +3,7 @@
 import './tracing';
 
 import { NestFactory } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { configureGatewayApp } from './gateway-setup';
@@ -26,6 +27,11 @@ async function bootstrap() {
   const translationUrl = requireEnv('TRANSLATION_SERVICE_URL');
   const glossaryUrl = requireEnv('GLOSSARY_SERVICE_URL');
   const chatUrl = requireEnv('CHAT_SERVICE_URL');
+  const roleplayUrl = requireEnv('ROLEPLAY_SERVICE_URL');
+  // Agent Extensibility Registry — optional + defaulted so existing deployments
+  // need no new mandatory env (the service is additive).
+  const agentRegistryUrl =
+    process.env.AGENT_REGISTRY_SERVICE_URL ?? 'http://agent-registry-service:8099';
   const videoGenUrl = requireEnv('VIDEO_GEN_SERVICE_URL');
   const statisticsUrl = requireEnv('STATISTICS_SERVICE_URL');
   const notificationUrl = requireEnv('NOTIFICATION_SERVICE_URL');
@@ -35,12 +41,21 @@ async function bootstrap() {
   const learningUrl = requireEnv('LEARNING_SERVICE_URL');
   const compositionUrl = requireEnv('COMPOSITION_SERVICE_URL');
   const jobsUrl = requireEnv('JOBS_SERVICE_URL');
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl });
+  // PUBLIC MCP edge — optional (the public surface is itself flag-gated in the edge),
+  // so a default internal URL avoids forcing a new mandatory env on every deployment.
+  const mcpPublicGatewayUrl = process.env.MCP_PUBLIC_GATEWAY_URL ?? 'http://mcp-public-gateway:8211';
+  // KAL (knowledge-gateway) — the temporal-knowledge read boundary for the FE. Optional +
+  // defaulted so existing deployments need no new mandatory env. The KAL dual-auths the
+  // passed-through user JWT (validate + grant-check), so the BFF stays a dumb proxy here.
+  const kalUrl = process.env.KNOWLEDGE_GATEWAY_URL ?? 'http://knowledge-gateway:3000';
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, agentRegistryUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl, mcpPublicGatewayUrl, kalUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);
-  console.log(
+  // P2·A2b — NestJS Logger, not console.* (LG-1). Structured startup line via the
+  // framework logger so it carries the app's log formatting + level discipline.
+  new Logger('bootstrap').log(
     `api-gateway-bff listening on :${port} auth=${authUrl} books=${bookUrl} sharing=${sharingUrl} catalog=${catalogUrl} provider_registry=${providerRegistryUrl} usage_billing=${usageBillingUrl} translation=${translationUrl} glossary=${glossaryUrl} chat=${chatUrl} knowledge=${knowledgeUrl} composition=${compositionUrl}`,
   );
 }

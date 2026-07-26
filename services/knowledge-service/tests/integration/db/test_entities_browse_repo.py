@@ -408,6 +408,7 @@ async def test_update_entity_fields_sets_user_edited_and_renames(
             name="Kai the Brave",
             kind=None,
             aliases=["Kai the Brave", "Sir Kai"],
+            expected_version=baseline.version,  # K27: optimistic-concurrency arg added to the repo
         )
     assert updated is not None
     assert updated.name == "Kai the Brave"
@@ -435,6 +436,7 @@ async def test_update_entity_fields_cross_user_returns_none(
             name="Hijacked",
             kind=None,
             aliases=None,
+            expected_version=other_ent.version,  # K27
         )
     assert result is None
     # Confirm other user's entity is untouched.
@@ -489,6 +491,9 @@ async def test_merge_entity_respects_user_edited_aliases_lock(
             name=None,
             kind=None,
             aliases=["Kai", "K."],
+            # K27: the 2nd merge_entity ("Master Kai") bumped the version to 2, so use the
+            # version read immediately before this edit (the optimistic-concurrency contract).
+            expected_version=pre_edit.version,
         )
         post_edit = await get_entity(
             session, user_id=test_user, canonical_id=ent.id,

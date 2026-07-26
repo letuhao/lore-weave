@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from .name_normalize import normalize_entity_name as _normalize
+
 __all__ = [
     "HONORIFICS",
     "canonicalize_entity_name",
@@ -36,9 +38,24 @@ __all__ = [
 # Order is longest-first as a defensive measure: if two honorifics
 # ever overlap (e.g., a future "captain general " vs "captain "),
 # the longer one strips first and the result is stable.
+# ML-2 (multilingual standard): the list carries **native-script** honorifics,
+# not only English + romanized — the honorific strip feeds `entity_canonical_id`,
+# so without native forms "田中様" and "田中" (or "王大人"/"王", "김선생님"/"김",
+# "ông Nam"/"Nam") dedup to DIFFERENT nodes. Every entry is written in its
+# **normalized** form (post `name_normalize`: NFKC + Unicode casefold + CJK
+# traditional→simplified). That matters two ways:
+#   • Latin entries are lowercase (the strip runs on the casefolded name).
+#   • CJK entries use the SIMPLIFIED form (张/师 not 張/師) because normalization
+#     T2S-folds first; a traditional-form entry here would never match.
+# CJK honorifics have NO surrounding space (CJK prose is unspaced) and attach as
+# SUFFIXES; Vietnamese titles are space-delimited PREFIXES like the English ones.
+# Prefix particles that are commonly also given names (vi anh/chị/em, zh 老/小)
+# are deliberately EXCLUDED — over-stripping a real name is worse than missing a
+# title. See docs/standards/multilingual.md ML-2 + the A5 backfill note.
 HONORIFICS: tuple[str, ...] = tuple(
     sorted(
         (
+            # English + romanized (space- or hyphen-delimited)
             "master ",
             "lord ",
             "lady ",
@@ -54,12 +71,51 @@ HONORIFICS: tuple[str, ...] = tuple(
             "general ",
             "shifu ",
             "sensei ",
-            # Suffix forms (Japanese/Chinese honorifics)
             "-shifu",
             "-sensei",
             "-sama",
             "-san",
             "-kun",
+            # Japanese native suffixes (kana + kanji)
+            "様",
+            "さま",
+            "さん",
+            "ちゃん",
+            "くん",
+            "君",
+            "殿",
+            "先生",
+            "先輩",
+            # Chinese native suffixes / titles (simplified — normalization T2S-folds)
+            "大人",
+            "公子",
+            "小姐",
+            "夫人",
+            "姑娘",
+            "陛下",
+            "殿下",
+            "阁下",
+            "大师",
+            "师父",
+            "师傅",
+            "老师",
+            "前辈",
+            # Korean native suffixes (hangul)
+            "님",
+            "씨",
+            "군",
+            "양",
+            "선생님",
+            "선생",
+            "선배",
+            # Vietnamese native title prefixes (space-delimited, lowercased)
+            "ông ",
+            "bà ",
+            "cô ",
+            "chú ",
+            "bác ",
+            "thầy ",
+            "cậu ",
         ),
         key=lambda h: (-len(h), h),
     )
@@ -87,10 +143,17 @@ def canonicalize_entity_name(name: str) -> str:
     The original display name is preserved by the caller in
     `Entity.name`; this canonical form is only used for ID hashing
     and for the `canonical_name` index property.
+
+    D-KG-TL-SIMPLIFIED-TRADITIONAL-DUP: step 1 is now a multi-language
+    EQUIVALENCE fold (NFKC + Unicode casefold + CJK traditional→simplified,
+    see `name_normalize.normalize_entity_name`) replacing the old
+    `strip().lower()`. So 張若塵 / 张若尘, full-width `Ｋａｉ` / `Kai`, and
+    composed/decomposed accents collapse to ONE canonical_id instead of
+    spawning duplicate entities. Diacritics are PRESERVED (vi `má`≠`ma`).
     """
     if not isinstance(name, str):
         raise TypeError(f"name must be str, got {type(name).__name__}")
-    normalized = name.strip().lower()
+    normalized = _normalize(name).strip()
 
     for h in HONORIFICS:
         if normalized.startswith(h):
@@ -119,7 +182,10 @@ def canonicalize_text(text: str) -> str:
     """
     if not isinstance(text, str):
         raise TypeError(f"text must be str, got {type(text).__name__}")
-    normalized = text.strip().lower()
+    # Same multi-language equivalence fold as canonicalize_entity_name (NFKC +
+    # casefold + CJK simplified), minus the honorific pass, so an event/fact
+    # re-described with simplified vs traditional script collapses to one node.
+    normalized = _normalize(text).strip()
     normalized = _WHITESPACE_RE.sub(" ", normalized)
     normalized = _PUNCTUATION_RE.sub("", normalized)
     return normalized.strip()

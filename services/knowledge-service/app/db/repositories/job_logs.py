@@ -108,3 +108,35 @@ class JobLogsRepo:
                 data["context"] = json.loads(ctx)
             out.append(JobLog.model_validate(data))
         return out
+
+    async def list_canon_flags_for_project(
+        self, user_id: UUID, project_id: UUID, *, limit: int = 100,
+    ) -> list[JobLog]:
+        """Studio Quality tab (`quality-canon` panel) / closes D-KG-CANON-FLAG-
+        REVIEW-UI: every `pass2_canon_flag` event (emitted by
+        `pass2_orchestrator.py` on a judge-confirmed contradiction) across ALL
+        extraction jobs for this project, newest first. Joins to
+        `extraction_jobs` since `job_logs` itself has no project_id column — the
+        SAME security rule as `list()` applies (user_id is the primary
+        authorization gate, job_id/project_id FK is defence-in-depth)."""
+        effective_limit = max(1, min(limit, LOGS_MAX_LIMIT))
+        query = f"""
+        SELECT jl.log_id, jl.job_id, jl.user_id, jl.level, jl.message, jl.context, jl.created_at
+        FROM job_logs jl
+        JOIN extraction_jobs ej ON ej.job_id = jl.job_id
+        WHERE jl.user_id = $1
+          AND ej.project_id = $2
+          AND jl.context ->> 'event' = 'pass2_canon_flag'
+        ORDER BY jl.created_at DESC, jl.log_id DESC
+        LIMIT {effective_limit}
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, project_id)
+        out: list[JobLog] = []
+        for r in rows:
+            data = dict(r)
+            ctx = data.get("context")
+            if isinstance(ctx, str):
+                data["context"] = json.loads(ctx)
+            out.append(JobLog.model_validate(data))
+        return out

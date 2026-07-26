@@ -39,8 +39,12 @@ from app.config import settings
 from app.services.stream_service import (
     MAX_TOOL_ITERATIONS,
     _Usage,
+    _collapse_identical_tool_calls,
+    _drop_duplicate_empty_tool_calls,
+    _extract_leaked_tool_calls,
     _parse_tool_args,
     _reassemble_tool_calls,
+    _split_safe_emit,
     _stream_via_gateway,
     _stream_with_tools,
 )
@@ -195,6 +199,8 @@ def _run(
     tools: list[dict] | None = None,
     gen_params: dict | None = None,
     project_id: str | None = "proj-1",
+    planner_model_ref: str | None = None,
+    max_iterations: int = MAX_TOOL_ITERATIONS,
 ):
     """Build a `_stream_with_tools` async generator with sane defaults."""
     return _stream_with_tools(
@@ -207,6 +213,8 @@ def _run(
         knowledge_client=knowledge_client,
         session_id=TEST_SESSION_ID,
         project_id=project_id,
+        planner_model_ref=planner_model_ref,
+        max_iterations=max_iterations,
     )
 
 
@@ -240,6 +248,35 @@ class TestParseToolArgs:
 
     def test_json_null_yields_empty_dict(self):
         assert _parse_tool_args("null") == {}
+
+    def test_gemma4_native_tokens_are_repaired(self):
+        # D-TOOLCALL-GEMMA-TOKEN-LEAK — real string captured live from
+        # google/gemma-4-26b-a4b-qat via LM Studio (llama.cpp#21316/#21680):
+        # `<|"|>` stands in for a literal quote, object keys are unquoted.
+        raw = '{query:<|"|>tình hình thời sự hôm nay<|"|>}'
+        assert _parse_tool_args(raw) == {"query": "tình hình thời sự hôm nay"}
+
+    def test_gemma4_leaked_wrapper_is_stripped_and_repaired(self):
+        # The same malformation, but with the outer <|tool_call>call:NAME…
+        # <tool_call|> wrapper still attached (observed when the provider
+        # leaks the whole native token sequence instead of separating out
+        # a clean `name` + `arguments` pair).
+        raw = (
+            '<|tool_call>call:glossary_web_search{query:<|"|>tình hình '
+            'thời sự hôm nay<|"|>}<tool_call|>'
+        )
+        assert _parse_tool_args(raw) == {"query": "tình hình thời sự hôm nay"}
+
+    def test_truncated_stream_is_not_guess_repaired(self):
+        # A genuinely truncated (unbalanced-braces) string must NOT be
+        # handed to json_repair — it would happily invent a plausible-but-
+        # unverifiable closing value. Unbalanced braces stays a hard {}.
+        assert _parse_tool_args('{query:<|"|>tình hình') == {}
+
+    def test_minor_syntax_slip_still_repaired_generically(self):
+        # Not Gemma-specific — json_repair's general net catches a plain
+        # trailing-comma slip from any provider.
+        assert _parse_tool_args('{"q": "Kai", "limit": 3,}') == {"q": "Kai", "limit": 3}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -335,7 +372,17 @@ class TestStreamWithToolsNoToolCalls:
             await _drain(_run(scripts, knowledge_client=kc))
 
         req = _FakeClient.instances[0].requests[0]
-        assert req.tools is not None and len(req.tools) == 1
+        # The always-on recovery set appended whenever a pass already offers tools:
+        #   the 1 supplied tool (memory_search)
+        # + conversation_search       (T6/D6 — recall EARLIER messages in THIS session)
+        # + chat_search_sessions      (B1/WS-1.9 — CROSS-session recall; added later, updated here
+        #                              by M4/P-2: a concurrent session wired it in and left this
+        #                              assertion at the old count of 2. Assert the NAME SET so the
+        #                              next addition fails with a meaningful diff, not a magic number.)
+        assert req.tools is not None
+        assert {t["function"]["name"] for t in req.tools} == {
+            "memory_search", "conversation_search", "chat_search_sessions",
+        }
         assert req.tool_choice == "auto"
 
     @pytest.mark.asyncio
@@ -444,13 +491,136 @@ class TestStreamWithToolsOneToolCall:
         assert assistant_msg["tool_calls"][0]["id"] == "call_x"
         assert assistant_msg["tool_calls"][0]["type"] == "function"
         assert assistant_msg["tool_calls"][0]["function"]["name"] == "memory_search"
-        assert assistant_msg["tool_calls"][0]["function"]["arguments"] == '{"query":"q"}'
+        # D-TOOLCALL-HISTORY-ARGS-NOT-JSON: arguments is now re-serialized via
+        # _parse_tool_args + json.dumps (always valid JSON, whitespace-normalized)
+        # rather than the raw streamed string verbatim — compare semantically.
+        assert json.loads(assistant_msg["tool_calls"][0]["function"]["arguments"]) == {"query": "q"}
 
         tool_msg = pass1_msgs[2]
         assert tool_msg["role"] == "tool"
         assert tool_msg["tool_call_id"] == "call_x"
         # tool message content is the JSON-encoded result payload.
         assert json.loads(tool_msg["content"]) == {"ok": 1}
+
+    @pytest.mark.asyncio
+    async def test_blank_tool_call_arguments_persisted_as_valid_json_not_empty_string(self):
+        """D-TOOLCALL-HISTORY-ARGS-NOT-JSON — live-found via LM Studio's own
+        console warning ("Failed to parse function call arguments JSON string
+        ''") reproducing identically across two UNRELATED models (gemma AND
+        qwen), which ruled out a per-model decoding defect and pointed at a
+        shared request-payload bug: this repo was persisting a tool call's raw,
+        possibly-EMPTY `arguments` string verbatim into `working`, which then
+        gets re-sent to the provider as conversation history on the NEXT pass.
+        Per the OpenAI tool-calling wire contract, `function.arguments` must
+        always be a JSON-parseable string (minimum `"{}"`) — a literal `""` is
+        invalid and made the provider's own history-reconstruction throw on
+        every subsequent pass, plausibly corrupting its context and
+        perpetuating the very "blank args" pattern this was mistaken for a
+        pure model defect. This test proves a call with NO arguments_delta at
+        all is persisted as valid, parseable JSON, never the empty string."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
+        scripts = [
+            [
+                tool_frag(index=0, id="call_blank", name="find_tools"),
+                # deliberately no arguments_delta — the model streamed nothing.
+                done("tool_calls"),
+            ],
+            [tok("final"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        pass1_msgs = _FakeClient.instances[0].requests[1].messages
+        assistant_msg = pass1_msgs[1]
+        raw_args = assistant_msg["tool_calls"][0]["function"]["arguments"]
+        assert raw_args != "", "arguments must never be persisted as a literal empty string"
+        assert json.loads(raw_args) == {}, "a blank tool call must be re-serialized as valid JSON ({})"
+
+    @pytest.mark.asyncio
+    async def test_d7_oversized_success_result_is_withheld_with_notice(self, monkeypatch):
+        """D7: a single successful tool result over the per-contributor cap is replaced
+        at the dispatch site by a self-correcting overflow notice — the giant dump never
+        reaches the model. The tool_call_id pairing is preserved (no orphan)."""
+        from app.config import settings
+        monkeypatch.setattr(settings, "tool_result_token_cap", 30, raising=False)
+        kc = AsyncMock()
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result=big)
+        scripts = [
+            [
+                tool_frag(index=0, id="call_big", name="composition_list_outline"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("ok"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        tool_msg = _FakeClient.instances[0].requests[1].messages[2]
+        assert tool_msg["role"] == "tool"
+        assert tool_msg["tool_call_id"] == "call_big"  # pairing intact (no orphan)
+        body = json.loads(tool_msg["content"])
+        assert body["error"] == "tool_result_overflow"
+        assert body["tool"] == "composition_list_outline"
+        assert "word word" not in tool_msg["content"]  # the dump is gone
+
+    @pytest.mark.asyncio
+    async def test_d7_oversized_error_result_is_not_capped(self, monkeypatch):
+        """D7 applies to re-requestable data dumps, not error payloads — a failed tool
+        keeps its (already small) error content even with a tiny cap set."""
+        from app.config import settings
+        monkeypatch.setattr(settings, "tool_result_token_cap", 1, raising=False)
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=False, error="boom")
+        scripts = [
+            [
+                tool_frag(index=0, id="call_e", name="memory_search"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("ok"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        tool_msg = _FakeClient.instances[0].requests[1].messages[2]
+        assert json.loads(tool_msg["content"]) == {"error": "boom"}
+
+    @pytest.mark.asyncio
+    async def test_d13a_collapse_flag_forwarded_to_in_loop_compaction(self, monkeypatch):
+        """D13a wiring: the `compact_collapse_duplicates_enabled` config flag reaches the
+        in-loop compaction call's `collapse_duplicates` param (a typo'd flag name would
+        break this even though the feature ships default-off)."""
+        from app.config import settings
+        from app.services.compaction import CompactionReport
+        monkeypatch.setattr(settings, "compact_collapse_duplicates_enabled", True, raising=False)
+        seen: dict = {}
+
+        async def fake_compact(msgs, **kwargs):
+            seen.update(kwargs)
+            return msgs, CompactionReport()
+
+        monkeypatch.setattr("app.services.stream_service.compact_messages", fake_compact)
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
+        scripts = [
+            [
+                tool_frag(index=0, id="c1", name="memory_search"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        gen = _stream_with_tools(
+            model_source="user_model", model_ref=TEST_MODEL_REF, user_id=TEST_USER_ID,
+            messages=[{"role": "user", "content": "hi"}], gen_params={},
+            tools=[{"type": "function", "function": {"name": "memory_search"}}],
+            knowledge_client=kc, session_id=TEST_SESSION_ID, project_id="proj-1",
+            effective_limit=8000,  # enables the in-loop compaction guard
+        )
+        with _patch_client(scripts):
+            await _drain(gen)
+        assert seen.get("collapse_duplicates") is True
 
     @pytest.mark.asyncio
     async def test_caller_messages_not_mutated(self):
@@ -498,6 +668,381 @@ class TestStreamWithToolsOneToolCall:
 
         tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
         assert [t["tool"] for t in tool_chunks] == ["memory_search", "memory_get_entity"]
+
+
+class TestSplitSafeEmit:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK cosmetic fix — the streaming hold-back
+    splitter, pure-function."""
+
+    def test_no_marker_flushes_everything(self):
+        assert _split_safe_emit("Kai is a knight.") == ("Kai is a knight.", "")
+
+    def test_full_marker_holds_from_its_start(self):
+        buf = 'Let me try. <|tool_call>call:x{y:1}<tool_call|>'
+        flush, hold = _split_safe_emit(buf)
+        assert flush == "Let me try. "
+        assert hold == '<|tool_call>call:x{y:1}<tool_call|>'
+
+    def test_partial_marker_at_tail_is_held(self):
+        # The marker is arriving one delta at a time; only "<|tool_c" has
+        # streamed so far — must NOT flush any of it (could still become the
+        # marker OR just be a coincidental "<").
+        flush, hold = _split_safe_emit("Let me try. <|tool_c")
+        assert flush == "Let me try. "
+        assert hold == "<|tool_c"
+
+    def test_bare_angle_bracket_at_buffer_end_is_held_until_disambiguated(self):
+        # A trailing "<" (the buffer's LAST char) is indistinguishable from
+        # the marker's start yet — held back, not lost; the caller flushes it
+        # at pass-end if no leak is ever confirmed (see TestGemmaTokenLeakSalvage).
+        # A "<" NOT at the tail (more text already followed it) is unambiguous
+        # and flushes immediately — real prose is not held hostage forever.
+        assert _split_safe_emit("value is <") == ("value is ", "<")
+        assert _split_safe_emit("3 < 5") == ("3 < 5", "")
+
+    def test_accumulating_across_calls_matches_live_streaming(self):
+        # Mirrors the main loop: each delta appends to the held buffer, which
+        # is re-split every time — a marker delivered in tiny fragments is
+        # never partially flushed.
+        buf = ""
+        for delta in ["Ok. ", "<", "|", "tool_call>", "call:x{y:1}", "<tool_call|>"]:
+            buf += delta
+            flush, buf = _split_safe_emit(buf)
+            assert "<" not in flush  # nothing marker-shaped ever leaks through flush
+        assert buf == '<|tool_call>call:x{y:1}<tool_call|>'
+
+
+class TestExtractLeakedToolCalls:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK — pure-function extraction, live-captured shape."""
+
+    def test_extracts_name_and_raw_body(self):
+        text = (
+            'Let\'s try again.\n<|tool_call>call:memory_search{query:<|"|>Kai'
+            '<|"|>}<tool_call|>'
+        )
+        assert _extract_leaked_tool_calls(text) == [
+            ("memory_search", '{query:<|"|>Kai<|"|>}')
+        ]
+
+    def test_no_match_on_clean_text(self):
+        assert _extract_leaked_tool_calls("Kai is a knight.") == []
+
+    def test_multiple_leaked_calls_all_extracted(self):
+        text = (
+            '<|tool_call>call:a{x:<|"|>1<|"|>}<tool_call|> and '
+            '<|tool_call>call:b{y:<|"|>2<|"|>}<tool_call|>'
+        )
+        assert _extract_leaked_tool_calls(text) == [
+            ("a", '{x:<|"|>1<|"|>}'),
+            ("b", '{y:<|"|>2<|"|>}'),
+        ]
+
+
+class TestGemmaTokenLeakSalvage:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK — the cross-channel recovery in the main
+    loop, live-reproduced against google/gemma-4-26b-a4b-qat via LM Studio:
+    the model correctly names the intended tool but abandons the structured
+    tool_calls channel and dumps its native tokens into plain text/reasoning
+    instead. The salvage must still execute the tool the model intended."""
+
+    @pytest.mark.asyncio
+    async def test_leaked_call_with_no_structured_tool_frags_is_recovered(self):
+        """A pass with ZERO ToolCallEvent fragments — only a leaked pattern in
+        the reasoning stream — must still execute the tool and continue the
+        loop, not end the turn as if no tool was called."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        scripts = [
+            [
+                reasoning("Let me search.\n"),
+                reasoning('<|tool_call>call:memory_search{query:<|"|>Kai<|"|>}<tool_call|>'),
+                usage(10, 4),
+                done("stop"),  # note: NOT "tool_calls" — LM Studio never framed one
+            ],
+            [tok("Kai is a knight."), usage(8, 6), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        kc.mcp_execute_tool.assert_awaited_once()
+        call_kwargs = kc.mcp_execute_tool.await_args.kwargs
+        assert call_kwargs["tool_name"] == "memory_search"
+        assert call_kwargs["tool_args"] == {"query": "Kai"}
+
+        # The loop continued to a second pass instead of ending on pass 0.
+        assert len(_FakeClient.instances[0].requests) == 2
+        text = "".join(c["content"] for c in chunks if c.get("content"))
+        assert text == "Kai is a knight."
+        # D-TOOLCALL-GEMMA-TOKEN-LEAK cosmetic fix — the raw leak marker must
+        # never reach the visible content OR reasoning_content stream.
+        reasoning_text = "".join(c["reasoning_content"] for c in chunks if c.get("reasoning_content"))
+        assert "<|tool_call>" not in text
+        assert "<|tool_call>" not in reasoning_text
+        assert reasoning_text == "Let me search.\n"
+
+    @pytest.mark.asyncio
+    async def test_salvaged_call_on_the_forced_final_pass_still_gets_a_followup(self):
+        """D-TOOLCALL-GEMMA-TOKEN-LEAK follow-up (live-repro'd 2026-07-07): the
+        leak is most likely on the D7 forced tool-free FINAL pass (tools were
+        withheld this pass specifically) — a broken-template model dumps its
+        native tokens as plain text once it can't get a real tool_calls slot.
+        The pre-existing D7 termination guard ("no tools offered yet the model
+        emitted calls → do not loop again") must NOT swallow a genuinely
+        salvaged+executed call — the turn needs one more pass so the model can
+        use the result, or the tool call succeeding is pointless (nothing ever
+        reads the answer)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": ["Kai"]})
+        scripts = [
+            # max_iterations=1 forces last_iter=True (offered_tools=False) on
+            # THIS very first pass — reproducing the real scenario exactly.
+            [
+                reasoning('<|tool_call>call:memory_search{query:<|"|>Kai<|"|>}<tool_call|>'),
+                usage(10, 4),
+                done("stop"),
+            ],
+            [tok("Kai is a knight, per the search."), usage(8, 6), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc, max_iterations=1))
+
+        kc.mcp_execute_tool.assert_awaited_once()
+        # The loop reached pass 1 — the fix. Before it, the turn ended empty
+        # right after the tool call, and this second request never happened.
+        assert len(_FakeClient.instances[0].requests) == 2
+        text = "".join(c["content"] for c in chunks if c.get("content"))
+        assert text == "Kai is a knight, per the search."
+        # Cosmetic fix: the leak never reached the visible content stream —
+        # the model's real answer is the ONLY thing the user ever sees.
+        assert "<|tool_call>" not in text
+
+    @pytest.mark.asyncio
+    async def test_leaked_call_for_an_unoffered_tool_is_dropped_not_executed(self):
+        """/review-impl MED — a leaked name is free-form regex output, not a
+        provider-attested id. Text that happens to match the marker shape (a
+        hallucination, or untrusted content the model echoed back from an
+        earlier tool RESULT) naming a tool NEVER offered this turn must be
+        dropped, not executed — the salvage only recovers calls for tools
+        genuinely reachable this turn, closing off an injection-adjacent
+        surface without weakening the legitimate-leak case."""
+        kc = AsyncMock()
+        scripts = [[
+            reasoning('<|tool_call>call:evil_tool{query:<|"|>x<|"|>}<tool_call|>'),
+            usage(10, 4),
+            done("stop"),
+        ]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # Not offered this turn (default tools=[memory_search]) → dropped, so
+        # the pass correctly ends as "no tool calls" — a single provider pass,
+        # nothing executed.
+        kc.mcp_execute_tool.assert_not_called()
+        assert len(_FakeClient.instances[0].requests) == 1
+        final = chunks[-1]
+        assert final["finish_reason"] == "stop"
+
+    @pytest.mark.asyncio
+    async def test_bare_angle_bracket_in_real_prose_is_not_lost(self):
+        """Real prose whose LAST delta this pass is a bare '<' (ambiguous —
+        could be the start of the leak marker, held back live) but no leak
+        ever forms must still reach the user, flushed at pass-end once the
+        leak scan comes back empty."""
+        kc = AsyncMock()
+        scripts = [[tok("value is "), tok("<"), usage(5, 3), done("stop")]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # The "<" was held (not in the first content chunk) yet still
+        # reaches the user overall — nothing genuine silently dropped.
+        assert [c["content"] for c in chunks if c.get("content")] == ["value is ", "<"]
+        kc.mcp_execute_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_leaked_call_repairs_a_structured_calls_empty_args(self):
+        """A pass DOES emit a ToolCallEvent (name known) but its arguments
+        never arrive (empty) — the same tool name leaking into plain content
+        this pass is the only place the real query survived; use it."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = [
+            [
+                tool_frag(index=0, id="call_1", name="memory_search"),
+                tok('<|tool_call>call:memory_search{query:<|"|>Kai<|"|>}<tool_call|>'),
+                usage(10, 4),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        call_kwargs = kc.mcp_execute_tool.await_args.kwargs
+        assert call_kwargs["tool_args"] == {"query": "Kai"}
+
+
+class TestDuplicateEmptyToolCallDedup:
+    """D-TOOLCALL-DUP-EMPTY-CALL — a sibling of D-TOOLCALL-GEMMA-TOKEN-LEAK
+    (same defective-decoding local-model family), different manifestation:
+    the model emits a genuinely well-formed STRUCTURED tool call, then, in
+    the SAME pass, a second structured call to the IDENTICAL tool name with
+    empty/missing arguments — two distinct entries in the provider's own
+    `tool_calls` array (confirmed via real Postgres transcripts: the model's
+    own reasoning narrates "calling glossary_web_search twice, the second one
+    without a query" but cannot self-correct). Left unhandled, the malformed
+    duplicate reaches `execute_tool` and trips a `missing properties`
+    validation error — one real session hit this 13+ times before giving up
+    or hallucinating an answer. The fix must drop ONLY this narrow pattern,
+    never a legitimate second call with its own distinct, valid arguments."""
+
+    # ── pure function ────────────────────────────────────────────────────
+
+    def test_drops_the_malformed_duplicate(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search",
+             "arguments": '{"query":"chiến tranh Mỹ và Iran"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0]]
+
+    def test_drops_a_duplicate_with_unparseable_arguments_too(self):
+        # Not just empty-string — anything _parse_tool_args can't repair
+        # into a non-empty dict counts as "empty" for dedup purposes.
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": "{"},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0]]
+
+    def test_keeps_a_legitimate_second_call_with_distinct_valid_args(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": '{"query":"b"}'},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_keeps_both_when_neither_is_well_formed(self):
+        # No well-formed predecessor to be "a duplicate of" — the pre-existing
+        # empty-args → validation-error path still applies normally here.
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": ""},
+            {"id": "c1", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_ignores_different_tool_names(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "memory_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_single_call_is_untouched(self):
+        calls = [{"id": "c0", "name": "glossary_web_search", "arguments": ""}]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_drops_multiple_consecutive_empty_duplicates(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": ""},
+            {"id": "c2", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0]]
+
+    def test_drops_a_non_adjacent_duplicate_interleaved_with_another_tool(self):
+        """review-impl MED fix: the old dedup only compared a call to the
+        IMMEDIATELY PRECEDING kept call regardless of tool name — for
+        [A(good), B(good), A(empty)], the trailing empty A wasn't recognized
+        as a duplicate of the earlier A because B sat between them. Now tracks
+        the last well-formed call PER TOOL NAME, so this non-adjacent
+        duplicate is still caught; B(good) is untouched (a distinct tool)."""
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "memory_search", "arguments": '{"query":"b"}'},
+            {"id": "c2", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0], calls[1]]
+
+    # ── integration: the full _stream_with_tools loop ──────────────────────
+
+    @pytest.mark.asyncio
+    async def test_malformed_duplicate_dropped_no_validation_error_surfaced(self):
+        """A pass with two ToolCallEvent fragments for the SAME tool — index 0
+        well-formed, index 1 empty — must execute ONLY the first: the empty
+        duplicate never reaches `execute_tool`, so the `missing properties`
+        validation error a real backend would return for it is never
+        surfaced back to the model at all."""
+        kc = AsyncMock()
+
+        async def _execute(*, tool_name, tool_args, **_kw):
+            if not tool_args:
+                # Mirrors the real backend's behavior on the actual bug —
+                # if dedup fails, this is what derails the model 13+ times.
+                return _envelope(success=False, error='missing properties: ["query"]')
+            return _envelope(success=True, result={"hits": ["ok"]})
+
+        kc.mcp_execute_tool.side_effect = _execute
+        scripts = [
+            [
+                tool_frag(index=0, id="c0", name="glossary_web_search"),
+                tool_frag(index=1, id="c1", name="glossary_web_search"),
+                tool_frag(index=0, arguments_delta='{"query":"chiến tranh Mỹ và Iran"}'),
+                tool_frag(index=1, arguments_delta=""),
+                done("tool_calls"),
+            ],
+            [tok("here are the results"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "glossary_web_search"}}],
+            ))
+
+        # Only the well-formed call executed.
+        assert kc.mcp_execute_tool.await_count == 1
+        call_kwargs = kc.mcp_execute_tool.await_args_list[0].kwargs
+        assert call_kwargs["tool_name"] == "glossary_web_search"
+        assert call_kwargs["tool_args"] == {"query": "chiến tranh Mỹ và Iran"}
+
+        # Exactly one tool_call chunk, and it succeeded — no validation-error
+        # chunk for a dropped second call ever reached the model/UI.
+        tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tool_chunks) == 1
+        assert tool_chunks[0]["ok"] is True
+        assert tool_chunks[0]["error"] is None
+        assert not any(
+            c.get("tool_call", {}).get("error") for c in chunks if "tool_call" in c
+        )
+
+    @pytest.mark.asyncio
+    async def test_legitimate_second_call_with_distinct_valid_args_still_executes(self):
+        """Two genuinely distinct calls to the SAME tool in one pass (e.g. two
+        different searches) must both execute — dedup must never fire when the
+        second call carries its own real, non-empty arguments."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        scripts = [
+            [
+                tool_frag(index=0, id="c0", name="glossary_web_search"),
+                tool_frag(index=1, id="c1", name="glossary_web_search"),
+                tool_frag(index=0, arguments_delta='{"query":"a"}'),
+                tool_frag(index=1, arguments_delta='{"query":"b"}'),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "glossary_web_search"}}],
+            ))
+
+        assert kc.mcp_execute_tool.await_count == 2
+        args = [c.kwargs["tool_args"] for c in kc.mcp_execute_tool.await_args_list]
+        assert args == [{"query": "a"}, {"query": "b"}]
+        tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tool_chunks) == 2
+        assert all(t["ok"] for t in tool_chunks)
 
 
 class TestToolCallFragmentReassembly:
@@ -838,3 +1383,539 @@ class TestProjectIdPassthrough:
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc, project_id=None))
         assert kc.mcp_execute_tool.await_args.kwargs["project_id"] is None
+
+
+class TestPlannerModelRefAuthority:
+    """#19 — choosing the planner model is a USER/config decision, never the agent's.
+    chat-service is authoritative over the glossary_plan model_ref: a session pin wins,
+    and an absent pin STRIPS any model-supplied ref so the per-user Settings default
+    (resolved downstream in glossary) applies. Without this a weak model that fills the
+    exposed model_ref arg silently overrides the user's selection."""
+
+    def _glossary_plan_script(self, args_json: str):
+        return [
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta=args_json),
+                done("tool_calls"),
+            ],
+            [tok("planned"), done("stop")],
+        ]
+
+    @pytest.mark.asyncio
+    async def test_session_pin_injected_when_model_omits_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script('{"book_id":"b1","goal":"design ontology"}')
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_session_pin_overrides_model_supplied_ref(self):
+        """The fix: a model that fills model_ref does NOT bypass the user's session pin."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script(
+            '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_model_supplied_ref_stripped_when_no_session_pin(self):
+        """No session pin → the model's guess is removed so glossary resolves the
+        per-user Settings 'planner' default (not whatever the model invented)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script(
+            '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))
+        assert "model_ref" not in kc.mcp_execute_tool.await_args.kwargs["tool_args"]
+
+    # D-PLANFORGE-DEFAULT-MODEL — plan_propose_spec now gets the SAME authority
+    # treatment as glossary_plan (composition-service resolves a fallback when
+    # model_ref is absent instead of hard-erroring "model_ref required").
+    def _plan_propose_script(self, args_json: str):
+        return [
+            [
+                tool_frag(index=0, id="p1", name="plan_propose_spec"),
+                tool_frag(index=0, arguments_delta=args_json),
+                done("tool_calls"),
+            ],
+            [tok("proposed"), done("stop")],
+        ]
+
+    @pytest.mark.asyncio
+    async def test_plan_propose_spec_session_pin_injected_when_model_omits_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._plan_propose_script(
+            '{"book_id":"b1","source_markdown":"x","mode":"llm"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_plan_propose_spec_session_pin_overrides_model_supplied_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._plan_propose_script(
+            '{"book_id":"b1","source_markdown":"x","mode":"llm","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_plan_propose_spec_model_supplied_ref_stripped_when_no_session_pin(self):
+        """No session pin -> the model's guess is removed so composition-service's
+        resolve_planner_model fallback applies (not whatever the model invented)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._plan_propose_script(
+            '{"book_id":"b1","source_markdown":"x","mode":"llm","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))
+        assert "model_ref" not in kc.mcp_execute_tool.await_args.kwargs["tool_args"]
+
+
+class TestPlannerHardStop:
+    """#18 — the planner has no ReAct loop in CODE; the "loops forever" is the chat
+    agent re-calling the heavy (~39s) glossary_plan in a self-recheck cycle, gated only
+    by a SOFT skill rule. Logic — not the prompt — must bound it: the FIRST glossary_plan
+    a turn runs; a 2nd+ call in the SAME tool loop is short-circuited WITHOUT executing,
+    with a tool result steering the model to present/confirm the plan it already has."""
+
+    @pytest.mark.asyncio
+    async def test_second_glossary_plan_in_a_turn_is_short_circuited(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"plan": "p"})
+        scripts = [
+            # Pass 0 — first glossary_plan: runs for real.
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"design"}'),
+                done("tool_calls"),
+            ],
+            # Pass 1 — the self-recheck: a SECOND glossary_plan. Must NOT execute.
+            [
+                tool_frag(index=0, id="p2", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"recheck"}'),
+                done("tool_calls"),
+            ],
+            # Pass 2 — model gives up re-planning and answers.
+            [tok("here is the plan"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # The planner ran EXACTLY once — the 2nd call never reached the MCP transport.
+        assert kc.mcp_execute_tool.await_count == 1
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "glossary_plan"
+
+        # The short-circuited 2nd call still surfaces a failed tool_call so the FE/model
+        # sees it, carrying guidance (not a silent drop).
+        plan_chunks = [
+            c["tool_call"] for c in chunks
+            if "tool_call" in c and c["tool_call"]["tool"] == "glossary_plan"
+        ]
+        assert len(plan_chunks) == 2
+        assert plan_chunks[0]["ok"] is True
+        assert plan_chunks[1]["ok"] is False
+        assert plan_chunks[1]["id"] == "p2"
+        assert "again" in (plan_chunks[1]["error"] or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_single_glossary_plan_is_unaffected(self):
+        """The common, correct case — ONE plan per turn — runs normally."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"plan": "p"})
+        scripts = [
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"design"}'),
+                done("tool_calls"),
+            ],
+            [tok("planned"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        kc.mcp_execute_tool.assert_awaited_once()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# W1 — tool-schema token measurement at the advertise chokepoint
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestW1SchemaTokens:
+    """The first pass that OFFERS tools yields exactly one
+    {"schema_tokens": {frontend_tool_schemas, mcp_tool_schemas}} chunk —
+    the previously-unmeasured hidden bucket of the context breakdown."""
+
+    @pytest.mark.asyncio
+    async def test_first_pass_reports_split_schema_tokens(self):
+        kc = AsyncMock()
+        tools = [
+            {"type": "function", "function": {
+                "name": "memory_search",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+            }},
+            # confirm_action is in FRONTEND_TOOL_NAMES → the frontend bucket. (propose_edit
+            # moved to ai-gateway in Phase 2, so a still-frontend tool fills the bucket here.)
+            {"type": "function", "function": {
+                "name": "confirm_action",
+                "parameters": {"type": "object", "properties": {"confirm_token": {"type": "string"}}},
+            }},
+        ]
+        scripts = [[tok("hi"), usage(1, 1), done()]]
+        with _patch_client(scripts):
+            out = await _drain(_run(scripts, knowledge_client=kc, tools=tools))
+        st = [c for c in out if "schema_tokens" in c]
+        assert len(st) == 1, "measured once per turn, at the first advertise"
+        split = st[0]["schema_tokens"]
+        assert set(split) == {"frontend_tool_schemas", "mcp_tool_schemas"}
+        assert split["frontend_tool_schemas"] > 0
+        assert split["mcp_tool_schemas"] > 0
+        # It is the FIRST chunk (before any token), so a consumer can fold it
+        # into the finish-time frame regardless of how the turn ends.
+        assert "schema_tokens" in out[0]
+
+    @pytest.mark.asyncio
+    async def test_no_tools_no_schema_chunk(self):
+        kc = AsyncMock()
+        scripts = [[tok("hi"), usage(1, 1), done()]]
+        with _patch_client(scripts):
+            out = await _drain(_run(scripts, knowledge_client=kc, tools=[]))
+        assert [c for c in out if "schema_tokens" in c] == []
+
+
+class TestConversationSearchDispatch:
+    """T6/D6 — a model call to conversation_search is CONSUMER-LOCAL: it runs the
+    session-scoped recovery read in-process (never mcp_execute_tool) and feeds the
+    shaped result back. Proves the WIRING effect, not just the advertise."""
+
+    @pytest.mark.asyncio
+    async def test_call_dispatches_locally_with_session_scope(self, monkeypatch):
+        kc = AsyncMock()
+        captured: dict = {}
+
+        async def _fake_run(pool, *, session_id, owner_user_id, args):
+            captured["session_id"] = session_id
+            captured["owner"] = owner_user_id
+            captured["args"] = args
+            return {"query": "Kai", "count": 1,
+                    "hits": [{"turn": 2, "role": "user", "snippet": "Kai is a knight"}]}
+
+        # No DB in a unit test — stub the pool getter + the shaper (both imported
+        # into stream_service's namespace).
+        monkeypatch.setattr("app.services.stream_service.get_pool", lambda: object())
+        monkeypatch.setattr(
+            "app.services.stream_service.run_conversation_search", _fake_run)
+
+        scripts = [
+            [tok("let me check. "),
+             tool_frag(index=0, id="cs1", name="conversation_search"),
+             tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
+             usage(5, 2), done("tool_calls")],
+            [tok("Kai is a knight."), usage(3, 2), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # Consumer-local: the generic MCP executor is NEVER touched.
+        kc.mcp_execute_tool.assert_not_awaited()
+        # The engine got the tenancy scoping the recovery read requires.
+        assert captured["args"] == {"query": "Kai"}
+        assert captured["owner"] == TEST_USER_ID
+        assert captured["session_id"] == TEST_SESSION_ID
+
+        tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tool_chunks) == 1
+        tc = tool_chunks[0]
+        assert tc["tool"] == "conversation_search"
+        assert tc["ok"] is True
+        assert tc["result"]["count"] == 1
+        assert tc["error"] is None
+        assert tc["id"] == "cs1"
+        # The final text pass ran after the recovered fact was fed back.
+        assert any(c.get("content") == "Kai is a knight." for c in chunks)
+
+    @pytest.mark.asyncio
+    async def test_engine_error_maps_to_not_ok(self, monkeypatch):
+        kc = AsyncMock()
+
+        async def _err_run(pool, *, session_id, owner_user_id, args):
+            return {"error": "conversation_search could not read the history: boom"}
+
+        monkeypatch.setattr("app.services.stream_service.get_pool", lambda: object())
+        monkeypatch.setattr(
+            "app.services.stream_service.run_conversation_search", _err_run)
+
+        scripts = [
+            [tool_frag(index=0, id="cs2", name="conversation_search"),
+             tool_frag(index=0, arguments_delta='{"query":"x"}'),
+             done("tool_calls")],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        tc = next(c["tool_call"] for c in chunks if "tool_call" in c)
+        # A DB blip surfaces as a not-ok tool call the model can self-correct from.
+        assert tc["ok"] is False
+        assert tc["result"] is None
+        assert "boom" in tc["error"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 0 (frontend-tools → MCP migration) — the wired MCP-native validation seam
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestFrontendToolValidationSeam:
+    """A frontend tool whose args fail its OWN canonical JSON-Schema is rejected
+    with the standard `required: missing properties` signal and the run
+    CONTINUES — it must never suspend an un-appliable card (the reported bug,
+    session 019f771a: propose_edit called with propose_record_edit's args). A
+    well-formed call still suspends exactly as before."""
+
+    @pytest.mark.asyncio
+    async def test_bad_frontend_args_rejected_and_not_suspended(self):
+        # The Phase 0 seam still guards the REMAINING frontend tools (confirm_action,
+        # glossary_*, propose_record_edit). propose_edit's own incident-shape rejection
+        # moved to ai-gateway (propose-edit-tool.spec.ts) in Phase 2. Here confirm_action
+        # (requires confirm_token+descriptor+title) is called with the record-edit shape
+        # → the seam rejects it BEFORE suspending, feeding the model the repair signal.
+        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
+
+        kc = AsyncMock()
+        incident_args = {
+            "domain": "book",
+            "resource_ref": {"book_id": "b", "chapter_id": "c"},
+            "changes": [{"field_label": "Body", "old_value": "a", "new_value": "b", "target": "body"}],
+        }
+        scripts = [
+            [
+                tool_frag(index=0, id="call_x", name="confirm_action"),
+                tool_frag(index=0, arguments_delta=json.dumps(incident_args)),
+                done("tool_calls"),
+            ],
+            [tok("Let me correct that."), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[CONFIRM_ACTION_TOOL]))
+
+        # NEVER suspended — no un-appliable card was rendered.
+        assert not any("suspend" in c for c in chunks)
+        tcs = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tcs) == 1
+        assert tcs[0]["tool"] == "confirm_action"
+        assert tcs[0]["ok"] is False
+        assert "required: missing properties" in tcs[0]["error"]
+        assert "confirm_token" in tcs[0]["error"]
+        assert chunks[-1]["finish_reason"] == "stop"
+        # A frontend tool — no backend execute happened.
+        kc.mcp_execute_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_valid_frontend_args_still_suspend(self):
+        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
+
+        kc = AsyncMock()
+        good = {"confirm_token": "tok", "descriptor": "book.publish", "title": "Publish?", "domain": "book"}
+        scripts = [
+            [
+                tool_frag(index=0, id="call_ok", name="confirm_action"),
+                tool_frag(index=0, arguments_delta=json.dumps(good)),
+                done("tool_calls"),
+            ],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc, tools=[CONFIRM_ACTION_TOOL]))
+
+        susp = [c["suspend"] for c in chunks if "suspend" in c]
+        assert len(susp) == 1
+        assert susp[0]["pending_tool_call"]["name"] == "confirm_action"
+        assert susp[0]["pending_tool_call"]["args"] == good
+
+
+class TestTaskGateSuspend:
+    """ext-tasks (T1c(3)) — a backend tool returning a task envelope (a capability-
+    gated domain gate: composition_create_derivative) suspends the run with the task
+    MARKED, so resume drives the domain's provide-input tool instead of a client
+    execution. Dormant on the current stack (nothing declares tasks caps)."""
+
+    @pytest.mark.asyncio
+    async def test_backend_task_envelope_suspends_with_task_marker(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = {
+            "success": True, "result": None, "error": None,
+            "task": {"taskId": "task_z", "status": "input_required",
+                     "inputRequests": {"title": "Spawn dị bản?"}},
+        }
+        scripts = [
+            [
+                tool_frag(index=0, id="call_g", name="composition_create_derivative"),
+                tool_frag(index=0, arguments_delta='{"project_id":"p","name":"AU"}'),
+                done("tool_calls"),
+            ],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "composition_create_derivative"}}],
+            ))
+
+        susp = [c["suspend"] for c in chunks if "suspend" in c]
+        assert len(susp) == 1
+        pend = susp[0]["pending_tool_call"]
+        assert pend["name"] == "composition_create_derivative"
+        assert pend["task"] == {"taskId": "task_z", "status": "input_required",
+                                "inputRequests": {"title": "Spawn dị bản?"}}
+
+
+class TestCollapseIdenticalToolCalls:
+    """D-TOOLCALL-DUP-IDENTICAL — byte-identical calls in ONE pass collapse to one.
+
+    Measured live over 24h of transcripts (2026-07-23): affected sessions had
+    `count(DISTINCT args) = 1` across 3-4 calls of the same tool, all at `iteration: 0`
+    — parallel duplicates in a single emission, not sequential retries. A CORRECTNESS
+    fix: a write tool without its own idempotency would run N times for one user intent.
+    """
+
+    def test_collapses_byte_identical_repeats(self):
+        args = '{"book_id":"b1","items":[{"name":"Lâm Uyên","kind":"character"}]}'
+        calls = [
+            {"id": "c0", "name": "glossary_propose_entities", "arguments": args},
+            {"id": "c1", "name": "glossary_propose_entities", "arguments": args},
+            {"id": "c2", "name": "glossary_propose_entities", "arguments": args},
+        ]
+        assert _collapse_identical_tool_calls(calls) == [calls[0]]
+
+    def test_collapses_args_differing_only_in_key_order_or_whitespace(self):
+        calls = [
+            {"id": "c0", "name": "tool_list", "arguments": '{"category":"glossary"}'},
+            {"id": "c1", "name": "tool_list", "arguments": '{ "category" : "glossary" }'},
+        ]
+        assert _collapse_identical_tool_calls(calls) == [calls[0]]
+
+    def test_keeps_distinct_args_for_the_same_tool(self):
+        # A genuine parallel batch (two different searches) must survive intact.
+        calls = [
+            {"id": "c0", "name": "glossary_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_search", "arguments": '{"query":"b"}'},
+        ]
+        assert _collapse_identical_tool_calls(calls) == calls
+
+    def test_keeps_same_args_for_different_tools(self):
+        calls = [
+            {"id": "c0", "name": "tool_list", "arguments": '{"category":"glossary"}'},
+            {"id": "c1", "name": "tool_load", "arguments": '{"category":"glossary"}'},
+        ]
+        assert _collapse_identical_tool_calls(calls) == calls
+
+    def test_single_call_and_empty_list_are_untouched(self):
+        one = [{"id": "c0", "name": "t", "arguments": "{}"}]
+        assert _collapse_identical_tool_calls(one) == one
+        assert _collapse_identical_tool_calls([]) == []
+
+    def test_composes_with_the_empty_duplicate_dropper(self):
+        # Real shape: one well-formed call, an identical repeat, and a malformed empty.
+        # Run in the same order production does — empties dropped FIRST, so a `{}` call
+        # is never the survivor a later well-formed call would collapse into.
+        args = '{"query":"a"}'
+        calls = [
+            {"id": "c0", "name": "glossary_search", "arguments": args},
+            {"id": "c1", "name": "glossary_search", "arguments": args},
+            {"id": "c2", "name": "glossary_search", "arguments": ""},
+        ]
+        assert _collapse_identical_tool_calls(
+            _drop_duplicate_empty_tool_calls(calls)
+        ) == [calls[0]]
+
+
+class TestCollapseIsWiredIntoTheLoop:
+    """K9 — every test above calls the helper DIRECTLY. None of them proves the loop
+    reaches it, and a correct helper nobody calls is this repo's recurring silent-no-op
+    shape. Two post-fix live runs failed to reproduce the duplicate emission (the model
+    simply did not misbehave those times), so waiting for it to fire in the wild is not a
+    verification strategy — the duplicate has to be INJECTED at the seam it arrives from.
+
+    These drive the real `_stream_with_tools` with a gateway script that emits the exact
+    measured shape (3 byte-identical calls at iteration 0) and assert on the EFFECT that
+    matters: how many times the tool actually EXECUTES.
+    """
+
+    _ARGS = '{"query":"Lâm Uyên"}'
+
+    def _dup_pass(self, n: int, args_list: list[str] | None = None):
+        """One gateway pass emitting `n` complete tool calls, streamed as the gateway
+        really streams them: id+name on the first fragment per index, args after."""
+        args_list = args_list or [self._ARGS] * n
+        evs = []
+        for i in range(n):
+            evs.append(tool_frag(index=i, id=f"c{i}", name="memory_search"))
+            evs.append(tool_frag(index=i, arguments_delta=args_list[i]))
+        evs.append(done("tool_calls"))
+        return evs
+
+    @pytest.mark.asyncio
+    async def test_three_identical_calls_execute_the_tool_ONCE(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(result={"hits": []})
+        scripts = [self._dup_pass(3), [tok("done"), usage(1, 1), done("stop")]]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        assert kc.mcp_execute_tool.await_count == 1, (
+            "the loop executed the duplicate emission more than once — a write tool "
+            "without its own idempotency would have made N rows from one user intent"
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_collapsed_ids_never_reach_the_provider(self):
+        """The other half of correctness: the assistant message the NEXT pass sends back
+        must not advertise tool_call ids that were never answered, or the provider waits
+        on a response that will never come.
+        """
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(result={"hits": []})
+        scripts = [self._dup_pass(3), [tok("done"), usage(1, 1), done("stop")]]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        second = _FakeClient.instances[0].requests[1]
+        assistant = [m for m in second.messages if m.get("role") == "assistant"
+                     and m.get("tool_calls")]
+        assert assistant, "the second pass must carry the assistant tool_calls message"
+        ids = [c["id"] for c in assistant[-1]["tool_calls"]]
+        answered = [m["tool_call_id"] for m in second.messages if m.get("role") == "tool"]
+        assert len(ids) == 1, f"collapsed ids leaked into the wire: {ids}"
+        assert sorted(ids) == sorted(answered), (
+            "every advertised tool_call id must have a matching tool result"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_parallel_batch_still_runs_BOTH(self):
+        """The guard against over-collapsing. Without this the test above passes just as
+        well for a loop that dropped every call but the first.
+        """
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(result={"hits": []})
+        scripts = [
+            self._dup_pass(2, ['{"query":"a"}', '{"query":"b"}']),
+            [tok("done"), usage(1, 1), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        assert kc.mcp_execute_tool.await_count == 2, (
+            "two DIFFERENT searches in one emission are a legitimate parallel batch"
+        )

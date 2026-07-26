@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
@@ -23,6 +23,10 @@ from .routers import translate as translate_router
 from .routers import extraction as extraction_router
 from .routers import glossary_translate as glossary_translate_router
 from .routers import internal_dispatch as internal_dispatch_router
+from .routers import actions as actions_router
+# MCP fan-out S-TRANSL — the /mcp provider facade (mounted below; its session
+# manager is run inside the lifespan, like S-JOBS).
+from .mcp.server import build_mcp_app, mcp_server
 
 
 @asynccontextmanager
@@ -79,8 +83,30 @@ async def lifespan(app: FastAPI):
                 batch=settings.translation_resume_sweep_batch,
             ))
 
+    # MCP fan-out S-TRANSL — run the /mcp StreamableHTTP session manager. The /mcp
+    # sub-app is mounted at module level, but a mounted Starlette sub-app's lifespan
+    # is NOT auto-run under FastAPI, so we enter its session manager here. Best-effort:
+    # failure affects ONLY /mcp; the bespoke /v1/translation REST API stays up.
+    mcp_exit_stack: AsyncExitStack | None = None
+    try:
+        mcp_exit_stack = AsyncExitStack()
+        await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
+        log.info("S-TRANSL: MCP session manager started; /mcp facade live")
+    except Exception:  # noqa: BLE001 — /mcp is best-effort relative to the REST API
+        log.warning(
+            "S-TRANSL: MCP session manager failed to start (non-fatal) — "
+            "/mcp facade unavailable, /v1/translation still serves",
+            exc_info=True,
+        )
+        if mcp_exit_stack is not None:
+            await mcp_exit_stack.aclose()
+            mcp_exit_stack = None
+
     yield
 
+    if mcp_exit_stack is not None:
+        with suppress(Exception):
+            await mcp_exit_stack.aclose()
     await consumer.stop()
     consumer_task.cancel()
     with suppress(asyncio.CancelledError, Exception):
@@ -112,6 +138,12 @@ app.include_router(translate_router.router)
 app.include_router(extraction_router.router)
 app.include_router(glossary_translate_router.router)
 app.include_router(internal_dispatch_router.router)
+app.include_router(actions_router.router)
+
+# MCP fan-out S-TRANSL — mount the /mcp facade. stateless_http=True + path="/" so
+# this yields the endpoint at exactly "/mcp"; the session manager is run in the
+# lifespan above (a mounted sub-app's lifespan is not auto-run under FastAPI).
+app.mount("/mcp", build_mcp_app())
 
 
 @app.get("/health", response_class=PlainTextResponse)
@@ -158,4 +190,55 @@ async def get_book_languages(book_id: UUID, db: asyncpg.Pool = Depends(get_pool)
             LanguageInfo(language=r["target_language"], chapter_count=r["chapter_count"])
             for r in rows
         ],
+    )
+
+
+class ActiveTranslationTextResponse(BaseModel):
+    chapter_id: str
+    target_language: str
+    chapter_translation_id: str | None = None
+    text: str | None = None  # None when no active translation exists for this language
+
+
+@app.get(
+    "/internal/translation/chapters/{chapter_id}/active-text",
+    response_model=ActiveTranslationTextResponse,
+)
+async def get_active_translation_text(
+    chapter_id: UUID,
+    target_language: str,
+    db: asyncpg.Pool = Depends(get_pool),
+):
+    """KG-ML M2 — return the ACTIVE translation's flat text for a chapter+language.
+
+    Consumed by knowledge-service's `translation.published` handler to dual-index
+    vi passages. Resolves the active version via `active_chapter_translation_versions`
+    and returns `translated_body`, falling back to a plain-text projection of
+    `translated_body_json` (Tiptap blocks). `text=None` when no active version
+    exists for that language (caller skips ingest). Service-to-service / internal.
+    """
+    from .routers.versions import _as_list, _blocks_to_text
+
+    row = await db.fetchrow(
+        """
+        SELECT ct.id, ct.translated_body, ct.translated_body_json
+        FROM active_chapter_translation_versions a
+        JOIN chapter_translations ct ON ct.id = a.chapter_translation_id
+        WHERE a.chapter_id = $1 AND a.target_language = $2
+        """,
+        chapter_id, target_language,
+    )
+    if row is None:
+        return ActiveTranslationTextResponse(
+            chapter_id=str(chapter_id), target_language=target_language,
+        )
+    text = row["translated_body"]
+    if not text:  # null or empty → assemble from the block JSON
+        blocks = _as_list(row["translated_body_json"])
+        text = _blocks_to_text(blocks) if blocks else None
+    return ActiveTranslationTextResponse(
+        chapter_id=str(chapter_id),
+        target_language=target_language,
+        chapter_translation_id=str(row["id"]),
+        text=text or None,
     )

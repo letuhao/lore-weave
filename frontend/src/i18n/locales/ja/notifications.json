@@ -20,6 +20,12 @@
     },
     "social": {
       "followed": "{{name}}さんがあなたをフォローしました"
+    },
+    "llm_job": {
+      "completed": "{{operation}} が完了しました",
+      "failed": "{{operation}} に失敗しました",
+      "cancelled": "{{operation}} がキャンセルされました",
+      "unknown": "{{operation}}"
     }
   },
   "event": {

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ShieldCheck, AlertTriangle } from 'lucide-react';
-import { useUserModels } from '../../hooks/useUserModels';
+import { ModelPicker } from '@/components/model-picker';
+import { SpendCapField } from '@/components/ai-task';
 import { H0Marker } from '../badges';
 import type { ComposeDimension } from '../../types';
 
@@ -36,8 +37,6 @@ interface Props {
  *  by the async runner — see deferral D-COMPOSE-S1-EMBED-REF.) View-only. */
 export function ComposeConfig({ value, onChange, showTechnique = false, dimensions = [] }: Props) {
   const { t } = useTranslation('enrichment');
-  const gens = useUserModels('chat');
-  const embeds = useUserModels('embedding');
 
   const gateLocked = value.technique === 'fabrication' || value.technique === 'recook';
   const auto = value.requestedDimensions === null;
@@ -54,51 +53,38 @@ export function ComposeConfig({ value, onChange, showTechnique = false, dimensio
   return (
     <div className="space-y-3 rounded-lg border bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-4 text-xs">
-        <label className="flex items-center gap-1">
+        <div className="flex items-center gap-1">
           <span className="text-muted-foreground">{t('compose.config.gen_model')}</span>
-          <select
-            value={value.genModel}
-            onChange={(e) => onChange({ ...value, genModel: e.target.value })}
-            data-testid="compose-gen-model"
-            className="rounded border bg-background px-2 py-1"
-          >
-            <option value="">{t('compose.config.select_model')}</option>
-            {gens.map((m) => (
-              <option key={m.user_model_id} value={m.user_model_id}>
-                {m.alias || m.provider_model_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1">
-          <span className="text-muted-foreground">{t('compose.config.embed_model')}</span>
-          <select
-            value={value.embedModel}
-            onChange={(e) => onChange({ ...value, embedModel: e.target.value })}
-            data-testid="compose-embed-model"
-            className="rounded border bg-background px-2 py-1"
-          >
-            <option value="">{t('compose.config.select_model')}</option>
-            {embeds.map((m) => (
-              <option key={m.user_model_id} value={m.user_model_id}>
-                {m.alias || m.provider_model_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1">
-          <span className="text-muted-foreground">{t('compose.config.max_spend')}</span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={value.maxSpend}
-            placeholder={t('compose.config.no_cap')}
-            onChange={(e) => onChange({ ...value, maxSpend: e.target.value })}
-            data-testid="compose-max-spend"
-            className="w-20 rounded border bg-background px-2 py-1"
+          <ModelPicker
+            capability="chat"
+            value={value.genModel || null}
+            onChange={(id) => onChange({ ...value, genModel: id ?? '' })}
+            placeholder={t('compose.config.select_model')}
+            ariaLabel={t('compose.config.gen_model')}
+            compact
+            className="w-48"
           />
-        </label>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground">{t('compose.config.embed_model')}</span>
+          <ModelPicker
+            capability="embedding"
+            value={value.embedModel || null}
+            onChange={(id) => onChange({ ...value, embedModel: id ?? '' })}
+            placeholder={t('compose.config.select_model')}
+            ariaLabel={t('compose.config.embed_model')}
+            compact
+            className="w-48"
+          />
+        </div>
+        <SpendCapField
+          compact
+          testid="compose-max-spend"
+          value={value.maxSpend}
+          onChange={(v) => onChange({ ...value, maxSpend: v })}
+          label={t('compose.config.max_spend')}
+          placeholder={t('compose.config.no_cap')}
+        />
         <label className="flex items-center gap-1">
           <span className="text-muted-foreground">{t('compose.config.top_k')}</span>
           <input

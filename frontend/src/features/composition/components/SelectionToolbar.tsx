@@ -3,20 +3,19 @@
 // voice-consistent replacement (reuses useCompositionStream in selection mode) shown
 // as a ghost; Accept replaces the saved range, Discard reverts. Self-contained model
 // picker (PO). Grounding couples to the compose panel's active scene (sceneContext).
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { BubbleMenu } from '@tiptap/react/menus';
 import type { Editor } from '@tiptap/react';
-import { aiModelsApi } from '../../ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
+import { trackRange, type RangeHandle } from '../../../components/editor/TrackedPositions';
 import { useCompositionStream } from '../hooks/useCompositionStream';
 import type { SelectionOperation } from '../types';
 
 export const SELECTION_MAX_CHARS = 8000;
 const OPS: SelectionOperation[] = ['rewrite', 'expand', 'describe'];
-
-type Range = { from: number; to: number };
 
 export function SelectionToolbar({
   editor, projectId, sceneContext, token,
@@ -31,20 +30,26 @@ export function SelectionToolbar({
   const [modelRef, setModelRef] = useState('');
   const [instruction, setInstruction] = useState('');
   // The range captured when the op ran — Accept replaces THIS, not the live
-  // selection (which may have shifted while streaming).
-  const savedRange = useRef<Range | null>(null);
+  // selection. WS-C: a TRACKED range (PM remaps it through any edit made while the
+  // op streams) so Accept targets the correct span even after an edit BEFORE it —
+  // the old saved {from,to} + size-check silently inserted at the wrong offset.
+  const savedRange = useRef<RangeHandle | null>(null);
   // An op is "active" from click until Accept/Discard — keeps the bubble open even
   // when the streamed ghost has collapsed the visible selection.
   const [active, setActive] = useState(false);
 
-  const models = useQuery({
-    queryKey: ['composition', 'chat-models'],
-    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
-    enabled: !!token,
-    select: (d) => d.items.filter((m) => m.is_active),
-  });
-  const modelList = models.data ?? [];
-  const effectiveModel = modelRef || modelList[0]?.user_model_id || '';
+  // Release the tracked range if the toolbar unmounts mid-op (without Accept/Discard)
+  // so a stale entry doesn't linger in the shared editor's plugin state.
+  useEffect(() => () => { savedRange.current?.release(); savedRange.current = null; }, []);
+
+  // W5 — the shared user-models fetch (active-only, capability=chat; dedupes with
+  // every other chat picker in the view via the module cache).
+  const models = useUserModels({ capability: 'chat' });
+  const modelList = models.models ?? [];
+  // Inherit the shared cascade model (spec §8) before falling back to list[0], so
+  // this tool matches the chat/studio model instead of an arbitrary favorite.
+  const inheritedModel = useEffectiveModel('chat');
+  const effectiveModel = modelRef || inheritedModel || modelList[0]?.user_model_id || '';
   const selectedModel = modelList.find((m) => m.user_model_id === effectiveModel);
 
   const selText = () => {
@@ -57,7 +62,8 @@ export function SelectionToolbar({
     const { from, to } = editor.state.selection;
     const text = editor.state.doc.textBetween(from, to, ' ');
     if (!text.trim() || text.length > SELECTION_MAX_CHARS || !effectiveModel) return;
-    savedRange.current = { from, to };
+    savedRange.current?.release();
+    savedRange.current = trackRange(editor, from, to);
     setActive(true);
     void stream.start({
       projectId,
@@ -72,14 +78,16 @@ export function SelectionToolbar({
     });
   };
 
-  const reset = () => { setActive(false); stream.clearGhost(); savedRange.current = null; };
+  const reset = () => { setActive(false); stream.clearGhost(); savedRange.current?.release(); savedRange.current = null; };
   const discard = () => { stream.stop(); reset(); };
   const accept = () => {
-    const range = savedRange.current;
-    if (!range || !stream.ghost) return;
-    // Saved positions can go stale if the doc changed mid-stream — bounds-check
-    // before replacing so we never corrupt the doc (D-T3.2-SELECTION-RANGE-MAP).
-    if (range.to > editor.state.doc.content.size) {
+    const handle = savedRange.current;
+    if (!handle || !stream.ghost) return;
+    // WS-C: the tracked range is remapped through every mid-stream edit; .current()
+    // returns null only if the span was deleted/collapsed — the PRECISE stale signal
+    // (replaces the crude `to > doc.size` check that missed edits before the range).
+    const range = handle.current();
+    if (!range) {
       toast.error(t('sel.stale', { defaultValue: 'The selection changed — try again.' }));
       reset();
       return;
@@ -126,16 +134,17 @@ export function SelectionToolbar({
         ) : (
           <>
             <div className="flex items-center gap-1.5">
-              <select
-                data-testid="selection-model"
-                aria-label={t('sel.model', { defaultValue: 'Model' })}
-                className="min-w-0 flex-1 rounded border bg-background px-1 py-0.5"
-                value={effectiveModel}
-                onChange={(e) => setModelRef(e.target.value)}
-              >
-                {modelList.length === 0 && <option value="">{t('sel.no_model', { defaultValue: 'No model' })}</option>}
-                {modelList.map((m) => <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>)}
-              </select>
+              {/* W5 — shared ModelPicker (compact) replaces the bespoke <select>. */}
+              <div data-testid="selection-model" className="min-w-0 flex-1">
+                <ModelPicker
+                  capability="chat"
+                  compact
+                  value={effectiveModel || null}
+                  onChange={(id) => setModelRef(id ?? '')}
+                  ariaLabel={t('sel.model', { defaultValue: 'Model' })}
+                  placeholder={t('sel.no_model', { defaultValue: 'No model' })}
+                />
+              </div>
             </div>
             <input
               data-testid="selection-instruction"

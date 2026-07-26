@@ -1,0 +1,96 @@
+name: python-unit-tests
+
+# WHY THIS EXISTS (K28, 2026-07-24).
+# The repo's CI ran `go test` + `cargo test` ONLY — a repo-wide grep found ZERO `pytest`
+# invocations across all workflows, and the pre-commit hook runs static gates with "no suite
+# execution". So the Python services' test suites — chat 1906, knowledge 4075, composition
+# 2387, translation 1054, jobs 98, lore-enrichment 965 — gated NOTHING automatically. They
+# passed only when a developer ran pytest by hand. A future break merged clean, and the
+# DB-integration suites had already silently rotted from schema drift (K27) precisely because
+# nothing ever ran them.
+#
+# This is the Python counterpart to domain-db-smoke.yml, which fixed the same "green by skip"
+# class for book + glossary (both Go) on 2026-07-11 but was never extended to Python.
+#
+# SCOPE — UNIT TESTS ONLY, deliberately (step 1 of the K28 remediation).
+#  - The DB-gated integration tests (tests/integration/db/**) SKIP here: no TEST_*_DB_URL /
+#    TEST_NEO4J_URI is set, exactly as they do on a dev laptop. Wiring those needs an
+#    ephemeral Postgres + a Neo4j service container AND the K27 fixture rot repaired first, so
+#    it is a follow-up job (python-integration-tests) — see K27/K28 in the RUN-STATE ledger.
+#  - Run SERIAL (no pytest-xdist): a gating job must be deterministic. (A cross-file
+#    lore-enrichment isolation bug that once broke -n auto — the MCP loopback reusing a
+#    consumed StreamableHTTP session manager — was fixed in K31; serial remains the
+#    conservative default for a gating job, flip to xdist once this has proven stable.)
+#
+# Python 3.12 to match the service Dockerfiles (python:3.12-slim) — and loreweave_llm in the
+# shared SDK declares requires-python >= 3.11, so 3.10 would fail to install the SDK.
+#
+# Path-filtered: runs only when a Python service or the shared Python SDK changes.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "services/**"
+      - "sdks/python/**"
+      - ".github/workflows/python-unit-tests.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "services/**"
+      - "sdks/python/**"
+      - ".github/workflows/python-unit-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: ${{ matrix.service }} (pytest, unit)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # All 10 Python services with a test suite, each verified green (2026-07-24: the
+        # first 6 originally; campaign 183p, learning 195p, video-gen 58p, worker-ai 474p
+        # added in K34 after running each). Add a new service only after its unit suite is
+        # confirmed green, so this job never arrives red.
+        service:
+          - chat-service
+          - knowledge-service
+          - composition-service
+          - translation-service
+          - jobs-service
+          - lore-enrichment-service
+          - campaign-service
+          - learning-service
+          - video-gen-service
+          - worker-ai
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: install the shared Python SDK (with the [test] extra)
+        # The bundle in sdks/python (one pyproject, many loreweave_* modules) is what every
+        # service Dockerfile installs. The `[test]` EXTRA is what actually brings the shared
+        # test harness — pytest, pytest-asyncio, pytest-mock, respx, fastapi — so services
+        # with a thin (or no) requirements-test.txt still have a runner + the `mocker`/respx
+        # fixtures. K34 (2026-07-24): the earlier `pip install ./sdks/python` (no extra)
+        # brought NONE of these — proven in a clean venv — so a service using `mocker` but not
+        # declaring pytest-mock (knowledge, composition) would have errored on a real runner,
+        # and video-gen (no pytest anywhere) could not run at all. The `[test]` extra fixes
+        # the whole class at the root.
+        run: python -m pip install --upgrade pip && python -m pip install "./sdks/python[test]"
+      - name: install service dependencies
+        run: |
+          python -m pip install -r "services/${{ matrix.service }}/requirements.txt"
+          if [ -f "services/${{ matrix.service }}/requirements-test.txt" ]; then
+            python -m pip install -r "services/${{ matrix.service }}/requirements-test.txt"
+          fi
+      - name: pytest (unit — integration/db SKIPs without a DB env)
+        # No TEST_*_DB_URL / TEST_NEO4J_URI on purpose: the DB-gated integration tests skip,
+        # leaving the unit surface. Serial for determinism (see the flake note above).
+        working-directory: "services/${{ matrix.service }}"
+        run: python -m pytest tests -q -p no:cacheprovider

@@ -384,6 +384,7 @@ async def _invoke_llm_for_summary(
             },
             chunking=None,  # summaries fit single call
             job_meta={
+                "usage_purpose": "kg_summary",
                 "extractor": "summary",
                 "scope_type": scope_type,
                 # str()-coerce so a UUID scope_id from _regenerate_core

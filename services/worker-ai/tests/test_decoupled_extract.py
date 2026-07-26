@@ -196,6 +196,104 @@ def test_shell_empty_entities_short_circuits_to_persist():
     assert d.reconstruct_candidates(rs).entities == []
 
 
+# ── L7 Milestone B — advisory schema threaded into the decoupled submits ──
+
+
+_ADVISORY_SCHEMA = {
+    "entity_kinds": ["cultivator"],
+    "edge_predicates": ["disciple_of", "pursues"],
+    "event_kinds": [],
+    "fact_types": ["realm"],
+    "allow_free_edges": True,  # advisory — SDK hints, never pre-drops
+    "label": "p1@v3",
+    "schema_version": 3,
+}
+
+
+def test_schema_from_absent_returns_none():
+    assert d._schema_from(_seed_shell_rs()) is None
+
+
+def test_schema_from_present_builds_advisory_schema():
+    rs = _seed_shell_rs()
+    rs["_schema"] = _ADVISORY_SCHEMA
+    sch = d._schema_from(rs)
+    assert sch is not None
+    assert sch.edge_predicates == ("disciple_of", "pursues")
+    assert sch.allow_free_edges is True  # never pre-drops on the SDK path
+
+
+def test_entity_submit_injects_schema_vocab_into_prompt():
+    """A stashed schema reaches build_entity_system → its vocab appears in the
+    submitted system prompt (the LLM gets the project's node-kinds as a hint)."""
+    rs = _seed_shell_rs()
+    rs["_schema"] = _ADVISORY_SCHEMA
+    ek = d.assemble_entity_submit(rs)
+    system = ek["input"]["messages"][0]["content"]
+    assert "cultivator" in system
+
+
+def test_trio_submits_inject_edge_vocab_into_relation_prompt():
+    rs = _seed_shell_rs()
+    rs["_schema"] = _ADVISORY_SCHEMA
+    rs = d.fold_entity_job(rs, _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]}))
+    ts = d.assemble_trio_submits(rs)
+    rel_system = ts["relation"]["input"]["messages"][0]["content"]
+    assert "disciple_of" in rel_system
+
+
+def test_entity_submit_no_schema_omits_vocab():
+    """Back-compat: no stashed schema → the static prompt (no injected vocab)."""
+    ek = d.assemble_entity_submit(_seed_shell_rs())
+    system = ek["input"]["messages"][0]["content"]
+    assert "cultivator" not in system
+
+
+# ── Model-context-aware chunk sizing ────────────────────────────────────────
+
+
+def test_context_budget_from_absent_is_none():
+    """No context_length stashed (unresolved, or a legacy resume blob) → the SDK's
+    legacy flat chunk size, never a guessed window."""
+    assert d._context_budget_from(_seed_shell_rs()) is None
+
+
+def test_context_budget_from_builds_real_budget():
+    rs = _seed_shell_rs()
+    rs["context_length"] = 1_000_000
+    budget = d._context_budget_from(rs)
+    assert budget is not None
+    assert budget.model_context == 1_000_000
+
+
+def test_entity_submit_uses_stashed_context_length_not_flat_default():
+    """A 1M-context model must NOT get the same chunk size a small-window model
+    would — the exact bug class a hardcoded/omitted context_budget reintroduces."""
+    small = _seed_shell_rs()
+    small["context_length"] = 24_000
+    huge = _seed_shell_rs()
+    huge["context_length"] = 1_000_000
+
+    small_chunk = d.assemble_entity_submit(small)["chunking"].size
+    huge_chunk = d.assemble_entity_submit(huge)["chunking"].size
+    default_chunk = d.assemble_entity_submit(_seed_shell_rs())["chunking"].size
+    assert huge_chunk > small_chunk
+    assert default_chunk == 15  # unresolved context_length ⇒ legacy flat default
+
+
+def test_trio_submits_use_stashed_context_length():
+    no_budget = d.assemble_trio_submits(
+        d.fold_entity_job(_seed_shell_rs(), _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]})),
+    )
+    rs = _seed_shell_rs()
+    rs["context_length"] = 1_000_000
+    rs = d.fold_entity_job(rs, _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]}))
+    ts = d.assemble_trio_submits(rs)
+
+    assert no_budget["relation"]["chunking"].size == 15  # legacy flat default
+    assert ts["relation"]["chunking"].size > no_budget["relation"]["chunking"].size
+
+
 def test_shell_trio_serde_roundtrips_nonempty():
     """review-impl finding 5 — non-empty relation/event/fact serde: model_dump(mode='json')
     ↔ model_validate through the resume_state JSONB must round-trip (the prior shell test
@@ -261,6 +359,15 @@ def test_assemble_recovery_builds_tier3_batch_for_unmatched_name():
     assert submits["r0"]["model_ref"] == "rec-model"
     assert rs["recovery_batch_names"]["r0"] == ["Ghost"]
     assert rs["recovery_base_entities"] and rs["recovery_promoted"] == []
+
+
+def test_assemble_recovery_clamps_output_to_stashed_context_length():
+    # A window small enough that 80% of it is BELOW the flat 1024+200*n_items
+    # budget for this one-name batch (1224) — the clamp must actually bite.
+    rs = _recovery_rs()
+    rs["context_length"] = 1000
+    submits, _ = d.assemble_recovery(rs)
+    assert submits["r0"]["input"]["max_tokens"] == int(1000 * 0.8)
 
 
 def test_fold_recovery_promotes_entity_verdict():
@@ -336,6 +443,15 @@ def test_assemble_filter_builds_category_batches():
     assert submits["f:entity:0"]["model_ref"] == "flt-model"
     assert rs["filter_n_input"]["entity"] == 2
     assert rs["filter_batch_meta"]["f:entity:0"]["category"] == "entity"
+
+
+def test_assemble_filter_clamps_output_to_stashed_context_length():
+    # A window small enough that 80% of it is BELOW the flat 1536+256*n_items
+    # budget for this two-item batch (2048) — the clamp must actually bite.
+    rs = _filter_rs()
+    rs["context_length"] = 1000
+    submits, _ = d.assemble_filter(rs)
+    assert submits["f:entity:0"]["input"]["max_tokens"] == int(1000 * 0.8)
 
 
 def test_fold_filter_then_finalize_keeps_supported_only():
@@ -458,3 +574,49 @@ def test_c12_legacy_rs_without_trio_targets_defaults_all():
     assert not d.trio_complete(rs)  # still needs fact (legacy = all three)
     rs = d.fold_trio_op(rs, "fact", ["fa"])
     assert d.trio_complete(rs)
+
+
+# ── D-KG-WORKER-GRADED-EFFORT — graded effort survives the resume_state ─────
+
+
+def test_graded_effort_in_resume_state_reaches_entity_submit():
+    """A reasoning_effort stashed in resume_state spreads the reasoning wire
+    fields into the entity submit the consumer rebuilds on resume."""
+    rs = _seed_shell_rs()
+    rs["reasoning_effort"] = "high"
+    ek = d.assemble_entity_submit(rs)
+    assert ek["input"]["reasoning_effort"] == "high"
+    assert ek["input"]["chat_template_kwargs"] == {
+        "thinking": True, "enable_thinking": True,
+    }
+
+
+def test_graded_effort_in_resume_state_reaches_trio_submits():
+    rs = _seed_shell_rs()
+    rs["reasoning_effort"] = "high"
+    rs = d.fold_entity_job(rs, _job({"entities": [
+        {"name": "Kai", "kind": "person", "confidence": 0.9},
+    ]}))
+    ts = d.assemble_trio_submits(rs)
+    for op in ("relation", "event", "fact"):
+        assert ts[op]["input"]["reasoning_effort"] == "high"
+
+
+def test_absent_effort_in_resume_state_omits_wire_fields():
+    """A legacy/pre-effort resume blob (no reasoning_effort key) ⇒ no wire
+    fields, byte-identical to the historical decoupled submit."""
+    ek = d.assemble_entity_submit(_seed_shell_rs())
+    assert "reasoning_effort" not in ek["input"]
+    assert "chat_template_kwargs" not in ek["input"]
+
+
+def test_recovery_submit_stays_force_off_under_graded_effort():
+    """D1 carve-out drift-lock: the recovery classifier is a cheap structural
+    pass that must NOT inherit graded effort — its thinking stays force-OFF and
+    it carries no reasoning_effort, even when the job runs at high effort."""
+    rs = _recovery_rs()
+    rs["reasoning_effort"] = "high"
+    submits, _ = d.assemble_recovery(rs)
+    inp = submits["r0"]["input"]
+    assert "reasoning_effort" not in inp
+    assert inp["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}

@@ -4,10 +4,129 @@
     "tabs_aria": "Settings tabs",
     "tab": {
       "account": "Account",
+      "chat-ai": "Chat & AI",
       "providers": "Model Providers",
       "translation": "Translation",
       "reading": "Reading",
-      "language": "Language"
+      "language": "Language",
+      "mcp": "MCP Access",
+      "workflow-bindings": "Workflow Auto-setup"
+    }
+  },
+  "mcp": {
+    "heading": "MCP Access Keys",
+    "subtitle": "Create API keys so external agents can use the platform over MCP without the UI. Each key acts as you, with the scopes and limits you set.",
+    "create_key": "Create Key",
+    "loading": "Loading keys…",
+    "empty": "No MCP keys yet. Create one to let an external agent connect.",
+    "scopes_label": "Scopes: {{scopes}}",
+    "domains_label": "Domains: {{domains}}",
+    "last_used": "Last used: {{date}}",
+    "expires_label": "Expires: {{date}}",
+    "revoke_aria": "Revoke key {{name}}",
+    "revoke_title": "Revoke key",
+    "edit_aria": "Edit key {{name}}",
+    "edit_title": "Edit limits",
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "scope": {
+      "read": "Read",
+      "paid_read": "Paid read",
+      "write_auto": "Auto write",
+      "write_confirm": "Confirm write"
+    },
+    "domain": {
+      "book": "Books",
+      "glossary": "Glossary",
+      "knowledge": "Knowledge",
+      "translation": "Translation",
+      "composition": "Composition",
+      "jobs": "Jobs",
+      "settings": "Settings",
+      "lore_enrichment": "Lore enrichment",
+      "catalog": "Catalog"
+    },
+    "create": {
+      "title": "Create MCP Key",
+      "subtitle": "The secret is shown only once. Store it somewhere safe.",
+      "name": "Name",
+      "name_ph": "e.g. my-research-agent",
+      "scopes": "Scopes",
+      "scopes_hint": "What the key may do. Start with Read only; add more only as needed.",
+      "domains": "Domains",
+      "domains_hint": "Which areas the key may reach. A key with no domain selected can't call anything.",
+      "rate_limit": "Rate limit (req/min)",
+      "spend_cap": "Spend cap (USD)",
+      "spend_cap_ph": "No cap",
+      "expires": "Expires (optional)",
+      "self_confirm": "Allow self-confirm of write actions",
+      "self_confirm_hint": "When off, write actions that need confirmation must be approved by you. Leave off unless this is a trusted automated agent.",
+      "cancel": "Cancel",
+      "submit": "Create Key",
+      "creating": "Creating…",
+      "secret_note": "A secret key is generated when you create it — you don't set one. It's shown once, right after."
+    },
+    "edit": {
+      "title": "Edit \"{{name}}\"",
+      "subtitle": "Adjust this key's limits. The secret and what it can reach don't change.",
+      "scopes_locked": "Scopes and domains are fixed at creation. To change what this key can reach, revoke it and create a new one.",
+      "expires_hint": "Leave empty for no expiry.",
+      "cancel": "Cancel",
+      "submit": "Save changes",
+      "saving": "Saving…"
+    },
+    "reveal": {
+      "title": "Key created",
+      "subtitle": "Copy this secret now — it will never be shown again.",
+      "copy": "Copy key",
+      "warning": "Shown once",
+      "done": "Done"
+    },
+    "revoke": {
+      "title": "Revoke {{name}}?",
+      "desc": "The key stops working immediately (within ~60s). Any agent using it will lose access. This cannot be undone.",
+      "confirm": "Revoke"
+    },
+    "audit": {
+      "toggle_aria": "Recent calls for {{name}}",
+      "toggle_title": "Call history",
+      "loading": "Loading recent calls…",
+      "empty": "No calls recorded yet.",
+      "outcome": {
+        "relayed": "Relayed",
+        "denied_scope": "Denied (scope)",
+        "rate_limited": "Rate limited",
+        "unauthorized": "Unauthorized",
+        "upstream_error": "Upstream error",
+        "tool_error": "Tool error"
+      }
+    },
+    "approvals": {
+      "heading": "Pending agent actions ({{count}})",
+      "subtitle": "An agent using one of your keys requested these actions. Approve to run it (cost is charged to that key) or deny to drop it.",
+      "key_label": "Key {{key}}…",
+      "cost_label": "Est. ${{cost}}",
+      "approve": "Approve",
+      "deny": "Deny",
+      "toast": {
+        "approved": "Action approved and executed",
+        "denied": "Action denied",
+        "reprice": "The cost changed since proposed — ask the agent to propose it again",
+        "approve_failed": "Could not approve the action",
+        "deny_failed": "Could not deny the action"
+      }
+    },
+    "toast": {
+      "load_failed": "Failed to load MCP keys",
+      "created": "Key \"{{name}}\" created",
+      "create_failed": "Failed to create key",
+      "revoked": "Key revoked",
+      "revoke_failed": "Failed to revoke key",
+      "updated": "Key updated",
+      "update_failed": "Failed to update key",
+      "audit_failed": "Failed to load call history"
     }
   },
   "account": {
@@ -124,6 +243,9 @@
       "api_key_ph_keep": "••••••••  (leave empty to keep current)",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "Leave empty to keep the existing key.",
+      "max_concurrency": "Max concurrent requests",
+      "max_concurrency_ph": "Unlimited",
+      "max_concurrency_hint": "How many requests this provider runs at once. Leave empty for unlimited (the backend decides). Set a number only if your backend has a known limit (e.g. a local GPU).",
       "cancel": "Cancel",
       "saving": "Saving...",
       "submit": "Save Changes"
@@ -251,6 +373,71 @@
       "moderation": "Moderation"
     }
   },
+  "services": {
+    "heading": "External Services",
+    "subtitle": "Non-model AI services you bring (BYOK) — e.g. web search. Reached through provider-registry like your models.",
+    "add": "Add Service",
+    "empty": "No external services yet. Add one (e.g. web search) to enable deep research.",
+    "keyless": "keyless",
+    "no_endpoint": "no endpoint",
+    "no_model": "no model",
+    "test": "Test",
+    "activate_aria": "Activate service",
+    "deactivate_aria": "Deactivate service",
+    "delete_aria": "Delete {{name}}",
+    "edit_aria": "Edit {{name}}",
+    "type": {
+      "web_search": {
+        "label": "Web Search",
+        "desc": "Search the web for deep-research evidence (e.g. SearXNG, Tavily)."
+      }
+    },
+    "add_dialog": {
+      "aria": "Add external service",
+      "title": "Add External Service",
+      "type": "Service",
+      "endpoint": "Endpoint URL",
+      "endpoint_hint": "The service base URL — provider-registry calls it server-side. For a service on the host machine use host.docker.internal, NOT localhost (inside the container, localhost is the container itself).",
+      "key": "API Key",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "Leave empty for a keyless local service",
+      "key_hint": "Bearer secret for the service.",
+      "key_hint_keyless": "Optional — leave empty for a keyless local backend (e.g. SearXNG).",
+      "label": "Label",
+      "label_ph": "e.g. searxng-default",
+      "alias": "Alias",
+      "alias_ph": "Optional display name",
+      "cancel": "Cancel",
+      "submit": "Add Service",
+      "adding": "Adding…"
+    },
+    "edit_dialog": {
+      "aria": "Edit external service",
+      "title": "Edit {{name}}",
+      "endpoint": "Endpoint URL",
+      "key": "API Key",
+      "key_ph_keep": "Leave empty to keep the current key",
+      "key_keep_hint": "Leave empty to keep the existing key.",
+      "max_concurrency": "Max concurrent requests",
+      "max_concurrency_ph": "Unlimited",
+      "max_concurrency_hint": "How many requests this service runs at once. Leave empty for unlimited (the backend decides). Set a number only if your backend has a known limit.",
+      "cancel": "Cancel",
+      "submit": "Save",
+      "saving": "Saving…"
+    },
+    "toast": {
+      "added": "{{name}} added",
+      "add_failed": "Failed to add service",
+      "updated": "Service updated",
+      "update_failed": "Failed to update service",
+      "removed": "Service removed",
+      "remove_failed": "Failed to remove service",
+      "toggle_failed": "Failed to toggle service",
+      "verify_ok": "Service reachable ({{ms}}ms)",
+      "verify_failed": "Verify failed: {{error}}",
+      "unknown_error": "unknown error"
+    }
+  },
   "tags": {
     "label": "Tags",
     "placeholder": "Add tag... (e.g. Translation, Chat)",
@@ -306,6 +493,18 @@
       "testing": "Testing...",
       "reverify": "Re-verify",
       "verify": "Verify",
+      "pricing_title": "Pricing (USD per 1M tokens)",
+      "pricing_input": "Input",
+      "pricing_output": "Output",
+      "pricing_free_local": "Free — runs on your own hardware",
+      "pricing_hint": "Pre-filled at creation. Edit if the provider's published rate changed, or check OpenRouter for a live estimate.",
+      "pricing_check": "Check OpenRouter",
+      "pricing_checking": "Checking...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
+      "pricing_apply": "Apply",
+      "pricing_not_found": "No matching model found on OpenRouter — pricing unavailable from this source.",
+      "pricing_check_failed": "Failed to check OpenRouter pricing",
+      "pricing_negative_error": "Pricing must be zero or greater",
       "delete_model": "Delete Model",
       "confirm_delete": "Confirm Delete",
       "deleting": "Deleting...",

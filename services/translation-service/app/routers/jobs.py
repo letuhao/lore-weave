@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -6,10 +7,12 @@ import asyncpg
 from loreweave_jobs import emit_job_event
 
 from ..deps import get_current_user, get_db
+from ..llm_client import get_llm_client
 from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 from ..effective_settings import resolve_effective_settings
+from ..languages import normalize_language, is_translation_target
 from ..model_name import resolve_model_name
 from ..grant_deps import (
     GrantLevel, require_book_grant, authorize_book, book_for_chapter, get_grant_client_dep,
@@ -17,6 +20,8 @@ from ..grant_deps import (
 from ..workers.segment_status import compute_segment_status
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
+
+logger = logging.getLogger("translation.jobs")
 
 #: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
 _JOB_SERVICE = "translation"
@@ -92,8 +97,39 @@ async def retranslate_dirty(
     if book_id is None:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
     await authorize_book(gc, book_id, UUID(user_id), GrantLevel.EDIT)
+    return await _retranslate_dirty_core(
+        db, chapter_id, body.target_language, user_id, book_id=book_id,
+    )
 
-    lang = body.target_language
+
+async def _retranslate_dirty_core(
+    db: asyncpg.Pool, chapter_id: UUID, target_language: str, user_id: str,
+    *, book_id: UUID | None = None,
+    mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
+) -> "TranslationJob":
+    """Core of the dirty-only re-translate — book ownership is assumed ALREADY
+    verified by the caller (the public route authorizes via the E0-4a grant gate;
+    the MCP Tier-W confirm route via the kit's `require_book_owner` at mint + the
+    user binding in the confirm token). Reused by both so the dirty-set selection,
+    seed resolution, and job-create stay byte-identical (no second copy to drift).
+
+    `book_id` is passed by the public route (which already resolved it) to avoid a
+    redundant lookup; the MCP confirm path omits it and lets the core resolve it
+    from the chapter."""
+    if book_id is None:
+        book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter has no translations"})
+
+    # D13 — normalize BEFORE the segment-status + seed lookups (which key on target_language).
+    # A raw "VI"/"zh_CN" would otherwise miss the canonical "vi"/"zh-CN" rows and 409 with the
+    # misleading "run a full translation first" for a chapter that IS translated.
+    lang = normalize_language(target_language)
+    if not is_translation_target(lang):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_target_language", "message": f"'{target_language}' is not a supported target language."},
+        )
     items = await compute_segment_status(db, chapter_id, lang)
     # "needs" = source-dirty ∪ glossary-stale (T2-M3.2) — every segment that should
     # be re-translated, not just the source-changed ones.
@@ -131,12 +167,16 @@ async def retranslate_dirty(
         block_index_filter=block_idx,
         seed_version_id=seed,
     )
-    return await _resolve_and_create_job(db, book_id, payload, user_id)
+    return await _resolve_and_create_job(
+        db, book_id, payload, user_id,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+    )
 
 
 async def _resolve_and_create_job(
     db: asyncpg.Pool, book_id: UUID, payload: CreateJobPayload, user_id: str,
     *, campaign_id: UUID | None = None,
+    mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
 ) -> TranslationJob:
     """Core job-create: resolve effective settings + overrides, insert the job +
     chapter rows in one transaction, publish to RabbitMQ. Ownership is assumed
@@ -145,7 +185,14 @@ async def _resolve_and_create_job(
 
     S4a: `campaign_id` is an internal-only attribution tag (None for public
     callers); it is persisted on the job + rides the message chain to every
-    provider job's job_meta."""
+    provider job's job_meta.
+
+    D-PMCP-WORKER-CARRIER: `mcp_key_id`/`spend_cap_usd` are the PUBLIC-MCP-key
+    attribution (None for first-party callers), set ONLY by the confirm-route
+    replay. They persist on the job row + ride the message chain so the background
+    chapter worker can re-set the loreweave_llm contextvar before each provider
+    call (the in-process contextvar dies at the AMQP hop). Server-set: never read
+    from a public-controllable body."""
     uid = UUID(user_id)
 
     # Resolve effective settings, then overlay any per-job overrides (Fix-C): a one-off
@@ -182,6 +229,26 @@ async def _resolve_and_create_job(
             status_code=422,
             detail={"code": "TRANSL_NO_MODEL_CONFIGURED", "message": "No model configured. Set a model in Translation Settings before translating."},
         )
+
+    # D13 — normalize, then validate target_language against the content-language SSOT
+    # (contracts/languages.contract.json, mirrored in app/languages.py). A lenient client value
+    # is corrected ("VI"→"vi", "zh_CN"→"zh-CN"); anything outside the closed registry is rejected
+    # 400. The picker offers exactly the registry, so if you cannot pick it you cannot submit it —
+    # this is the writer that first admitted the free-text "Vietnamese". Reads still tolerate
+    # unknown legacy codes; this constrains WRITES only.
+    raw_lang = eff.get("target_language")
+    if not raw_lang:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TRANSL_NO_LANGUAGE", "message": "No target language configured. Choose a language before translating."},
+        )
+    norm_lang = normalize_language(str(raw_lang))
+    if not is_translation_target(norm_lang):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_target_language", "message": f"'{raw_lang}' is not a supported target language."},
+        )
+    eff["target_language"] = norm_lang
 
     # P4 usage emit — resolve the human model NAME (best-effort, PRE-tx; H1) + assemble a
     # whitelisted params dict for the Jobs GUI. model + params ride the 'pending' create
@@ -255,9 +322,10 @@ async def _resolve_and_create_job(
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
                    cold_start_mode, campaign_id,
                    eval_judge_model_source, eval_judge_model_ref,
-                   block_index_filter, seed_version_id)
+                   block_index_filter, seed_version_id, thinking_enabled,
+                   mcp_key_id, spend_cap_usd)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -273,6 +341,8 @@ async def _resolve_and_create_job(
                 eff.get("cold_start_mode", "single_pass"), campaign_id,
                 eff.get("eval_judge_model_source"), eff.get("eval_judge_model_ref"),
                 payload.block_index_filter, payload.seed_version_id,
+                payload.thinking_enabled,
+                mcp_key_id, spend_cap_usd,
             )
 
             job_id = job_row["job_id"]
@@ -368,8 +438,14 @@ async def _resolve_and_create_job(
             "eval_judge_model_source": eff.get("eval_judge_model_source"),
             "eval_judge_model_ref":    str(eff["eval_judge_model_ref"]) if eff.get("eval_judge_model_ref") else None,
             "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
+            # D-TRANSLATE-REASONING-TOGGLE: ride the per-job thinking flag to the worker.
+            "thinking_enabled":        payload.thinking_enabled,
             # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
             "campaign_id":             str(campaign_id) if campaign_id else None,
+            # D-PMCP-WORKER-CARRIER: ride the public-MCP key + cap through the message
+            # chain so the chapter worker re-sets the attribution contextvar.
+            "mcp_key_id":              mcp_key_id,
+            "spend_cap_usd":           spend_cap_usd,
             # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
             "block_index_filter":      payload.block_index_filter,
             "seed_version_id":         str(payload.seed_version_id) if payload.seed_version_id else None,
@@ -503,6 +579,42 @@ async def _do_cancel(db: asyncpg.Pool, job_id: UUID) -> None:
                 owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
                 status="cancelled",
             )
+    # bug #34 (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED) — abort the in-flight provider
+    # call(s) NOW so the user's cancel stops token-burn immediately on the decoupled path
+    # (which never sits in wait_terminal(cancel_check)). Outside the status tx: a DELETE is
+    # network I/O (must not run inside the finalize tx) and is best-effort — the
+    # terminal-consumer cancel-gate is the correctness backstop if a DELETE fails.
+    await _abort_inflight_provider_jobs(db, job_id)
+
+
+async def _abort_inflight_provider_jobs(db: asyncpg.Pool, job_id: UUID) -> None:
+    """bug #34 — the decoupled translate path submits one provider LLM job per chapter and
+    RELEASES (the wait + resume happen in the terminal-consumer, not in
+    wait_terminal(cancel_check)), so a user-cancel can't abort the in-flight upstream call
+    the way the synchronous path does. DELETE every in-flight provider job for this
+    translation job's non-terminal chapters → provider-registry aborts the upstream call
+    immediately (the SAME DELETE the sync path's cancel_check issues). Best-effort per job:
+    a failure just falls back to the consumer's cancel-gate (cooperative stop at the next
+    batch boundary). No-op for the synchronous path (provider_job_id is decoupled-only)."""
+    rows = await db.fetch(
+        "SELECT provider_job_id, owner_user_id FROM chapter_translations "
+        "WHERE job_id=$1 AND provider_job_id IS NOT NULL "
+        "AND status NOT IN ('completed', 'failed')",
+        job_id,
+    )
+    if not rows:
+        return
+    llm = get_llm_client()
+    for r in rows:
+        try:
+            await llm.sdk.cancel_job(
+                str(r["provider_job_id"]), user_id=str(r["owner_user_id"]),
+            )
+        except Exception:  # noqa: BLE001 — best-effort; the consumer cancel-gate still stops it
+            logger.warning(
+                "translation cancel: aborting in-flight provider job %s failed — will stop "
+                "cooperatively at the terminal-consumer", r["provider_job_id"], exc_info=True,
+            )
 
 
 async def _pause_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
@@ -565,7 +677,14 @@ def _job_message_from_row(row, chapter_ids: list) -> dict:
         "eval_judge_model_source": row["eval_judge_model_source"],
         "eval_judge_model_ref":    str(row["eval_judge_model_ref"]) if row["eval_judge_model_ref"] else None,
         "cold_start_mode":         row["cold_start_mode"],
+        # D-TRANSLATE-REASONING-TOGGLE: rebuilt from the row so resume keeps the setting.
+        "thinking_enabled":        row["thinking_enabled"],
         "campaign_id":             str(row["campaign_id"]) if row["campaign_id"] else None,
+        # D-PMCP-WORKER-CARRIER: rebuilt from the row so a resume/retry of a
+        # public-key job keeps attributing the re-spend to the agent's key. The column
+        # is DOUBLE PRECISION → already a float; the coalesce keeps NULL as None.
+        "mcp_key_id":              row["mcp_key_id"],
+        "spend_cap_usd":           float(row["spend_cap_usd"]) if row["spend_cap_usd"] is not None else None,
         "block_index_filter":      row["block_index_filter"],
         "seed_version_id":         str(row["seed_version_id"]) if row["seed_version_id"] else None,
     }

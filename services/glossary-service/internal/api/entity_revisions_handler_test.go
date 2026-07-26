@@ -31,6 +31,8 @@ func setupRevisionsDB(t *testing.T) *pgxpool.Pool {
 		migrate.UpGlossaryCutoverG4, migrate.UpGlossaryCutoverG4Cache,
 		// G4e: IRREVERSIBLE drop of the retired legacy objects (runs LAST).
 		migrate.UpGlossaryDropLegacyG4,
+		// MERGE/M5: entity_attribute_values.confidence — the reconcile restore stamps it.
+		migrate.UpMergePolicy,
 	} {
 		if err := fn(ctx, pool); err != nil {
 			t.Fatalf("migrate: %v", err)
@@ -109,6 +111,13 @@ func TestReconcileEntityFromSnapshot_ExactRestoreWithPrune(t *testing.T) {
 		nameAVID).Scan(&enCount)
 	if enCount != 0 {
 		t.Errorf("post-revision en translation was not pruned: %d remain", enCount)
+	}
+	// 4. MERGE/M5 — a restore is a human curation action: the restored SOURCE value is
+	// marked 'verified', so a later machine re-extraction can't silently clobber the restore.
+	var conf string
+	pool.QueryRow(ctx, `SELECT confidence FROM entity_attribute_values WHERE attr_value_id=$1`, nameAVID).Scan(&conf)
+	if conf != "verified" {
+		t.Errorf("restored value not marked verified: got %q", conf)
 	}
 }
 

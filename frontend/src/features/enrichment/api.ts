@@ -148,7 +148,7 @@ export const enrichmentApi = {
       generation_model_ref: string;
       technique?: string;
       max_gaps?: number;
-      max_spend_usd?: number | null;
+      max_spend_tokens?: number | null;
       top_k?: number;
       /** LE-064 — when set, enrich exactly these gaps (per-row "enrich →"). */
       targets?: EnrichTarget[];

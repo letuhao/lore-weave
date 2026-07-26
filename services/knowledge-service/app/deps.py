@@ -25,6 +25,8 @@ from app.clients.grant_client import GrantClient
 from app.clients.grant_client import get_grant_client as _get_grant_client_singleton
 from app.clients.llm_client import LLMClient
 from app.clients.llm_client import get_llm_client as _get_llm_client_singleton
+from app.clients.translation_client import TranslationClient
+from app.clients.translation_client import get_translation_client as _get_translation_client_singleton
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.db.repositories.extraction_jobs import ExtractionJobsRepo
@@ -32,8 +34,11 @@ from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
+from app.db.repositories.working_memory import WorkingMemoryRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
+from app.db.repositories.entity_access import EntityAccessRepo
+from app.db.repositories.event_text_translations import EventTextTranslationsRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.db.repositories.user_budgets import UserBudgetsRepo
 from app.db.repositories.user_data import UserDataRepo
@@ -97,6 +102,15 @@ async def get_projects_repo() -> ProjectsRepo:
     return ProjectsRepo(get_knowledge_pool())
 
 
+async def get_entity_access_repo() -> EntityAccessRepo:
+    """Track 4 P0 — salience access-log recorder/reader."""
+    return EntityAccessRepo(get_knowledge_pool())
+
+
+async def get_working_memory_repo() -> "WorkingMemoryRepo":
+    return WorkingMemoryRepo(get_knowledge_pool())
+
+
 async def get_pending_facts_repo() -> PendingFactsRepo:
     """K21-C (design D5/D7): wires the pending-facts queue into router
     + executor DI. The internal tool-execute endpoint hands it to the
@@ -118,8 +132,19 @@ async def get_extraction_pending_repo() -> ExtractionPendingRepo:
     return ExtractionPendingRepo(get_knowledge_pool())
 
 
+async def get_event_text_translations_repo() -> EventTextTranslationsRepo:
+    """KG-TL M3 — the on-demand event-text translation cache (Timeline tab)."""
+    return EventTextTranslationsRepo(get_knowledge_pool())
+
+
 async def get_glossary_client() -> GlossaryClient:
     return _get_glossary_client_singleton()
+
+
+async def get_translation_client() -> "TranslationClient":
+    """KG-TL M3 — the translation-service client (internal translate-text primitive
+    for the on-demand event-text cache fill)."""
+    return _get_translation_client_singleton()
 
 
 async def get_book_client() -> BookClient:

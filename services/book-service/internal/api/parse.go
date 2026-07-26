@@ -33,6 +33,20 @@ type parsedScene struct {
 	Path        string `json:"path"`
 	LeafText    string `json:"leaf_text"`
 	ContentHash string `json:"content_hash"`
+	// SourceSceneID (22-A5/SC7) — the composition outline_node.id the parser
+	// recovered from the drafted prose's `data-scene-id` heading anchor, when
+	// present. Fresh imports (plain text / pandoc HTML) carry no anchor, so it is
+	// absent → the index row's source_scene_id stays NULL ("not yet planned"),
+	// exactly the SC7 degrade. A soft ref (no FK): it crosses the service/DB
+	// boundary to composition.
+	SourceSceneID *string `json:"source_scene_id,omitempty"`
+	// AnchorSceneID (26 IX-5/IX-6) — the opening heading's `data-scene-id`
+	// carried through by the tiptap walker on a re-parse (source_format='tiptap').
+	// /internal/parse serializes the SDK `Scene.anchor_scene_id` field under THIS
+	// name (the import formats plain/html never populate it, so the older
+	// source_scene_id tag above stayed nil regardless). Evidence rule 1 in
+	// reparse.go reads it to set scenes.source_scene_id.
+	AnchorSceneID *string `json:"anchor_scene_id,omitempty"`
 }
 
 type parsedChapter struct {
@@ -167,25 +181,14 @@ func (s *Server) processTxtImport(
 	totalCount := 0
 	var lastChapterID uuid.UUID
 
+	// C-merge — parts moved to composition (structure_node kind='part'). We import chapters flat here,
+	// collect the source's part→chapters grouping, and re-create it in composition post-loop (best-effort).
+	partTitles := make([]string, len(tree.Parts))
+	partChapters := make(map[int][]uuid.UUID)
 	for partIdx, part := range tree.Parts {
-		// (a) Per-part Tx: one parts row.
-		var titleArg any
-		if part.Title != nil && strings.TrimSpace(*part.Title) != "" {
-			titleArg = *part.Title
+		if part.Title != nil {
+			partTitles[partIdx] = strings.TrimSpace(*part.Title)
 		}
-		var partID uuid.UUID
-		err := s.pool.QueryRow(r.Context(), `
-INSERT INTO parts(book_id, sort_order, title, path)
-VALUES($1, $2, $3, $4)
-ON CONFLICT (book_id, sort_order) DO UPDATE SET title = EXCLUDED.title, path = EXCLUDED.path, updated_at = now()
-RETURNING id
-`, bookID, partIdx+1, titleArg, part.Path).Scan(&partID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
-				fmt.Sprintf("insert part: %v", err))
-			return
-		}
-
 		for chIdxInPart, ch := range part.Chapters {
 			// Per-chapter body = concatenation of scene leaf_texts (joined by \n\n).
 			// For plain-text imports, ch.HTML is "" (D8 — plain has no html slice).
@@ -223,13 +226,15 @@ RETURNING id
 			}
 
 			var chapterID uuid.UUID
+			// C-merge C4 — flat import: no part_id/structure_node_id (parts are a composition authoring
+			// act now). structural_path keeps the source path for reference.
 			err = tx.QueryRow(r.Context(), `
-INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, part_id, structural_path)
-VALUES($1, $2, $3, $4, 'text/plain', $5, $6, $7, 'active', now(), now(), $8, $9)
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, structural_path)
+VALUES($1, $2, $3, $4, 'text/plain', $5, $6, $7, 'active', now(), now(), $8)
 RETURNING id
 `, bookID, nullIfEmpty(chapterTitle), chFilename, lang,
 				int64(len(chapterBody)), chapterGlobalSort, storageKey,
-				partID, ch.Path,
+				ch.Path,
 			).Scan(&chapterID)
 			if err != nil {
 				tx.Rollback(r.Context())
@@ -268,8 +273,15 @@ RETURNING id
 			// Error-checked (NOT fire-and-forget): this UPDATE is what actually pins
 			// the revision + flips to published — swallowing its error would commit an
 			// orphan revision with the chapter stuck at 'draft' (adversary review-code W1).
+			// 26 IX-1/IX-3: the just-inserted scenes ARE the parse of importRevID,
+			// so mark the index fresh (last_parsed_revision_id=importRevID) at birth
+			// — an imported chapter is born published AND fresh by the sweeper's own
+			// `last_parsed_revision_id IS DISTINCT FROM published_revision_id`
+			// predicate, so it is never needlessly re-swept.
 			if _, err := tx.Exec(r.Context(),
-				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2 WHERE id=$1`,
+				// WS-0.3: a freshly-imported chapter is never kg_exclude'd (column defaults
+				// false), so the pointer is set unconditionally here.
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
 				chapterID, importRevID); err != nil {
 				tx.Rollback(r.Context())
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
@@ -277,15 +289,32 @@ RETURNING id
 				return
 			}
 
+			// SC11-amendment Phase 0: did THIS import actually recover any spec back-link?
+			// A link-less import (the common case — the parser only recovers an anchor from
+			// an already-exported `data-scene-id`) must NOT fire a link event: the mirror has
+			// nothing to reconcile, and a no-op event is noise the relay pays for. The IX-12
+			// decompile write-back is what links a plain import, and it emits its own.
+			anyLinked := false
+
 			for _, sc := range ch.Scenes {
+				// 22-A5: set book_id (the chapter's book — the SC1 direct scope) AND
+				// source_scene_id (the SC7 `data-scene-id` anchor back-link, when the
+				// parser recovered one) at INSERT, closing the A1 write-path gap.
+				//
+				// Resolve ONCE: `sceneSourceSceneIDArg` parses, and it is the same value that
+				// decides both the bind and whether this import linked anything at all.
+				ssid := sceneSourceSceneIDArg(sc.SourceSceneID)
 				_, err := tx.Exec(r.Context(),
-					`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
-					chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash)
+					`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
+					chapterID, bookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, ssid)
 				if err != nil {
 					tx.Rollback(r.Context())
 					writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
 						fmt.Sprintf("insert scene: %v", err))
 					return
+				}
+				if ssid != nil {
+					anyLinked = true
 				}
 			}
 
@@ -296,6 +325,16 @@ RETURNING id
 					"failed to commit chapter")
 				return
 			}
+			// In the SAME tx as the INSERTs above (INV-O12): if the emit cannot be written the
+			// links must not exist either, or composition's mirror never learns of them.
+			if anyLinked {
+				if err := emitScenesLinked(r.Context(), tx, bookID, chapterID); err != nil {
+					tx.Rollback(r.Context())
+					writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
+						"failed to commit chapter")
+					return
+				}
+			}
 			if err := tx.Commit(r.Context()); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
 					fmt.Sprintf("commit chapter: %v", err))
@@ -304,7 +343,13 @@ RETURNING id
 			totalCount++
 			chapterGlobalSort++
 			lastChapterID = chapterID
+			partChapters[partIdx] = append(partChapters[partIdx], chapterID)
 		}
+	}
+
+	// C-merge — re-create the source's part grouping in composition (best-effort; multi-part only).
+	if multiPart {
+		s.groupImportedChaptersIntoParts(r.Context(), r.Header.Get("Authorization"), bookID.String(), partTitles, partChapters)
 	}
 
 	_ = s.recalcQuota(r.Context(), owner)
@@ -325,4 +370,20 @@ RETURNING id
 func sceneContentHashFromBytes(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+
+// sceneSourceSceneIDArg maps the parser's optional `data-scene-id` anchor (SC7)
+// to the scenes.source_scene_id INSERT bind: a valid UUID → that UUID, absent or
+// malformed → NULL. A malformed anchor is deliberately NOT an error — the scene
+// still gets its index row with a NULL back-link, which the inspector surfaces as
+// "anchor lost" (the F6 ⚓ re-anchor path), never a silent drop of the whole scene.
+func sceneSourceSceneIDArg(raw *string) any {
+	if raw == nil {
+		return nil
+	}
+	id, err := uuid.Parse(strings.TrimSpace(*raw))
+	if err != nil {
+		return nil
+	}
+	return id
 }

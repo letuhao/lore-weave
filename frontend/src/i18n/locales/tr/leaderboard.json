@@ -1,0 +1,35 @@
+{
+  "title": "Liderlik Tablosu",
+  "subtitle": "Topluluktaki en iyi kitapları, yazarları ve çevirmenleri keşfedin.",
+  "tabs": {
+    "books": "En İyi Kitaplar",
+    "authors": "Yazarlar",
+    "translators": "Çevirmenler",
+    "trending": "Trend Olanlar"
+  },
+  "period": {
+    "7d": "Bu Hafta",
+    "30d": "Bu Ay",
+    "all": "Tüm Zamanlar"
+  },
+  "filters": {
+    "allGenres": "Tüm Türler",
+    "allLanguages": "Tüm Diller"
+  },
+  "ranking": {
+    "fullRankings": "Tam Sıralama — En İyi Kitaplar",
+    "readers": "Okuyucular",
+    "favorites": "Favoriler",
+    "ratings": "puan",
+    "chapters": "bölüm",
+    "translations": "çeviri",
+    "rating": "Puan",
+    "showMore": "Daha fazla sıralama göster",
+    "noResults": "Henüz sıralama yok. Okumaya ve çevirmeye başlayın!"
+  },
+  "quickStats": {
+    "topAuthors": "En İyi Yazarlar",
+    "topTranslators": "En İyi Çevirmenler",
+    "viewAll": "Tümünü gör"
+  }
+}

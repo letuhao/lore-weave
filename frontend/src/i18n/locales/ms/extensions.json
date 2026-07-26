@@ -1,0 +1,258 @@
+{
+  "title": "Sambungan",
+  "tabs": {
+    "skills": "Kemahiran",
+    "mcp": "Pelayan MCP",
+    "commands": "Perintah & Hook",
+    "subagents": "Subejen",
+    "plugins": "Plugin",
+    "permissions": "Kebenaran alatan",
+    "proposals": "Cadangan",
+    "activity": "Log aktiviti",
+    "ingest": "Sumber pendaftaran"
+  },
+  "quota": {
+    "unavailable": "Penggunaan tidak tersedia",
+    "skills": "Kemahiran",
+    "mcp": "Pelayan MCP",
+    "proposals": "Cadangan"
+  },
+  "scope": {
+    "label": "Skop:",
+    "mine": "Sambungan saya",
+    "orBook": "atau buku:",
+    "bookPlaceholder": "berskop-buku…",
+    "bookHint": "berskop-buku — item baharu hanya terpakai untuk buku ini"
+  },
+  "common": {
+    "loading": "Memuatkan…",
+    "delete": "Padam",
+    "add": "Tambah",
+    "cancel": "Batal",
+    "back": "Kembali",
+    "next": "Seterusnya",
+    "of": "daripada",
+    "system": "sistem",
+    "book": "buku"
+  },
+  "skills": {
+    "search": "Cari kemahiran…",
+    "tier": {
+      "all": "Tahap: Semua",
+      "system": "Sistem",
+      "user": "Pengguna",
+      "book": "Buku"
+    },
+    "sort": {
+      "updated": "Susun: Dikemas kini",
+      "name": "Nama A→Z",
+      "lastTriggered": "Terakhir dicetuskan"
+    },
+    "empty": "Tiada kemahiran lagi. Ejen boleh mencadangkan satu, atau anda boleh menciptanya di editor.",
+    "draft": "draf"
+  },
+  "mcp": {
+    "status": {
+      "active": "aktif",
+      "pending": "mengimbas…",
+      "suspended": "dikarantin",
+      "error": "tidak dapat dicapai"
+    },
+    "search": "Cari pelayan…",
+    "filter": {
+      "all": "Status: Semua",
+      "active": "Aktif",
+      "pending": "Mengimbas",
+      "suspended": "Dikarantin",
+      "error": "Tidak dapat dicapai"
+    },
+    "add": "+ Tambah pelayan",
+    "empty": "Tiada pelayan MCP lagi. Tambah satu untuk memberikan ejen alat tambahan.",
+    "review": "⚠ semak",
+    "detail": {
+      "back": "‹ Kembali",
+      "connection": "Sambungan",
+      "auth": "Autentikasi",
+      "prefix": "Awalan",
+      "egress": "Senarai putih keluar",
+      "health": "Status Kesihatan",
+      "lastScanned": "Kali terakhir diimbas",
+      "credentialStored": "kredential disimpan",
+      "healthOk": "ok · {{count}} alat · {{latency}}ms",
+      "healthError": "ralat: {{error}}",
+      "unreachable": "tidak dapat dicapai",
+      "scanning": "Mengimbas…",
+      "rescan": "Imbas semula",
+      "reconnect": "Sambung semula OAuth",
+      "acceptRisk": "Terima risiko & aktifkan"
+    },
+    "scan": {
+      "label": "Imbasan rantaian bekalan:",
+      "clean": "bersih",
+      "findings": "{{count}} penemuan",
+      "tools": "Alatan ({{count}})",
+      "flagged": "ditandakan"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Sambungan",
+        "auth": "Pengesahan",
+        "scan": "Kesihatan & Imbasan",
+        "review": "Semak"
+      },
+      "displayName": "Nama paparan",
+      "displayNamePlaceholder": "Pelayan alatan saya",
+      "url": "URL Pelayan (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Pengesahan",
+      "authNone": "Tiada",
+      "authBearer": "Token Bearer",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "Tiada pengesahan — pelayan ini adalah terbuka. Teruskan untuk mendaftar dan imbasnya.",
+      "bearerLabel": "Token Bearer (disimpan dalam peti simpanan; tidak akan dipaparkan lagi)",
+      "bearerPlaceholder": "tampal token",
+      "authzEndpoint": "Endpoint kebenaran",
+      "tokenEndpoint": "Endpoint token",
+      "clientId": "ID Pelanggan",
+      "scopes": "Skop (jarakkan dengan ruang)",
+      "registering": "Mendaftarkan…",
+      "registerScan": "Daftar & imbas",
+      "statusLabel": "Status:",
+      "connectOauth": "Sambung dengan OAuth →",
+      "runScan": "Jalankan kesihatan & imbas",
+      "refresh": "Segarkan",
+      "continue": "Teruskan",
+      "authKind": "auth: {{kind}}",
+      "enable": "Aktifkan untuk sesi saya",
+      "done": "Selesai"
+    }
+  },
+  "commands": {
+    "title": "Perintah Slash",
+    "description": "Taip <code>/nama</code> dalam sembang untuk mengembangkan templat. Gunakan <code>{{args}}</code> atau <code>{{key}}</code> untuk argumen.",
+    "namePlaceholder": "nama (cth. plan-scene)",
+    "templatePlaceholder": "Templat: Rancang babak tentang {{topic}}…",
+    "empty": "Tiada perintah lagi."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Peraturan deklaratif yang dicetuskan pada peralihan gelung ejen. Tanpa kod — hanya acara, padanan alat pilihan, dan tindakan.",
+    "matchPlaceholder": "padanan alat (cth. glossary_delete_*)",
+    "textPlaceholder": "teks untuk suntikan / anotasi",
+    "empty": "Belum ada hook."
+  },
+  "subagents": {
+    "title": "Sub-ejen",
+    "description": "Persona bernama yang boleh diberikan tugasan sub-tugas terhad oleh ejen melalui <code>run_subagent</code>. Ia berjalan dalam giliran terasing dengan HANYA alatan skopnya sahaja. Biarkan skop kosong untuk persona penaakulan/ringkasan tulen.",
+    "namePlaceholder": "nama (cth. lore-scout)",
+    "scopePlaceholder": "skop alatan: glossary_*, kg_*",
+    "modelPlaceholder": "model (pilihan, id user_model)",
+    "promptPlaceholder": "Prompt sistem — siapa persona ini dan bagaimana ia berfungsi...",
+    "create": "Cipta sub-ejen",
+    "empty": "Belum ada sub-ejen.",
+    "reasoningOnly": "hanya penaakulan (tiada alatan)",
+    "modelPinned": "model ditetapkan"
+  },
+  "plugins": {
+    "description": "Plugin membundel kemahiran, arahan & hook — eksport untuk berkongsi, import untuk memasang.",
+    "importing": "Sedang mengimport…",
+    "import": "Import bundle",
+    "invalidJson": "Fail tersebut bukan JSON yang sah.",
+    "notBundle": "Bukan bundle LoreWeave (fail manifest.name hilang).",
+    "empty": "Tiada plugin lagi. Import bundle untuk memasang plugin.",
+    "export": "Eksport"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Menunggu",
+      "approved": "Diluluskan",
+      "rejected": "Ditolak",
+      "expired": "Tamat tempoh",
+      "all": "Semua"
+    },
+    "total": "{{count}} jumlah keseluruhan",
+    "empty": "Tiada cadangan. Kemahiran yang dicadangkan oleh ejen akan muncul di sini untuk kelulusan anda.",
+    "approve": "Lulus",
+    "reject": "Tolak",
+    "reason": "Sebab: {{reason}}"
+  },
+  "activity": {
+    "title": "Log aktiviti",
+    "allKinds": "Semua jenis",
+    "range": {
+      "all": "Semua masa",
+      "7d": "7 hari terakhir",
+      "30d": "30 hari terakhir"
+    },
+    "empty": "Tiada aktiviti dalam julat ini.",
+    "secondsAgo": "{{count}}s yang lalu",
+    "minutesAgo": "{{count}}m yang lalu",
+    "hoursAgo": "{{count}}j yang lalu",
+    "daysAgo": "{{count}}h yang lalu"
+  },
+  "ingest": {
+    "title": "Sumber pendaftaran (admin)",
+    "description": "Kurasi katalog Sistem daripada MCP Registry rasmi. pengesahan ≠ keselamatan — setiap kelulusan akan menjalankan semula penjaga SSRF + imbasan rantaian bekalan sebelum ia difederasikan.",
+    "all": "Semua",
+    "pulling": "Menarik data…",
+    "pull": "Tarik pendaftaran",
+    "pullResult": "Berjaya ditarik: diambil {{fetched}} · baharu {{new}} · dikemas kini {{updated}} · tiada-jauh {{skipped}}",
+    "truncated": "· sebahagian (dipotong)",
+    "empty": "Tiada entri dalam paparan ini. Tarik pendaftaran untuk mengisi senarai menunggu.",
+    "approve": "Lulus",
+    "reject": "Tolak"
+  },
+  "permissions": {
+    "blurb": "Alatan yang telah anda berikan kebenaran tetap kepada pembantu — dan alatan yang telah anda sekat. «Sentiasa benarkan» pada kad kelulusan akan menambah baris di sini. Menarik balik kebenaran bermakna pembantu akan bertanya kepada anda semula pada masa akan datang apabila ia ingin menggunakan alatan tersebut.",
+    "loading": "Memuatkan…",
+    "allowedTitle": "Sentiasa dibenarkan",
+    "deniedTitle": "Disekat",
+    "blockTitle": "Sekat alatan",
+    "emptyAllowed": "Anda belum memberikan sebarang kebenaran tetap kepada alatan. Pembantu akan bertanya kepada anda setiap kali.",
+    "emptyDenied": "Tiada alatan yang disekat.",
+    "toolPlaceholder": "Nama alatan (cth. chapter_delete)",
+    "unknownTool": "Itu bukan salah satu alatan pembantu. Sila pilih nama daripada senarai.",
+    "kind": {
+      "mutation": "Boleh mengubah karya saya",
+      "spend": "Boleh membelanjakan wang"
+    },
+    "decision": {
+      "allow": "Berjalan tanpa bertanya",
+      "deny": "Jangan jalankan lagi"
+    },
+    "actions": {
+      "revoke": "Tanya saya lagi",
+      "deny": "Jangan benarkan",
+      "allow": "Benarkan",
+      "block": "Sekat"
+    }
+  },
+  "workflows": {
+    "total": "{{count}} aliran kerja",
+    "empty": "Tiada aliran kerja lagi. Luluskan cadangan aliran kerja untuk menambahkannya.",
+    "enabled": "Aktif",
+    "disabled": "Nyahaktif",
+    "delete": "Padam",
+    "proposalsEmpty": "Tiada cadangan aliran kerja. Apabila ejen mencadangkan aliran kerja, ia akan muncul di sini untuk anda luluskan.",
+    "view": "Lihat",
+    "hide": "Sembunyi",
+    "noSteps": "Tiada langkah ditakrifkan."
+  },
+  "bindings": {
+    "loading": "Memuatkan…",
+    "autoSetupDesc": "Resipi yang ditetapkan secara automatik oleh pembantu dalam mod ini.",
+    "none": "Tiada apa-apa yang ditetapkan secara automatik di sini.",
+    "turnOff": "Matikan",
+    "turnBackOn": "Hidupkan semula",
+    "mode": {
+      "ask": "Membaca & bertanya",
+      "write": "Menulis",
+      "plan": "Perancangan"
+    },
+    "tier": {
+      "system": "Binaan dalaman",
+      "user": "Anda tetapkan ini",
+      "book": "Buku ini"
+    }
+  }
+}

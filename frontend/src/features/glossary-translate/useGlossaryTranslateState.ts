@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import type { EffortLevel } from '@/components/ai-task';
 import type {
   OverwriteMode,
   GlossaryTranslateCostEstimate,
@@ -18,7 +19,7 @@ function initialState(defaultTargetLanguage: string): WizardState {
     overwriteMode: 'missing_only',
     modelRef: '',
     selectedModelName: '',
-    thinkingEnabled: false,
+    effort: 'off',
     jobId: null,
     costEstimate: null,
     totalEntities: 0,
@@ -34,7 +35,7 @@ export type WizardState = {
   overwriteMode: OverwriteMode;
   modelRef: string;
   selectedModelName: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   jobId: string | null;
   costEstimate: GlossaryTranslateCostEstimate | null;
   totalEntities: number;
@@ -86,8 +87,8 @@ export function useGlossaryTranslateState(defaultTargetLanguage = 'vi') {
     setState((prev) => ({ ...prev, selectedModelName }));
   }, []);
 
-  const setThinkingEnabled = useCallback((thinkingEnabled: boolean) => {
-    setState((prev) => ({ ...prev, thinkingEnabled }));
+  const setEffort = useCallback((effort: EffortLevel) => {
+    setState((prev) => ({ ...prev, effort }));
   }, []);
 
   const setJobCreated = useCallback(
@@ -117,7 +118,7 @@ export function useGlossaryTranslateState(defaultTargetLanguage = 'vi') {
     setOverwriteMode,
     setModelRef,
     setSelectedModelName,
-    setThinkingEnabled,
+    setEffort,
     setJobCreated,
     setFinalJobStatus,
     reset,

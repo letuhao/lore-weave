@@ -1,6 +1,6 @@
 # Full stack: Postgres, Mailhog, auth-service, api-gateway-bff, frontend (nginx static build).
 # From this directory: docker compose up --build
-# Browser: http://localhost:5296  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
+# Browser: http://localhost:5174  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
 # Optional env file: copy .env.example to .env and set JWT_SECRET (>= 32 chars) for production-like secrets.
 
 # Stale-image guard (F-LIVE-1): every first-party build target stamps the git SHA +
@@ -14,6 +14,7 @@ x-build-labels: &build-labels
 
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: loreweave
@@ -36,6 +37,7 @@ services:
       start_period: 10s
 
   redis:
+    restart: unless-stopped
     image: valkey/valkey:8-alpine
     ports:
       - "6399:6379"
@@ -48,6 +50,7 @@ services:
       retries: 10
 
   minio:
+    restart: unless-stopped
     image: minio/minio:RELEASE.2024-08-03T04-33-23Z
     command: server /data --console-address ":9001"
     environment:
@@ -61,6 +64,7 @@ services:
 
   # Mock audio service (TTS/STT) — optional, activate with: docker compose --profile audio up
   mock-audio-service:
+    restart: unless-stopped
     build:
       context: ../infra/mock-audio-service
       dockerfile: Dockerfile
@@ -76,12 +80,14 @@ services:
       retries: 3
 
   mailhog:
+    restart: unless-stopped
     image: mailhog/mailhog:latest
     ports:
       - "1148:1025"
       - "8148:8025"
 
   auth-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -98,9 +104,32 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: "LoreWeave <noreply@loreweave.local>"
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5174}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (PO-2) — the deployment KEK that WRAPS each user's DEK. auth-service stores
+      # only the wrapped blob; consumers unwrap with the SAME key from their own env, so
+      # the plaintext key never crosses the network.
+      #
+      # ⚠️ PRODUCTION: this MUST come from a KMS/secret manager, never a compose default.
+      # Losing it makes every diary unrecoverable; leaking it plus a DB dump undoes the
+      # whole scheme. The dev default exists so the local stack boots — it is not a secret.
+      # Rotating it? Put the OLD value in DIARY_ENCRYPTION_KEYS_RETIRED or you will orphan
+      # every existing user's key.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
+      # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
+      PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # D-PMCP-SELFCONFIRM-ROUTES — Tier-W confirm replay (self-confirm + human-approve)
+      # POSTs {URL}/v1/<domain>/actions/confirm with the internal token. Absent vars
+      # leave that domain non-executable (AUTH_CONFIRM_DOMAIN_UNROUTABLE). See
+      # config.go:loadDomainConfirmURLs — domain key → owning service base URL.
+      BOOK_SERVICE_URL: http://book-service:8082
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Admin-JWT issuance (admin CMS / D-GKA-SYSTEM-TIER-ADMIN). Disabled unless a
@@ -126,6 +155,7 @@ services:
       - "8204:8081"
 
   book-service:
+    restart: unless-stopped
     # Phase 5e-β.1 — repo-root build context so the Go SDK at
     # sdks/go/llmgw is reachable for the go.mod replace directive.
     build:
@@ -136,18 +166,28 @@ services:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOKS_STORAGE_BUCKET: loreweave-dev-books
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: loreweave
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_USE_SSL: "false"
-      MINIO_EXTERNAL_URL: http://localhost:9123
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       SHARING_INTERNAL_URL: http://sharing-service:8083
       # Phase 5e-β.2 — PROVIDER_REGISTRY_SERVICE_URL dropped (audio.go was
       # its last consumer; now migrated to use llmgw SDK via LLM_GATEWAY_INTERNAL_URL).
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
+      # C5 / SD-C5 (P-12) — diary encryption-at-rest. MUST be the SAME value as auth-service's
+      # DIARY_ENCRYPTION_KEY: auth WRAPS each per-user DEK under this KEK, book-service UNWRAPS with
+      # it. A dedicated key (never JWT_SECRET). Rotating? Add the OLD value to
+      # DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once or you orphan diaries.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
@@ -174,13 +214,48 @@ services:
       PORT: "8093"
       COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       # M4 decouple — the API enqueues batch ops only when this is on. MUST match
       # the composition-worker's flag (same env var): API on / worker off enqueues
       # jobs nothing consumes; API off (the bug this fixes — the var was never wired
       # to the service) silently runs every batch op inline + the worker idles.
-      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Default TRUE (2026-06-28): the Tier-W motif jobs (mine / arc-import /
+      # conformance, incl. the deep arc-conformance job) ALWAYS enqueue via the confirm
+      # effect, so they only run if the worker consumes — a false default left them
+      # pending forever. The batch endpoints (decompose/generate/stitch) become 202+poll
+      # (the FE already polls GET /jobs/{id}).
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
+      # close-21-28 D-G5-DRIVE-EXEC — rules-mode propose auto-compiles its parsed arcs inline
+      # (deterministic, $0, idempotent). Platform default ON (PO-decided 2026-07-16): rules mode is a
+      # deterministic transcription with nothing to review between propose and compile, so structure_node>0
+      # becomes a consequence of a governance-driven rules propose instead of a coin-flip on a weak agent
+      # chaining a second plan_compile call (S06 DR-G5-REROLL). Set FALSE to restore a propose→review step.
+      PLANFORGE_RULES_AUTOCOMPILE: ${PLANFORGE_RULES_AUTOCOMPILE:-true}
+      # D-PLANFORGE-PROPOSE-BLIND — the deploy CEILING for propose-existing-state grounding (OQ-2).
+      # Default FALSE: the richer cast/spine/systems grounding is gated behind the A/B eval and fails
+      # closed. effective = AND(this, the per-run ground_on_existing flag). Flip TRUE org-wide once the
+      # eval proves grounding improves the plan.
+      PLANFORGE_GROUND_ON_EXISTING_ALLOWED: ${PLANFORGE_GROUND_ON_EXISTING_ALLOWED:-true}
+      # W5 motif-conformance — the per-scene producer (judge each generated scene vs
+      # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
+      # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE
+      # still surfaces an advisory note; flip CALIBRATED off to fall back to 'unverified'.
+      MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
+      MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
+      # Platform motif/arc embedding model (RECONCILE D2 — the shared/system "library"
+      # tier is embedded in ONE platform space so cross-user cosine is comparable). It is a
+      # BYOK-as-platform credential: a bge-m3 user_model owned by the reserved platform-owner
+      # (source is ALWAYS user_model — /internal/embed rejects "platform_model"). The dev
+      # values below are seeded by scripts/seed_platform_embed_model.sh (copies the local
+      # bge-m3 credential under the reserved owner). PROD: point these at a real platform
+      # account's embed model. Unset ⇒ the shared library degrades to genre (honest, no crash).
+      MOTIF_EMBED_MODEL_SOURCE: ${MOTIF_EMBED_MODEL_SOURCE:-user_model}
+      MOTIF_EMBED_OWNER_ID: ${MOTIF_EMBED_OWNER_ID:-00000000-0000-4000-8000-000000000001}
+      MOTIF_EMBED_MODEL_REF: ${MOTIF_EMBED_MODEL_REF:-00000000-0000-4000-8000-0000000e0001}
       LOG_LEVEL: INFO
       # S2 — long-chapter state-compress threshold (chars of raw story-so-far
       # before the packer compresses the older portion). Default 6000; overridable.
@@ -221,11 +296,24 @@ services:
     environment:
       COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
-      # Must match composition-service: the worker runs only when the API enqueues.
-      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Must match composition-service (default TRUE 2026-06-28 — the Tier-W motif jobs
+      # require a consuming worker; see the API block).
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
+      # W5 motif-conformance — mirror the API (the worker's conformance_run job +
+      # any producer path reads these). ENABLED 2026-06-28 (gate satisfied).
+      MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
+      MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
+      # Platform motif/arc embedding model — MUST mirror the API (the worker re-embeds on
+      # its own retrieve/back-fill path). See the composition-service block for the contract.
+      MOTIF_EMBED_MODEL_SOURCE: ${MOTIF_EMBED_MODEL_SOURCE:-user_model}
+      MOTIF_EMBED_OWNER_ID: ${MOTIF_EMBED_OWNER_ID:-00000000-0000-4000-8000-000000000001}
+      MOTIF_EMBED_MODEL_REF: ${MOTIF_EMBED_MODEL_REF:-00000000-0000-4000-8000-0000000e0001}
       # Same internal service URLs as the API — the worker re-resolves pack context
       # (book/glossary/knowledge) + the internal-auth LLM for the compute half.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
@@ -242,6 +330,7 @@ services:
     restart: unless-stopped
 
   sharing-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -270,7 +359,41 @@ services:
     ports:
       - "8206:8083"
 
+  # WS-3.1 — the per-user scheduler (the platform's one true "time trigger" hole). Owns the clock;
+  # claims due scheduled_agent_runs rows and posts eod_distill to the chat trigger (WS-3.2/WS-3.0).
+  scheduler-service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: services/scheduler-service/Dockerfile
+      labels: *build-labels
+    environment:
+      HTTP_ADDR: ":8095"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_scheduler?sslmode=disable
+      # A3 — the scheduler enqueues eod_distill/weekly_rollup/weekly_reflection/proactive_nudge to chat.
+      # The service hostname is `chat-service` (every other service uses it); `chat` has no alias, so the
+      # armed autonomous jobs used to fail DNS ("no such host") and never fire — arming was hollow.
+      CHAT_SERVICE_INTERNAL_URL: http://chat-service:8090
+      # nudge (WS-3.6) delivers a content-free reminder via notification-service (:8091, as every other
+      # service addresses it); without this it no-ops.
+      NOTIFICATION_SERVICE_INTERNAL_URL: ${NOTIFICATION_SERVICE_INTERNAL_URL:-http://notification-service:8091}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      SCHEDULER_TICK_INTERVAL: ${SCHEDULER_TICK_INTERVAL:-60s}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8095/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      # C7 — host 8213 collided with video-gen-service (which also mapped 8213); moved to a free port.
+      - "8228:8095"
+
   catalog-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -301,7 +424,46 @@ services:
     ports:
       - "8207:8084"
 
+  agent-registry-service:
+    restart: unless-stopped
+    # Agent Extensibility Registry (docs/specs/2026-07-02-agent-extensibility-registry.md).
+    # Repo-root build context so the Dockerfile can COPY sdks/go/observability
+    # for the go.mod replace directive.
+    build:
+      context: ..
+      dockerfile: services/agent-registry-service/Dockerfile
+      labels: *build-labels
+    environment:
+      HTTP_ADDR: ":8099"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_agent_registry?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # DECISION-1 — dedicated AES-GCM vault key for MCP-server secrets (blast-radius
+      # split from JWT_SECRET). Optional in dev (falls back to JWT_SECRET).
+      AGENT_REGISTRY_VAULT_KEY: ${AGENT_REGISTRY_VAULT_KEY:-loreweave_local_dev_agent_registry_vault_key_change_me_32}
+      # D-REG-BOOK-GRANT — book-service for E0 grant checks on book-tier writes.
+      # Empty disables book-tier (they 501); set it to enable grant-gated book tier.
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      # REG-P3-01 — SSRF escape hatch. The P3 guard rejects user URLs that resolve
+      # to internal/loopback/metadata (prod posture). In the dev stack we register
+      # in-cluster MCP servers (agent-registry's own /mcp) to live-smoke the overlay/
+      # scan/egress paths, so allow internal targets here. DEFAULT OFF (prod-safe).
+      AGENT_REGISTRY_ALLOW_INTERNAL_MCP: ${AGENT_REGISTRY_ALLOW_INTERNAL_MCP:-1}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8099/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "8230:8099"
+
   provider-registry-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -312,8 +474,17 @@ services:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # S-SETTINGS (MCP fan-out) — settings MCP server's profile tools call
+      # auth-service's token-gated /internal/users/{id}/full-profile here (each
+      # service owns its DB — no cross-service SQL). Optional; empty disables only
+      # the two profile tools' backing call.
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       # Phase 2c — async LLM job terminal events publish to
       # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
       # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
@@ -324,7 +495,7 @@ services:
       MINIO_ACCESS_KEY: loreweave
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_USE_SSL: "false"
-      MINIO_EXTERNAL_URL: http://localhost:9123
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
       # E5B rerank is now BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
       # user's rerank model from provider-registry like /internal/embed — no
@@ -390,6 +561,7 @@ services:
       - "8208:8085"
 
   usage-billing-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -400,6 +572,12 @@ services:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
+      # LLM payload encryption key (LOG-5 / P0-3) — DEDICATED, distinct from
+      # JWT_SECRET, so rotating the JWT can't render logged prompts undecryptable
+      # and a JWT leak doesn't expose them. >=32 chars; fail-to-start if unset or
+      # equal to JWT_SECRET. Set a real value in prod (.env).
+      LLM_PAYLOAD_ENCRYPTION_KEY: ${LLM_PAYLOAD_ENCRYPTION_KEY:-loreweave_local_dev_llm_payload_key_change_me_32c}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Phase 6a — spend-guardrail default budgets (USD). REQUIRED — the
       # service fails to start if unset (no hardcoded literal, billing
@@ -440,6 +618,7 @@ services:
       - "8209:8086"
 
   rabbitmq:
+    restart: unless-stopped
     image: rabbitmq:3.13-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: loreweave
@@ -456,6 +635,7 @@ services:
       retries: 10
 
   translation-service:
+    restart: unless-stopped
     # Phase 4c-α: context bumped to repo root so the Dockerfile can
     # COPY sdks/python alongside the service code (mirrors knowledge-
     # service Phase 4a-α + worker-ai Phase 4b-γ pattern).
@@ -466,6 +646,9 @@ services:
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 4c-α: SDK install. Same host as legacy URL but separate
@@ -493,6 +676,14 @@ services:
       P5_SCHED_ENABLED: ${P5_SCHED_ENABLED:-true}
       P5_OWNER_CAP: ${P5_OWNER_CAP:-5}
       P5_GLOBAL_BUDGET: ${P5_GLOBAL_BUDGET:-0}
+      # CACHE/M6 raw-output offload (D-RAWCACHE-MINIO-OFFLOAD): cold-archive the bulky
+      # verbatim raw_response to MinIO. OPTIONAL — a blank MINIO_SECRET_KEY disables it,
+      # so the service boots fine without object storage; set the secret to enable the sweep.
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_BUCKET: ${TRANSLATION_RAW_BUCKET:-lw-extraction-raw}
       PORT: "8087"
     depends_on:
       postgres:
@@ -514,6 +705,7 @@ services:
       - "8210:8087"
 
   campaign-service:
+    restart: unless-stopped
     # Auto-Draft Factory S1 — saga orchestrator + per-chapter projection.
     # Context = repo root so the Dockerfile can COPY sdks/python (loreweave_obs)
     # alongside the service code (same pattern as translation/knowledge).
@@ -554,6 +746,7 @@ services:
       - "8223:8095"
 
   jobs-service:
+    restart: unless-stopped
     # Unified Job Control Plane P2 — central job projection + read API + SSE.
     # Consumes loreweave:events:jobs (outbox-relayed by worker-infra) into a
     # unified job_projection table; serves /v1/jobs (list/detail/SSE). Context =
@@ -600,6 +793,9 @@ services:
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
+      # from the envelope internal token so the Tier-W confirm HMAC key is distinct).
+      CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 4c-α: SDK install. Same host as legacy URL.
@@ -634,6 +830,7 @@ services:
         condition: service_healthy
 
   glossary-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -653,6 +850,15 @@ services:
       # depends_on coupling). Without it, /wiki/generate omits the KG relationship
       # sections in the dev/prod stack.
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # S5 deep-research: reach the BYOK web_search capability via provider-registry's
+      # /internal/web-search (the outward search call lives only there — provider-gateway
+      # invariant). This is the SERVICE URL (like BOOK_SERVICE_URL), NOT a model/key.
+      PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
+      # Per-episode translation surface (§6B/§7.6): the canonical-snapshot translation cache
+      # fills a miss by calling translation-service's /internal/translation/translate-text (BYOK
+      # MT via provider-registry — no LLM in glossary). SERVICE URL (like BOOK_SERVICE_URL), NOT a
+      # model/key. Unset → the surface returns a clear `failed/unconfigured`; rest of svc unaffected.
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
       # VG-1: glossary entity versioning. When set, glossary-service runs the
       # revision-projection consumer on loreweave:events:glossary (whole-entity
       # snapshots into entity_revisions — the recovery/undo substrate). Unset =
@@ -681,6 +887,7 @@ services:
       - "8211:8088"
 
   video-gen-service:
+    restart: unless-stopped
     build:
       # Phase 5e-α: context bumped to repo root so Dockerfile can COPY
       # sdks/python alongside the service code. Mirrors chat-service +
@@ -756,6 +963,7 @@ services:
     restart: unless-stopped
 
   chat-service:
+    restart: unless-stopped
     build:
       # Phase 1c-ii: build context shifted to repo root so the Dockerfile
       # can COPY both `services/chat-service/...` AND `sdks/python` (the
@@ -766,6 +974,29 @@ services:
       labels: *build-labels
     environment:
       PORT: "8090"
+      # Observability: INFO surfaces the per-turn agent-behavior logs (advertised tool
+      # surface, tool decisions) — the monitor for "why did the agent do/refuse X" bugs.
+      # Override to WARNING for a quiet prod deploy.
+      LOG_LEVEL: "${CHAT_LOG_LEVEL:-INFO}"
+      # F12 (measured 2026-07-21) — hot-seed token budget. LOWERED 4000→2000: warm-cache A/B
+      # showed ~17-24% smaller prefix/turn, no extra discovery passes, no quality loss, still
+      # fully cache-hitting. 0 restores the ORIGINAL index-only design; 4000 the prior default.
+      LW_HOT_SEED_TOKEN_BUDGET: "${LW_HOT_SEED_TOKEN_BUDGET:-2000}"
+      # F12 A/B (lazy skills) — on ⇒ NO full L2 skill bodies (surface/router/workflow-binding);
+      # model uses the L1 index + load_skill. Measures the ~5-12K skills-lever cut.
+      LW_LAZY_ALL_SKILLS: "${LW_LAZY_ALL_SKILLS:-off}"
+      # oneshot-deadvertise (2026-07-25) — how a completed one-shot create (kg_project_create
+      # once its project exists) is kept off the agent surface: off|existence|session|per_turn.
+      # MEASURED winner = session (57→1 attempts, ~5x fewer tokens; see config.py).
+      ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
+      RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
+      T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
+      # Context Budget Law T4 (story_state Core Memory Block) + T6/D13a (reversible
+      # dup-read collapse). Default OFF; flip on (with T5) for the compaction A/B —
+      # T4's degraded-safety-net only fires when T5 gates grounding to empty, D13a only
+      # fires on a compaction pass. See docs/eval/context-budget/.
+      STORY_STATE_BLOCK_ENABLED: "${STORY_STATE_BLOCK_ENABLED:-false}"
+      COMPACT_COLLAPSE_DUPLICATES_ENABLED: "${COMPACT_COLLAPSE_DUPLICATES_ENABLED:-false}"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
@@ -775,8 +1006,16 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_BUCKET: lw-chat
       MINIO_USE_SSL: "false"
-      MINIO_EXTERNAL_URL: http://localhost:9123
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # R3 (D-PROACTIVE-DELIVERY) — the content-free proactive check-in push sink (best-effort).
+      NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
@@ -792,6 +1031,10 @@ services:
       # 500ms. execute_tool uses this longer per-call timeout instead of
       # the build_context budget above (D-K21B-06 live-smoke finding).
       KNOWLEDGE_TOOL_TIMEOUT_S: "30"
+      # RAID C1 (DR-C1) — per-book steering: fetched from book-service's
+      # /internal/books/{id}/steering; failures degrade to [] (turn unaffected).
+      BOOK_SERVICE_URL: http://book-service:8082
+      BOOK_STEERING_TIMEOUT_S: "2"
     depends_on:
       postgres:
         condition: service_healthy
@@ -817,6 +1060,7 @@ services:
   # ai-gateway P0 — internal MCP federation gateway. MCP server upstream
   # (chat, composition) + MCP client downstream federating knowledge's /mcp.
   ai-gateway:
+    restart: unless-stopped
     build:
       context: ../services/ai-gateway
       dockerfile: Dockerfile
@@ -826,6 +1070,21 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       KNOWLEDGE_MCP_URL: http://knowledge-service:8092/mcp
       GLOSSARY_MCP_URL: http://glossary-service:8088/mcp
+      # MCP fan-out COMPOSE B — federate every domain MCP provider via env (C-GW:
+      # "adding a provider = an env entry, not a code edit"). Prefixes resolve from
+      # the gateway's DEFAULT_PREFIX_MAP by name; a provider that's down degrades the
+      # catalog to PARTIAL (H10) rather than blocking the gateway, so no hard
+      # depends_on is required here. Wave 1: knowledge, glossary, jobs.
+      # Wave 2: book, composition, translation, settings.
+      # Provider name `lore_enrichment` (underscore) → derived prefix `lore_enrichment_`
+      # (no DEFAULT_PREFIX_MAP entry needed), which matches the tool `lore_enrichment_auto_enrich`.
+      # Wave 3 (P5 OD-7): catalog — public-discovery read tools (catalog_*).
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp,catalog=http://catalog-service:8084/mcp,registry=http://agent-registry-service:8099/mcp"
+      # REG-P2-03 — per-user federation overlay. Default OFF ⇒ the catalog is
+      # byte-identical to today; set true to merge a user's registered MCP servers
+      # (from agent-registry) over the static System catalog under a u_/b_ prefix.
+      REGISTRY_OVERLAY_ENABLED: ${REGISTRY_OVERLAY_ENABLED:-false}
+      AGENT_REGISTRY_INTERNAL_URL: http://agent-registry-service:8099
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:
@@ -838,6 +1097,51 @@ services:
       # node is always present in the image (wget/curl are not) — a wget probe
       # left the gateway permanently "unhealthy", blocking dependents' depends_on.
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8210/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
+      retries: 5
+
+  # PUBLIC MCP security edge — authenticates external-agent credentials, strips the
+  # inbound x-* namespace, mints the internal envelope, and relays to ai-gateway/mcp
+  # ONLY (never /mcp/admin). OFF by default (PUBLIC_MCP_ENABLED). Reached externally
+  # via api-gateway-bff /mcp. P0: envelope hop only (static test credential).
+  mcp-public-gateway:
+    restart: unless-stopped
+    build:
+      context: ../services/mcp-public-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      MCP_PUBLIC_GATEWAY_PORT: "8211"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      AI_GATEWAY_URL: http://ai-gateway:8210
+      # P1: resolve real keys via auth-service credential store.
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # P5 OAuth (S9 audience binding): the edge verifies third-party OAuth access
+      # tokens LOCALLY (RS256 via auth-service /oauth/jwks) and pins the audience.
+      # MCP_RESOURCE_URL MUST equal auth-service's OAUTH_RESOURCE (defaults to
+      # <PUBLIC_APP_URL>/mcp on both sides) or an audience-confused token is rejected.
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-http://localhost:5174/mcp}
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-loreweave-mcp-oauth}
+      # P3 (PUB-8): per-key rate-limit counter store. Unset → limiter disabled (dev).
+      REDIS_URL: redis://redis:6379
+      # DEV/SMOKE static credential (optional). Empty = disabled (real keys via auth).
+      MCP_PUBLIC_TEST_KEY: ${MCP_PUBLIC_TEST_KEY:-}
+      MCP_PUBLIC_TEST_USER_ID: ${MCP_PUBLIC_TEST_USER_ID:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      ai-gateway:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8219:8211"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8211/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 3s
       start_period: 15s
@@ -856,6 +1160,18 @@ services:
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
+      # KM5 (D-KM5-M3) — SPKI/PKIX PEM (or base64) of the platform admin-signing
+      # key's public half (same value glossary-service gets). When set, the System-
+      # tier admin write endpoints + the /mcp/admin server verify an RS256 admin JWT
+      # against it; unset → admin is disabled (callers 503). DEV keys via
+      # infra/gen-admin-dev-keys.ps1; PROD = the public half of the auth-service KMS key.
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
@@ -912,6 +1228,48 @@ services:
       interval: 5s
       timeout: 3s
       start_period: 20s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # KAL — the Knowledge Access Layer gateway (temporal-knowledge F4). The single typed
+  # read/write boundary over entity_facts (glossary SSOT) + the KG (knowledge-service).
+  # Consumers reach it via KNOWLEDGE_GATEWAY_URL; it federates the owning services'
+  # /internal/* knowledge routes (INV-KAL). Internal-token guarded.
+  knowledge-gateway:
+    build:
+      context: ../services/knowledge-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      PORT: "3000"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Dual-auth user mode (FE via the BFF): validate the platform HS256 JWT (same secret
+      # glossary/knowledge use) + grant-check the book against book-service before forwarding.
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      BOOK_SERVICE_URL: http://book-service:8082
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      KG_TEMPORAL_ENABLED: ${KG_TEMPORAL_ENABLED:-true}
+      LOG_LEVEL: INFO
+    depends_on:
+      glossary-service:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+    ports:
+      - "3210:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
       retries: 5
     restart: unless-stopped
     logging:
@@ -1075,7 +1433,14 @@ services:
       # aggregate_type='translation_eval') to loreweave:events:translation_eval for
       # the campaign projection. Replaces the prior best-effort XADD (lost emit =
       # dropped eval_fidelity_score).
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen,learning:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_learning"
+      # D-C-PRODUCER-OUTBOX: auth added so the relay drains its NEW outbox — the
+      # mcp_approval owner notification (aggregate_type='notification') is now written
+      # in the approval tx and DELIVERED to notification-service (NOTIFICATION_SERVICE_URL
+      # below), replacing the fire-and-forget POST. translation + composition already
+      # emit 'notification' rows on their existing outboxes (same delivery path).
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen,learning:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_learning,auth:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_auth"
+      # D-C-PRODUCER-OUTBOX — where the relay delivers notification-typed outbox rows.
+      NOTIFICATION_SERVICE_URL: http://notification-service:8091
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-
@@ -1088,6 +1453,8 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_BUCKET: loreweave-dev-books
       BOOK_SERVICE_URL: http://book-service:8082
+      # 26 IX-12 — import tail decompiles imported prose into spec scenes + writes back source_scene_id.
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
@@ -1115,6 +1482,12 @@ services:
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
@@ -1129,6 +1502,10 @@ services:
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
       # gateway for entity/relation/event/fact extraction jobs.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      # WS-2.8: usage-billing internal API for the distiller's daily-cap degrade pre-check. :8086 is
+      # usage-billing's HTTP_ADDR (mirrors USAGE_BILLING_SERVICE_URL elsewhere in this file) — same
+      # stale-port trap the GLOSSARY_SERVICE_URL note above records; the pre-check fails OPEN anyway.
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       LOG_LEVEL: INFO
       POLL_INTERVAL_S: "5"
       # Pass-2 precision filter — NO env config (D-WX-PRECISION-FILTER-MODEL-ARCH).
@@ -1187,6 +1564,7 @@ services:
         max-file: "5"
 
   statistics-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -1221,6 +1599,7 @@ services:
       - "8214:8089"
 
   notification-service:
+    restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
@@ -1252,6 +1631,7 @@ services:
       - "8215:8091"
 
   api-gateway-bff:
+    restart: unless-stopped
     build:
       context: ../services/api-gateway-bff
       dockerfile: Dockerfile
@@ -1267,10 +1647,13 @@ services:
       TRANSLATION_SERVICE_URL: http://translation-service:8087
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
       CHAT_SERVICE_URL: http://chat-service:8090
+      ROLEPLAY_SERVICE_URL: http://roleplay-service:7110
       VIDEO_GEN_SERVICE_URL: http://video-gen-service:8088
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # WS-3.2 — the assistant schedule toggle proxies to scheduler-service.
+      SCHEDULER_SERVICE_URL: http://scheduler-service:8095
       # Auto-Draft Factory S1 — campaign saga API (/v1/campaigns).
       CAMPAIGN_SERVICE_URL: http://campaign-service:8095
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
@@ -1279,9 +1662,16 @@ services:
       COMPOSITION_SERVICE_URL: http://composition-service:8093
       # Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail/SSE).
       JOBS_SERVICE_URL: http://jobs-service:8096
+      # PUBLIC MCP edge — /mcp (unversioned) → mcp-public-gateway (external-agent entry).
+      MCP_PUBLIC_GATEWAY_URL: http://mcp-public-gateway:8211
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # FE→MCP-tool bridge (D-W10-ARC-CONFORMANCE-DEEP-FE) — the BFF's
+      # /v1/ai/tools/execute controller validates the FE's JWT then forwards a
+      # whitelisted federated tool call to ai-gateway's /internal/tools/execute
+      # (SO-1, the same internal token above). Same base the chat-service uses.
+      AI_GATEWAY_URL: http://ai-gateway:8210
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
@@ -1359,8 +1749,19 @@ services:
     # daemon restarts; the frontend container hard-depends on it (see below).
     restart: unless-stopped
     environment:
-      Java_Xms: 256m
-      Java_Xmx: 512m
+      # D-LANGUAGETOOL-502-BOOT-RACE (cont'd): 512m was too small for real
+      # usage, not just an idle-service size — live-verified 512m Xmx OOMs
+      # ("java.lang.OutOfMemoryError: Java heap space") within minutes of
+      # opening a real multi-chapter book in the Studio editor (many
+      # concurrent per-paragraph grammar checks + a non-English language
+      # model loaded). The JVM crashes and `restart: unless-stopped` brings
+      # it back, but every request during that crash/restart window 500s —
+      # the exact "bad gateway"-shaped symptom the frontend's circuit breaker
+      # sees, recurring at ANY time during normal use, not just container
+      # startup. The host has ample RAM headroom; bumped well past
+      # LanguageTool's own documented minimum (1g).
+      Java_Xms: 512m
+      Java_Xmx: 2g
     ports:
       - "8875:8010"
     volumes:
@@ -1373,6 +1774,7 @@ services:
       start_period: 40s
 
   pandoc-server:
+    restart: unless-stopped
     image: pandoc/core:latest
     entrypoint: ["pandoc-server"]
     ports:
@@ -1384,20 +1786,45 @@ services:
       retries: 5
 
   frontend:
+    restart: unless-stopped
     build:
       context: ../frontend
       dockerfile: Dockerfile
       labels: *build-labels
       args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+        # Empty = relative (browser calls same-origin /v1, which this container's
+        # nginx.conf proxies to api-gateway-bff). This is what makes the frontend
+        # reachable through a single port/domain (ngrok, LAN IP, prod domain, ...) —
+        # a non-empty absolute value here bakes a fixed host into the JS bundle,
+        # which breaks the moment the app is served from any other origin.
+        VITE_API_BASE: ${VITE_API_BASE:-}
     depends_on:
-      - api-gateway-bff
+      api-gateway-bff:
+        condition: service_started
+      # nginx.conf also proxies /media/ to minio:9000 (browser-accessible
+      # object downloads behind the single frontend port) — same DNS-at-
+      # startup requirement as the languagetool note below.
+      minio:
+        condition: service_started
       # Gate-5-I1: nginx.conf hard-references the `languagetool`
       # upstream and resolves all upstream hostnames at startup,
       # so without this dependency the frontend container exits
       # with `host not found in upstream "languagetool"` whenever
       # languagetool isn't already running.
-      - languagetool
+      #
+      # D-LANGUAGETOOL-502-BOOT-RACE: service_started (start-order only)
+      # was enough to satisfy nginx's DNS resolution, but LanguageTool's
+      # JVM takes up to its 40s start_period (often longer) to actually
+      # accept connections on :8010. Any grammar-check request that hit
+      # nginx in that window got a 502 from the upstream, which the FE's
+      # circuit breaker (frontend/src/features/grammar/api.ts) then reads
+      # as "service is down" and disables checking for 60s. Gating on
+      # condition: service_healthy makes `docker compose up` actually
+      # wait for the healthcheck (wget /v2/languages) to pass before the
+      # frontend container starts, closing the race instead of just
+      # papering over it with a longer breaker cooldown.
+      languagetool:
+        condition: service_healthy
     ports:
       - "5174:80"
     # profiles:
@@ -1409,12 +1836,15 @@ services:
   # require an admin session (auth-service /v1/admin/session — needs admin
   # issuance enabled + the caller to be an admin_principal).
   cms-frontend:
+    restart: unless-stopped
     build:
       context: ../cms-frontend
       dockerfile: Dockerfile
       labels: *build-labels
       args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+        # Same reasoning as frontend's VITE_API_BASE above — relative, proxied
+        # by this container's own nginx.conf /v1/ block.
+        VITE_API_BASE: ${VITE_API_BASE:-}
     depends_on:
       - api-gateway-bff
     ports:
@@ -1431,6 +1861,7 @@ services:
   # (empty URI skips the driver) and the neo4j container can be left
   # stopped.
   neo4j:
+    restart: unless-stopped
     image: neo4j:2026.03-community
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-loreweave_dev_neo4j}
@@ -1475,6 +1906,7 @@ services:
   # tracer while OTEL_EXPORTER_OTLP_ENDPOINT is unset, so they boot fine
   # with the profile off — no service depends_on the collector.
   otel-collector:
+    restart: unless-stopped
     # Pin a concrete release tag, never `latest`.
     image: otel/opentelemetry-collector-contrib:0.123.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -1490,6 +1922,7 @@ services:
       - full
 
   tempo:
+    restart: unless-stopped
     image: grafana/tempo:2.6.1
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
@@ -1500,6 +1933,7 @@ services:
       - full
 
   grafana:
+    restart: unless-stopped
     image: grafana/grafana:11.4.0
     environment:
       # Dev-only: anonymous admin, no login form. NOT for any shared env.
@@ -1541,9 +1975,10 @@ services:
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       TILEMAP_HTTP_BIND: "0.0.0.0:7100"
       # CORS origins for browser smoke (Session D V0 demo, spec AC-FG-13).
-      # Comma-separated; defaults to frontend-game dev server on :5174.
+      # Comma-separated; defaults to the frontend-game origin on :5176
+      # (was :5174 until that port collided with the main `frontend`).
       # Prod goes through api-gateway-bff (single-origin per spec §8).
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       RUST_LOG: ${RUST_LOG:-info,tilemap_service=debug}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7100/livez"]
@@ -1572,6 +2007,46 @@ services:
       - full
 
   # ────────────────────────────────────────────────────────────────
+  # roleplay-service — first USER-FACING Rust service (scripts + actor-memory
+  # + start-orchestration; the MMO roleplay-service seed). Per-service DB
+  # `loreweave_roleplay`; validates the user JWT itself (HS256, same JWT_SECRET
+  # as the gateway) and calls chat-service over X-Internal-Token at /start (R1).
+  # Built on crates/service-http. NOT profile-gated — the FE Roleplay
+  # destination (R2) reaches it through the gateway `/v1/roleplay` proxy.
+  # Host port 8225 (8221 is taken by lore-enrichment-service).
+  # ────────────────────────────────────────────────────────────────
+  roleplay-service:
+    build:
+      context: ..
+      dockerfile: services/roleplay-service/Dockerfile
+      labels: *build-labels
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_roleplay
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # Compose rewrites INTERNAL_SERVICE_TOKEN → the binary-facing name
+      # (tilemap convention); setting LOREWEAVE_INTERNAL_TOKEN on the host has
+      # no effect.
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      CHAT_SERVICE_URL: http://chat-service:8090
+      ROLEPLAY_HTTP_BIND: "0.0.0.0:7110"
+      # Defaults to the frontend-game origin on :5176 (was :5174 until that
+      # port collided with the main `frontend`).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
+      RUST_LOG: ${RUST_LOG:-info,roleplay_service=debug}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7110/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: on-failure:5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8225:7110"
+
+  # ────────────────────────────────────────────────────────────────
   # game-server — Node + TypeScript + Colyseus.
   # V0 ships EchoRoom for Session E WS path validation. V1+ adds real
   # game rooms (zone instances, combat, chat) per spec §17.
@@ -1588,8 +2063,9 @@ services:
       # Same env name convention as tilemap-service for cross-service consistency.
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # CORS for matchmaking HTTP endpoint (POST /matchmake/<room>);
-      # WS upgrade itself doesn't preflight. Default frontend-game dev :5174.
-      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      # WS upgrade itself doesn't preflight. Default = the frontend-game
+      # origin :5176 (was :5174 until it collided with the main `frontend`).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       NODE_ENV: production
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
@@ -1609,8 +2085,18 @@ services:
   # V0 final piece (Session F per spec §16) — completes the
   # one-command local stack: `docker compose --profile full up`
   # boots tilemap-service + game-server + frontend-game and the user
-  # opens http://localhost:5174 for the V0 demo (iso tilemap +
+  # opens http://localhost:5176 for the V0 demo (iso tilemap +
   # click-to-walk Player + HUD reading /livez + WS echo panel).
+  #
+  # PORT: host 5176 → container 5174. It was 5174:5174, which COLLIDED
+  # with the main `frontend` (5174:80, no profile ⇒ always up), so
+  # `docker compose --profile game up` failed to bind. Host ports now:
+  # 5174 = frontend (main app) · 5175 = cms-frontend · 5176 = this.
+  # The container port stays 5174 (nginx + the /livez healthcheck below
+  # are internal, so they are unaffected). Anything that must allow this
+  # SPA's browser ORIGIN — the LOREWEAVE_CORS_ORIGINS defaults on
+  # tilemap-service, roleplay-service, and game-server — must therefore
+  # say 5176, not 5174.
   # Build context = repo root (pnpm-workspace.yaml lives there +
   # frontend-game depends on @loreweave/* packages).
   # ────────────────────────────────────────────────────────────────
@@ -1629,7 +2115,9 @@ services:
       start_period: 5s
     restart: on-failure:5
     ports:
-      - "5174:5174"
+      # host 5176 → container 5174 (see the PORT note above; 5174 is taken
+      # by the main `frontend`, which has no profile and is always up).
+      - "5176:5174"
     # V0 demo: frontend-game's bundled JS still hardcodes
     # localhost:8220 (tilemap-service) and localhost:2567 (game-server).
     # Both are exposed to host via compose port maps; browser sees them

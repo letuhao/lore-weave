@@ -51,12 +51,15 @@ KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md; cycle 73e plan in
 from __future__ import annotations
 
 import logging
-from typing import Literal
+import re
+from typing import Any, Literal, Protocol
+from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from app.db.neo4j_repos.entities import resolve_participant_anchors
 from app.db.neo4j_repos.entity_status import merge_entity_status
 from app.db.neo4j_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
@@ -83,6 +86,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "Pass2WriteResult",
@@ -90,6 +94,48 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _as_uuid(val: object) -> UUID | None:
+    """Coerce a tenant id to UUID, or None if it isn't one (caller logs + skips
+    the park rather than raising). Production user_id IS a UUID string."""
+    if isinstance(val, UUID):
+        return val
+    if isinstance(val, str):
+        try:
+            return UUID(val)
+        except ValueError:
+            return None
+    return None
+
+
+class TriageParkProtocol(Protocol):
+    """Minimal structural type for the LH ``TriageRepo.park`` the writer calls to
+    park an off-schema edge (L7/C4). Kept as a Protocol so the writer stays
+    decoupled from the repo + tests can inject a fake."""
+
+    async def park(
+        self,
+        *,
+        user_id: UUID,
+        project_id: str,
+        item_type: str,
+        signature: str,
+        payload: dict[str, Any],
+        source: dict[str, Any] | None = ...,
+        schema_version: int | None = ...,
+    ) -> Any: ...
+
+
+# KG customizable-ontology (lane LB) — normalize a schema edge-type code the
+# SAME way the SDK normalizes a relation predicate (`[^\w]+` runs → `_`,
+# lowercased, edge-trimmed) so the write-boundary closed-set comparison is
+# apples-to-apples with candidate.predicate (already SDK-normalized).
+_PREDICATE_NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def _normalize_predicate_code(code: str) -> str:
+    return _PREDICATE_NON_WORD_RE.sub("_", code.strip().lower()).strip("_")
 
 
 # Cycle 73e noise heuristic — char-length + word-count combined. The
@@ -209,6 +255,21 @@ class Pass2WriteResult(BaseModel):
     statuses_merged: int = 0
 
 
+def _evidence_quote(candidate: object, project_id: str | None) -> str | None:
+    """F3 — extract + sanitize the EXACT supporting quote a candidate carries, if
+    any, for the EVIDENCED_BY citation edge (evidence-grounding, like the glossary
+    `evidences.original_text`). Read forward-compatibly via getattr so the writer
+    is ready the moment an extractor surfaces a quote span (`quote` /
+    `evidence_text`), without a hard dependency on the SDK candidate shape. None
+    when the candidate has no quote → today's behaviour (no quote stored).
+    """
+    raw = getattr(candidate, "quote", None) or getattr(candidate, "evidence_text", None)
+    if not raw or not isinstance(raw, str) or not raw.strip():
+        return None
+    cleaned = _sanitize(raw, project_id)
+    return cleaned.strip() or None
+
+
 def _sanitize(text: str, project_id: str | None) -> str:
     """Injection-sanitize a text field before persisting.
 
@@ -266,6 +327,31 @@ async def write_pass2_extraction(
     # into each node's `provenances` set (a node mentioned by both origins
     # carries both).
     provenance: str = "human_authored",
+    # KG customizable-ontology (lane LB) — the resolved project schema
+    # projection. None (default) → no closed-set enforcement at the write
+    # boundary (today's behavior). When present AND the schema's edge set is
+    # CLOSED (``allow_free_edges`` False, non-empty ``edge_predicates``), a
+    # relation whose normalized predicate is off-vocab is SKIPPED fail-soft
+    # (drop-and-skip per-edge, never fail the batch — spec §5-K7 B2). This is a
+    # persistence-boundary belt-and-suspenders: the SDK extractor is the primary
+    # gate, but cached/legacy candidates (extracted pre-schema) can still reach
+    # the writer, so it re-checks. Triage parking of these drops is the LH lane's
+    # job (C4) — this lane only drops + logs.
+    schema: ExtractionSchema | None = None,
+    # KG customizable-ontology (L7, C4 compose) — when a TriageRepo is supplied,
+    # an off-schema edge that the closed-edge guard drops is PARKED to
+    # kg_triage_items (unknown_edge_type, signature ``edge:<predicate>``) instead
+    # of vanishing, so the human triage queue (lane LH) sees it. None (default) →
+    # today's drop-and-log only, so legacy callers are unchanged.
+    triage_repo: "TriageParkProtocol | None" = None,
+    # PP-5 (spec 08 R7) — WORK-mode extraction (an assistant/diary project). When True, a `preference`
+    # fact is COERCED to `statement`: a `preference` maps to a durable behavioral-TRAIT claim ("Minh
+    # always pushes back") which, about a real colleague derived from one person's account, is forbidden
+    # (Q10 non-goal). Coercing all work-mode preferences to `statement` (what the user REPORTED, on a
+    # date) is the conservative guarantee — it also harmlessly demotes the user's own preferences.
+    # Default False → the novel/fiction path is unchanged (a novel `preference` "Kai carries a sword"
+    # stays a preference).
+    work_mode: bool = False,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -293,6 +379,32 @@ async def write_pass2_extraction(
     relation_list = relations or []
     event_list = events or []
     fact_list = facts or []
+
+    # KG customizable-ontology (lane LB) — closed-edge-set predicate vocab for
+    # the write-boundary guard. None ⇒ no enforcement (today's free-string
+    # behavior). Candidates' `predicate` is already normalized (snake_case) by
+    # the SDK, and schema codes are normalized identically, so the comparison
+    # is apples-to-apples. Empty / allow_free_edges ⇒ None ⇒ no guard.
+    _closed_edge_vocab: frozenset[str] | None = None
+    if (
+        schema is not None
+        and not schema.allow_free_edges
+        and schema.edge_predicates
+    ):
+        _closed_edge_vocab = frozenset(
+            _normalize_predicate_code(c) for c in schema.edge_predicates
+        )
+
+    # KG customizable-ontology (L7, D-KG-L7-CARDINALITY) — per-predicate
+    # cardinality keyed by the SAME normalized predicate code the candidates
+    # carry, so the lookup is apples-to-apples with `predicate_clean`. None /
+    # empty (schema=None or no cardinalities) ⇒ no auto-close (legacy behavior).
+    _edge_cardinalities: dict[str, str] = {}
+    if schema is not None and schema.edge_cardinalities:
+        _edge_cardinalities = {
+            _normalize_predicate_code(code): card
+            for code, card in schema.edge_cardinalities.items()
+        }
 
     # P3 (D2 + D2a): MERGE Book/Part/Chapter/Scene hierarchy BEFORE entity
     # writes when hierarchy_paths supplied. Same CypherSession = same Tx
@@ -348,6 +460,7 @@ async def write_pass2_extraction(
             confidence=ent.confidence,
             alias_map_repo=alias_map_repo,
             provenance=provenance,
+            job_id=job_id,
         )
         merged_entity_ids.add(entity.id)
         entities_merged += 1
@@ -368,6 +481,7 @@ async def write_pass2_extraction(
             extraction_model=extraction_model,
             confidence=ent.confidence,
             job_id=job_id,
+            quote=_evidence_quote(ent, project_id),  # F3 — exact-quote citation
         )
         if ev is not None and ev.created:
             evidence_edges += 1
@@ -377,6 +491,23 @@ async def write_pass2_extraction(
     entities_autocreated = 0
     endpoints_repaired_by_name = 0
     autocreate_budget_remaining = autocreate_max  # None = unlimited (when enabled)
+
+    # F3 — the chapter's STORY-time ordinal (chapter sort_order × stride), hoisted
+    # here (was computed in Step 4) so BOTH the relation chain (Step 3) and the
+    # fact chain (Step 5) can stamp valid_from_ordinal + drive the ordinal-aware
+    # interval-split close. It is the SAME dense reading-axis ordinal used for
+    # event_order / from_order — unifying story valid-time with the reading axis
+    # per §8B. None for genuinely positionless sources (chat turns) → no story
+    # interval, no chain maintenance (the legacy path).
+    _chapter_ordinal = (
+        hierarchy_paths.chapter_index if hierarchy_paths is not None
+        else chapter_index
+    )
+    chapter_base = (
+        _chapter_ordinal * EVENT_ORDER_CHAPTER_STRIDE
+        if _chapter_ordinal is not None
+        else None
+    )
 
     # Step 3 — create relations.
     relations_created = 0
@@ -491,6 +622,7 @@ async def write_pass2_extraction(
                     alias_map_repo=alias_map_repo,
                     auto_created=True,
                     provenance=provenance,
+                    job_id=job_id,
                 )
             except Exception:
                 logger.warning(
@@ -527,12 +659,68 @@ async def write_pass2_extraction(
             skipped += 1
             continue
 
+        # KG customizable-ontology (lane LB) — closed-edge-set guard. When the
+        # project schema closes its edge set, drop a relation whose predicate is
+        # off-vocab fail-soft (skip per-edge; never fail the batch — §5-K7 B2).
+        # rel.predicate is already SDK-normalized; vocab is normalized identically.
+        if (
+            _closed_edge_vocab is not None
+            and rel.predicate not in _closed_edge_vocab
+        ):
+            logger.info(
+                "pass2_writer: dropping off-schema edge predicate=%r "
+                "(closed edge set, project=%s, schema=%s)",
+                rel.predicate, project_id, schema.label if schema else "?",
+            )
+            # L7/C4 — park the drop to the human triage queue (unknown_edge_type)
+            # rather than silently losing it, when a TriageRepo is wired. Fail-soft:
+            # a park error must NEVER break the extraction batch.
+            if triage_repo is not None and project_id:
+                # Coerce the tenant id OUTSIDE the try, so a non-UUID id surfaces as
+                # a distinct error rather than being swallowed by the best-effort
+                # park `except` (which would silently lose the edge — review-impl MED).
+                park_uid = _as_uuid(user_id)
+                if park_uid is None:
+                    logger.error(
+                        "pass2_writer: cannot park off-schema edge %r — user_id %r is not a UUID",
+                        rel.predicate, user_id,
+                    )
+                else:
+                    try:
+                        await triage_repo.park(
+                            user_id=park_uid,
+                            project_id=project_id,
+                            item_type="unknown_edge_type",
+                            signature=f"edge:{rel.predicate}",
+                            payload={
+                                "predicate": rel.predicate,
+                                "subject_id": resolved_subject_id,
+                                "object_id": resolved_object_id,
+                            },
+                            source={"job_id": job_id, "source_id": source.id},
+                            schema_version=schema.schema_version if schema else None,
+                        )
+                    except Exception:  # noqa: BLE001 — triage is best-effort; never block extraction
+                        logger.exception(
+                            "pass2_writer: triage park failed for off-schema edge %r", rel.predicate,
+                        )
+            skipped += 1
+            continue
+
         # Predicate is pre-normalized by K17.5 `_normalize_predicate`
         # (`[^\w]+` → `_`), which already strips most English injection
         # markers. CJK (e.g. `无视指令`) survives normalization because
         # CJK characters are `\w` in Python 3, so sanitize is still
         # load-bearing — see K17.9 predicate CJK test.
         predicate_clean = _sanitize(rel.predicate, project_id)
+        # L7 (D-KG-L7-CARDINALITY) — look the predicate's cardinality up from the
+        # resolved schema. A `single_active` edge type auto-closes its prior open
+        # instance between the same endpoints. The lookup keys on the SDK-normalized
+        # predicate code, matching the schema's normalized edge_cardinalities.
+        # schema=None / unknown predicate ⇒ None ⇒ no auto-close (legacy behavior).
+        edge_cardinality = _edge_cardinalities.get(
+            _normalize_predicate_code(predicate_clean)
+        )
         result = await create_relation(
             session,
             user_id=user_id,
@@ -542,6 +730,26 @@ async def write_pass2_extraction(
             confidence=rel.confidence,
             source_event_id=source.id,
             pending_validation=False,
+            # L7 — stamp the resolved-schema version (M3) + the graph_id partition
+            # seam (M2, NULL at v1). schema=None → both NULL (legacy, no change).
+            schema_version=schema.schema_version if schema else None,
+            graph_id=None,
+            cardinality=edge_cardinality,
+            job_id=job_id,
+            # F3 — story valid-time. Stamp the chapter ordinal this edge was
+            # established at + drive the ordinal-aware interval-split close (Path A
+            # close-prior) so a re-membership/drive supersedes the prior instance
+            # in STORY time, correct under out-of-order/backfill arrival.
+            # chapter_base=None (chat) ⇒ no ordinal ⇒ chain maintenance skipped.
+            valid_from_ordinal=chapter_base,
+            # dec-3 (D-KG-INSTORY-EVENTDATE) — OPTIONAL detected in-story date,
+            # additive valid-time refinement alongside the chapter ordinal (which
+            # stays primary). `getattr(..., None)` reads it WHEN the relation
+            # candidate carries one (forward-compatible with an SDK revision that
+            # adds the field) and is None otherwise — no SDK change required here,
+            # null-safe by construction. The same truncated-ISO shape :Event uses.
+            event_date_iso=getattr(rel, "event_date", None),
+            maintain_chain=True,
         )
         if result is not None:
             relations_created += 1
@@ -562,15 +770,8 @@ async def write_pass2_extraction(
     # fine for the strict range filter, keeps the order non-decreasing). The
     # stride is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill
     # imports the same constant so both write on one scale.
-    _chapter_ordinal = (
-        hierarchy_paths.chapter_index if hierarchy_paths is not None
-        else chapter_index
-    )
-    chapter_base = (
-        _chapter_ordinal * EVENT_ORDER_CHAPTER_STRIDE
-        if _chapter_ordinal is not None
-        else None
-    )
+    # F3 — `_chapter_ordinal` + `chapter_base` are computed ONCE above (hoisted
+    # before Step 3 so the relation chain can also stamp valid_from_ordinal).
     events_merged = 0
     statuses_merged = 0  # A2-S1b — :EntityStatus transitions written
     dated_written = 0  # CM4 debounce: rerank chrono only if a dated event changed
@@ -598,6 +799,20 @@ async def write_pass2_extraction(
         # ("the next morning", "in his youth", "summer 1880") — kept
         # for FE display + parsed best-effort by the C18 backfill
         # helper into event_date_iso when possible.
+        sanitized_participants = [
+            _sanitize(p, project_id) for p in evt.participants
+        ]
+        # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — resolve each participant
+        # name to its glossary entity_id NOW (Pass-1 entities are already in the
+        # graph) and store the anchor on the event, so the timeline localizer
+        # joins by stored id instead of re-resolving names at read time.
+        # Best-effort: an unanchored name → source fallback + marker.
+        participant_anchors = await resolve_participant_anchors(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            names=sanitized_participants,
+        )
         event = await merge_event(
             session,
             user_id=user_id,
@@ -607,12 +822,12 @@ async def write_pass2_extraction(
             event_order=event_order,
             event_date_iso=evt.event_date,
             time_cue=evt.time_cue,
-            participants=[
-                _sanitize(p, project_id) for p in evt.participants
-            ],
+            participants=sanitized_participants,
+            participant_anchors=participant_anchors,
             source_type=source_type,
             confidence=evt.confidence,
             provenance=provenance,
+            job_id=job_id,
         )
         events_merged += 1
         if evt.event_date:
@@ -627,6 +842,7 @@ async def write_pass2_extraction(
             extraction_model=extraction_model,
             confidence=evt.confidence,
             job_id=job_id,
+            quote=_evidence_quote(evt, project_id),  # F3 — exact-quote citation
         )
         if ev is not None and ev.created:
             evidence_edges += 1
@@ -714,6 +930,13 @@ async def write_pass2_extraction(
                 fact.type, fact.content,
             )
             continue
+        # PP-5 (spec 08 R7) — in a WORK/assistant extraction, coerce a `preference` fact to `statement`.
+        # A preference is a durable behavioral-trait claim; about a real third party (a colleague),
+        # derived from one person's account, it is forbidden (Q10). `statement` = what the user reported.
+        fact_type = fact.type
+        if work_mode and fact_type == "preference":
+            logger.info("pass2_writer: PP-5 coerced a work-mode preference fact → statement")
+            fact_type = "statement"
         content_clean = _sanitize(fact.content, project_id)
         if not content_clean.strip():
             continue
@@ -740,7 +963,7 @@ async def write_pass2_extraction(
             session,
             user_id=user_id,
             project_id=project_id,
-            type=fact.type,
+            type=fact_type,  # PP-5 — work-mode preference coerced to statement above
             content=content_clean,
             confidence=fact.confidence,
             pending_validation=False,
@@ -748,6 +971,16 @@ async def write_pass2_extraction(
             provenance=provenance,
             subject_id=fact_subject_id,
             from_order=chapter_base,
+            # dec-3 (D-KG-INSTORY-EVENTDATE) — OPTIONAL detected in-story date,
+            # additive valid-time refinement alongside the chapter ordinal (which
+            # stays primary). Read it WHEN the fact candidate carries one
+            # (forward-compatible getattr); None otherwise → null-safe legacy path.
+            event_date_iso=getattr(fact, "event_date", None),
+            # F3 — drive the ordinal-aware interval-split close over this fact's
+            # (subject, type) chain (Path A close-prior). merge_fact internally
+            # no-ops the chain when there's no subject or no story ordinal, so a
+            # positionless / subjectless fact stays on the legacy path.
+            maintain_chain=True,
         )
         facts_merged += 1
 
@@ -760,6 +993,7 @@ async def write_pass2_extraction(
             extraction_model=extraction_model,
             confidence=fact.confidence,
             job_id=job_id,
+            quote=_evidence_quote(fact, project_id),  # F3 — exact-quote citation
         )
         if ev is not None and ev.created:
             evidence_edges += 1

@@ -60,6 +60,7 @@ SCAN_EXTS = (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".mjs")
 EXCLUDE_DIRS = {
     "node_modules", "__pycache__", ".pytest_cache", ".venv", "venv",
     "dist", "build", ".next", ".git", "vendor", "coverage",
+    "storybook-static",  # compiled Storybook bundles (build output; mirrors dist/build)
 }
 
 # Path prefixes (forward-slash, relative to repo root) where the rules

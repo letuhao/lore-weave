@@ -1,4 +1,9 @@
 {
+  "focus": {
+    "toggle": "フォーカスモード",
+    "continuity": "連続性 ✓",
+    "hint": "✦ 行をタップしてグラウンディング"
+  },
   "saved": "章を保存しました",
   "no_content": "翻訳するコンテンツがありません",
   "translation_failed": "翻訳に失敗しました",
@@ -17,14 +22,32 @@
     "ai": "AI",
     "ai_title": "AIアシスタントモード — 全機能"
   },
+  "workmode": {
+    "write": "執筆",
+    "write_desc": "原稿を編集",
+    "translate": "翻訳",
+    "translate_desc": "バージョン・比較・翻訳",
+    "read": "読む",
+    "read_desc": "リーダーを開く（TTS・テーマ）",
+    "compose": "創作",
+    "compose_desc": "AI共同執筆スタジオ"
+  },
   "grammar_title": "文法・スペルチェックの切り替え（LanguageTool）",
   "translate_title": "AIでコンテンツを翻訳（ブロックモード）",
   "translating": "翻訳中...",
   "translate": "翻訳",
+  "view_translations": "翻訳",
+  "view_translations_title": "保存された翻訳バージョンを表示（言語・履歴・並列比較）",
   "toggle_source": "ソースパネルの切り替え",
   "toggle_history": "履歴 / AIパネルの切り替え",
   "unsaved": "未保存",
   "saved_badge": "保存済み",
+  "mobile": {
+    "editor": "エディタ",
+    "studio": "スタジオ",
+    "history": "履歴",
+    "nav": "エディタのセクション"
+  },
   "discard_title": "未保存の変更をすべて破棄",
   "discard": "破棄",
   "save": "保存",
@@ -150,7 +173,8 @@
     "copied": "コピーしました",
     "copy_prompt": "プロンプトをコピー",
     "regenerate": "再生成",
-    "generating": "生成中..."
+    "generating": "生成中...",
+    "model_label": "AIモデル"
   },
   "image": {
     "err_type": "サポートされていない形式: {{type}}。PNG、JPG、GIF、またはWebPを使用してください。",
@@ -337,5 +361,36 @@
     "same": "両側が同じリビジョンです — 差分はありません。",
     "load_more": "さらに読み込む ({{loaded}}/{{total}})",
     "load_more_hint": "古いリビジョンを選択肢に読み込む"
+  },
+  "checkpoint": {
+    "header": "AI編集チェックポイント",
+    "insert": "挿入済み",
+    "polish": "推敲済み",
+    "restore": "復元",
+    "restored": "AI編集前の状態に復元しました",
+    "no_restore": "復元できる以前のバージョンがありません",
+    "confirm_title": "このAI編集の前に復元しますか？",
+    "confirm_desc": "現在の下書きは先にスナップショットされるため、リビジョン履歴から元に戻せます。"
+  },
+  "knowledge": {
+    "add": "ナレッジに追加",
+    "reindex": "ナレッジを更新",
+    "indexed_badge": "ナレッジに登録済み",
+    "not_indexed_badge": "ナレッジ未登録",
+    "excluded_badge": "除外済み",
+    "forget": "この章を忘れる",
+    "keep_out": "ナレッジから除外する",
+    "allow": "ナレッジに含める",
+    "save_first": "ナレッジに追加する前に保存してください",
+    "indexed_toast": "ナレッジに追加しました",
+    "reused_toast": "すでに最新の状態です — 変更はありません",
+    "empty_toast": "この章には追加する内容がありません — まずは執筆してください。",
+    "excluded_toast": "このチャプターはナレッジから除外されています。利用するには、まず許可してください。",
+    "forgotten_toast": "忘却しました — ナレッジから削除されました",
+    "allowed_toast": "許可されました。準備ができたら「ナレッジに追加」を選択してください。",
+    "failed_toast": "ナレッジを更新できませんでした。もう一度お試しください。",
+    "forget_confirm_title": "このチャプターを忘却しますか？",
+    "forget_confirm_body": "このチャプターから学習したすべての内容がナレッジから削除されます。チャプター自体は削除されず、後で再度追加することも可能です。",
+    "hint": "チャプターをナレッジに追加すると、アシスタントがその内容を利用できるようになります。公開する必要はありません。"
   }
 }

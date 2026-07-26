@@ -11,6 +11,7 @@ import type {
   SystemAttribute,
   SystemGenre,
   SystemKind,
+  SystemTrash,
 } from './types';
 
 type Token = string | null;
@@ -126,6 +127,33 @@ export function updateSystemAttribute(
 export function deleteSystemAttribute(token: Token, attrId: string): Promise<void> {
   return apiJson<void>(`/v1/glossary/system-attributes-admin/${attrId}`, {
     method: 'DELETE',
+    token,
+  });
+}
+
+// ---- Recycle bin (G-C8 soft-delete: list + restore) ---------------------
+
+export function listSystemTrash(token: Token): Promise<SystemTrash> {
+  return apiJson<SystemTrash>('/v1/glossary/system-trash', { token });
+}
+
+export function restoreSystemGenre(token: Token, id: string): Promise<SystemGenre> {
+  return apiJson<SystemGenre>(`/v1/glossary/system-genres/${id}/restore`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export function restoreSystemKind(token: Token, id: string): Promise<SystemKind> {
+  return apiJson<SystemKind>(`/v1/glossary/system-kinds/${id}/restore`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export function restoreSystemAttribute(token: Token, id: string): Promise<SystemAttribute> {
+  return apiJson<SystemAttribute>(`/v1/glossary/system-attributes-admin/${id}/restore`, {
+    method: 'POST',
     token,
   });
 }

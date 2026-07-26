@@ -72,6 +72,9 @@ async def revise_article(
     model_ref: str,
     max_tokens: int | None = None,
     temperature: float = 0.3,
+    # D-KG-WIKI-WORKER-GRADED-EFFORT — the revise IS a second prose-generation
+    # pass, so it honors the same graded effort as the initial generate.
+    reasoning_effort: str = "none",
 ) -> tuple[GenerateResult, WikiVerifyResult]:
     """One bounded, keep-if-improved revise pass.
 
@@ -91,6 +94,7 @@ async def revise_article(
         temperature=temperature,
         max_attempts=1,  # the revise itself is the bounded second pass
         initial_corrective=_verify_corrective(verify),
+        reasoning_effort=reasoning_effort,
         **kwargs,
     )
     if gen2.status != "ok" or gen2.ir is None:

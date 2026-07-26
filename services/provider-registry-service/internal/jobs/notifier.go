@@ -25,37 +25,21 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/google/uuid"
-
+	"github.com/loreweave/foundation/contracts/notifyevent"
 	"github.com/loreweave/observability"
 )
 
 const (
 	// Shared platform topic exchange. Mirrors translation-service's
 	// broker.publish_event() pattern (services/translation-service/app/broker.py).
-	llmEventsExchange = "loreweave.events"
+	llmEventsExchange = notifyevent.EventsExchange
 )
 
-// TerminalEvent is the wire payload published when a job hits a
-// terminal status. Mirrors the openapi Job envelope subset that
-// notification-service + downstream consumers actually use.
-type TerminalEvent struct {
-	JobID        uuid.UUID       `json:"job_id"`
-	OwnerUserID  uuid.UUID       `json:"owner_user_id"`
-	Operation    string          `json:"operation"`
-	Status       string          `json:"status"` // completed | failed | cancelled
-	TraceID      string          `json:"trace_id,omitempty"`
-	Result       json.RawMessage `json:"result,omitempty"`
-	ErrorCode    string          `json:"error_code,omitempty"`
-	ErrorMessage string          `json:"error_message,omitempty"`
-	FinishReason string          `json:"finish_reason,omitempty"`
-}
-
-// RoutingKey produces the canonical topic key per openapi callback
-// convention.
-func (ev TerminalEvent) RoutingKey() string {
-	return fmt.Sprintf("user.%s.llm.%s.%s", ev.OwnerUserID, ev.Operation, ev.Status)
-}
+// TerminalEvent is the shared wire contract (contracts/notifyevent), aliased here
+// so the jobs package's existing `jobs.TerminalEvent` references keep working while
+// the STRUCT + its RoutingKey method live in the one place the consumer imports too
+// — no more hand-maintained duplicate that can drift.
+type TerminalEvent = notifyevent.TerminalEvent
 
 // Notifier publishes TerminalEvents. Implementations:
 //   - rabbitMQNotifier:  amqp091 publish to loreweave.events topic

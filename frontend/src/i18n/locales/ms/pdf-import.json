@@ -1,0 +1,68 @@
+{
+  "title": "Import PDF",
+  "description": "Import PDF sebagai buku, dipecahkan mengikut julat halaman",
+  "steps": {
+    "upload": "Muat Naik",
+    "configure": "Konfigurasi",
+    "confirm": "Sahkan",
+    "progress": "Kemajuan",
+    "results": "Keputusan"
+  },
+  "upload": {
+    "intro": "Import PDF sebagai buku — termasuk PDF rujukan lore/teknikal, bukan sekadar novel sahaja. PDF yang panjang akan dipecahkan kepada bab mengikut julat halaman (dikonfigurasi pada langkah seterusnya).",
+    "choosePdf": "Pilih fail PDF",
+    "pdfOnly": "hanya .pdf",
+    "checking": "Menyemak PDF…",
+    "pageCount_one": "{{count}} halaman dikesan.",
+    "pageCount_other": "{{count}} halaman dikesan.",
+    "readError": "Tidak dapat membaca PDF ini."
+  },
+  "configure": {
+    "pagesPerChunk": "Halaman setiap kelompok",
+    "pagesPerChunkHint": "Setiap kumpulan sebanyak halaman ini akan menjadi satu bab — tiada pengesanan tajuk «Bab N» digunakan untuk import PDF, jadi ini berfungsi walaupun untuk buku rujukan/teknikal tanpa penanda bab.",
+    "willCreate_one": "Ini akan menghasilkan {{count}} bab daripada {{pages}} halaman.",
+    "willCreate_other": "Ini akan menghasilkan {{count}} bab daripada {{pages}} halaman.",
+    "highChapterWarning": "Itu terlalu banyak bab — pertimbangkan nilai «halaman setiap kelompok» yang lebih besar jika ini tidak disengajakan. Import akan tetap dijalankan.",
+    "captionImages": "Sertakan kapsyen imej dengan AI",
+    "captionImagesHint": "Mengekstrak carta/imej dan memberikan kapsyen melalui model penglihatan supaya pengekstrakan glosari/KG dapat melihat kandungan carta. Menggunakan kredit LLM bagi setiap imej.",
+    "visionModel": "Model penglihatan",
+    "visionModelPlaceholder": "Pilih model yang mempunyai keupayaan penglihatan (cth. gpt-4o)",
+    "visionModelAriaLabel": "Model penglihatan untuk kapsyen imej",
+    "visionModelHint": "Pilih model yang benar-benar menyokong input imej — bukan semua model sembang mempunyai ciri ini."
+  },
+  "confirm": {
+    "file": "Fail",
+    "pages": "Halaman",
+    "pagesPerChunk": "Halaman setiap kelompok",
+    "chaptersToCreate": "Bab untuk dicipta",
+    "captionImages": "Sertakan kapsyen imej dengan AI",
+    "yes": "Ya",
+    "no": "Tidak",
+    "needModel": "Pilih model visi sebelum bermula — fungsi kapsyen telah diaktifkan tetapi tiada model yang dipilih.",
+    "backgroundNote": "Ini berjalan di latar belakang — anda boleh menutup dialog ini dan menyemak kemajuan daripada panel Tugasan pada bila-bila masa.",
+    "startImport": "Mulakan import",
+    "startFailed": "Gagal memulakan import"
+  },
+  "progress": {
+    "importing": "Mengimport PDF…",
+    "chapterOf": "Bab {{current}} daripada {{total}}",
+    "runInBackground": "Jalankan di latar belakang",
+    "progress": "Kemajuan",
+    "longNote": "Proses ini mungkin mengambil masa yang lama untuk PDF yang panjang — terutamanya jika fungsi sari kata AI diaktifkan. Tutup dialog ini pada bila-bila masa; proses import akan terus berjalan dan boleh dipantau di panel Tugasan.",
+    "backgroundToast": "Import diteruskan di latar belakang — semak panel Tugasan untuk kemajuan."
+  },
+  "results": {
+    "complete": "Import selesai",
+    "failed": "Import gagal",
+    "chaptersCreated_one": "{{count}} bab telah dicipta.",
+    "chaptersCreated_other": "{{count}} bab telah dicipta.",
+    "genericError": "Sesuatu telah berlaku semasa proses import.",
+    "importAnother": "Import yang lain",
+    "done": "Selesai"
+  },
+  "button": {
+    "back": "Kembali",
+    "cancel": "Batal",
+    "next": "Seterusnya"
+  }
+}

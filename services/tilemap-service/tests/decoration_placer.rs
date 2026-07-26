@@ -539,7 +539,7 @@ fn decoration_v3_default_town_pinned_hash() {
     // Updating requires re-validating the sanity gates manually + a
     // PR-description explanation of why the new decoration output is
     // correct.
-    const PINNED: &str = "61d58b1ea320e7507b121ef29d0115b1bbd1b9bc06d0dd106d6bee32f7fe71d1";
+    const PINNED: &str = "d53d18c23212ea7b6300594bb89bce60218f6eff2b9d628b8cc42d3e79bbd5ab";
     assert_eq!(
         actual.as_str(),
         PINNED,

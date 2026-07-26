@@ -1,0 +1,233 @@
+[
+  {
+    "id": "R1",
+    "tool": "book_list",
+    "service": "book",
+    "tier": "R",
+    "async": false,
+    "paid": false,
+    "probe": "Show me my library — list the books I have.",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "evidence": {
+      "call": {
+        "args": {
+          "limit": 50
+        },
+        "ok": true,
+        "error": null
+      },
+      "readback": {
+        "fixture_book_id": "019f483d-58c6-722b-8326-80a099e006bb",
+        "found_in_result": true,
+        "book_exists_in_db": true
+      }
+    },
+    "status": "PASS",
+    "notes": ""
+  },
+  {
+    "id": "R2",
+    "tool": "book_get",
+    "service": "book",
+    "tier": "R",
+    "async": false,
+    "paid": false,
+    "probe": "What exact title and description are saved for this book on the server? Look up its stored details and quote them back to me.",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "evidence": {
+      "call": {
+        "args": {
+          "book_id": "019f483d-58c6-722b-8326-80a099e006bb"
+        },
+        "ok": true,
+        "error": null
+      },
+      "readback": {
+        "db_title": "TLE-fixture-80220c47",
+        "title_in_result": true
+      }
+    },
+    "status": "PASS",
+    "notes": ""
+  },
+  {
+    "id": "R3",
+    "tool": "glossary_book_ontology_read",
+    "service": "glossary",
+    "tier": "ABSENT→R",
+    "async": false,
+    "paid": false,
+    "probe": "Which entity kinds (types) are configured in this book's glossary right now? List them.",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "evidence": {
+      "call": {
+        "args": {
+          "book_id": "019f483d-58c6-722b-8326-80a099e006bb"
+        },
+        "ok": true,
+        "error": null
+      },
+      "readback": {
+        "adopted": [
+          "character",
+          "location",
+          "item"
+        ],
+        "present_in_result": [
+          "character",
+          "location",
+          "item"
+        ]
+      }
+    },
+    "status": "PASS",
+    "notes": ""
+  },
+  {
+    "id": "A1",
+    "tool": "book_create",
+    "service": "book",
+    "tier": "A",
+    "async": false,
+    "paid": false,
+    "probe": "Create a brand new, separate book titled exactly 'TLE-probe-created' written in English.",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "evidence": {
+      "call": {
+        "args": {
+          "original_language": "en",
+          "title": "TLE-probe-created"
+        },
+        "ok": true,
+        "error": null
+      },
+      "readback": {
+        "created_book_id": "019f483e-ccc2-7497-9667-fb735cbbf47b",
+        "created_title": "TLE-probe-created"
+      }
+    },
+    "status": "PASS",
+    "notes": ""
+  },
+  {
+    "id": "A2",
+    "tool": "book_update_meta",
+    "service": "book",
+    "tier": "A",
+    "async": false,
+    "paid": false,
+    "probe": "Change this book's description to exactly: edited-by-tle",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "evidence": {
+      "call": {
+        "args": {
+          "book_id": "019f483d-58c6-722b-8326-80a099e006bb",
+          "description": "edited-by-tle"
+        },
+        "ok": true,
+        "error": null
+      },
+      "readback": {
+        "db_description": "edited-by-tle",
+        "matched": true
+      }
+    },
+    "status": "PASS",
+    "notes": ""
+  },
+  {
+    "id": "A3",
+    "tool": "glossary_propose_entities",
+    "service": "glossary",
+    "tier": "A",
+    "async": false,
+    "paid": false,
+    "probe": "Add a new character named 'Corvin Ashe' to this book's glossary.",
+    "G1": "RED",
+    "G2": null,
+    "G3": null,
+    "G4": null,
+    "evidence": {},
+    "status": "RED",
+    "notes": "model did not call glossary_propose_entities; called instead: []"
+  },
+  {
+    "id": "W1",
+    "tool": "glossary_propose_new_kind",
+    "service": "glossary",
+    "tier": "ABSENT→R",
+    "async": false,
+    "paid": false,
+    "probe": "Add a brand-new entity type called 'Faction' (code: faction) to this book's glossary schema.",
+    "G1": "RED",
+    "G2": null,
+    "G3": null,
+    "G4": null,
+    "evidence": {},
+    "status": "RED",
+    "notes": "model did not call glossary_propose_new_kind; called instead: ['glossary_propose_entities']"
+  },
+  {
+    "id": "W2",
+    "tool": "book_chapter_publish",
+    "service": "book",
+    "tier": "W",
+    "async": false,
+    "paid": false,
+    "probe": "Publish the first chapter of this book — make it canon.",
+    "G1": "RED",
+    "G2": null,
+    "G3": null,
+    "G4": null,
+    "evidence": {},
+    "status": "RED",
+    "notes": "model did not call book_chapter_publish; called instead: ['tool_list']"
+  },
+  {
+    "id": "W3",
+    "tool": "glossary_entity_delete",
+    "service": "glossary",
+    "tier": "W",
+    "async": false,
+    "paid": false,
+    "probe": "Delete the glossary entity named 'Ember Codex' from this book — it's junk and I want it gone.",
+    "G1": "RED",
+    "G2": null,
+    "G3": null,
+    "G4": null,
+    "evidence": {},
+    "status": "RED",
+    "notes": "model did not call glossary_entity_delete; called instead: []"
+  },
+  {
+    "id": "X1",
+    "tool": "kg_build_graph",
+    "service": "knowledge",
+    "tier": "W",
+    "async": true,
+    "paid": false,
+    "probe": "Build the knowledge graph for this project from its glossary now.",
+    "G1": "RED",
+    "G2": null,
+    "G3": null,
+    "G4": null,
+    "evidence": {},
+    "status": "RED",
+    "notes": "model did not call kg_build_graph; called instead: ['glossary_list_chapter_links', 'glossary_list_system_standards', 'glossary_propose_entities']"
+  }
+]

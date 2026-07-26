@@ -23,6 +23,9 @@ from app.clients.book_client import get_book_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
 from app.db.migrations.backfill_orders import run_orders_backfill
+from app.db.migrations.backfill_participant_anchors import (
+    run_participant_anchor_backfill,
+)
 from app.db.migrations.backfill_status import (
     make_llm_classify_fn,
     run_status_backfill,
@@ -76,6 +79,86 @@ async def backfill_orders(project_id: UUID) -> dict:
         "passages_indexed": result.passages_indexed,
         "chrono_ranked": result.chrono_ranked,
     }
+
+
+@router.post("/{project_id}/backfill-participant-anchors")
+async def backfill_participant_anchors(project_id: UUID) -> dict:
+    """D-KG-TL-PARTICIPANT-ANCHOR — resolve + stamp ``participant_entity_ids`` on
+    a project's existing events so the timeline localizer joins participant names
+    by stored glossary id instead of re-resolving at read time. Idempotent;
+    project-scoped. Resolves the owning user from knowledge_projects."""
+    row = await get_knowledge_pool().fetchrow(
+        "SELECT user_id FROM knowledge_projects WHERE project_id = $1 LIMIT 1",
+        project_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    user_id = row["user_id"]
+
+    if not settings.neo4j_uri:
+        # Track 1 (no graph) — nothing to backfill; clean no-op.
+        return {"project_id": str(project_id), "skipped": "neo4j_unavailable"}
+
+    async with neo4j_session() as session:
+        result = await run_participant_anchor_backfill(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+        )
+
+    return {
+        "project_id": str(project_id),
+        "events_scanned": result.events_scanned,
+        "events_anchored": result.events_anchored,
+        "anchors_resolved": result.anchors_resolved,
+    }
+
+
+@router.post("/{project_id}/backfill-passages")
+async def backfill_passages(project_id: UUID) -> dict:
+    """D-KG-PASSAGES-NOT-INGESTED — (re)ingest L3 ``:Passage`` nodes for a project's
+    already-published chapters, so semantic memory/story search has chapter-body data.
+
+    Publish-time ingestion (CM3c, ``chapter.published``) is SKIPPED when the project
+    has no embedding config at publish time — e.g. the KG project was created/linked
+    to the book AFTER its chapters were published — leaving the semantic index empty
+    while lexical search still works. This backfills passages from each chapter's
+    pinned published revision. Idempotent (re-ingest deletes + re-upserts per chapter);
+    project-scoped; admin/operator-triggered. Resolves user + embedding config +
+    book from ``knowledge_projects``."""
+    row = await get_knowledge_pool().fetchrow(
+        "SELECT user_id, book_id, embedding_model, embedding_dimension "
+        "FROM knowledge_projects WHERE project_id = $1 LIMIT 1",
+        project_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    if not settings.neo4j_uri:
+        return {"project_id": str(project_id), "skipped": "neo4j_unavailable"}
+    if row["book_id"] is None:
+        return {"project_id": str(project_id), "skipped": "no_linked_book"}
+    if not row["embedding_model"] or not row["embedding_dimension"]:
+        return {"project_id": str(project_id), "skipped": "no_embedding_config"}
+
+    # Heavy deps — inline import (mirrors the CM3c publish handler).
+    from app.clients.embedding_client import get_embedding_client
+    from app.extraction.passage_backfill import backfill_project_passages
+
+    result = await backfill_project_passages(
+        project_id=project_id, user_id=row["user_id"], book_id=row["book_id"],
+        embedding_model=row["embedding_model"], embedding_dim=row["embedding_dimension"],
+        book_client=get_book_client(), embedding_client=get_embedding_client(),
+    )
+    if result.get("error") == "book_service_unavailable":
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="book-service unavailable listing chapters",
+        )
+    return {"project_id": str(project_id), **result}
 
 
 class BackfillStatusRequest(BaseModel):

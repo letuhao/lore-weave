@@ -23,12 +23,36 @@ interface AttrTranslationRowProps {
   translationHint?: string | null;
   sourceOriginal?: string;
   sourceOriginalLang?: string;
+  /** The owning attribute's `code`. ONLY the `aliases` attribute stores its per-language
+   *  set as a JSON array string (matching the BE writer glossary_propose_aliases and the
+   *  aliases-scoped reader composePerLanguageAliases) → edited here as chips. Every other
+   *  tags attribute (members/participants/tropes/…) keeps CSV at its source, so its
+   *  translation stays on the plain textarea to avoid source/translation format drift. */
+  attrCode?: string;
   onChanged: (updated: Translation | null) => void;
+}
+
+/** Per-language alias sets are stored as a JSON array STRING (S6). Parse to chips
+ *  (deduped, mirroring the BE dedupStrings); return null for a non-array value so the row
+ *  falls back to the raw textarea and never silently drops a legacy/hand-edited value.
+ *  Empty → []. */
+function aliasTagsFromValue(value: string): string[] | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+      return Array.from(new Set(parsed as string[]));
+    }
+  } catch {
+    // not JSON → fall through to the textarea fallback
+  }
+  return null;
 }
 
 export function AttrTranslationRow({
   bookId, entityId, attrValueId, language,
-  translation, translationHint, sourceOriginal, sourceOriginalLang, onChanged,
+  translation, translationHint, sourceOriginal, sourceOriginalLang, attrCode, onChanged,
 }: AttrTranslationRowProps) {
   const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
@@ -43,6 +67,8 @@ export function AttrTranslationRow({
 
   const isDirty = value !== (translation?.value ?? '');
   const isEmpty = !value.trim();
+  // Only the `aliases` attribute stores its set as a JSON array string → render chips.
+  const aliasTags = attrCode === 'aliases' ? aliasTagsFromValue(value) : null;
 
   const handleSave = async () => {
     if (!accessToken || isEmpty) return;
@@ -160,13 +186,21 @@ export function AttrTranslationRow({
           </button>
         )}
       </div>
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        rows={1}
-        placeholder={translationHint || t('translation_row.placeholder', { lang: language })}
-        className="w-full rounded border border-blue-500/20 bg-background px-2 py-1.5 text-xs focus:border-blue-500/40 focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y"
-      />
+      {aliasTags !== null ? (
+        <AliasTagsInput
+          tags={aliasTags}
+          onChange={(next) => setValue(JSON.stringify(next))}
+          placeholder={t('translation_row.tags_add')}
+        />
+      ) : (
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          rows={1}
+          placeholder={translationHint || t('translation_row.placeholder', { lang: language })}
+          className="w-full rounded border border-blue-500/20 bg-background px-2 py-1.5 text-xs focus:border-blue-500/40 focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y"
+        />
+      )}
       {sourceOriginal != null && sourceOriginal !== '' && (
         <p className="text-[10px] text-muted-foreground">
           {t('modal.viewing_original', {
@@ -184,6 +218,49 @@ export function AttrTranslationRow({
         variant="destructive"
         loading={deleting}
         onConfirm={() => void handleDelete()}
+      />
+    </div>
+  );
+}
+
+/** Chip editor for a per-language alias set. Controlled by the row's `value` (a JSON
+ *  array string); emits the next array, which the row serializes with JSON.stringify —
+ *  the exact format the BE glossary_propose_aliases writer and composePerLanguageAliases
+ *  reader expect. Mirrors AttrTagsCard's UX, but JSON- (not CSV-) serialized. */
+function AliasTagsInput({
+  tags, onChange, placeholder,
+}: { tags: string[]; onChange: (next: string[]) => void; placeholder: string }) {
+  const [input, setInput] = useState('');
+
+  const addTag = () => {
+    const trimmed = input.trim();
+    if (trimmed && !tags.includes(trimmed)) onChange([...tags, trimmed]);
+    setInput('');
+  };
+  const removeTag = (tag: string) => onChange(tags.filter((tg) => tg !== tag));
+
+  return (
+    <div className="flex flex-wrap gap-1.5 rounded border border-blue-500/20 bg-background p-2">
+      {tags.map((tag) => (
+        <span key={tag} className="inline-flex items-center gap-1 rounded bg-blue-500/12 px-2 py-0.5 text-xs text-blue-300">
+          {tag}
+          <button
+            type="button"
+            onClick={() => removeTag(tag)}
+            className="text-muted-foreground/50 hover:text-foreground transition-colors"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+        onBlur={addTag}
+        placeholder={placeholder}
+        className="min-w-[80px] flex-1 bg-transparent px-1 py-0.5 text-xs outline-none placeholder:text-muted-foreground/40"
       />
     </div>
   );

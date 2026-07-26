@@ -18,17 +18,22 @@ function ToolbarButton({
   disabled,
   onClick,
   title,
+  testId,
   children,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
   title: string;
+  /** Optional stable selector for tour/E2E anchoring — most of this toolbar's icon buttons are
+   *  self-explanatory and don't need one; only add where a guided tour targets it. */
+  testId?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       onClick={onClick}
       disabled={disabled}
       title={title}
@@ -52,7 +57,7 @@ function Divider() {
 export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) {
   const { t } = useTranslation('editor');
   return (
-    <div className="sticky top-0 z-10 flex flex-shrink-0 flex-wrap items-center gap-0.5 border-b bg-card px-3 py-1">
+    <div className="sticky top-0 z-10 flex flex-shrink-0 flex-nowrap items-center gap-0.5 overflow-x-auto border-b bg-card px-3 py-1">
       {/* Block type */}
       <ToolbarButton
         active={editor.isActive('paragraph')}
@@ -188,18 +193,21 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       {mode === 'ai' && (
         <>
           <ToolbarButton
+            testId="format-toolbar-insert-image"
             onClick={() => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title={t('toolbar.insert_image')}
           >
             <ImageIcon className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
+            testId="format-toolbar-insert-video"
             onClick={() => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title={t('toolbar.insert_video')}
           >
             <Video className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
+            testId="format-toolbar-insert-audio"
             onClick={() => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title={t('toolbar.insert_audio')}
           >
@@ -238,6 +246,12 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       >
         <Redo2 className="h-3.5 w-3.5" />
       </ToolbarButton>
+      {/* Reserves scroll room past the last button — the aiLayer's mode toggle / "Continue from
+          cursor" affordance (InlineAiLayer.tsx) is `absolute right-2 top-2` on the shared editor
+          wrapper, pinned to the viewport's right edge regardless of this row's scroll position.
+          Without this spacer, on a narrow viewport the scrolled-in trailing buttons render UNDER
+          that fixed overlay with no way to bring them clear of it. */}
+      <div aria-hidden className="w-60 flex-shrink-0" />
     </div>
   );
 }

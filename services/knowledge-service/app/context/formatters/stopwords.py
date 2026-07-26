@@ -22,9 +22,15 @@ extractor needs more conversational verbs / pronouns ("tell", "what",
 "could", "much"). A single union would give worse results in both
 sites.
 
-CJK_PARTICLES is the small set of Chinese function words used to
-re-split long CJK runs in extract_candidates. Without a real segmenter
-(jieba) this is a best-effort heuristic — documented limitation.
+CJK_PARTICLES is the small set of function words used to re-split long
+CJK-family runs (Han + kana) in extract_candidates. It covers Chinese
+particles AND Japanese hiragana particles (ML-3: a Japanese run
+「田中は学校へ」 must split at は/へ into 田中 / 学校, not surface as one
+candidate). Korean josa (은/는/이/가 …) are deliberately EXCLUDED — those
+syllables also occur *inside* Korean given names (지은, 서은), so splitting
+on them would shred real names; a Korean run stays whole (degrade-open).
+Without a real segmenter (jieba/MeCab, tracked D-ML-SEGMENTER) this is a
+best-effort heuristic — documented limitation.
 """
 
 __all__ = [
@@ -69,5 +75,9 @@ KEYWORD_STOPWORDS_LOWER: frozenset[str] = frozenset(
 )
 
 
-# ── CJK particles used as soft segment separators ─────────────────────────
-CJK_PARTICLES: str = "的是了在和与及或把被这那就也都还很"
+# ── CJK-family particles used as soft segment separators ──────────────────
+# Re-exported from the SINGLE source in app.extraction.scripts (Chinese +
+# Japanese hiragana particles; Korean josa excluded — see that module + the
+# extract_candidates docstring). Kept under this name for the existing importer
+# in selectors/glossary.py.
+from app.extraction.scripts import CJK_SPLIT_PARTICLES as CJK_PARTICLES  # noqa: E402

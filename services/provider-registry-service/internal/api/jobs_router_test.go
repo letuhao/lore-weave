@@ -631,6 +631,139 @@ func TestInternalSubmitLlmJob_ImageGen_RejectsChunkingConfig(t *testing.T) {
 	}
 }
 
+// ── PDF-import vision op handler-level validation tests ───────────────
+// (docs/specs/2026-07-06-pdf-book-import.md L5)
+
+// buildVisionJSONRequest constructs a JSON POST request for
+// /internal/llm/jobs with operation=vision. Caller controls the input +
+// chunking fields to exercise each validation path.
+func buildVisionJSONRequest(t *testing.T, userID string, input map[string]any, chunking string) *http.Request {
+	t.Helper()
+	body := map[string]any{
+		"operation":    "vision",
+		"model_source": "user_model",
+		"model_ref":    uuid.NewString(),
+		"input":        input,
+	}
+	if chunking != "" {
+		body["chunking"] = json.RawMessage(chunking)
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/llm/jobs?user_id="+userID,
+		bytes.NewReader(bodyBytes),
+	)
+	req.Header.Set("X-Internal-Token", routerTestInternalToken)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// TestInternalSubmitLlmJob_Vision_ValidationPasses confirms a
+// well-formed vision submission progresses past handler validation to
+// the 503 service-unavailable check (router-only server has no
+// jobsRepo). If this fails with 400 LLM_INVALID_REQUEST, the validator
+// has a false-positive.
+func TestInternalSubmitLlmJob_Vision_ValidationPasses(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVisionJSONRequest(t, uuid.NewString(),
+		map[string]any{
+			"image_b64": "ZmFrZWltYWdlYnl0ZXM=",
+			"mime_type": "image/png",
+			"prompt":    "Describe this chart in 1-2 sentences.",
+		},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (validation-passed, no subsystem), got %d body=%s",
+			w.Code, w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_Vision_RejectsEmptyPrompt(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVisionJSONRequest(t, uuid.NewString(),
+		map[string]any{"image_b64": "ZmFrZQ==", "prompt": ""},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "non-empty prompt") {
+		t.Errorf("expected 'non-empty prompt' hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_Vision_RejectsEmptyImage(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVisionJSONRequest(t, uuid.NewString(),
+		map[string]any{"image_b64": "", "prompt": "Describe this."},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "non-empty image_b64") {
+		t.Errorf("expected 'non-empty image_b64' hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_Vision_RejectsOversizeImage(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	huge := strings.Repeat("a", 8*1024*1024+1)
+	req := buildVisionJSONRequest(t, uuid.NewString(),
+		map[string]any{"image_b64": huge, "prompt": "Describe this."},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "exceeds") {
+		t.Errorf("expected cap message, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_Vision_RejectsNegativeMaxTokens(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVisionJSONRequest(t, uuid.NewString(),
+		map[string]any{"image_b64": "ZmFrZQ==", "prompt": "Describe.", "max_tokens": -1},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative max_tokens, got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_Vision_RejectsChunkingConfig(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVisionJSONRequest(t, uuid.NewString(),
+		map[string]any{"image_b64": "ZmFrZQ==", "prompt": "Describe."},
+		`{"strategy":"paragraphs","size":15}`,
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for chunking on vision, got %d body=%s",
+			w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "chunking not supported for vision") {
+		t.Errorf("expected chunking-not-supported hint, got %s", w.Body.String())
+	}
+}
+
 // ── Phase 5d — video_gen handler-level validation tests ──────────────
 
 func buildVideoGenJSONRequest(t *testing.T, userID string, input map[string]any, chunking string) *http.Request {

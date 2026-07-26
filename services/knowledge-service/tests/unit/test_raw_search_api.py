@@ -101,6 +101,9 @@ def _make_client(project=_SENT, lexical=_SENT):
         return_value=([_lex_hit()] if lexical is _SENT else lexical)
     )
     book_client.get_chapter_titles = AsyncMock(return_value={})
+    # KG-ML M4 — resolver tier 2 (reader-pref). Default None so existing tests
+    # fall through to detected-query-language (no matching hits ⇒ no reordering).
+    book_client.get_reader_language = AsyncMock(return_value=None)
     embedding_client = MagicMock()
 
     # Default reranker: passthrough — every doc scored above the floor in input
@@ -222,6 +225,84 @@ def test_query_required():
 def test_bad_mode_rejected():
     client, _, _ = _make_client()
     assert client.get(_url("fuzzy")).status_code == 422
+
+
+# ── KG-ML M4: reader-language resolution chain ───────────────────────
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_no_language_param_resolves_reader_pref(mock_embed, mock_find):
+    """Without ?language=, the endpoint resolves the CALLER's stored
+    reader-language (M3) for this book."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value="vi")
+    resp = client.get(_url("hybrid"))
+    assert resp.status_code == 200
+    book_client.get_reader_language.assert_awaited_once_with(_BOOK, _USER)
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_explicit_language_param_skips_reader_pref(mock_embed, mock_find):
+    """An explicit ?language= wins — the stored reader-pref is NOT consulted."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value="en")
+    resp = client.get(_url("hybrid") + "&language=vi")
+    assert resp.status_code == 200
+    book_client.get_reader_language.assert_not_awaited()
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_malformed_language_falls_through_to_reader_pref(mock_embed, mock_find):
+    """/review-impl LOW — a malformed ?language= is IGNORED and resolution falls
+    through to the stored reader-pref, instead of silently disabling the boost."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value="vi")
+    resp = client.get(_url("hybrid") + "&language=english")  # fails the tag shape
+    assert resp.status_code == 200
+    book_client.get_reader_language.assert_awaited_once()
+
+
+@patch("app.routers.public.raw_search.detect_primary_language")
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_short_query_skips_language_detection(mock_embed, mock_find, mock_detect):
+    """/review-impl LOW — a too-short query can't reliably detect a language, so
+    detection is skipped (no mis-boost). No explicit param, no stored pref."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value=None)
+    resp = client.get(f"/v1/knowledge/books/{_BOOK}/search?query=Dr&mode=hybrid")
+    assert resp.status_code == 200
+    mock_detect.assert_not_called()
+
+
+@patch("app.routers.public.raw_search.detect_primary_language", return_value="en")
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_long_query_uses_language_detection(mock_embed, mock_find, mock_detect):
+    """A query long enough to detect reliably DOES fall through to detection."""
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit()]
+    client, _, book_client = _make_client()
+    book_client.get_reader_language = AsyncMock(return_value=None)
+    resp = client.get(f"/v1/knowledge/books/{_BOOK}/search?query=Dracula castle journey&mode=hybrid")
+    assert resp.status_code == 200
+    mock_detect.assert_called_once()
 
 
 @patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
@@ -585,3 +666,62 @@ def test_index_drafts_book_service_unavailable_502():
     with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"):
         resp = client.post(_drafts_url())
     assert resp.status_code == 502
+
+
+# ── W11-M1 (spec §4.3) — reader spoiler cutoff wiring at the endpoint seam ────
+# The two halves are unit-tested apart (resolve_before_sort_order in
+# test_spoiler_window; the per-leg filter in test_retriever). These pin the SEAM:
+# the endpoint reads before_chapter_id, resolves it, and threads it through.
+_CUTOFF_CH = uuid4()
+
+
+def _url_cutoff(chapter_id, mode="hybrid", query="duel"):
+    return f"/v1/knowledge/books/{_BOOK}/search?query={query}&mode={mode}&before_chapter_id={chapter_id}"
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_before_chapter_id_drops_future_chapters(mock_embed, mock_find):
+    # Reader's furthest chapter resolves to sort_order 5. The semantic hit is
+    # chapter 9 (future → dropped); the lexical hit is chapter 3 (kept).
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]  # chapter_index=9
+    client, _, book_client = _make_client()  # lexical _lex_hit sortOrder=3
+    book_client.get_chapter_sort_orders = AsyncMock(return_value={_CUTOFF_CH: 5})
+    resp = client.get(_url_cutoff(_CUTOFF_CH))
+    assert resp.status_code == 200, resp.json()
+    surfaces = {h["surface"] for h in resp.json()["results"]}
+    assert surfaces == {"draft"}  # the chapter-9 canon (semantic) hit is gone
+    book_client.get_chapter_sort_orders.assert_awaited_once_with([_CUTOFF_CH])
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_before_chapter_id_unresolvable_fails_closed(mock_embed, mock_find):
+    # book-service can't resolve the reader's chapter ({}) → endpoint-level
+    # fail-closed: ZERO hits, never the whole corpus.
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, book_client = _make_client()
+    book_client.get_chapter_sort_orders = AsyncMock(return_value={})  # unresolvable
+    resp = client.get(_url_cutoff(_CUTOFF_CH))
+    assert resp.status_code == 200
+    assert resp.json()["results"] == []
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_before_chapter_id_omitted_is_author_path(mock_embed, mock_find):
+    # No cutoff → author behavior: both surfaces present, and the resolver is
+    # never even called (no needless book-service round-trip).
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, book_client = _make_client()
+    book_client.get_chapter_sort_orders = AsyncMock(return_value={_CUTOFF_CH: 5})
+    resp = client.get(_url("hybrid"))  # no before_chapter_id
+    assert resp.status_code == 200
+    assert {h["surface"] for h in resp.json()["results"]} == {"draft", "canon"}
+    book_client.get_chapter_sort_orders.assert_not_awaited()

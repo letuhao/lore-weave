@@ -1,57 +1,41 @@
-"""Phase-2 notification i18n: the translation completion notification must carry a
-stable i18n_key + params in metadata (client localizes), while keeping the English
-title as a fallback. (LW-PLAN notifications i18n.)"""
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
-from app.workers.chapter_worker import _send_translation_notification
+"""Notification i18n: the translation completion notification carries a stable
+message_key + params (a locale-aware client localizes) plus the English title as a
+fallback. D-C-PRODUCER-OUTBOX moved delivery from a fire-and-forget POST to an in-tx
+outbox emit, so this now tests the pure body builder (the payload the outbox row +
+the relay's /internal/notifications POST carry)."""
+from app.workers.chapter_worker import _translation_notification_body
 
 
-def _capture_post():
-    """Returns (captured dict, AsyncClient context-manager mock)."""
-    captured: dict = {}
-    client = MagicMock()
-
-    async def fake_post(url, json=None, headers=None):
-        captured["url"] = url
-        captured["json"] = json
-        return MagicMock(status_code=200)
-
-    client.post = AsyncMock(side_effect=fake_post)
-    cm = MagicMock()
-    cm.__aenter__ = AsyncMock(return_value=client)
-    cm.__aexit__ = AsyncMock(return_value=False)
-    return captured, cm
-
-
-@pytest.mark.asyncio
-async def test_completed_notification_carries_i18n_key_and_params():
-    captured, cm = _capture_post()
-    with patch("app.workers.chapter_worker.httpx.AsyncClient", return_value=cm):
-        await _send_translation_notification("u1", "j1", "Dracula", "completed", 3, 0)
-    meta = captured["json"]["metadata"]
-    assert meta["i18n_key"] == "notif.translation.completed"
-    assert meta["i18n_params"] == {"count": 3, "book": "Dracula"}
+def test_completed_notification_carries_message_key_and_params():
+    body = _translation_notification_body("u1", "j1", "Dracula", "completed", 3, 0)
+    # Canonical top-level substrate (the FE renders from these).
+    assert body["message_key"] == "notif.translation.completed"
+    assert body["message_params"] == {"count": 3, "book": "Dracula"}
+    # Legacy metadata channel kept for pre-message_key clients.
+    assert body["metadata"]["i18n_key"] == "notif.translation.completed"
+    assert body["metadata"]["i18n_params"] == {"count": 3, "book": "Dracula"}
     # English title kept as fallback for older clients.
-    assert "Translation complete" in captured["json"]["title"]
+    assert "Translation complete" in body["title"]
+    assert body["category"] == "translation"
 
 
-@pytest.mark.asyncio
-async def test_partial_notification_carries_i18n_key_and_params():
-    captured, cm = _capture_post()
-    with patch("app.workers.chapter_worker.httpx.AsyncClient", return_value=cm):
-        await _send_translation_notification("u1", "j1", "Dracula", "partial", 2, 1)
-    meta = captured["json"]["metadata"]
-    assert meta["i18n_key"] == "notif.translation.partial"
-    assert meta["i18n_params"] == {"done": 2, "failed": 1}
+def test_partial_notification_carries_message_key_and_params():
+    body = _translation_notification_body("u1", "j1", "Dracula", "partial", 2, 1)
+    assert body["message_key"] == "notif.translation.partial"
+    assert body["message_params"] == {"done": 2, "failed": 1}
 
 
-@pytest.mark.asyncio
-async def test_failed_notification_carries_i18n_key_and_params():
-    captured, cm = _capture_post()
-    with patch("app.workers.chapter_worker.httpx.AsyncClient", return_value=cm):
-        await _send_translation_notification("u1", "j1", "Dracula", "failed", 0, 1)
-    meta = captured["json"]["metadata"]
-    assert meta["i18n_key"] == "notif.translation.failed"
-    assert meta["i18n_params"] == {"book": "Dracula"}
+def test_failed_notification_carries_message_key_and_params():
+    body = _translation_notification_body("u1", "j1", "Dracula", "failed", 0, 1)
+    assert body["message_key"] == "notif.translation.failed"
+    assert body["message_params"] == {"book": "Dracula"}
+
+
+def test_dedup_key_is_deterministic_per_job_and_status():
+    # The relay delivers at-least-once; the dedup_key makes a re-POST idempotent.
+    a = _translation_notification_body("u1", "job-9", "Dracula", "completed", 3, 0)
+    b = _translation_notification_body("u1", "job-9", "Dracula", "completed", 3, 0)
+    assert a["dedup_key"] == b["dedup_key"] == "translation:job-9:completed"
+    # A different terminal status is a distinct notification (not a dupe).
+    c = _translation_notification_body("u1", "job-9", "Dracula", "failed", 0, 1)
+    assert c["dedup_key"] != a["dedup_key"]

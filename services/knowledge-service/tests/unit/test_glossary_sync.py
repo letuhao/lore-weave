@@ -76,13 +76,16 @@ async def test_sync_uses_canonical_name():
 
 
 @pytest.mark.asyncio
-async def test_on_match_cypher_updates_project_id():
-    """C12c-a /review-impl MED#2 — ON MATCH SET now includes
-    e.project_id so latest-sync wins. Before this fix, a user with
-    two projects sharing a book saw the first-synced project's id
-    baked into the node permanently. Source-scan regression lock:
-    greps the Cypher literal at test time to catch future refactors
-    that drop the project_id assignment from ON MATCH.
+async def test_merge_key_is_project_scoped_and_on_match_keeps_project_id():
+    """D-KG-GLOSSARY-FK-GLOBAL-UNIQUE — `project_id` is part of the MERGE KEY, so a
+    node is per (user, project, glossary entity) and its project_id must NEVER be
+    overwritten on ON MATCH.
+
+    This test previously locked the OPPOSITE (C12c-a "latest-sync wins"): the MERGE
+    key was (user_id, glossary_entity_id), so a user's second project re-used the
+    FIRST project's node and had to stomp its project_id — which made the field
+    meaningless while every read (salience, coref, graph views) filters on it.
+    Source-scan regression lock on the Cypher literal.
     """
     mock_result = AsyncMock()
     mock_result.single = AsyncMock(return_value={"id": "g1", "created": False})
@@ -99,11 +102,12 @@ async def test_on_match_cypher_updates_project_id():
     )
 
     cypher = mock_session.run.call_args.args[0]
-    # Split on ON MATCH to isolate just that branch, then assert the
-    # project_id assignment is present. Catches drift where a refactor
-    # re-introduces the first-call-wins bug.
+    merge_line = next(l for l in cypher.splitlines() if "MERGE (e:Entity" in l)
+    assert "project_id: $project_id" in merge_line, (
+        f"MERGE key must include project_id: {merge_line}"
+    )
     assert "ON MATCH SET" in cypher
     on_match_block = cypher.split("ON MATCH SET", 1)[1].split("RETURN", 1)[0]
-    assert "e.project_id = $project_id" in on_match_block, (
-        f"ON MATCH branch missing project_id update:\n{on_match_block}"
+    assert "e.project_id" not in on_match_block, (
+        f"ON MATCH must not overwrite project_id (it is in the MERGE key): {on_match_block}"
     )

@@ -1,0 +1,139 @@
+"""session_working_memory repository (M4) — the goal-state block SSOT.
+
+The pinned goal-state block for a roleplay/interview session. `charter` and
+`state` are separate columns: this repo exposes `init_charter` (the goal-
+authority write path, idempotent + frozen) and `update_state` (the executive's
+write path, M5) but **no update_charter** — so the summarizing executive can
+structurally never corrupt the goal.
+
+docs/specs/2026-06-23-interview-roleplay.md.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any, Callable
+from uuid import UUID
+
+import asyncpg
+
+__all__ = ["WorkingMemoryRepo"]
+
+
+def _as_dict(v: Any) -> dict[str, Any]:
+    if isinstance(v, str):
+        return json.loads(v)
+    if isinstance(v, dict):
+        return v
+    return {}
+
+
+class WorkingMemoryRepo:
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def init_charter(self, session_id: UUID, user_id: UUID, charter: dict) -> None:
+        """Goal-authority write path: seed the frozen charter ONCE.
+
+        ON CONFLICT DO NOTHING — the charter is immutable, so a re-init never
+        overwrites it and never clobbers accumulated `state`. (For roleplay this
+        is where the world model would write a dynamic charter instead.)
+        """
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO session_working_memory (session_id, user_id, charter)
+                VALUES ($1, $2, $3::jsonb)
+                ON CONFLICT (session_id) DO NOTHING
+                """,
+                session_id, user_id, json.dumps(charter),
+            )
+
+    async def get(self, session_id: UUID, user_id: UUID) -> dict | None:
+        """Return the assembled block {version, charter, state}, or None.
+
+        ALWAYS owner-scoped (RV-H4): `user_id` is REQUIRED and part of the WHERE —
+        a caller must own the session to read its working memory. The previous
+        `user_id=None` unscoped branch was a tenancy footgun (a de-scoped read by
+        session_id alone) and is removed; every caller already passes the owner.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT charter, state FROM session_working_memory "
+                "WHERE session_id = $1 AND user_id = $2",
+                session_id, user_id,
+            )
+        if row is None:
+            return None
+        return {
+            "version": 1,
+            "charter": _as_dict(row["charter"]),
+            "state": _as_dict(row["state"]),
+        }
+
+    async def update_state(self, session_id: UUID, user_id: UUID, state: dict) -> bool:
+        """Executive write path (M5): replace `state` only. Never touches `charter`.
+        Returns False if the session has no block for THIS owner (no-op).
+
+        OWNER-SCOPED (RV-H4): the write filters by `user_id` too, not just
+        `session_id` — the table's `UNIQUE(session_id)` made owner a non-key column
+        (the 'unique-without-a-scope-key' smell), so a bare session_id write was a
+        cross-tenant footgun. Owner is now a required arg + part of the WHERE, so a
+        write scoped to the wrong owner affects 0 rows and returns False.
+        """
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE session_working_memory
+                SET state = $3::jsonb, updated_at = now()
+                WHERE session_id = $1 AND user_id = $2
+                """,
+                session_id, user_id, json.dumps(state),
+            )
+        return result != "UPDATE 0"
+
+    async def apply_state_update(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        charter: dict,
+        llm_state: dict,
+        merger: Callable[[dict, dict, dict], dict],
+    ) -> bool:
+        """RV-M6: the executive's read-modify-write, SERIALIZED per session.
+
+        Two overlapping executive ticks (a double-submit) each did `get → merge_state →
+        update_state` on separate connections, so the later write clobbered the earlier
+        (`phase` last-writer-wins; `covered` only monotonic WITHIN one merge). This does the
+        whole read-merge-write in ONE transaction under a per-session Postgres ADVISORY LOCK
+        (`pg_advisory_xact_lock`, auto-released at commit — no DDL, RW-12), and RE-READS the
+        CURRENT state under the lock (never a stale caller copy) before merging. So concurrent
+        ticks apply in series and `covered` stays monotonic across them.
+
+        `merger` is the pure `merge_state(charter, current_state, llm_state)` (injected so the
+        repo stays free of the SDK import). Owner-scoped (RV-H4). Returns False if the session
+        has no block for this owner (no-op)."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                # xact-scoped advisory lock keyed on the session — serializes ticks for THIS
+                # session only; a different session hashes elsewhere and never contends.
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    str(session_id),
+                )
+                row = await conn.fetchrow(
+                    "SELECT state FROM session_working_memory WHERE session_id = $1 AND user_id = $2",
+                    session_id, user_id,
+                )
+                if row is None:
+                    return False
+                current_state = _as_dict(row["state"])
+                new_state = merger(charter, current_state, llm_state)
+                await conn.execute(
+                    """
+                    UPDATE session_working_memory
+                    SET state = $3::jsonb, updated_at = now()
+                    WHERE session_id = $1 AND user_id = $2
+                    """,
+                    session_id, user_id, json.dumps(new_state),
+                )
+        return True

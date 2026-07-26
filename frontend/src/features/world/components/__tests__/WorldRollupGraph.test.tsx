@@ -37,13 +37,23 @@ vi.mock('@/features/knowledge/hooks/useEntityDetail', () => ({
     error: null,
   }),
 }));
-vi.mock('@/features/knowledge/hooks/useEntityFacts', () => ({ useEntityFacts: () => ({ facts: [] }) }));
+// The reused EntityDetailPanel pulls the S-05/S-05b fact mutations on mount — stub
+// all of them so opening the panel from a rollup node doesn't crash on a missing export.
+vi.mock('@/features/knowledge/hooks/useEntityFacts', () => ({
+  useEntityFacts: () => ({ facts: [], windowAvailable: true, isLoading: false, error: null }),
+  useCreateEntityFact: () => ({ create: vi.fn(), isPending: false }),
+  useInvalidateFact: () => ({ invalidate: vi.fn(), isPending: false }),
+  useRevalidateFact: () => ({ revalidate: vi.fn(), isPending: false }),
+}));
 vi.mock('@/features/knowledge/hooks/useEntityMutations', () => ({
   useUnlockEntity: () => ({ unlock: vi.fn(), isPending: false }),
   usePromoteEntity: () => ({ promote: vi.fn(), isPending: false }),
   useToggleGlossaryPin: () => ({ toggle: vi.fn(), isPending: false }),
   useUpdateEntity: () => ({ update: vi.fn(), isPending: false }),
   useMergeEntity: () => ({ merge: vi.fn(), isPending: false }),
+  useArchiveEntity: () => ({ archive: vi.fn(), isPending: false }),
+  useRestoreEntity: () => ({ restore: vi.fn(), isPending: false, error: null }),
+  useCreateRelation: () => ({ createRelation: vi.fn(), isPending: false }),
 }));
 
 // Two nodes from TWO distinct member projects (per-book islands) + one node

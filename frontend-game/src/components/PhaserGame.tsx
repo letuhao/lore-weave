@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { startGame } from '@game/main';
 import { EventBus } from '@game/EventBus';
 import type { TilemapView } from '@/types/tilemap';
+import type { JSX } from 'react';
 
 // React-Phaser bridge. Owns the Phaser.Game lifecycle.
 //

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
@@ -7,10 +7,12 @@ vi.mock('../../../knowledge/api', () => ({
   knowledgeApi: {
     listEntities: vi.fn().mockResolvedValue({
       entities: [
-        { id: 'e-zrc', name: '张若尘', kind: 'person' },
-        { id: 'e-base', name: '林妃', kind: 'person' },
+        // WS-B2: classify keys on glossary_entity_id (the anchor), NOT the node id.
+        { id: 'e-zrc', name: '张若尘', kind: 'person', glossary_entity_id: 'g-zrc' },
+        { id: 'e-base', name: '林妃', kind: 'person', glossary_entity_id: 'g-base' },
+        { id: 'e-unanchored', name: '路人', kind: 'person', glossary_entity_id: null },
       ],
-      total: 2,
+      total: 3,
     }),
   },
 }));
@@ -31,11 +33,16 @@ import { DerivativeGroundingLayers } from '../DerivativeGroundingLayers';
 import type { DerivativeContext } from '../../hooks/useDerivativeContext';
 import { classifyGroundingLayer } from '../../hooks/useDerivativeContext';
 
-function makeCtx(overrideIds: string[], branchPoint: number | null): DerivativeContext {
+function makeCtx(
+  overrideIds: string[],
+  branchPoint: number | null,
+  overrides: Record<string, Record<string, unknown>> = {},
+): DerivativeContext {
   const set = new Set(overrideIds);
   return {
     isDerivative: true, sourceWorkId: 'sw', branchPoint, sourceProjectId: 'src',
-    overrideIds: set, classify: (id) => classifyGroundingLayer(id, set),
+    overrideIds: set, overrides, taxonomy: null, povAnchor: null, canonRules: [],
+    classify: (id) => classifyGroundingLayer(id, set), isLoading: false,
   };
 }
 
@@ -51,23 +58,27 @@ function renderLayers(ctx: DerivativeContext) {
   );
 }
 
+beforeEach(() => vi.clearAllMocks());
+
 describe('DerivativeGroundingLayers (DPS2 — 2-layer badges + read-only spine)', () => {
-  it('labels an OVERRIDDEN entity OVERRIDDEN and a base entity INHERITED (real state)', async () => {
-    renderLayers(makeCtx(['e-zrc'], 2));
+  it('labels an OVERRIDDEN entity (by glossary anchor) OVERRIDDEN and a base entity INHERITED', async () => {
+    renderLayers(makeCtx(['g-zrc'], 2, { 'g-zrc': { description: 'now a woman' } }));
     await waitFor(() => expect(screen.getByTestId('derivative-layer-entity-e-zrc')).toBeTruthy());
-    // 张若尘 was overridden → its row carries the overridden badge, NEVER inherited
+    // 张若尘 overridden via its glossary anchor g-zrc → overridden badge, never inherited
     const zrcRow = screen.getByTestId('derivative-layer-entity-e-zrc');
     expect(zrcRow.querySelector('[data-layer="overridden"]')).toBeTruthy();
     expect(zrcRow.querySelector('[data-layer="inherited"]')).toBeNull();
-    // 林妃 was not overridden → inherited
-    const baseRow = screen.getByTestId('derivative-layer-entity-e-base');
-    expect(baseRow.querySelector('[data-layer="inherited"]')).toBeTruthy();
+    // B2b — the durable "now" delta renders on the overridden row
+    expect(screen.getByTestId('derivative-layer-delta-e-zrc').textContent).toContain('now a woman');
+    // 林妃 not overridden → inherited
+    expect(screen.getByTestId('derivative-layer-entity-e-base').querySelector('[data-layer="inherited"]')).toBeTruthy();
+    // an UNANCHORED entity (no glossary id) can never be overridden → inherited
+    expect(screen.getByTestId('derivative-layer-entity-e-unanchored').querySelector('[data-layer="inherited"]')).toBeTruthy();
     expect(screen.getByTestId('grounding-layer-legend')).toBeTruthy();
   });
 
   it('surfaces the reference spine READ-ONLY (chapters ≤ branch point) with NO auto-insert affordance', async () => {
     renderLayers(makeCtx([], 1));
-    // wait for the chapter rows to load (the booksApi query resolves async)
     await waitFor(() => expect(screen.getByTestId('reference-spine-chapter-c0')).toBeTruthy());
     // branch_point=1 → only chapters with sort_order ≤ 1 (c0, c1), not c2
     expect(screen.getByTestId('reference-spine-chapter-c0')).toBeTruthy();

@@ -32,7 +32,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from uuid import UUID
 
 from loreweave_extraction import (
@@ -50,16 +50,24 @@ from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
 from loreweave_extraction.extractors.fact import extract_facts
 from loreweave_extraction.extractors.relation import extract_relations
+from loreweave_extraction.schema_projection import ExtractionSchema
 
 from app.clients.book_client import get_book_client
 from app.clients.llm_client import LLMClient
 from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.entity_status import list_gone_entities
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
+from app.extraction.canon_check import check_extraction_canon
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
+
+if TYPE_CHECKING:
+    # L7B — the writer's triage-park Protocol, used only as a type annotation
+    # (string-quoted in signatures) so the runtime import graph is unchanged.
+    from app.extraction.pass2_writer import TriageParkProtocol
 from app.jobs.summary_enqueue import SummaryEnqueueFn, SummarizeMessage
 from app.jobs.task_id import compute_task_id
 from app.metrics import (
@@ -347,6 +355,7 @@ async def _maybe_apply_entity_recovery(
     job_id: str,
     source_type: str,
     source_id: str,
+    override: EntityRecoveryConfig | None = None,
 ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
     """Cycle 73d — optional 3-tier entity recovery (runs BEFORE filter).
 
@@ -354,8 +363,14 @@ async def _maybe_apply_entity_recovery(
     known_entity_kinds map for Tier 1 lookup. Tier 3 (LLM classifier)
     handles names not in glossary. Author hints surface is future work
     (no API yet).
+
+    KN model-roles: `override` is the PER-PROJECT/PER-USER-resolved config
+    (endpoint-resolved via resolve_role_model — role override → project default
+    → user-global default → env). When None, falls back to the module-level env
+    config (`_ENTITY_RECOVERY_CONFIG`) — byte-identical to pre-KN behavior.
     """
-    if _ENTITY_RECOVERY_CONFIG is None:
+    base_cfg = override if override is not None else _ENTITY_RECOVERY_CONFIG
+    if base_cfg is None:
         return entities, relations, events, facts
 
     # Build name→kind from glossary anchors (name + aliases, lowercase
@@ -370,7 +385,7 @@ async def _maybe_apply_entity_recovery(
     # Inject per-call config with merged known_entity_kinds.
     from dataclasses import replace as dc_replace
     config = dc_replace(
-        _ENTITY_RECOVERY_CONFIG, known_entity_kinds=known_kinds
+        base_cfg, known_entity_kinds=known_kinds
     )
 
     pre_entity_count = len(entities)
@@ -522,6 +537,78 @@ async def _maybe_apply_precision_filter(
     )
 
 
+# ── D-KG-EXTRACTION-CANON-WIRE — quarantine gate (advisory, never blocks) ────
+
+
+async def _maybe_run_canon_check_gate(
+    session: CypherSession,
+    *,
+    text: str,
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    llm_client: LLMClient,
+    job_logs_repo: JobLogsRepo | None,
+    job_id: str,
+    source_type: str,
+    source_id: str,
+) -> None:
+    """2026-07-06 — the extraction canon-check gate from the eval-validated POC
+    (`app/extraction/canon_check.py`; see docs/eval/canon-check-judge-2026-07-06.md).
+
+    Quarantine, not hard-block: a confirmed contradiction is logged to
+    ``job_logs`` (already wired to the Studio's JobLogsPanel) so it's visible
+    for human review — the write proceeds UNCHANGED regardless. Reuses the
+    SAME model already resolved for this extraction job (no new setting;
+    the eval found no reason to prefer a different/bigger model). Best-effort:
+    any failure here must never break real extraction (CC4 — a critic never
+    blocks on its own failure).
+    """
+    try:
+        gone = await list_gone_entities(session, user_id=user_id, project_id=project_id)
+        if not gone:
+            return
+        snapshot = {
+            "entities": [
+                {
+                    "entity_id": g["entity_id"],
+                    "name": g["name"],
+                    "canonical_name": g["canonical_name"],
+                    "status": "gone",
+                    "from_order": g["from_order"],
+                }
+                for g in gone
+            ]
+        }
+        candidates = await check_extraction_canon(
+            text, snapshot, llm=llm_client, user_id=user_id,
+            model_source=model_source, model_ref=model_ref,
+        )
+        for c in candidates:
+            if not c.confirmed:
+                continue
+            await _emit_log(
+                job_logs_repo, user_id, job_id,
+                f"Canon check: '{c.name}' referenced as active/present despite "
+                f"being marked gone at order {c.gone_from_order} -- {c.why}",
+                context={
+                    "event": "pass2_canon_flag",
+                    "source_type": source_type,
+                    "source_id": source_id,
+                    "entity_id": c.entity_id,
+                    "name": c.name,
+                    "span": c.span,
+                    "why": c.why,
+                },
+            )
+    except Exception:
+        logger.warning(
+            "D-KG-EXTRACTION-CANON-WIRE: canon-check gate failed (non-fatal)",
+            exc_info=True,
+        )
+
+
 # ── P2 (hierarchical extraction T3) — D3 cache integration ──────────────────
 
 
@@ -550,6 +637,24 @@ async def _fetch_chapter_leaf_text(
     return (None, "missing")
 
 
+def _p2_schema_key(schema: "ExtractionSchema | None") -> str:
+    """Cache-key segment for the resolved ontology schema (D-KG-LB-CACHE-SCHEMA-KEY).
+
+    Returns the schema's ``label`` ("project_id@vN") — the full identity that
+    disambiguates BOTH a schema_version bump within a project AND two projects
+    with distinct custom vocab (schema_version alone collides cross-project).
+    Falls back to ``v<schema_version>`` if the label is blank. ``None`` schema
+    → "" → the legacy task_id hash is preserved byte-for-byte.
+    """
+    if schema is None:
+        return ""
+    label = getattr(schema, "label", "") or ""
+    if label:
+        return label
+    ver = getattr(schema, "schema_version", None)
+    return f"v{ver}" if ver is not None else ""
+
+
 async def _p2_cache_wrap(
     *,
     op: Literal["entity", "relation", "event", "fact"],
@@ -561,6 +666,7 @@ async def _p2_cache_wrap(
     chapter_id: UUID | None,
     model_ref: str,
     save_raw: bool,
+    schema_key: str = "",
 ) -> list[Any]:
     """P2 cache wrapper around a single extractor call.
 
@@ -581,7 +687,7 @@ async def _p2_cache_wrap(
     # Format: `v1-{op}-{8hex}` (vs old `v1-{8hex}`). One-time cache
     # thrash on first deploy: every existing P2 task_id changes once.
     extractor_version = get_extractor_version(op=op)
-    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref)
+    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref, schema_key)
     pool = get_knowledge_pool()
     repo = ExtractionLeavesRepo(pool)
 
@@ -597,6 +703,7 @@ async def _p2_cache_wrap(
     leaf_path = f"book/legacy/chapter-{chapter_id}/scene-1"
     await repo.claim_pending(
         book_id=book_id,
+        chapter_id=chapter_id,  # WS-0.1: the invalidation key (delete_by_chapter)
         scene_id=chapter_id,  # placeholder until per-scene fanout (D-P2-PER-SCENE-FANOUT)
         leaf_path=leaf_path,
         op=op,
@@ -716,6 +823,7 @@ async def gather_relations_events_facts(
     llm_client: LLMClient,
     on_dropped: Any = None,
     context_budget: "ContextBudget | None" = None,
+    schema: ExtractionSchema | None = None,
 ) -> tuple[list[Any], list[Any], list[Any]]:
     """C-PRED-ALIGN-DEF-01 — single source of truth for Pass 2 R+E+F
     parallelism. Returns ``(relations, events, facts)``.
@@ -758,6 +866,7 @@ async def gather_relations_events_facts(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=on_dropped,
+        schema=schema,
     )
     if context_budget is not None:
         extractor_kwargs["context_budget"] = context_budget
@@ -819,6 +928,26 @@ async def _run_pipeline(
     # gate the R/E/F gather; `summaries` gates the summary enqueue.
     # Requesting any of {relations,events,facts} auto-includes `entities`.
     targets: set[str] | None = None,
+    # KG customizable-ontology (lane LB) — resolved project schema projection.
+    # None (default) → static byte-identical prompts + Literal validation
+    # (today's behavior). A non-None ExtractionSchema activates the dynamic
+    # prompt/validation path in the SDK extractors. This is the ADVISORY posture
+    # (allow_free_edges hint, never pre-drop) — see ``write_schema`` below.
+    schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — the L7 schema SPLIT for the combined
+    # extract-then-write path (/extract-item). ``schema`` above feeds the SDK
+    # prompt as an advisory hint; ``write_schema`` is the AUTHORITATIVE projection
+    # (real ``allow_free_edges``) handed to the write boundary so the closed-edge
+    # guard + ``schema_version`` stamp go live there, and ``triage_repo`` lets an
+    # off-schema edge that the guard drops PARK to kg_triage_items instead of
+    # vanishing. Both default None → the writer receives ``schema`` (back-compat:
+    # before the split the writer got the same advisory schema and no triage_repo,
+    # so ``write_schema=None``/``triage_repo=None`` is byte-identical to today).
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
+    # KN model-roles — per-project/per-user-resolved entity_recovery config
+    # (endpoint-resolved). None ⇒ module-level env config (byte-identical).
+    entity_recovery_override: EntityRecoveryConfig | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -878,12 +1007,14 @@ async def _run_pipeline(
             model_ref=model_ref,
             llm_client=llm_client,
             on_dropped=_on_dropped,
+            schema=schema,
         ),
         deserializer=LLMEntityCandidate.model_validate,
         book_id=book_id,
         chapter_id=chapter_id,
         model_ref=model_ref,
         save_raw=save_raw_extraction,
+        schema_key=_p2_schema_key(schema),
     )
 
     entities_elapsed = time.perf_counter() - started
@@ -950,6 +1081,7 @@ async def _run_pipeline(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=_on_dropped,
+        schema=schema,
     )
     # C12 — build the R/E/F gather task-list CONDITIONALLY. Only the
     # requested trio ops run; skipped ops yield empty lists. Extractor
@@ -979,6 +1111,7 @@ async def _run_pipeline(
                     deserializer=deser,
                     book_id=book_id, chapter_id=chapter_id,
                     model_ref=model_ref, save_raw=save_raw_extraction,
+                    schema_key=_p2_schema_key(schema),
                 )
                 for _key, op, extractor, deser in _trio_specs
             )
@@ -1010,6 +1143,7 @@ async def _run_pipeline(
             job_id=job_id,
             source_type=source_type,
             source_id=source_id,
+            override=entity_recovery_override,
         )
 
         # Cycle 72 — optional precision filter (no-op when env unset).
@@ -1051,6 +1185,15 @@ async def _run_pipeline(
         },
     )
 
+    # D-KG-EXTRACTION-CANON-WIRE — advisory gate, before the write (never
+    # blocks it; see _maybe_run_canon_check_gate's docstring).
+    await _maybe_run_canon_check_gate(
+        session, text=text, user_id=user_id, project_id=project_id,
+        model_source=model_source, model_ref=model_ref, llm_client=llm_client,
+        job_logs_repo=job_logs_repo, job_id=job_id,
+        source_type=source_type, source_id=source_id,
+    )
+
     # Step 5 — write everything to Neo4j.
     write_started = time.perf_counter()
     write_result = await write_pass2_extraction(
@@ -1067,6 +1210,13 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        # lane LB / L7B — closed-edge-set write-boundary guard. Prefer the
+        # AUTHORITATIVE write_schema (real allow_free_edges) when the caller
+        # split it from the advisory prompt schema (/extract-item, L7B); else
+        # fall back to the single `schema` (back-compat — byte-identical when
+        # write_schema is None). None ⇒ no-op guard (today's behavior).
+        schema=write_schema if write_schema is not None else schema,
+        triage_repo=triage_repo,  # L7B/C4 — park off-schema edge drops to triage
         **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
@@ -1218,6 +1368,15 @@ async def extract_pass2_chat_turn(
     llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
+    # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
+    # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
+    schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — authoritative write-boundary schema + triage
+    # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
+    # KN model-roles — endpoint-resolved entity_recovery config (None ⇒ env).
+    entity_recovery_override: EntityRecoveryConfig | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
@@ -1253,6 +1412,10 @@ async def extract_pass2_chat_turn(
         llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
+        schema=schema,
+        write_schema=write_schema,
+        triage_repo=triage_repo,
+        entity_recovery_override=entity_recovery_override,
     )
 
 
@@ -1292,6 +1455,15 @@ async def extract_pass2_chapter(
     summary_enqueue: SummaryEnqueueFn | None = None,
     # C12 — target-typed extraction (None ⇒ all passes; back-compat).
     targets: set[str] | None = None,
+    # KG customizable-ontology (lane LB) — resolved schema projection (None ⇒
+    # static byte-identical behavior). Forwarded to _run_pipeline → SDK.
+    schema: ExtractionSchema | None = None,
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — authoritative write-boundary schema + triage
+    # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
+    write_schema: ExtractionSchema | None = None,
+    triage_repo: "TriageParkProtocol | None" = None,
+    # KN model-roles — endpoint-resolved entity_recovery config (None ⇒ env).
+    entity_recovery_override: EntityRecoveryConfig | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -1334,4 +1506,8 @@ async def extract_pass2_chapter(
         embedding_dimension=embedding_dimension,
         summary_enqueue=summary_enqueue,
         targets=targets,
+        schema=schema,
+        write_schema=write_schema,
+        triage_repo=triage_repo,
+        entity_recovery_override=entity_recovery_override,
     )

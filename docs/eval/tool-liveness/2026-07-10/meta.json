@@ -1,0 +1,21 @@
+{
+  "label": "P0",
+  "date": "2026-07-10",
+  "gateway": "http://localhost:3123",
+  "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+  "auth_mode": "login-edge",
+  "fixture_book_id": "019f483d-58c6-722b-8326-80a099e006bb",
+  "teardown": {
+    "books": 2,
+    "chapters": 0,
+    "glossary_rows": 0,
+    "scoped_ids": [
+      "019f483d-58c6-722b-8326-80a099e006bb",
+      "019f483e-ccc2-7497-9667-fb735cbbf47b"
+    ]
+  },
+  "harness": {
+    "delete_target_entity_id": "019f483d-5a2f-7044-b71a-c8bbbefcd96a",
+    "kg_project_id": "019f483d-5e32-7552-8251-387d802192aa"
+  }
+}

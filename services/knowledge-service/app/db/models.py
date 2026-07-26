@@ -1,9 +1,15 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+# KG customizable-ontology epic (L1) — the kg_* graph-schema models live in a
+# sibling module. Imported here so the DB-model package is a single surface;
+# consumers address them as `app.db.ontology_models.<Name>` (NOT re-exported
+# flat, to avoid clobbering the chat-memory `FactType` Literal defined below).
+from app.db import ontology_models  # noqa: F401
 
 ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
@@ -12,7 +18,12 @@ ScopeType = Literal["global", "project", "session", "entity"]
 # app/db/neo4j_repos/facts.py. Kept as a local Literal (same pattern
 # as ProjectType / ScopeType) so app.db.models stays free of any
 # neo4j_repos import.
-FactType = Literal["decision", "preference", "milestone", "negation"]
+# WS-5.7 (P5 Gate-1) — `commitment`: a promised/planned action with a due date. The due
+# date rides as the WS-2.6b s/p/o trio (predicate='due', object=<date>), so a date slip
+# Friday→Tuesday→next-week is an ordered supersession chain (group_supersessions), not a new
+# identity. Adding this member touches 3 registries in lockstep (this Literal + the
+# knowledge_pending_facts CHECK ×2 + kg_fact_types) — a mismatch is a 500 at merge_fact.
+FactType = Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 
 # Names are stripped of surrounding whitespace and must contain at least
 # one non-whitespace character. Max 200 chars, chat-service convention.
@@ -67,6 +78,14 @@ class Project(BaseModel):
     # reads back off (mirrors the DB `DEFAULT false`) so memory_remember
     # keeps writing directly until the user turns confirmation on.
     memory_remember_confirm: bool = False
+    # WS-4C Half A: per-project canon auto-capture. When True (and the deploy
+    # ceiling allows), chat-service captures the newly-named entities of every
+    # Nth turn into this book's glossary review inbox as ai-suggested drafts.
+    # Default **False** — mirrors the DB `DEFAULT false`. Capture is AMBIENT
+    # spend on the user's own model, so it is OPT-IN: the toggle is the consent,
+    # and it must start un-granted. (Deliberately the opposite of
+    # tool_calling_enabled, which is a behaviour the user turns OFF.)
+    canon_capture_enabled: bool = False
     # P2 (D6 opt-in raw retention): when True, leaf_processor persists
     # the full LLM raw response to extraction_leaves_raw alongside the
     # postprocessed candidates. Default False — power users opt-in for
@@ -149,6 +168,11 @@ class ProjectUpdate(BaseModel):
       instead of writing them directly. NOT NULL in the DB, so
       setting it explicitly to None is treated as "skip" by the repo
       (same as tool_calling_enabled).
+    - `canon_capture_enabled` (WS-4C Half A): omit to leave unchanged.
+      Set to `true`/`false` to toggle whether chat-service auto-captures
+      the entities a conversation establishes into the book's glossary
+      review inbox. NOT NULL in the DB, so an explicit None is "skip"
+      (same as tool_calling_enabled).
     """
 
     name: ProjectName | None = None
@@ -166,6 +190,7 @@ class ProjectUpdate(BaseModel):
     rerank_model_source: str | None = None
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
+    canon_capture_enabled: bool | None = None
     save_raw_extraction: bool | None = None
     # E2: None = "skip" (unchanged); explicitly set to None via PATCH uses
     # _NULLABLE_UPDATE_COLUMNS so it clears (sets to SQL NULL).
@@ -208,6 +233,10 @@ class EntityRecoveryOverride(BaseModel):
     enabled: bool | None = None
     model_ref: str | None = None
     model_source: ModelSourceLit | None = None
+    # KN model-roles — Tier-3 classifier batch size (names classified per LLM
+    # call). Bounded 1-20; None = the env/default (5). Read by the extract-item
+    # resolver (_resolve_entity_recovery_config).
+    max_items_per_batch: Annotated[int, Field(ge=1, le=20)] | None = None
 
 
 class WriterAutocreateOverride(BaseModel):
@@ -245,6 +274,13 @@ class ProjectExtractionConfigUpdate(BaseModel):
     entity_recovery: EntityRecoveryOverride | None = None
     writer_autocreate: WriterAutocreateOverride | None = None
     prompts: dict[PromptOpLit, PromptOverride] | None = None
+    # D-K18.3-02 / Track 4 P2 — the two L3 rerank knobs read by Mode 3
+    # (`full.py`): a generative LLM rerank and the purpose-built cross-encoder
+    # (both provider-registry user_model UUIDs, BYOK). Were readable by the
+    # builder but had NO public write path (extra="forbid" rejected them) —
+    # unreachable-config gap found by the Track 4 eval run.
+    rerank_model: str | None = None
+    cross_encoder_rerank_model: str | None = None
 
 
 class Summary(BaseModel):
@@ -293,7 +329,13 @@ class PendingFact(BaseModel):
     pending_fact_id: UUID
     user_id: UUID
     project_id: UUID | None = None
-    session_id: str
+    session_id: str | None = None  # WS-2.1: a DIARY fact has no chat session
     fact_type: FactType
     fact_text: str
     created_at: datetime
+    # WS-2.2 (structured s/p/o) — optional; a coarse legacy fact carries only fact_text.
+    subject: str | None = None
+    predicate: str | None = None
+    object: str | None = None
+    event_date: date | None = None
+    provenance: str | None = None

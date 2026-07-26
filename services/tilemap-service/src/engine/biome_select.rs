@@ -116,9 +116,9 @@ pub fn select_biomes(
             // First rule of the pair makes the decision; the mirror reads it.
             let decided = *xor_decision.entry(key).or_insert_with(|| {
                 // Two 50/50 coins: feature-or-not, then this-or-other.
-                if !rng.gen_bool(0.5) {
+                if !rng.random_bool(0.5) {
                     None
-                } else if rng.gen_bool(0.5) {
+                } else if rng.random_bool(0.5) {
                     Some(key.0)
                 } else {
                     Some(key.1)
@@ -151,9 +151,9 @@ pub fn select_biomes(
             // library stocks no set of this `object_type` at all).
             continue;
         }
-        let count = rng.gen_range(rule.count_min..=rule.count_max);
+        let count = rng.random_range(rule.count_min..=rule.count_max);
         for _ in 0..count {
-            let pick = pool[rng.gen_range(0..pool.len())];
+            let pick = pool[rng.random_range(0..pool.len())];
             selection.push(rule.object_type, pick.biome_id.clone());
         }
     }

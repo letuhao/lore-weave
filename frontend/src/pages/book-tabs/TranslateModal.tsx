@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookTranslationSettings, type BookCoverageResponse } from '@/features/translation/api';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
-import { LANGUAGE_NAMES } from '@/lib/languages';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { TRANSLATION_TARGETS } from '@/lib/languages';
+import { LanguagePicker } from '@/components/shared/LanguagePicker';
 import { cn } from '@/lib/utils';
 import { usePagedList } from '@/components/pagination/usePagedList';
 import { Pager } from '@/components/pagination/Pager';
+import { withTimeout } from '@/features/translation/lib/translationError';
+import { TranslationErrorState } from '@/features/translation/components/TranslationErrorState';
+import { FormDialog } from '@/components/shared/FormDialog';
+import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
 import {
   classifyChapters,
   coverageMapFor,
@@ -27,9 +32,15 @@ interface TranslateModalProps {
   // per-chapter version page's "re-translate" action) instead of "everything that
   // needs it".
   preselectedChapterIds?: string[];
+  // T8/D6: when the matrix opens the modal from a language column, seed that language so
+  // "Select affected → Translate Selected" targets the column the user was looking at,
+  // instead of falling back to the book default.
+  preselectedLang?: string;
 }
 
 const PAGE_SIZE = 100;
+// T5: a hanging translation-service must not wedge the checklist forever — recover after this.
+const CHAPTERS_TIMEOUT_MS = 15000;
 
 // Fetch every active chapter, paging past the backend's 100-row cap so a 2000+
 // chapter book is fully classified (not silently truncated to one page).
@@ -60,14 +71,38 @@ const STATUS_BADGE: Record<ChapterTxStatus, string> = {
   running: 'bg-sky-500/10 text-sky-500',
 };
 
-export function TranslateModal({ open, onClose, bookId, onJobCreated, preselectedChapterIds }: TranslateModalProps) {
+export function TranslateModal({ open, onClose, bookId, onJobCreated, preselectedChapterIds, preselectedLang }: TranslateModalProps) {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
+  // DOCK-7 — reachable both from the classic TranslationTab/ChaptersTab route pages AND from
+  // inside the studio's `translation`/`chapter-browser` dock panels (this modal is already
+  // reused in-studio today). A bare navigate('/settings') would tear down the whole studio (and
+  // every other open dock tab) just to add a model — branch like ExtractionWizard's handleClose.
+  const studioHost = useOptionalStudioHost();
+  const openModelSettings = () => {
+    onClose();
+    if (studioHost) studioHost.openPanel('settings', { params: { tab: 'providers' } });
+    else navigate('/settings');
+  };
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [coverage, setCoverage] = useState<BookCoverageResponse | null>(null);
   const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
-  const [userModels, setUserModels] = useState<UserModel[]>([]);
-  const [loading, setLoading] = useState(true);
+  // T5: only the chapter checklist is network-bound — the pickers render immediately. This
+  // state scopes loading/error to that region so a slow/dead service can't wedge the whole modal.
+  const [chaptersLoading, setChaptersLoading] = useState(true);
+  const [chaptersError, setChaptersError] = useState<unknown>(null);
+  // True once the fast metadata (coverage + settings + language seed) has settled, so the
+  // default-selection effect below doesn't race the chapter list and seed "all" before it
+  // knows which chapters are already translated.
+  const [metaReady, setMetaReady] = useState(false);
+  const seededRef = useRef(false);           // D7: seed pickers once, never clobber a user choice
+  const seededSelectionRef = useRef(false);  // seed the default chapter selection once per open
+
+  // Shared model fetch (W5) — translation drives an LLM, so chat capability.
+  // Active-only is the shared hook's default; fetch only while the modal is open.
+  const { models } = useUserModels({ capability: 'chat', enabled: open });
+  const userModels = models ?? [];
 
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [selectedLang, setSelectedLang] = useState('');
@@ -81,6 +116,8 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   const [qaDepth, setQaDepth] = useState<'rule_only' | 'standard' | 'thorough'>('standard');
   const [maxQaRounds, setMaxQaRounds] = useState(2);
   const [forceRetranslate, setForceRetranslate] = useState(false);
+  // Enable model reasoning (thinking) for the translation LLM. Default OFF.
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
 
   const presetKey = (preselectedChapterIds ?? []).join(',');
 
@@ -91,50 +128,82 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   );
   const { page, setPage, pageCount, start, pageItems: pageChapters } = usePagedList(sortedChapters, PAGE_SIZE);
 
+  // T5/D8: the chapter checklist is the ONLY network-bound region. Timed so a *hanging*
+  // dependency (not just a rejecting one) recovers into an inline error + Retry instead of a
+  // permanent "Loading chapters…" wedge. Retry re-runs exactly this.
+  const loadChapters = useCallback(() => {
+    if (!accessToken) return;
+    setChaptersError(null);
+    setChaptersLoading(true);
+    withTimeout(fetchAllChapters(accessToken, bookId), CHAPTERS_TIMEOUT_MS)
+      .then((chs) => setChapters(chs))
+      .catch((e) => setChaptersError(e))
+      .finally(() => setChaptersLoading(false));
+  }, [accessToken, bookId]);
+
   useEffect(() => {
     if (!open || !accessToken) return;
-    setLoading(true);
+    seededRef.current = false;
+    seededSelectionRef.current = false;
+    setMetaReady(false);
     setPage(0);
+    // Reset the advanced overrides for this open — the component stays mounted (rendered with
+    // an `open` prop), so without this a one-off force-retranslate/verifier choice would carry
+    // into the next, unrelated translate.
+    setAdvancedOpen(false);
+    setVerifyEnabled(false);
+    setVerifierModelRef('');
+    setQaDepth('standard');
+    setMaxQaRounds(2);
+    setForceRetranslate(false);
+    setThinkingEnabled(false);
+    // D6: the caller-pinned language applies immediately (settings fills the rest below).
+    setSelectedLang(preselectedLang || '');
+    setSelectedModelRef('');
+    // D8: seed the selection from the caller-pinned ids immediately — the ids are already known,
+    // so submit works even if the chapter list below fails or hangs.
+    if (preselectedChapterIds && preselectedChapterIds.length > 0) {
+      setSelectedChapters(new Set(preselectedChapterIds));
+      seededSelectionRef.current = true;
+    } else {
+      setSelectedChapters(new Set());
+    }
+
+    // Fast metadata — coverage + settings need no big fetch, so the pickers render without
+    // waiting on the chapter list (T5). Seed lang/model ONCE, and never clobber a value the
+    // user picked meanwhile (D7 — functional set keeps a non-empty prev).
+    let cancelled = false;
     Promise.all([
-      fetchAllChapters(accessToken, bookId),
       translationApi.getBookCoverage(accessToken, bookId).catch(() => null),
       translationApi.getBookSettings(accessToken, bookId).catch(() => null),
-      aiModelsApi.listUserModels(accessToken).catch(() => ({ items: [] })),
-    ])
-      .then(([chs, cov, bkSettings, modelsResp]) => {
-        setChapters(chs);
-        setCoverage(cov);
-        setSettings(bkSettings);
-        setUserModels(modelsResp.items.filter((m) => m.is_active));
-        const lang = bkSettings?.target_language || '';
-        setSelectedLang(lang);
-        setSelectedModelRef(bkSettings?.model_ref || '');
-        // Default selection: caller-scoped chapters (per-chapter re-translate) when
-        // given, else everything that needs translation for the default language.
-        const preset = preselectedChapterIds?.filter((id) => chs.some((c) => c.chapter_id === id));
-        if (preset && preset.length > 0) {
-          setSelectedChapters(new Set(preset));
-        } else {
-          const cells = coverageMapFor(cov, lang);
-          const { byId } = classifyChapters(chs.map((c) => c.chapter_id), cells);
-          setSelectedChapters(new Set(needsIds(byId)));
-        }
-        // Reset the advanced overrides each time the modal opens — it stays mounted
-        // (rendered with an `open` prop), so without this a one-off force-retranslate
-        // or verifier choice would silently carry into the next, unrelated translate.
-        setAdvancedOpen(false);
-        setVerifyEnabled(false);
-        setVerifierModelRef('');
-        setQaDepth('standard');
-        setMaxQaRounds(2);
-        setForceRetranslate(false);
-      })
-      .catch((e) => toast.error((e as Error).message))
-      .finally(() => setLoading(false));
-    // presetKey (not the array identity) gates re-runs so an inline `[chapterId]`
-    // prop doesn't trigger a refetch loop while the modal is open.
+    ]).then(([cov, bkSettings]) => {
+      if (cancelled) return;
+      setCoverage(cov);
+      setSettings(bkSettings);
+      if (!seededRef.current) {
+        seededRef.current = true;
+        setSelectedLang((prev) => prev || preselectedLang || bkSettings?.target_language || '');
+        setSelectedModelRef((prev) => prev || bkSettings?.model_ref || '');
+      }
+      setMetaReady(true);
+    });
+
+    loadChapters();
+    return () => { cancelled = true; };
+    // presetKey (not the array identity) gates re-runs so an inline `[chapterId]` prop doesn't
+    // trigger a refetch loop while the modal is open. loadChapters is stable per (token,bookId).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, accessToken, bookId, presetKey]);
+
+  // Default chapter selection = "everything that needs work" for the current language, seeded
+  // ONCE per open and only when the caller did not pin a selection (keeps the user in control).
+  useEffect(() => {
+    if (!open || seededSelectionRef.current || chapters.length === 0 || !metaReady) return;
+    const cells = coverageMapFor(coverage, selectedLang);
+    const { byId } = classifyChapters(chapters.map((c) => c.chapter_id), cells);
+    setSelectedChapters(new Set(needsIds(byId)));
+    seededSelectionRef.current = true;
+  }, [open, chapters, coverage, selectedLang, metaReady]);
 
   // Per-chapter status + aggregate counts for the selected language.
   const { byId: statusById, counts } = useMemo(() => {
@@ -143,17 +212,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   }, [coverage, selectedLang, sortedChapters]);
 
   const neededIds = useMemo(() => needsIds(statusById), [statusById]);
-
-  // Group models by provider
-  const modelsByProvider = useMemo(() => {
-    const map = new Map<string, UserModel[]>();
-    for (const m of userModels) {
-      const key = m.provider_kind;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(m);
-    }
-    return map;
-  }, [userModels]);
 
   const toggleChapter = (id: string) => {
     setSelectedChapters((prev) => {
@@ -233,6 +291,8 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
             }
           : {}),
         force_retranslate: force,
+        // D-TRANSLATE-REASONING-TOGGLE — per-job reasoning enable/disable.
+        thinking_enabled: thinkingEnabled,
       });
       toast.success(t('translate.job_started', { count: chapterIds.length }));
       onJobCreated();
@@ -250,7 +310,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
 
   if (!open) return null;
 
-  const availableLangs = Object.entries(LANGUAGE_NAMES);
   const selectedModel = userModels.find((m) => m.user_model_id === selectedModelRef);
   const configReady = !!selectedLang && !!selectedModelRef;
   const canSubmitSelected = configReady && selectedChapters.size > 0 && !submitting;
@@ -264,72 +323,81 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
     { status: 'translated', count: counts.translated },
   ];
 
-  return (
+  const footer = (
     <>
-      <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg border bg-background shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">{t('translate.title')}</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">{t('translate.subtitle')}</p>
-          </div>
+      <button
+        onClick={onClose}
+        className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+      >
+        {t('translate.cancel')}
+      </button>
+      <button
+        onClick={() => void submitJob([...selectedChapters], forceRetranslate)}
+        disabled={!canSubmitSelected}
+        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        {t('translate.submit_selected', { count: selectedChapters.size })}
+      </button>
+    </>
+  );
 
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-xs text-muted-foreground">{t('translate.loading_chapters')}</span>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {/* Language + Model row */}
+  // DOCK-9 (docs/standards/dockable-gui.md): FormDialog replaces the previous hand-rolled
+  // `fixed inset-0` backdrop+content pair — this is a chrome-only migration, all existing
+  // behavior/props are preserved. `open` is passed as the literal `true` here (we've already
+  // early-returned above when the prop is false), same as ExtractionWizard's Dialog.Root.
+  return (
+    <FormDialog
+      open
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title={t('translate.title')}
+      description={t('translate.subtitle')}
+      size="2xl"
+      footer={footer}
+    >
+        <div className="space-y-4" data-testid="translate-modal-body">
+          {/* Language + Model row */}
               <div className="grid grid-cols-2 gap-3">
                 {/* Language */}
                 <div>
                   <label className="mb-1 block text-xs font-medium">{t('translate.target_language')}</label>
-                  <select
+                  {/* D13: the target picker offers exactly the closed TRANSLATION_TARGETS set —
+                      the same list the backend accepts, so a value that can't be picked can't be
+                      submitted. A legacy unknown code is still shown (LanguagePicker's orphan guard)
+                      so an existing book's setting never silently blanks. */}
+                  <LanguagePicker
                     value={selectedLang}
-                    onChange={(e) => handleLangChange(e.target.value)}
+                    onChange={handleLangChange}
+                    codes={TRANSLATION_TARGETS.map((l) => l.code)}
+                    placeholder={t('translate.select_language')}
+                    aria-label={t('translate.target_language')}
+                    data-testid="translate-language-picker"
                     className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                  >
-                    <option value="">{t('translate.select_language')}</option>
-                    {availableLangs.map(([code, name]) => (
-                      <option key={code} value={code}>{name} ({code})</option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Model */}
                 <div>
                   <label className="mb-1 block text-xs font-medium">{t('translate.model')}</label>
-                  {userModels.length === 0 ? (
-                    <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
-                      {t('translate.no_models')}{' '}
-                      <Link to="/settings" onClick={onClose} className="ml-1 text-primary hover:underline">
-                        {t('translate.add_in_settings')}
-                      </Link>
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedModelRef}
-                      onChange={(e) => handleModelChange(e.target.value)}
-                      className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                    >
-                      <option value="">{t('translate.select_model')}</option>
-                      {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
-                        <optgroup key={provider} label={provider}>
-                          {models.map((m) => (
-                            <option key={m.user_model_id} value={m.user_model_id}>
-                              {m.alias || m.provider_model_name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  )}
+                  <ModelPicker
+                    capability="chat"
+                    value={selectedModelRef || null}
+                    onChange={(id) => handleModelChange(id ?? '')}
+                    placeholder={t('translate.select_model')}
+                    ariaLabel={t('translate.model')}
+                    emptyState={
+                      <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
+                        {t('translate.no_models')}{' '}
+                        <button
+                          type="button"
+                          onClick={openModelSettings}
+                          className="ml-1 text-primary hover:underline"
+                        >
+                          {t('translate.add_in_settings')}
+                        </button>
+                      </div>
+                    }
+                  />
                 </div>
               </div>
 
@@ -376,7 +444,26 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                       {t('translate.translate_needed', { count: neededIds.length })}
                     </button>
                   ) : (
-                    <p className="text-[11px] text-emerald-500">{t('translate.needs_none')}</p>
+                    // Everything is already translated — the primary "translate needed"
+                    // CTA is gone, which left re-translation a dead-end (buried behind
+                    // Advanced → Force). Offer a direct force-retranslate of the SELECTED
+                    // chapters (the per-chapter page preselects this chapter) so making a
+                    // fresh translation is always one click, not a hunt.
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-emerald-500">{t('translate.needs_none')}</p>
+                      <button
+                        onClick={() => void submitJob([...selectedChapters], true)}
+                        disabled={!configReady || selectedChapters.size === 0 || submitting}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        data-testid="translate-retranslate-selected"
+                      >
+                        {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {t('translate.retranslate_selected', {
+                          count: selectedChapters.size,
+                          defaultValue: 'Re-translate selected ({{count}})',
+                        })}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -415,22 +502,15 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                         {/* Verifier model */}
                         <div>
                           <label className="mb-1 block text-[11px] font-medium">{t('translate.verifier_model')}</label>
-                          <select
-                            value={verifierModelRef}
-                            onChange={(e) => setVerifierModelRef(e.target.value)}
-                            className="h-8 w-full rounded-md border bg-background px-2 text-[12px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                          >
-                            <option value="">{t('translate.verifier_default')}</option>
-                            {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
-                              <optgroup key={provider} label={provider}>
-                                {models.map((m) => (
-                                  <option key={m.user_model_id} value={m.user_model_id}>
-                                    {m.alias || m.provider_model_name}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
+                          <ModelPicker
+                            capability="chat"
+                            value={verifierModelRef || null}
+                            onChange={(id) => setVerifierModelRef(id ?? '')}
+                            allowNone
+                            noneLabel={t('translate.verifier_default')}
+                            ariaLabel={t('translate.verifier_model')}
+                            compact
+                          />
                         </div>
                         {/* QA depth + rounds */}
                         <div className="grid grid-cols-2 gap-3">
@@ -474,6 +554,28 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                         <span className="text-[10px] text-muted-foreground">{t('translate.force_retranslate_hint')}</span>
                       </span>
                     </label>
+
+                    {/* Enable model reasoning (thinking) — default OFF. */}
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={thinkingEnabled}
+                        onChange={(e) => setThinkingEnabled(e.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-primary"
+                        data-testid="translate-thinking-toggle"
+                      />
+                      <span className="flex flex-col gap-0.5">
+                        <span className="text-xs font-medium">
+                          {t('translate.reasoning_enable', { defaultValue: 'Enable model reasoning (thinking)' })}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {t('translate.reasoning_hint', {
+                            defaultValue:
+                              'Off by default — hidden thinking can burn the output budget on local models. Enable for hard passages on a reasoning model.',
+                          })}
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 )}
               </div>
@@ -485,6 +587,18 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                     {t('translate.chapters', { selected: selectedChapters.size, total: sortedChapters.length })}
                   </label>
                 </div>
+                {chaptersLoading ? (
+                  <div className="flex items-center justify-center py-8" data-testid="translate-chapters-loading">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-xs text-muted-foreground">{t('translate.loading_chapters')}</span>
+                  </div>
+                ) : chaptersError ? (
+                  // T5/D9: a rejecting OR hanging chapter fetch recovers here with a typed
+                  // message + Retry, scoped to the checklist — the pickers above stay usable, and
+                  // if a selection was preselected the footer submit stays enabled (D8).
+                  <TranslationErrorState compact error={chaptersError} onRetry={loadChapters} />
+                ) : (
+                  <>
                 {/* Quick-select chips */}
                 <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px]">
                   <span className="text-muted-foreground">{t('translate.quick_label')}</span>
@@ -544,29 +658,10 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                   className="mt-2 justify-center"
                   labels={{ page: t('translate.page'), prev: t('translate.prev'), next: t('translate.next') }}
                 />
+                  </>
+                )}
               </div>
             </div>
-          )}
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
-            <button
-              onClick={onClose}
-              className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            >
-              {t('translate.cancel')}
-            </button>
-            <button
-              onClick={() => void submitJob([...selectedChapters], forceRetranslate)}
-              disabled={!canSubmitSelected}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {t('translate.submit_selected', { count: selectedChapters.size })}
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
+    </FormDialog>
   );
 }

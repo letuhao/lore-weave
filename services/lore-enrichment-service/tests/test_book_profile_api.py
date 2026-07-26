@@ -25,7 +25,7 @@ OWNER = UUID("019d5e3c-7cc5-7e6a-8b27-1344e148bf7c")
 
 
 def _bearer(sub: UUID = OWNER) -> str:
-    return pyjwt.encode({"sub": str(sub)}, "x", algorithm="HS256")
+    return pyjwt.encode({"sub": str(sub), "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 # ── fake pools ────────────────────────────────────────────────────────────────

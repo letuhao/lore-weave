@@ -52,9 +52,23 @@ vi.mock('../../hooks/useWork', () => ({
   useSetSceneStatus: () => ({ mutate: vi.fn(), isPending: false }),
   usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: { listUserModels: vi.fn().mockResolvedValue({ items: [] }) },
+// W5 — spread the real module: the shared ModelPicker also imports getUserModelMeta.
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: { listUserModels: vi.fn().mockResolvedValue({ items: [] }), patchFavorite: vi.fn() },
+  };
+});
+// W5 — the shared useUserModels/ModelPicker read the token from useAuth.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
+
+import { invalidateUserModelsCache } from '@/components/model-picker';
 
 function renderAt(entries: string[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -67,7 +81,7 @@ function renderAt(entries: string[]) {
   );
 }
 
-beforeEach(() => { seen.projectId = ''; });
+beforeEach(() => { seen.projectId = ''; localStorage.clear(); invalidateUserModelsCache(); });
 
 describe('CompositionPanel ?work= deep-link (C28 living-world navigation)', () => {
   it('opens the NAMED dị bản candidate, not candidates[0]', () => {

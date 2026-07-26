@@ -18,6 +18,7 @@ import logging
 from typing import Optional
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from .config import settings
 
@@ -37,8 +38,6 @@ _CONTROL: dict[str, tuple[str, str]] = {
     # is the campaign cancel with a different body) — cancel-only (P3-4).
     "translation": (settings.translation_service_internal_url, "/internal/translation/job-control"),
 }
-
-_TIMEOUT = httpx.Timeout(10.0)
 
 
 class ControlResult:
@@ -70,11 +69,14 @@ async def forward_control(service: str, job_id: str, action: str, owner_user_id:
         return ControlResult(501, {"detail": f"control not yet supported for service '{service}'"})
     base, prefix = entry
     url = f"{base}{prefix}/{job_id}/{action}"
-    headers = {"X-Internal-Token": settings.internal_service_token}
     body = {"owner_user_id": owner_user_id, "kind": kind}
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(url, json=body, headers=headers)
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON. The
+        # verbatim downstream-status passthrough below is unchanged (transport-only).
+        async with build_internal_client(
+            base, internal_token=settings.internal_service_token, timeout_s=10.0,
+        ) as client:
+            resp = await client.post(url, json=body)
     except httpx.HTTPError as exc:
         log.warning("control forward to %s failed: %s", url, exc)
         return ControlResult(502, {"detail": f"owning service '{service}' unreachable"})

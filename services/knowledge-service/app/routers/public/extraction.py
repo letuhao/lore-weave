@@ -11,12 +11,22 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field, field_validator
 
@@ -31,9 +41,10 @@ from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.flywheel import get_flywheel_delta
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
-from app.routers.internal_benchmark import BenchmarkStatusResponse
+from app.routers.internal_benchmark import BenchmarkStatusResponse, gate_failures_from_raw
 from app.db.repositories.extraction_jobs import (
     DEFAULT_TARGETS,
     LIST_ALL_MAX_LIMIT,
@@ -185,6 +196,10 @@ class StartJobRequest(BaseModel):
     llm_model: str = Field(min_length=1, max_length=200)
     embedding_model: str = Field(min_length=1, max_length=200)
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+    # #9 — DEPRECATED / IGNORED. The create path now computes items_total server-side
+    # from the real scope counts (chapters+chat+glossary), so a client-supplied value
+    # (the old "1/100" placeholder) is never stored. Kept on the schema only so existing
+    # callers that still send it don't 422; its value is discarded.
     items_total: Annotated[int, Field(ge=0)] | None = None
     # C12 — target-typed extraction. None / empty ⇒ ALL passes (back-compat).
     # A concrete list runs only those passes. Dependent targets are
@@ -198,6 +213,10 @@ class StartJobRequest(BaseModel):
     # sparse-but-critical entities are anchored regardless of chapter content.
     # None / empty ⇒ no pins (back-compat). Stored as pinned_entity_ids JSONB.
     pinned_glossary_entity_ids: list[str] | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: the clamped graded reasoning effort (none|low|medium|high) for
+    # the extraction LLM. Stored on the job; worker-ai honors it via D-KG-WORKER-GRADED-EFFORT.
+    # Default 'none' ⇒ back-compat (no thinking) for callers that don't set it.
+    reasoning_effort: str = "none"
 
     @field_validator("targets")
     @classmethod
@@ -229,6 +248,63 @@ class EstimateItemCounts(BaseModel):
     chapters: int = 0
     chat_turns: int = 0
     glossary_entities: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.chapters + self.chat_turns + self.glossary_entities
+
+
+async def _count_scope_items(
+    scope: str,
+    scope_range: dict[str, Any] | None,
+    project: Any,
+    user_id: UUID,
+    project_id: UUID,
+    *,
+    book_client: BookClient | None = None,
+    pending_repo: ExtractionPendingRepo | None = None,
+    glossary_client: GlossaryClient | None = None,
+) -> EstimateItemCounts:
+    """Count the items an extraction job will actually process for a scope, server-side.
+
+    Shared by the cost ESTIMATE and the job CREATE path so the stored ``items_total``
+    is the REAL denominator (chapters + chat_turns + glossary_entities) — never a
+    client-supplied placeholder (#9: the "1/100" progress bug, where the FE's optional
+    ``items_total`` was trusted verbatim). The same published-scoped chapter count the
+    runner enumerates is used, so the progress bar's denominator matches the work done.
+
+    Each client is optional: a public handler injects them (so test ``dependency_overrides``
+    apply); an internal/retry caller that doesn't passes None and we fall back to the
+    per-worker singleton accessor.
+    """
+    chapters = chat_turns = glossary_entities = 0
+    chapter_from, chapter_to = _extract_chapter_range(scope_range)
+
+    if scope in ("chapters", "all") and project.book_id is not None:
+        bc = book_client if book_client is not None else await get_book_client()
+        # WS-0.6: count what the rebuild will actually EXTRACT — the chapters in the
+        # knowledge graph — not the chapters that happen to be published. Keyed on
+        # publish, this preview would report "0 chapters" for a user who indexed 50
+        # drafts, and then the job would run and (correctly) extract them: the estimate
+        # and the enumeration MUST use the same gate.
+        count = await bc.count_chapters(
+            project.book_id, from_sort=chapter_from, to_sort=chapter_to,
+            kg_indexed=True,
+        )
+        chapters = count if count is not None else 0
+
+    if scope in ("chat", "all"):
+        pr = pending_repo if pending_repo is not None else await get_extraction_pending_repo()
+        chat_turns = await pr.count_pending(user_id, project_id)
+
+    if scope in ("glossary_sync", "all") and project.book_id is not None:
+        gc = glossary_client if glossary_client is not None else await get_glossary_client()
+        count = await gc.count_entities(project.book_id)
+        glossary_entities = count if count is not None else 0
+
+    return EstimateItemCounts(
+        chapters=chapters, chat_turns=chat_turns, glossary_entities=glossary_entities,
+    )
 
 
 class EstimateResponse(BaseModel):
@@ -274,37 +350,20 @@ async def estimate_extraction_cost(
             detail="project not found",
         )
 
-    chapters = 0
-    chat_turns = 0
-    glossary_entities = 0
-
     scope = body.scope
 
-    chapter_from, chapter_to = _extract_chapter_range(body.scope_range)
-
-    # Chapter count — via book-service internal API. CM3c: gate to
-    # editorial_status='published' so the estimate matches what the gated
-    # whole-book rebuild actually extracts (drafts are skipped) — same
-    # server-side filter the worker enumeration uses (no count divergence).
-    if scope in ("chapters", "all") and project.book_id is not None:
-        count = await book_client.count_chapters(
-            project.book_id,
-            from_sort=chapter_from,
-            to_sort=chapter_to,
-            editorial_status="published",
-        )
-        chapters = count if count is not None else 0
-
-    # Pending chat turns — from extraction_pending queue
-    if scope in ("chat", "all"):
-        chat_turns = await pending_repo.count_pending(user_id, project_id)
-
-    # Glossary entity count — via glossary-service internal API
-    if scope in ("glossary_sync", "all") and project.book_id is not None:
-        count = await glossary_client.count_entities(project.book_id)
-        glossary_entities = count if count is not None else 0
-
-    items_total = chapters + chat_turns + glossary_entities
+    # Chapter count gates to editorial_status='published' (CM3c) so the estimate
+    # matches what the gated whole-book rebuild actually extracts (drafts skipped) —
+    # the SAME server-side count the CREATE path now stores as items_total (#9), so
+    # preview and progress-denominator can never diverge.
+    counts = await _count_scope_items(
+        scope, body.scope_range, project, user_id, project_id,
+        book_client=book_client, pending_repo=pending_repo, glossary_client=glossary_client,
+    )
+    chapters = counts.chapters
+    chat_turns = counts.chat_turns
+    glossary_entities = counts.glossary_entities
+    items_total = counts.total
     # C13 — pinned-injection cost. The pinned names are prepended to EVERY
     # extraction window's known_entities, and there is one window per chapter +
     # one per chat turn (the two LLM-extraction item types; glossary_sync is a
@@ -386,9 +445,10 @@ async def _create_and_start_job(
                       (user_id, project_id, scope, scope_range, llm_model,
                        embedding_model, max_spend_usd, items_total, campaign_id,
                        billing_user_id, billing_embedding_model, billing_llm_model,
-                       targets, concurrency_level, pinned_entity_ids)
+                       targets, concurrency_level, pinned_entity_ids,
+                       mcp_key_id, spend_cap_usd)
                     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9,
-                            $10, $11, $12, $13, $14, $15::jsonb)
+                            $10, $11, $12, $13, $14, $15::jsonb, $16, $17)
                     RETURNING job_id
                     """,
                     user_id,
@@ -419,6 +479,10 @@ async def _create_and_start_job(
                     # pinned names and prepend them into every window.
                     json.dumps(validated.pinned_entity_ids)
                     if validated.pinned_entity_ids else None,
+                    # D-PMCP-WORKER-CARRIER: public-MCP key + cap (float8 column) so
+                    # worker-ai re-sets the attribution contextvar from the row.
+                    validated.mcp_key_id,
+                    validated.spend_cap_usd,
                 )
                 job_id = job_row["job_id"]
 
@@ -472,6 +536,7 @@ async def _create_and_start_job(
 async def start_extraction_job(
     project_id: UUID,
     body: StartJobRequest,
+    background_tasks: BackgroundTasks,
     # D-E0-3-CALLER-PAYS-EXTRACTION Phase 2b: re-opened to EDIT collaborators
     # under BYOK caller-pays. Phase 1 made this OWNER-only to close the breach
     # where an edit-collaborator's extraction ran on the OWNER's key. Now a
@@ -485,6 +550,11 @@ async def start_extraction_job(
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
     book_client: BookClient = Depends(get_book_client),
+    # #9 — injected so the core can compute items_total server-side (and so test
+    # dependency_overrides apply); the core falls back to the singletons for the
+    # internal-dispatch callers that don't pass them.
+    pending_repo: ExtractionPendingRepo = Depends(get_extraction_pending_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
     extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
 ) -> ExtractionJob:
     """Public route handler. Delegates to the core.
@@ -495,12 +565,71 @@ async def start_extraction_job(
     campaign's spend and trip its budget pause). Only the internal dispatch
     endpoint (campaign-service, ownership pre-verified) supplies it via the core.
     """
-    return await _start_extraction_job_core(
+    job = await _start_extraction_job_core(
         project_id, body, principals.owner, projects_repo, jobs_repo, benchmark_repo,
         caller=principals.caller,
         book_client=book_client,
+        pending_repo=pending_repo,
+        glossary_client=glossary_client,
         extraction_wake=extraction_wake,
     )
+    # D-KG-PASSAGES-NOT-INGESTED — the user is indexing the book, so the embedding
+    # config is present; (re)ingest the published chapters' :Passage nodes in the
+    # background so semantic memory/story search isn't left empty by "the chapters
+    # were published before this project had embedding config". Best-effort +
+    # idempotent — never blocks or fails the extraction start.
+    proj = await projects_repo.get(principals.owner, project_id)
+    if proj is not None and proj.book_id and proj.embedding_model and proj.embedding_dimension:
+        # D-BACKFILL-NO-SCOPE-LIMIT — bound the passage backfill to the chapters this
+        # job actually extracts (its scope_range), so a scoped extraction of a large
+        # book ingests passages ONLY for the extracted slice, not the whole book. A
+        # whole-book / chat / glossary scope leaves chapter_range None (full book).
+        _lo, _hi = _extract_chapter_range(body.scope_range) if body.scope == "chapters" else (None, None)
+        _bf_range = (_lo, _hi) if _lo is not None and _hi is not None else None
+        background_tasks.add_task(
+            _auto_backfill_passages,
+            project_id=project_id, user_id=principals.owner, book_id=proj.book_id,
+            embedding_model=proj.embedding_model, embedding_dim=proj.embedding_dimension,
+            chapter_range=_bf_range,
+        )
+    return job
+
+
+async def _auto_backfill_passages(
+    *,
+    project_id: UUID,
+    user_id: UUID,
+    book_id: UUID,
+    embedding_model: str,
+    embedding_dim: int,
+    chapter_range: tuple[int, int] | None = None,
+) -> None:
+    """Best-effort background passage backfill fired on extraction start
+    (D-KG-PASSAGES-NOT-INGESTED). Swallows ALL errors — extraction must never be
+    affected by it. Skips cleanly in Track-1 (no Neo4j). ``chapter_range`` bounds the
+    backfill to the extraction job's chapter slice (D-BACKFILL-NO-SCOPE-LIMIT)."""
+    try:
+        from app.clients.book_client import get_book_client as _get_bc
+        from app.clients.embedding_client import get_embedding_client
+        from app.config import settings as _settings
+        from app.extraction.passage_backfill import backfill_project_passages
+
+        if not _settings.neo4j_uri:
+            return
+        res = await backfill_project_passages(
+            project_id=project_id, user_id=user_id, book_id=book_id,
+            embedding_model=embedding_model, embedding_dim=embedding_dim,
+            book_client=_get_bc(), embedding_client=get_embedding_client(),
+            chapter_range=chapter_range,
+        )
+        logger.info(
+            "auto passage backfill on extraction start project=%s: %s", project_id, res,
+        )
+    except Exception:
+        logger.warning(
+            "auto passage backfill failed project=%s — non-fatal", project_id,
+            exc_info=True,
+        )
 
 
 async def _start_extraction_job_core(
@@ -514,7 +643,11 @@ async def _start_extraction_job_core(
     campaign_id: UUID | None = None,
     caller: UUID | None = None,
     book_client: BookClient | None = None,
+    pending_repo: ExtractionPendingRepo | None = None,
+    glossary_client: GlossaryClient | None = None,
     extraction_wake: ExtractionWakeFn | None = None,
+    mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
 
@@ -574,9 +707,14 @@ async def _start_extraction_job_core(
         # (internal dispatch / retry callers). get_book_client is async (returns
         # the per-worker singleton).
         bc = book_client if book_client is not None else await get_book_client()
+        # WS-0.6: this admission guard must mirror the re-keyed runner enumeration
+        # exactly — they both gate `scope in ("chapters","all")`. If the guard counted
+        # published chapters while the runner enumerates kg-indexed ones, a user whose
+        # indexed drafts are all unpublished would be REJECTED with "no chapters in
+        # range" for a job that would have extracted them fine.
         in_range = await bc.count_chapters(
             project.book_id, from_sort=chap_from, to_sort=chap_to,
-            editorial_status="published",
+            kg_indexed=True,
         )
         if not in_range:
             raise HTTPException(
@@ -687,14 +825,16 @@ async def _start_extraction_job_core(
     # a "See report" link. Keeping ops commands out of the public API
     # response avoids confusing end users if the 409 surfaces in a
     # toast before the picker's badge logic catches it.
-    # E0-3 Phase 2b — the benchmark gate stays OWNER/PROJECT-scoped: it validates
-    # the project's vector space (owner's user_id + the project's canonical
-    # model). A collaborator inherits it via the dimension match above — no
-    # per-collaborator benchmark is needed. `storage_embedding_model` is the
-    # project's model on the collaborator path and body's (== project's) for the
-    # owner.
-    latest_benchmark = await benchmark_repo.get_latest(
-        user_id, project_id, embedding_model=storage_embedding_model,
+    # E0-3 Phase 2b — the benchmark gate is OWNER + MODEL-scoped (R1,
+    # D-JOURNEY-KG-BENCHMARK-UX): it validates the embedding MODEL's quality, which
+    # is a per-model property, not per-project. A passing run for this model on ANY
+    # of the owner's projects (incl. the hidden benchmark sandbox the run actually
+    # executes on) satisfies it — so the run never has to (and never can) happen on
+    # this content-bearing build project. A collaborator inherits it via the
+    # dimension match above. `storage_embedding_model` is the project's model on the
+    # collaborator path and body's (== project's) for the owner.
+    latest_benchmark = await benchmark_repo.get_latest_for_model(
+        user_id, storage_embedding_model,
     )
     if latest_benchmark is None:
         raise HTTPException(
@@ -772,6 +912,28 @@ async def _start_extraction_job_core(
             },
         )
 
+    # 2.7. #9 — compute the REAL progress denominator server-side (chapters + chat +
+    # glossary for this scope), IGNORING any client-supplied body.items_total (the old
+    # "1/100" placeholder). Best-effort: a transient count failure stores NULL → the FE
+    # renders an indeterminate bar, which is strictly better than a wrong number or
+    # blocking the job start. Done OUTSIDE the tx (network I/O; never hold a tx open
+    # across it — H1).
+    server_items_total: int | None = None
+    try:
+        server_items_total = (
+            await _count_scope_items(
+                body.scope, body.scope_range, project, user_id, project_id,
+                book_client=book_client,
+                pending_repo=pending_repo,
+                glossary_client=glossary_client,
+            )
+        ).total
+    except Exception:  # noqa: BLE001 — the count is advisory; never block job start
+        logger.warning(
+            "#9: failed to compute items_total project_id=%s scope=%s; storing NULL",
+            project_id, body.scope, exc_info=True,
+        )
+
     # 3. Validate + create job atomically.
     trace_id = trace_id_var.get()
     validated = ExtractionJobCreate(
@@ -783,7 +945,8 @@ async def _start_extraction_job_core(
         embedding_model=storage_embedding_model,
         max_spend_usd=body.max_spend_usd,
         scope_range=body.scope_range,
-        items_total=body.items_total,
+        # #9 — server-computed denominator, NOT body.items_total (deprecated/ignored).
+        items_total=server_items_total,
         campaign_id=campaign_id,  # S4a: internal-only (None for public callers)
         # E0-3 Phase 2b — caller's BYOK billing identity (all None on owner path).
         billing_user_id=billing_user_id,
@@ -795,6 +958,12 @@ async def _start_extraction_job_core(
         concurrency_level=body.concurrency_level,
         # C13 — pinned glossary entity ids → stored as pinned_entity_ids JSONB.
         pinned_entity_ids=body.pinned_glossary_entity_ids,
+        # D-RE-OTHER-AGENTIC-EFFORT: the clamped reasoning effort persisted on the job row.
+        reasoning_effort=body.reasoning_effort,
+        # D-PMCP-WORKER-CARRIER: public-MCP attribution (set only by the kg confirm
+        # replay; None for first-party/HTTP callers — the public route never accepts it).
+        mcp_key_id=mcp_key_id,
+        spend_cap_usd=spend_cap_usd,
     )
 
     job_id = await _create_and_start_job(
@@ -1000,12 +1169,27 @@ async def cancel_extraction_job(
 _GRAPH_LABELS = ["Entity", "Event", "Fact", "ExtractionSource"]
 
 
-async def _delete_project_graph(user_id: UUID, project_id: UUID) -> int:
-    """Delete all Neo4j nodes for a project. Returns total nodes deleted.
+async def _delete_project_graph(
+    user_id: UUID, project_id: UUID, *, include_passages: bool = False
+) -> int:
+    """Delete a project's Neo4j graph nodes. Returns total nodes deleted.
 
     Shared by K16.8 (delete), K16.9 (rebuild), K16.10 (change model).
     Caller must check neo4j_uri is set before calling.
     NOTE: unbatched DETACH DELETE — see D-K11.9-01.
+
+    ``include_passages`` — D-EMB-MODEL-REF-04. `:Passage` is deliberately NOT in
+    `_GRAPH_LABELS`: it holds chat- and glossary-sourced chunks that extraction cannot
+    rebuild, so a plain delete-graph/rebuild (which does NOT change the vector space)
+    must leave them alone — their vectors stay valid.
+
+    A model CHANGE is the opposite case and MUST pass True. Every passage is embedded
+    in the OLD model's space; leaving them behind makes them permanently unreachable
+    from the new vector index — silent zero-recall. Both change-model paths documented
+    themselves as already doing this ("the graph delete above also dropped any
+    stale-dimension passages") and neither did: proven live on 2026-07-23 by running
+    this exact label loop over a synthetic tenant, after which the `:Passage` node was
+    the only survivor.
     """
     deleted_total = 0
     async with neo4j_session() as session:
@@ -1020,6 +1204,12 @@ async def _delete_project_graph(user_id: UUID, project_id: UUID) -> int:
             )
             record = await result.single()
             deleted_total += record["deleted"] if record else 0
+        if include_passages:
+            from app.db.neo4j_repos.passages import delete_all_passages_for_project
+
+            deleted_total += await delete_all_passages_for_project(
+                session, user_id=str(user_id), project_id=str(project_id),
+            )
     return deleted_total
 
 
@@ -1177,27 +1367,57 @@ class RebuildRequest(BaseModel):
     llm_model: str = Field(min_length=1, max_length=200)
     embedding_model: str = Field(min_length=1, max_length=200)
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+    # bug #42 — accumulate vs wipe. "replace" (default, back-compat) DELETEs the whole
+    # graph then rebuilds scope=all (the destructive path, ?confirm=true gated). "update"
+    # does NOT delete — it re-extracts on top of the existing graph via the idempotent
+    # MERGE-upsert writes, so a writer can re-generate a specific chapter after an edit, or
+    # add new chapters, without losing the rest. `scope`/`scope_range` apply to "update"
+    # only (a "replace" always rebuilds everything); `scope="chapters"` +
+    # `scope_range={"chapter_range":[from,to]}` is the per-chapter incremental case.
+    mode: Literal["replace", "update"] = "replace"
+    scope: JobScope = "all"
+    scope_range: dict[str, Any] | None = None
 
 
 @router.post(
     "/{project_id}/extraction/rebuild",
-    response_model=ExtractionJob,
     status_code=status.HTTP_201_CREATED,
 )
 async def rebuild_extraction(
     project_id: UUID,
     body: RebuildRequest,
+    confirm: bool = False,
     user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
-) -> ExtractionJob:
-    """Delete the existing graph and start a full extraction rebuild.
+    # #9 — count sources for the server-computed items_total denominator.
+    book_client: BookClient = Depends(get_book_client),
+    pending_repo: ExtractionPendingRepo = Depends(get_extraction_pending_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
+) -> ExtractionJob | dict:
+    """Rebuild the graph — destructively (``mode="replace"``) or incrementally
+    (``mode="update"``, bug #42).
 
-    Combines K16.8 (delete graph) + K16.3 (start job with scope=all).
-    The delete runs first; if the start fails, the graph is gone but
+    ``mode="replace"`` (default): deletes the existing graph then starts a full
+    ``scope=all`` rebuild. Destructive — without ``?confirm=true`` it returns a
+    warning preview with live node counts (``action_required='confirm'``) and
+    deletes NOTHING (bug #14); with ``?confirm=true`` it deletes then rebuilds.
+
+    ``mode="update"`` (bug #42): NON-destructive — deletes nothing and needs no
+    confirm. Starts an extraction over ``scope``/``scope_range`` (default
+    ``scope=all``) that re-extracts ON TOP of the existing graph; the writes are
+    idempotent ``MERGE`` upserts (entities/facts/events keyed on a content hash),
+    so re-running a chapter accumulates + refreshes rather than duplicating. Use
+    ``scope="chapters"`` + ``scope_range={"chapter_range":[from,to]}`` to refresh
+    just the chapters a writer edited/added. NOTE: an update adds/refreshes but
+    does not RETRACT entities deleted from edited text (MERGE can't remove); a
+    full retract path is a separate follow-up.
+
+    The replace delete runs first; if the start fails, the graph is gone but
     the project is in 'disabled' state (user can retry). True cross-DB
     atomicity (Neo4j + Postgres) is not possible without 2PC.
     """
+    is_replace = body.mode == "replace"
     project = await projects_repo.get(user_id, project_id)
     if project is None:
         raise HTTPException(
@@ -1220,17 +1440,70 @@ async def rebuild_extraction(
             detail="Neo4j not configured",
         )
 
-    # Step 1: Delete existing graph
-    await _delete_project_graph(user_id, project_id)
+    # bug #42 — an "update" rebuild is non-destructive: the destructive ?confirm
+    # gate AND the delete are skipped entirely. A "replace" keeps the bug #14
+    # behaviour below. The incremental scope/range apply to "update" only.
+    eff_scope: JobScope = "all" if is_replace else body.scope
+    eff_range = None if is_replace else body.scope_range
 
-    # Step 2: Start new job with scope=all via shared helper
+    if is_replace:
+        # K-DATASAFE (bug #14) — destructive guard: a replace rebuild DELETES the
+        # entire graph, so require an explicit ?confirm=true. Without it, return a
+        # warning preview carrying the live node counts so the FE can show "this
+        # deletes N entities" and demand a typed confirmation (mirrors
+        # change_embedding_model). Defense-in-depth: holds even if a caller bypasses
+        # the FE confirm dialog.
+        if not confirm:
+            _params = {"user_id": str(user_id), "project_id": str(project_id)}
+            async with neo4j_session() as session:
+                _rec = await (await session.run(_GRAPH_STATS_CYPHER, _params)).single()
+            return {
+                "warning": (
+                    "Rebuilding permanently DELETES this project's entire knowledge "
+                    "graph and rebuilds it from scratch. This cannot be undone. "
+                    "Pass ?confirm=true to proceed."
+                ),
+                "entity_count": int(_rec["entity_count"] or 0) if _rec else 0,
+                "fact_count": int(_rec["fact_count"] or 0) if _rec else 0,
+                "event_count": int(_rec["event_count"] or 0) if _rec else 0,
+                "action_required": "confirm",
+            }
+
+        # Step 1: Delete existing graph (replace only)
+        await _delete_project_graph(user_id, project_id)
+    else:
+        # Validate the incremental range shape up front (mirrors StartJobRequest),
+        # so a malformed chapter_range 422s at request time rather than being
+        # swallowed by the best-effort count below and surfacing later in the worker.
+        _extract_chapter_range(eff_range)
+
+    # Step 2: Start the new job (replace ⇒ scope=all; update ⇒ the caller's scope)
     trace_id = trace_id_var.get()
+    # #9 — server-computed progress denominator.
+    # Best-effort: a count failure → NULL (indeterminate bar), never blocks the rebuild.
+    rebuild_items_total: int | None = None
+    try:
+        rebuild_items_total = (
+            await _count_scope_items(
+                eff_scope, eff_range, project, user_id, project_id,
+                book_client=book_client,
+                pending_repo=pending_repo,
+                glossary_client=glossary_client,
+            )
+        ).total
+    except Exception:  # noqa: BLE001 — advisory count; never block the rebuild
+        logger.warning(
+            "#9: failed to compute items_total for rebuild project_id=%s; storing NULL",
+            project_id, exc_info=True,
+        )
     validated = ExtractionJobCreate(
         project_id=project_id,
-        scope="all",
+        scope=eff_scope,
+        scope_range=eff_range,
         llm_model=body.llm_model,
         embedding_model=body.embedding_model,
         max_spend_usd=body.max_spend_usd,
+        items_total=rebuild_items_total,
     )
 
     job_id = await _create_and_start_job(
@@ -1308,7 +1581,8 @@ async def change_embedding_model(
     if not confirm:
         return {
             "warning": "Changing the embedding model requires deleting the existing knowledge graph. "
-                       "Pass ?confirm=true to proceed.",
+                       "The new model also needs its own passing embedding benchmark — you'll have "
+                       "to re-run it before you can build the graph again. Pass ?confirm=true to proceed.",
             "current_model": current_model,
             "new_model": new_model,
             "action_required": "confirm",
@@ -1342,7 +1616,12 @@ async def change_embedding_model(
             ),
         )
 
-    deleted_total = await _delete_project_graph(user_id, project_id)
+    # include_passages=True — the whole point of this confirm gate. The passages are
+    # embedded in `current_model`'s vector space; anything left behind is invisible to
+    # the new index forever (D-EMB-MODEL-REF-04).
+    deleted_total = await _delete_project_graph(
+        user_id, project_id, include_passages=True
+    )
 
     await projects_repo.set_extraction_state(
         user_id, project_id,
@@ -1352,10 +1631,62 @@ async def change_embedding_model(
         embedding_dimension=new_dim,
     )
 
+    # D-KG-PASSAGE-BACKFILL — the embedding model is now set, so passages become
+    # ingestable. Backfill any already-PUBLISHED chapters whose `chapter.published`
+    # event fired BEFORE this project/model existed (the natural publish-then-setup
+    # flow), so wiki/enrichment have grounding without a manual re-publish. The graph
+    # delete above also dropped any stale-dimension passages, so a model CHANGE
+    # re-ingests at the new dimension here. Best-effort: never fail the model set.
+    passages_backfilled = 0
+    if project.book_id is not None:
+        try:
+            from app.clients.book_client import get_book_client
+            from app.clients.embedding_client import get_embedding_client
+            from app.db.neo4j import neo4j_session
+            from app.extraction.passage_ingester import (
+                backfill_published_passages,
+                backfill_source_lang,
+            )
+
+            async with neo4j_session() as session:
+                bf = await backfill_published_passages(
+                    session,
+                    get_book_client(),
+                    get_embedding_client(),
+                    user_id=user_id,
+                    project_id=project_id,
+                    book_id=project.book_id,
+                    embedding_model=new_model,
+                    embedding_dim=new_dim,
+                    # KG-ML M1 (C10) — meter the backfill re-embed spend.
+                    pool=get_knowledge_pool(),
+                    # D-BACKFILL-NO-SCOPE-LIMIT — this backfill runs SYNCHRONOUSLY in the
+                    # request; cap it so a large book can't run away embedding every
+                    # published chapter inline (0 ⇒ never skip).
+                    max_chapters=(app_settings.kg_backfill_max_inline_chapters or None),
+                )
+                # KG-ML M1 (DD1) — tag-only pass for any passage NOT re-embedded
+                # above (e.g. draft-indexed chunks): stamp declared source_lang
+                # without re-embedding (bills zero). Idempotent + best-effort.
+                await backfill_source_lang(
+                    session,
+                    get_book_client(),
+                    user_id=user_id,
+                    book_id=project.book_id,
+                )
+            passages_backfilled = bf.passages_created
+        except Exception:  # noqa: BLE001 — best-effort; the model set already succeeded
+            logger.warning(
+                "K16.10: passage backfill failed for project=%s — non-fatal",
+                project_id, exc_info=True,
+            )
+
     trace_id = trace_id_var.get()
     logger.info(
-        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d trace_id=%s",
-        project_id, current_model, new_model, new_dim, deleted_total, trace_id,
+        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d "
+        "passages_backfilled=%d trace_id=%s",
+        project_id, current_model, new_model, new_dim, deleted_total,
+        passages_backfilled, trace_id,
     )
 
     return {
@@ -1364,6 +1695,7 @@ async def change_embedding_model(
         "new_model": new_model,
         "embedding_dimension": new_dim,
         "nodes_deleted": deleted_total,
+        "passages_backfilled": passages_backfilled,
         "extraction_status": "disabled",
     }
 
@@ -1591,6 +1923,78 @@ async def list_extraction_jobs(
     return jobs
 
 
+# ── T4.1 Flywheel — net-new delta for the latest completed extraction ──
+
+
+class FlywheelItemResponse(BaseModel):
+    kind: Literal["entity", "event", "relation"]
+    id: str
+    name: str
+
+
+class FlywheelDeltaResponse(BaseModel):
+    """The canon growth from the most-recent completed extraction job.
+
+    ``has_delta`` is False when no extraction has completed yet (FE renders a
+    neutral empty state, not an error). Counts are exact; ``new_items`` is a
+    capped named sample with deep-link ids per kind.
+    """
+
+    has_delta: bool
+    job_id: UUID | None = None
+    completed_at: datetime | None = None
+    entities_added: int = 0
+    relations_added: int = 0
+    events_added: int = 0
+    new_items: list[FlywheelItemResponse] = Field(default_factory=list)
+
+
+@router.get(
+    "/{project_id}/flywheel",
+    response_model=FlywheelDeltaResponse,
+)
+async def get_flywheel(
+    project_id: UUID,
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> FlywheelDeltaResponse:
+    """Net-new entities/relations/events added by the latest COMPLETED
+    extraction job for this project (the composition Flywheel panel).
+
+    Reads the ``created_job_id`` stamp (Pass-2 writer, ON CREATE) — so re-runs
+    never double-count and re-mentions of existing canon don't inflate the
+    delta. Cross-user / nonexistent project → 404 (no existence leak).
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    jobs = await jobs_repo.list_for_project(user_id, project_id)  # newest first
+    latest = next((j for j in jobs if j.status == "complete"), None)
+    if latest is None:
+        return FlywheelDeltaResponse(has_delta=False)
+
+    async with neo4j_session() as session:
+        delta = await get_flywheel_delta(
+            session, job_id=str(latest.job_id), user_id=str(user_id),
+        )
+    return FlywheelDeltaResponse(
+        has_delta=True,
+        job_id=latest.job_id,
+        completed_at=latest.completed_at,
+        entities_added=delta.entities_added,
+        relations_added=delta.relations_added,
+        events_added=delta.events_added,
+        new_items=[
+            FlywheelItemResponse(kind=i.kind, id=i.id, name=i.name)
+            for i in delta.new_items
+        ],
+    )
+
+
 # ── T2-close-1b-FE — Public benchmark-status ────────────────────────
 
 
@@ -1623,7 +2027,18 @@ async def get_project_benchmark_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    row = await benchmark_repo.get_latest(user_id, project_id, embedding_model)
+    # D-JOURNEY-KG-BENCHMARK-UX — the badge MUST agree with the extraction-start
+    # gate, which is MODEL-scoped: benchmarks run on a hidden per-(user, model)
+    # SANDBOX project, so a passing run lives under the sandbox's project_id, NOT
+    # this content project. The old project-scoped get_latest never saw the sandbox
+    # run, so the badge stayed "no benchmark yet" and the Build button stayed
+    # disabled even after a passing benchmark (the "ran it, FE won't update" bug).
+    # Use the same model-scoped lookup the gate uses when a model is given; fall
+    # back to the project-scoped "has the user ever benchmarked?" read otherwise.
+    if embedding_model:
+        row = await benchmark_repo.get_latest_for_model(user_id, embedding_model)
+    else:
+        row = await benchmark_repo.get_latest(user_id, project_id, embedding_model)
     if row is None:
         return BenchmarkStatusResponse(has_run=False)
     return BenchmarkStatusResponse(
@@ -1634,6 +2049,7 @@ async def get_project_benchmark_status(
         recall_at_3=row.recall_at_3,
         mrr=row.mrr,
         created_at=row.created_at,
+        gate_failures=gate_failures_from_raw(row.raw_report),
     )
 
 
@@ -1673,6 +2089,10 @@ class BenchmarkRunResponse(BaseModel):
     stddev_recall: float
     stddev_mrr: float
     runs: int
+    # R2 — named failing gates (empty == passed). `insufficient_runs` means the
+    # run was inconclusive (too few passes), NOT that the model is low-quality;
+    # the FE keys its copy off this instead of guessing from `passed` alone.
+    gate_failures: list[str] = []
 
 
 @router.post(
@@ -1735,6 +2155,21 @@ async def run_project_benchmark_endpoint(
             detail="project not found",
         )
 
+    # R1 (D-JOURNEY-KG-BENCHMARK-UX) — the benchmark validates the embedding
+    # MODEL, so it runs on a hidden per-(user, model) SANDBOX, never on this
+    # content-bearing build project. That removes the not_benchmark_project
+    # dead-end (the sandbox is always empty) and keeps the ~10 synthetic fixture
+    # passages out of the real project's vector space. The model-scoped gate then
+    # finds the passing run for any project using this model.
+    if not project.embedding_model or not project.embedding_dimension:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "no_embedding_model"},
+        )
+    sandbox = await projects_repo.get_or_create_benchmark_sandbox(
+        user_id, project.embedding_model, project.embedding_dimension,
+    )
+
     req = body or BenchmarkRunRequest()
     pool = get_knowledge_pool()
     embedding_client = get_embedding_client()
@@ -1742,7 +2177,7 @@ async def run_project_benchmark_endpoint(
     try:
         result = await run_project_benchmark(
             user_id=user_id,
-            project_id=project_id,
+            project_id=sandbox.project_id,
             runs=req.runs,
             pool=pool,
             projects_repo=projects_repo,
@@ -1785,6 +2220,7 @@ async def run_project_benchmark_endpoint(
         stddev_recall=result.stddev_recall,
         stddev_mrr=result.stddev_mrr,
         runs=result.runs,
+        gate_failures=list(result.gate_failures),
     )
 
 

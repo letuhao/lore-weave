@@ -1,25 +1,13 @@
-import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from loreweave_authn import build_get_current_user
 
 from app.config import settings
 
-bearer_scheme = HTTPBearer()
-
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> str:
-    """Decode the HS256 JWT and return the subject (user UUID).
-
-    Same identity domain as glossary/knowledge/chat (auth-service issued),
-    so a `sub` here is interchangeable with `corrections.user_id`/`actor_id`.
-    """
-    token = credentials.credentials
-    try:
-        data = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
-        return data["sub"]
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+# Shared platform user-JWT verifier (loreweave_authn), replacing the inline
+# HS256 `jwt.decode` block. `return_subject=True` preserves this service's
+# existing shape: the raw `sub` string (interchangeable with
+# `corrections.user_id`/`actor_id`, same auth-service identity domain as
+# glossary/knowledge/chat). Secret is read lazily so a rotated secret is
+# picked up without re-import.
+get_current_user = build_get_current_user(
+    lambda: settings.jwt_secret, return_subject=True
+)

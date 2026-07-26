@@ -17,7 +17,8 @@ from pydantic import BaseModel
 
 from app.db.repositories.extraction_jobs import ExtractionJobsRepo
 from app.db.repositories.job_logs import JobLog, JobLogsRepo, LOGS_MAX_LIMIT
-from app.deps import get_extraction_jobs_repo, get_job_logs_repo
+from app.db.repositories.projects import ProjectsRepo
+from app.deps import get_extraction_jobs_repo, get_job_logs_repo, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -75,3 +76,33 @@ async def list_job_logs(
     if len(logs) == limit and logs:
         next_cursor = logs[-1].log_id
     return JobLogsPage(logs=logs, next_cursor=next_cursor)
+
+
+class CanonFlagsPage(BaseModel):
+    flags: list[JobLog]
+
+
+@router.get(
+    "/projects/{project_id}/canon-flags",
+    response_model=CanonFlagsPage,
+)
+async def list_canon_flags(
+    project_id: UUID,
+    limit: int = Query(100, ge=1, le=LOGS_MAX_LIMIT),
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    logs_repo: JobLogsRepo = Depends(get_job_logs_repo),
+) -> CanonFlagsPage:
+    """Studio Quality tab (`quality-canon` panel): every judge-confirmed canon
+    contradiction flagged during KG extraction for this project, newest first —
+    closes D-KG-CANON-FLAG-REVIEW-UI (previously only visible interleaved in raw
+    job logs, with no per-book filtered view). 404 on a missing/cross-user
+    project, same defence-in-depth shape as `list_job_logs`."""
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    flags = await logs_repo.list_canon_flags_for_project(user_id, project_id, limit=limit)
+    return CanonFlagsPage(flags=flags)

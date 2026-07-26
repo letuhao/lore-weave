@@ -36,12 +36,30 @@ func TestClassifyOpenAIModel_Rerank(t *testing.T) {
 	}
 }
 
+// A live OpenAI /v1/models call never publishes context_length itself; the merge
+// must fill it in from the preconfig-derived lookup by provider_model_name so a
+// successful live sync doesn't regress a known model back to "unknown" window.
+func TestParseOpenAIModels_MergesKnownContextLength(t *testing.T) {
+	data := []any{
+		map[string]any{"id": "gpt-4o"},
+		map[string]any{"id": "some-brand-new-model-not-in-preconfig"},
+	}
+	known := map[string]int{"gpt-4o": 128000}
+	got := parseOpenAIModels(data, known)
+	if got[0].ContextLength == nil || *got[0].ContextLength != 128000 {
+		t.Errorf("gpt-4o context_length not merged: %+v", got[0])
+	}
+	if got[1].ContextLength != nil {
+		t.Errorf("unknown model should stay nil, got %+v", got[1])
+	}
+}
+
 func TestParseOpenAIModels_TagsRerankCanonically(t *testing.T) {
 	data := []any{
 		map[string]any{"id": "rerank-english-v3.0"},
 		map[string]any{"id": "gpt-4o"},
 	}
-	got := parseOpenAIModels(data)
+	got := parseOpenAIModels(data, nil)
 	if len(got) != 2 {
 		t.Fatalf("want 2 models, got %d", len(got))
 	}

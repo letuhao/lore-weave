@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Studio State Host (#08)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       STUDIO STATE ARCHITECTURE (#08) — 5-tier model + data flows
+
+       Scenarios:
+         1. Chapter edit — Rich + Raw sync via ManuscriptUnit hoist (Tier 4)
+         2. Agent turn — bus revision + agent surface FSM (Tier 3 + 4)
+
+       Spec: docs/specs/2026-07-01-writing-studio/08_studio_state_architecture.md
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --info: #5496e8; --tier3: #b89ee8; --tier4: #e8b87e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    h1 { font-size: 18px; font-weight: 600; padding: 24px 24px 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); padding: 0 24px 16px; line-height: 1.5; }
+
+    .tabs { display: flex; gap: 8px; padding: 0 24px 20px; flex-wrap: wrap; }
+    .tab {
+      height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); cursor: pointer;
+    }
+    .tab.active { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+
+    .stage { display: flex; gap: 28px; padding: 0 24px 24px; align-items: flex-start; }
+
+    /* Tier stack diagram */
+    .diagram {
+      flex: 1; min-width: 520px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--background); padding: 16px; min-height: 480px;
+    }
+    .diagram h2 { font-size: 12px; font-weight: 600; margin-bottom: 12px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .04em; }
+
+    .tier {
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+      cursor: pointer; transition: border-color .15s, box-shadow .15s;
+    }
+    .tier:hover { border-color: var(--border-hover); }
+    .tier.active { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary-muted); }
+    .tier-hd {
+      display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+      font-size: 11px; font-weight: 600; background: var(--card);
+    }
+    .tier-num {
+      width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-family: 'JetBrains Mono'; flex-shrink: 0;
+    }
+    .t5 .tier-num { background: rgba(84,150,232,.2); color: var(--info); }
+    .t4 .tier-num { background: rgba(232,184,126,.2); color: var(--tier4); }
+    .t3 .tier-num { background: rgba(184,158,232,.2); color: var(--tier3); }
+    .t2 .tier-num { background: var(--accent-muted); color: var(--accent-fg); }
+    .t1 .tier-num { background: var(--secondary); color: var(--muted-fg); }
+    .tier-body { padding: 8px 12px 10px; font-size: 10px; color: var(--muted-fg); line-height: 1.5; display: none; }
+    .tier.active .tier-body { display: block; }
+    .tier-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .chip { font-size: 9px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--secondary); font-family: 'JetBrains Mono'; }
+
+    .dock-row {
+      margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px;
+      font-size: 10px; color: var(--muted-fg); text-align: center;
+    }
+
+    /* Flow panel (scenario detail) */
+    .flow {
+      margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+    }
+    .flow h3 { font-size: 11px; font-weight: 600; margin-bottom: 10px; color: var(--primary); }
+    .flow-step {
+      display: flex; gap: 10px; margin-bottom: 8px; font-size: 10px; line-height: 1.5;
+    }
+    .flow-step .n {
+      width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted);
+      color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700;
+    }
+    .flow-step .txt { color: var(--muted-fg); }
+    .flow-step .txt strong { color: var(--foreground); font-weight: 500; }
+    .arrow { text-align: center; color: var(--border-hover); font-size: 14px; margin: 2px 0; }
+
+    .hidden { display: none !important; }
+
+    /* Mini studio for agent scenario */
+    .mini-frame {
+      margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+      font-size: 10px;
+    }
+    .mini-top { padding: 6px 10px; background: var(--card); border-bottom: 1px solid var(--border); color: var(--muted-fg); }
+    .mini-split { display: flex; min-height: 100px; }
+    .mini-panel { flex: 1; padding: 8px; border-right: 1px solid var(--border); }
+    .mini-panel:last-child { border-right: none; }
+    .mini-panel h4 { font-size: 9px; text-transform: uppercase; color: var(--border-hover); margin-bottom: 6px; }
+    .bus-rev { font-family: 'JetBrains Mono'; color: var(--accent-fg); font-size: 9px; }
+    .fsm { display: inline-block; padding: 2px 6px; border-radius: 4px; background: var(--info); color: #fff; font-size: 9px; }
+
+    /* Notes */
+    .notes { flex: 1; max-width: 380px; }
+    .note { display: flex; gap: 10px; margin-bottom: 14px; }
+    .note .n { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+    .note h3 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .note p { font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 10px; background: var(--secondary); padding: 1px 4px; border-radius: 3px; color: var(--accent-fg); }
+    .why { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Studio State Host <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #08</span></h1>
+  <p class="sub">5-tier model — VS Code extension-host analogue. Click a tier to expand. Toggle scenarios for data-flow walkthroughs.</p>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-scenario="manuscript">Rich + Raw sync</button>
+    <button type="button" class="tab" data-scenario="agent">Agent turn + bus</button>
+  </div>
+
+  <div class="stage">
+    <div class="diagram">
+      <h2>State tiers (click to inspect)</h2>
+
+      <div class="tier t5" data-tier="5">
+        <div class="tier-hd"><span class="tier-num">T5</span> Remote SSOT — Postgres / API</div>
+        <div class="tier-body">
+          Server truth: chapter drafts, outline nodes, chat messages. TanStack Query cache.
+          <div class="tier-chips"><span class="chip">GET draft</span><span class="chip">PATCH + 409</span></div>
+        </div>
+      </div>
+      <div class="tier t4 active" data-tier="4">
+        <div class="tier-hd"><span class="tier-num">T4</span> Domain hoists — above dockview (D4)</div>
+        <div class="tier-body">
+          <code>useManuscriptUnit</code> · <code>ComposeChatStore</code>. Keyed by chapterId / sessionId.
+          Survives tab close. Save FSM: Clean → Dirty → Saving → Conflict.
+          <div class="tier-chips"><span class="chip">ManuscriptUnitProvider</span><span class="chip">ComposeChatProvider</span></div>
+        </div>
+      </div>
+      <div class="tier t3" data-tier="3">
+        <div class="tier-hd"><span class="tier-num">T3</span> Studio Host — registry + bus + orchestrator</div>
+        <div class="tier-body">
+          <code>StudioHostProvider</code> per bookId. Bus snapshots read-only; <code>revision</code> for chat.
+          <div class="tier-chips"><span class="chip">registerStudioTool</span><span class="chip">publish</span><span class="chip">subscribe(selector)</span></div>
+        </div>
+      </div>
+      <div class="tier t2" data-tier="2">
+        <div class="tier-hd"><span class="tier-num">T2</span> Chrome + layout — localStorage</div>
+        <div class="tier-body">
+          <code>useStudioChrome</code> · <code>useStudioLayout</code>. Separate persist keys.
+        </div>
+      </div>
+      <div class="tier t1" data-tier="1">
+        <div class="tier-hd"><span class="tier-num">T1</span> Panel-local — no share</div>
+        <div class="tier-body">Scroll, toolbar, inspector collapsed. Never on bus.</div>
+      </div>
+
+      <div class="dock-row">Dockview — thin views only (Editor · Raw · Compose · …)</div>
+
+      <div class="flow" id="flow-manuscript">
+        <h3>Scenario: Rich keystroke → Raw buffer</h3>
+        <div class="flow-step"><span class="n">1</span><span class="txt"><strong>Tiptap onUpdate</strong> → <code>useManuscriptUnit.setBody</code> (T4)</span></div>
+        <div class="arrow">↓</div>
+        <div class="flow-step"><span class="n">2</span><span class="txt">Rich + Raw panels subscribe <code>s => s.body</code> — selector, no full-frame render (D21)</span></div>
+        <div class="arrow">↓</div>
+        <div class="flow-step"><span class="n">3</span><span class="txt">Editor publishes <code>{ type: 'chapter', chapterId }</code> to bus (T3) on focus</span></div>
+        <div class="arrow">↓</div>
+        <div class="flow-step"><span class="n">4</span><span class="txt"><strong>⌘S</strong> → save FSM → PATCH book + composition (T5)</span></div>
+      </div>
+
+      <div class="flow hidden" id="flow-agent">
+        <h3>Scenario: User sends → agent discovers tools</h3>
+        <div class="mini-frame">
+          <div class="mini-top">revision: <span class="bus-rev" id="rev">41</span> · activeChapterId from bus</div>
+          <div class="mini-split">
+            <div class="mini-panel">
+              <h4>Editor (T4 publish)</h4>
+              <span class="bus-rev">chapter: 019d…</span>
+            </div>
+            <div class="mini-panel">
+              <h4>Compose (T4 + FSM)</h4>
+              <span class="fsm" id="fsm-phase">Discovering</span>
+              <div style="margin-top:6px;color:var(--muted-fg)">studio_context.revision → 42</div>
+            </div>
+          </div>
+        </div>
+        <div class="flow-step" style="margin-top:10px"><span class="n">1</span><span class="txt">Bus <code>revision++</code> when editor publishes chapter slice</span></div>
+        <div class="flow-step"><span class="n">2</span><span class="txt">Compose reads snapshot — <strong>not</strong> editor hoist directly (D19)</span></div>
+        <div class="flow-step"><span class="n">3</span><span class="txt">Agent FSM: Idle → Curated → Discovering → Activated ([#07b](docs))</span></div>
+        <div class="flow-step"><span class="n">4</span><span class="txt">SSE stream in <strong>volatile</strong> subscription — not stable host context</span></div>
+      </div>
+    </div>
+
+    <div class="notes" id="notes-manuscript">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>One hoist, two views</h3>
+          <p>Rich (#04a) and Raw (#04b) are Tier-1 views over Tier-4 <code>useManuscriptUnit</code> — never duplicate draft copies.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>VS Code analogue</h3>
+          <p>Extension host (T3) + document model (T4) + workbench chrome (T2). Webviews cannot share memory — bus payloads JSON-only.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>Panel checklist</h3>
+          <p>New dock tools must pass D22 checklist in <code>08_studio_state_architecture.md</code> before merge.</p>
+        </div>
+      </div>
+      <div class="why">
+        <strong>Build:</strong> <code>StudioHostProvider</code> with #03 Compose; <code>ManuscriptUnitProvider</code> with #04a.
+      </div>
+    </div>
+
+    <div class="notes hidden" id="notes-agent">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Bus ≠ hoist</h3>
+          <p>Bus carries read-only context for consumers (chat, agent). Mutations stay in domain owner stores.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>FSM scope (D20)</h3>
+          <p>Agent surface FSM is one orchestration domain — not applied to navigator tree or chrome toggles.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>editorBridge migration</h3>
+          <p>Studio compose reads bus snapshot; legacy <code>ChapterEditorPage</code> keeps bridge until parity.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.tier').forEach(tier => {
+      tier.addEventListener('click', () => {
+        document.querySelectorAll('.tier').forEach(t => t.classList.remove('active'));
+        tier.classList.add('active');
+      });
+    });
+
+    const phases = ['Idle', 'Curated', 'Discovering', 'Activated', 'ToolRunning'];
+    let phaseIdx = 2;
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ms = btn.dataset.scenario === 'manuscript';
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+        document.getElementById('flow-manuscript').classList.toggle('hidden', !ms);
+        document.getElementById('flow-agent').classList.toggle('hidden', ms);
+        document.getElementById('notes-manuscript').classList.toggle('hidden', !ms);
+        document.getElementById('notes-agent').classList.toggle('hidden', ms);
+        if (!ms) {
+          document.querySelectorAll('.tier').forEach(t => t.classList.remove('active'));
+          document.querySelector('[data-tier="3"]').classList.add('active');
+          document.getElementById('rev').textContent = '42';
+          document.getElementById('fsm-phase').textContent = phases[phaseIdx];
+        } else {
+          document.querySelectorAll('.tier').forEach(t => t.classList.remove('active'));
+          document.querySelector('[data-tier="4"]').classList.add('active');
+        }
+      });
+    });
+
+    setInterval(() => {
+      if (document.getElementById('flow-agent').classList.contains('hidden')) return;
+      phaseIdx = (phaseIdx + 1) % phases.length;
+      const el = document.getElementById('fsm-phase');
+      if (el) el.textContent = phases[phaseIdx];
+    }, 2000);
+  </script>
+</body>
+</html>

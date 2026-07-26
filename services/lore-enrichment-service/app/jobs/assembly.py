@@ -108,7 +108,7 @@ async def build_live_runner(
     ``run_job`` (so the embed + gen models can differ). NO model name here.
 
     ``spent_so_far`` seeds the cost budget with the spend a PRIOR run already
-    incurred (read from ``enrichment_job.actual_cost_usd`` on a resume) so a
+    incurred (read from ``enrichment_job.actual_cost_tokens`` on a resume) so a
     resumed job's cap accounts for what it already spent — it does NOT reset to
     0 and double-spend up to the cap again (WARN-1 budget-reset fix).
 
@@ -165,6 +165,7 @@ async def build_live_runner(
         glossary_client = GlossaryClient(
             base_url=settings.glossary_service_url,
             internal_token=settings.internal_service_token,
+            kal_base_url=settings.knowledge_gateway_url,  # X2: cast via KAL roster (INV-KAL)
         )
     canon_lookup = make_glossary_canon_lookup(
         glossary_client, book_id=UUID(book_id) if book_id is not None else None

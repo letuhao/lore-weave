@@ -25,6 +25,9 @@ func TestStalenessRule(t *testing.T) {
 		{"chapter.published", "chapter_regrounded", "content", "block", true},
 		{"chapter.deleted", "citation_broken", "hard", "block", true},
 		{"chapter.trashed", "citation_broken", "hard", "block", true},
+		// H1 (spec §4.6): a bulk book restore un-trashes chapters → the prose RETURNS, a re-grounding
+		// trigger (content severity, like a re-publish), NOT another hard break.
+		{"chapter.restored", "chapter_regrounded", "content", "block", true},
 		{"chapter.saved", "", "", "", false}, // high-volume autosave — NOT a staleness trigger
 		{"glossary.entity_created", "", "", "", false},
 		{"some.other.event", "", "", "", false},

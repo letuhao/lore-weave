@@ -1,11 +1,7 @@
-/* eslint-disable react/no-unknown-property --
-   This file is pure react-three-fiber: `object`/`intensity`/`position` etc. are
-   three.js object props the R3F reconciler consumes, NOT DOM attributes, but
-   eslint-plugin-react (DOM-oriented) flags them as unknown. There are no real
-   DOM elements here, so disabling the rule file-wide is correct + scoped. */
 import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Bounds, OrbitControls, useGLTF } from '@react-three/drei';
+import type { JSX } from 'react';
 
 // Reusable 3D globe viewer — renders a `world-gen` `.glb` displaced-sphere mesh
 // (real bathymetry + hypsometric/biome texture) with orbit controls. Pure view:
@@ -31,11 +27,7 @@ function GlobeModel({ src }: { src: string }): JSX.Element {
   return <primitive object={scene} />;
 }
 
-export function GlobeViewer({
-  src,
-  className,
-  autoRotate = true,
-}: GlobeViewerProps): JSX.Element {
+export function GlobeViewer({ src, className, autoRotate = true }: GlobeViewerProps): JSX.Element {
   return (
     <Canvas
       className={className}

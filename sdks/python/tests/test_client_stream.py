@@ -101,6 +101,62 @@ async def test_stream_happy_path_tokens_usage_done():
 
 
 @pytest.mark.asyncio
+async def test_stream_usage_carries_cache_split():
+    # Provider Context Strategy §7 — the prompt-cache split rides the usage event
+    # (Anthropic write+read here); absent fields default to None.
+    body = sse_body(
+        ("usage", '{"event":"usage","input_tokens":4112,"output_tokens":2,'
+                  '"cache_creation_tok":100,"cache_read_tok":4000}'),
+        ("done", '{"event":"done","finish_reason":"stop"}'),
+    )
+    with respx.mock(base_url=GATEWAY) as mock:
+        mock.post("/internal/llm/stream", params={"user_id": USER_ID}).respond(
+            status_code=200,
+            headers={"Content-Type": "text/event-stream"},
+            content=body,
+        )
+        client = make_internal_client()
+        events = [ev async for ev in client.stream(make_request())]
+        await client.aclose()
+
+    usage = next(e for e in events if isinstance(e, UsageEvent))
+    assert usage.input_tokens == 4112
+    assert usage.cache_creation_tok == 100
+    assert usage.cache_read_tok == 4000
+
+
+def test_stream_request_stateful_wire_is_additive():
+    # Provider Context Strategy §5 — the stateful markers are additive: the stateless
+    # wire stays byte-identical (no `stateful`/`previous_response_id` keys), and a
+    # stateful request carries both.
+    from uuid import uuid4
+
+    from loreweave_llm.models import StreamRequest
+
+    stateless = StreamRequest(
+        model_source="user_model", model_ref=uuid4(),
+        messages=[{"role": "user", "content": "hi"}],
+    ).to_request_body()
+    assert "stateful" not in stateless and "previous_response_id" not in stateless
+
+    stateful = StreamRequest(
+        model_source="user_model", model_ref=uuid4(), messages=[],
+        stateful=True, previous_response_id="resp_1",
+    ).to_request_body()
+    assert stateful["stateful"] is True
+    assert stateful["previous_response_id"] == "resp_1"
+
+
+def test_done_event_parses_response_id():
+    # the stateful chain head rides the terminal Done event
+    d = DoneEvent.model_validate(
+        {"event": "done", "finish_reason": "stop", "response_id": "resp_abc"})
+    assert d.response_id == "resp_abc"
+    # absent on the stateless path
+    assert DoneEvent.model_validate({"event": "done"}).response_id is None
+
+
+@pytest.mark.asyncio
 async def test_stream_tool_call_fragments_dispatched():
     # Phase 0b — the gateway re-frames tool-call deltas into `tool_call`
     # events. First fragment carries id+name (omits arguments_delta when
@@ -487,3 +543,25 @@ async def test_stream_per_call_user_id_overrides_construction_default():
     assert "user_id=11111111" in captured["url"], (
         f"per-call user_id must win over constructor default; got {captured['url']}"
     )
+
+
+def test_idle_read_timeout_le_zero_disables_the_read_cap():
+    """A slow reasoning model may think silently for minutes before its first
+    token; ``idle_read_timeout_s <= 0`` sets httpx ``read=None`` (no idle cap) so
+    the stream is never ReadTimeout'd mid-thought. A positive value caps the idle
+    wait; connect stays bounded and the whole-stream timeout stays unbounded."""
+
+    def _mk(idle=None):
+        kw = {} if idle is None else {"idle_read_timeout_s": idle}
+        return Client(base_url="http://x", auth_mode="internal", internal_token="t", **kw)
+
+    for idle in (0, 0.0, -1):
+        assert _mk(idle)._http.timeout.read is None
+    # a positive value is honoured as the read (idle) cap
+    assert _mk(45.0)._http.timeout.read == 45.0
+    # the default is still a positive cap (unchanged for callers that don't opt out)
+    assert _mk()._http.timeout.read == 120.0
+    # connect bounded (fail fast), whole-stream unbounded, regardless of idle
+    c = _mk(0)
+    assert c._http.timeout.connect == 5.0
+    assert c._http.timeout.write is None

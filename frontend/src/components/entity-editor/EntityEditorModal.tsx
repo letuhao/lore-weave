@@ -1,19 +1,24 @@
-import { useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2 } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2, History, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '@/auth';
-import { glossaryApi } from '@/features/glossary/api';
+import { useGlossaryEntity } from '@/features/glossary/hooks/useGlossaryEntity';
+import { _setGlossaryEntityBinding, registerGlossaryEntityDocumentProvider } from '@/features/glossary/documents/entityDocument';
 import { isDisplayingTranslation, resolveEntityDisplayName } from '@/features/glossary/lib/resolveDisplayValue';
-import { type GlossaryEntity, type AttributeValue, type Translation } from '@/features/glossary/types';
+import { type AttributeValue, type Translation } from '@/features/glossary/types';
 import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { LanguagePicker } from '@/components/shared';
 import { AttrCard } from './AttrCard';
+import { AddAttributeValueSection } from './AddAttributeValueSection';
+import { SummarizeAttrBody } from './SummarizeAttrBody';
 import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
 import { EvidenceTab } from './EvidenceTab';
+import { EntityHistoryPanel } from '@/features/glossary/components/EntityHistoryPanel';
 
-type EditorTab = 'attributes' | 'evidences';
+type EditorTab = 'attributes' | 'evidences' | 'history';
 
 interface EntityEditorModalProps {
   bookId: string;
@@ -30,26 +35,31 @@ interface EntityEditorModalProps {
 
 export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], bookOriginalLanguage, displayLanguage, onClose, onSaved, onDelete, initialTab = 'attributes' }: EntityEditorModalProps) {
   const { t } = useTranslation('entityEditor');
-  const { accessToken } = useAuth();
-  const [entity, setEntity] = useState<GlossaryEntity | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
+  // Tier-4 hoist (docs/standards/dockable-gui.md DOCK-10) — shared with the
+  // `loreweave.glossary-entity.v1` JSON document provider (13_glossary_panels.md A2).
+  const glossaryEntity = useGlossaryEntity(bookId, entityId);
+  const { entity, loading, saving, isDirty, pendingChanges, getValue, discard } = glossaryEntity;
   const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
   const [translationLang, setTranslationLang] = useState('');
+  // /review-impl MED fix (2026-07-09): scope_label is now a CONTROLLED input, synced
+  // to the loaded entity (mount, entity switch, or post-save reload — a genuine
+  // synchronization case, not event-handling). Previously it was uncontrolled
+  // (defaultValue), so a REJECTED edit (e.g. a scope collision) left the input
+  // showing the failed value as if it had stuck, with no re-render to correct it
+  // until the whole modal remounted.
+  const [scopeLabelDraft, setScopeLabelDraft] = useState('');
+  useEffect(() => {
+    setScopeLabelDraft(entity?.scope_label ?? '');
+  }, [entity?.scope_label, entityId]);
 
-  const load = useCallback(async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    try {
-      const e = await glossaryApi.getEntity(bookId, entityId, accessToken);
-      setEntity(e);
-      setPendingChanges(new Map());
-    } catch (e) { toast.error((e as Error).message); }
-    setLoading(false);
-  }, [accessToken, bookId, entityId]);
-
-  useEffect(() => { void load(); }, [load]);
+  // 13_glossary_panels.md A2 — publish the live hook instance for the
+  // `loreweave.glossary-entity.v1` JSON document provider (modal-scoped, mirrors
+  // manuscript-unit's R2 binding-bridge; no persistent Tier-4 provider exists for entities).
+  useEffect(() => {
+    registerGlossaryEntityDocumentProvider();
+    _setGlossaryEntityBinding({ api: glossaryEntity, entityId });
+    return () => _setGlossaryEntityBinding(null);
+  }, [glossaryEntity, entityId]);
 
   const viewTranslationMode = isDisplayingTranslation(displayLanguage, bookOriginalLanguage);
 
@@ -59,51 +69,58 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     }
   }, [viewTranslationMode, displayLanguage]);
 
-  // Esc to close
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  // Radix Dialog.Root handles Escape + outside-click → onOpenChange(false) → onClose below;
+  // no manual keydown listener needed (DOCK-9 adoption also buys us this for free).
 
-  const handleChange = (attrValueId: string, value: string) => {
-    setPendingChanges((prev) => new Map(prev).set(attrValueId, value));
+  const handleChange = (attrValueId: string, value: string) => glossaryEntity.setValue(attrValueId, value);
+
+  // S-06 — remove a value ROW entirely (confirmed; distinct from blanking it to empty). The hook
+  // reloads the entity so the card drops; onSaved refreshes the parent list snapshot.
+  const handleRemoveAttr = async (attrValueId: string) => {
+    if (!window.confirm(t('modal.remove_attr_confirm', { defaultValue: 'Remove this attribute value? You can add it again later.' }))) return;
+    try {
+      await glossaryEntity.removeAttributeValue(attrValueId);
+      toast.success(t('modal.remove_attr_success', { defaultValue: 'Attribute value removed' }));
+      onSaved();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
-
-  const getValue = (attr: AttributeValue): string => {
-    return pendingChanges.get(attr.attr_value_id) ?? attr.original_value ?? '';
-  };
-
-  const isDirty = pendingChanges.size > 0;
 
   const handleSave = async () => {
-    if (!accessToken || !entity || !isDirty) return;
-    setSaving(true);
     try {
-      for (const [attrValueId, value] of pendingChanges) {
-        await glossaryApi.patchAttributeValue(bookId, entityId, attrValueId, { original_value: value }, accessToken);
-      }
+      await glossaryEntity.save();
       toast.success(t('modal.toast.saved'));
-      setPendingChanges(new Map());
       onSaved();
-      await load();
     } catch (e) { toast.error((e as Error).message); }
-    setSaving(false);
   };
 
   const handleStatusChange = async (status: string) => {
-    if (!accessToken || !entity) return;
     try {
-      await glossaryApi.patchEntity(bookId, entityId, { status }, accessToken);
+      await glossaryEntity.setStatus(status);
       toast.success(t('modal.toast.status_changed', { status }));
-      await load();
       onSaved();
     } catch (e) { toast.error((e as Error).message); }
   };
 
-  const handleDiscard = () => {
-    setPendingChanges(new Map());
+  // D-GLOSSARY-ENTITY-SCOPE — commits on blur (not per-keystroke); a no-op when
+  // the value is unchanged. A colliding scope surfaces the backend's specific
+  // GLOSS_DUPLICATE_NAME message via the toast, same posture as save()/setStatus.
+  // /review-impl MED fix (2026-07-09): on failure, revert the draft to the entity's
+  // actual (unchanged) scope_label — the input must never keep showing a value
+  // that was never actually persisted.
+  const handleScopeLabelBlur = async (value: string) => {
+    if (!entity || value === (entity.scope_label ?? '')) return;
+    try {
+      await glossaryEntity.setScopeLabel(value);
+      onSaved();
+    } catch (e) {
+      toast.error((e as Error).message);
+      setScopeLabelDraft(entity.scope_label ?? '');
+    }
   };
+
+  const handleDiscard = () => discard();
 
   // Collect unique languages: book's original language + all existing translation languages.
   // Stable key: serialize translation language codes to avoid recalc on unrelated entity changes.
@@ -123,32 +140,10 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   }, [translationLangKey, bookOriginalLanguage]);
 
   // Update entity state when a translation is created/updated/deleted
-  const handleTranslationChanged = useCallback((attrValueId: string, updated: Translation | null, oldTranslationId?: string) => {
-    setEntity((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        translation_count: prev.translation_count + (updated && !oldTranslationId ? 1 : !updated && oldTranslationId ? -1 : 0),
-        attribute_values: prev.attribute_values.map((av) => {
-          if (av.attr_value_id !== attrValueId) return av;
-          let translations: Translation[];
-          if (updated) {
-            const idx = av.translations.findIndex((tr) => tr.translation_id === updated.translation_id);
-            if (idx >= 0) {
-              translations = [...av.translations];
-              translations[idx] = updated;
-            } else {
-              translations = [...av.translations, updated];
-            }
-          } else {
-            translations = av.translations.filter((tr) => tr.translation_id !== oldTranslationId);
-          }
-          return { ...av, translations };
-        }),
-      };
-    });
+  const handleTranslationChanged = (attrValueId: string, updated: Translation | null, oldTranslationId?: string) => {
+    glossaryEntity.applyTranslationChange(attrValueId, updated, oldTranslationId);
     onSaved();
-  }, [onSaved]);
+  };
 
   // ── Render ──
 
@@ -162,14 +157,16 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
 
   if (!entity && loading) {
     return (
-      <>
-        <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-          <div className="w-full max-w-3xl rounded-xl border bg-background shadow-2xl">
+      <Dialog.Root open onOpenChange={(next) => { if (!next) onClose(); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background shadow-2xl">
+            <Dialog.Title className="sr-only">{t('modal.untitled')}</Dialog.Title>
+            <Dialog.Description className="sr-only">{t('modal.untitled')}</Dialog.Description>
             {renderLoading()}
-          </div>
-        </div>
-      </>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     );
   }
 
@@ -192,17 +189,15 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     : entity.display_name;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-        <div
-          className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border bg-background shadow-2xl"
+    <Dialog.Root open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 z-50 flex w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-background shadow-2xl"
           style={{ maxHeight: 'calc(100vh - 48px)' }}
-          onClick={(e) => e.stopPropagation()}
         >
+          <Dialog.Title className="sr-only">{headerTitle || t('modal.untitled')}</Dialog.Title>
+          <Dialog.Description className="sr-only">{headerTitle || t('modal.untitled')}</Dialog.Description>
           {/* ── Header ── */}
           <div className="flex items-center justify-between border-b bg-card px-6 py-4 flex-shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -259,6 +254,21 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
             <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{t('modal.meta.chapters', { count: entity.chapter_link_count })}</span>
             <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{t('modal.meta.translations', { count: entity.translation_count })}</span>
             <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{t('modal.meta.evidences', { count: entity.evidence_count })}</button>
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              <input
+                type="text"
+                value={scopeLabelDraft}
+                onChange={(e) => setScopeLabelDraft(e.target.value)}
+                placeholder={t('modal.scope_label.placeholder')}
+                aria-label={t('modal.scope_label.aria')}
+                // Mirrors the backend's scopeLabelMaxLen (entity_attribute_edit_tools.go) —
+                // /review-impl MED fix: this field had no length bound anywhere before.
+                maxLength={200}
+                onBlur={(e) => void handleScopeLabelBlur(e.target.value.trim())}
+                className="w-40 rounded border-none bg-transparent px-1 py-0.5 text-[11px] text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </span>
             {entity.tags.length > 0 && (
               <>
                 <span className="flex-1" />
@@ -296,6 +306,18 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 </span>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`inline-flex items-center gap-1 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === 'history'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <History className="h-3 w-3" />
+              {t('modal.tab.history')}
+            </button>
             {/* Language selector — only visible on attributes tab */}
             {activeTab === 'attributes' && !viewTranslationMode && (
               <>
@@ -317,28 +339,15 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                     <option value="__new">{t('modal.add_language')}</option>
                   </select>
                   {translationLang === '__new' && (
-                    <input
-                      autoFocus
-                      type="text"
+                    <LanguagePicker
+                      value=""
+                      exclude={availableLanguages}
                       placeholder={t('modal.lang_placeholder')}
-                      maxLength={5}
-                      pattern="[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?"
-                      className="w-16 rounded border border-blue-500/40 bg-background px-2 py-1 text-[10px] focus:outline-none"
-                      onBlur={(e) => {
-                        const v = e.target.value.trim().toLowerCase();
-                        if (v && /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(v)) {
-                          setTranslationLang(v);
-                        } else {
-                          if (v) toast.error(t('modal.toast.invalid_lang'));
-                          setTranslationLang('');
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          (e.target as HTMLInputElement).blur();
-                        } else if (e.key === 'Escape') {
-                          setTranslationLang('');
-                        }
+                      aria-label={t('modal.translation_lang_aria')}
+                      className="w-28 rounded border border-blue-500/40 bg-background px-2 py-1 text-[10px] focus:outline-none"
+                      onChange={(code) => {
+                        if (code) setTranslationLang(code);
+                        else setTranslationLang('');
                       }}
                     />
                   )}
@@ -377,8 +386,19 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                       displayLanguage={displayLanguage}
                       bookOriginalLanguage={bookOriginalLanguage}
                       bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
+                      onRemove={handleRemoveAttr}
                     />
                   </>
+                )}
+
+                {/* S-06 — add a value for an attr-def the entity is missing (add-later). */}
+                {!viewTranslationMode && entity && (
+                  <AddAttributeValueSection
+                    bookId={bookId}
+                    entity={entity}
+                    onAdd={glossaryEntity.addAttributeValue}
+                    onAdded={onSaved}
+                  />
                 )}
 
                 {sortedAttrs.length === 0 && (
@@ -394,8 +414,21 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 bookOriginalLanguage={bookOriginalLanguage}
                 defaultDisplayLanguage={viewTranslationMode ? displayLanguage : undefined}
                 onCountChange={(delta) => {
-                  if (!entity) return;
-                  setEntity({ ...entity, evidence_count: entity.evidence_count + delta });
+                  glossaryEntity.bumpEvidenceCount(delta);
+                  onSaved();
+                }}
+              />
+            )}
+
+            {activeTab === 'history' && (
+              <EntityHistoryPanel
+                bookId={bookId}
+                entityId={entityId}
+                embedded
+                onRestored={() => {
+                  // Restore reconciled the live entity server-side → re-fetch it,
+                  // and notify the list so its row reflects the rolled-back state.
+                  void glossaryEntity.reload();
                   onSaved();
                 }}
               />
@@ -427,9 +460,9 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -447,7 +480,7 @@ function SectionLabel({ color, children }: { color: 'info' | 'primary'; children
   );
 }
 
-function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged }: {
+function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged, onRemove }: {
   attrs: AttributeValue[];
   getValue: (attr: AttributeValue) => string;
   onChange: (id: string, value: string) => void;
@@ -459,6 +492,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
   bookId: string;
   entityId: string;
   onTranslationChanged: (attrValueId: string, updated: Translation | null, oldTranslationId?: string) => void;
+  // S-06 — remove a value row (non-system attrs only). Absent ⇒ no remove button.
+  onRemove?: (attrValueId: string) => void;
 }) {
   const { t } = useTranslation('entityEditor');
   const rendered: ReactNode[] = [];
@@ -500,6 +535,7 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         language={activeLang}
         translation={existingTranslation}
         translationHint={def.translation_hint}
+        attrCode={def.code}
         sourceOriginal={viewTranslationMode ? (getValue(attr) || undefined) : undefined}
         sourceOriginalLang={viewTranslationMode ? (bookOriginalLanguage ?? attr.original_language) : undefined}
         onChanged={(updated) => {
@@ -519,13 +555,30 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         modified={modified}
         hasTranslations={hasTranslations}
         translationSlot={translationSlot}
+        // S-06 — only non-system attrs are removable (name/description etc. are structural).
+        onRemove={!def.is_system && onRemove ? () => onRemove(attr.attr_value_id) : undefined}
       >
         {!viewTranslationMode && (
-          <CardComponent
-            value={getValue(attr)}
-            onChange={(v) => onChange(attr.attr_value_id, v)}
-            options={def.options}
-          />
+          def.merge_strategy === 'summarize' ? (
+            <SummarizeAttrBody
+              canonicalValue={attr.canonical_value}
+              canonicalDirty={attr.canonical_dirty}
+              rawValue={getValue(attr)}
+              rawCard={
+                <CardComponent
+                  value={getValue(attr)}
+                  onChange={(v) => onChange(attr.attr_value_id, v)}
+                  options={def.options}
+                />
+              }
+            />
+          ) : (
+            <CardComponent
+              value={getValue(attr)}
+              onChange={(v) => onChange(attr.attr_value_id, v)}
+              options={def.options}
+            />
+          )
         )}
       </AttrCard>
     );

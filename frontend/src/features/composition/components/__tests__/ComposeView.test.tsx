@@ -13,7 +13,9 @@ const { mockStream, mockCritique, mockAuto, mockCorrection } = vi.hoisted(() => 
   mockAuto: { mutate: vi.fn(), reset: vi.fn(), data: undefined as unknown, isPending: false, isError: false },
   mockCorrection: { mutate: vi.fn(), isPending: false },
 }));
-vi.mock('../../hooks/useCompositionStream', () => ({ useCompositionStream: () => mockStream }));
+// T5.4 — the co-writer stream is now consumed via the hoisted LiveStateContext, so
+// the mock targets useLiveStream (ComposeView no longer calls useCompositionStream).
+vi.mock('../../context/LiveStateContext', () => ({ useLiveStream: () => mockStream }));
 vi.mock('../../hooks/useCritique', () => ({ useCritique: () => mockCritique }));
 vi.mock('../../hooks/useAutoGenerate', () => ({
   useAutoGenerate: () => mockAuto,
@@ -54,12 +56,27 @@ describe('ComposeView (ghost / accept — §13 SC4)', () => {
   it('Accept inserts the ghost via onAccept, runs critique, and clears the ghost', () => {
     mockStream.ghost = 'drafted prose';
     mockStream.jobId = 'job-1';
-    const onAccept = vi.fn();
+    const onAccept = vi.fn(() => true); // insert succeeded → critique + clear proceed
     render(<ComposeView {...baseProps} onAccept={onAccept} />);
     fireEvent.click(screen.getByText('accept'));
     expect(onAccept).toHaveBeenCalledWith('drafted prose');
-    expect(mockCritique.critique.mutate).toHaveBeenCalledWith({ jobId: 'job-1', passage: 'drafted prose' });
+    // WS-B1: accept also wires an onSuccess that lifts the verdict to the shared store.
+    expect(mockCritique.critique.mutate).toHaveBeenCalledWith(
+      { jobId: 'job-1', passage: 'drafted prose' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
     expect(mockStream.clearGhost).toHaveBeenCalled();
+  });
+
+  it('Accept that FAILS to insert (no editor) keeps the ghost — does NOT clear or critique (S1 GAP-2)', () => {
+    mockStream.ghost = 'drafted prose';
+    mockStream.jobId = 'job-1';
+    const onAccept = vi.fn(() => false); // e.g. no editor open on this chapter in the dock
+    render(<ComposeView {...baseProps} onAccept={onAccept} />);
+    fireEvent.click(screen.getByText('accept'));
+    expect(onAccept).toHaveBeenCalledWith('drafted prose');
+    expect(mockStream.clearGhost).not.toHaveBeenCalled(); // draft preserved for a retry
+    expect(mockCritique.critique.mutate).not.toHaveBeenCalled();
   });
 
   it('cowrite Regenerate captures a regenerate correction, then re-streams (slice 5)', () => {
@@ -171,6 +188,40 @@ describe('ComposeView (controlled-auto diverge gate — slice 3)', () => {
     fireEvent.click(screen.getByTestId('candidates-regenerate'));
     expect(mockCorrection.mutate).toHaveBeenCalledWith({ jobId: 'j-old', body: { kind: 'regenerate', guidance: '' } });
     expect(mockAuto.mutate).toHaveBeenCalledTimes(1); // re-ran the generation
+  });
+});
+
+describe('ComposeView (M1 — adapt from source)', () => {
+  it('does NOT offer the adapt action by default (non-derivative / not adaptable)', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    expect(screen.queryByTestId('compose-adapt')).toBeNull();
+  });
+
+  it('offers "Adapt from source" when canAdapt; with diverge OFF it streams the adapt_scene op', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} canAdapt />);
+    fireEvent.click(screen.getByTestId('compose-adapt'));
+    expect(mockStream.start).toHaveBeenCalledWith(expect.objectContaining({ operation: 'adapt_scene', outlineNodeId: 's' }));
+    expect(mockAuto.mutate).not.toHaveBeenCalled();
+  });
+
+  it('with diverge ON, adapt runs auto-mode (K cards) with the adapt_scene op', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} canAdapt />);
+    fireEvent.click(screen.getByRole('checkbox')); // diverge on
+    fireEvent.click(screen.getByTestId('compose-adapt'));
+    expect(mockAuto.mutate).toHaveBeenCalledWith(expect.objectContaining({ operation: 'adapt_scene' }));
+    expect(mockStream.start).not.toHaveBeenCalled();
+  });
+
+  it('the adapt action is hidden mid-stream (the Stop button owns that state)', () => {
+    mockStream.streaming = true;
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} canAdapt />);
+    expect(screen.queryByTestId('compose-adapt')).toBeNull();
+  });
+
+  it('shows a "nothing to adapt" hint when the source chapter is empty (no action offered)', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} adaptSourceEmpty />);
+    expect(screen.queryByTestId('compose-adapt')).toBeNull();
+    expect(screen.getByTestId('compose-adapt-empty')).toBeTruthy();
   });
 });
 

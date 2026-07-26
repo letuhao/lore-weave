@@ -14,6 +14,8 @@ No live stack: the HTTP POST is respx-mocked with a canned SSE body.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -154,6 +156,25 @@ async def test_complete_fn_empty_usage_frame_falls_back_to_estimate():
         output_tokens=estimate_tokens("昆侖山"),
     )
     assert meter.total_tokens > 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_complete_fn_bounds_output_and_disables_thinking():
+    """D-ENRICH-COMPLETE-BUDGET: the stream body MUST carry a max_tokens ceiling
+    (was unbounded) AND disable hidden reasoning — the seam drops `event: reasoning`
+    frames, so a reasoning model would burn the budget on discarded thinking →
+    empty/truncated answer. If this goes red, the footgun/runaway guard was dropped."""
+    route = respx.post("http://pr.local/internal/llm/stream").respond(200, text=_SSE_NO_USAGE)
+    complete = make_complete_fn(
+        provider_registry_base_url="http://pr.local", internal_token="t"
+    )
+    await complete("p", _ctx())
+    body = json.loads(route.calls.last.request.content)
+    assert body["max_tokens"] == 4000
+    assert body["reasoning_effort"] == "none"
+    assert body["chat_template_kwargs"]["thinking"] is False
+    assert body["chat_template_kwargs"]["enable_thinking"] is False
 
 
 @pytest.mark.asyncio

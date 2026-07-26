@@ -135,10 +135,10 @@ func TestTiptapPlaintextAndTruncate(t *testing.T) {
 		t.Fatalf("plaintext: got %q", got)
 	}
 	if got := truncateRunes("abcdef", 3); got != "abc" {
-		t.Fatalf("truncate: got %q", got)
+		t.Fatalf("truncate: got %q", got) // db-safety-gate: ok — assertion message for truncateRunes() (Go rune helper), not SQL
 	}
 	if got := truncateRunes("ab", 5); got != "ab" {
-		t.Fatalf("truncate no-op: got %q", got)
+		t.Fatalf("truncate no-op: got %q", got) // db-safety-gate: ok — assertion message for truncateRunes(), not SQL
 	}
 	if got := truncateRunes("封神演义", 2); got != "封神" {
 		t.Fatalf("rune-safe truncate: got %q", got)

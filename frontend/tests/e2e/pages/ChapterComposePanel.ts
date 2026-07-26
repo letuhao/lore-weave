@@ -4,7 +4,8 @@ import type { Page, Locator } from '@playwright/test';
  * affordance the chapter-gate controls. */
 export class ChapterComposePanel {
   readonly page: Page;
-  readonly composeTab: Locator;
+  readonly workmodeSwitcher: Locator;
+  readonly workmodeCompose: Locator;
   readonly setupButton: Locator;
   readonly sceneSelect: Locator;
   readonly addScene: Locator;
@@ -52,7 +53,9 @@ export class ChapterComposePanel {
 
   constructor(page: Page) {
     this.page = page;
-    this.composeTab = page.getByTestId('chapter-righttab-compose');
+    // Compose is now a Workmode (dropdown), not a right-panel tab.
+    this.workmodeSwitcher = page.getByTestId('workmode-switcher');
+    this.workmodeCompose = page.getByTestId('workmode-item-compose');
     this.setupButton = page.getByTestId('composition-setup-button');
     this.sceneSelect = page.getByTestId('composition-scene-select');
     this.addScene = page.getByTestId('composition-add-scene');
@@ -100,8 +103,16 @@ export class ChapterComposePanel {
     await this.page.goto(`/books/${bookId}/chapters/${chapterId}/edit`);
   }
 
+  /** Pick a model in the shared ModelPicker (W5) — the old native `<select>`
+   * became a combobox trigger; options carry `data-model-id`. */
+  async selectModel(userModelId: string): Promise<void> {
+    await this.modelSelect.locator('[role="combobox"], button').first().click();
+    await this.page.locator(`[role="option"][data-model-id="${userModelId}"]`).click();
+  }
+
   async openComposeTab(): Promise<void> {
-    await this.composeTab.click();
+    await this.workmodeSwitcher.click();
+    await this.workmodeCompose.click();
   }
 
   /** The canon-side editorial status as the badge sees it ('draft' | 'published'),

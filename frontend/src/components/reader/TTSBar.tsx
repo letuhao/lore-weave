@@ -49,8 +49,11 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
   };
 
   return (
+    // D-READER-RESPONSIVE: `absolute` + `100%` (not `fixed` + `100vw`) — panel-scoped,
+    // see TOCSidebar for why; `100%` resolves against the nearest positioned ancestor's
+    // width (the panel), not the whole browser window.
     <div
-      className="fixed bottom-12 left-1/2 z-30 flex w-[min(520px,calc(100vw-32px))] -translate-x-1/2 items-center gap-2 rounded-xl border px-3 py-2 shadow-lg"
+      className="absolute bottom-12 left-1/2 z-30 flex w-[min(520px,calc(100%-32px))] -translate-x-1/2 items-center gap-2 rounded-xl border px-3 py-2 shadow-lg"
       style={{
         background: 'hsl(var(--card) / 0.95)',
         backdropFilter: 'blur(12px)',

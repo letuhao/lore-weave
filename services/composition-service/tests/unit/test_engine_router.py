@@ -24,16 +24,18 @@ CRITIC = uuid.uuid4()
 
 
 def _work(settings=None):
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, settings=settings or {})
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, settings=settings or {})
 
 
 def _node():
-    return OutlineNode(id=NODE, user_id=USER, project_id=PROJECT, kind="scene", rank="a0",
+    return OutlineNode(id=NODE, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                       kind="scene", rank="a0",
                        chapter_id=uuid.uuid4(), goal="escape", synopsis="the run")
 
 
 def _job(**kw):
-    return GenerationJob(id=JOB, user_id=USER, project_id=PROJECT, operation="draft_scene",
+    return GenerationJob(id=JOB, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                         operation="draft_scene",
                          input=kw.get("input", {"model_ref": str(DRAFTER)}),
                          critic=kw.get("critic"), status=kw.get("status", "completed"),
                          result=kw.get("result", {"text": "drafted prose"}))
@@ -41,18 +43,21 @@ def _job(**kw):
 
 class StubWorks:
     def __init__(self): self.work = _work(); self.source = None
-    async def get(self, u, p): return self.work
-    async def get_by_id(self, u, wid): return self.source
+    async def get(self, p): return self.work
+    async def get_by_id(self, wid): return self.source
 
 
 class StubOutline:
-    def __init__(self): self.node = _node()
-    async def get_node(self, u, n): return self.node
+    def __init__(self):
+        self.node = _node()
+        self.chapter_scenes: list = []
+    async def get_node(self, n, *, conn=None): return self.node
+    async def scenes_for_chapter(self, p, ch): return self.chapter_scenes
 
 
 class StubCanon:
     def __init__(self, rules=None): self.rules = rules or []
-    async def list_active(self, u, p): return self.rules
+    async def list_active(self, p): return self.rules
 
 
 class StubJobs:
@@ -61,14 +66,23 @@ class StubJobs:
         self.created = True
         self.job = _job()
         self.updates = []
-    async def list_active_for_node(self, u, p, n): return self.active
-    async def create(self, u, p, **kw):
+    async def list_active_for_node(self, p, n): return self.active
+    async def create(self, p, **kw):
         self._last_create = kw
         return self.job, self.created
-    async def update_status(self, u, jid, status, **kw):
+    async def update_status(self, jid, status, **kw):
         self.updates.append((str(jid), status, kw))
         return self.job
-    async def get(self, u, jid): return self.job
+    async def get(self, jid): return self.job
+
+
+class StubCorrections:
+    """S-09 W1 — list_for_job returns the rows a test sets; correction_stats keeps the
+    existing route happy (unused here)."""
+    def __init__(self): self.rows: list = []
+    async def list_for_job(self, project_id, job_id): return list(self.rows)
+    async def correction_stats(self, project_id):
+        return SimpleNamespace(model_dump=lambda mode=None: {})
 
 
 @pytest.fixture
@@ -78,14 +92,17 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
 
+    captured: dict = {}
+
     async def fake_pack(req, **kw):
         # reinjected_promise_count=2 (non-default) → the response echo (FD-1 S4b)
         # must carry the pack's value, not a hardcoded 0.
+        # T3.4 — record the grounding-pins repo so a test can LOCK that the engine
+        # threads it into pack (else a refactor silently stops honoring per-scene pins).
+        captured["pack_grounding_pins_repo"] = kw.get("grounding_pins_repo", "__missing__")
         return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
                              dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
                              over_budget=False, reinjected_promise_count=2, warnings=[])
-
-    captured: dict = {}
 
     async def fake_stream(sdk, **kw):
         captured.update(kw)  # so tests can assert what actually reached stream_draft
@@ -100,15 +117,32 @@ def ctx(monkeypatch):
 
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
-                          get_generation_jobs_repo, get_glossary_client_dep,
+                          get_embedding_client_dep, get_generation_corrections_repo,
+                          get_generation_jobs_repo,
+                          get_glossary_client_dep, get_grant_client_dep,
+                          get_grounding_pins_repo,
                           get_knowledge_client_dep, get_llm_client_dep,
-                          get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
+                          get_narrative_thread_repo, get_outline_repo, get_references_repo,
+                          get_scene_links_repo, get_style_profile_repo, get_voice_profile_repo,
                           get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
+    # E0 book-grant authority stubbed at OWNER; the engine endpoints _gate_work
+    # (resolve the Work's book, then gate VIEW/EDIT) before acting (25 PM-8/PM-9).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
+
     works, outline, canon, jobs = StubWorks(), StubOutline(), StubCanon(), StubJobs()
+    corrections = StubCorrections()
+    captured["corrections"] = corrections  # so a test can set corrections.rows (yield tuple is fixed)
+    app.dependency_overrides[get_generation_corrections_repo] = lambda: corrections
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_outline_repo] = lambda: outline
     app.dependency_overrides[get_canon_rules_repo] = lambda: canon
@@ -116,13 +150,24 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
     # FD-1: unused unless work.settings.narrative_thread_enabled (off in these tests).
     app.dependency_overrides[get_narrative_thread_repo] = lambda: object()
+    # T3.4: pack is patched in these tests, so the repo only needs to satisfy DI.
+    app.dependency_overrides[get_grounding_pins_repo] = lambda: object()
+    # T3.5: same — style/voice repos only need to satisfy DI (pack is patched).
+    app.dependency_overrides[get_style_profile_repo] = lambda: object()
+    app.dependency_overrides[get_voice_profile_repo] = lambda: object()
+    # T3.6: references repo + embed client only need to satisfy DI (pack is patched).
+    app.dependency_overrides[get_references_repo] = lambda: object()
+    app.dependency_overrides[get_embedding_client_dep] = lambda: object()
     # C25 — derivatives repo (StubWorks returns non-derivative works → never read).
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=lambda *a, **k: [])
     app.dependency_overrides[get_book_client_dep] = lambda: object()
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
-    app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(sdk=object())
+    async def _resolve_context_length(model_source, model_ref):
+        return None  # unresolved in tests — the flat default budget applies
+    app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(
+        sdk=object(), resolve_context_length=_resolve_context_length)
     with TestClient(app) as c:
         yield c, works, outline, canon, jobs, judge_stub, captured
     app.dependency_overrides.clear()
@@ -151,6 +196,31 @@ def test_selection_edit_does_not_tag_the_scene_node(ctx):
     assert jobs._last_create["operation"] == "rewrite"
     # the SELECTED passage reached the drafter (a selection prompt, not a scene draft).
     assert "the gate of ash rose" in captured["messages"][1]["content"]
+    # T3.4 lock — selection_edit must thread grounding_pins_repo into pack.
+    assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
+
+
+def test_selection_edit_threads_styled_profile(ctx, monkeypatch):
+    """T3.5 /review-impl lock: a selection edit builds its prompt from the PACK's
+    STYLED profile (density/pace/voice), not the neutral settings profile — the bug
+    was passing the from_settings profile to build_selection_messages instead of
+    pc.profile, silently dropping Style & Voice on rewrite/expand/describe."""
+    c, _, _, _, _, _, captured = ctx
+    from app.packer.profile import BookProfile
+
+    async def styled_pack(req, **kw):
+        return PackedContext(blocks={}, prompt="GROUNDING",
+                             profile=BookProfile(density_level=90),  # lush
+                             token_count=5, dropped_count=0, l4_dropped_no_position=0,
+                             grounding_available=True, over_budget=False,
+                             reinjected_promise_count=0, warnings=[])
+    monkeypatch.setattr("app.routers.engine.pack", styled_pack)
+    r = c.post(f"/v1/composition/works/{PROJECT}/selection-edit", json={
+        "operation": "rewrite", "selection": "x", "scene_context": str(NODE),
+        "model_source": "user_model", "model_ref": str(DRAFTER)})
+    assert r.status_code == 200
+    # the styled profile reached build_selection_messages → its directive is in the system msg
+    assert "lush" in captured["messages"][0]["content"].lower()
 
 
 def test_selection_edit_worker_enabled_enqueues_202(ctx, monkeypatch):
@@ -223,12 +293,61 @@ def test_generate_done_surfaces_truncated(ctx, monkeypatch):
     assert '"truncated": true' in r.text and '"finish_reason": "length"' in r.text
 
 
+def test_generate_errored_no_content_marks_failed_not_completed(ctx, monkeypatch):
+    # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED: a resolve failure emits an error frame
+    # then a terminal usage frame with EMPTY text (stream_draft always terminates).
+    # The job MUST land 'failed' — never 'completed' with 0 tokens (which a retry/
+    # idempotency layer would treat as done).
+    c, _, _, _, jobs, _, _ = ctx
+
+    async def errored_stream(sdk, **kw):
+        yield {"type": "error", "error": "model_ref could not be resolved"}
+        yield {"type": "usage", "text": "",
+               "metering": DraftMetering(10, 0, False, finish_reason=None),
+               "capped": False, "error": "model_ref could not be resolved"}
+
+    monkeypatch.setattr("app.routers.engine.stream_draft", errored_stream)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
+    assert r.status_code == 200
+    assert any(s == "failed" for _, s, _ in jobs.updates)
+    assert not any(s == "completed" for _, s, _ in jobs.updates)
+    assert '"status": "failed"' in r.text
+    assert "model_ref could not be resolved" in r.text  # error surfaced to the client
+
+
+def test_generate_error_after_content_still_completes(ctx, monkeypatch):
+    # The taxonomy boundary: an error AFTER partial content keeps the drafted prose,
+    # so the job stays 'completed' (truncated territory), not failed — only the
+    # zero-content case flips to failed.
+    c, _, _, _, jobs, _, _ = ctx
+
+    async def partial_then_error(sdk, **kw):
+        yield {"type": "token", "delta": "partial"}
+        yield {"type": "error", "error": "dropped mid-flight"}
+        yield {"type": "usage", "text": "partial",
+               "metering": DraftMetering(10, 2, True, finish_reason=None),
+               "capped": False, "error": "dropped mid-flight"}
+
+    monkeypatch.setattr("app.routers.engine.stream_draft", partial_then_error)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
+    assert r.status_code == 200
+    assert any(s == "completed" for _, s, _ in jobs.updates)
+    assert not any(s == "failed" for _, s, _ in jobs.updates)
+    # review MED: the cut-short draft must be flagged truncated + carry the error, not look clean.
+    completed_kw = next(kw for _, s, kw in jobs.updates if s == "completed")
+    assert completed_kw["result"]["truncated"] is True
+    assert completed_kw["result"]["error"] == "dropped mid-flight"
+    assert '"truncated": true' in r.text and "dropped mid-flight" in r.text
+
+
 def test_generate_reasoning_off_is_user_none(ctx):
     # explicit author override → reasoning_effort="none", source="user".
     c, *_, captured = ctx
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "reasoning": "off"})
     assert r.status_code == 200
     assert '"reasoning_source": "user"' in r.text
+    # T3.4 lock — the scene generate path must thread grounding_pins_repo into pack.
+    assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
     assert '"reasoning_effort": "none"' in r.text
     # /review-impl MED#1: the resolved effort must actually REACH stream_draft.
     assert captured["reasoning_effort"] == "none"
@@ -262,7 +381,7 @@ def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
 def test_generate_cancels_in_flight_job_s2(ctx):
     c, _, _, _, jobs, _, _ = ctx
     prior = uuid.uuid4()
-    jobs.active = [GenerationJob(id=prior, user_id=USER, project_id=PROJECT, operation="x", status="running")]
+    jobs.active = [GenerationJob(id=prior, created_by=USER, project_id=PROJECT, book_id=BOOK, operation="x", status="running")]
     c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
     assert (str(prior), "cancelled", {}) in [(j, s, k) for j, s, k in jobs.updates]
 
@@ -272,7 +391,7 @@ def test_generate_idempotent_replay_does_not_restream_or_cancel(ctx):
     # in-flight job (which is still streaming) nor re-stream.
     c, _, _, _, jobs, _, _ = ctx
     jobs.created = False  # idempotency_key already used
-    jobs.active = [GenerationJob(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, operation="x", status="running")]
+    jobs.active = [GenerationJob(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, book_id=BOOK, operation="x", status="running")]
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "idempotency_key": "k1"})
     assert '"replay": true' in r.text and '"type": "token"' not in r.text
     assert not any(s == "cancelled" for _, s, _ in jobs.updates)  # original survives
@@ -342,7 +461,8 @@ def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):
     # with a 1-5 mis-scale, tension 10 would read as "high" → ceiling 3 and fail.
     c, _, outline, _, _, _, _ = ctx
     from app.engine.select import Candidate, Selection
-    outline.node = OutlineNode(id=NODE, user_id=USER, project_id=PROJECT, kind="scene",
+    outline.node = OutlineNode(id=NODE, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                               kind="scene",
                                rank="a0", chapter_id=uuid.uuid4(), goal="walk",
                                synopsis="a quiet transition", tension=10)
     seen: dict = {}
@@ -437,7 +557,7 @@ def test_generate_cowrite_stays_inline_when_worker_enabled(ctx, monkeypatch):
 def test_critique_runs_with_distinct_critic_and_fresh_canon(ctx):
     c, works, _, canon, jobs, judge, _ = ctx
     works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
-    canon.rules = [CanonRule(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, text="no guns")]
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
     r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
     assert r.status_code == 200 and r.json()["critic"]["canon_consistency"] == 5
     # CC2: judge_prose got the freshly-resolved ACTIVE rule
@@ -471,18 +591,18 @@ def test_critique_derivative_dimension_FIRES_at_call_site(ctx, monkeypatch):
     src_proj, deriv_proj = uuid.uuid4(), uuid.uuid4()
     tid = uuid.uuid4()
     # A derivative Work: source_work_id set + its OWN delta project. NO critic model.
-    deriv = CompositionWork(project_id=deriv_proj, user_id=USER, book_id=BOOK,
+    deriv = CompositionWork(project_id=deriv_proj, created_by=USER, book_id=BOOK,
                             id=uuid.uuid4(), source_work_id=uuid.uuid4(),
                             branch_point=3, settings={})
     works.work = deriv
-    works.source = CompositionWork(project_id=src_proj, user_id=USER, book_id=BOOK,
+    works.source = CompositionWork(project_id=src_proj, created_by=USER, book_id=BOOK,
                                    id=deriv.source_work_id)
 
     # derivatives repo returns the active override (the genderbend slip).
     from app.deps import get_derivatives_repo
     from app.main import app
 
-    async def _list_overrides(u, wid):
+    async def _list_overrides(wid):
         return [SimpleNamespace(target_entity_id=tid,
                                 overridden_fields={"description": "now a woman (genderbend)"})]
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
@@ -519,16 +639,16 @@ def _derivative_ctx(c, works, jobs, monkeypatch, *, passage, override_fields,
     override target id."""
     src_proj = uuid.uuid4()
     tid = uuid.uuid4()
-    deriv = CompositionWork(project_id=uuid.uuid4(), user_id=USER, book_id=BOOK,
+    deriv = CompositionWork(project_id=uuid.uuid4(), created_by=USER, book_id=BOOK,
                             id=uuid.uuid4(), source_work_id=uuid.uuid4(),
                             branch_point=3, settings={})
     works.work = deriv
-    works.source = CompositionWork(project_id=src_proj, user_id=USER, book_id=BOOK,
+    works.source = CompositionWork(project_id=src_proj, created_by=USER, book_id=BOOK,
                                    id=deriv.source_work_id)
     from app.deps import get_derivatives_repo
     from app.main import app
 
-    async def _list_overrides(u, wid):
+    async def _list_overrides(wid):
         return [SimpleNamespace(target_entity_id=tid, overridden_fields=override_fields)]
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=_list_overrides)
@@ -718,6 +838,7 @@ def test_get_job_404_and_happy(ctx):
 class _StubBook:
     def __init__(self):
         self.patched: list = []
+        self.bodies: list = []
 
     async def get_draft(self, book_id, chapter_id, bearer):
         return {"draft_version": 7}
@@ -725,6 +846,7 @@ class _StubBook:
     async def patch_draft(self, book_id, chapter_id, bearer, *, body,
                           expected_draft_version, body_format, commit_message):
         self.patched.append(commit_message)
+        self.bodies.append(body)
         return {"draft_version": 8}
 
 
@@ -750,6 +872,45 @@ def test_persist_job_writes_draft_and_stamps_result(ctx):
     # the result is re-stamped persisted=True (idempotent re-accept guard)
     last = jobs.updates[-1]
     assert last[1] == "completed" and last[2]["result"]["persisted"] is True
+
+
+def test_persist_job_emits_scene_markers(ctx):
+    """F4 wiring lock (nil-tolerant lesson): persist_job must PASS the chapter's
+    scenes into the doc build — dropping the `scenes=` kwarg keeps every other
+    test green (the fetch is fail-open), so this pins the marker actually landing."""
+    c, _, outline, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    CH = uuid.uuid4()
+    s1, s2 = uuid.uuid4(), uuid.uuid4()
+    outline.chapter_scenes = [SimpleNamespace(id=s1, title="Cuộc Truy Sát"),
+                              SimpleNamespace(id=s2, title="Bên Bờ Suối")]
+    jobs.job = _job(status="completed", result={
+        "text": "### Cuộc Truy Sát\n\nprose one\n\n### Bên Bờ Suối\n\nprose two",
+        "chapter_id": str(CH), "assembly_mode": "per_scene_stitch", "persisted": False})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
+    heads = [n for n in book.bodies[0]["content"] if n["type"] == "heading"]
+    assert [h["attrs"].get("sceneId") for h in heads] == [str(s1), str(s2)]
+
+
+def test_persist_job_survives_scene_fetch_failure(ctx):
+    """F4 fail-open: a broken outline read must never block the accept — the draft
+    persists WITHOUT markers (best-effort contract)."""
+    c, _, outline, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+
+    async def boom(p, ch):
+        raise RuntimeError("outline down")
+    outline.scenes_for_chapter = boom
+    jobs.job = _job(status="completed", result={
+        "text": "### T\n\nprose", "chapter_id": str(uuid.uuid4()),
+        "assembly_mode": "chapter", "persisted": False})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
+    heads = [n for n in book.bodies[0]["content"] if n["type"] == "heading"]
+    assert heads and "sceneId" not in heads[0]["attrs"]  # heading kept, marker skipped
 
 
 def test_persist_job_idempotent_when_already_persisted(ctx):
@@ -785,3 +946,58 @@ def test_persist_job_404_when_missing(ctx):
     _use_book(_StubBook())
     jobs.job = None
     assert c.post(f"/v1/composition/jobs/{JOB}/persist", json={}).status_code == 404
+
+
+# ── BE-M4 (3b): GET /works/{pid}/scenes/{node}/suggest-motifs — ranked motif suggest ──
+def test_suggest_motifs_returns_ranked_candidates(ctx, monkeypatch):
+    """The GUI twin of composition_motif_suggest_for_chapter: ranked {motif,score,match_reason}."""
+    from app.db.models import Motif, MotifCandidate
+    c = ctx[0]
+    motif = Motif(id=uuid.uuid4(), owner_user_id=USER, code="rev.slap", name="Face-slap")
+
+    class _StubRetriever:
+        def __init__(self, pool):
+            pass
+
+        async def retrieve(self, caller_id, **kw):
+            assert kw["project_id"] == PROJECT   # gated Work's project rode through
+            return [MotifCandidate(motif=motif, score=0.82, match_reason={"tension": 1, "cosine": 0.8})]
+
+    monkeypatch.setattr("app.routers.engine.get_pool", lambda: object())
+    monkeypatch.setattr("app.routers.engine.MotifRetriever", _StubRetriever)
+    r = c.get(f"/v1/composition/works/{PROJECT}/scenes/{NODE}/suggest-motifs?limit=5")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["candidates"]) == 1
+    cand = body["candidates"][0]
+    assert cand["motif"]["name"] == "Face-slap"
+    assert cand["score"] == 0.82
+    assert "tension" in cand["match_reason"]
+
+
+def test_suggest_motifs_404_for_node_in_another_work(ctx, monkeypatch):
+    """Per-tool IDOR (via _load_work_node): a node whose project_id != the gated Work → 404."""
+    c, _works, outline, *_ = ctx
+    # the node resolves to a DIFFERENT project than the URL's PROJECT (reuse the valid _node())
+    outline.node = _node().model_copy(update={"project_id": uuid.uuid4()})
+    monkeypatch.setattr("app.routers.engine.get_pool", lambda: object())
+    monkeypatch.setattr("app.routers.engine.MotifRetriever", lambda pool: None)  # never reached
+    r = c.get(f"/v1/composition/works/{PROJECT}/scenes/{NODE}/suggest-motifs")
+    assert r.status_code == 404
+
+
+def test_list_job_corrections(ctx):
+    """S-09 W1 — the individual corrections recorded on a generation job (VIEW-gated);
+    empty for a job with none, and returns the rows newest-first as the repo yields them."""
+    c, works, outline, canon, jobs, judge_stub, captured = ctx
+    corrections = captured["corrections"]
+    job_id = uuid.uuid4()
+    # empty when the job has no corrections
+    r = c.get(f"/v1/composition/works/{PROJECT}/jobs/{job_id}/corrections")
+    assert r.status_code == 200 and r.json()["corrections"] == []
+    # returns each correction the repo yields
+    corrections.rows = [SimpleNamespace(model_dump=lambda mode=None: {"id": "c1", "action": "edit"})]
+    r = c.get(f"/v1/composition/works/{PROJECT}/jobs/{job_id}/corrections")
+    assert r.status_code == 200
+    body = r.json()["corrections"]
+    assert len(body) == 1 and body[0]["action"] == "edit"

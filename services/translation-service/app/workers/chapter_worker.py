@@ -3,23 +3,24 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from loreweave_jobs import emit_job_event
+from loreweave_llm.attribution import set_public_key_attribution
 
 from ..config import settings
 from ..llm_client import LLMClient, set_campaign_id
 from ..metrics import record_stage
 from .. import fair_sched
 from .cost import resolve_job_cost_usd
+from .extraction_model import get_model_context_window as _get_model_context_window
 from .session_translator import translate_chapter
+from ..translation_events import emit_translation_published
 
 log = logging.getLogger(__name__)
 
 #: Unified Job Control Plane P1 — stamped on every emitted JobEvent.
 _JOB_SERVICE = "translation"
 _JOB_KIND = "translation"
-
-# Default context window used when provider-registry cannot supply one
-_FALLBACK_CONTEXT_WINDOW = 8192
 
 # B2 (D-JOBS-P3-TRANSLATION-PAUSE) — the stale-running window for the worker's guarded
 # chapter claim. A 'running' chapter_translations row idle longer than this is treated as a
@@ -84,9 +85,28 @@ async def handle_chapter_message(
     # campaign_id in its job_meta. Unconditional set (None for non-campaign work)
     # prevents a sequential reuse from inheriting a prior chapter's campaign.
     set_campaign_id(msg.get("campaign_id"))
+    # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for THIS task so
+    # every provider job submitted while translating this chapter tags job_meta with
+    # the agent's key (+ its spend cap) — the in-process contextvar set at the confirm
+    # route died at the AMQP hop. Unconditional (None clears) — prevents a pooled task
+    # inheriting a prior chapter's key (cf. the campaign_id leak lesson).
+    set_public_key_attribution(msg.get("mcp_key_id"), msg.get("spend_cap_usd"))
 
     try:
         await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client)
+    except _CancelledError as exc:
+        # bug #34 — an in-flight LLM call was aborted because the user cancelled the
+        # job mid-translation (cancel_check fired). This is a clean STOP, NOT a real
+        # translation failure: route it exactly like the chapter-start cancel branch
+        # (job_cancelled), so it never trips the circuit-open auto-pause and reads as
+        # a cancelled (not failed-because-broken) outcome.
+        log.info("chapter %s: cancelled mid-flight (%s) — clean stop", chapter_id, exc)
+        await _fail_chapter_idempotent(pool, job_id, chapter_id, "job_cancelled")
+        await _emit_chapter_done(publish_event, user_id, msg, "failed", "job_cancelled")
+        await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+        record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
+                     status="cancelled", chapter_id=str(chapter_id))
+        return
     except _TransientError as exc:
         log.warning("chapter %s: transient error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
@@ -166,11 +186,10 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     # Fetch chapter body from book-service
     log.info("chapter %s: fetching body from book-service (book %s)", chapter_id, msg["book_id"])
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=5.0)) as client:
+        async with build_internal_client(settings.book_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30, connect_timeout_s=10) as client:
             r = await client.get(
                 f"{settings.book_service_internal_url}"
                 f"/internal/books/{msg['book_id']}/chapters/{chapter_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
     except httpx.RequestError as exc:
         log.error("chapter %s: book-service request failed: %s", chapter_id, exc)
@@ -198,8 +217,11 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         chapter_id, len(chapter_text), source_lang, bool(chapter_body and isinstance(chapter_body, dict)),
     )
 
-    # Fetch model context window from provider-registry (best-effort)
-    context_window = await _get_model_context_window(msg)
+    # Fetch model context window from provider-registry (best-effort). Shared with
+    # extraction_worker.py (extraction_model.get_model_context_window) rather than a
+    # private duplicate — a duplicated fallback constant is exactly the kind of thing
+    # that silently drifts between two copies (see the css-var-duplication lesson).
+    context_window = await _get_model_context_window(msg.get("model_source"), msg.get("model_ref"))
     log.info("chapter %s: context_window=%d", chapter_id, context_window)
 
     # V2: Load previous chapter memo for cross-chapter context
@@ -223,6 +245,29 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     else:
         from .session_translator import translate_chapter_blocks as _translate_blocks
         _translate_text = translate_chapter
+
+    # bug #34 — immediate cancel: an async probe the session translator forwards to
+    # the SDK's submit_and_wait so a user-cancel aborts the in-flight LLM call NOW
+    # (instead of polling it to natural completion + burning tokens). Reads the SAME
+    # job-cancel signal as the chapter-start check above (translation_jobs.status).
+    # FAIL-SOFT: any read error returns False so a transient DB blip never spuriously
+    # cancels a healthy job. Pool-acquire idiom mirrors the start check (~line 116).
+    async def cancel_check() -> bool:
+        try:
+            async with pool.acquire() as db:
+                st = await db.fetchval(
+                    "SELECT status FROM translation_jobs WHERE job_id=$1", job_id
+                )
+            return st == "cancelled"
+        except Exception:  # noqa: BLE001 — fail-soft: never cancel a healthy job on a read fault
+            log.warning("chapter %s: cancel_check read failed — treating as not-cancelled", chapter_id)
+            return False
+
+    # Only the v2 synchronous translators accept cancel_check (bug #34). The v3
+    # orchestrator + decoupled/event-driven paths have a different (event) cancel
+    # story and do NOT take this kwarg — spread an empty dict for them so we never
+    # pass an unsupported keyword.
+    cancel_kwargs = {"cancel_check": cancel_check} if pipeline_version != "v3" else {}
 
     # Detect JSON body → use block pipeline, otherwise fall back to text pipeline
     use_block_pipeline = (
@@ -303,6 +348,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                     chapter_translation_id=chapter_translation_id,
                     llm_client=llm_client,
                     context_window=context_window,
+                    **cancel_kwargs,  # bug #34 — abort in-flight LLM on cancel (v2 only)
                 )
             )
         # Total-failure guard: if the chapter HAD translatable blocks but none
@@ -371,6 +417,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             chapter_translation_id=chapter_translation_id,
             llm_client=llm_client,
             context_window=context_window,
+            **cancel_kwargs,  # bug #34 — abort in-flight LLM on cancel (v2 only)
         )
         translated_body_json = None
         translated_body_format = "text"
@@ -447,9 +494,31 @@ async def _finalize_chapter(
                 # (module top) for the statement, the M5b unresolved-high gate, and the
                 # human-edit guard. Promotes a clean re-translation over an existing active
                 # version for both campaign and interactive jobs; never clobbers a human edit.
-                await db.execute(
+                promote_res = await db.execute(
                     _PROMOTE_ACTIVE_SQL, chapter_id, chapter_translation_id,
                 )
+                # KG-ML M2 — emit translation.published ONLY when the promote
+                # actually changed the active row ("INSERT 0 0" = blocked by the
+                # human-edit guard / unresolved-high gate → active unchanged → no
+                # re-index). Same db (transactional outbox). aggregate_type=
+                # 'translation' routes to knowledge-service's dual-index consumer.
+                promoted = isinstance(promote_res, str) and not promote_res.endswith(" 0")
+                if promoted:
+                    try:
+                        await emit_translation_published(
+                            db,
+                            user_id=msg["user_id"],
+                            book_id=msg["book_id"],
+                            chapter_id=chapter_id,
+                            chapter_translation_id=chapter_translation_id,
+                            target_language=msg["target_language"],
+                            source="auto_promote",
+                        )
+                    except Exception:  # noqa: BLE001 — never break the worker
+                        log.warning(
+                            "KG-ML M2: failed to emit translation.published (auto_promote)",
+                            exc_info=True,
+                        )
                 # Emit outbox event for statistics-service
                 await _insert_outbox_event(db, "chapter.translated", chapter_id, {
                     "user_id": str(msg["user_id"]),
@@ -687,32 +756,6 @@ async def _partial_retranslate_blocks(
     return (merged, in_tok, out_tok, t_count, t_able, remapped_texts)
 
 
-async def _get_model_context_window(msg: dict) -> int:
-    """
-    Query provider-registry-service for the model's context window.
-    Returns _FALLBACK_CONTEXT_WINDOW if the endpoint is unavailable or the
-    model doesn't publish a context length (common for local Ollama/LM Studio models).
-    """
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                f"{settings.provider_registry_service_url}"
-                f"/v1/model-registry/models/{msg['model_ref']}/context-window",
-                params={"model_source": msg["model_source"]},
-            )
-            if r.status_code == 200:
-                cw = int(r.json().get("context_window") or _FALLBACK_CONTEXT_WINDOW)
-                log.debug("context_window for model %s: %d", msg["model_ref"], cw)
-                return cw
-            log.debug(
-                "context_window endpoint returned %d for model %s — using fallback",
-                r.status_code, msg["model_ref"],
-            )
-    except Exception as exc:
-        log.debug("context_window fetch failed (%s) — using fallback %d", exc, _FALLBACK_CONTEXT_WINDOW)
-    return _FALLBACK_CONTEXT_WINDOW
-
-
 async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> None:
     """
     After each chapter terminal state, atomically check + finalize the job.
@@ -796,6 +839,19 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
                     tokens_out=_to or None,
                     cost_usd=_cost,
                 )
+                # D-C-PRODUCER-OUTBOX — emit the user notification in the SAME tx as
+                # the finalize (atomic; fires exactly once — only the winning worker is
+                # here). worker-infra's relay drains this notification-typed row to
+                # notification-service, idempotent via dedup_key. Replaces the former
+                # fire-and-forget POST that was lost if notification-service was down.
+                await _insert_outbox_event(
+                    db, "notification.requested", job_id,
+                    _translation_notification_body(
+                        user_id, msg.get("job_id", ""), msg.get("book_title", ""),
+                        row["status"], row["completed_chapters"], row["failed_chapters"],
+                    ),
+                    aggregate_type="notification",
+                )
 
     if row is None:
         return  # Job not done yet, or another worker already finalized it
@@ -810,12 +866,8 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
             "failed_chapters":    row["failed_chapters"],
         },
     })
-
-    # Fire-and-forget notification
-    await _send_translation_notification(
-        user_id, msg.get("job_id", ""), msg.get("book_title", ""),
-        row["status"], row["completed_chapters"], row["failed_chapters"],
-    )
+    # The durable user notification is emitted in the finalize tx above
+    # (D-C-PRODUCER-OUTBOX) — no fire-and-forget POST here anymore.
 
 
 async def _fail_chapter_idempotent(pool, job_id, chapter_id, reason: str) -> None:
@@ -864,7 +916,9 @@ async def _insert_outbox_event(
     await db.execute(
         """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
            VALUES ($1, $2, $3, $4::jsonb)""",
-        event_type, aggregate_type, aggregate_id, json.dumps(payload),
+        # ensure_ascii=False (ML-5): payloads carry user prose (book titles, quality
+        # source/translated text) — never \uXXXX-inflate CJK on the wire/storage.
+        event_type, aggregate_type, aggregate_id, json.dumps(payload, ensure_ascii=False),
     )
 
 
@@ -977,47 +1031,44 @@ async def _emit_translation_quality(
     )
 
 
-async def _send_translation_notification(
+def _translation_notification_body(
     user_id, job_id: str, book_title: str, status: str,
     completed_chapters: int, failed_chapters: int,
-) -> None:
-    """Fire-and-forget notification to notification-service."""
-    try:
-        category = "translation"
-        # `title` is the English fallback; clients localize from i18n_key + params
-        # (LW-PLAN notifications i18n Phase 2).
-        if status == "completed":
-            title = f"Translation complete — {completed_chapters} chapters of \"{book_title}\""
-            i18n_key = "notif.translation.completed"
-            i18n_params = {"count": completed_chapters, "book": book_title}
-        elif status == "partial":
-            title = f"Translation partial — {completed_chapters} done, {failed_chapters} failed"
-            i18n_key = "notif.translation.partial"
-            i18n_params = {"done": completed_chapters, "failed": failed_chapters}
-        else:
-            title = f"Translation failed — \"{book_title}\""
-            i18n_key = "notif.translation.failed"
-            i18n_params = {"book": book_title}
+) -> dict:
+    """Build the notification-service ingest body for a finished translation job.
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{settings.notification_service_internal_url}/internal/notifications",
-                json={
-                    "user_id": str(user_id),
-                    "category": category,
-                    "title": title,
-                    "metadata": {
-                        "job_id": str(job_id),
-                        "status": status,
-                        "type": f"translation_{status}",
-                        "i18n_key": i18n_key,
-                        "i18n_params": i18n_params,
-                    },
-                },
-                headers={"X-Internal-Token": settings.internal_service_token},
-            )
-    except Exception as exc:
-        log.warning("Failed to send translation notification: %s", exc)
+    D-C-PRODUCER-OUTBOX: this is emitted into the transactional outbox (not POSTed
+    fire-and-forget), so the relay delivers it durably. `title` is the English
+    fallback; a locale-aware FE renders from the canonical top-level
+    `message_key`/`message_params` (metadata.i18n_key kept for legacy clients). The
+    deterministic `dedup_key` makes the at-least-once relay delivery idempotent."""
+    if status == "completed":
+        title = f"Translation complete — {completed_chapters} chapters of \"{book_title}\""
+        message_key = "notif.translation.completed"
+        message_params = {"count": completed_chapters, "book": book_title}
+    elif status == "partial":
+        title = f"Translation partial — {completed_chapters} done, {failed_chapters} failed"
+        message_key = "notif.translation.partial"
+        message_params = {"done": completed_chapters, "failed": failed_chapters}
+    else:
+        title = f"Translation failed — \"{book_title}\""
+        message_key = "notif.translation.failed"
+        message_params = {"book": book_title}
+    return {
+        "user_id": str(user_id),
+        "category": "translation",
+        "title": title,
+        "message_key": message_key,
+        "message_params": message_params,
+        "metadata": {
+            "job_id": str(job_id),
+            "status": status,
+            "type": f"translation_{status}",
+            "i18n_key": message_key,       # legacy fallback (pre-message_key clients)
+            "i18n_params": message_params,
+        },
+        "dedup_key": f"translation:{job_id}:{status}",
+    }
 
 
 async def _load_chapter_memo(pool, book_id, chapter_index: int, target_language: str) -> dict | None:
@@ -1095,3 +1146,10 @@ class _TransientError(Exception):
 
 class _PermanentError(Exception):
     """Bad data, 404, 402, unrecoverable — retry won't help."""
+
+
+class _CancelledError(Exception):
+    """bug #34 — a user cancelled the job while an LLM call was in flight, so the
+    cancel_check probe fired and the SDK aborted the call (sdk_job.status='cancelled').
+    Distinct from _PermanentError so handle_chapter_message routes a user-cancel to a
+    clean stop (job_cancelled) instead of a spurious translation failure."""

@@ -63,6 +63,21 @@ def test_glossary_translate_create_202(client_gt, fake_pool, grant_stub):
     pub.assert_awaited_once()
 
 
+def test_glossary_translate_create_forwards_concurrency(client_gt, fake_pool, grant_stub):
+    # bug #4: concurrency_level on the request rides the published worker message as `concurrency`.
+    client, pub = client_gt
+    grant_stub.level = GrantLevel.EDIT
+    fake_pool.fetchrow.return_value = FakeRecord({"job_id": uuid4()})
+    resp = client.post(
+        f"/v1/glossary-translate/books/{BOOK_ID}/translate",
+        json={"target_language": "vi", "model_ref": MODEL_REF, "concurrency_level": 4},
+    )
+    assert resp.status_code == 202
+    pub.assert_awaited_once()
+    message = pub.await_args.args[1]  # publish("glossary_translate.job", {message})
+    assert message["concurrency"] == 4
+
+
 def test_glossary_translate_create_422_same_language(client, fake_pool, grant_stub):
     grant_stub.level = GrantLevel.EDIT
     with (

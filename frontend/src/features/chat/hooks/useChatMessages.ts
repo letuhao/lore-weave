@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage, ToolCallRecord } from '../types';
-import { AgUiEventType } from './agUiEvents';
-import type {
-  CustomEvent as AgUiCustomEvent,
-  ReasoningMessageContentEvent,
-  RunErrorEvent,
-  RunFinishedEvent,
-  TextMessageContentEvent,
-  ToolCallResultEvent,
-  ToolCallStartEvent,
-} from './agUiEvents';
+import type { ChatMessage, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
+import { runChatStream, assembleAssistantMessage } from './runChatStream';
+import type { ChatStreamArgs, StreamPhase, ReasoningEffortLevel } from './runChatStream';
+import type { StreamPins } from './useContextRack';
+import { useChatLiveStateOptional } from '../providers/ChatLiveStateContext';
 
 type StreamStatus = 'idle' | 'streaming' | 'error';
-type StreamPhase = 'idle' | 'thinking' | 'responding';
 
 /** Delta type emitted during SSE streaming */
 export type StreamDeltaType = 'content' | 'reasoning';
@@ -42,8 +36,41 @@ export type FrontendToolOutcome =
   // Generalized class-C action confirm (spec §13) — supersedes the schema_* set
   | 'action_done'
   | 'token_expired'
+  // H-J / H14 re-price-on-execute: the priced confirm route returned 409
+  // reprice_required (actual cost drifted up past the BE threshold). The token is
+  // single-use + now spent — the agent must re-propose at the new price, never
+  // silently overspend. Distinct from token_expired so the model knows it's a cost
+  // change, not a stale token.
+  | 'reprice_required'
   | 'action_error'
-  | 'cancelled';
+  | 'cancelled'
+  // RAID C2 (DR-C2 §4) — the tool_approval card (Write-mode Tier-A prompt-once):
+  // approved_once executes; approved_always also persists the per-user allowlist
+  // row; denied feeds "denied by user" so the agent self-corrects.
+  | 'approved_once'
+  | 'approved_always'
+  | 'denied'
+  // D3 (PO sign-off) — "Never allow" ON THE CARD: persists a standing DENY for this
+  // tool (mirrors approved_always's persist) AND feeds "denied by user" (executes
+  // nothing). The natural moment to refuse a tool forever is when it is asking.
+  | 'denied_always';
+
+// RAID C2 — HITL permission mode. Persisted per-device in localStorage
+// (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,
+// sent per-request as `permission_mode` on the message POST.
+// RAID B2 (07S §5b) — 'plan': the ask (read-only) surface PLUS the PlanForge
+// plan_* tools — research + plan, no prose until the user switches to Write.
+export type PermissionMode = 'ask' | 'plan' | 'write';
+const PERMISSION_MODE_KEY = 'lw_chat_permission_mode';
+
+function loadPermissionMode(): PermissionMode {
+  try {
+    const stored = localStorage.getItem(PERMISSION_MODE_KEY);
+    return stored === 'ask' || stored === 'plan' ? stored : 'write';
+  } catch {
+    return 'write';
+  }
+}
 
 export function useChatMessages(
   sessionId: string | null,
@@ -55,10 +82,27 @@ export function useChatMessages(
   /** Glossary-assistant P3: book-scoped chat (glossary page / reader) that is
    *  NOT the chapter editor. Enables the glossary edit-existing frontend tool. */
   bookContext?: { book_id: string },
+  /** S6: the user's per-book display language (set only when showing a
+   *  translation). Forwarded so knowledge-service composes entity aliases in
+   *  this language for the chat context. Omitted → source-language aliases. */
+  displayLanguage?: string,
+  enabledTools?: string[],
+  enabledSkills?: string[],
+  streamPinsRef?: MutableRefObject<StreamPins>,
+  /** #09 Lane A: present in the Writing Studio compose panel — enables the studio
+   *  dock-nav frontend tools (open panel / focus manuscript unit). */
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number },
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // RAID C2 — Ask/Write permission mode (lazy-init from localStorage, setter
+  // writes through — mirrors the editor's composeMode persistence).
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(loadPermissionMode);
+  const setPermissionMode = useCallback((mode: PermissionMode) => {
+    setPermissionModeState(mode);
+    try { localStorage.setItem(PERMISSION_MODE_KEY, mode); } catch { /* ignore */ }
+  }, []);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
   const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
@@ -67,6 +111,10 @@ export function useChatMessages(
   // A2A phase-2: true while the in-turn composer model is drafting prose
   // (compose_prose). Drives a transient "✍️ Drafting…" indicator.
   const [isComposing, setIsComposing] = useState(false);
+  // RAID Wave A3: the last turn-finish context-budget snapshot (chat header
+  // meter). Local state (not persisted server-side); mirrored from the worker
+  // snapshot on the windowing path so it survives dock float/close.
+  const [contextBudget, setContextBudget] = useState<ContextBudget | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
@@ -77,6 +125,43 @@ export function useChatMessages(
   /** K-CLEAN-5 (D-K8-04): settable callback for the per-turn
    *  memory-mode SSE event from chat-service. */
   const onMemoryModeRef = useRef<OnMemoryMode | null>(null);
+  const onAgentSurfaceRef = useRef<((state: AgentSurfaceState) => void) | null>(null);
+  /** W2: settable callback for the per-turn `compaction` CUSTOM frame —
+   *  ChatStreamProvider registers a toast here ("earlier turns compacted"). */
+  const onCompactionRef = useRef<((event: CompactionEvent) => void) | null>(null);
+
+  const resolveStreamPins = useCallback((): StreamPins => {
+    const fromRef = streamPinsRef?.current;
+    if (fromRef?.enabledTools?.length || fromRef?.enabledSkills?.length) {
+      return fromRef;
+    }
+    return {
+      enabledTools: enabledTools?.length ? enabledTools : undefined,
+      enabledSkills: enabledSkills?.length ? enabledSkills : undefined,
+    };
+  }, [streamPinsRef, enabledTools, enabledSkills]);
+
+  // M2 (D-T5.4-CHAT-HOIST): when chat windowing is on AND the browser has
+  // SharedWorker, ChatLiveStateProvider owns the turn in the worker and exposes
+  // its snapshot here. Default (no provider, or flag off) → `useWorker` is false
+  // and this hook owns the in-process stream exactly as before (byte-identical).
+  const live = useChatLiveStateOptional();
+  const useWorker = live?.useWorker ?? false;
+  const worker = live?.shared;
+  // Dedupe the per-turn terminal side-effects (clean-end append, abort/error
+  // refetch, and the onStreamEnd fan-out) on the worker's monotonic turnId so a
+  // single window fires each once. (Cross-window single-firing of onStreamEnd is a
+  // separate concern handled at the M2 browser-smoke finalize — D-T5.4-CHAT-MULTIWINDOW.)
+  const lastTerminalTurnRef = useRef(0);
+  const lastMemoryModeTurnRef = useRef(0);
+  // W2: compaction fires at most once per turn; the snapshot rebroadcasts many
+  // times, so the toast is deduped on turnId exactly like memoryMode.
+  const lastCompactionTurnRef = useRef(0);
+  // Replay guard: a late-joining tab receives the hub's addPort FULL-STATE
+  // replay, which can carry a PAST turn's compaction — that must seed the
+  // dedupe ref silently, never toast. False until this window has seen its
+  // first worker snapshot.
+  const compactionSeededRef = useRef(false);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -100,6 +185,31 @@ export function useChatMessages(
     void fetchMessages();
   }, [fetchMessages]);
 
+  // ── Seed the header context meter on session load ─────────────────────────────
+  // `contextBudget` was live-only (set from the per-turn SSE `contextBudget`
+  // event), so the meter rendered nothing on load/switch/reload until the NEXT
+  // turn finished — the "sometimes shows, sometimes not" gap. Clear any stale
+  // budget from the previous session, then seed from the LAST turn's persisted
+  // frame. Race-safe: only apply if the session hasn't changed AND no live event
+  // has already set a (fresher) budget this turn (`prev ?? seed`).
+  useEffect(() => {
+    setContextBudget(null);
+    if (!accessToken || !sessionId) return;
+    let ignore = false;
+    void chatApi
+      .getLatestContextBudget(accessToken, sessionId)
+      .then((res) => {
+        if (ignore || !res.budget) return;
+        setContextBudget((prev) => prev ?? res.budget);
+      })
+      .catch(() => {
+        /* meter simply stays hidden until the next live turn — non-fatal */
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, sessionId]);
+
   // ── SSE streaming ─────────────────────────────────────────────────────────────
 
   const streamPost = useCallback(
@@ -111,6 +221,9 @@ export function useChatMessages(
       // endpoint (used by the resume / tool-result path). The consume loop is
       // identical, so send + resume share all stream handling.
       override?: { url: string; body: Record<string, unknown> },
+      // W4: granular effort from the input-bar dropdown (today only 'deep'
+      // rides the wire — Fast/Standard stay on the `thinking` boolean).
+      reasoningEffort?: ReasoningEffortLevel,
     ): Promise<string> => {
       if (!accessToken || !sessionId) throw new Error('Not ready');
 
@@ -125,26 +238,8 @@ export function useChatMessages(
       setThinkingElapsed(0);
       setStreamStatus('streaming');
 
-      let accumulatedContent = '';
-      let accumulatedReasoning = '';
-      // K21-C (D2): per-turn tool-call list, accumulated from the
-      // `tool-call` SSE event the same way reasoning/timing is. Attached
-      // to the locally-appended assistantMessage so the indicator works
-      // from the live stream without a refetch.
-      const accumulatedToolCalls: ToolCallRecord[] = [];
-      // ARCH-1 C4: AG-UI frames a tool call across TOOL_CALL_START (carries the
-      // name) and TOOL_CALL_RESULT (carries ok). Hold the name by toolCallId
-      // between the two so the resolved record is {tool, ok} like the legacy
-      // `tool-call` event produced in one shot.
-      const openToolCalls = new Map<string, string>();
-      // ARCH-1 C6: accumulate TOOL_CALL_ARGS per id so a frontend tool's
-      // proposal payload (operation/text) reaches the chip.
-      const openToolArgs = new Map<string, string>();
-      let streamMessageId: string | null = null;
-      let streamUsage: { promptTokens?: number; completionTokens?: number } = {};
-      let streamTiming: { responseTimeMs?: number; timeToFirstTokenMs?: number } = {};
-
-      // Thinking timer
+      // Thinking timer — driven by phase transitions emitted from runChatStream.
+      // (The pure core is timer-free; the elapsed clock + setState live here.)
       function startThinkingTimer() {
         thinkingStartRef.current = Date.now();
         thinkingTimerRef.current = setInterval(() => {
@@ -158,261 +253,109 @@ export function useChatMessages(
         }
       }
 
+      // M2 (D-T5.4-CHAT-HOIST): the AG-UI parse + accumulator switch moved to the
+      // pure, React-free `runChatStream` core (shared verbatim with the
+      // SharedWorker path). This hook now just maps the emitted facets onto
+      // setState + the settable refs — every observable behavior is preserved.
+      let aborted = false;
       try {
-        const body: Record<string, unknown> = { content };
-        if (editFromSequence != null) {
-          body.edit_from_sequence = editFromSequence;
-        }
-        if (thinking != null) {
-          body.thinking = thinking;
-        }
-        // ARCH-1 C6: editor panel → advertise the write-back frontend tool +
-        // carry which chapter the assistant is editing.
-        if (editorContext) {
-          body.editor_context = editorContext;
-        }
-        // Glossary-assistant P3: book-scoped (non-editor) chat → advertise the
-        // glossary edit-existing frontend tool. The editor panel already carries
-        // editor_context (book_id); a glossary-page chat sends this instead.
-        if (bookContext) {
-          body.book_context = bookContext;
-        }
-        // Compose mode: prose-only turn, no tool advertising (server-side gate).
-        if (composeMode) {
-          body.disable_tools = true;
-        }
-
-        const res = await fetch(override?.url ?? chatApi.messagesUrl(sessionId), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-            // ARCH-1 C4: request the AG-UI event protocol (chat-service C3).
-            // The backend defaults to the legacy vocabulary for any client
-            // that doesn't send this, so other consumers are unaffected.
-            'x-loreweave-stream-format': 'agui',
+        const pins = resolveStreamPins();
+        const result = await runChatStream(
+          {
+            sessionId,
+            content,
+            ...(editFromSequence != null ? { editFromSequence } : {}),
+            ...(thinking != null ? { thinking } : {}),
+            ...(reasoningEffort != null ? { reasoningEffort } : {}),
+            ...(editorContext ? { editorContext } : {}),
+            ...(studioContext ? { studioContext } : {}),
+            ...(composeMode != null ? { composeMode } : {}),
+            ...(bookContext ? { bookContext } : {}),
+            ...(displayLanguage ? { displayLanguage } : {}),
+            ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
+            ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+            permissionMode,
+            ...(override ? { override } : {}),
           },
-          body: JSON.stringify(override?.body ?? body),
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          const detail = await res.text().catch(() => res.statusText);
-          throw new Error(`${res.status}: ${detail}`);
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        // Explicitly cancel the reader on abort — do NOT rely on fetch
-        // propagating the abort to the stream. If it doesn't (mocked fetch in
-        // tests, or some runtimes), the pending read() below never resolves and
-        // the loop leaks forever (process-exit hang). cancel() ends read() with
-        // {done:true}. See feedback_sse_reader_must_cancel_on_abort.
-        const cancelReader = () => void reader.cancel().catch(() => {});
-        if (controller.signal.aborted) cancelReader();
-        else controller.signal.addEventListener('abort', cancelReader, { once: true });
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6).trim();
-            if (payload === '[DONE]') continue;
-
-            try {
-              // ARCH-1 C4: the stream now speaks the AG-UI protocol (chat
-              // service C3). Map each AG-UI event onto the same internal
-              // accumulators/phases the legacy parser drove, so every
-              // consumer of this hook is unaffected. Framing-only events
-              // (TEXT_MESSAGE_START/END, REASONING_* boundaries,
-              // TOOL_CALL_ARGS/END) need no handling — the hook lazily
-              // transitions phase on the first content delta.
-              const event = JSON.parse(payload) as { type?: string };
-              switch (event.type) {
-                case AgUiEventType.REASONING_MESSAGE_CONTENT: {
-                  const delta = (event as ReasoningMessageContentEvent).delta;
-                  if (!delta) break;
-                  if (accumulatedReasoning === '') {
-                    setStreamPhase('thinking');
-                    startThinkingTimer();
-                  }
-                  accumulatedReasoning += delta;
-                  setStreamingReasoning(accumulatedReasoning);
-                  onStreamDeltaRef.current?.(delta, 'reasoning');
-                  break;
-                }
-                case AgUiEventType.TEXT_MESSAGE_CONTENT: {
-                  const delta = (event as TextMessageContentEvent).delta;
-                  if (!delta) break;
-                  if (accumulatedContent === '' && accumulatedReasoning !== '') {
-                    // Transition from thinking → responding
-                    stopThinkingTimer();
-                    setStreamPhase('responding');
-                  } else if (accumulatedContent === '') {
-                    setStreamPhase('responding');
-                  }
-                  accumulatedContent += delta;
-                  setStreamingText(accumulatedContent);
-                  onStreamDeltaRef.current?.(delta, 'content');
-                  break;
-                }
-                case AgUiEventType.TOOL_CALL_START: {
-                  // Hold the tool name until its RESULT resolves (AG-UI frames
-                  // a tool call across START → … → RESULT).
-                  const e = event as ToolCallStartEvent;
-                  if (e.toolCallId) openToolCalls.set(e.toolCallId, e.toolCallName);
-                  break;
-                }
-                case AgUiEventType.TOOL_CALL_ARGS: {
-                  // ARCH-1 C6: accumulate args (one or more deltas) per id.
-                  const e = event as { toolCallId?: string; delta?: string };
-                  if (e.toolCallId) {
-                    openToolArgs.set(e.toolCallId, (openToolArgs.get(e.toolCallId) ?? '') + (e.delta ?? ''));
-                  }
-                  break;
-                }
-                case AgUiEventType.TOOL_CALL_RESULT: {
-                  // K21-C (D2): one chip per executed memory tool. The server
-                  // encodes the authoritative outcome as {ok, result|error}
-                  // inside content (chat-service C3) — we read `ok` directly
-                  // rather than inferring it from payload shape, so a tool
-                  // result that legitimately contains an "error" field can't be
-                  // misread as a failure.
-                  const e = event as ToolCallResultEvent;
-                  const tool = openToolCalls.get(e.toolCallId);
-                  if (tool === undefined) break; // RESULT without a START — skip
-                  openToolCalls.delete(e.toolCallId);
-                  let ok = true;
-                  try {
-                    const parsed = JSON.parse(e.content);
-                    if (parsed && typeof parsed === 'object' && parsed.ok === false) {
-                      ok = false;
-                    }
-                  } catch {
-                    // non-JSON content → treat as a successful opaque result
-                  }
-                  accumulatedToolCalls.push({ tool, ok });
-                  break;
-                }
-                case AgUiEventType.CUSTOM: {
-                  const e = event as AgUiCustomEvent;
-                  if (e.name === 'memoryMode') {
-                    // K-CLEAN-5 (D-K8-04): flip the header memory indicator.
-                    // Mode is 'no_project' | 'static' | 'degraded'.
-                    const mode = e.value?.mode;
-                    if (mode) onMemoryModeRef.current?.(mode as 'no_project' | 'static' | 'degraded');
-                  } else if (e.name === 'persisted') {
-                    // The saved message id (+ output id / has_reasoning).
-                    streamMessageId = (e.value?.messageId as string) || null;
-                  } else if (e.name === 'composing') {
-                    // A2A phase-2: the composer model is drafting (on/off).
-                    setIsComposing(!!e.value?.active);
-                  }
-                  break;
-                }
-                case AgUiEventType.RUN_FINISHED: {
-                  const result = (event as RunFinishedEvent).result as
-                    | (RunFinishedEvent['result'] & {
-                        status?: string;
-                        pendingToolCall?: { runId: string; toolCallId: string; toolName: string };
-                      })
-                    | undefined;
-                  streamUsage = result?.usage || {};
-                  streamTiming = result?.timing || {};
-                  // ARCH-1 C6: a suspended run — a frontend tool (propose_edit)
-                  // is awaiting the user's apply/dismiss. Record the pending
-                  // call + push a frontend-tool chip carrying the proposal args
-                  // so the UI can render Apply/Dismiss.
-                  if (result?.status === 'suspended' && result.pendingToolCall) {
-                    const p = result.pendingToolCall;
-                    let parsedArgs: Record<string, unknown> = {};
-                    try {
-                      parsedArgs = JSON.parse(openToolArgs.get(p.toolCallId) ?? '{}');
-                    } catch {
-                      parsedArgs = {};
-                    }
-                    accumulatedToolCalls.push({
-                      tool: p.toolName,
-                      ok: true,
-                      pending: true,
-                      runId: p.runId,
-                      toolCallId: p.toolCallId,
-                      args: parsedArgs,
-                    });
-                  }
-                  break;
-                }
-                case AgUiEventType.RUN_ERROR: {
-                  throw new Error((event as RunErrorEvent).message || 'Stream error');
-                }
-                // RUN_STARTED + all framing-only events: no-op.
-                default:
-                  break;
+          accessToken,
+          {
+            onPhase: (phase) => {
+              if (phase === 'thinking') {
+                // First reasoning delta → start the elapsed timer.
+                setStreamPhase('thinking');
+                startThinkingTimer();
+              } else if (phase === 'responding') {
+                // First text delta → stop the timer (no-op if never started).
+                stopThinkingTimer();
+                setStreamPhase('responding');
               }
-            } catch (parseErr) {
-              if (parseErr instanceof SyntaxError) continue;
-              throw parseErr;
-            }
-          }
-        }
+            },
+            onReasoning: (accumulated, delta) => {
+              setStreamingReasoning(accumulated);
+              onStreamDeltaRef.current?.(delta, 'reasoning');
+            },
+            onText: (accumulated, delta) => {
+              setStreamingText(accumulated);
+              onStreamDeltaRef.current?.(delta, 'content');
+            },
+            onComposing: (active) => setIsComposing(active),
+            onMemoryMode: (mode) => onMemoryModeRef.current?.(mode),
+            onAgentSurface: (payload) => onAgentSurfaceRef.current?.(payload),
+            onContextBudget: (budget) => setContextBudget(budget),
+            onCompaction: (event) => onCompactionRef.current?.(event),
+            onAbort: () => { aborted = true; },
+            // onToolCall / onActivity accumulate inside runChatStream and arrive
+            // on the terminal result; nothing extra to mirror per-event here.
+          },
+          controller.signal,
+        );
 
         stopThinkingTimer();
+
+        if (aborted || controller.signal.aborted) {
+          // Abort path — the core resolved with the partial streamed so far.
+          // DBT-CHAT-PERSIST: KEEP that partial visible as an 'interrupted'
+          // message instead of dropping it. The backend also persists it on
+          // disconnect (best-effort/shielded), but that write races a refetch —
+          // so append from the accumulator here for an immediate, reliable
+          // result, and let the next natural reload reconcile with the server
+          // row (same message_id path). No refetch here (it could clobber the
+          // append with a not-yet-written server view).
+          setStreamStatus('idle');
+          setStreamPhase('idle');
+          if (result.content || result.reasoning) {
+            const interrupted = assembleAssistantMessage(
+              result,
+              sessionId ?? '',
+              messages.length + 2, // user msg + this
+              'interrupted',
+            );
+            setMessages((prev) => [...prev, interrupted]);
+          }
+          onStreamEndRef.current?.();
+          return result.content;
+        }
+
         setStreamStatus('idle');
         setStreamPhase('idle');
 
-        // Seamless append: add completed assistant message to list without refetch
-        const assistantMessage: ChatMessage = {
-          message_id: streamMessageId || `done-${Date.now()}`,
-          session_id: sessionId ?? '',
-          owner_user_id: '',
-          role: 'assistant',
-          content: accumulatedContent,
-          content_parts: {
-            ...(accumulatedReasoning ? { reasoning: accumulatedReasoning, reasoning_length: accumulatedReasoning.length } : {}),
-            ...(streamTiming.responseTimeMs != null ? { response_time_ms: streamTiming.responseTimeMs } : {}),
-            ...(streamTiming.timeToFirstTokenMs != null ? { time_to_first_token_ms: streamTiming.timeToFirstTokenMs } : {}),
-          },
-          sequence_num: messages.length + 2, // user msg + this
-          branch_id: 0,
-          input_tokens: streamUsage.promptTokens ?? null,
-          output_tokens: streamUsage.completionTokens ?? null,
-          model_ref: null,
-          is_error: false,
-          error_detail: null,
-          parent_message_id: null,
-          created_at: new Date().toISOString(),
-          // K21-C (D2): attach the accumulated tool calls so the
-          // ToolCallIndicator renders from the live stream. null when
-          // the turn made no tool calls — keeps the indicator hidden.
-          tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : null,
-        };
+        // Seamless append: add the completed assistant message without a refetch.
+        const assistantMessage = assembleAssistantMessage(
+          result,
+          sessionId ?? '',
+          messages.length + 2, // user msg + this
+        );
         setMessages((prev) => [...prev, assistantMessage]);
         onStreamEndRef.current?.();
 
-        return accumulatedContent;
+        return result.content;
       } catch (err) {
         stopThinkingTimer();
-        if ((err as Error).name === 'AbortError') {
-          setStreamStatus('idle');
-          setStreamPhase('idle');
-          // Refetch to pick up any partially persisted messages from backend
-          void fetchMessages();
-          onStreamEndRef.current?.();
-          return accumulatedContent;
-        }
+        // runChatStream resolves (not throws) on abort, so a thrown error here is
+        // a real RUN_ERROR / non-OK response / network failure.
         setStreamStatus('error');
         setStreamPhase('idle');
-        // Refetch on error too — backend may have persisted partial data
+        // Refetch on error — backend may have persisted partial data.
         void fetchMessages();
         onStreamEndRef.current?.();
         throw err;
@@ -424,7 +367,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext],
+    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length, permissionMode],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -434,19 +377,165 @@ export function useChatMessages(
   const submitToolResult = useCallback(
     (runId: string, toolCallId: string, outcome: FrontendToolOutcome, appliedText?: string) => {
       if (!sessionId) return Promise.resolve('');
+      // Worker path: route the resume through the worker so other windows see the
+      // resumed turn via the broadcast snapshot.
+      if (useWorker && worker) { worker.submitToolResult(sessionId, runId, toolCallId, outcome, appliedText); return Promise.resolve(''); }
       return streamPost('', undefined, undefined, {
         url: chatApi.toolResultsUrl(sessionId),
         body: { run_id: runId, tool_call_id: toolCallId, outcome, applied_text: appliedText },
       });
     },
-    [sessionId, streamPost],
+    [sessionId, streamPost, useWorker, worker],
+  );
+
+  // ── MCP fan-out (C-NAV): resume a suspended nav tool with a structured result.
+  /** Resolve a `ui_*` navigation tool immediately (no human Apply): the executor
+   *  performs the router action, then POSTs the resolve payload (e.g.
+   *  `{navigated:true}`) which the agent reads as the tool's result on its next
+   *  pass. Distinct from submitToolResult (an outcome-enum gate) because nav
+   *  tools resolve with an arbitrary result object, not the apply/confirm enum. */
+  const submitToolResolve = useCallback(
+    (runId: string, toolCallId: string, result: Record<string, unknown>) => {
+      if (!sessionId) return Promise.resolve('');
+      if (useWorker && worker) { worker.submitToolResolve(sessionId, runId, toolCallId, result); return Promise.resolve(''); }
+      return streamPost('', undefined, undefined, {
+        url: chatApi.toolResultsUrl(sessionId),
+        body: { run_id: runId, tool_call_id: toolCallId, result },
+      });
+    },
+    [sessionId, streamPost, useWorker, worker],
+  );
+
+  // ── M2 worker bridge ──────────────────────────────────────────────────────────
+  // When the SharedWorker owns the turn, mirror its broadcast snapshot into this
+  // hook's local state so every consumer (mid-stream indicators, the message
+  // list) renders identically to the in-process path. Two dedup scopes apply:
+  //   • per-WINDOW (lastTerminalTurnRef): the snapshot re-renders many times per
+  //     turn; the terminal branch must run once per turn IN THIS window.
+  //   • cross-WINDOW (D-T5.4-CHAT-MULTIWINDOW): the hub fans the SAME snapshot to
+  //     every window, so the onStreamEnd fan-out + the seamless assembled-append
+  //     run ONLY in the window that initiated the turn (worker.initiatedTurnId).
+  //     Observer windows (incl. a mid-turn pop-out) converge via refetch instead,
+  //     so they pick up both the user message they never optimistically appended
+  //     and the assistant turn — without double-firing the fan-out.
+  // Inert when !useWorker (default).
+  useEffect(() => {
+    if (!useWorker || !worker) return;
+    // Mirror streaming facets every snapshot (the worker is the source of truth).
+    setStreamingText(worker.streamingText);
+    setStreamingReasoning(worker.streamingReasoning);
+    setStreamPhase(worker.streamPhase);
+    setThinkingElapsed(worker.thinkingElapsed);
+    setStreamStatus(worker.streamStatus);
+    setIsComposing(worker.isComposing);
+
+    // memoryMode: fire once per turn it changed in (dedupe on turnId).
+    if (worker.memoryMode && worker.turnId !== lastMemoryModeTurnRef.current) {
+      lastMemoryModeTurnRef.current = worker.turnId;
+      onMemoryModeRef.current?.(worker.memoryMode);
+    }
+    if (worker.agentSurface) {
+      onAgentSurfaceRef.current?.(worker.agentSurface);
+    }
+    // RAID Wave A3: mirror the worker's context-budget snapshot (source of truth
+    // on the windowing path) into local state so the header meter renders identically.
+    if (worker.contextBudget) {
+      setContextBudget(worker.contextBudget);
+    }
+    // W2: compaction toast — fire once per turn it occurred in (dedupe on turnId,
+    // mirroring memoryMode; the snapshot rebroadcasts many times per turn).
+    // Replay guard: the FIRST snapshot after mount (the hub's full-state replay
+    // to a late-joining tab) and any non-streaming snapshot only RECORD the
+    // compaction's turnId — a stale compaction must not toast again. Only a
+    // turnId change observed while a stream is live is a fresh compaction.
+    if (worker.compaction && worker.turnId !== lastCompactionTurnRef.current) {
+      const isReplay = !compactionSeededRef.current || worker.streamStatus !== 'streaming';
+      lastCompactionTurnRef.current = worker.turnId;
+      if (!isReplay) onCompactionRef.current?.(worker.compaction);
+    }
+    compactionSeededRef.current = true;
+
+    // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
+    // Two facets, with DIFFERENT scoping:
+    //   • message list (writer-scoped): the INITIATOR appends the assembled assistant
+    //     message seamlessly (its optimistic user msg is already local); every other
+    //     window — and any abort/error — converges by refetch (server is SSOT).
+    //   • onStreamEnd fan-out (per-WINDOW): session-list refresh + pending-facts
+    //     refetch are idempotent reads of THIS window's own derived state, so EVERY
+    //     window must fire them — both to keep an observer's sidebar/facts fresh AND
+    //     so the turn is never left untracked if the initiator window closed mid-turn
+    //     (D-T5.4-CHAT-MULTIWINDOW-ORPHAN). N× idempotent GETs is the (small) cost of
+    //     never orphaning; refreshSessions is itself debounced.
+    const cleanEnd = worker.ended && !!worker.result;
+    const nonCleanTerminal =
+      worker.streamStatus === 'error' ||
+      (worker.streamStatus === 'idle' && !worker.ended && worker.result != null);
+    // This window appended the optimistic user msg iff it initiated the turn.
+    const isWriter = worker.turnId > 0 && worker.turnId === worker.initiatedTurnId;
+    if ((cleanEnd || nonCleanTerminal) && worker.turnId > 0 && worker.turnId !== lastTerminalTurnRef.current) {
+      lastTerminalTurnRef.current = worker.turnId;
+      if (cleanEnd && isWriter) {
+        // Writer (initiator) → seamless append. Its optimistic user message is
+        // already in `messages`, so derive sequence_num from the freshest list
+        // (functional update; review-impl off-by-one: the fixed length+2 offset
+        // double-counted the optimistic user msg). Last seq + 1 is path-agnostic.
+        const result = worker.result!;
+        setMessages((prev) => {
+          const lastSeq = prev.length ? prev[prev.length - 1].sequence_num : 0;
+          return [...prev, assembleAssistantMessage(result, sessionId ?? '', lastSeq + 1)];
+        });
+        // Clear the streaming buffers (the in-process finally did this).
+        setStreamingText('');
+        setStreamingReasoning('');
+      } else {
+        // Observer window (never optimistically appended the user msg), OR
+        // abort/error in any window → converge from the server, which is the SSOT
+        // for both the user turn and the assistant (partial or assembled).
+        void fetchMessages();
+      }
+      // Per-window (NOT writer-gated): each window refreshes its OWN session list +
+      // pending facts. This is what makes the orphan a non-event — a surviving
+      // observer keeps the session tracked + resumable even if the initiator is gone.
+      onStreamEndRef.current?.();
+    }
+    // worker is a fresh object each render (spread snapshot); gate on the fields
+    // that actually drive the mirror to avoid an unnecessary re-run storm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    useWorker, worker?.turnId, worker?.initiatedTurnId, worker?.streamingText, worker?.streamingReasoning,
+    worker?.streamPhase, worker?.thinkingElapsed, worker?.streamStatus, worker?.isComposing,
+    worker?.memoryMode, worker?.contextBudget, worker?.compaction, worker?.ended, sessionId,
+  ]);
+
+  /** Build the per-turn ChatStreamArgs (worker path) from the hook's props. */
+  const buildArgs = useCallback(
+    (content: string, editFromSequence?: number, thinking?: boolean, reasoningEffort?: ReasoningEffortLevel): ChatStreamArgs => {
+      const pins = resolveStreamPins();
+      return {
+        sessionId: sessionId ?? '',
+        content,
+        ...(editFromSequence != null ? { editFromSequence } : {}),
+        ...(thinking != null ? { thinking } : {}),
+        ...(reasoningEffort != null ? { reasoningEffort } : {}),
+        ...(editorContext ? { editorContext } : {}),
+        ...(studioContext ? { studioContext } : {}),
+        ...(composeMode != null ? { composeMode } : {}),
+        ...(bookContext ? { bookContext } : {}),
+        ...(displayLanguage ? { displayLanguage } : {}),
+        ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
+        ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+        permissionMode,
+      };
+    },
+    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, permissionMode],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
 
-  /** Send a new message (normal flow) */
+  /** Send a new message (normal flow). `reasoningEffort` (W4) is the granular
+   *  effort from the input-bar dropdown — only 'deep' rides the wire today. */
   const send = useCallback(
-    (content: string, thinking?: boolean) => {
+    (content: string, thinking?: boolean, reasoningEffort?: ReasoningEffortLevel) => {
       // Optimistically add user message to the list
       const optimistic: ChatMessage = {
         message_id: `opt-${Date.now()}`,
@@ -465,10 +554,15 @@ export function useChatMessages(
         parent_message_id: null,
         created_at: new Date().toISOString(),
       };
+      // Optimistic user-message append stays main-thread (it's not stream state).
       setMessages((prev) => [...prev, optimistic]);
-      return streamPost(content, undefined, thinking);
+      // Worker path: hand the turn to the SharedWorker (returns void; the
+      // assembled assistant message arrives via the snapshot bridge). Inline
+      // path: own the stream as before.
+      if (useWorker && worker) { worker.start(buildArgs(content, undefined, thinking, reasoningEffort)); return Promise.resolve(''); }
+      return streamPost(content, undefined, thinking, undefined, reasoningEffort);
     },
-    [sessionId, messages.length, streamPost],
+    [sessionId, messages.length, streamPost, useWorker, worker, buildArgs],
   );
 
   /** Edit a user message and re-run from that point */
@@ -495,24 +589,29 @@ export function useChatMessages(
         };
         return [...truncated, optimistic];
       });
+      if (useWorker && worker) { worker.start(buildArgs(content, editFromSequence)); return Promise.resolve(''); }
       return streamPost(content, editFromSequence);
     },
-    [sessionId, streamPost],
+    [sessionId, streamPost, useWorker, worker, buildArgs],
   );
 
   /** Regenerate the assistant response after a given user message */
   const regenerate = useCallback(
     (userContent: string, userSequenceNum: number) => {
       setMessages((prev) => prev.filter((m) => m.sequence_num <= userSequenceNum));
+      if (useWorker && worker) { worker.start(buildArgs(userContent, userSequenceNum)); return Promise.resolve(''); }
       return streamPost(userContent, userSequenceNum);
     },
-    [streamPost],
+    [streamPost, useWorker, worker, buildArgs],
   );
 
   /** Stop the current stream */
   const stop = useCallback(() => {
+    // Abort propagation — stop from any window aborts the worker's single
+    // controller, so all windows see the stop via the snapshot.
+    if (useWorker && worker) { worker.stop(); return; }
     abortRef.current?.abort();
-  }, []);
+  }, [useWorker, worker]);
 
   /** Refresh messages for a specific branch */
   const refreshBranch = useCallback(
@@ -531,6 +630,11 @@ export function useChatMessages(
     isStreaming: streamStatus === 'streaming',
     /** A2A phase-2: composer model is drafting prose this turn. */
     isComposing,
+    /** RAID Wave A3: last turn-finish context-budget snapshot (header meter). */
+    contextBudget,
+    /** RAID C2: HITL permission mode (ask|write) + persisted setter. */
+    permissionMode,
+    setPermissionMode,
     send,
     edit,
     regenerate,
@@ -539,6 +643,8 @@ export function useChatMessages(
     refreshBranch,
     /** ARCH-1 C6: resume a suspended run with a frontend-tool outcome. */
     submitToolResult,
+    /** MCP fan-out (C-NAV): resolve a suspended `ui_*` nav tool immediately. */
+    submitToolResolve,
     /** Set a callback to receive per-token deltas during streaming */
     onStreamDeltaRef,
     /** Set a callback for when streaming ends (success or abort) */
@@ -546,5 +652,8 @@ export function useChatMessages(
     /** K-CLEAN-5 (D-K8-04): set a callback for the per-turn
      *  memory-mode SSE event from chat-service. */
     onMemoryModeRef,
+    onAgentSurfaceRef,
+    /** W2: set a callback for the per-turn `compaction` CUSTOM frame. */
+    onCompactionRef,
   };
 }

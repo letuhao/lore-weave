@@ -1,6 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
+import { followStudioLink } from '@/features/studio/host/studioLinks';
 
 /**
  * C0 (G6) — reusable "register a model" call-to-action.
@@ -15,6 +17,28 @@ import { cn } from '@/lib/utils';
  * Honoring the return path is the point: a one-way link that drops it would
  * leave the user stranded on the settings page after registering (the G6
  * book-workspace navigation glue, adversary-flagged in the C0 brief).
+ *
+ * X-1 / DOCK-7 — this CTA is rendered by EVERY ModelPicker empty state, and those pickers live
+ * both on classic route pages AND inside studio dock panels (Motif Mine, Conformance Run, Arc
+ * Import, every plan_* BYOK pass). A bare <Link> inside a dock panel navigates the SPA away from
+ * the studio and unmounts the ENTIRE dockview layout — the user loses their whole workspace just
+ * by clicking "Add a model". So branch on whether a StudioHost exists, exactly as StepConfig.tsx
+ * does (the shipped precedent).
+ *
+ * ⚠ The studio branch renders a real <button>, NOT a <Link> with onClick+preventDefault: a
+ * preventDefault-ed <Link> still emits an <a href> that a middle-click or ⌘-click NAVIGATES,
+ * tearing the dock down by the exact path this fix exists to close.
+ *
+ * ⚠ It follows the BARE REGISTRATION_PATH, not `to`. resolveStudioLink strips the query before
+ * matching (studioLinks.ts:76) and SETTINGS_RE (:110-111) maps `/settings/providers` →
+ * openPanel('settings', { tab: 'providers' }). The `?return=` round-trip is MEANINGLESS in the
+ * studio: the dock never navigates away, so the caller's panel stays mounted and there is nothing
+ * to come back from. Re-deriving that path→panel mapping here would be a second copy of a rule
+ * studioLinks.ts already owns.
+ *
+ * The ~8 call sites (ModelPicker, CompositionPanel, BuildGraphDialog, EmbeddingModelPicker,
+ * RerankModelPicker, DefaultModelsCard, + the two picker re-exports) inherit this for free —
+ * fixing it per-call-site would guarantee the 9th one forgets.
  */
 const REGISTRATION_PATH = '/settings/providers';
 
@@ -32,6 +56,9 @@ interface Props {
 
 export function AddModelCta({ returnTo, capability, label, variant = 'button', className }: Props) {
   const location = useLocation();
+  // null outside the studio (classic route pages) — the DOCK-7 branch. Safe either way:
+  // useLocation() also works inside the studio, whose panels mount under /books/:id/studio.
+  const studioHost = useOptionalStudioHost();
   // Default the return target to wherever the CTA is rendered, preserving query.
   const back = returnTo ?? `${location.pathname}${location.search}`;
   const to = `${REGISTRATION_PATH}?return=${encodeURIComponent(back)}`;
@@ -39,30 +66,39 @@ export function AddModelCta({ returnTo, capability, label, variant = 'button', c
   const text =
     label ?? (capability ? `Add a ${capability} model` : 'Add a model');
 
-  if (variant === 'link') {
+  // Identical styling on both branches, so `variant` behaves the same in the studio and out of it.
+  const isLinkVariant = variant === 'link';
+  const classes = isLinkVariant
+    ? cn(
+        'inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-2 hover:underline',
+        className,
+      )
+    : cn(
+        'inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90',
+        className,
+      );
+  const icon = isLinkVariant ? <Plus className="h-3 w-3" /> : <Plus className="h-3.5 w-3.5" />;
+
+  // STUDIO — open the settings panel in the dock. Never an <a>, never a navigation.
+  if (studioHost) {
     return (
-      <Link
-        to={to}
-        className={cn(
-          'inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-2 hover:underline',
-          className,
-        )}
+      <button
+        type="button"
+        className={classes}
+        onClick={() =>
+          followStudioLink(REGISTRATION_PATH, studioHost, { bookId: studioHost.bookId })
+        }
       >
-        <Plus className="h-3 w-3" />
+        {icon}
         {text}
-      </Link>
+      </button>
     );
   }
 
+  // CLASSIC ROUTE — the original <Link>, `?return=` intact (ProvidersTab honors it there).
   return (
-    <Link
-      to={to}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90',
-        className,
-      )}
-    >
-      <Plus className="h-3.5 w-3.5" />
+    <Link to={to} className={classes}>
+      {icon}
       {text}
     </Link>
   );

@@ -68,13 +68,15 @@ class WikiGenJob(BaseModel):
     # W5 — optional second model for the corrective revise re-gen (null = prose model).
     revise_model_ref: str | None = None
     revise_model_source: str | None = None
+    # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort for the wiki-gen LLM. Default 'none'.
+    reasoning_effort: str = "none"
 
 
 _COLS = (
     "job_id, user_id, project_id, book_id, status, model_source, model_ref, "
     "entity_ids, items_done, max_spend_usd, items_total, items_processed, "
     "cost_spent_usd, error_message, results, current_entity_id, current_pass, "
-    "revise_model_ref, revise_model_source"
+    "revise_model_ref, revise_model_source, reasoning_effort"
 )
 
 
@@ -104,6 +106,7 @@ def _row_to_job(row: asyncpg.Record) -> WikiGenJob:
         current_entity_id=row["current_entity_id"], current_pass=row["current_pass"],
         revise_model_ref=row["revise_model_ref"],
         revise_model_source=row["revise_model_source"],
+        reasoning_effort=row["reasoning_effort"],
     )
 
 
@@ -116,6 +119,7 @@ class WikiGenJobsRepo:
         model_source: str, model_ref: str, entity_ids: list[str],
         max_spend_usd: Decimal | None, items_total: int | None,
         revise_model_ref: str | None = None, revise_model_source: str | None = None,
+        reasoning_effort: str = "none",
     ) -> WikiGenJob:
         """Insert a pending job. The per-book partial-unique index makes a 2nd
         active job for the book raise UniqueViolation → :class:`ActiveJobExists`.
@@ -129,13 +133,14 @@ class WikiGenJobsRepo:
                         INSERT INTO wiki_gen_jobs
                           (user_id, project_id, book_id, model_source, model_ref,
                            entity_ids, max_spend_usd, items_total,
-                           revise_model_ref, revise_model_source)
-                        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
+                           revise_model_ref, revise_model_source, reasoning_effort)
+                        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)
                         RETURNING {_COLS}
                         """,
                         user_id, project_id, book_id, model_source, model_ref,
                         json.dumps([str(e) for e in entity_ids]), max_spend_usd, items_total,
                         revise_model_ref or None, revise_model_source or None,
+                        reasoning_effort,
                     )
                     job = _row_to_job(row)
                     # Unified Job Control Plane — emit the initial lifecycle event so the

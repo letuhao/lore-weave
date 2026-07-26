@@ -32,6 +32,17 @@ async function ok<T>(p: Promise<import('@playwright/test').APIResponse>): Promis
   return (await r.json()) as T;
 }
 
+/** #19 Wave 2 — `studioRole` is a server-synced ACCOUNT-level pref (not per-book, not
+ *  per-test-run), so a role picked by one E2E test sticks for every later test on this shared
+ *  account. Tests that need a deterministic tour (e.g. "the core tour specifically") reset it
+ *  to null directly via the API first — there is no UI affordance to clear a role once picked
+ *  (Skip only sets the seen-flag, it never touches studioRole, by design — see
+ *  useStudioOnboarding.ts). */
+export async function resetStudioRolePref(request: APIRequestContext, token: string): Promise<void> {
+  const r = await request.patch('/v1/me/preferences', { ...auth(token), data: { prefs: { studioRole: null } } });
+  if (!r.ok()) throw new Error(`resetStudioRolePref failed: ${r.status()} ${await r.text()}`);
+}
+
 export async function createBook(request: APIRequestContext, token: string, title: string): Promise<string> {
   const b = await ok<{ book_id: string }>(
     request.post('/v1/books', { ...auth(token), data: { title, original_language: 'en' } }),
@@ -74,6 +85,40 @@ export async function trashBook(request: APIRequestContext, token: string, bookI
   await request.delete(`/v1/books/${bookId}`, auth(token));
 }
 
+// ── translation (#16 Phase 3 — real job, not a mock, per this repo's E2E convention) ──────────
+
+/** Submit a real translate job against a chat-capable model. Resolves the model dynamically
+ *  (via listChatModels) rather than a hardcoded id, so a deactivated/renamed test model doesn't
+ *  silently break this helper. */
+export async function createTranslationJob(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string, targetLanguage: string,
+): Promise<string> {
+  const models = await listChatModels(request, token);
+  if (models.length === 0) throw new Error('no active chat-capable model for translation E2E — check test account BYOK models');
+  const j = await ok<{ job_id: string }>(request.post(`/v1/translation/books/${bookId}/jobs`, {
+    ...auth(token),
+    data: { chapter_ids: [chapterId], target_language: targetLanguage, model_source: 'user_model', model_ref: models[0].user_model_id },
+  }));
+  return j.job_id;
+}
+
+/** Poll a translation job to completion (or throw on failure/timeout). Local models translating
+ *  a 1-paragraph seed chapter typically finish in 5-15s. */
+export async function waitForTranslationJob(
+  request: APIRequestContext, token: string, jobId: string, timeoutMs = 60_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const job = await ok<{ status: string; error_message?: string | null }>(
+      request.get(`/v1/translation/jobs/${jobId}`, auth(token)),
+    );
+    if (job.status === 'completed') return;
+    if (job.status === 'failed') throw new Error(`translation job ${jobId} failed: ${job.error_message}`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`translation job ${jobId} did not complete within ${timeoutMs}ms`);
+}
+
 export async function getBookApi(
   request: APIRequestContext, token: string, bookId: string,
 ): Promise<{ book_id: string; title: string; world_id?: string | null }> {
@@ -106,6 +151,14 @@ export async function listWorldBooks(
   request: APIRequestContext, token: string, worldId: string,
 ): Promise<{ items: Array<{ book_id: string; title: string }>; total: number }> {
   return ok(request.get(`/v1/worlds/${worldId}/books`, auth(token)));
+}
+
+/** A world's maps (S7·2 read route) — used to VERIFY the loop server-side: a map an author built
+ *  in the studio is reachable from the book through the world (book→world→map, not an island). */
+export async function listWorldMapsApi(
+  request: APIRequestContext, token: string, worldId: string,
+): Promise<{ items: Array<{ map_id: string; name: string }>; total: number }> {
+  return ok(request.get(`/v1/worlds/${worldId}/maps`, auth(token)));
 }
 
 /** Attach an existing book to a world (C20 move-book) — pre-seed membership. */
@@ -160,6 +213,35 @@ export async function deleteChatSession(
   request: APIRequestContext, token: string, sessionId: string,
 ): Promise<void> {
   await request.delete(`/v1/chat/sessions/${sessionId}`, auth(token));
+}
+
+export async function patchChatSession(
+  request: APIRequestContext,
+  token: string,
+  sessionId: string,
+  body: { enabled_tools?: string[]; enabled_skills?: string[]; activated_tools?: string[]; title?: string },
+): Promise<Record<string, unknown>> {
+  return ok(
+    request.patch(`/v1/chat/sessions/${sessionId}`, { ...auth(token), data: body }),
+  );
+}
+
+export async function getChatSession(
+  request: APIRequestContext, token: string, sessionId: string,
+): Promise<Record<string, unknown>> {
+  return ok(request.get(`/v1/chat/sessions/${sessionId}`, auth(token)));
+}
+
+export async function getToolsCatalog(
+  request: APIRequestContext, token: string,
+): Promise<{ items: Array<{ name: string }> }> {
+  return ok(request.get('/v1/chat/tools/catalog', auth(token)));
+}
+
+export async function getSkillsCatalog(
+  request: APIRequestContext, token: string,
+): Promise<{ items: Array<{ id: string }> }> {
+  return ok(request.get('/v1/chat/skills/catalog', auth(token)));
 }
 
 /** Create a chapter and save `text` as its draft body (one revision) — a content-
@@ -235,6 +317,27 @@ export async function createCompositionWork(request: APIRequestContext, token: s
   return w.project_id;
 }
 
+/** S5 — derive a dị bản (derivative Work) from a canon Work via the real route the wizard
+ *  calls. Returns the new derivative's project_id + version (for If-Match archive). Throws on
+ *  the 503 PROJECT_CREATE_UNAVAILABLE (knowledge-service can't mint the delta partition) so a
+ *  seeding test can `test.skip()` on a genuine infra outage instead of failing spuriously. */
+export async function createDerivative(
+  request: APIRequestContext, token: string, sourceProjectId: string,
+  opts: { name: string; branchPoint?: number; taxonomy?: 'au' | 'pov_shift' | 'character_transform'; canonRules?: string[] },
+): Promise<{ project_id: string; version: number }> {
+  const r = await request.post(`/v1/composition/works/${sourceProjectId}/derive`, {
+    ...auth(token),
+    data: {
+      name: opts.name,
+      branch_point: opts.branchPoint ?? 0,
+      divergence: { taxonomy: opts.taxonomy ?? 'au', canon_rule: opts.canonRules ?? [] },
+    },
+  });
+  if (!r.ok()) throw new Error(`createDerivative ${r.url()} → ${r.status()} ${await r.text()}`);
+  const w = (await r.json()) as { project_id: string; version: number };
+  return { project_id: w.project_id, version: w.version };
+}
+
 export async function createCompositionScene(
   request: APIRequestContext, token: string, projectId: string, chapterId: string, title: string,
 ): Promise<string> {
@@ -278,6 +381,20 @@ export async function setWorkCriticModel(
     request.patch(`/v1/composition/works/${projectId}`, {
       ...auth(token),
       data: { settings: { critic_model_source: 'user_model', critic_model_ref: criticModelRef } },
+    }),
+  );
+}
+
+/** Persist the Work's default drafter model (settings.default_model_ref). The studio editor's inline
+ *  "Continue from cursor" is gated on a RESOLVED default (composeDefaultModel = persisted ?? sole-model);
+ *  the test account has no `user_default_models`, so a spec that drives the inline ghost must set this. */
+export async function setWorkDefaultModel(
+  request: APIRequestContext, token: string, projectId: string, modelRef: string,
+): Promise<void> {
+  await ok(
+    request.patch(`/v1/composition/works/${projectId}`, {
+      ...auth(token),
+      data: { settings: { default_model_ref: modelRef } },
     }),
   );
 }

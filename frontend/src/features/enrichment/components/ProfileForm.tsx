@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
-import { useAuth } from '@/auth';
-import { providerApi } from '@/features/settings/api';
+import { ModelPicker } from '@/components/model-picker';
 import { DimensionOverrideEditor } from './DimensionOverrideEditor';
 import type {
   AnachronismMarker,
@@ -62,7 +60,6 @@ export function ProfileForm({
   suggesting: boolean;
 }) {
   const { t } = useTranslation('enrichment');
-  const { accessToken } = useAuth();
   const [worldview, setWorldview] = useState(profile.worldview);
   const [language, setLanguage] = useState(profile.language);
   const [eraPolicy, setEraPolicy] = useState(profile.era_policy ?? '');
@@ -74,13 +71,6 @@ export function ProfileForm({
   // Suggest makes it ai_suggested, Save persists as manual. (The form is long-lived,
   // keyed by bookId, so a local state reflects what's about to be / was just saved.)
   const [source, setSource] = useState(profile.profile_source);
-
-  const { data: chatModels } = useQuery({
-    queryKey: ['user-models', 'chat'],
-    queryFn: () => providerApi.listUserModels(accessToken!, { capability: 'chat' }),
-    enabled: !!accessToken,
-  });
-  const models = chatModels?.items ?? [];
 
   const applyDraft = (d: SuggestedProfile) => {
     setWorldview(d.worldview);
@@ -108,19 +98,15 @@ export function ProfileForm({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-card p-3">
-        <select
-          aria-label={t('settings.suggest_model')}
-          value={modelRef}
-          onChange={(e) => setModelRef(e.target.value)}
-          className="rounded border bg-background px-2 py-1 text-xs"
-        >
-          <option value="">{t('settings.select_model')}</option>
-          {models.map((m) => (
-            <option key={m.user_model_id} value={m.user_model_id}>
-              {m.alias || m.provider_model_name}
-            </option>
-          ))}
-        </select>
+        <ModelPicker
+          capability="chat"
+          value={modelRef || null}
+          onChange={(id) => setModelRef(id ?? '')}
+          placeholder={t('settings.select_model')}
+          ariaLabel={t('settings.suggest_model')}
+          compact
+          className="w-56"
+        />
         <button
           type="button"
           data-testid="profile-suggest"

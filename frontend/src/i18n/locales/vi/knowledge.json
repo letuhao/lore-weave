@@ -22,7 +22,40 @@
     "hint": "Cuộn để thu phóng · kéo vùng trống để di chuyển · nhấp một nút để xem chi tiết · ⊞ để mở rộng",
     "loading": "Đang tải đồ thị…",
     "loadFailed": "Không tải được đồ thị: {{error}}",
-    "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó."
+    "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó.",
+    "emptyLens": "Không có mối quan hệ nào khớp với chế độ xem này — hãy thử một chế độ xem khác, một chương trước đó, hoặc xóa bộ lọc.",
+    "truncatedLens": "đang hiển thị {{n}} mối quan hệ đầu tiên của chế độ xem này",
+    "hintLens": "Cuộn để phóng to · kéo để di chuyển · nhấp vào một nút để xem chi tiết",
+    "lens": {
+      "view": "Chế độ xem",
+      "noView": "Tất cả các mối quan hệ",
+      "asOf": "Tính đến chương",
+      "latest": "mới nhất",
+      "clear": "Xóa bộ lọc"
+    }
+  },
+  "schemaSection": {
+    "title": "Lược đồ",
+    "subtitle": "Định nghĩa lược đồ đồ-thị-tri-thức của dự án — loại nút, loại quan hệ, loại sự kiện và từ vựng. Chỉnh sửa áp dụng cho đồ thị của dự án này.",
+    "editCta": "Sửa lược đồ",
+    "freeEdges": "Cho phép quan hệ ngoài từ vựng (cạnh tự do).",
+    "closedEdges": "Quan hệ giới hạn ở các loại quan hệ đã khai báo; phần khác đưa vào phân loại.",
+    "error": "Không tải được lược đồ của dự án này.",
+    "emptyHelp": "Dự án này chưa có lược đồ. Bắt đầu từ đầu, nhân bản một mẫu, hoặc adopt một mẫu.",
+    "newBlank": "Lược đồ trống mới",
+    "schemaNamePlaceholder": "Tên lược đồ",
+    "createBlankButton": "Tạo lược đồ trống",
+    "created": "Đã tạo lược đồ",
+    "cloneTemplate": "Nhân bản một mẫu",
+    "pickTemplate": "Chọn một mẫu…",
+    "cloneButton": "Nhân bản vào lược đồ của tôi",
+    "cloned": "Đã nhân bản mẫu",
+    "adoptTemplate": "Adopt một mẫu",
+    "adoptHelp": "Sao chép một mẫu vào dự án này (kiểm tra glossary trước).",
+    "adoptCta": "Adopt tại tab Ontology của sách",
+    "adoptBooklessHint": "Adopt chỉ áp dụng cho dự án gắn với sách.",
+    "forbidden": "Bạn cần quyền Quản lý trên dự án này để định nghĩa lược đồ.",
+    "createFailed": "Không thể tạo lược đồ."
   },
   "shell": {
     "backToProjects": "Tất cả dự án",
@@ -35,6 +68,7 @@
       "proposals": "Đề xuất",
       "gap": "Thiếu sót",
       "insights": "Phân tích",
+      "schema": "Lược đồ",
       "graph": "Dựng / Khám phá đồ thị"
     },
     "notFound": "Không tìm thấy dự án.",
@@ -46,8 +80,10 @@
       "extraction": "Trích xuất",
       "extractionEnabled": "Đã bật",
       "extractionDisabled": "Đã tắt",
-      "bookId": "Sách",
-      "none": "—"
+      "book": "Sách",
+      "world": "Thế giới",
+      "none": "—",
+      "triageNudge": "{{count}} phần tử đã trích xuất cần được phân loại"
     },
     "placeholder": {
       "proposals": "Các đề xuất đang chờ sẽ hiển thị ở đây (C11).",
@@ -215,7 +251,12 @@
       "matchLabel": "Độ khớp",
       "openLabel": "Mở ngăn kéo {{sourceType}} với độ khớp {{score}}",
       "hubBadge": "Tóm tắt",
-      "hubHint": "Đoạn này là phần tóm tắt hoặc trích đoạn tiểu sử dài; bị giảm thứ hạng nhưng vẫn có thể xuất hiện."
+      "hubHint": "Đoạn này là phần tóm tắt hoặc trích đoạn tiểu sử dài; bị giảm thứ hạng nhưng vẫn có thể xuất hiện.",
+      "langHint": "Ngôn ngữ nguồn: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{count}} trên {{total}} kết quả thuộc ngôn ngữ của bạn ({{lang}}); phần còn lại hiển thị theo ngôn ngữ gốc.",
+      "none": "Không có kết quả nào thuộc ngôn ngữ của bạn ({{lang}}); đang hiển thị theo ngôn ngữ gốc."
     },
     "detail": {
       "title": "Ngăn kéo",
@@ -272,7 +313,8 @@
       "chapterLabel": "Chương",
       "chapterUnresolved": "Chương với id {{id}} — không giải được tiêu đề",
       "participantsMore": "+{{count}} người nữa",
-      "confidenceLabel": "Độ tin cậy"
+      "confidenceLabel": "Độ tin cậy",
+      "timeLabel": "Thời điểm trong truyện"
     },
     "detail": {
       "summary": "Tóm tắt",
@@ -285,7 +327,16 @@
       "refreshing": "đang làm mới…",
       "prev": "Trang trước",
       "next": "Trang sau",
-      "backToFirst": "Về trang đầu"
+      "backToFirst": "Về trang đầu",
+      "pageSize": "Mỗi trang"
+    },
+    "localization": {
+      "sourceMarker": "Hiển thị bằng ngôn ngữ gốc — đang chờ dịch"
+    },
+    "search": {
+      "placeholder": "Tìm sự kiện…",
+      "label": "Tìm sự kiện",
+      "clear": "Xóa tìm kiếm"
     }
   },
   "entities": {
@@ -342,7 +393,11 @@
       "loading": "Đang tải thực thể…",
       "loadFailed": "Không thể tải thực thể: {{error}}",
       "close": "Đóng",
+      "edit": "Chỉnh sửa",
+      "merge": "Hợp nhất vào thực thể khác",
       "metadata": "Siêu dữ liệu",
+      "description": "Mô tả",
+      "descriptionSource": "Từ mục từ điển được liên kết",
       "aliases": "Bí danh",
       "relations": "Quan hệ ({{count}})",
       "truncated": "Hiển thị {{shown}} trong tổng số {{total}} — hãy lọc hoặc tìm trong bảng",
@@ -360,10 +415,9 @@
         "global": "Toàn cục",
         "confidence": "Độ tin cậy",
         "mentions": "Số lần nhắc",
-        "anchor": "Điểm neo"
+        "anchor": "Điểm neo",
+        "scope": "Phạm vi"
       },
-      "edit": "Chỉnh sửa",
-      "merge": "Hợp nhất vào thực thể khác",
       "promote": "Đưa vào từ điển",
       "promoteHint": "Thực thể được phát hiện. Đưa vào để tạo bản nháp từ điển do AI gợi ý để duyệt.",
       "promotePending": "Đang đưa vào…",
@@ -379,8 +433,32 @@
         "decision": "Quyết định",
         "preference": "Sở thích",
         "milestone": "Cột mốc",
-        "negation": "Phủ định"
-      }
+        "negation": "Phủ định",
+        "statement": "Lời khẳng định",
+        "commitment": "Cam kết"
+      },
+      "addFact": "Thêm sự kiện",
+      "addFactTitle": "Thêm một sự kiện về thực thể này",
+      "factContentLabel": "Sự kiện",
+      "factContentPlaceholder": "ví dụ: Không còn tin tưởng Hội đồng sau sự phản bội",
+      "factTypeLabel": "Loại",
+      "factPredicatePlaceholder": "vị ngữ (tùy chọn, ví dụ: loyal_to)",
+      "factObjectPlaceholder": "tân ngữ (tùy chọn, ví dụ: House Vaeth)",
+      "addFactSave": "Lưu sự kiện",
+      "addFactCancel": "Hủy",
+      "addFactSuccess": "Đã thêm sự kiện",
+      "addFactFailed": "Không thể thêm sự kiện: {{error}}",
+      "markWrong": "Đánh dấu sai",
+      "markWrongConfirm": "Đánh dấu sự kiện này là sai? Sự kiện sẽ bị vô hiệu hóa (xóa khỏi chế độ ôn tập) nhưng vẫn được lưu trong lịch sử.",
+      "markWrongSuccess": "Đã đánh dấu sự kiện là sai",
+      "markWrongFailed": "Không thể vô hiệu hóa sự kiện: {{error}}",
+      "factTypeHelp": "Đây là loại sự thật nào?",
+      "factAdvancedToggle": "Liên kết tới một thực thể khác (tùy chọn)",
+      "replaceFact": "Thay thế sự thật này",
+      "replaceFactSave": "Lưu thay đổi",
+      "replaceFactSuccess": "Đã thay thế sự thật",
+      "markWrongUndo": "Hoàn tác",
+      "markWrongUndoFailed": "Không thể hoàn tác: {{error}}"
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",
@@ -420,6 +498,41 @@
       "errArchived": "Không thể hợp nhất thực thể đã lưu trữ. Vui lòng khôi phục trước.",
       "errGlossaryConflict": "Cả hai thực thể được neo vào các mục từ điển khác nhau. Hãy giải quyết xung đột trước khi hợp nhất.",
       "errUnknown": "Hợp nhất thất bại: {{reason}}"
+    },
+    "create": {
+      "title": "Thực thể mới",
+      "description": "Tự soạn thảo một thực thể trong đồ thị tri thức. Ban đầu thực thể ở trạng thái được phát hiện; hãy neo nó lại sau để trở thành thực thể chuẩn.",
+      "newButton": "Thực thể mới",
+      "needsProject": "Vui lòng chọn một dự án trước",
+      "field": {
+        "name": "Tên",
+        "kind": "Loại"
+      },
+      "save": "Tạo",
+      "saving": "Đang tạo…",
+      "cancel": "Hủy",
+      "success": "Đã tạo thực thể — {{name}} ({{kind}})",
+      "dedup": "Đã tồn tại — đang hiển thị {{name}} ({{kind}})",
+      "failed": "Không thể tạo thực thể — {{error}}",
+      "discoveredHint": "Các thực thể mới sẽ ở trạng thái «đã khám phá». Trạng thái «chính thức» sẽ đạt được khi được gắn vào bảng thuật ngữ."
+    },
+    "kind": {
+      "character": "Nhân vật",
+      "location": "Địa điểm",
+      "organization": "Tổ chức",
+      "concept": "Khái niệm",
+      "item": "Vật phẩm"
+    },
+    "archive": {
+      "action": "Lưu trữ",
+      "confirm": "Ẩn thực thể này? Các mối quan hệ và liên kết thuật ngữ của nó vẫn được giữ lại; nó sẽ biến mất khỏi danh sách hoạt động. Bạn có thể Hoàn tác ngay lập tức, hoặc hiển thị lại thông qua bộ lọc Lưu trữ.",
+      "success": "Đã lưu trữ thực thể.",
+      "failed": "Không thể lưu trữ — {{error}}",
+      "undo": "Hoàn tác"
+    },
+    "restore": {
+      "success": "Đã khôi phục thực thể.",
+      "failed": "Không thể khôi phục — {{error}}"
     }
   },
   "jobs": {
@@ -545,7 +658,9 @@
         "oldest": "Cũ nhất trước",
         "name_asc": "Tên (A–Z)",
         "name_desc": "Tên (Z–A)"
-      }
+      },
+      "thisBookOnly": "Chỉ sách này",
+      "showAllBooks": "Hiện tất cả sách"
     },
     "card": {
       "staticMemory": "Bộ nhớ tĩnh",
@@ -557,35 +672,6 @@
       "delete": "Xóa",
       "tuneExtraction": "Tinh chỉnh trích xuất",
       "bookId": "book_id"
-    },
-    "extractionTuning": {
-      "title": "Tinh chỉnh trích xuất",
-      "description": "Cài đặt trích xuất theo từng tiểu thuyết. Thay đổi áp dụng cho lần trích xuất tiếp theo của dự án này.",
-      "filterEnabled": "Bộ lọc độ chính xác (loại bỏ trích xuất ít dẫn chứng)",
-      "category": {
-        "entity": "Thực thể",
-        "relation": "Quan hệ",
-        "event": "Sự kiện"
-      },
-      "categoriesRequired": "Chọn ít nhất một loại, hoặc tắt bộ lọc.",
-      "partialPolicy": "Khớp một phần:",
-      "policyKeep": "Giữ",
-      "policyDrop": "Bỏ",
-      "recoveryEnabled": "Khôi phục thực thể (phục hồi thực thể bị bỏ sót)",
-      "autocreateEnabled": "Tự tạo khi viết (tạo thực thể được tham chiếu bởi quan hệ)",
-      "promptWarning": "Nâng cao: prompt tùy chỉnh thay thế hướng dẫn trích xuất mặc định cho bước đó và có thể làm giảm chất lượng. Để trống để dùng mặc định. Đầu ra JSON luôn được ép buộc.",
-      "promptPlaceholder": "Để trống để dùng prompt mặc định",
-      "prompt": {
-        "entity": "Prompt trích xuất thực thể",
-        "relation": "Prompt trích xuất quan hệ",
-        "event": "Prompt trích xuất sự kiện",
-        "fact": "Prompt trích xuất dữ kiện"
-      },
-      "save": "Lưu",
-      "saving": "Đang lưu…",
-      "cancel": "Hủy",
-      "saved": "Đã lưu cài đặt trích xuất.",
-      "failed": "Lưu thất bại: {{error}}"
     },
     "form": {
       "createTitle": "Dự án mới",
@@ -617,7 +703,7 @@
         "success": "Benchmark hoàn tất cho {{model}} (recall@3 {{recall}}).",
         "errorNoModel": "Hãy chọn một mô hình embedding trước khi chạy benchmark.",
         "errorUnknownModel": "Mô hình embedding này không được hỗ trợ bởi bộ benchmark.",
-        "errorNotBenchmarkProject": "Benchmark phải chạy trên một dự án chuyên dụng. Hãy tạo một dự án mới trước khi chạy.",
+        "errorNotBenchmarkProject": "Không thể khởi động benchmark trên sandbox — vui lòng thử lại sau giây lát.",
         "errorAlreadyRunning": "Đã có một benchmark đang chạy cho dự án này. Vui lòng chờ và thử lại.",
         "errorProviderFlake": "Nhà cung cấp embedding gặp lỗi giữa chừng. Vui lòng thử lại.",
         "errorGeneric": "Benchmark thất bại: {{message}}"
@@ -697,12 +783,15 @@
           "durationMin": "~{{n}} phút"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} mục",
+          "progress": "{{processed}} / {{total}} mục (chương + chat + bảng chú giải)",
           "elapsed": "Đã trôi: {{elapsed}}",
           "spent": "Đã dùng: ${{spent}}",
           "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "Số lời gọi song song",
-          "concurrencyApply": "Áp dụng"
+          "concurrencyApply": "Áp dụng",
+          "stagesTitle": "Các giai đoạn dựng",
+          "stages": "Thực thể → Quan hệ · Sự kiện · Dữ kiện → Tóm tắt",
+          "stagesNote": "Các lượt chạy theo thứ tự này. Dữ kiện và Tóm tắt chạy sau khi Thực thể và Quan hệ hoàn tất, nên xuất hiện muộn hơn trong bản dựng đầy đủ — dừng sớm sẽ bỏ qua chúng."
         },
         "building_paused_user": {
           "body": "Bạn đã tạm dừng tác vụ này. Tiếp tục khi sẵn sàng, hoặc hủy để giữ lại đồ thị một phần."
@@ -849,6 +938,43 @@
       "failed": "Đổi thất bại: {{error}}",
       "alreadyAtModel": "Mô hình đã được đặt thành {{model}} — có thể thiết bị khác đã đổi."
     },
+    "extractionTuning": {
+      "title": "Tinh chỉnh trích xuất",
+      "description": "Cài đặt trích xuất theo từng tiểu thuyết. Thay đổi áp dụng cho lần trích xuất tiếp theo của dự án này.",
+      "filterEnabled": "Bộ lọc độ chính xác (loại bỏ trích xuất ít dẫn chứng)",
+      "category": {
+        "entity": "Thực thể",
+        "relation": "Quan hệ",
+        "event": "Sự kiện"
+      },
+      "categoriesRequired": "Chọn ít nhất một loại, hoặc tắt bộ lọc.",
+      "partialPolicy": "Khớp một phần:",
+      "policyKeep": "Giữ",
+      "policyDrop": "Bỏ",
+      "defaultModel": "Mô hình trích xuất mặc định",
+      "defaultModelNone": "Dùng mặc định toàn cục của tôi",
+      "defaultModelHint": "Mô hình dùng cho mọi bước trích xuất trừ khi được ghi đè bên dưới. Để trống thì các vai trò lùi về mô hình mặc định toàn cục của bạn (Cài đặt), rồi tới mô hình mà lần build này chạy.",
+      "recoveryEnabled": "Khôi phục thực thể (phục hồi thực thể bị bỏ sót)",
+      "recoveryModel": "Mô hình khôi phục (tùy chọn)",
+      "recoveryModelNone": "Dùng mô hình trích xuất mặc định",
+      "recoveryModelHint": "LLM khôi phục các thực thể mà lượt chính bỏ sót. Để mặc định thì nó dùng lại mô hình trích xuất mặc định ở trên.",
+      "recoveryBatch": "Cỡ lô",
+      "recoveryBatchHint": "số tên mỗi lần gọi phân loại (1-20; mặc định 5)",
+      "autocreateEnabled": "Tự tạo khi viết (tạo thực thể được tham chiếu bởi quan hệ)",
+      "promptWarning": "Nâng cao: prompt tùy chỉnh thay thế hướng dẫn trích xuất mặc định cho bước đó và có thể làm giảm chất lượng. Để trống để dùng mặc định. Đầu ra JSON luôn được ép buộc.",
+      "promptPlaceholder": "Để trống để dùng prompt mặc định",
+      "prompt": {
+        "entity": "Prompt trích xuất thực thể",
+        "relation": "Prompt trích xuất quan hệ",
+        "event": "Prompt trích xuất sự kiện",
+        "fact": "Prompt trích xuất dữ kiện"
+      },
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "cancel": "Hủy",
+      "saved": "Đã lưu cài đặt trích xuất.",
+      "failed": "Lưu thất bại: {{error}}"
+    },
     "confirmDestructive": {
       "cancel": "Hủy",
       "deleteGraph": {
@@ -902,6 +1028,7 @@
       "noModels": "Bạn chưa có mô hình chat nào. Vui lòng thêm một mô hình trong mục Mô hình AI trước.",
       "costHint": "Chi phí ước tính: nhỏ (<$0.05). Đầu ra giới hạn 500 token.",
       "editLockHint": "Chỉnh sửa thủ công trong 30 ngày qua được bảo vệ — việc tạo lại sẽ bỏ qua nếu bạn vừa chỉnh sửa.",
+      "disabledDirty": "Vui lòng lưu hoặc đặt lại các chỉnh sửa chưa lưu trước khi tạo lại — kết quả tạo lại sẽ không hiển thị trong trình chỉnh sửa khi bạn có thay đổi chưa lưu.",
       "editLockDefault": "Lần chỉnh sửa thủ công gần nhất của bạn được bảo vệ khỏi việc tạo lại trong 30 ngày.",
       "confirm": "Tạo lại",
       "regenerating": "Đang tạo lại…",
@@ -912,8 +1039,7 @@
       "concurrentEdit": "Một chỉnh sửa thủ công đã diễn ra song song. Vui lòng kiểm tra tiểu sử hiện tại và thử lại.",
       "guardrailFailed": "Việc tạo lại không đạt kiểm tra chất lượng: {{reason}}",
       "providerError": "Nhà cung cấp AI của bạn trả về lỗi: {{reason}}",
-      "unknownError": "Tạo lại thất bại: {{reason}}",
-      "disabledDirty": "Vui lòng lưu hoặc đặt lại các chỉnh sửa chưa lưu trước khi tạo lại — kết quả tạo lại sẽ không hiển thị trong trình chỉnh sửa khi bạn có thay đổi chưa lưu."
+      "unknownError": "Tạo lại thất bại: {{reason}}"
     },
     "preferences": {
       "title": "Sở thích đã học",
@@ -1024,9 +1150,34 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "Liên kết thực thể",
+      "description": "Tạo một mối quan hệ từ {{subject}} đến một thực thể khác của bạn.",
+      "action": "Liên kết thực thể",
+      "subject": "Từ",
+      "predicate": "Mối quan hệ",
+      "object": "Đến",
+      "objectPlaceholder": "Tìm kiếm thực thể của bạn…",
+      "noMatches": "Không tìm thấy thực thể phù hợp.",
+      "save": "Tạo liên kết",
+      "saving": "Đang liên kết…",
+      "cancel": "Hủy",
+      "success": "Đã tạo liên kết.",
+      "notYours": "Không thể tạo liên kết — một điểm cuối không phải là thực thể của bạn.",
+      "selfLoop": "Một thực thể không thể tự liên kết với chính nó.",
+      "failed": "Không thể tạo liên kết — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Thêm sự kiện",
+      "description": "Soạn thảo một sự kiện dòng thời gian mới cho nhân vật này.",
+      "success": "Đã thêm sự kiện.",
+      "failed": "Thêm thất bại: {{error}}",
+      "saving": "Đang thêm…",
+      "save": "Thêm sự kiện"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1102,5 +1253,64 @@
       "divergent": "Phân kỳ"
     },
     "totalRuns": "{{count}} lượt tổng cộng"
+  },
+  "triage": {
+    "loading": "Đang tải hàng đợi phân loại…",
+    "loadFailed": "Không thể tải hàng đợi phân loại: {{error}}",
+    "empty": "Không có gì cần phân loại — mọi phần tử được trích xuất đều khớp với lược đồ của bạn.",
+    "resolved": "Đã giải quyết {{count}} mục",
+    "resolveFailed": "Không thể giải quyết: {{error}}",
+    "handoffToGlossary": "Đang mở bảng thuật ngữ để hoàn tất việc này trong codex của bạn…",
+    "itemType": {
+      "unknown_node_kind": "Loại thực thể không xác định",
+      "unknown_edge_type": "Loại quan hệ không xác định",
+      "edge_kind_mismatch": "Sai lệch điểm cuối quan hệ",
+      "unknown_vocab_value": "Giá trị nằm ngoài từ vựng",
+      "edge_cardinality_conflict": "Xung đột quan hệ đang hoạt động"
+    },
+    "action": {
+      "map": "Ánh xạ vào mục hiện có",
+      "add_to_vocab": "Thêm vào từ vựng",
+      "add_to_schema": "Thêm vào lược đồ",
+      "re_target": "Sửa điểm cuối",
+      "widen_target_kinds": "Mở rộng các loại được cho phép",
+      "drop_edge": "Loại bỏ",
+      "close_previous": "Đóng mục trước đó",
+      "set_multi_active": "Cho phép nhiều mục",
+      "promote_to_glossary_kind": "Nâng cấp lên loại thuật ngữ",
+      "demote_to_attribute": "Hạ cấp xuống thuộc tính",
+      "dismiss": "Bỏ qua"
+    },
+    "prompt": {
+      "target_entity_id": "ID thực thể mục tiêu đã sửa",
+      "map_to": "Ánh xạ tới (để trống để dùng giá trị đã phát hiện)"
+    },
+    "itemDismissed": "Đã bỏ qua mục này",
+    "confirmSchemaWrite": "Thêm nội dung này vào schema của bạn? Việc này sẽ thay đổi cách xác thực các dữ liệu trích xuất trong tương lai.",
+    "evidence": {
+      "unknown_edge_type": "Mối quan hệ “{{predicate}}” chưa có trong sơ đồ của bạn.",
+      "unknown_vocab_value": "Giá trị “{{value}}” chưa có trong danh sách “{{set}}”.",
+      "edge_kind_mismatch": "“{{predicate}}” đã được sử dụng giữa một {{source}} và một {{target}}, điều mà sơ đồ của bạn không cho phép.",
+      "unknown_node_kind": "Loại “{{kind}}” chưa có trong sơ đồ của bạn.",
+      "edge_cardinality_conflict": "Đang có các mối quan hệ “{{predicate}}” đang hoạt động bị xung đột.",
+      "generic": "Phần tử được trích xuất này không khớp với sơ đồ của bạn."
+    },
+    "retarget": {
+      "title": "Trỏ đến thực thể chính xác",
+      "description": "Tìm kiếm các thực thể của bạn và chọn thực thể mà mối quan hệ này nên trỏ tới.",
+      "searchPlaceholder": "Tìm kiếm thực thể theo tên…",
+      "noMatches": "Không tìm thấy thực thể phù hợp.",
+      "cancel": "Hủy",
+      "confirm": "Thiết lập lại"
+    },
+    "map": {
+      "title": "Ánh xạ tới một mục hiện có",
+      "description": "Chọn mục schema mà phần tử ngoài schema này nên được xử lý như là.",
+      "label": "Ánh xạ tới",
+      "keepDetected": "Giữ giá trị đã phát hiện",
+      "cancel": "Hủy",
+      "confirm": "Ánh xạ"
+    },
+    "emptyHint": "Triage thu thập mọi dữ liệu trích xuất được tìm thấy nhưng chưa khớp với schema của bạn — một hàng đợi trống đồng nghĩa với việc mọi thứ đã được sắp xếp ngăn nắp."
   }
 }

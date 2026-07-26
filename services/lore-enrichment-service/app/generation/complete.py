@@ -29,8 +29,12 @@ import json
 from typing import Any
 
 import httpx
+from loreweave_internal_client import build_internal_client
+
+from loreweave_llm import no_thinking_fields
 
 from app import metrics
+from app.logging_config import trace_id_var
 from app.jobs.tokens import TokenUsage, UsageMeter, estimate_tokens
 from app.strategies.base import StrategyContext
 
@@ -45,6 +49,11 @@ __all__ = [
 #: provider-registry model source — ``user_model`` resolves a BYOK user_model row
 #: by its UUID. A SOURCE selector, NOT a model name (no model id appears here).
 MODEL_SOURCE: str = "user_model"
+
+#: Output-token ceiling for one enrichment completion (AI-Task Standard —
+#: D-ENRICH-COMPLETE-BUDGET). Was UNBOUNDED. Generous for a single entity's
+#: profile/bio prose (matches wiki's per-article budget) but caps a runaway.
+_MAX_OUTPUT_TOKENS: int = 4000
 
 
 class CompletionSeamError(RuntimeError):
@@ -214,19 +223,30 @@ def make_complete_fn(
             "model_source": MODEL_SOURCE,
             "model_ref": context.model_ref,
             "messages": [{"role": "user", "content": prompt}],
+            # AI-Task Standard (D-ENRICH-COMPLETE-BUDGET): bound the output (was
+            # unbounded → runaway risk) and DISABLE hidden reasoning — the seam
+            # drops `event: reasoning` frames (see the SSE contract above), so a
+            # reasoning model would burn the budget on thinking we discard →
+            # empty/truncated answer (the empty-prose footgun).
+            "max_tokens": _MAX_OUTPUT_TOKENS,
+            **no_thinking_fields(),
         }
         # ensure_ascii=False so the Chinese prompt travels as genuine UTF-8.
         content = json.dumps(body, ensure_ascii=False).encode("utf-8")
-        headers = {
-            "X-Internal-Token": internal_token,
-            "Content-Type": "application/json; charset=utf-8",
-        }
         params = {"user_id": context.user_id}
-        timeout = httpx.Timeout(timeout_s, connect=10.0)
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            # W5 (ephemeral wave): factory bakes X-Internal-Token + trace. Keep the
+            # explicit charset Content-Type per-request — it OVERRIDES the factory's
+            # baked `application/json` and is load-bearing for the CJK body.
+            async with build_internal_client(
+                base, internal_token=internal_token,
+                timeout_s=timeout_s, connect_timeout_s=10.0,
+                trace_id_provider=trace_id_var.get,
+            ) as client:
                 resp = await client.post(
-                    url, headers=headers, params=params, content=content
+                    url,
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    params=params, content=content,
                 )
         except httpx.TimeoutException as exc:
             raise CompletionSeamError(

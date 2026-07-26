@@ -141,6 +141,35 @@ describe('RawDrawersTab', () => {
     });
   });
 
+  it('renders the M7 coverage banner + per-hit language badge (C12)', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [
+        { ...HIT_DUEL, source_lang: 'vi' },
+        { ...HIT_REVEAL, source_lang: 'zh' },
+      ],
+      embedding_model: 'bge-m3',
+      coverage: {
+        reader_lang: 'vi',
+        total: 2,
+        in_language: 1,
+        partial: true,
+        note: '1 of 2 results are in your language (vi); the rest are shown in the source language.',
+      },
+    });
+    render(<RawDrawersTab />, { wrapper: Wrapper });
+    await selectProject('p-1');
+    fireEvent.change(screen.getByTestId('drawers-search-input'), {
+      target: { value: 'bridge duel' },
+    });
+    // coverage banner renders (partial coverage → note present)
+    await screen.findByTestId('drawers-coverage');
+    // per-hit language badges render the source_lang
+    const badges = await screen.findAllByTestId('drawer-result-lang-badge');
+    expect(badges.map((b) => b.textContent)).toEqual(['vi', 'zh']);
+    // the language preference reached the BE call
+    expect(searchDrawersMock.mock.calls[0][0].language).toBeTruthy();
+  });
+
   it('renders the not-indexed banner when embedding_model is null', async () => {
     searchDrawersMock.mockResolvedValue({
       hits: [],

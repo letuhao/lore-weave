@@ -24,6 +24,8 @@ from app.services.frontend_tools import (
     GLOSSARY_CONFIRM_ACTION_TOOL,
     GLOSSARY_PROPOSE_EDIT_TOOL,
     PROPOSE_EDIT_TOOL,
+    UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
+    UI_OPEN_STUDIO_PANEL_TOOL,
     frontend_tool_defs,
     is_frontend_tool,
 )
@@ -48,9 +50,12 @@ from tests.test_stream_tools import (
 
 
 class TestFrontendToolDefs:
-    def test_propose_edit_is_a_frontend_tool(self):
-        assert is_frontend_tool("propose_edit")
-        assert "propose_edit" in FRONTEND_TOOL_NAMES
+    def test_propose_edit_is_no_longer_a_frontend_tool(self):
+        # Phase 2 (P2.2) — propose_edit moved to ai-gateway as a consumer-local tool
+        # that returns a GATED proposal directive; chat-service stops intercepting it
+        # as a frontend tool (it routes to ai-gateway, then suspends on the directive).
+        assert not is_frontend_tool("propose_edit")
+        assert "propose_edit" not in FRONTEND_TOOL_NAMES
 
     def test_glossary_edit_is_a_frontend_tool(self):
         assert is_frontend_tool("glossary_propose_entity_edit")
@@ -77,6 +82,31 @@ class TestFrontendToolDefs:
         assert glossary_frontend_tools
         for name in glossary_frontend_tools:
             assert name in GLOSSARY_SKILL_PROMPT, f"skill prompt is missing tool name {name!r}"
+
+    def test_glossary_skill_prompt_mandates_one_card_batch(self):
+        """#27/#29/#30 regression: the skill must steer multi-write goals to ONE
+        batched card and forbid looping the single-propose tools — the run lifecycle
+        honours only one confirm card per turn, so a loop produces dead, un-confirmable
+        cards. If this guidance is lost, a weak model regresses to the N-card failure.
+
+        N5a (2026-07-18 F3) SPLIT the glossary skill: the always-injected CORE keeps the
+        ENTITY multi-write steering (glossary_propose_entities, "1+ items in one call"),
+        while the ONTOLOGY batch guidance (glossary_propose_batch for kinds/attributes) +
+        the hard one-card/no-loop rule moved to GLOSSARY_SHAPING_PROMPT — injected only
+        when the author actually does ontology work (pin / world-setup intent), which is
+        the only context that batches ontology writes. This asserts the guardrail is
+        preserved in BOTH halves at its correct home, not that it all lives in core."""
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT, GLOSSARY_SHAPING_PROMPT
+        # Ontology batch home (shaping): the deterministic batch path is named + the hard
+        # one-card-per-turn rule and the no-loop prohibition are present.
+        assert "glossary_propose_batch" in GLOSSARY_SHAPING_PROMPT
+        assert "ONE confirm card per turn" in GLOSSARY_SHAPING_PROMPT
+        shap = GLOSSARY_SHAPING_PROMPT.lower()
+        assert "never" in shap and "loop" in shap
+        # Core (always-injected) must still steer ENTITY multi-write to a single batched
+        # call, so the common "add these N characters" turn can't regress to N dead cards.
+        assert "glossary_propose_entities" in GLOSSARY_SKILL_PROMPT
+        assert "in one call" in GLOSSARY_SKILL_PROMPT
 
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")
@@ -119,18 +149,99 @@ class TestFrontendToolDefs:
         # neither surface → nothing
         assert frontend_tool_defs() == []
 
+    def test_ui_tools_are_no_longer_frontend_tools(self):
+        # Phase 3 (P3.2) — the KIND-A ui_* tools moved to ai-gateway as consumer-local
+        # directive tools; chat-service no longer intercepts/suspends on them (so they
+        # route to ai-gateway and return an io.loreweave/ui-directive result). They are
+        # still ADVERTISED (nav via the federated catalog, studio via frontend_tool_defs).
+        for name in (
+            "ui_navigate", "ui_open_book", "ui_open_chapter", "ui_show_panel",
+            "ui_watch_job", "ui_open_studio_panel", "ui_focus_manuscript_unit",
+        ):
+            assert not is_frontend_tool(name), f"{name} must no longer be a frontend tool"
+            assert name not in FRONTEND_TOOL_NAMES
+
+    def test_studio_nav_tools_are_deprecated_and_never_advertised(self):
+        # DEPRECATED 2026-07-25 — the studio dock-nav tools (ui_open_studio_panel /
+        # ui_focus_manuscript_unit) are NO LONGER advertised to the model. GUI control is
+        # user/logic-driven (the FE already exposes full navigation), so agent-driven nav only
+        # cost tokens. They remain CALLABLE (ai-gateway handleUiTool + FE resolvers) but off the
+        # surface — frontend_tool_defs advertises NO ui_* tool in any surface combination.
+        for kw in ({}, {"editor": True}, {"book_scoped": True}, {"editor": True, "book_scoped": True}):
+            names = [t["function"]["name"] for t in frontend_tool_defs(**kw)]
+            assert "ui_open_studio_panel" not in names and "ui_focus_manuscript_unit" not in names
+        assert UI_OPEN_STUDIO_PANEL_TOOL not in frontend_tool_defs(editor=True, book_scoped=True)
+
+    def test_studio_ui_tool_schemas_are_wire_standard(self):
+        # NOTE: this used to also assert `panel_id`'s enum against a hand-copied literal
+        # list — that list drifted stale at least twice (missing context-inspector,
+        # sharing, book-settings, translation, enrichment-*, user-guide, agent-mode) because
+        # nothing forced it to stay in sync with the real enum. The actual anti-drift
+        # mechanism for that is test_frontend_tools_contract.py's committed
+        # contracts/frontend-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
+        # which the FE guard also reads — duplicating the list here only added a second,
+        # unmaintained copy that could fail for reasons unrelated to whatever change
+        # actually broke the contract. Keep this test to what it can uniquely catch:
+        # wire shape + no duplicate/empty enum values.
+        p = UI_OPEN_STUDIO_PANEL_TOOL["function"]
+        assert p["name"] == "ui_open_studio_panel"
+        assert set(p["parameters"]["required"]) == {"panel_id"}
+        # panel_id is enum-constrained so a weak model can't drift the value (or the arg name) —
+        # a live gemma-26b smoke otherwise sent the ui_show_panel `panel` arg + guessed a value.
+        panel_ids = p["parameters"]["properties"]["panel_id"]["enum"]
+        assert panel_ids, "panel_id must declare a non-empty enum"
+        assert all(isinstance(v, str) and v for v in panel_ids), "every panel_id value must be a non-empty string"
+        assert len(panel_ids) == len(set(panel_ids)), "panel_id enum has a duplicate value"
+        assert "agent-mode" in panel_ids  # 20_agent_mode.md D1 — mission control panel
+        f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
+        assert f["name"] == "ui_focus_manuscript_unit"
+        assert set(f["parameters"]["required"]) == {"chapter_id"}
+
 
 # ── the suspend in the tool loop ─────────────────────────────────────────────
 
 
 class TestSuspendLoop:
     @pytest.mark.asyncio
-    async def test_frontend_tool_suspends_without_executing(self):
-        """A propose_edit call yields a `suspend` chunk carrying the rehydrate
-        state and does NOT call knowledge_client.execute_tool."""
+    async def test_confirm_action_frontend_tool_suspends_without_executing(self):
+        """A still-frontend tool (confirm_action) yields a `suspend` chunk carrying the
+        rehydrate state and does NOT call knowledge_client.execute_tool (the classic
+        frontend-tool suspend path, kept after propose_edit migrated to ai-gateway)."""
         kc = AsyncMock()
+        args = '{"confirm_token":"tok","descriptor":"book.publish","title":"Publish?"}'
         scripts = [[
-            tool_frag(index=0, id="call_fe", name="propose_edit"),
+            tool_frag(index=0, id="call_fe", name="confirm_action"),
+            tool_frag(index=0, arguments_delta=args),
+            usage(10, 4),
+            done("tool_calls"),
+        ]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "confirm_action"}}],
+            ))
+        # never executed server-side (a frontend tool suspends, it doesn't call mcp)
+        kc.mcp_execute_tool.assert_not_awaited()
+        suspends = [c for c in chunks if "suspend" in c]
+        assert len(suspends) == 1
+        s = suspends[0]["suspend"]
+        assert s["pending_tool_call"]["name"] == "confirm_action"
+        assert s["pending_tool_call"]["id"] == "call_fe"
+        assert s["input_tokens"] == 10 and s["output_tokens"] == 4
+        assert any(m.get("role") == "assistant" and m.get("tool_calls") for m in s["working"])
+
+    @pytest.mark.asyncio
+    async def test_propose_edit_suspends_via_the_gated_proposal_directive(self):
+        """Phase 2 (P2.2) — propose_edit now ROUTES to ai-gateway (a real mcp call) which
+        returns a GATED proposal directive; chat-service detects it and suspends with the
+        SAME pending shape the old frontend-tool suspend used (so ProposeEditCard is
+        unchanged). Contrast the confirm_action test: propose_edit DOES call mcp now."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={
+            "type": "io.loreweave/propose-edit", "operation": "insert_at_cursor", "text": "Hi",
+        })
+        scripts = [[
+            tool_frag(index=0, id="call_pe", name="propose_edit"),
             tool_frag(index=0, arguments_delta='{"operation":"insert_at_cursor","text":"Hi"}'),
             usage(10, 4),
             done("tool_calls"),
@@ -140,30 +251,33 @@ class TestSuspendLoop:
                 scripts, knowledge_client=kc,
                 tools=[{"type": "function", "function": {"name": "propose_edit"}}],
             ))
-        # never executed server-side
-        kc.mcp_execute_tool.assert_not_awaited()
-        kc.mcp_execute_tool.assert_not_awaited()
-        # a single suspend chunk with the pending call + working history
+        # propose_edit IS executed via ai-gateway now (returns the proposal directive)
+        kc.mcp_execute_tool.assert_awaited_once()
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         s = suspends[0]["suspend"]
         assert s["pending_tool_call"]["name"] == "propose_edit"
-        assert s["pending_tool_call"]["id"] == "call_fe"
+        assert s["pending_tool_call"]["id"] == "call_pe"
+        # reconstructed to the legacy shape so ProposeEditCard renders unchanged
         assert s["pending_tool_call"]["args"] == {"operation": "insert_at_cursor", "text": "Hi"}
-        assert s["input_tokens"] == 10 and s["output_tokens"] == 4
-        # the dangling assistant tool-call message is in `working`
-        assert any(m.get("role") == "assistant" and m.get("tool_calls") for m in s["working"])
+        # NOT a durable task (client-effect gate → resumed like a frontend tool)
+        assert "task" not in s["pending_tool_call"]
 
     @pytest.mark.asyncio
-    async def test_backend_tool_executes_then_suspends_on_frontend_tool(self):
-        """A pass with a memory_* tool AND propose_edit: the memory tool runs
-        inline (result in working), then the loop suspends on propose_edit."""
+    async def test_backend_tool_executes_then_suspends_on_propose_edit_directive(self):
+        """A pass with memory_search AND propose_edit: both call mcp now (memory returns
+        hits, propose_edit returns the proposal directive), then the loop suspends on the
+        propose_edit directive with the memory result already in `working`."""
         kc = AsyncMock()
-        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        kc.mcp_execute_tool.side_effect = [
+            _envelope(success=True, result={"hits": []}),  # memory_search
+            _envelope(success=True, result={  # propose_edit → proposal directive
+                "type": "io.loreweave/propose-edit", "operation": "insert_at_cursor", "text": "x"}),
+        ]
         scripts = [[
             tool_frag(index=0, id="call_mem", name="memory_search"),
             tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
-            tool_frag(index=1, id="call_fe", name="propose_edit"),
+            tool_frag(index=1, id="call_pe", name="propose_edit"),
             tool_frag(index=1, arguments_delta='{"operation":"insert_at_cursor","text":"x"}'),
             usage(5, 2),
             done("tool_calls"),
@@ -174,14 +288,13 @@ class TestSuspendLoop:
                 tools=[{"type": "function", "function": {"name": "memory_search"}},
                        {"type": "function", "function": {"name": "propose_edit"}}],
             ))
-        # memory tool executed once
-        kc.mcp_execute_tool.assert_awaited_once()
-        # a tool_call chunk for the memory tool + a suspend for propose_edit
+        # both tools executed (memory + propose_edit route through mcp now)
+        assert kc.mcp_execute_tool.await_count == 2
         tool_chunks = [c for c in chunks if "tool_call" in c]
         assert [c["tool_call"]["tool"] for c in tool_chunks] == ["memory_search"]
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
-        # working has the memory tool result before the suspend
+        assert suspends[0]["suspend"]["pending_tool_call"]["name"] == "propose_edit"
         working = suspends[0]["suspend"]["working"]
         assert any(m.get("role") == "tool" and m.get("tool_call_id") == "call_mem" for m in working)
 

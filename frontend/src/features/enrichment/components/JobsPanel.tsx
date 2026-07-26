@@ -77,11 +77,16 @@ export function JobsPanel() {
               </td>
               <td className="px-3 py-2 font-mono text-xs">{j.proposals_total}</td>
               {/* #5: spent vs cap — the cost-cap-pause is the panel's whole point. */}
+              {/* D-JOURNEY-ENRICH-COST-UNITS: these are TOKEN counts (the C1 cost-cap),
+                  not dollars — show integer tokens with a `tok` unit, never a `$`. */}
               <td className="px-3 py-2 font-mono text-xs" data-testid={`job-cost-${j.job_id}`}>
-                ${j.actual_cost.toFixed(4)}
+                {Math.round(j.actual_cost).toLocaleString()}
                 {j.max_spend != null && (
-                  <span className="text-muted-foreground"> / ${j.max_spend.toFixed(2)}</span>
+                  <span className="text-muted-foreground">
+                    {' '}/ {Math.round(j.max_spend).toLocaleString()}
+                  </span>
                 )}
+                <span className="text-muted-foreground"> tok</span>
               </td>
               <td className="px-3 py-2 text-xs text-muted-foreground">
                 {new Date(j.created_at).toLocaleString()}

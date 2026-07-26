@@ -14,18 +14,24 @@ const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: v
 vi.mock('sonner', () => ({ toast: toastMocks }));
 
 const updateEventMock = vi.fn();
+const createEventMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
     ...actual,
-    knowledgeApi: { updateEvent: (...a: unknown[]) => updateEventMock(...a) },
+    knowledgeApi: {
+      updateEvent: (...a: unknown[]) => updateEventMock(...a),
+      createEvent: (...a: unknown[]) => createEventMock(...a),
+    },
   };
 });
 
 import { EventEditDialog } from '../EventEditDialog';
 
 function Wrapper({ children }: PropsWithChildren) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
@@ -87,4 +93,68 @@ describe('EventEditDialog', () => {
     await waitFor(() => expect(toastMocks.error).toHaveBeenCalledWith('events.edit.conflict'));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+});
+
+// D-KG-EVENT-CREATE-ROUTE — the same dialog authors a NEW event in create mode.
+// Kept a top-level sibling (not nested under EventEditDialog): the parent's
+// `mockReset()` beforeEach interacts with react-query's mutation teardown to
+// mis-flag this negative path's (caught) rejection as unhandled — a vitest quirk,
+// not a product bug. A local `mockClear` reset sidesteps it.
+describe('EventEditDialog — create mode', () => {
+  beforeEach(() => {
+    createEventMock.mockClear();
+    toastMocks.success.mockClear();
+    toastMocks.error.mockClear();
+  });
+
+    it('opens blank (no event to seed)', () => {
+      render(
+        <EventEditDialog open onOpenChange={vi.fn()} create={{ projectId: 'p1', chapterId: 'ch-9', participants: ['Kai'] }} />,
+        { wrapper: Wrapper },
+      );
+      expect((screen.getByTestId('event-edit-title') as HTMLInputElement).value).toBe('');
+      expect((screen.getByTestId('event-edit-dateiso') as HTMLInputElement).value).toBe('');
+    });
+
+    it('POSTs a create payload with the project + chapter + participant anchor', async () => {
+      createEventMock.mockResolvedValue({ ...EVENT, id: 'evt-new', title: 'The Duel' });
+      const onOpenChange = vi.fn();
+      render(
+        <EventEditDialog open onOpenChange={onOpenChange} create={{ projectId: 'p1', chapterId: 'ch-9', participants: ['Kai'] }} />,
+        { wrapper: Wrapper },
+      );
+      fireEvent.change(screen.getByTestId('event-edit-title'), { target: { value: 'The Duel' } });
+      fireEvent.click(screen.getByTestId('event-edit-confirm'));
+      await waitFor(() => {
+        expect(createEventMock).toHaveBeenCalledWith(
+          { project_id: 'p1', title: 'The Duel', chapter_id: 'ch-9', participants: ['Kai'] },
+          'tok',
+        );
+      });
+      await waitFor(() => expect(toastMocks.success).toHaveBeenCalledTimes(1));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('a blank title cannot submit (button disabled — no silent no-op)', () => {
+      render(
+        <EventEditDialog open onOpenChange={vi.fn()} create={{ projectId: 'p1' }} />,
+        { wrapper: Wrapper },
+      );
+      expect((screen.getByTestId('event-edit-confirm') as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(screen.getByTestId('event-edit-confirm'));
+      expect(createEventMock).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a create failure as an error toast', async () => {
+      // Per-call rejection (not mockRejectedValue, whose eagerly-created rejected
+      // promise can read as unobserved under the reset/teardown timing here).
+      createEventMock.mockImplementation(() => Promise.reject(new Error('boom')));
+      render(
+        <EventEditDialog open onOpenChange={vi.fn()} create={{ projectId: 'p1', participants: ['Kai'] }} />,
+        { wrapper: Wrapper },
+      );
+      fireEvent.change(screen.getByTestId('event-edit-title'), { target: { value: 'The Duel' } });
+      fireEvent.click(screen.getByTestId('event-edit-confirm'));
+      await waitFor(() => expect(toastMocks.error).toHaveBeenCalled());
+    });
 });

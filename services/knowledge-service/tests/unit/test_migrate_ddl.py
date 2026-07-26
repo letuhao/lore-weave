@@ -103,6 +103,33 @@ def test_projects_alter_adds_tool_calling_enabled():
     )
 
 
+def test_projects_alter_adds_canon_capture_enabled_defaulting_off():
+    """WS-4C Half A — the per-project canon auto-capture toggle is OPT-IN.
+
+    DEFAULT **false**, deliberately NOT tool_calling_enabled's default-true:
+    capture is ambient spend on the user's own paid model, so the toggle is the
+    consent and must start un-granted. `models.py`'s `canon_capture_enabled: bool
+    = False` is the other half of that contract.
+
+    An earlier revision of this branch shipped `DEFAULT true`, which back-filled every
+    existing row to true; `ADD COLUMN IF NOT EXISTS` never revisits a column, so the
+    literal change alone would leave those projects opted IN and silently spending
+    (observed for real: 21/21 dev projects). The guarded, self-disarming block keys on
+    the column's own default as a version marker and normalizes the rows exactly once.
+    All three parts must survive, or a redeploy re-enables paid capture."""
+    assert (
+        "ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT false"
+        in DDL
+    )
+    assert "SELECT column_default = 'true' INTO _bad_default" in DDL, "the version marker"
+    assert "UPDATE knowledge_projects SET canon_capture_enabled = false" in DDL, "the normalization"
+    assert "ALTER COLUMN canon_capture_enabled SET DEFAULT false" in DDL, "the disarm"
+    assert (
+        "ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT true"
+        not in DDL
+    ), "capture must never default ON — that charges every project for a feature nobody asked for"
+
+
 def test_projects_alter_adds_world_id():
     """G4 (world-level project) — world_id binds a world's dedicated
     knowledge partition to its bible book. Additive nullable column +
@@ -137,13 +164,18 @@ def test_all_create_statements_are_idempotent():
     # Every CREATE must use IF NOT EXISTS or be wrapped in a DO $$ block.
     import re
 
+    # Strip `-- ...` line comments FIRST — a comment mentioning "CREATE TABLE" in prose (e.g. "the
+    # CREATE TABLE above only runs on a fresh DB") is not a statement and must not trip the scan
+    # (the hygiene-grep-matches-comments false-positive class).
+    ddl_no_comments = re.sub(r"--[^\n]*", "", DDL)
+
     bare_create_table = re.findall(
-        r"CREATE TABLE (?!IF NOT EXISTS)", DDL
+        r"CREATE TABLE (?!IF NOT EXISTS)", ddl_no_comments
     )
     assert bare_create_table == [], f"non-idempotent CREATE TABLE: {bare_create_table}"
 
     bare_create_index = re.findall(
-        r"CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)", DDL
+        r"CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)", ddl_no_comments
     )
     assert bare_create_index == [], f"non-idempotent CREATE INDEX: {bare_create_index}"
 
@@ -449,8 +481,9 @@ def test_pending_facts_table_present():
 def test_pending_facts_schema_shape():
     """K21-C (design D5) — scoped columns: pending_fact_id UUID PK
     (uuidv7), user_id UUID NOT NULL, project_id UUID nullable
-    (no-project chats can queue), session_id TEXT NOT NULL, fact_type
-    TEXT NOT NULL, fact_text TEXT NOT NULL, created_at TIMESTAMPTZ."""
+    (no-project chats can queue), session_id TEXT NULLABLE (WS-2.1 — a
+    DIARY fact has no chat session), fact_type TEXT NOT NULL, fact_text
+    TEXT NOT NULL, created_at TIMESTAMPTZ."""
     import re
     m = re.search(
         r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
@@ -462,17 +495,26 @@ def test_pending_facts_schema_shape():
     assert "user_id          UUID NOT NULL" in body
     # project_id nullable — a no-project chat can still queue a fact.
     assert "project_id       UUID," in body
-    assert "session_id       TEXT NOT NULL" in body
+    # WS-2.1 — session_id is NULLABLE now (a diary fact has no session). It must NOT be NOT NULL.
+    assert "session_id       TEXT," in body
+    assert "session_id       TEXT NOT NULL" not in body
     assert "fact_type        TEXT NOT NULL" in body
     assert "fact_text        TEXT NOT NULL" in body
     assert "created_at       TIMESTAMPTZ NOT NULL DEFAULT now()" in body
+    # WS-2.2 — the structured s/p/o + event_date + provenance + dedup + tombstone are added by later
+    # ALTER/CREATE statements (outside this CREATE TABLE body, which only runs on a fresh DB).
+    assert "ADD COLUMN IF NOT EXISTS subject" in DDL
+    assert "ADD COLUMN IF NOT EXISTS event_date  DATE" in DDL
+    assert "ADD COLUMN IF NOT EXISTS provenance" in DDL
+    assert "CREATE TABLE IF NOT EXISTS knowledge_rejected_facts" in DDL
 
 
 def test_pending_facts_fact_type_check_constraint():
     """K21-C — fact_type CHECK locks the vocabulary in sync with the
     Neo4j FactType closed enum + the PendingFact Pydantic model. A
     drift would let an unknown type reach merge_fact's own validation
-    and 500."""
+    and 500. WS-2.1 added 'statement' (the diary's coarse fact kind);
+    WS-5.7 added 'commitment' (a promised action + due date)."""
     import re
     m = re.search(
         r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
@@ -481,9 +523,11 @@ def test_pending_facts_fact_type_check_constraint():
     assert m is not None
     body = m.group(1)
     assert (
-        "CHECK (fact_type IN ('decision','preference','milestone','negation'))"
+        "CHECK (fact_type IN ('decision','preference','milestone','negation','statement','commitment'))"
         in body
     )
+    # The idempotent widen (for an already-migrated DB) must ADD the same 6-value CHECK.
+    assert "'negation','statement','commitment'))" in DDL
 
 
 def test_pending_facts_no_cross_db_fk():
@@ -506,3 +550,28 @@ def test_pending_facts_user_list_index():
     serves both the all-sessions and per-session variants."""
     assert "idx_knowledge_pending_facts_user" in DDL
     assert "ON knowledge_pending_facts(user_id, created_at)" in DDL
+
+
+def test_event_text_translations_table_present():
+    """KG-TL M3 — the on-demand event-text translation cache. Glossary-shaped:
+    (event_id, field, language_code) PK, machine|verified confidence, source_hash
+    guard, no cross-DB FK (event_id is a Neo4j node id)."""
+    assert "CREATE TABLE IF NOT EXISTS event_text_translations" in DDL
+    assert "PRIMARY KEY (event_id, field, language_code)" in DDL
+    assert "CHECK (field IN ('summary','time_cue','title'))" in DDL
+    assert "CHECK (confidence IN ('machine','verified'))" in DDL
+
+
+def test_event_text_translations_no_cross_db_fk_and_purge_index():
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS event_text_translations\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    # event_id is a Neo4j node id; user_id/project_id are cross-DB → no FK.
+    assert "REFERENCES" not in body
+    assert "source_hash" in body
+    # AC-T7 purge-cascade lookup by project.
+    assert "idx_event_text_translations_project" in DDL

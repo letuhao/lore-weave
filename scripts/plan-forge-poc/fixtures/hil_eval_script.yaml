@@ -1,0 +1,25 @@
+constraint_ledger:
+  - "PA not coupled to cultivation realm"
+  - "THR no early explain in arc 2"
+  - "arc_2 arc_kind must stay discovery"
+
+revisions:
+  - checkpoint: analyze
+    instruction: >
+      Ensure arc_2 includes all 7 events in order: Nhập Môn, Biến Hóa Đầu Tiên,
+      Thử Nghiệm, Dị Thường Đầu Tiên, Tiểu Thành, Tác Dụng Phụ Đầu Tiên,
+      Quyết Định Tiếp Tục. Thử Nghiệm goal: Lore Weave generates test scenes from character logic.
+    scope: [events]
+    frozen_paths: [variables, arcs]
+    expect_contains: ["Thử Nghiệm"]
+    source_excerpt: |
+      ### Event 3 — Thử Nghiệm
+      Goal: Để Lore Weave tự sinh nội dung. Planner tự tạo scene thử nghiệm dựa trên logic nhân vật.
+
+  - checkpoint: spec
+    instruction: >
+      Add arc_2 event Thử Nghiệm if missing (systematic testing of technique limits).
+      Keep Vietnamese event titles. Do not change variable codes or arc_2 arc_kind.
+    scope: [events, links]
+    frozen_paths: [variables, arcs, charter.forbids]
+    expect_contains: ["Thử Nghiệm"]

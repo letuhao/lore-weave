@@ -91,6 +91,13 @@ ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS chunk_size_tokens     INT  NOT NULL DEFAULT 2000,
   ADD COLUMN IF NOT EXISTS invoke_timeout_secs   INT  NOT NULL DEFAULT 300;
 
+-- D-TRANSLATE-REASONING-TOGGLE — per-job "enable model reasoning (thinking)".
+-- Default OFF (translation output is sensitive to hidden thinking burning the
+-- budget). On the job ROW so it survives job-resume (the message is rebuilt from
+-- the row in _job_message_from_row), not just the create-time message.
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS thinking_enabled BOOLEAN NOT NULL DEFAULT false;
+
 -- Per-chapter chunk rows (observability; recovery restarts chapter from scratch)
 CREATE TABLE IF NOT EXISTS chapter_translation_chunks (
   id                      UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -253,6 +260,16 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
   finished_at        TIMESTAMPTZ,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- D-RE-WORKER-GRADED-EFFORT: the clamped graded reasoning effort (none|low|medium|high) the
+-- worker honors per call. Additive + idempotent; default 'none' ⇒ zero behavior change for
+-- existing rows (the worker falls back to the thinking_enabled bool when absent).
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
+-- bug #3 / D-JOBS-P4: actual job cost for the unified Jobs GUI. The gateway `usage` carries
+-- only tokens (no cost), so this is DERIVED from the summed per-chapter tokens × the model's
+-- pricing (provider-registry estimate oracle) and rides the live + terminal job events.
+-- Nullable: an older/unpriced job leaves it NULL (the GUI renders cost null-safe). Mirrors
+-- translation_jobs.cost_usd.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
 
@@ -271,6 +288,84 @@ CREATE TABLE IF NOT EXISTS extraction_chapter_results (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ecr_job ON extraction_chapter_results(job_id);
+
+-- OBS/M2: per-batch outcome SSOT (extraction-pipeline §2.3 / INV-F15, INV-O12/13).
+-- The batch-outcome taxonomy that makes a silent all-rejected/truncated batch visible.
+-- These rows are the OBSERVE source-of-truth; a reconciliation sweep re-derives job stats
+-- from them. (A same-txn outbox PROJECTION of these rows is deferred until a consumer binds
+-- — D-OBS-BATCH-OUTCOME-PROJECTION.) owner_user_id + book_id carry the tenant scope
+-- (INV-T6); detail_redacted is bounded + carries NO raw_response/secrets.
+CREATE TABLE IF NOT EXISTS extraction_batch_outcomes (
+  id                        UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id                    UUID NOT NULL REFERENCES extraction_jobs(job_id) ON DELETE CASCADE,
+  owner_user_id             UUID NOT NULL,
+  book_id                   UUID NOT NULL,
+  chapter_id                UUID NOT NULL,
+  batch_idx                 INT  NOT NULL DEFAULT 0,
+  chunk_idx                 INT  NOT NULL DEFAULT 0,
+  status                    TEXT NOT NULL,   -- ok|empty_valid|truncated|validation_rejected|llm_error|writeback_failed|unplannable
+  finish_reason             TEXT,
+  kinds                     TEXT[] NOT NULL DEFAULT '{}',
+  entities_found            INT NOT NULL DEFAULT 0,
+  entities_written          INT NOT NULL DEFAULT 0,
+  validation_rejected_count INT NOT NULL DEFAULT 0,
+  input_tokens             INT NOT NULL DEFAULT 0,
+  output_tokens            INT NOT NULL DEFAULT 0,
+  error_code               TEXT,
+  detail_redacted          TEXT,
+  event_id                 TEXT NOT NULL,   -- stable: sha256(job_id, chapter_id, batch_idx, content_hash)
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (event_id)        -- redelivery-stable dedup for the projection (INV-O13)
+);
+CREATE INDEX IF NOT EXISTS idx_ebo_job     ON extraction_batch_outcomes(job_id);
+CREATE INDEX IF NOT EXISTS idx_ebo_chapter ON extraction_batch_outcomes(job_id, chapter_id);
+
+-- CACHE/M6: the EXECUTE ledger (extraction-pipeline §2.1 / §8.1 two-ledger model). "The LLM
+-- produced this parse" — keyed by tenant + chapter content-hash + effort band + batch, so a
+-- re-extraction of an UNCHANGED chapter skips the LLM (don't re-spend tokens). Distinct from
+-- extraction_writeback_log ("landed in glossary"): LLM-skip keys here, writeback-skip there.
+-- owner_user_id is IN the unique key + every lookup — cross-tenant cache reuse is forbidden
+-- (INV-9; content_hash is a within-tenant idempotency key, never cross-tenant). raw_response
+-- is the verbatim debugging/provenance artifact; parsed_entities is what a cache hit reuses.
+CREATE TABLE IF NOT EXISTS extraction_raw_outputs (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id               UUID,
+  owner_user_id        UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  chapter_id           UUID NOT NULL,
+  chapter_content_hash TEXT NOT NULL,
+  chapter_chunk_idx    INT  NOT NULL DEFAULT 0,
+  batch_idx            INT  NOT NULL DEFAULT 0,
+  kinds_requested      TEXT[] NOT NULL DEFAULT '{}',
+  profile_hash         TEXT NOT NULL DEFAULT '',
+  model_source         TEXT NOT NULL DEFAULT '',
+  model_ref            UUID,
+  model_name           TEXT,
+  reasoning_effort     TEXT NOT NULL DEFAULT 'none',
+  effort_band          TEXT NOT NULL DEFAULT 'none',
+  input_tokens         INT,
+  output_tokens        INT,
+  finish_reason        TEXT,
+  raw_response         TEXT NOT NULL DEFAULT '',
+  parsed_entities      JSONB NOT NULL DEFAULT '[]',
+  parse_status         TEXT NOT NULL DEFAULT 'ok',
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- profile_hash IS in the key (§8.1): a changed extraction profile (different kinds/attrs)
+  -- re-maps batch_idx to different work, so it must MISS the cache and re-extract — without
+  -- it a re-extraction after an ontology edit would silently reuse the old profile's parse.
+  UNIQUE (owner_user_id, book_id, chapter_id, chapter_chunk_idx, chapter_content_hash, effort_band, batch_idx, profile_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_ero_cache
+  ON extraction_raw_outputs(owner_user_id, book_id, chapter_id, chapter_content_hash, effort_band);
+-- D-RAWCACHE-MINIO-OFFLOAD: cold-archive pointer for the bulky verbatim `raw_response`.
+-- When an offload sweep moves a row's raw_response to object storage it NULLs raw_response
+-- (sets it to '') and records the object key here; replay never needs raw_response (it uses
+-- parsed_entities), so offload is transparent to the cache. A partial index makes the sweep's
+-- "not-yet-offloaded, has a body" scan cheap without bloating the index with archived rows.
+ALTER TABLE extraction_raw_outputs ADD COLUMN IF NOT EXISTS raw_response_uri TEXT;
+CREATE INDEX IF NOT EXISTS idx_ero_offload_pending
+  ON extraction_raw_outputs(created_at)
+  WHERE raw_response_uri IS NULL AND raw_response <> '';
 
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
@@ -367,6 +462,27 @@ ALTER TABLE chapter_translations
 -- job_meta via the per-chapter message + a worker-set contextvar (see llm_client).
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
+
+-- Public-MCP spend attribution (P4 / D-PMCP-WORKER-CARRIER): when a priced
+-- translation/extraction job is started by a PUBLIC MCP key (via the
+-- /v1/translation/actions/confirm replay), the key id + the key's spend cap are
+-- stored on the job row so the BACKGROUND worker (a separate process — the
+-- in-process contextvar carrier dies at the AMQP hop) can re-set
+-- loreweave_llm.set_public_key_attribution before each provider call. NULL for
+-- ordinary first-party jobs. TEXT (not UUID) mirrors the edge/header form;
+-- spend_cap_usd is the per-key ceiling enforced at provider-registry's reserve.
+-- spend_cap_usd is DOUBLE PRECISION (not NUMERIC) on purpose: the value originates
+-- as a Python float (parsed from the X-Mcp-Spend-Cap-Usd header) and asyncpg's
+-- numeric codec REQUIRES a Decimal — binding a float to NUMERIC raises DataError at
+-- execute time (a real-PG failure that spy-pool unit tests cannot catch). float8
+-- binds the float natively and round-trips as a float (it's a coarse spend ceiling,
+-- not ledger money — the authoritative per-key accounting lives in usage-billing).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS mcp_key_id    TEXT,
+  ADD COLUMN IF NOT EXISTS spend_cap_usd DOUBLE PRECISION;
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS mcp_key_id    TEXT,
+  ADD COLUMN IF NOT EXISTS spend_cap_usd DOUBLE PRECISION;
 
 -- T2-M2 dirty-only re-translate: a job scoped to specific block positions of a
 -- single chapter. block_index_filter = the dirty block positions; seed_version_id

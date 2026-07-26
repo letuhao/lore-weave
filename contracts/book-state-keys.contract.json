@@ -1,0 +1,62 @@
+{
+  "$comment": "SoT for the rail governance book-state keys (Phase G · G0, spec docs/specs/2026-07-15-agent-task-governance.md §14 D4). A rail step's `done_when: \"<key> <op> <n>\"` names one of these keys; the chat-service per-turn probe reads each key from an /internal route; the agent-registry seed authors done_when using them. THREE places drift silently unless machine-checked against ONE source — a renamed key or route disables the gate (reads as satisfied, or falls back to the call log). Both sides check THIS file: chat-service/tests/test_book_state_contract.py (BOOK_STATE_KEYS ⇄ probe routes ⇄ labels ⇄ BookState fields) and agent-registry migrate_lint_test.go (seeded done_when keys ⊆ this set). Change a key here + both consumers, or a test reds. Mirrors the contracts/frontend-tools.contract.json discipline for effects.",
+  "version": 2,
+  "keys": {
+    "categories": {
+      "label": "world categories",
+      "owning_service": "glossary",
+      "probe_route": "/internal/books/{book_id}/ontology",
+      "response_field": "kinds (len)"
+    },
+    "cast": {
+      "label": "characters/places saved",
+      "owning_service": "glossary",
+      "probe_route": "/internal/books/{book_id}/entity-count",
+      "response_field": "count"
+    },
+    "connections": {
+      "label": "cast members placed in the connection map",
+      "owning_service": "knowledge",
+      "probe_route": "/internal/books/{book_id}/kg-state",
+      "response_field": "entity_count"
+    },
+    "plan": {
+      "label": "arc plan proposed (1 = yes)",
+      "owning_service": "composition",
+      "probe_route": "/internal/composition/books/{book_id}/plan-state",
+      "response_field": "has_spec"
+    },
+    "structure": {
+      "label": "arcs compiled into real chapter/scene structure",
+      "owning_service": "composition",
+      "probe_route": "/internal/composition/books/{book_id}/structure-state",
+      "response_field": "linked_count",
+      "$note": "ensure-EXISTS — compile-attributed (plan_run_id set); EXCLUDES bare composition_arc_create. D3."
+    },
+    "structure_fresh": {
+      "label": "arcs the latest plan run just compiled",
+      "owning_service": "composition",
+      "probe_route": "/internal/composition/books/{book_id}/structure-state",
+      "response_field": "latest_run_linked_count",
+      "$note": "produce-NEW — latest plan_run only; a re-plan reads 0 until ITS compile lands. D2."
+    },
+    "chapters": {
+      "label": "chapters",
+      "owning_service": "book",
+      "probe_route": "/internal/books/{book_id}/prose-state",
+      "response_field": "chapters"
+    },
+    "prose": {
+      "label": "chapters with writing in them",
+      "owning_service": "book",
+      "probe_route": "/internal/books/{book_id}/prose-state",
+      "response_field": "with_prose"
+    },
+    "suggestions": {
+      "label": "suggested items still waiting for review",
+      "owning_service": "glossary",
+      "probe_route": "/internal/books/{book_id}/suggestions-count",
+      "response_field": "count"
+    }
+  }
+}

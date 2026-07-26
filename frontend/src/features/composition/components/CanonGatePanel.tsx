@@ -12,7 +12,9 @@ import type { CanonResult, CanonViolation } from '../types';
 
 type Props = {
   canon: CanonResult;
-  onRevise: (v: CanonViolation) => void;
+  // Optional: a view-only surface (the standing CriticPanel) renders canon without
+  // a generate control to revise into, so it omits the per-violation Revise button.
+  onRevise?: (v: CanonViolation) => void;
 };
 
 function violationLabel(v: CanonViolation): string {
@@ -49,13 +51,15 @@ export function CanonGatePanel({ canon, onRevise }: Props) {
         <span className="font-medium">{violationLabel(v)}</span>
         {v.why ? <span className="opacity-80"> — {v.why}</span> : v.span ? <span className="opacity-60"> — “{v.span}”</span> : null}
       </span>
-      <button
-        data-testid={`canon-revise-${kind}`}
-        className="shrink-0 rounded border border-neutral-300/60 px-2 py-0.5 text-[11px] font-medium hover:opacity-80 dark:border-neutral-600"
-        onClick={() => onRevise(v)}
-      >
-        {t('revise', { defaultValue: 'Revise' })}
-      </button>
+      {onRevise && (
+        <button
+          data-testid={`canon-revise-${kind}`}
+          className="shrink-0 rounded border border-neutral-300/60 px-2 py-0.5 text-[11px] font-medium hover:opacity-80 dark:border-neutral-600"
+          onClick={() => onRevise(v)}
+        >
+          {t('revise', { defaultValue: 'Revise' })}
+        </button>
+      )}
     </div>
   );
 

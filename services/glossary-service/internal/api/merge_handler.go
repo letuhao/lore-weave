@@ -15,6 +15,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -126,8 +127,31 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	results, err := s.mergeEntitiesCore(r.Context(), bookID, winnerID, req.LoserIDs, userID, false)
+	if errors.Is(err, errMergeBadWinner) {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "merge failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
+}
 
+// errMergeBadWinner — the winner is not a live entity in this book (→ 422 / re-proposable).
+var errMergeBadWinner = errors.New("winner not a live entity in this book")
+
+// mergeEntitiesCore validates the winner, merges each loser into it (per-loser
+// transaction + journal via mergeOne), fires best-effort post-commit events, and flips
+// fully-resolved merge candidates to merged. Returns the per-loser results. Grant +
+// loser-non-empty are the CALLER's concern. Single source of truth for the HTTP merge
+// handler and the glossary_propose_merge confirm effect.
+// crossKind=false is the normal, same-kind merge (every caller except the #43
+// cross-kind dedup remediation). crossKind=true relaxes the same-kind gate AND
+// scopes the attribute repoint to the WINNER's kind (a loser-kind-only attribute is
+// left on the loser, not mis-attached) — mirroring the write-time cross-kind resolver.
+func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UUID, loserIDs []string, actor uuid.UUID, crossKind bool) ([]mergeResultItem, error) {
 	// Winner must exist, live, in this book — resolve its kind for the same-kind check.
 	var winnerKind uuid.UUID
 	var winnerDeleted *time.Time
@@ -135,23 +159,24 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	if err := s.pool.QueryRow(ctx,
 		`SELECT kind_id, deleted_at, book_id FROM glossary_entities WHERE entity_id = $1`, winnerID,
 	).Scan(&winnerKind, &winnerDeleted, &winnerBook); err != nil {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "winner entity not found")
-		return
+		if err == pgx.ErrNoRows {
+			return nil, errMergeBadWinner
+		}
+		return nil, err
 	}
 	if winnerBook != bookID || winnerDeleted != nil {
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
-		return
+		return nil, errMergeBadWinner
 	}
 
-	results := make([]mergeResultItem, 0, len(req.LoserIDs))
-	mergedLosers := make([]uuid.UUID, 0, len(req.LoserIDs))
-	for _, raw := range req.LoserIDs {
+	results := make([]mergeResultItem, 0, len(loserIDs))
+	mergedLosers := make([]uuid.UUID, 0, len(loserIDs))
+	for _, raw := range loserIDs {
 		loserID, err := uuid.Parse(raw)
 		if err != nil {
 			results = append(results, mergeResultItem{LoserID: raw, Status: "skipped", Reason: "invalid uuid"})
 			continue
 		}
-		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, userID)
+		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, actor, crossKind)
 		if merr != nil {
 			// MED-3b: don't abort the whole request — earlier losers already
 			// committed. Record this one as failed and continue so the response
@@ -174,6 +199,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 		}, winnerID, entityMergedPayload{
 			BookID: bookID.String(), WinnerEntityID: winnerID.String(),
 			LoserEntityID: loserID.String(), Op: "merged",
+			ActorID:   actorIDStr(actor),
 			EmittedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 	}
@@ -184,20 +210,22 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	// proposed (review-impl MED-1). Done once after the loop with the full
 	// merged-loser set so subset semantics are exact.
 	s.markCandidatesMerged(ctx, bookID, winnerID, mergedLosers)
-
-	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
+	return results, nil
 }
 
 // mergeOne performs the transactional merge of one loser into the winner.
 // Returns (journal_id, "", nil) on success or ("", reason, nil) on a validation
 // skip; a non-nil error is a real failure (caller 500s, tx rolled back).
+// crossKindOpt is variadic so the many same-kind call sites (tests + the user merge
+// path) stay unchanged; only the #43 cross-kind dedup passes true.
 func (s *Server) mergeOne(
-	ctx context.Context, bookID, winnerID, winnerKind, loserID, actor uuid.UUID,
+	ctx context.Context, bookID, winnerID, winnerKind, loserID, actor uuid.UUID, crossKindOpt ...bool,
 ) (uuid.UUID, string, error) {
+	crossKind := len(crossKindOpt) > 0 && crossKindOpt[0]
 	if loserID == winnerID {
 		return uuid.Nil, "same entity", nil
 	}
-	// Validate loser: live + same book + same kind.
+	// Validate loser: live + same book + (unless crossKind) same kind.
 	var loserKind, loserBook uuid.UUID
 	var loserDeleted *time.Time
 	if err := s.pool.QueryRow(ctx,
@@ -208,7 +236,11 @@ func (s *Server) mergeOne(
 	if loserBook != bookID || loserDeleted != nil {
 		return uuid.Nil, "loser not a live entity in this book", nil
 	}
-	if loserKind != winnerKind {
+	// #43 — same-kind is the default reversible-merge invariant. crossKind relaxes it
+	// (the dedup remediation collapses same-name/different-kind dups into the winner's
+	// kind); the EAV repoint below is then scoped to the winner's kind so a loser-kind-
+	// only attribute is left behind rather than mis-attached.
+	if !crossKind && loserKind != winnerKind {
 		return uuid.Nil, "different kind", nil
 	}
 
@@ -282,12 +314,18 @@ func (s *Server) mergeOne(
 	if err != nil {
 		return uuid.Nil, "", err
 	}
+	// #43 — on a cross-kind merge ($4=true), only repoint attribute values whose
+	// attr_def belongs to the WINNER's kind ($5); a loser-kind-only attribute is left
+	// on the (soon soft-deleted) loser rather than mis-attached to a different-kind
+	// winner. For a same-kind merge the clause is inert (loser attrs already belong to
+	// the shared kind), so the existing path is byte-identical.
 	eavs, err := scanUUIDs(ctx, tx, `
 		UPDATE entity_attribute_values SET entity_id = $1
 		WHERE entity_id = $2
 		  AND ($3::uuid IS NULL OR attr_def_id <> $3)
 		  AND attr_def_id NOT IN (SELECT attr_def_id FROM entity_attribute_values WHERE entity_id = $1)
-		RETURNING attr_value_id`, winnerID, loserID, aliasDefPtr)
+		  AND ($4::boolean = false OR attr_def_id IN (SELECT attr_id FROM book_attributes WHERE kind_id = $5))
+		RETURNING attr_value_id`, winnerID, loserID, aliasDefPtr, crossKind, winnerKind)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
@@ -370,6 +408,28 @@ func (s *Server) mergeOne(
 				return uuid.Nil, "", e
 			}
 		}
+		// D-GLOSSARY-MULTIROW slice 2 — sync the per-item child rows to the merged alias
+		// union (a list value). 'machine' (an automated merge, not a human curation); a
+		// human can verify individual aliases later. In-tx → atomic with the merge.
+		if e := syncListItems(ctx, tx, winnerID, aliasDef, string(newJSON), "machine", nil); e != nil {
+			return uuid.Nil, "", e
+		}
+	}
+
+	// 2b. Fact-chain merge (§12.4.1 / F1f): repoint ALL loser entity_facts → winner and
+	// reconcile each affected single-valued chain (same-ordinal tiebreak + maintain_chain).
+	// NET-NEW over the append-only fact history (the EAV repoint above is the flat-store
+	// path); the facts SSOT is merged independently and journalled for exact revert.
+	movedFacts, invalidatedFacts, err := mergeFactChains(ctx, tx, winnerID, loserID)
+	if err != nil {
+		return uuid.Nil, "", err
+	}
+	// NOT-NULL journal columns: a nil slice encodes as SQL NULL; coerce to empty arrays.
+	if movedFacts == nil {
+		movedFacts = []uuid.UUID{}
+	}
+	if invalidatedFacts == nil {
+		invalidatedFacts = []uuid.UUID{}
 	}
 
 	// 3. Soft-delete the loser (hidden; conflicting rows stay attached to it).
@@ -379,15 +439,17 @@ func (s *Server) mergeOne(
 		return uuid.Nil, "", err
 	}
 
-	// 4. Journal (for revert).
+	// 4. Journal (for revert) — incl. the moved + tiebreak-invalidated fact ids (§12.4.1 step 5).
 	var journalID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO merge_journal
 		  (book_id, winner_entity_id, loser_entity_id, repointed_chapter_link_ids,
 		   repointed_eav_ids, repointed_enrichment_ids, repointed_audit_ids,
-		   repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, merged_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING journal_id`,
+		   repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, merged_by,
+		   repointed_fact_ids, invalidated_fact_ids)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING journal_id`,
 		bookID, winnerID, loserID, chLinks, eavs, enrich, audit, wikiArticle, supersededWiki, aliasesBefore, actor,
+		movedFacts, invalidatedFacts,
 	).Scan(&journalID); err != nil {
 		return uuid.Nil, "", err
 	}
@@ -416,7 +478,7 @@ func (s *Server) revertMerge(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
-	reason, err := s.revertMergeCore(r.Context(), bookID, journalID)
+	reason, err := s.revertMergeCore(r.Context(), bookID, journalID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed: "+err.Error())
 		return
@@ -441,12 +503,14 @@ func (s *Server) revertMerge(w http.ResponseWriter, r *http.Request) {
 // on success, (businessReason, nil) for a 4xx condition, or (_, err) for a 500.
 // Auth/ownership is the caller's concern (so this is unit-testable without
 // book-service).
-func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUID) (string, error) {
+func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID, actor uuid.UUID) (string, error) {
 	var (
 		winnerID, loserID uuid.UUID
 		jBook             uuid.UUID
 		chLinks, eavs     []uuid.UUID
 		enrich, audit     []uuid.UUID
+		movedFacts        []uuid.UUID
+		invalidatedFacts  []uuid.UUID
 		wikiArticle       *uuid.UUID
 		supersededWiki    *uuid.UUID
 		aliasesBefore     *string
@@ -455,9 +519,11 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	if err := s.pool.QueryRow(ctx, `
 		SELECT book_id, winner_entity_id, loser_entity_id, repointed_chapter_link_ids,
 		       repointed_eav_ids, repointed_enrichment_ids, repointed_audit_ids,
-		       repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, status
+		       repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, status,
+		       repointed_fact_ids, invalidated_fact_ids
 		FROM merge_journal WHERE journal_id = $1`, journalID,
-	).Scan(&jBook, &winnerID, &loserID, &chLinks, &eavs, &enrich, &audit, &wikiArticle, &supersededWiki, &aliasesBefore, &status); err != nil {
+	).Scan(&jBook, &winnerID, &loserID, &chLinks, &eavs, &enrich, &audit, &wikiArticle, &supersededWiki, &aliasesBefore, &status,
+		&movedFacts, &invalidatedFacts); err != nil {
 		return "not_found", nil
 	}
 	if jBook != bookID {
@@ -494,6 +560,11 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE extraction_audit_log SET entity_id=$1 WHERE id = ANY($2::uuid[])`, loserID, audit); err != nil {
+		return "", err
+	}
+	// Undo the fact-chain merge exactly (F1f): repoint moved facts back + un-invalidate the
+	// tiebreak losers + re-derive both chains. Runs before the loser is un-soft-deleted.
+	if err := revertFactChains(ctx, tx, winnerID, loserID, movedFacts, invalidatedFacts); err != nil {
 		return "", err
 	}
 	if wikiArticle != nil {
@@ -541,6 +612,7 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	}, winnerID, entityMergedPayload{
 		BookID: bookID.String(), WinnerEntityID: winnerID.String(),
 		LoserEntityID: loserID.String(), Op: "unmerged",
+		ActorID:   actorIDStr(actor),
 		EmittedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 

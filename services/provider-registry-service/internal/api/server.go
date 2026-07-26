@@ -6,25 +6,29 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/foundation/contracts/adminjwt"
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
@@ -39,6 +43,12 @@ type Server struct {
 	cfg          *config.Config
 	secret       []byte
 	secretKey    []byte
+	// adminPub verifies RS256 admin JWTs for the System-tier platform-model write
+	// endpoints (D-JWT-ROLE-GATE, contracts/adminjwt). nil when
+	// ADMIN_JWT_PUBLIC_KEY_PEM is unset → those endpoints fail closed.
+	// adminKID = KeyFingerprint(adminPub).
+	adminPub *rsa.PublicKey
+	adminKID string
 	client       *http.Client // short-timeout: sync/billing calls (15s)
 	invokeClient *http.Client // no timeout: AI generation can take minutes
 
@@ -97,6 +107,18 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		client:       &http.Client{Timeout: 15 * time.Second},
 		invokeClient: &http.Client{}, // no Timeout — context deadline from request controls cancellation
 	}
+	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
+		if pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw)); err != nil {
+			// Misconfigured key → leave admin disabled (fail closed) + log loudly.
+			slog.Error("provider-registry: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; platform-model admin endpoints DISABLED", "err", err)
+		} else if kid, err := adminjwt.KeyFingerprint(pub); err != nil {
+			slog.Error("provider-registry: admin key fingerprint failed; platform-model admin endpoints DISABLED", "err", err)
+		} else {
+			s.adminPub = pub
+			s.adminKID = kid
+			slog.Info("provider-registry: platform-model admin endpoints ENABLED", "kid", kid)
+		}
+	}
 	if notifier == nil {
 		notifier = jobs.NoopNotifier{}
 	}
@@ -123,7 +145,6 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 			if opts, err := redis.ParseURL(cfg.RedisURL); err == nil {
 				rdb := redis.NewClient(opts)
 				gov := ratelimit.NewGovernor(rdb, ratelimit.GovernorConfig{
-					CloudMax:       cfg.GovernorCloudMax,
 					Lease:          time.Duration(cfg.GovernorLeaseMs) * time.Millisecond,
 					AcquireTimeout: time.Duration(cfg.GovernorAcquireTimeoutMs) * time.Millisecond,
 				})
@@ -180,26 +201,90 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 			slog.Info("stuck-running sweeper enabled", "timeout_s", cfg.LLMRunningSweepTimeoutS, "interval_s", cfg.LLMRunningSweepIntervalS)
 		}
 
+		// P2·B2 — plaintext retention sweeper. DELETEs terminal llm_jobs past their
+		// expires_at (7d default), purging the plaintext input/result JSONB; the
+		// durable encrypted audit copy remains in usage_logs (readable post-P0-1) and
+		// GET …/llm/jobs/{id} cleanly 404s a purged row. 0 = disabled. Drains the
+		// backlog in bounded batches each tick so a first run after a long gap can't
+		// take one giant table lock. Independent of Redis/the relay.
+		if cfg.LLMRetentionSweepIntervalS > 0 {
+			interval := time.Duration(cfg.LLMRetentionSweepIntervalS) * time.Second
+			batch := cfg.LLMRetentionSweepBatch
+			repo := s.jobsRepo
+			outboxWindow := time.Duration(cfg.LLMOutboxRetentionHours) * time.Hour
+			go func() {
+				t := time.NewTicker(interval)
+				defer t.Stop()
+				for range t.C {
+					for {
+						n, serr := repo.PurgeExpiredJobs(context.Background(), batch)
+						if serr != nil {
+							slog.Warn("retention sweep failed", "err", serr)
+							break
+						}
+						if n > 0 {
+							slog.Info("retention sweep purged expired llm_jobs", "deleted", n)
+						}
+						if n < batch {
+							break // backlog drained for this tick
+						}
+					}
+					// Prune published (plaintext-carrying) outbox rows past their window.
+					// 0 hours disables this half. published_at IS NOT NULL is enforced in
+					// the repo query so an un-drained row is never dropped.
+					if outboxWindow > 0 {
+						for {
+							n, serr := repo.PurgePublishedOutbox(context.Background(), outboxWindow, batch)
+							if serr != nil {
+								slog.Warn("outbox retention sweep failed", "err", serr)
+								break
+							}
+							if n > 0 {
+								slog.Info("retention sweep purged published outbox rows", "deleted", n)
+							}
+							if n == 0 {
+								break // nothing older than the window remains
+							}
+						}
+					}
+				}
+			}()
+			slog.Info("retention sweeper enabled",
+				"interval_s", cfg.LLMRetentionSweepIntervalS, "batch", cfg.LLMRetentionSweepBatch,
+				"outbox_retention_h", cfg.LLMOutboxRetentionHours)
+		}
+
 		// Phase 1 Commit 3 — durable work queue. When enabled (+ broker set),
 		// submit enqueues and this consumer pool runs jobs behind a per-kind
 		// semaphore (= governor.MaxFor), so a slow local job DELAYS the queue
 		// instead of failing everyone behind it on acquire (the incident class).
 		if cfg.LLMJobQueueEnabled && cfg.RabbitMQURL != "" {
-			if jq, qerr := jobs.NewJobQueue(cfg.RabbitMQURL, cfg.GovernorCloudMax, slog.Default()); qerr != nil {
+			if jq, qerr := jobs.NewJobQueue(cfg.RabbitMQURL, slog.Default()); qerr != nil {
 				slog.Warn("LLM job queue: init failed — direct dispatch", "err", qerr)
 			} else {
 				s.jobQueue = jq
-				// resolve: job_id → provider kind (the semaphore class).
-				resolve := func(ctx context.Context, jobID uuid.UUID) (string, bool) {
+				// resolve: job_id → (credential concurrency class, its cap). The
+				// cap is per-credential (NULL → unlimited); see ResolveConcurrency.
+				// FAIL-OPEN on a transient lookup error (run ungoverned) rather than
+				// fail-closed: returning ok=false makes handleDelivery ACK+DROP the
+				// message, stranding a pending job forever (the truth-sweeper only
+				// recovers stuck `running`, never `pending`). Only a genuinely-gone
+				// model (ok=false, no error) is dropped. Mirrors Process's fail-open.
+				resolve := func(ctx context.Context, jobID uuid.UUID) (string, int, bool) {
 					d, lerr := s.jobsRepo.LoadForProcess(ctx, jobID)
 					if lerr != nil {
-						return "", false
+						// Row truly gone → ErrNoRows; Process re-checks status anyway.
+						// Run ungoverned so a transient load blip can't strand the job.
+						return "ungoverned:" + jobID.String(), 0, true
 					}
-					kind, ok, rerr := s.jobsRepo.ResolveKind(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
-					if rerr != nil || !ok {
-						return "", false
+					key, limit, ok, rerr := s.jobsRepo.ResolveConcurrency(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
+					if rerr != nil {
+						return "ungoverned:" + jobID.String(), 0, true // transient → fail open
 					}
-					return kind, true
+					if !ok {
+						return "", 0, false // model genuinely gone → drop
+					}
+					return key, limit, true
 				}
 				// run: Phase-0 cancellable ctx + jobID→cancel registration, SYNC
 				// (the consumer acks only after the job is terminal). DELETE still
@@ -346,12 +431,14 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/user-models", s.listUserModels)
 		r.Post("/user-models", s.createUserModel)
+		r.Put("/user-models/reorder", s.reorderUserModels)
 		r.Patch("/user-models/{user_model_id}", s.patchUserModel)
 		r.Delete("/user-models/{user_model_id}", s.deleteUserModel)
 		r.Patch("/user-models/{user_model_id}/activation", s.patchUserModelActivation)
 		r.Patch("/user-models/{user_model_id}/favorite", s.patchUserModelFavorite)
 		r.Put("/user-models/{user_model_id}/tags", s.putUserModelTags)
 		r.Post("/user-models/{user_model_id}/verify", s.verifyUserModel)
+		r.Get("/user-models/{user_model_id}/pricing/suggest", s.suggestUserModelPricing) // D-PRICING-REFRESH
 
 		// Per-user default model per capability (rerank/embedding). Restores the
 		// default-model UX (BYOK) — consumers resolve via /internal/default-models.
@@ -371,6 +458,17 @@ func (s *Server) Router() http.Handler {
 		// Used for STT (multipart file upload) and TTS (binary response).
 		r.HandleFunc("/proxy/*", s.publicProxy)
 	})
+
+	// S-SETTINGS (MCP fan-out) — settings MCP server (Tier R/A/W tools for
+	// profile + model registry). Internal-token gated + X-User-Id → ctx by the
+	// kit's stateless handler; the federation gateway connects here per call.
+	r.Handle("/mcp", s.mcpHandler())
+	r.Handle("/mcp/*", s.mcpHandler())
+
+	// S-SETTINGS Tier-W (model_delete) confirm + preview — JWT-gated (the user's
+	// browser token); the ONLY write path (INV-9). NET-NEW per provider.
+	r.Post("/v1/settings/actions/preview", s.previewSettingsAction)
+	r.Post("/v1/settings/actions/confirm", s.confirmSettingsAction)
 
 	// Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN) — unified streaming
 	// endpoint. SSE response, no timeout. JWT auth.
@@ -399,11 +497,15 @@ func (s *Server) Router() http.Handler {
 		// audio paths (transcriptions, speech) pass through.
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
-		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
+		r.Post("/rerank", s.internalRerank)                              // E5B — cross-encoder rerank (platform service)
+		r.Post("/web-search", s.internalWebSearch)                       // S5 — BYOK web search (deep-research)
 		r.Get("/default-models/{capability}", s.internalGetDefaultModel) // per-user default model fallback
+		r.Get("/planner-model", s.internalResolvePlannerModel)           // MED-6 — planner model w/ chat fallback
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
 		r.Post("/billing/estimate", s.internalBillingEstimate)
+		// C6 / SD-C6 — price ONE STT/TTS invocation from the model's registered per_second/per_kchar rate.
+		r.Post("/billing/price-voice", s.internalBillingPriceVoice)
 
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)
@@ -439,11 +541,12 @@ func (s *Server) getInternalCredentials(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type credResponse struct {
-		ProviderKind      string `json:"provider_kind"`
-		ProviderModelName string `json:"provider_model_name"`
-		BaseURL           string `json:"base_url"`
-		APIKey            string `json:"api_key"`
-		ContextLength     *int   `json:"context_length"`
+		ProviderKind      string          `json:"provider_kind"`
+		ProviderModelName string          `json:"provider_model_name"`
+		BaseURL           string          `json:"base_url"`
+		APIKey            string          `json:"api_key"`
+		ContextLength     *int            `json:"context_length"`
+		Capabilities      map[string]bool `json:"capabilities"`
 	}
 
 	var out credResponse
@@ -503,6 +606,11 @@ WHERE platform_model_id=$1 AND status='active'
 		return
 	}
 
+	// Context Budget / Provider Context Strategy §3 — surface the provider kind's
+	// static caching capabilities so chat-service can pick a ContextStrategy and
+	// label its caching-monitoring frame from a CAPABILITY, not `if kind == "..."`.
+	out.Capabilities = provider.CapabilitiesFor(out.ProviderKind).AsMap()
+
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -560,7 +668,7 @@ func isDeprecatedProxyPath(targetPath string) bool {
 // alive (model-name rewrite + 4MiB cap + auth-header forwarding) as
 // defense-in-depth and to enforce 410 on the retired paths.
 func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		ProxyRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
@@ -633,6 +741,14 @@ func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUI
 	if err != nil {
 		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid model_ref")
+		return
+	}
+
+	// PUB-12 (BYOK-only) — a public MCP key (X-Mcp-Key-Id header) may not draw a
+	// platform_model through the transparent proxy either. Reject 402 before any
+	// credential resolution / spend. Synchronous path → header is the carrier.
+	if rejectPlatformDrawForPublicKey(w, modelSource, isPublicMcpKeyCall(r, nil)) {
+		ProxyRequestsTotal.WithLabelValues(OutcomeByokRequired).Inc()
 		return
 	}
 
@@ -924,35 +1040,68 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Code: code, Message: message})
 }
 
-type accessClaims struct {
-	jwt.RegisteredClaims
-	Role string `json:"role,omitempty"`
-}
-
-func (s *Server) auth(r *http.Request) (uuid.UUID, string, bool) {
+// auth verifies the platform-user HS256 JWT via the shared contracts/platformjwt
+// verifier and returns the authenticated user id. It NO LONGER returns a role:
+// the platform user token never carries one (D-JWT-ROLE-GATE) — admin authority
+// is the RS256 admin token's job (see requireAdminScope).
+func (s *Server) auth(r *http.Request) (uuid.UUID, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
-		return uuid.Nil, "", false
-	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, "", false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	claims, err := platformjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.secret)
 	if err != nil {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	return id, claims.Role, true
+	id, err := claims.UserID()
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// scopeAdminWrite is the admin scope required to mutate System-tier platform
+// models. Mirrors glossary-service's System-tier admin gate.
+const scopeAdminWrite = "admin:write"
+
+// requireAdminScope verifies the Bearer admin RS256 JWT and that it carries the
+// required scope, writing the error + returning false on any failure. System-tier
+// platform models are platform-owned: only an admin principal (never a regular
+// user) may mutate them (CLAUDE.md › User Boundaries). Fail closed when the verify
+// key is unconfigured. A regular HS256 user token never satisfies adminjwt.Verify
+// (RS256 only), so this is not bypassable with a normal login.
+func (s *Server) requireAdminScope(w http.ResponseWriter, r *http.Request, scope string) (adminjwt.AdminClaims, bool) {
+	if s.adminPub == nil {
+		writeError(w, http.StatusServiceUnavailable, "M03_ADMIN_UNAVAILABLE", "platform-model administration is not configured")
+		return adminjwt.AdminClaims{}, false
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "M03_ADMIN_UNAUTHORIZED", "valid admin Bearer token required")
+		return adminjwt.AdminClaims{}, false
+	}
+	claims, err := adminjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.adminPub, s.adminKID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "M03_ADMIN_UNAUTHORIZED", "invalid admin token")
+		return adminjwt.AdminClaims{}, false
+	}
+	if !slices.Contains(claims.Scopes, scope) {
+		writeError(w, http.StatusForbidden, "M03_ADMIN_FORBIDDEN", "missing required admin scope")
+		return adminjwt.AdminClaims{}, false
+	}
+	return claims, true
+}
+
+// pemOrBase64 accepts either a raw PEM ("BEGIN") or a base64-encoded PEM (an
+// env-var-friendly single line).
+func pemOrBase64(v string) []byte {
+	if strings.Contains(v, "BEGIN") {
+		return []byte(v)
+	}
+	if dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil {
+		return dec
+	}
+	return []byte(v)
 }
 
 func parseUUIDParam(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
@@ -1011,7 +1160,7 @@ func (s *Server) decryptSecret(ciphertext string) (string, error) {
 }
 
 func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1022,7 +1171,8 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Secret          string `json:"secret"`
 		EndpointBaseURL string `json:"endpoint_base_url"`
 		Active          *bool  `json:"active"`
-		APIStandard     string `json:"api_standard"` // openai_compatible, anthropic, ollama, lm_studio
+		APIStandard     string `json:"api_standard"`    // openai_compatible, anthropic, ollama, lm_studio
+		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → unlimited (request-as-demand)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1067,13 +1217,14 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Status               string    `json:"status"`
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
+		MaxConcurrency       *int      `json:"max_concurrency"`
 	}
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at
-`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard).
-		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt)
+INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard, max_concurrency)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at, max_concurrency
+`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard, nullableConcurrency(in.MaxConcurrency)).
+		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.MaxConcurrency)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_SAVE_FAILED", "failed to create provider credential")
 		return
@@ -1088,15 +1239,47 @@ func nullableString(v string) any {
 	return v
 }
 
+// nullableConcurrency normalizes a max_concurrency input: nil or ≤0 → NULL
+// (unlimited; the DB column's "no cap" sentinel), a positive value → that cap.
+func nullableConcurrency(v *int) any {
+	if v == nil || *v <= 0 {
+		return nil
+	}
+	return *v
+}
+
+// optionalInt distinguishes "field absent from the JSON body" (Present=false →
+// leave the column untouched on PATCH) from "field present, possibly null"
+// (Present=true, Value=nil → clear to unlimited). A plain *int can't tell these
+// apart — both decode to nil — which would make clearing-to-unlimited impossible.
+type optionalInt struct {
+	Present bool
+	Value   *int
+}
+
+func (o *optionalInt) UnmarshalJSON(b []byte) error {
+	o.Present = true
+	if string(b) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	o.Value = &v
+	return nil
+}
+
 func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
 	}
 	rows, err := s.pool.Query(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
 FROM provider_credentials
 WHERE owner_user_id=$1 AND status <> 'archived'
 ORDER BY created_at DESC
@@ -1116,11 +1299,12 @@ ORDER BY created_at DESC
 		UpdatedAt            time.Time `json:"updated_at"`
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
+		MaxConcurrency       *int      `json:"max_concurrency"`
 	}
 	items := make([]row, 0)
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard); err != nil {
+		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard, &item.MaxConcurrency); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to parse provider row")
 			return
 		}
@@ -1130,7 +1314,7 @@ ORDER BY created_at DESC
 }
 
 func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1140,11 +1324,12 @@ func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var in struct {
-		DisplayName     *string `json:"display_name"`
-		Secret          *string `json:"secret"`
-		EndpointBaseURL *string `json:"endpoint_base_url"`
-		Active          *bool   `json:"active"`
-		APIStandard     *string `json:"api_standard"`
+		DisplayName     *string     `json:"display_name"`
+		Secret          *string     `json:"secret"`
+		EndpointBaseURL *string     `json:"endpoint_base_url"`
+		Active          *bool       `json:"active"`
+		APIStandard     *string     `json:"api_standard"`
+		MaxConcurrency  optionalInt `json:"max_concurrency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1178,9 +1363,12 @@ SET
   secret_key_ref = COALESCE($6, secret_key_ref),
   status = COALESCE($7, status),
   api_standard = COALESCE($8, api_standard),
+  -- present-aware: $9 true → set $10 (nil clears to unlimited); false → keep
+  max_concurrency = CASE WHEN $9::bool THEN $10 ELSE max_concurrency END,
   updated_at = now()
 WHERE provider_credential_id = $1 AND owner_user_id = $2 AND status <> 'archived'
-`, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard)
+`, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard,
+		in.MaxConcurrency.Present, nullableConcurrency(in.MaxConcurrency.Value))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_UPDATE_FAILED", "failed to update provider credential")
 		return
@@ -1203,13 +1391,14 @@ func (s *Server) getProviderCredentialByID(w http.ResponseWriter, r *http.Reques
 		UpdatedAt            time.Time `json:"updated_at"`
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
+		MaxConcurrency       *int      `json:"max_concurrency"`
 	}
 	err := s.pool.QueryRow(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
 FROM provider_credentials
 WHERE provider_credential_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard)
+`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard, &out.MaxConcurrency)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_PROVIDER_NOT_FOUND", "provider credential not found")
 		return
@@ -1222,7 +1411,7 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2
 }
 
 func (s *Server) deleteProviderCredential(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1248,7 +1437,7 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2
 }
 
 func (s *Server) providerHealth(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1324,7 +1513,7 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 }
 
 func (s *Server) listProviderInventory(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1407,8 +1596,30 @@ VALUES ($1,$2,$3,$4,now())
 	return tx.Commit(ctx)
 }
 
+// parsePricingInput validates a caller-supplied `pricing` payload, shared by
+// createUserModel and patchUserModel/D-PRICING-REFRESH so the two write paths
+// can never drift on what counts as valid pricing. Returns (nil, nil) when
+// `raw` is empty/absent/JSON-null (caller decides the fallback — a default-
+// table pre-fill on create, "leave unchanged" on patch); returns a 400-shaped
+// error on malformed JSON (would otherwise brick the model with a 500 at
+// every job — an unmarshal failure in ModelPricing) or a negative rate
+// (would otherwise silently disable the spend guardrail for that model).
+func parsePricingInput(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var p billing.Pricing
+	if uErr := json.Unmarshal(raw, &p); uErr != nil {
+		return nil, fmt.Errorf("invalid pricing: %w", uErr)
+	}
+	if vErr := p.Validate(); vErr != nil {
+		return nil, vErr
+	}
+	return raw, nil
+}
+
 func (s *Server) createUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1453,32 +1664,32 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 		writeError(w, http.StatusBadRequest, "M03_MODEL_CONTEXT_REQUIRED", "context_length is required for ollama/lm_studio")
 		return
 	}
+	// /review-impl HIGH: the check above only fires for ollama/lm_studio (where
+	// context_length is required); any other provider could still supply an
+	// explicit 0/negative context_length with no guard at all.
+	if in.ContextLength != nil && *in.ContextLength <= 0 {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "context_length must be positive")
+		return
+	}
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
 
 	// Phase 6a — pricing pre-fill. An explicit `pricing` from the caller
-	// wins; otherwise the default price table seeds known cloud text models.
-	// An unknown model is left empty ('{}') so the spend guardrail fails
-	// closed (402) until the user prices it (design §3.2).
-	//
-	// An explicit pricing is validated here (/review-impl MED#3): unvalidated
-	// it would either brick the model with a 500 at every job (unmarshal
-	// failure in ModelPricing) or — if negative — silently disable the
-	// guardrail for that model.
-	pricingJSON := []byte("{}")
-	if len(in.Pricing) > 0 && string(in.Pricing) != "null" {
-		var p billing.Pricing
-		if uErr := json.Unmarshal(in.Pricing, &p); uErr != nil {
-			writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid pricing: "+uErr.Error())
-			return
-		}
-		if vErr := p.Validate(); vErr != nil {
-			writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", vErr.Error())
-			return
-		}
-		pricingJSON = in.Pricing
-	} else if def, ok := billing.DefaultPricing(providerKind, in.ProviderModelName); ok {
-		if b, mErr := json.Marshal(def); mErr == nil {
-			pricingJSON = b
+	// wins (validated by parsePricingInput, shared with patchUserModel/D-PRICING-
+	// REFRESH so the two write paths can't drift on what's an acceptable rate);
+	// otherwise the default price table seeds known cloud text models. An
+	// unknown model is left empty ('{}') so the spend guardrail fails closed
+	// (402) until the user prices it (design §3.2).
+	pricingJSON, perr := parsePricingInput(in.Pricing)
+	if perr != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", perr.Error())
+		return
+	}
+	if pricingJSON == nil {
+		pricingJSON = []byte("{}")
+		if def, ok := billing.DefaultPricing(providerKind, in.ProviderModelName); ok {
+			if b, mErr := json.Marshal(def); mErr == nil {
+				pricingJSON = b
+			}
 		}
 	}
 
@@ -1515,13 +1726,15 @@ type userModelRow struct {
 	IsActive             bool
 	IsFavorite           bool
 	CapabilityFlags      []byte
+	Pricing              []byte
 	Notes                string
+	SortOrder            *int
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
 
 func (s *Server) listUserModels(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1580,7 +1793,11 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 			argPos += 2
 		}
 	}
-	query += " ORDER BY created_at DESC"
+	// A user-defined custom sort_order wins ((8)-residual): the drag-reorder in the
+	// shared ModelPicker persists here. Un-ordered models (sort_order NULL) sort AFTER
+	// the ordered ones, falling back to favorites-first / newest-first — so favorites
+	// still get a pinned section for free whenever the user hasn't set an explicit order.
+	query += " ORDER BY sort_order ASC NULLS LAST, is_favorite DESC, created_at DESC"
 	rows, err := s.pool.Query(r.Context(), query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_QUERY_FAILED", "failed to list user models")
@@ -1606,13 +1823,80 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// reorderUserModels persists a user-defined custom sort order ((8)-residual). The
+// body is {ordered_ids: [uuid,...]}; the ids the caller OWNS are assigned
+// sort_order = index (0..N-1) in one transaction, and every OTHER model the caller
+// owns has its sort_order reset to NULL — so a partial reorder is well-defined
+// (only the listed ids are "ordered"; the rest fall back to favorites-first). Ids
+// the caller does not own are silently ignored (owner-scoped UPDATE). Returns the
+// updated list (same shape/order as GET /user-models).
+func (s *Server) reorderUserModels(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var in struct {
+		OrderedIDs []uuid.UUID `json:"ordered_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	// Clear any existing order for THIS user first, then stamp the new positions.
+	// Both statements are owner-scoped so a caller can never touch another tenant's
+	// rows (a foreign id in ordered_ids simply matches nothing).
+	//
+	// review-impl MED: the clear deliberately has NO `sort_order IS NOT NULL`
+	// predicate. Under READ COMMITTED that predicate matches (and locks) NOTHING
+	// when the rows start all-NULL (the common first-reorder case), so two
+	// concurrent reorders would fail to serialize and merge into a corrupt order.
+	// Updating every owner row forces a row lock on each, so a second concurrent
+	// reorder blocks on the first's commit and then re-reads a consistent base.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE user_models SET sort_order=NULL, updated_at=now() WHERE owner_user_id=$1`,
+		userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+		return
+	}
+	// Dedupe defensively (a direct API caller could send repeats; the FE never
+	// does) so a repeated id can't leave a gap / overwrite its own lead position.
+	seen := make(map[uuid.UUID]bool, len(in.OrderedIDs))
+	pos := 0
+	for _, id := range in.OrderedIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE user_models SET sort_order=$3, updated_at=now() WHERE user_model_id=$1 AND owner_user_id=$2`,
+			id, userID, pos); err != nil {
+			writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+			return
+		}
+		pos++
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+		return
+	}
+	// Return the freshly-ordered list so the client can adopt server truth in one round-trip.
+	s.listUserModels(w, r)
+}
+
 func (s *Server) readUserModel(ctx context.Context, userID, id uuid.UUID) (map[string]any, error) {
 	var row userModelRow
 	err := s.pool.QueryRow(ctx, `
-SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, notes, created_at, updated_at
+SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, pricing, notes, sort_order, created_at, updated_at
 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Notes, &row.CreatedAt, &row.UpdatedAt)
+`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Pricing, &row.Notes, &row.SortOrder, &row.CreatedAt, &row.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -1621,6 +1905,10 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 	}
 	flags := map[string]any{}
 	_ = json.Unmarshal(row.CapabilityFlags, &flags)
+	// pricing JSONB (input_per_mtok, output_per_mtok, per_image, …) — additive,
+	// read-only here; the FE ModelPicker renders the "$0 local"/"$" hint from it.
+	pricing := map[string]any{}
+	_ = json.Unmarshal(row.Pricing, &pricing)
 	tags, err := s.loadTags(ctx, row.UserModelID)
 	if err != nil {
 		return nil, err
@@ -1635,7 +1923,9 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 		"is_active":              row.IsActive,
 		"is_favorite":            row.IsFavorite,
 		"capability_flags":       flags,
+		"pricing":                pricing,
 		"notes":                  row.Notes,
+		"sort_order":             row.SortOrder,
 		"tags":                   tags,
 		"created_at":             row.CreatedAt,
 		"updated_at":             row.UpdatedAt,
@@ -1660,7 +1950,7 @@ func (s *Server) loadTags(ctx context.Context, userModelID uuid.UUID) ([]modelTa
 }
 
 func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1670,13 +1960,33 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Alias           *string        `json:"alias"`
-		ContextLength   *int           `json:"context_length"`
-		CapabilityFlags map[string]any `json:"capability_flags"`
-		Notes           *string        `json:"notes"`
+		Alias           *string         `json:"alias"`
+		ContextLength   *int            `json:"context_length"`
+		CapabilityFlags map[string]any  `json:"capability_flags"`
+		Notes           *string         `json:"notes"`
+		Pricing         json.RawMessage `json:"pricing,omitempty"` // D-PRICING-REFRESH
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	// /review-impl HIGH: createUserModel rejects a non-positive context_length
+	// (for ollama/lm_studio, where it's required) but patch had no such guard at
+	// all, so an edit-after-create could write 0/negative and every downstream
+	// scale_by_window/clamp consumer would treat it as "resolved" — producing a
+	// negative max_tokens sent straight to the LLM provider.
+	if in.ContextLength != nil && *in.ContextLength <= 0 {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "context_length must be positive")
+		return
+	}
+	// D-PRICING-REFRESH — until this fix, `pricing` was frozen at model-creation
+	// time forever: patchUserModel had no field for it at all, so a user who
+	// registered a paid model (e.g. gpt-4o) with a stale/wrong pre-filled rate
+	// had no way to correct it. Validated by the SAME parsePricingInput as
+	// create, before the UPDATE — an invalid rate never reaches the DB.
+	pricingJSON, perr := parsePricingInput(in.Pricing)
+	if perr != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", perr.Error())
 		return
 	}
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
@@ -1686,9 +1996,10 @@ SET alias=COALESCE($3, alias),
     context_length=COALESCE($4, context_length),
     capability_flags=CASE WHEN $5::jsonb IS NULL THEN capability_flags ELSE $5 END,
     notes=COALESCE($6, notes),
+    pricing=CASE WHEN $7::jsonb IS NULL THEN pricing ELSE $7 END,
     updated_at=now()
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil), in.Notes)
+`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil), in.Notes, nullJSON(pricingJSON, pricingJSON != nil))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_UPDATE_FAILED", "failed to patch user model")
 		return
@@ -1707,8 +2018,42 @@ func nullJSON(b []byte, valid bool) any {
 	return b
 }
 
+// suggestUserModelPricing — D-PRICING-REFRESH: GET .../pricing/suggest returns
+// a best-effort live-pricing suggestion from OpenRouter's public catalog for
+// this model's (provider_kind, provider_model_name), for the user to review
+// and optionally apply via the existing pricing PATCH. Never writes anything
+// itself — `{"found": false}` (never an error) when the provider_kind has no
+// OpenRouter mapping, the model isn't in OpenRouter's current catalog (e.g. a
+// retired version), or OpenRouter is unreachable.
+func (s *Server) suggestUserModelPricing(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	id, ok := parseUUIDParam(w, r, "user_model_id")
+	if !ok {
+		return
+	}
+	var providerKind, modelName string
+	err := s.pool.QueryRow(r.Context(), `
+SELECT provider_kind, provider_model_name FROM user_models
+WHERE user_model_id=$1 AND owner_user_id=$2
+`, id, userID).Scan(&providerKind, &modelName)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "M03_USER_MODEL_NOT_FOUND", "user model not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_QUERY_FAILED", "failed to resolve user model")
+		return
+	}
+	suggestion := billing.FetchOpenRouterPricing(r.Context(), s.client, providerKind, modelName)
+	writeJSON(w, http.StatusOK, suggestion)
+}
+
 func (s *Server) deleteUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1738,7 +2083,7 @@ func (s *Server) patchUserModelFavorite(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) patchUserModelBoolField(w http.ResponseWriter, r *http.Request, field, errorCode string) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1773,7 +2118,7 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 }
 
 func (s *Server) putUserModelTags(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1841,13 +2186,7 @@ func (s *Server) writeUserModel(w http.ResponseWriter, r *http.Request, userID, 
 }
 
 func (s *Server) createPlatformModel(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	var in struct {
@@ -1877,7 +2216,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7)
 }
 
 func (s *Server) listPlatformModels(w http.ResponseWriter, r *http.Request) {
-	_, _, ok := s.auth(r)
+	_, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1929,13 +2268,7 @@ ORDER BY created_at DESC
 }
 
 func (s *Server) patchPlatformModel(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	id, ok := parseUUIDParam(w, r, "platform_model_id")
@@ -1978,13 +2311,7 @@ WHERE platform_model_id=$1
 }
 
 func (s *Server) deletePlatformModel(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	id, ok := parseUUIDParam(w, r, "platform_model_id")
@@ -2004,7 +2331,7 @@ func (s *Server) deletePlatformModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verifyUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		VerifyRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
@@ -2035,6 +2362,37 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		VerifyRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
 		return
+	}
+
+	// web_search is an external SERVICE, not an LLM/model: it is verified by a real
+	// /search "ping" and it TOLERATES a keyless backend (e.g. self-hosted SearXNG
+	// with an empty secret). So handle it HERE, before the generic empty-secret
+	// guard below — that guard legitimately rejects an empty secret for chat /
+	// embedding / rerank, but a keyless web-search credential is valid.
+	{
+		var earlyCaps map[string]any
+		_ = json.Unmarshal(capabilityFlagsJSON, &earlyCaps)
+		if detectPrimaryCapability(earlyCaps) == "web_search" {
+			wsSecret := ""
+			if secretCipher != "" {
+				dec, derr := s.decryptSecret(secretCipher)
+				if derr != nil {
+					VerifyRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
+					return
+				}
+				wsSecret = dec
+			}
+			wsCtx, wsCancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer wsCancel()
+			wsStart := time.Now()
+			result := s.verifyWebSearch(wsCtx, endpointBaseURL, wsSecret)
+			result["latency_ms"] = time.Since(wsStart).Milliseconds()
+			result["capability"] = "web_search"
+			VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+			writeJSON(w, http.StatusOK, result)
+			return
+		}
 	}
 
 	// D-PROXY-01 — invalid state guard. Verify endpoints pre-K17.2a
@@ -2211,7 +2569,7 @@ func canEmbed(caps map[string]any) bool {
 func detectPrimaryCapability(caps map[string]any) string {
 	// C3 (BL-10): include rerank so its verify path does a real /v1/rerank
 	// round-trip instead of falling through to the chat ping.
-	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank"} {
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank", "web_search"} {
 		if v, ok := caps[cap]; ok {
 			if b, ok := v.(bool); ok && b {
 				return cap
@@ -2220,8 +2578,8 @@ func detectPrimaryCapability(caps map[string]any) string {
 	}
 	// Inventory-discovered rerank (C2) may carry the capability as the `_capability`
 	// metadata string rather than a boolean flag — recognize that form too.
-	if c, _ := caps["_capability"].(string); c == "rerank" {
-		return "rerank"
+	if c, _ := caps["_capability"].(string); c == "rerank" || c == "web_search" {
+		return c
 	}
 	return "chat"
 }
@@ -2262,6 +2620,22 @@ func (s *Server) verifyRerank(ctx context.Context, baseURL, secret, modelName st
 		out["top_score"] = results[0].Score
 	}
 	return out
+}
+
+// verifyWebSearch runs a minimal real /search "ping" through the canonical
+// provider.WebSearch (the only place web-search HTTP lives) to prove the user's
+// BYOK web-search backend is reachable and answering. A KEYLESS backend (empty
+// secret, e.g. self-hosted SearXNG) is supported — provider.WebSearch omits the
+// Authorization header when secret=="". This surfaces the common misconfig the
+// generic chat-ping could not: an endpoint that resolves to nothing (e.g.
+// `localhost` from inside a container instead of `host.docker.internal`).
+func (s *Server) verifyWebSearch(ctx context.Context, baseURL, secret string) map[string]any {
+	results, _, err := provider.WebSearch(ctx, s.invokeClient, baseURL, secret, "ping",
+		provider.WebSearchOptions{MaxResults: 1})
+	if err != nil {
+		return map[string]any{"verified": false, "error": err.Error()}
+	}
+	return map[string]any{"verified": true, "result_count": len(results)}
 }
 
 // verifySTT sends a tiny silent WAV to the STT endpoint and checks for a text response.
@@ -2447,19 +2821,29 @@ func putLE32(b []byte, v uint32) {
 	b[3] = byte(v >> 24)
 }
 
-// getModelContextWindow returns the context window size (in tokens) for a given model.
-// Called internally by the translation-worker before chunking a chapter.
-// No auth required — this endpoint is internal only and returns a safe fallback on any error.
+// getModelContextWindow returns the context window size (in tokens) for a given model, or
+// `context_window: null` (`resolved: false`) when it genuinely cannot be determined. Called
+// internally by the translation-worker before chunking a chapter. No auth required — internal
+// only. IMPORTANT: this must never fabricate a number on failure — a guessed value (e.g. the
+// historical flat 8192) is indistinguishable from a real one to the caller and silently drives
+// real chunk-sizing math with the wrong window for any model whose real size differs (which is
+// most of them). Callers decide their own conservative fallback for the genuinely-unknown case,
+// same as chat-service's compute_target already does for context_length=None.
 func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
+	unresolved := func() {
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": nil, "resolved": false})
+	}
+	resolved := func(n int) {
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": n, "resolved": true})
+	}
+
 	modelRefStr := chi.URLParam(r, "model_ref")
 	modelRef, err := uuid.Parse(modelRefStr)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"context_window": 8192})
+		unresolved()
 		return
 	}
 	modelSource := r.URL.Query().Get("model_source")
-
-	const fallback = 8192
 
 	if modelSource == "platform_model" {
 		var providerKind, providerModelName string
@@ -2468,26 +2852,26 @@ func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
 			modelRef,
 		).Scan(&providerKind, &providerModelName)
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			unresolved()
 			return
 		}
 		adapter, err := provider.ResolveAdapter(providerKind, s.client)
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			unresolved()
 			return
 		}
 		models, err := adapter.ListModels(r.Context(), "", "")
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			unresolved()
 			return
 		}
 		for _, m := range models {
 			if m.ProviderModelName == providerModelName && m.ContextLength != nil {
-				writeJSON(w, http.StatusOK, map[string]any{"context_window": *m.ContextLength})
+				resolved(*m.ContextLength)
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+		unresolved()
 		return
 	}
 
@@ -2498,10 +2882,10 @@ func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
 		modelRef,
 	).Scan(&contextLength)
 	if err != nil || contextLength == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+		unresolved()
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"context_window": *contextLength})
+	resolved(*contextLength)
 }
 
 // getInternalModelInfo resolves a model_ref to its provider_kind +
@@ -2539,33 +2923,54 @@ func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (uuid.UUID, string, float64, error) {
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.UsageBillingServiceURL, "/")+"/internal/model-billing/record", bytes.NewReader(body))
+// recordSyncUsage logs a SYNCHRONOUS (non-streaming) model invocation to
+// usage-billing's audit ledger via the shared billing.RecordUsage contract
+// (P0-2 B4 — embed / rerank / web-search, which previously called no record path
+// at all and were audit-invisible). Fire-and-forget on a detached context so it
+// never adds latency to — nor is cancelled by — the caller's response; the
+// GuardrailClient's own timeout bounds the goroutine. Nil-safe (router-only tests
+// build no guardrail). Payloads are bounded (reference-first when huge), and a
+// fresh uuidv7 request_id makes each call its own audit row. These sync paths are
+// user_model-only (the handlers reject any other model_source before calling here).
+// recordSyncUsage records one synchronous op (embed/rerank/web_search) to the
+// ledger via the guardrail's RecordUsage HTTP path (Route A). costUSD is the
+// authoritative per-model cost when the caller can compute it (embed: tokens ×
+// pricing); nil leaves TotalCostUSD unset → usage-billing's flat fallback. rerank
+// + web_search pass nil by design: they carry 0/0 tokens (a rerank scores docs;
+// web_search is a per-call external service), so a per-token cost is meaningless —
+// they need a per-call/per-request pricing dimension before a real cost lands
+// (tracked D-B2-RERANK-WEBSEARCH-PRICING).
+func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID, operation, status string, inTok, outTok int, costUSD *float64, reqPayload, respPayload map[string]any) {
+	if s.guardrail == nil {
+		return
+	}
+	reqID, err := uuid.NewV7()
 	if err != nil {
-		return uuid.Nil, "", 0, err
+		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.InternalServiceToken != "" {
-		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	if status == "" {
+		status = "success"
 	}
-	res, err := s.client.Do(req)
-	if err != nil {
-		return uuid.Nil, "", 0, err
+	detached := observability.DetachedContext(ctx)
+	rec := billing.UsageRecord{
+		RequestID:     reqID,
+		OwnerUserID:   userID,
+		ModelSource:   "user_model",
+		ModelRef:      modelRef,
+		Operation:     operation,
+		InputTokens:   inTok,
+		OutputTokens:  outTok,
+		TotalCostUSD:  costUSD,
+		RequestStatus: status,
+		InputPayload:  boundedPayload(reqPayload),
+		OutputPayload: boundedPayload(respPayload),
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
-		return uuid.Nil, "", 0, fmt.Errorf("billing status %d", res.StatusCode)
-	}
-	var out struct {
-		UsageLogID   uuid.UUID `json:"usage_log_id"`
-		BillingMode  string    `json:"billing_mode"`
-		TotalCostUSD float64   `json:"total_cost_usd"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		return uuid.Nil, "", 0, err
-	}
-	return out.UsageLogID, out.BillingMode, out.TotalCostUSD, nil
+	go func() {
+		if err := s.guardrail.RecordUsage(detached, rec); err != nil {
+			slog.Warn("sync usage record failed",
+				"operation", operation, "request_id", reqID.String(), "err", err)
+		}
+	}()
 }
 
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
@@ -2646,10 +3051,83 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	results, err := provider.Rerank(r.Context(), s.invokeClient, endpointBaseURL, secret, providerModelName, in.Query, in.Documents)
 	if err != nil {
 		// Upstream rerank failure ⇒ 502 so the caller degrades (not a client bug).
+		// MED-1: record the FAILED call too — a provider error is exactly what you'd
+		// want readable in the audit ledger; recording only successes recreates the
+		// audit hole P0-2 closed on the streaming path.
+		s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "provider_error", 0, 0, nil,
+			map[string]any{"query": in.Query, "documents": in.Documents},
+			map[string]any{"error": err.Error()})
 		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
 		return
 	}
+	// P0-2 (B4) — audit the rerank call: query + documents in, scored results out.
+	// Rerank carries no token usage → tokens 0.
+	s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "success", 0, 0, nil,
+		map[string]any{"query": in.Query, "documents": in.Documents},
+		map[string]any{"results": results})
 	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
+}
+
+// internalWebSearch handles POST /internal/web-search?user_id=...
+// S5 — resolves the user's BYOK web_search model (capability_flags web_search) and runs
+// a single web search via the provider adapter. The outward HTTP call lives ONLY in the
+// provider package (provider-gateway invariant); this is the user-paid, BYOK resolution
+// layer. INV-6 (Track D S-PRODUCER): provider.WebSearch already NEUTRALIZES every result
+// (control/whitespace folding + caps) and DROPS unsafe/SSRF-y URLs, so everything written
+// here is safe untrusted DATA — a consumer needs no further neutralization.
+func (s *Server) internalWebSearch(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "invalid user_id")
+		return
+	}
+	var in struct {
+		Query       string `json:"query"`
+		MaxResults  int    `json:"max_results"`
+		SearchDepth string `json:"search_depth"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "invalid payload")
+		return
+	}
+	if strings.TrimSpace(in.Query) == "" {
+		writeError(w, http.StatusBadRequest, "WEBSEARCH_VALIDATION", "query is required")
+		return
+	}
+
+	// The resolve → decrypt → search → audit pipeline lives in runWebSearch
+	// (web_search_core.go), shared with the universal `web_search` MCP tool. This handler
+	// is only the HTTP transport: map the sentinel errors onto status codes.
+	out, err := s.runWebSearch(r.Context(), userID, in.Query, in.MaxResults, in.SearchDepth)
+	switch {
+	case errors.Is(err, errWebSearchNoModel):
+		writeError(w, http.StatusNotFound, "WEBSEARCH_MODEL_NOT_FOUND",
+			"no active web_search model configured — add a web-search provider credential in Settings")
+		return
+	case errors.Is(err, errWebSearchModelQuery):
+		writeError(w, http.StatusInternalServerError, "WEBSEARCH_MODEL_QUERY_FAILED", "failed to resolve model")
+		return
+	case errors.Is(err, errWebSearchSecret):
+		writeError(w, http.StatusInternalServerError, "WEBSEARCH_SECRET_FAILED", "failed to decrypt secret")
+		return
+	case errors.Is(err, errWebSearchUpstream):
+		// Upstream provider failure ⇒ 502 so the caller degrades (not a client bug).
+		writeError(w, http.StatusBadGateway, "WEBSEARCH_UPSTREAM_ERROR", "web search provider error")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "WEBSEARCH_FAILED", "web search failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"provider_model": out.ProviderModel,
+		"answer":         out.Answer,
+		"results":        out.Results,
+	})
 }
 
 // internalEmbed handles POST /internal/embed.
@@ -2701,6 +3179,7 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 	// invokeModel / internalInvokeModel reference was retired in
 	// Phase 4d alongside the handlers themselves).
 	var providerKind, providerModelName, endpointBaseURL, secret string
+	var pricingBytes []byte // P2·B2(c) — model pricing JSONB, for the authoritative embed cost
 	if in.ModelSource == "user_model" {
 		var secretCipher string
 		// Scan capability_flags as raw bytes + json.Unmarshal — the established pattern
@@ -2708,11 +3187,11 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 		// into a map[string]any.
 		var capFlagsBytes []byte
 		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb)
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb), COALESCE(um.pricing,'{}'::jsonb)
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes)
+`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes, &pricingBytes)
 		if err == pgx.ErrNoRows {
 			EmbedRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
@@ -2774,6 +3253,11 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	result, err := provider.Embed(r.Context(), adapter, s.invokeClient, endpointBaseURL, secret, providerModelName, in.Texts)
 	if err != nil {
 		errMsg := err.Error()
+		// MED-1: audit the failed embed too (see internalRerank) — the texts that
+		// triggered a provider error are the most useful thing to have in the ledger.
+		s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "provider_error", 0, 0, nil,
+			map[string]any{"texts": in.Texts},
+			map[string]any{"error": errMsg})
 		// Map upstream 4xx (bad model, unsupported) to 400 so the caller
 		// can distinguish "wrong model" from "provider down."
 		if strings.Contains(errMsg, "provider error 4") || strings.Contains(errMsg, "does not support") {
@@ -2787,5 +3271,25 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	}
 
 	EmbedRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+	// P2·B2(c) — authoritative embed cost (D-REVIEW-EMBED-AUDIT-COST). Input-only,
+	// via the shared billing.PriceEmbedding so the sync ledger cost matches the async
+	// worker + S5a estimate math exactly. A missing/unpriced `pricing` → nil cost →
+	// usage-billing's flat fallback (unchanged prior behavior), so an unpriced model
+	// still records, just without an exact cost. Only reported prompt_tokens count.
+	var embedCostPtr *float64
+	if result.PromptTokens > 0 {
+		var pricing billing.Pricing
+		if uerr := json.Unmarshal(pricingBytes, &pricing); uerr == nil {
+			if c, cerr := billing.PriceEmbedding(result.PromptTokens, pricing); cerr == nil {
+				embedCostPtr = &c
+			}
+		}
+	}
+	// P0-2 (B4) — audit the embed call: the input texts in, vector count + dimension
+	// out (NOT the vectors themselves — huge + useless in a ledger). input_tokens uses
+	// the provider's reported prompt_tokens when present (0 → provider omitted it).
+	s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "success", result.PromptTokens, 0, embedCostPtr,
+		map[string]any{"texts": in.Texts},
+		map[string]any{"count": len(result.Embeddings), "dimension": result.Dimension, "model": result.Model})
 	writeJSON(w, http.StatusOK, result)
 }

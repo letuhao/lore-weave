@@ -4,10 +4,129 @@
     "tabs_aria": "Các tab cài đặt",
     "tab": {
       "account": "Tài khoản",
+      "chat-ai": "Trò chuyện & AI",
       "providers": "Nhà cung cấp mô hình",
       "translation": "Dịch thuật",
       "reading": "Đọc",
-      "language": "Ngôn ngữ"
+      "language": "Ngôn ngữ",
+      "mcp": "Truy cập MCP",
+      "workflow-bindings": "Thiết lập tự động quy trình làm việc"
+    }
+  },
+  "mcp": {
+    "heading": "Khóa truy cập MCP",
+    "subtitle": "Tạo khóa API để tác nhân bên ngoài dùng nền tảng qua MCP mà không cần giao diện. Mỗi khóa hành động thay bạn, với phạm vi và giới hạn bạn đặt.",
+    "create_key": "Tạo khóa",
+    "loading": "Đang tải khóa…",
+    "empty": "Chưa có khóa MCP nào. Tạo một khóa để cho tác nhân bên ngoài kết nối.",
+    "scopes_label": "Phạm vi: {{scopes}}",
+    "domains_label": "Lĩnh vực: {{domains}}",
+    "last_used": "Dùng lần cuối: {{date}}",
+    "expires_label": "Hết hạn: {{date}}",
+    "revoke_aria": "Thu hồi khóa {{name}}",
+    "revoke_title": "Thu hồi khóa",
+    "edit_aria": "Sửa khóa {{name}}",
+    "edit_title": "Sửa giới hạn",
+    "status": {
+      "active": "Đang hoạt động",
+      "revoked": "Đã thu hồi"
+    },
+    "scope": {
+      "read": "Đọc",
+      "paid_read": "Đọc tính phí",
+      "write_auto": "Ghi tự động",
+      "write_confirm": "Ghi cần xác nhận"
+    },
+    "domain": {
+      "book": "Sách",
+      "glossary": "Thuật ngữ",
+      "knowledge": "Tri thức",
+      "translation": "Dịch thuật",
+      "composition": "Sáng tác",
+      "jobs": "Tác vụ",
+      "settings": "Cài đặt",
+      "lore_enrichment": "Làm giàu cốt truyện",
+      "catalog": "Danh mục"
+    },
+    "create": {
+      "title": "Tạo khóa MCP",
+      "subtitle": "Bí mật chỉ hiển thị một lần. Hãy lưu vào nơi an toàn.",
+      "name": "Tên",
+      "name_ph": "vd: tac-nhan-nghien-cuu",
+      "scopes": "Phạm vi",
+      "scopes_hint": "Khóa được phép làm gì. Bắt đầu chỉ với Đọc; thêm khi thực sự cần.",
+      "domains": "Lĩnh vực",
+      "domains_hint": "Khóa được phép truy cập những mảng nào. Khóa không chọn lĩnh vực nào sẽ không gọi được gì.",
+      "rate_limit": "Giới hạn tốc độ (yêu cầu/phút)",
+      "spend_cap": "Hạn mức chi (USD)",
+      "spend_cap_ph": "Không giới hạn",
+      "expires": "Hết hạn (tùy chọn)",
+      "self_confirm": "Cho phép tự xác nhận hành động ghi",
+      "self_confirm_hint": "Khi tắt, các hành động ghi cần xác nhận phải do bạn duyệt. Chỉ bật nếu đây là tác nhân tự động đáng tin.",
+      "cancel": "Hủy",
+      "submit": "Tạo khóa",
+      "creating": "Đang tạo…",
+      "secret_note": "Khóa bí mật được tạo tự động khi bạn tạo — bạn không tự đặt. Nó chỉ hiển thị một lần, ngay sau đó."
+    },
+    "edit": {
+      "title": "Sửa \"{{name}}\"",
+      "subtitle": "Điều chỉnh giới hạn của khóa. Bí mật và phạm vi truy cập không thay đổi.",
+      "scopes_locked": "Scope và domain được cố định khi tạo. Muốn đổi phạm vi khóa truy cập, hãy thu hồi và tạo khóa mới.",
+      "expires_hint": "Để trống nếu không hết hạn.",
+      "cancel": "Hủy",
+      "submit": "Lưu thay đổi",
+      "saving": "Đang lưu…"
+    },
+    "reveal": {
+      "title": "Đã tạo khóa",
+      "subtitle": "Sao chép bí mật ngay — nó sẽ không bao giờ hiển thị lại.",
+      "copy": "Sao chép khóa",
+      "warning": "Chỉ hiển thị một lần",
+      "done": "Xong"
+    },
+    "revoke": {
+      "title": "Thu hồi {{name}}?",
+      "desc": "Khóa ngừng hoạt động ngay lập tức (trong ~60 giây). Mọi tác nhân đang dùng sẽ mất quyền truy cập. Không thể hoàn tác.",
+      "confirm": "Thu hồi"
+    },
+    "audit": {
+      "toggle_aria": "Lệnh gọi gần đây của {{name}}",
+      "toggle_title": "Lịch sử lệnh gọi",
+      "loading": "Đang tải lệnh gọi gần đây…",
+      "empty": "Chưa có lệnh gọi nào được ghi nhận.",
+      "outcome": {
+        "relayed": "Đã chuyển tiếp",
+        "denied_scope": "Bị từ chối (phạm vi)",
+        "rate_limited": "Bị giới hạn tần suất",
+        "unauthorized": "Không được phép",
+        "upstream_error": "Lỗi phía trên",
+        "tool_error": "Lỗi công cụ"
+      }
+    },
+    "approvals": {
+      "heading": "Hành động đang chờ duyệt ({{count}})",
+      "subtitle": "Một tác nhân dùng khóa của bạn đã yêu cầu các hành động này. Duyệt để chạy (chi phí tính vào khóa đó) hoặc từ chối để bỏ.",
+      "key_label": "Khóa {{key}}…",
+      "cost_label": "Ước tính ${{cost}}",
+      "approve": "Duyệt",
+      "deny": "Từ chối",
+      "toast": {
+        "approved": "Đã duyệt và thực thi hành động",
+        "denied": "Đã từ chối hành động",
+        "reprice": "Chi phí đã thay đổi — hãy yêu cầu tác nhân đề xuất lại",
+        "approve_failed": "Không duyệt được hành động",
+        "deny_failed": "Không từ chối được hành động"
+      }
+    },
+    "toast": {
+      "load_failed": "Không tải được khóa MCP",
+      "created": "Đã tạo khóa \"{{name}}\"",
+      "create_failed": "Không tạo được khóa",
+      "revoked": "Đã thu hồi khóa",
+      "revoke_failed": "Không thu hồi được khóa",
+      "updated": "Đã cập nhật khóa",
+      "update_failed": "Không cập nhật được khóa",
+      "audit_failed": "Không tải được lịch sử lệnh gọi"
     }
   },
   "account": {
@@ -124,6 +243,9 @@
       "api_key_ph_keep": "••••••••  (để trống để giữ khóa hiện tại)",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "Để trống để giữ khóa hiện có.",
+      "max_concurrency": "Số yêu cầu song song tối đa",
+      "max_concurrency_ph": "Không giới hạn",
+      "max_concurrency_hint": "Số yêu cầu nhà cung cấp này chạy cùng lúc. Để trống nghĩa là không giới hạn (hạ tầng tự quyết). Chỉ đặt số khi backend của bạn có giới hạn đã biết (ví dụ GPU cục bộ).",
       "cancel": "Hủy",
       "saving": "Đang lưu...",
       "submit": "Lưu thay đổi"
@@ -251,6 +373,71 @@
       "moderation": "Kiểm duyệt"
     }
   },
+  "services": {
+    "heading": "Dịch vụ ngoài",
+    "subtitle": "Dịch vụ AI không phải model mà bạn tự mang (BYOK) — vd tìm kiếm web. Đi qua provider-registry như các model của bạn.",
+    "add": "Thêm dịch vụ",
+    "empty": "Chưa có dịch vụ ngoài nào. Thêm một cái (vd tìm kiếm web) để bật deep research.",
+    "keyless": "không khóa",
+    "no_endpoint": "chưa có endpoint",
+    "no_model": "thiếu model",
+    "test": "Kiểm tra",
+    "activate_aria": "Bật dịch vụ",
+    "deactivate_aria": "Tắt dịch vụ",
+    "delete_aria": "Xóa {{name}}",
+    "edit_aria": "Sửa {{name}}",
+    "type": {
+      "web_search": {
+        "label": "Tìm kiếm web",
+        "desc": "Tìm trên web để lấy nguồn cho deep research (vd SearXNG, Tavily)."
+      }
+    },
+    "add_dialog": {
+      "aria": "Thêm dịch vụ ngoài",
+      "title": "Thêm dịch vụ ngoài",
+      "type": "Dịch vụ",
+      "endpoint": "Endpoint URL",
+      "endpoint_hint": "URL gốc của dịch vụ — provider-registry gọi phía server. Nếu dịch vụ chạy trên máy host, dùng host.docker.internal, KHÔNG dùng localhost (trong container, localhost là chính container).",
+      "key": "API Key",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "Để trống nếu dịch vụ local không cần khóa",
+      "key_hint": "Bearer secret của dịch vụ.",
+      "key_hint_keyless": "Tùy chọn — để trống nếu backend local không cần khóa (vd SearXNG).",
+      "label": "Nhãn",
+      "label_ph": "vd searxng-default",
+      "alias": "Bí danh",
+      "alias_ph": "Tên hiển thị (tùy chọn)",
+      "cancel": "Hủy",
+      "submit": "Thêm dịch vụ",
+      "adding": "Đang thêm…"
+    },
+    "edit_dialog": {
+      "aria": "Sửa dịch vụ ngoài",
+      "title": "Sửa {{name}}",
+      "endpoint": "Endpoint URL",
+      "key": "API Key",
+      "key_ph_keep": "Để trống để giữ khóa hiện tại",
+      "key_keep_hint": "Để trống để giữ nguyên khóa đang dùng.",
+      "max_concurrency": "Số yêu cầu song song tối đa",
+      "max_concurrency_ph": "Không giới hạn",
+      "max_concurrency_hint": "Số yêu cầu dịch vụ này chạy cùng lúc. Để trống nghĩa là không giới hạn (hạ tầng tự quyết). Chỉ đặt số khi backend của bạn có giới hạn đã biết.",
+      "cancel": "Hủy",
+      "submit": "Lưu",
+      "saving": "Đang lưu…"
+    },
+    "toast": {
+      "added": "Đã thêm {{name}}",
+      "add_failed": "Thêm dịch vụ thất bại",
+      "updated": "Đã cập nhật dịch vụ",
+      "update_failed": "Cập nhật dịch vụ thất bại",
+      "removed": "Đã xóa dịch vụ",
+      "remove_failed": "Xóa dịch vụ thất bại",
+      "toggle_failed": "Bật/tắt dịch vụ thất bại",
+      "verify_ok": "Dịch vụ phản hồi ({{ms}}ms)",
+      "verify_failed": "Kiểm tra thất bại: {{error}}",
+      "unknown_error": "lỗi không xác định"
+    }
+  },
   "tags": {
     "label": "Thẻ",
     "placeholder": "Thêm thẻ... (ví dụ: Dịch thuật, Trò chuyện)",
@@ -306,6 +493,18 @@
       "testing": "Đang kiểm tra...",
       "reverify": "Kiểm tra lại",
       "verify": "Xác minh",
+      "pricing_title": "Giá cả (USD cho mỗi 1 triệu token)",
+      "pricing_input": "Đầu vào",
+      "pricing_output": "Đầu ra",
+      "pricing_free_local": "Miễn phí — chạy trên phần cứng của bạn",
+      "pricing_hint": "Được điền sẵn khi khởi tạo. Hãy chỉnh sửa nếu giá niêm yết của nhà cung cấp thay đổi, hoặc kiểm tra OpenRouter để có ước tính trực tiếp.",
+      "pricing_check": "Kiểm tra OpenRouter",
+      "pricing_checking": "Đang kiểm tra...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} đầu vào / ${{output}} đầu ra",
+      "pricing_apply": "Áp dụng",
+      "pricing_not_found": "Không tìm thấy mô hình tương ứng trên OpenRouter — không thể lấy giá từ nguồn này.",
+      "pricing_check_failed": "Không thể kiểm tra giá trên OpenRouter",
+      "pricing_negative_error": "Giá phải lớn hơn hoặc bằng 0",
       "delete_model": "Xóa mô hình",
       "confirm_delete": "Xác nhận xóa",
       "deleting": "Đang xóa...",

@@ -37,6 +37,7 @@ async def emit(
     aggregate_id: UUID,
     event_type: str,
     payload: dict[str, Any] | None = None,
+    aggregate_type: str = "composition",
 ) -> UUID:
     """Insert an outbox row inside the caller's transaction. Returns the row id.
 
@@ -44,12 +45,18 @@ async def emit(
     `conn` is what makes the event atomic with the domain write. If the
     surrounding transaction rolls back, this row vanishes with it (no orphan
     event); if it raises, the caller's write is aborted too (no lost event).
+
+    `aggregate_type` keys the relay's routing: 'composition' (default) fans out to
+    `loreweave:events:composition`; 'notification' (D-C-PRODUCER-OUTBOX) is instead
+    DELIVERED to notification-service by worker-infra's relay.
     """
     return await conn.fetchval(
         """
         INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-        VALUES ('composition', $1, $2, $3::jsonb)
+        VALUES ($4, $1, $2, $3::jsonb)
         RETURNING id
         """,
-        aggregate_id, event_type, json.dumps(payload or {}, default=str),
+        # ensure_ascii=False (ML-5): payloads carry user prose (titles) — no \uXXXX bloat.
+        aggregate_id, event_type, json.dumps(payload or {}, default=str, ensure_ascii=False),
+        aggregate_type,
     )

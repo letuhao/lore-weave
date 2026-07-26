@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 
@@ -118,7 +118,7 @@ async def fetch_wiki_neighborhood(
         return WikiNeighborhood.empty(glossary_entity_id)
 
     try:
-        async with httpx.AsyncClient(timeout=_KNOWLEDGE_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.knowledge_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
             resp = await client.post(
                 f"{settings.knowledge_service_internal_url}"
                 f"/internal/knowledge/wiki-neighborhood",
@@ -127,7 +127,6 @@ async def fetch_wiki_neighborhood(
                     "glossary_entity_id": glossary_entity_id,
                     "rel_cap": rel_cap,
                 },
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -201,7 +200,7 @@ async def fetch_timeline(
         return TimelineBrief.empty()
 
     try:
-        async with httpx.AsyncClient(timeout=_KNOWLEDGE_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.knowledge_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
             resp = await client.post(
                 f"{settings.knowledge_service_internal_url}"
                 f"/internal/knowledge/timeline",
@@ -210,7 +209,6 @@ async def fetch_timeline(
                     "chapter_order": chapter_order,
                     "limit": limit,
                 },
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(

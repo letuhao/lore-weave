@@ -12,6 +12,7 @@ import asyncio
 import logging
 
 from loreweave_llm import Client
+from loreweave_obs import setup_logging
 
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -19,10 +20,7 @@ from app.db.pool import close_pool, create_pool
 from app.routers.generate import bootstrap_minio
 from app.worker.consumer import VideoGenTerminalConsumer
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+setup_logging("video-gen-service")  # P2·A2a — shared JSON logging + dual trace ids
 logger = logging.getLogger("video-gen.worker")
 
 

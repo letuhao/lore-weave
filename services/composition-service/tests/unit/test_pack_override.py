@@ -72,15 +72,16 @@ class ProjectAwareKnowledge:
 
 
 def _derivative_req(*, branch_point=3, story_order=5, overrides=None, settings=None,
-                    source_project_id=SOURCE_PROJECT, project_id=DELTA_PROJECT):
+                    source_project_id=SOURCE_PROJECT, project_id=DELTA_PROJECT,
+                    pov_anchor=None, pov_entity_id=None):
     return PackRequest(
         user_id=USER, project_id=project_id, book_id=BOOK,
         node={"id": str(NODE), "chapter_id": str(CHAPTER), "story_order": story_order,
-              "present_entity_ids": [], "pov_entity_id": None, "beat_role": "hook",
+              "present_entity_ids": [], "pov_entity_id": pov_entity_id, "beat_role": "hook",
               "goal": "rescue", "synopsis": "the escape", "title": "Ch5"},
         bearer="jwt", guide="", settings=settings or {},
         source_project_id=source_project_id, branch_point=branch_point,
-        overrides=overrides,
+        overrides=overrides, pov_anchor=pov_anchor,
     )
 
 
@@ -270,7 +271,7 @@ async def test_flywheel_delta_fact_after_scene_position_is_spoiler_filtered():
 
 def _override(target_entity_id, fields):
     return EntityOverride(
-        user_id=USER, project_id=DELTA_PROJECT, work_id=DELTA_PROJECT,
+        created_by=USER, project_id=DELTA_PROJECT, work_id=DELTA_PROJECT,
         target_entity_id=target_entity_id, overridden_fields=fields,
     )
 
@@ -364,16 +365,16 @@ async def test_build_derivative_context_resolves_base_via_source_id_not_project(
     )
 
     class WR:
-        async def get_by_id(self, user_id, work_id):
+        async def get_by_id(self, work_id):
             assert str(work_id) == str(source_id)  # looked up by id, not project
             return SimpleNamespace(project_id=source_project)
 
     class DR:
-        async def list_overrides_for_work(self, user_id, work_id):
+        async def list_overrides_for_work(self, work_id):
             return []
 
     ctx = await build_derivative_context(
-        work, user_id=USER, works_repo=WR(), derivatives_repo=DR())
+        work, works_repo=WR(), derivatives_repo=DR())
     assert ctx.source_project_id == source_project  # the source's PROJECT, not its id
     assert ctx.branch_point == 3
 
@@ -383,9 +384,75 @@ async def test_build_derivative_context_empty_for_non_derivative():
     from app.packer.pack import build_derivative_context
     work = SimpleNamespace(id=DELTA_PROJECT, source_work_id=None, branch_point=None)
     ctx = await build_derivative_context(
-        work, user_id=USER, works_repo=object(), derivatives_repo=object())
+        work, works_repo=object(), derivatives_repo=object())
     assert ctx.source_project_id is None
     assert ctx.overrides == []
+    assert ctx.pov_anchor is None
+
+
+# ── Part A (2026-07-18 spec) — POV-shift derivative: pov_anchor default-fill + render ──
+
+
+async def test_build_derivative_context_reads_pov_anchor_from_spec():
+    """Part A — build_derivative_context surfaces the divergence spec's pov_anchor
+    (read fresh, self-syncing) so the pack path can default-fill the POV."""
+    from types import SimpleNamespace
+    from app.packer.pack import build_derivative_context
+    source_id, source_project, anchor = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    work = SimpleNamespace(id=DELTA_PROJECT, source_work_id=source_id, branch_point=3)
+
+    class WR:
+        async def get_by_id(self, work_id):
+            return SimpleNamespace(project_id=source_project)
+
+    class DR:
+        async def list_overrides_for_work(self, work_id):
+            return []
+        async def get_spec_for_work(self, work_id):
+            return SimpleNamespace(pov_anchor=anchor)
+
+    ctx = await build_derivative_context(work, works_repo=WR(), derivatives_repo=DR())
+    assert ctx.pov_anchor == anchor
+
+
+async def test_pov_anchor_default_fills_and_renders_explicit_pov():
+    """Part A (PO-1 default-fill + PO-2 explicit render + PO-3 apply-when-set) — a
+    derivative with pov_anchor=Kai and a scene that sets NO pov_entity_id → the beat
+    renders `pov=Kai` (name resolved from the present set) and Kai's bio grounds."""
+    kai = uuid.uuid4()
+    kn = ProjectAwareKnowledge(base_bios=[_bio(str(kai), "Kai", "the rescued prisoner")])
+    pc = await _pack_deriv(_derivative_req(pov_anchor=kai), knowledge=kn)
+    assert "pov=Kai" in pc.prompt          # explicit POV steer (proves default-fill + render)
+    assert "the rescued prisoner" in pc.prompt  # the POV character's bio grounds
+
+
+async def test_scene_pov_wins_over_anchor():
+    """PO-1 default-fill: a scene that sets its OWN pov_entity_id keeps it; the anchor
+    only fills where the scene set none."""
+    kai, lena = uuid.uuid4(), uuid.uuid4()
+    kn = ProjectAwareKnowledge(base_bios=[
+        _bio(str(lena), "Lena", "the guard"), _bio(str(kai), "Kai", "prisoner")])
+    pc = await _pack_deriv(
+        _derivative_req(pov_anchor=kai, pov_entity_id=str(lena)), knowledge=kn)
+    assert "pov=Lena" in pc.prompt   # scene POV wins
+    assert "pov=Kai" not in pc.prompt
+
+
+async def test_no_pov_line_when_anchor_unset_regression():
+    """A derivative with NO pov_anchor (and a scene with no POV) renders NO pov line —
+    the pack is unchanged from pre-Part-A behaviour."""
+    kn = ProjectAwareKnowledge(base_bios=[_bio(str(uuid.uuid4()), "Someone", "a bystander")])
+    pc = await _pack_deriv(_derivative_req(pov_anchor=None), knowledge=kn)
+    assert "pov=" not in pc.prompt
+
+
+async def test_foreign_anchor_not_in_present_renders_no_pov_line():
+    """Book-scope safety (spec B.2): a pov_anchor that resolves to NO present item
+    (a foreign / book-scope-missed anchor) renders no pov line — no leak, no crash."""
+    stranger = uuid.uuid4()  # not in any bio → never surfaces in present
+    kn = ProjectAwareKnowledge(base_bios=[_bio(str(uuid.uuid4()), "Local", "in-book")])
+    pc = await _pack_deriv(_derivative_req(pov_anchor=stranger), knowledge=kn)
+    assert "pov=" not in pc.prompt
 
 
 async def test_non_derivative_pack_unchanged_no_base_merge():

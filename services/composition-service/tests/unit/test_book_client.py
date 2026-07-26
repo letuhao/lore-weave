@@ -105,6 +105,35 @@ async def test_list_chapters_projects_active_ordered_and_coerces_null_title():
 
 
 @respx.mock
+async def test_list_chapters_paginates_past_book_service_100_clamp():
+    """book-service clamps any page limit to 100 — a 130-chapter book MUST be
+    fetched in two pages or the authoring-run gate false-rejects scope chapters
+    beyond #100 as 'not in this book' (the /review-impl HIGH this test pins)."""
+    page1 = [{"chapter_id": str(uuid.uuid4()), "title": f"Ch {i}", "sort_order": i}
+             for i in range(100)]
+    page2 = [{"chapter_id": str(uuid.uuid4()), "title": f"Ch {i}", "sort_order": i}
+             for i in range(100, 130)]
+
+    def _respond(request: httpx.Request) -> httpx.Response:
+        params = dict(httpx.QueryParams(request.url.query))
+        assert params["limit"] == "100"  # never ask beyond the server clamp
+        items = page1 if params.get("offset", "0") == "0" else page2
+        return httpx.Response(200, json={"items": items, "total": 130})
+
+    route = respx.get(f"{BASE}/v1/books/{BOOK}/chapters").mock(side_effect=_respond)
+    c = await _client()
+    try:
+        out = await c.list_chapters(BOOK, "jwt")
+    finally:
+        await c.aclose()
+    assert len(out) == 130
+    assert route.call_count == 2
+    offsets = [dict(httpx.QueryParams(call.request.url.query)).get("offset", "0")
+               for call in route.calls]
+    assert offsets == ["0", "100"]
+
+
+@respx.mock
 async def test_list_chapters_404_returns_empty():
     respx.get(f"{BASE}/v1/books/{BOOK}/chapters").mock(
         return_value=httpx.Response(404, json={"error": "BOOK_NOT_FOUND"}))

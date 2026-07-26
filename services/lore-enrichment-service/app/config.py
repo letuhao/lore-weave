@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     glossary_service_url: str = "http://glossary-service:8088"
     book_service_url: str = "http://book-service:8082"
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
+    # X2 (temporal-knowledge) — the Knowledge Access Layer (KAL / knowledge-gateway)
+    # is the single versioned read boundary for entity/lore/KG knowledge (INV-KAL).
+    # Entity-knowledge READS the KAL covers (roster/facts/canonical/search) route
+    # here instead of glossary/knowledge `/internal/*` directly.
+    knowledge_gateway_url: str = Field(
+        default="http://knowledge-gateway:3000",
+        validation_alias="KNOWLEDGE_GATEWAY_URL",
+    )
     redis_url: str = "redis://redis:6379"
 
     # Unified Job Control Plane P5 — fair scheduling / per-tenant concurrency. Lore-

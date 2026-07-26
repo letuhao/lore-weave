@@ -17,7 +17,7 @@ import {
   whatIfToDeriveBody,
   type WhatIfDraft,
 } from '../useWhatIfPromotion';
-import { derivativeOverridesKey } from '../useDerivativeContext';
+import { derivativeContextKey } from '../useDerivativeContext';
 import type { Work } from '../../types';
 
 const sourceWork: Work = {
@@ -82,19 +82,19 @@ describe('useWhatIfPromotion (C27 — ephemeral → C23 derive)', () => {
     expect(onPromoted.mock.calls[0][0].project_id).toBe('fresh-deriv-proj');
   });
 
-  it('stashes the submitted override set keyed by the FRESH derivative project (G2)', async () => {
+  it('invalidates the DURABLE derivative-context key for the FRESH derivative project (G2, WS-B2)', async () => {
     deriveWorkMock.mockResolvedValue({ ...sourceWork, project_id: 'fresh-deriv-proj', source_work_id: 'src-id' });
     const { Wrapper, qc } = makeWrapper();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
     const { result } = renderHook(
       () => useWhatIfPromotion({ sourceWork, draft: fullDraft, token: 'tok' }),
       { wrapper: Wrapper },
     );
     act(() => result.current.promote());
     await waitFor(() => expect(deriveWorkMock).toHaveBeenCalled());
-    await waitFor(() => {
-      const meta = qc.getQueryData(derivativeOverridesKey('fresh-deriv-proj'));
-      expect(meta).toEqual({ sourceProjectId: 'src-proj', overrideIds: ['ent-zrc'] });
-    });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: derivativeContextKey('fresh-deriv-proj') }),
+    );
   });
 
   it('surfaces an error if the BE reused the source project_id (no fresh delta — G2 violation)', async () => {

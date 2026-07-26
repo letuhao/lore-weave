@@ -7,14 +7,15 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCompositionStream } from '../hooks/useCompositionStream';
+import { useLiveStream } from '../context/LiveStateContext';
+import { useCriticStateOptional } from '../context/CriticStateContext';
 import { useCritique } from '../hooks/useCritique';
 import { useAutoGenerate, useCorrection } from '../hooks/useAutoGenerate';
 import { CandidatesView } from './CandidatesView';
 import { CanonGatePanel } from './CanonGatePanel';
+import { CriticFlags } from './CriticFlags';
 import type { CanonViolation, CorrectionBody, Critic } from '../types';
-
-type ReasoningPref = 'off' | 'auto' | 'low' | 'medium' | 'high';
+import { EffortSelect, type EffortLevel } from '@/components/ai-task';
 
 type Props = {
   projectId: string;
@@ -23,27 +24,43 @@ type Props = {
   modelKind?: string;
   modelName?: string;
   token: string | null;
-  onAccept: (text: string) => void;
+  // Returns TRUE only when the prose actually landed in the editor. We clear the ghost / cards ONLY
+  // on true, so a failed insert (no editor open on this chapter in the studio dock) keeps the draft
+  // instead of dropping it (the legacy co-mounted path always returns true).
+  onAccept: (text: string) => boolean;
   /** T3.1: the compose guide is lifted to CompositionPanel so the co-writer chat's
    *  "Use as guide" can pre-fill it. A SetStateAction setter so the canon-revise
    *  append (functional updater) keeps working. */
   guide: string;
   onGuideChange: Dispatch<SetStateAction<string>>;
+  /** M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — when true, offer the "✦ Adapt from source"
+   *  action (the open Work is a derivative, the scene is at/after branch_point, and the
+   *  source chapter has prose). Computed by CompositionPanel via useAdaptFromSource. */
+  canAdapt?: boolean;
+  /** M1 — derivative + at/after branch but the source chapter is empty → show a
+   *  "nothing to adapt" hint instead of the action (no silent weak generation). */
+  adaptSourceEmpty?: boolean;
 };
 
-export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange }: Props) {
+export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange, canAdapt, adaptSourceEmpty }: Props) {
   const { t } = useTranslation('composition');
   const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
   // (adaptive pass-through vs our rule-based scorer); off/low/medium/high are
   // explicit overrides.
-  const [reasoning, setReasoning] = useState<ReasoningPref>('auto');
+  const [reasoning, setReasoning] = useState<EffortLevel>('auto');
   // Diverge = controlled-auto gate (K options). OFF = V0 live token stream.
   const [diverge, setDiverge] = useState(false);
-  const stream = useCompositionStream(token);
+  // T5.4 — the co-writer stream is HOISTED to LiveStateProvider (above the windowing
+  // layer) so a docked/floated/popped Compose keeps streaming through a move. The
+  // `token` prop is retained for the other (non-hoisted) hooks below.
+  const stream = useLiveStream();
   const auto = useAutoGenerate(token);
   const correction = useCorrection(token);
   const { critique, dismiss } = useCritique(token);
+  // WS-B1 — lift the verdict to the shared store so the standing `critic` SubTab
+  // panel (a dock sibling) renders it. Optional: null when there's no provider.
+  const criticState = useCriticStateOptional();
 
   const busy = stream.streaming || auto.isPending;
   const canGenerate = !!sceneId && !!modelRef && !busy;
@@ -52,11 +69,24 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
     reasoning, modelKind, modelName,
   };
   const generate = () => (diverge ? auto.mutate(genParams) : stream.start(genParams));
+  // M1 — adapt the inherited SOURCE scene through the divergence. Same surface as a
+  // normal generate (diverge → K cards; else → ghost), just the `adapt_scene` op: the
+  // BE fires gather_source_scene + a no-auto-insert ghost the writer accepts manually.
+  const adapt = () => {
+    const p = { ...genParams, operation: 'adapt_scene' as const };
+    return diverge ? auto.mutate(p) : stream.start(p);
+  };
 
   const accept = () => {
     if (!stream.ghost) return;
-    onAccept(stream.ghost);
-    if (stream.jobId) critique.mutate({ jobId: stream.jobId, passage: stream.ghost });
+    if (!onAccept(stream.ghost)) return; // insert failed (no editor) — keep the ghost, don't critique/clear
+    if (stream.jobId) {
+      const jobId = stream.jobId;
+      critique.mutate(
+        { jobId, passage: stream.ghost },
+        { onSuccess: (data) => data.critic && criticState?.setVerdict({ critic: data.critic, canon: null, jobId }) },
+      );
+    }
     stream.clearGhost();
   };
 
@@ -65,8 +95,15 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   // advisory critique on the auto job, then clears the cards. Correction capture
   // is fire-and-forget — it never blocks the insert.
   const acceptText = (text: string) => {
-    onAccept(text);
-    if (auto.data?.job_id) critique.mutate({ jobId: auto.data.job_id, passage: text });
+    if (!onAccept(text)) return; // insert failed (no editor) — keep the cards, don't critique/reset
+    if (auto.data?.job_id) {
+      const jobId = auto.data.job_id;
+      const canon = auto.data.canon ?? null;
+      critique.mutate(
+        { jobId, passage: text },
+        { onSuccess: (data) => data.critic && criticState?.setVerdict({ critic: data.critic, canon, jobId }) },
+      );
+    }
     auto.reset();
   };
   const correct = (body: CorrectionBody) => {
@@ -118,20 +155,8 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
         onChange={(e) => onGuideChange(e.target.value)}
       />
       <div className="flex items-center gap-2">
-        <select
-          data-testid="compose-reasoning"
-          className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
-          value={reasoning}
-          onChange={(e) => setReasoning(e.target.value as ReasoningPref)}
-          aria-label={t('reasoning', { defaultValue: 'Reasoning' })}
-          title={t('reasoningHint', { defaultValue: 'Auto = the server decides per model. Off disables thinking; Low/Med/High force it.' })}
-        >
-          <option value="auto">{t('reasoningAuto', { defaultValue: 'Thinking: auto' })}</option>
-          <option value="off">{t('reasoningOff', { defaultValue: 'Thinking: off' })}</option>
-          <option value="low">{t('reasoningLow', { defaultValue: 'Thinking: low' })}</option>
-          <option value="medium">{t('reasoningMedium', { defaultValue: 'Thinking: med' })}</option>
-          <option value="high">{t('reasoningHigh', { defaultValue: 'Thinking: high' })}</option>
-        </select>
+        {/* Shared AI-task EffortSelect (unified 5-level vocab) — was a raw <select> */}
+        <EffortSelect value={reasoning} onChange={setReasoning} />
         {stream.reasoning && (
           <span data-testid="compose-reasoning-badge" className="self-center rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-500 dark:bg-neutral-800">
             {stream.reasoning.source === 'adaptive'
@@ -158,6 +183,25 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
           >
             {auto.isPending ? t('generating', { defaultValue: 'Generating…' }) : t('generate', { defaultValue: 'Generate' })}
           </button>
+        )}
+        {/* M1 — adapt the inherited source scene through the divergence (derivative,
+            at/after branch, source has prose). Sits beside Generate; same ghost/cards
+            surface. Hidden while a stream is mid-flight (the Stop button owns that). */}
+        {canAdapt && !stream.streaming && (
+          <button
+            type="button" data-testid="compose-adapt"
+            className="rounded border border-purple-400 px-3 py-1.5 text-sm text-purple-700 hover:bg-purple-50 disabled:opacity-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-950/30"
+            disabled={!canGenerate}
+            title={t('derive.adapt.hint', { defaultValue: 'Rewrite the inherited source scene to honour this branch (a ghost you review and accept).' })}
+            onClick={adapt}
+          >
+            ✦ {t('derive.adapt.action', { defaultValue: 'Adapt from source' })}
+          </button>
+        )}
+        {adaptSourceEmpty && !canAdapt && (
+          <span data-testid="compose-adapt-empty" className="self-center text-xs text-muted-foreground" title={t('derive.adapt.emptyHint', { defaultValue: 'The source chapter has no prose to adapt — generate a fresh draft instead.' })}>
+            {t('derive.adapt.empty', { defaultValue: 'Nothing to adapt' })}
+          </span>
         )}
         {!sceneId && <span data-testid="compose-need-scene" className="self-center text-xs text-amber-600">{t('needScene', { defaultValue: 'Pick a scene' })}</span>}
         {sceneId && !modelRef && <span data-testid="compose-need-model" className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
@@ -214,77 +258,3 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   );
 }
 
-function CriticFlags({ critic, onRegenerate, onDismiss }: { critic: NonNullable<Critic>; jobId: string | null; onRegenerate: () => void; onDismiss: (ruleId: string) => void }) {
-  const { t } = useTranslation('composition');
-  const dims: [string, number | null][] = [
-    ['coherence', critic.coherence], ['voice_match', critic.voice_match],
-    ['pacing', critic.pacing], ['canon_consistency', critic.canon_consistency],
-  ];
-  // C26 GATE — a derivative override slipped. `needs_regeneration` BLOCKS accept
-  // (the user must regenerate); `regen_exhausted` means the cap was hit so the gate
-  // fails OPEN (we surface the finding but no longer block). The findings explain WHY.
-  const findings = critic.derivative_findings ?? [];
-  const blocked = critic.needs_regeneration === true;
-  return (
-    <div data-testid="compose-critic" className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-700">
-      {(blocked || critic.regen_exhausted) && (
-        <div
-          data-testid="compose-override-gate"
-          className={`mb-2 rounded p-2 ${blocked ? 'bg-red-50 dark:bg-red-950' : 'bg-amber-50 dark:bg-amber-950'}`}
-        >
-          <div className={`font-medium ${blocked ? 'text-red-700 dark:text-red-300' : 'text-amber-800 dark:text-amber-300'}`}>
-            {blocked
-              ? t('overrideSlipBlocked', { defaultValue: 'Accept blocked: a dị bản override slipped back to the canon value. Regenerate before accepting.' })
-              : t('overrideSlipExhausted', { defaultValue: 'Override still slipping after the regeneration cap — surfaced for your review (accept is no longer blocked).' })}
-          </div>
-          <ul className="mt-1 list-disc pl-4">
-            {findings.map((f, i) => (
-              <li key={i} className="text-neutral-700 dark:text-neutral-300">
-                {f.kind === 'override_slip'
-                  ? t('overrideSlipDetail', {
-                      defaultValue: '{{name}} ({{field}}): expected “{{expected}}”, found “{{found}}”',
-                      name: f.name || f.entity_id, field: f.field, expected: f.expected, found: f.found,
-                    })
-                  : t('deltaInconsistencyDetail', {
-                      defaultValue: '{{name}}: contradicts the delta rule “{{rule}}”',
-                      name: f.name || f.entity_id, rule: f.rule,
-                    })}
-              </li>
-            ))}
-          </ul>
-          {blocked && (
-            <button
-              data-testid="compose-override-regenerate"
-              className="mt-1.5 rounded bg-red-600 px-2.5 py-1 text-xs text-white"
-              onClick={onRegenerate}
-            >
-              {t('regenerate', { defaultValue: 'Regenerate' })}
-            </button>
-          )}
-        </div>
-      )}
-      <div className="mb-1 font-medium">{t('critic', { defaultValue: 'Critic (advisory)' })}</div>
-      {critic.error ? (
-        <div className="text-neutral-500">{t('criticUnavailable', { defaultValue: 'Critic unavailable.' })}</div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {dims.map(([k, v]) => (
-            <span key={k} className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-800">
-              {t(k, { defaultValue: k })}: {v ?? '—'}
-            </span>
-          ))}
-        </div>
-      )}
-      {(critic.violations ?? []).map((vio) => (
-        <div key={vio.rule_id} className={`mt-1 rounded bg-amber-50 p-1.5 dark:bg-amber-950 ${vio.dismissed ? 'opacity-50 line-through' : ''}`}>
-          <span className="text-amber-800 dark:text-amber-300">{vio.why || vio.span}</span>
-          {!vio.dismissed && (
-            <button className="ml-2 text-[11px] text-neutral-500 underline" onClick={() => onDismiss(vio.rule_id)}>
-              {t('dismiss', { defaultValue: 'dismiss' })}
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}

@@ -41,6 +41,10 @@ from pydantic import BaseModel, Field
 from loreweave_extraction.canonical import relation_id
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.neo4j_repos.temporal import (
+    MAINTAIN_RELATION_CHAIN_CYPHER,
+    ORDINAL_OPEN_CEILING,
+)
 
 # K11.6-R1/R1: 1-hop direction options. "both" returns outgoing
 # AND incoming edges, which is what the L2 RAG context loader
@@ -99,6 +103,26 @@ class Relation(BaseModel):
     source_chapter: str | None = None
     valid_from: datetime | None = None
     valid_until: datetime | None = None
+    # F3 — story (valid) time axis (chapter ordinals). The existing
+    # valid_from/valid_until above are wall-clock TRANSACTION-time; these are the
+    # STORY-time half-open interval [valid_from_ordinal, valid_to_ordinal) over
+    # the (subject, predicate) arc. valid_from_ordinal is stamped at write time
+    # (the chapter ordinal the edge was established at, on the same scale as
+    # events.event_order); valid_to_ordinal is set ONLY by temporal.maintain_chain
+    # when a later instance on the same (subject, predicate) chain supersedes it.
+    # NULL on legacy / positionless edges. See app.db.neo4j_repos.temporal + §12.3.
+    valid_from_ordinal: int | None = None
+    valid_to_ordinal: int | None = None
+    valid_to_ordinal_eff: int | None = None
+    # dec-3 (D-KG-INSTORY-EVENTDATE) — detected in-story (narrative) time as a
+    # truncated ISO string: "YYYY" / "YYYY-MM" / "YYYY-MM-DD". An ADDITIONAL,
+    # optional valid-time REFINEMENT alongside the chapter-ordinal axis
+    # (valid_from_ordinal) — chapter-ordinal stays the PRIMARY / spoiler-safe
+    # story-time axis; event_date_iso is a SECONDARY descriptive sort/filter key
+    # supplied only when the prose carries an explicit in-story date. NULL is the
+    # dominant case and never affects the ordinal chain. Mirrors :Event /
+    # :Fact event_date_iso (same truncated-ISO shape, precision-preferring merge).
+    event_date_iso: str | None = None
     pending_validation: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -164,6 +188,43 @@ def _edge_props_to_relation(
 # ── create_relation ───────────────────────────────────────────────────
 
 
+# KG customizable-ontology (L7, D-KG-L7-CARDINALITY) — auto-close the prior
+# OPEN instance of a `single_active` edge type for this `(subject, predicate)`,
+# BEFORE the new instance is MERGEd. Runs in the same CypherSession transaction
+# as the create, so the close + the new-open are atomic (a reader never sees two
+# open instances, and a rollback leaves both untouched).
+#
+# Cardinality semantic: `single_active` means a subject holds AT MOST ONE open
+# instance of this predicate at a time (e.g. CURRENT_SECT — joining sect B closes
+# the open membership of sect A). So the close scopes to the same SUBJECT +
+# PREDICATE under the SAME `$user_id` partition (no cross-tenant close), across
+# ANY object, and only edges still open (`valid_until IS NULL`). The new
+# instance's OWN id is excluded so re-running an idempotent create of the *same*
+# relation never closes itself, and re-asserting the identical (subj,pred,obj) is
+# a clean no-op. `multi_active` (e.g. PURSUES — multiple coexisting drives) never
+# reaches this query. Mirrors the `invalidate_relation` close primitive
+# (sets `valid_until` + `updated_at`).
+#
+# Project scoping is IMPLICIT and complete: `Entity.id` (entity_canonical_id)
+# folds project_id into its hash, so `{id: $subject_id}` matches exactly one
+# project's subject node, and every outgoing edge of that node was created with
+# that project's (also project-scoped) objects. A user's single_active write in
+# project A therefore cannot reach an open edge in project B — locked by
+# test_L7_single_active_does_not_cross_project_boundary.
+_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER = """
+MATCH (subj:Entity {id: $subject_id})-[rp:RELATES_TO]->(obj:Entity)
+WHERE rp.user_id = $user_id
+  AND subj.user_id = $user_id
+  AND obj.user_id = $user_id
+  AND rp.predicate = $predicate
+  AND rp.valid_until IS NULL
+  AND rp.id <> $relation_id
+SET rp.valid_until = datetime(),
+    rp.updated_at = datetime()
+RETURN count(rp) AS closed
+"""
+
+
 # Structural MERGE on the edge `id` property. We can't use the
 # bare structural pattern `(a)-[r:RELATES_TO {predicate: $p}]->(b)`
 # because that would collide two relations with the same
@@ -192,8 +253,26 @@ ON CREATE SET
   r.source_chapter = $source_chapter,
   r.valid_from = coalesce($valid_from, datetime()),
   r.valid_until = NULL,
+  // F3 — story valid-time axis. valid_from_ordinal is the chapter ordinal the
+  // edge was established at; a fresh edge opens its interval (valid_to_ordinal
+  // NULL → eff = +∞ null-sink). The interval CLOSE is done by
+  // temporal.maintain_chain after the merge, never here.
+  r.valid_from_ordinal = $valid_from_ordinal,
+  r.valid_to_ordinal = NULL,
+  r.valid_to_ordinal_eff = $open_ceiling,
+  // dec-3 — detected in-story date (optional valid-time refinement). NULL when the
+  // prose carried no explicit calendar date. Additive: never participates in the
+  // ordinal chain, only annotates/sorts.
+  r.event_date_iso = $event_date_iso,
   r.pending_validation = $pending_validation,
+  // KG customizable-ontology (L7) — stamp the resolved-schema version this edge
+  // was written under (M3) + the layer-4 partition seam (M2, NULL at v1). Both
+  // additive; NULL for legacy/un-adopted writes (no behavior change).
+  r.schema_version = $schema_version,
+  r.graph_id = $graph_id,
   r.created_at = datetime(),
+  // T4.1 flywheel — the extraction job that first minted this relation (net-new).
+  r.created_job_id = $job_id,
   r.updated_at = datetime()
 ON MATCH SET
   r.source_event_ids = CASE
@@ -208,6 +287,33 @@ ON MATCH SET
   r.pending_validation = CASE
     WHEN $confidence > r.confidence THEN $pending_validation
     ELSE r.pending_validation
+  END,
+  // KG customizable-ontology (L7 activation) — re-confirm the schema version on a
+  // re-matched edge so an edge first written pre-activation (NULL) gets stamped on
+  // the next extraction under the resolved schema. COALESCE so a legacy/un-adopted
+  // persist (schema_version NULL) NEVER wipes an existing stamp — only a non-NULL
+  // new value updates. graph_id is intentionally NOT touched on MATCH: it is NULL
+  // at v1 everywhere, and overwriting would clobber a future partition assignment
+  // (M2). The ON CREATE branch still sets graph_id for fresh edges.
+  r.schema_version = coalesce($schema_version, r.schema_version),
+  // F3 — backfill the story-time lower bound on a later positioned re-extraction
+  // (an edge first written positionless keeps NULL until a positioned source
+  // re-mentions it); never overwrite an existing one. valid_to_ordinal is owned
+  // by maintain_chain, so it is NOT touched on MATCH here.
+  r.valid_from_ordinal = coalesce(r.valid_from_ordinal, $valid_from_ordinal),
+  r.valid_to_ordinal_eff = coalesce(
+    r.valid_to_ordinal_eff,
+    CASE WHEN r.valid_to_ordinal IS NULL THEN $open_ceiling ELSE r.valid_to_ordinal END
+  ),
+  // dec-3 — prefer the MORE precise (longer truncated-ISO) in-story date on
+  // re-mention (mirrors :Event/:Fact): a less-precise re-mention never downgrades
+  // the stored precision; NULL new leaves the stored one; NULL stored adopts the
+  // new (backfill on a later positioned re-extraction).
+  r.event_date_iso = CASE
+    WHEN $event_date_iso IS NULL THEN r.event_date_iso
+    WHEN r.event_date_iso IS NULL THEN $event_date_iso
+    WHEN size($event_date_iso) > size(r.event_date_iso) THEN $event_date_iso
+    ELSE r.event_date_iso
   END,
   r.updated_at = datetime()
 RETURN properties(r) AS rel,
@@ -228,6 +334,13 @@ async def create_relation(
     source_chapter: str | None = None,
     valid_from: datetime | None = None,
     pending_validation: bool = False,
+    schema_version: int | None = None,
+    graph_id: str | None = None,
+    cardinality: str | None = None,
+    job_id: str | None = None,
+    valid_from_ordinal: int | None = None,
+    event_date_iso: str | None = None,
+    maintain_chain: bool = False,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
     `(subject_id, predicate, object_id)` returns the same edge —
@@ -246,6 +359,32 @@ async def create_relation(
     This is how K17 (LLM Pass 2) promotes a Pass 1 quarantined
     edge: re-create with higher confidence + `pending_validation
     = false`, and the existing edge is upgraded in place.
+
+    `cardinality` (KG L7, D-KG-L7-CARDINALITY): when ``"single_active"``, the
+    prior OPEN edge of this `(subject, predicate, object)` under the SAME
+    `$user_id` is auto-closed (`valid_until = now()`) BEFORE the new instance is
+    written — so a `single_active` edge type can only hold one open instance at a
+    time. ``"multi_active"`` / ``None`` (the default) ⇒ no auto-close, exactly
+    today's behavior. The close runs in the same session transaction as the
+    create (atomic). The new relation's own id is excluded from the close, so a
+    pure idempotent re-create of the same edge never closes itself.
+
+    F3 — `valid_from_ordinal` is the STORY-time lower bound (chapter ordinal) the
+    edge was established at (same scale as `events.event_order`). `maintain_chain`
+    (the EXTRACTION path, §12.3.2) re-derives the ordinal `valid_to_ordinal` chain
+    for this `(subject, predicate)` AFTER the merge via `temporal.maintain_chain`
+    — the ordinal-aware interval-split that is correct under out-of-order/backfill
+    arrival, unlike `single_active` (which closes ANY open instance by wall-clock
+    and inverts intervals, A2). `single_active` and `maintain_chain` are distinct
+    mechanisms: use `single_active` for monotonic L7/user edits, `maintain_chain`
+    for extraction. Both default off ⇒ byte-identical legacy behaviour.
+
+    dec-3 (D-KG-INSTORY-EVENTDATE) — `event_date_iso` is the OPTIONAL detected
+    in-story (narrative) date, a truncated ISO string ("YYYY" / "YYYY-MM" /
+    "YYYY-MM-DD"). It is an ADDITIVE valid-time refinement ALONGSIDE
+    `valid_from_ordinal` (the primary chapter-ordinal axis), never a replacement.
+    `None` (the dominant case) is null-safe and never affects the ordinal chain.
+    Empty string normalizes to `None`; on re-mention the MORE precise date wins.
     """
     if not predicate:
         raise ValueError("predicate must be a non-empty string")
@@ -259,6 +398,21 @@ async def create_relation(
         predicate=predicate,
         object_id=object_id,
     )
+    # dec-3 — empty string → None so the Cypher's "NULL = no new value" precision
+    # merge treats a blank date as absent (never clobbers a stored one on MATCH).
+    normalized_event_date_iso = event_date_iso or None
+    # L7 single_active auto-close — close the prior OPEN instance (same tenant,
+    # same endpoints+predicate) before the MERGE of the new one. multi_active /
+    # None ⇒ skip entirely (legacy path is byte-identical: no extra query).
+    if cardinality == "single_active":
+        await run_write(
+            session,
+            _CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER,
+            user_id=user_id,
+            relation_id=rid,
+            subject_id=subject_id,
+            predicate=predicate,
+        )
     result = await run_write(
         session,
         _CREATE_RELATION_CYPHER,
@@ -271,11 +425,31 @@ async def create_relation(
         source_event_id=source_event_id,
         source_chapter=source_chapter,
         valid_from=valid_from,
+        valid_from_ordinal=valid_from_ordinal,
+        open_ceiling=ORDINAL_OPEN_CEILING,
+        event_date_iso=normalized_event_date_iso,
         pending_validation=pending_validation,
+        schema_version=schema_version,
+        graph_id=graph_id,
+        job_id=job_id,
     )
     record = await result.single()
     if record is None:
         return None
+    # F3 — drive the ordinal-aware interval-split close (the EXTRACTION path).
+    # Re-derives valid_to_ordinal over the (subject, predicate) chain from
+    # valid_from_ordinal order AFTER the new instance is in place, so a back-
+    # filled out-of-order edge never inverts a later interval (A2). Only when a
+    # story-time position exists; legacy/positionless writes skip it.
+    if maintain_chain and valid_from_ordinal is not None:
+        await run_write(
+            session,
+            MAINTAIN_RELATION_CHAIN_CYPHER,
+            user_id=user_id,
+            subject_id=subject_id,
+            predicate=predicate,
+            open_ceiling=ORDINAL_OPEN_CEILING,
+        )
     return _edge_props_to_relation(
         rel_props=dict(record["rel"]),
         subject=dict(record["subj"]),

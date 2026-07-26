@@ -19,8 +19,8 @@ function Wrapper({ children }: PropsWithChildren) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-const render = () =>
-  renderHook(() => useRevisionCompare('tok', 'b1', 'c1'), { wrapper: Wrapper });
+const render = (initial?: { leftId?: string; rightId?: string }) =>
+  renderHook(() => useRevisionCompare('tok', 'b1', 'c1', initial), { wrapper: Wrapper });
 
 beforeEach(() => {
   listRevisionsMock.mockReset();
@@ -91,5 +91,20 @@ describe('useRevisionCompare', () => {
     await waitFor(() => expect(compareMock).toHaveBeenCalled());
     act(() => result.current.setLeftId('r1'));
     await waitFor(() => expect(compareMock).toHaveBeenLastCalledWith('tok', 'b1', 'c1', 'r1', 'r3'));
+  });
+
+  it('#20_agent_mode.md D2 — an explicit initial (left, right) pair overrides the newest-two default', async () => {
+    listRevisionsMock.mockResolvedValue({
+      items: [
+        { revision_id: 'r3', created_at: '2026-01-03' },
+        { revision_id: 'r2', created_at: '2026-01-02' },
+        { revision_id: 'r1', created_at: '2026-01-01' },
+      ],
+      total: 3,
+    });
+    const { result } = render({ leftId: 'r1', rightId: 'r2' });
+    await waitFor(() => expect(compareMock).toHaveBeenCalledWith('tok', 'b1', 'c1', 'r1', 'r2'));
+    expect(result.current.leftId).toBe('r1');
+    expect(result.current.rightId).toBe('r2');
   });
 });

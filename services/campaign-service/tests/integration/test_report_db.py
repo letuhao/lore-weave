@@ -45,18 +45,21 @@ async def _chapter(pool, cid, sort, *, kn, tr, ev, last_error=None):
     )
 
 
-async def test_report_row_duration_est_and_owner_scope(pool):
+async def test_report_row_duration_and_est(pool):
+    # K27 (2026-07-24): the owner-scope half was removed — E0-4b fetches by
+    # campaign_id (PK); the router grant-gates `view` (_grant_campaign, anti-oracle
+    # 404) before calling, covered by test_campaigns_api / test_grant_adopt.
     owner = uuid4()
     cid = await _make_campaign(pool, owner)
-    row = await repo.get_report_row(pool, cid, owner)
+    row = await repo.get_report_row(pool, cid)
     assert row is not None
     assert row["status"] == "completed"
     assert row["duration_seconds"] == 3600          # EXTRACT(EPOCH FROM finished-started)
     assert row["est_usd_low"] == Decimal("7.00")
     assert row["est_usd_high"] == Decimal("11.00")
     assert row["spent_usd"] == Decimal("8.50")
-    # owner-scoped → a different owner sees nothing
-    assert await repo.get_report_row(pool, cid, uuid4()) is None
+    # an unknown campaign_id → None (the repo's "not found" is by PK)
+    assert await repo.get_report_row(pool, uuid4()) is None
 
 
 async def test_failed_error_strings_filters_failed_and_groups(pool):

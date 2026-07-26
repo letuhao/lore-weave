@@ -1,0 +1,68 @@
+{
+  "title": "Importer un PDF",
+  "description": "Importer un PDF en tant que livre, découpé par plages de pages",
+  "steps": {
+    "upload": "Télécharger",
+    "configure": "Configurer",
+    "confirm": "Confirmer",
+    "progress": "Progression",
+    "results": "Résultats"
+  },
+  "upload": {
+    "intro": "Importez un PDF en tant que livre — incluant les PDF de lore ou de références techniques, pas seulement des romans. Les PDF longs sont divisés en chapitres par plages de pages (à configurer à l'étape suivante).",
+    "choosePdf": "Choisir un fichier PDF",
+    "pdfOnly": ".pdf uniquement",
+    "checking": "Vérification du PDF…",
+    "pageCount_one": "{{count}} page détectée.",
+    "pageCount_other": "{{count}} pages détectées.",
+    "readError": "Impossible de lire ce PDF."
+  },
+  "configure": {
+    "pagesPerChunk": "Pages par segment",
+    "pagesPerChunkHint": "Chaque groupe de ce nombre de pages devient un chapitre — aucune détection de titre « Chapitre N » n'est utilisée pour les imports PDF, cela fonctionne donc même pour les livres de référence/techniques sans marqueurs de chapitres.",
+    "willCreate_one": "Cela créera {{count}} chapitre à partir de {{pages}} page.",
+    "willCreate_other": "Cela créera {{count}} chapitres à partir de {{pages}} pages.",
+    "highChapterWarning": "Cela représente beaucoup de chapitres — envisagez une valeur « pages par segment » plus élevée s'il ne s'agit pas d'un choix délibéré. L'importation s'effectuera tout de même.",
+    "captionImages": "Légender les images avec l'IA",
+    "captionImagesHint": "Extrait les graphiques/images et les légende via un modèle de vision afin que l'extraction du glossaire/KG puisse analyser le contenu des graphiques. Utilise des crédits LLM par image.",
+    "visionModel": "Modèle de vision",
+    "visionModelPlaceholder": "Choisissez un modèle capable de vision (ex. gpt-4o)",
+    "visionModelAriaLabel": "Modèle de vision pour la légende des images",
+    "visionModelHint": "Choisissez un modèle qui prend réellement en charge l'entrée d'images — tous les modèles de chat ne le permettent pas."
+  },
+  "confirm": {
+    "file": "Fichier",
+    "pages": "Pages",
+    "pagesPerChunk": "Pages par segment",
+    "chaptersToCreate": "Chapitres à créer",
+    "captionImages": "Légender les images avec l'IA",
+    "yes": "Oui",
+    "no": "Non",
+    "needModel": "Choisissez un modèle de vision avant de commencer — la légender est activée mais aucun modèle n'est sélectionné.",
+    "backgroundNote": "Cette opération s'exécute en arrière-plan — vous pouvez fermer cette boîte de dialogue et suivre la progression depuis le panneau des tâches à tout moment.",
+    "startImport": "Démarrer l'importation",
+    "startFailed": "Échec du démarrage de l'importation"
+  },
+  "progress": {
+    "importing": "Importation du PDF…",
+    "chapterOf": "Chapitre {{current}} sur {{total}}",
+    "runInBackground": "Exécuter en arrière-plan",
+    "progress": "Progression",
+    "longNote": "Cela peut prendre du temps pour un PDF volumineux — surtout si le sous-titrage par IA est activé. Vous pouvez fermer cette boîte de dialogue à tout moment ; l’importation se poursuit en arrière-plan et peut être suivie dans le panneau des tâches.",
+    "backgroundToast": "L’importation se poursuit en arrière-plan — consultez le panneau des tâches pour suivre la progression."
+  },
+  "results": {
+    "complete": "Importation terminée",
+    "failed": "L’importation a échoué",
+    "chaptersCreated_one": "{{count}} chapitre créé.",
+    "chaptersCreated_other": "{{count}} chapitres créés.",
+    "genericError": "Une erreur est survenue lors de l’importation.",
+    "importAnother": "Importer un autre fichier",
+    "done": "Terminé"
+  },
+  "button": {
+    "back": "Retour",
+    "cancel": "Annuler",
+    "next": "Suivant"
+  }
+}

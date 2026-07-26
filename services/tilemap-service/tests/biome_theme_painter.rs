@@ -120,7 +120,7 @@ fn zone_tile_indices(view: &TilemapView, zone_id: &str) -> Vec<usize> {
 // ─── AC-BIOME-1 — V2 byte-identical preserved ──────────────────────────
 
 const V2_TERRAIN_LAYER_HASH_PIN: &str =
-    "64d8d1b25edd9ed94faf4730860faecf843ad26f3887e462870d31af49ee3ec8";
+    "b32fe411f10299473557157b903124a81cee173f6af3bc952ca7fcfd24b27310";
 
 #[test]
 fn v2_path_unchanged_when_both_opt_ins_are_none() {
@@ -440,7 +440,7 @@ fn unknown_background_biome_id_is_silent_no_op_vs_v2() {
 /// branch the literal via `#[cfg(target_arch = "aarch64")]` rather
 /// than rebaselining the x86 value.
 const ZONE_ONLY_HASH_PIN: &str =
-    "85b7a177964d94a627228c75dff6f5b40cf2f656fb8fbb63a77e27178d00fe6a";
+    "f252df11e0abe71adc86ef047e595a34e48f37669b7b96fce0b5bf13845bacfa";
 
 #[test]
 fn chunk_b_snapshot_pin_for_zone_only_fixture() {

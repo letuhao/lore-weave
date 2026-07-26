@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "कहानियाँ खोजें",
+    "subtitle": "LoreWeave समुदाय के सार्वजनिक उपन्यासों को ब्राउज़ करें। विभिन्न भाषाओं में कहानियाँ पढ़ें, अनुवाद करें और अन्वेषण करें।",
+    "search_placeholder": "शीर्षक, लेखक या भाषा से खोजें...",
+    "search_aria": "कैटलॉग खोजें",
+    "no_books": "कोई किताब नहीं मिली। कृपया कोई दूसरा खोज शब्द या फ़िल्टर आज़माएँ।",
+    "load_failed": "कैटलॉग लोड करने में विफल"
+  },
+  "filter": {
+    "lang_all": "सभी",
+    "clear_genres": "शैली (genres) साफ़ करें",
+    "books_found": "{{count}} किताबें मिलीं",
+    "sort_aria": "किताबों को इस क्रम में व्यवस्थित करें",
+    "sort": {
+      "recent": "सबसे हालिया",
+      "popular": "सबसे लोकप्रिय",
+      "chapters": "सर्वाधिक अध्याय",
+      "alpha": "वर्णानुक्रम"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} अध्याय"
+  },
+  "detail": {
+    "breadcrumb_browse": "ब्राउज़ करें",
+    "public_badge": "सार्वजनिक",
+    "unlisted_badge": "असूचीबद्ध",
+    "chapters_count": "{{count}} अध्याय",
+    "available_languages": "उपलब्ध भाषाएँ",
+    "original": "मूल",
+    "start_reading": "पढ़ना शुरू करें",
+    "no_chapters_yet": "अभी तक कोई अध्याय नहीं",
+    "share": "शेयर करें",
+    "copy_link": "लिंक कॉपी करें",
+    "loading": "लोड हो रहा है...",
+    "chapters_heading": "अध्याय",
+    "no_chapters_available": "कोई अध्याय उपलब्ध नहीं है।",
+    "untitled": "शीर्षकहीन",
+    "words": "{{count}} शब्द",
+    "showing_chapters": "{{total}} में से {{from}}–{{to}} अध्याय दिखाए जा रहे हैं",
+    "stat_chapters": "अध्याय",
+    "stat_languages": "भाषाएँ",
+    "stat_original": "मूल",
+    "stat_published": "प्रकाशित",
+    "na": "उपलब्ध नहीं",
+    "book_not_found": "किताब नहीं मिली",
+    "back_to_browse": "वापस ब्राउज़ करें",
+    "link_copied": "लिंक कॉपी किया गया",
+    "copy_failed": "कॉपी करने में विफल",
+    "load_chapters_failed": "अध्याय लोड करने में विफल"
+  },
+  "shared": {
+    "indicator": "आप एक साझा किया गया लिंक देख रहे हैं। यह किताब सार्वजनिक रूप से सूचीबद्ध नहीं है।",
+    "invalid": "यह साझा किया गया लिंक अमान्य है या इसकी अवधि समाप्त हो गई है।",
+    "not_found": "साझा किया गया लिंक नहीं मिला या समाप्त हो गया",
+    "browse_instead": "इसके बजाय सार्वजनिक किताबें ब्राउज़ करें",
+    "back_to_chapters": "अध्यायों पर वापस जाएँ",
+    "ch_short": "अध्याय {{n}}",
+    "load_chapter_failed": "अध्याय लोड करने में विफल: {{error}}"
+  }
+}

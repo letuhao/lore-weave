@@ -4,18 +4,9 @@ import { Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { translationApi, type UserTranslationPreferences, type ModelSource } from '@/features/translation/api';
+import { LanguagePicker } from '@/components/shared/LanguagePicker';
+import { TRANSLATION_TARGETS } from '@/lib/languages';
 import { providerApi, type ProviderCredential, type UserModel } from './api';
-
-const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'vi', label: 'Tiếng Việt' },
-  { code: 'ja', label: '日本語' },
-  { code: 'zh-TW', label: '繁體中文' },
-  { code: 'ko', label: '한국어' },
-  { code: 'fr', label: 'Français' },
-  { code: 'de', label: 'Deutsch' },
-  { code: 'es', label: 'Español' },
-];
 
 export function TranslationTab() {
   const { t } = useTranslation('settings');
@@ -28,6 +19,10 @@ export function TranslationTab() {
   const [providers, setProviders] = useState<ProviderCredential[]>([]);
   const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
+  // S3: a providers/models fetch FAILURE must not masquerade as "you have no models" (the
+  // benign empty state) — track it so the picker shows a load error + Retry instead.
+  const [modelsError, setModelsError] = useState(false);
+  const [modelsReload, setModelsReload] = useState(0);
 
   // Form state
   const [targetLang, setTargetLang] = useState('en');
@@ -60,6 +55,8 @@ export function TranslationTab() {
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
+    setModelsError(false);
+    setLoadingModels(true);
     Promise.all([
       providerApi.listProviders(accessToken),
       providerApi.listUserModels(accessToken),
@@ -67,11 +64,14 @@ export function TranslationTab() {
       if (cancelled) return;
       setProviders(p.items ?? []);
       setUserModels((m.items ?? []).filter((model) => model.is_active));
-    }).catch(() => {}).finally(() => {
+    }).catch(() => {
+      // S3: surface the failure rather than swallowing it into the "no models" state.
+      if (!cancelled) setModelsError(true);
+    }).finally(() => {
       if (!cancelled) setLoadingModels(false);
     });
     return () => { cancelled = true; };
-  }, [accessToken]);
+  }, [accessToken, modelsReload]);
 
   // Group models by provider
   const modelsByProvider = new Map<string, UserModel[]>();
@@ -137,16 +137,16 @@ export function TranslationTab() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium">{t('translation.target_lang')}</label>
-            <select
+            {/* D13: the default-language picker is the SAME closed registry (TRANSLATION_TARGETS)
+                the backend accepts, not a private 8-code literal that silently drifts from the SSOT.
+                LanguagePicker's orphan guard keeps a legacy stored value visible. */}
+            <LanguagePicker
               value={targetLang}
-              onChange={(e) => setTargetLang(e.target.value)}
+              onChange={setTargetLang}
+              codes={TRANSLATION_TARGETS.map((l) => l.code)}
               aria-label={t('translation.target_lang_aria')}
               className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>{l.label} ({l.code})</option>
-              ))}
-            </select>
+            />
           </div>
 
           <div>
@@ -154,6 +154,17 @@ export function TranslationTab() {
             {loadingModels ? (
               <div className="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-[13px] text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" /> {t('translation.loading_models')}
+              </div>
+            ) : modelsError ? (
+              <div role="alert" data-testid="settings-models-error" className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <span>{t('translation.models_load_failed', { defaultValue: "Couldn't load your models. The provider service may be unavailable." })}</span>
+                <button
+                  type="button"
+                  onClick={() => setModelsReload((n) => n + 1)}
+                  className="rounded-md border border-destructive/40 px-2 py-1 font-medium hover:bg-destructive/10"
+                >
+                  {t('translation.retry', { defaultValue: 'Retry' })}
+                </button>
               </div>
             ) : userModels.length === 0 ? (
               <div className="rounded-md border border-dashed bg-background px-3 py-2 text-xs text-muted-foreground">

@@ -130,7 +130,7 @@ def test_assemble_unpriced_makes_band_a_floor():
 def _book_stub(mocker, *, owner=TEST_USER, chapters=None, owner_exc=None):
     inst = MagicMock()
     inst.get_owner_user_id = AsyncMock(return_value=owner, side_effect=owner_exc)
-    inst.list_published_chapters = AsyncMock(
+    inst.list_indexed_chapters = AsyncMock(
         return_value=chapters if chapters is not None
         else [ChapterRef("11111111-1111-1111-1111-111111111111", 0, byte_size=9000)])
     inst.aclose = AsyncMock()

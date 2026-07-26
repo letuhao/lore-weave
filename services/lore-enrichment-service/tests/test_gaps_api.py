@@ -17,12 +17,24 @@ from fastapi.testclient import TestClient
 from app.api import gaps as gaps_api
 from app.api.gaps import coverages_from_rows
 from app.clients.glossary import EntityCoverageRow
+from app.clients.grant_client import GrantLevel
 from app.config import settings
-from app.deps import get_db
+from app.deps import get_db, get_grant_client_dep
 from app.db.book_profile import NEUTRAL_PROFILE
 from app.gaps.model import Dimension, EntityKind
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+class _StubGrant:
+    """Stand-in grant client: resolves every (book, user) to a fixed level. The
+    auto-enrich tenancy gate (D-ENRICH-MCP-OWNER-GATE) calls ``resolve_grant``."""
+
+    def __init__(self, level: GrantLevel = GrantLevel.EDIT):
+        self.level = level
+
+    async def resolve_grant(self, _book_id, _user_id):
+        return self.level
 
 
 @pytest.fixture(autouse=True)
@@ -77,12 +89,15 @@ def test_coverages_from_rows_is_multi_kind_and_id_or_label_tolerant():
     assert by_name["X"].present_dimensions == ()  # unknown label dropped
 
 
-def _app() -> FastAPI:
+def _app(grant_level: GrantLevel = GrantLevel.EDIT) -> FastAPI:
     app = FastAPI()
     app.include_router(gaps_api.router)
     # auto-enrich depends on get_db (detect-gaps doesn't); a stub keeps wiring valid
     # — the store + save_job_request are monkeypatched in the test that uses it.
     app.dependency_overrides[get_db] = lambda: object()
+    # auto-enrich also gates on a (user, book) grant — stub it so the existing
+    # happy-path tests resolve to an EDIT grant (D-ENRICH-MCP-OWNER-GATE).
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant(grant_level)
     return app
 
 
@@ -90,7 +105,7 @@ def test_dimensions_endpoint_lists_kind_dimensions():
     # #1 dimension picker: the read endpoint lists a kind's profile-localized dims
     # (id+label+required) so the composer can render choosable chips.
     book, project = uuid4(), uuid4()
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).get(
         f"/v1/lore-enrichment/projects/{project}/dimensions",
         params={"book_id": str(book), "kind": "character"},
@@ -108,7 +123,7 @@ def test_dimensions_endpoint_base_param_and_weight():
     # #3 override editor: base=true returns the un-overridden set; each dim carries a
     # weight (the editor's reweight default). With a NEUTRAL profile base==effective.
     book, project = uuid4(), uuid4()
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).get(
         f"/v1/lore-enrichment/projects/{project}/dimensions",
         params={"book_id": str(book), "kind": "character", "base": "true"},
@@ -123,7 +138,7 @@ def test_dimensions_endpoint_base_param_and_weight():
 def test_dimensions_endpoint_generic_fallback_for_unknown_kind():
     # KB3: an unmodeled kind falls back to GENERIC — never 400, never empty.
     book, project = uuid4(), uuid4()
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).get(
         f"/v1/lore-enrichment/projects/{project}/dimensions",
         params={"book_id": str(book), "kind": "bogus-kind"},
@@ -154,7 +169,7 @@ async def test_detect_gaps_endpoint_returns_ranked_gaps():
         {"entity_id": "e2", "canonical_name": "玉虛宮", "kind": "location",
          "mention_count": 55, "dimensions": []},
     ]})
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{project}/detect-gaps",
         json={"book_id": str(book)},
@@ -227,7 +242,7 @@ async def test_auto_enrich_detects_creates_job_and_enqueues(monkeypatch):
     monkeypatch.setattr(g, "save_job_request", _fake_save)
     monkeypatch.setattr(g, "make_redis_producer", lambda url: prod)
 
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{project}/auto-enrich",
         json={"book_id": str(book), "embedding_model_ref": str(uuid4()),
@@ -255,6 +270,27 @@ async def test_auto_enrich_requires_auth():
 
 
 @pytest.mark.asyncio
+async def test_auto_enrich_no_grant_is_404(monkeypatch):
+    # D-ENRICH-MCP-OWNER-GATE: a caller with NO grant on the book cannot enqueue a
+    # caller-paid enrichment on it. NONE → 404 (never an existence oracle). The gate
+    # runs BEFORE any glossary read / job create, so no enrich work is started.
+    from app.api import gaps as g
+
+    def _boom(*a, **k):  # pragma: no cover — must never be reached past the gate
+        raise AssertionError("glossary read ran despite a denied grant")
+
+    monkeypatch.setattr(g, "GlossaryClient", _boom)
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
+    resp = TestClient(_app(grant_level=GrantLevel.NONE)).post(
+        f"/v1/lore-enrichment/projects/{uuid4()}/auto-enrich",
+        json={"book_id": str(uuid4()), "embedding_model_ref": str(uuid4()),
+              "generation_model_ref": str(uuid4()), "max_gaps": 1},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_detect_gaps_unextracted_book_signals_needs_extraction():
     # de-bias C2 T7: a book with NO extracted entities → needs_extraction=true (a
@@ -263,7 +299,7 @@ async def test_detect_gaps_unextracted_book_signals_needs_extraction():
     respx.get(
         f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
     ).respond(200, json={"entities": []})  # unextracted → no entities
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{project}/detect-gaps",
         json={"book_id": str(book)},

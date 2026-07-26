@@ -74,6 +74,83 @@ var chain = []Step{
 	{"0028_glossary_cutover_g4_cache", UpGlossaryCutoverG4Cache},
 	{"0029_glossary_drop_legacy_g4", UpGlossaryDropLegacyG4},
 	{"0030_consumed_tokens", UpConsumedTokens},
+	{"0031_system_soft_delete", UpSystemSoftDelete},
+	{"0032_extraction_concurrency", UpExtractionConcurrency},
+	{"0033_evidence_provenance", UpEvidenceProvenance},
+	{"0034_merge_policy", UpMergePolicy},
+	{"0035_multirow_attr_values", UpMultirowAttrValues},
+	// Merge: this branch's 0035 collided with main's 0035_multirow_attr_values; renumbered
+	// to 0036 (idempotent migration, so a DB that already ran it under the old key re-runs cleanly).
+	{"0036_system_attr_descriptions", UpSystemAttrDescriptions},
+	// KG-ML M5 (C4 / DD4) — name_i18n on the kind tiers + System vi seed.
+	{"0037_kind_name_i18n", UpKindNameI18n},
+	// D-BATCH-RESEARCH-JOB M1 — async batch entity-research job table.
+	{"0038_entity_research_jobs", UpEntityResearchJobs},
+	// D-EXTRACT-ATTR-MERGE-DEFAULTS M1 — re-seed merge_strategy by type heuristic
+	// (tags→append, state→overwrite, identity→fill) so re-extraction accumulates.
+	{"0039_merge_strategy_heuristic", UpMergeStrategyHeuristic},
+	// D-GLOSSARY-ST-DEDUP M3a — normalized_name GENERATED→app-maintained so the
+	// dedup-key backstop folds CJK simplified/traditional + full-width + casefold
+	// via the shared loreweave_extraction SDK (the same fold the resolver uses).
+	{"0040_st_dedup_app_maintained", UpStDedupAppMaintained},
+	// M7 (D-T5.2-WINDOWED-MENTIONS) — per-chapter mention_count on chapter_entity_links
+	// so the FE mention heatmap can window per-chapter frequencies ≤ a cutoff.
+	{"0041_chapter_link_mention_count", UpChapterLinkMentionCount},
+	// #38/#39 — (book_id, normalized_name) lookup index for cross-kind entity dedup
+	// (findEntityCrossKind), so a name resolves across kinds without a per-book scan.
+	{"0042_cross_kind_dedup_index", UpCrossKindDedupIndex},
+	// #26/#7 — the `summarize` merge-rewrite mode's canonical layer on the EAV
+	// (canonical_value + canonical_dirty + canonical_synced_at).
+	{"0043_canonical_summary", UpCanonicalSummary},
+	// Temporal-knowledge F1a — the append-only bi-temporal fact SSOT (entity_facts
+	// + episodes) + merge_journal fact/episode-move columns. Spec
+	// docs/specs/2026-06-29-incremental-temporal-knowledge-architecture.md §12.0/§12.2/§12.3.
+	{"0044_entity_facts", UpEntityFacts},
+	// Temporal-knowledge F1b — maintain_chain(entity, attr): the single writer of
+	// entity_facts.valid_to_ordinal (ordinal-aware interval-split + retract restitch
+	// + merge reconcile, one routine). Spec §12.3.3 (LOCKED).
+	{"0045_maintain_chain", UpMaintainChain},
+	// Temporal-knowledge F1h — cold-start seed: every flat EAV value becomes one open
+	// bi-temporal fact so the derived projection is byte-identical to the pre-migration
+	// flat store on day one. Spec §12.5.4 / dec-5.
+	{"0046_facts_cold_start", UpFactsColdStart},
+	// Temporal-knowledge F2 — the canonical as a lazy, versioned, regenerable CACHE
+	// (canonical_snapshot rows + per-entity canonical_fold_state). Spec §12.1 (B0 LOCKED).
+	{"0047_canonical_snapshot", UpCanonicalSnapshot},
+	// Temporal-knowledge F1g — name/aliases as first-class bi-temporal fact kinds
+	// (name single, alias multi); reconciles the cold-start/F1d attribute representation.
+	// Spec §12.4.3.
+	{"0048_bitemporal_names", UpBitemporalNames},
+	// Temporal-knowledge close_fact — explicit valid-time close: `valid_to_pinned` column +
+	// pin-aware maintain_chain (the manual close is an authored input the single deriver
+	// respects, never overwrites). Spec §12.3.2.
+	{"0049_fact_close_pin", UpFactClosePin},
+	// Per-episode translation surface — on-demand, immutable canonical translation cache
+	// (mirror of KG-TL M3 event_text_translations); the LLM runs in translation-service via
+	// provider-registry, glossary only stores + single-flights the fill. Spec §6B/§7.6.
+	{"0050_canonical_snapshot_translations", UpCanonicalSnapshotTranslations},
+	// D-GLOSSARY-ENTITY-SCOPE — optional author-set scope_label disambiguator +
+	// widened dedup key (book_id, kind_id, normalized_name, scope_label). Real
+	// feedback, 2026-07-08: two same-named entities in different "worlds" within
+	// one multi-world book were indistinguishable to the dedup/merge resolver.
+	{"0051_entity_scope_label", UpEntityScopeLabel},
+	// WS-1.5 (spec 05 §Q2) — the System-tier WORK ontology (colleague·project·meeting·
+	// decision·task·jargon·org), seeded HIDDEN so it never shows in a novelist's picker;
+	// provisioning clones it into the diary's book tier. A NEW ledger entry, per the
+	// "new seed data needs a new chain entry" rule (editing DefaultKinds would no-op on
+	// already-migrated DBs).
+	{"0052_seed_work_kinds", SeedWorkKinds},
+	// WS-1.6 (spec 05 §Q5) — glossary_entities.is_self + one-self-per-book unique. The
+	// user's OWN identity entity in their diary, so capture + the detectors exclude it.
+	{"0053_entity_is_self", UpEntityIsSelf},
+	// C4 / SD-C4 (D-WIKI-PERSON-FLAG) — a structural is_person flag on every kind tier (backfills
+	// the seeded 'colleague'); the wiki-gen/enrichment PP-4 guards filter on it instead of the
+	// literal 'colleague' code, so a renamed/custom REAL-person kind can't leak an AI biography.
+	{"0054_kind_is_person", UpKindIsPerson},
+	// D-MCPTASKS-GO-STORE — the durable ext-tasks gate's PERSISTENT store (mcp_gate_tasks),
+	// mirroring book-service. Backs the KIND-C durable human gate (action_task_gate.go): a
+	// propose on one replica + its accept on another resolve the same task exactly once.
+	{"0055_mcp_gate_tasks", UpMcpGateTasks},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

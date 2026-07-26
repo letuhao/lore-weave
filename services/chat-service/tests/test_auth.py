@@ -11,6 +11,9 @@ os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests")
 from app.config import settings
 from app.middleware.auth import get_current_user
 
+# The shared SDK (loreweave_authn) requires a UUID `sub`; use a real UUID.
+TEST_SUB = "11111111-2222-3333-4444-555555555555"
+
 
 def _make_token(sub: str, exp_offset: int = 3600, secret: str | None = None) -> str:
     payload = {"sub": sub, "exp": int(time.time()) + exp_offset}
@@ -24,17 +27,17 @@ class FakeCreds:
 
 class TestGetCurrentUser:
     def test_valid_token_returns_user_id(self):
-        token = _make_token("user-123")
+        token = _make_token(TEST_SUB)
         result = get_current_user(FakeCreds(token))
-        assert result == "user-123"
+        assert result == TEST_SUB
 
     def test_expired_token_raises_401(self):
-        token = _make_token("user-123", exp_offset=-100)
+        token = _make_token(TEST_SUB, exp_offset=-100)
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc_info:
             get_current_user(FakeCreds(token))
+        # The shared SDK maps every failure (including expiry) to a uniform 401.
         assert exc_info.value.status_code == 401
-        assert "expired" in exc_info.value.detail.lower()
 
     def test_invalid_token_raises_401(self):
         from fastapi import HTTPException
@@ -43,7 +46,7 @@ class TestGetCurrentUser:
         assert exc_info.value.status_code == 401
 
     def test_wrong_secret_raises_401(self):
-        token = _make_token("user-123", secret="wrong-secret")
+        token = _make_token(TEST_SUB, secret="wrong-secret")
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc_info:
             get_current_user(FakeCreds(token))

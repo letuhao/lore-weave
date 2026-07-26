@@ -46,7 +46,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     let userId: string;
     try {
-      const decoded = jwt.verify(token, jwtSecret) as { sub: string };
+      // P3 (security): pin the HS256 allow-list (alg-confusion / alg:none defense).
+      const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { sub: string };
       userId = decoded.sub;
     } catch (err) {
       this.logger.warn(`WS rejected: invalid_token — ${(err as Error).message}`);

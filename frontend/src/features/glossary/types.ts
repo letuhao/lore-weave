@@ -9,7 +9,7 @@ export type ActionPreview = {
   preview_rows: ActionPreviewRow[] | null;
   destructive: boolean;
 };
-export type EntityStatus = 'draft' | 'active' | 'inactive';
+export type EntityStatus = 'draft' | 'active' | 'inactive' | 'rejected';
 export type Confidence = 'verified' | 'draft' | 'machine';
 export type Relevance = 'major' | 'appears' | 'mentioned';
 export type EvidenceType = 'quote' | 'summary' | 'reference';
@@ -28,6 +28,9 @@ export type AttributeDefinition = {
   genre_tags: string[];
   auto_fill_prompt?: string | null;
   translation_hint?: string | null;
+  // #26/#7 — the authored merge strategy; 'summarize' attrs render the synthesized
+  // canonical_value as the headline + the raw items under a "sources" disclosure.
+  merge_strategy?: string;
 };
 
 export type EntityKind = {
@@ -82,6 +85,39 @@ export type Evidence = {
   translations: Array<{ id: string; evidence_id: string; language_code: string; value: string; confidence: Confidence }>;
 };
 
+// S4 — batch-translate dialog (GET translation-candidates / POST apply-translations).
+export type TranslationCandidateAttr = {
+  attr_value_id: string;
+  code: string;
+  field_type: string;
+  original_language: string;
+  original_value: string;
+  existing_value?: string | null;
+  existing_confidence?: string | null;
+};
+export type TranslationCandidateEntity = {
+  entity_id: string;
+  display_name: string;
+  kind_code: string;
+  status: string;
+  attributes: TranslationCandidateAttr[];
+};
+export type TranslationCandidatesResponse = {
+  book_id: string;
+  target_language: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: TranslationCandidateEntity[];
+};
+export type ApplyTranslationItem = { entity_id: string; attr_value_id: string; value: string };
+export type ApplyTranslationsResponse = {
+  translated: number;
+  skipped_verified: number;
+  skipped_empty: number;
+  failed: string[];
+};
+
 export type AttributeValue = {
   attr_value_id: string;
   entity_id: string;
@@ -91,6 +127,10 @@ export type AttributeValue = {
   original_value: string;
   translations: Translation[];
   evidences: Evidence[];
+  // #26/#7 summarize mode — the LLM-synthesized canonical value (null until the first
+  // end-of-job resynthesis) + whether a re-synthesis is pending (the raw set changed since).
+  canonical_value?: string | null;
+  canonical_dirty?: boolean;
 };
 
 // Raw-search "why it matched" payload (search_mode=raw). Highlights are
@@ -111,6 +151,12 @@ export type GlossaryEntitySummary = {
   display_name_translation: string | null;
   status: EntityStatus;
   alive?: boolean | null;
+  // Authored short description (≤500 chars, nullable). The BE entity GET returns it;
+  // the type previously omitted it (drift). Surfaced in the KG entity detail (#11).
+  short_description?: string | null;
+  // Optional author-set disambiguator (e.g. a world/realm name) for a name that
+  // legitimately recurs across different in-story contexts — D-GLOSSARY-ENTITY-SCOPE.
+  scope_label?: string;
   tags: string[];
   chapter_link_count: number;
   translation_count: number;
@@ -147,15 +193,6 @@ export type GlossaryEntityListResponse = {
   offset: number;
 };
 
-export type GenreGroup = {
-  id: string;
-  book_id: string;
-  name: string;
-  color: string;
-  description: string;
-  sort_order: number;
-  created_at: string;
-};
 
 // ── Kind-resolution review (unknown bucket + aliases) ────────────────────────
 // When extract-entities can't resolve an incoming kind_code, the entity is parked
@@ -168,6 +205,8 @@ export type UnknownEntity = {
   source_kind_code: string | null;
   status: string;
   created_at: string;
+  // D-GLOSSARY-ENTITY-SCOPE — see GlossaryEntitySummary.scope_label.
+  scope_label?: string;
 };
 
 export type EntityNameEntry = {
@@ -247,6 +286,12 @@ export type EvidenceListItem = {
   display_text: string;
   display_language: string;
   note: string | null;
+  // Provenance (D-EVIDENCE-PROVENANCE-OVERHAUL M1): trust of the quote↔source match.
+  // char_* are null when not offset-matched. status: exact/resolved (verified) |
+  // ambiguous | unmatched (likely hallucinated) | unverified (no validation run).
+  char_start: number | null;
+  char_end: number | null;
+  provenance_status: 'exact' | 'resolved' | 'ambiguous' | 'unmatched' | 'unverified';
   created_at: string;
 };
 

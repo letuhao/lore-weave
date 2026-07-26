@@ -1,0 +1,20 @@
+{
+  "scenario": "S10",
+  "title": "Maps — draw a map of the world and mark a place on it",
+  "maps_to": "W10 maps (world_map_create -> world_map_add_marker)",
+  "persona": "P2 Linh (worldbuilder) who wants to SEE her world laid out",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "a world (with a book moved into it) owned by the caller; NO map yet. The agent must discover the world_map_* tools and create a map + place a marker.",
+  "context": { "book_context": { "book_id": "<BOOK_ID>" } },
+  "enabled_skills": [],
+  "jargon_denylist": ["world_map_create", "marker", "region", "tool", "workflow"],
+  "movements": [
+    { "id": "A", "label": "Make a map" },
+    { "id": "B", "label": "Mark a place on it" }
+  ],
+  "turns": [
+    { "movement": "A", "user": "I want to see my world laid out — make a map for it." },
+    { "movement": "B", "user": "Put my capital city, Ironhold, on the map." }
+  ]
+}

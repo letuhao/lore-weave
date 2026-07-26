@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings, Plus, Trash2, Search } from 'lucide-react';
+import { Settings, Plus, Trash2, Search, LayoutDashboard } from 'lucide-react';
 import { useBookViewTracker } from '@/hooks/useBookViewTracker';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
@@ -17,10 +17,13 @@ import { SettingsTab } from '@/pages/book-tabs/SettingsTab';
 import { WikiTab } from '@/pages/book-tabs/WikiTab';
 import { SharingTab } from '@/pages/book-tabs/SharingTab';
 import { EnrichmentTab } from '@/pages/book-tabs/EnrichmentTab';
+import { KnowledgeOntologyTab } from '@/pages/book-tabs/KnowledgeOntologyTab';
+import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 const tabs = [
   { key: '', labelKey: 'detail.tabs.chapters' },
   { key: '/glossary', labelKey: 'detail.tabs.glossary' },
+  { key: '/kg-ontology', labelKey: 'detail.tabs.kgOntology' },
   { key: '/translation', labelKey: 'detail.tabs.translation' },
   { key: '/enrichment', labelKey: 'detail.tabs.enrichment' },
   { key: '/wiki', labelKey: 'detail.tabs.wiki' },
@@ -104,6 +107,16 @@ export function BookDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             {book.visibility && <StatusBadge variant={book.visibility} />}
+            {/* Writing Studio (v2) — book-level dockable workspace. Opens directly, no
+                chapter needed. Primary CTA so the new surface is discoverable. */}
+            <Link
+              to={`/books/${bookId}/studio`}
+              data-testid="book-open-studio"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              {t('detail.open_studio', { defaultValue: 'Studio' })}
+            </Link>
             <Link
               to={`/books/${bookId}/search`}
               aria-label={t('rawSearch:title')}
@@ -160,6 +173,13 @@ export function BookDetailPage() {
         variant="destructive"
         onConfirm={() => void handleTrash()}
       />
+
+      {/* Unified book-scoped AI assistant — one dock for the WHOLE workspace
+          (every tab), book-context-aware so the user can ask in plain language
+          without telling it which book. Previously this dock was scattered
+          per-tab (glossary); hoisted here so it is single + consistent. The
+          reader route keeps its own dock (separate surface). */}
+      <BookAssistantDock bookId={bookId} />
     </div>
   );
 }
@@ -191,6 +211,11 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       {visited.has('/glossary') && (
         <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
           <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} bookOriginalLanguage={book.original_language ?? undefined} />
+        </div>
+      )}
+      {visited.has('/kg-ontology') && (
+        <div style={{ display: activeTab === '/kg-ontology' ? undefined : 'none' }}>
+          <KnowledgeOntologyTab bookId={bookId} />
         </div>
       )}
       {visited.has('/enrichment') && (

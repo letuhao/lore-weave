@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/feedback_interpretation.schema.json",
+  "title": "FeedbackInterpretation",
+  "description": "Structured output from vague user feedback interpretation.",
+  "type": "object",
+  "required": ["version", "user_message", "intent", "confidence", "apply_mode"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "user_message": { "type": "string" },
+    "intent": {
+      "type": "string",
+      "enum": ["complaint", "recheck", "handoff", "clarify"]
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "focus_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "diagnosis": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue", "evidence", "suggested_fix"],
+        "properties": {
+          "issue": { "type": "string" },
+          "evidence": { "type": "string" },
+          "suggested_fix": { "type": "string" },
+          "gap_id": { "type": "string" }
+        }
+      }
+    },
+    "draft_revision": { "type": "object" },
+    "apply_mode": {
+      "type": "string",
+      "enum": ["confirm", "auto", "needs_clarification"]
+    },
+    "clarifying_questions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

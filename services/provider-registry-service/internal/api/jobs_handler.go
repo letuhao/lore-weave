@@ -56,6 +56,7 @@ var validJobOperations = map[string]struct{}{
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
 	"summarize_level":   {}, // P3 hierarchical reduce — chapter/part/book summaries
 	"translation":       {},
+	"vision":            {}, // PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.
@@ -72,7 +73,7 @@ type jobSubmitRequest struct {
 
 // submitLlmJob — POST /v1/llm/jobs (JWT auth).
 func (s *Server) submitLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -140,6 +141,13 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_source")
 		return
 	}
+	// PUB-12 (BYOK-only) — reject a public-MCP-key platform_model draw BEFORE the
+	// guardrail reservation (no held reserve leaked). The key id rides the
+	// X-Mcp-Key-Id header (present at submit) or job_meta.mcp_key_id (persisted for
+	// the async worker path). First-party traffic carries neither and is unaffected.
+	if rejectPlatformDrawForPublicKey(w, in.ModelSource, isPublicMcpKeyCall(r, in.JobMeta)) {
+		return
+	}
 	modelRef, err := uuid.Parse(in.ModelRef)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_ref")
@@ -165,6 +173,12 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 	if in.Operation == "audio_gen" {
 		if err := validateAudioGenInput(in.Input, in.Chunking); err != nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
+			return
+		}
+	}
+	if in.Operation == "vision" {
+		if err := validateVisionInput(in.Input, in.Chunking); err != nil {
 			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
 			return
 		}
@@ -195,7 +209,12 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to allocate job id")
 		return
 	}
-	pf, ok := s.runGuardrailPreflight(w, r, jobID, userID, modelRef, in.Operation, in.ModelSource, in.Input, chunkCfg)
+	// P4/Wave-C (H-K) — the public key id + its spend cap ride job_meta (the SDK
+	// carrier bridge set them; the header is gone by the time a domain service
+	// calls us). Both nil for first-party traffic → no per-key cap, no attribution.
+	mcpKeyID := jobs.ParseJobMetaMcpKeyID(in.JobMeta)
+	spendCap := jobs.ParseJobMetaSpendCap(in.JobMeta)
+	pf, ok := s.runGuardrailPreflight(w, r, jobID, userID, modelRef, in.Operation, in.ModelSource, in.Input, chunkCfg, mcpKeyID, spendCap)
 	if !ok {
 		return // runGuardrailPreflight already wrote the error response
 	}
@@ -303,6 +322,7 @@ func (s *Server) runGuardrailPreflight(
 	operation, modelSource string,
 	rawInput json.RawMessage,
 	chunkCfg *jobs.ChunkConfig,
+	mcpKeyID *uuid.UUID, spendCapUSD *float64, // P4/Wave-C (H-K) — per-key cap carrier
 ) (preflightResult, bool) {
 	ctx := r.Context()
 
@@ -392,7 +412,7 @@ func (s *Server) runGuardrailPreflight(
 	}
 
 	// 3 + 4. Reserve. A success carries the reservation onto the job row.
-	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate, modelSource)
+	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate, modelSource, mcpKeyID, spendCapUSD)
 	if err != nil {
 		// Fail CLOSED — no job runs on an unconfirmed reservation. This is
 		// a deliberate availability coupling (/review-impl MED#4): while
@@ -411,6 +431,14 @@ func (s *Server) runGuardrailPreflight(
 	// platform pool, not the user's daily/monthly budget, is the binding
 	// constraint. Propagate it directly (Phase 6a-γ).
 	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
+		writeBudget402(w, res)
+		return preflightResult{}, false
+	}
+	// Public MCP P4/Wave-C (H-K) — a per-key sub-cap breach is a hard ceiling on
+	// the KEY, not a per-job-size problem: don't salvage it by shrinking
+	// max_tokens (a public agent hitting its cap should get a clear 402, not a
+	// silently-truncated artifact). Propagate directly, like the platform gate.
+	if res.Code == "MCP_KEY_CAP_EXCEEDED" {
 		writeBudget402(w, res)
 		return preflightResult{}, false
 	}
@@ -437,7 +465,7 @@ func (s *Server) runGuardrailPreflight(
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "re-estimate failed")
 		return preflightResult{}, false
 	}
-	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2, modelSource)
+	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2, modelSource, mcpKeyID, spendCapUSD)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")
 		return preflightResult{}, false
@@ -499,11 +527,21 @@ func (s *Server) affordableMaxTokens(
 func writeBudget402(w http.ResponseWriter, res billing.ReserveResult) {
 	msg := fmt.Sprintf("insufficient budget: estimated $%.8f, available daily $%.8f / monthly $%.8f",
 		res.Requested, res.DailyAvailable, res.MonthlyAvailable)
+	code := "LLM_QUOTA_EXCEEDED"
 	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
 		msg = fmt.Sprintf("platform free tier + credits exhausted: estimated $%.8f, available $%.8f",
 			res.Requested, res.PlatformAvailable)
 	}
-	writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", msg)
+	// Public MCP P4/Wave-C (H-K) — a per-key sub-cap breach is distinct from the
+	// owner budget: surface its own code + the key's remaining headroom so a
+	// public agent (and the owner's audit) can tell "my key is capped" from "the
+	// account is out of budget".
+	if res.Code == "MCP_KEY_CAP_EXCEEDED" {
+		code = "LLM_BYOK_KEY_CAP_EXCEEDED"
+		msg = fmt.Sprintf("per-key spend cap reached: estimated $%.8f, key remaining $%.8f",
+			res.Requested, res.KeyAvailable)
+	}
+	writeError(w, http.StatusPaymentRequired, code, msg)
 }
 
 // mergeJobMeta folds a max_tokens cap into the caller's job_meta. Returns a
@@ -883,6 +921,41 @@ func validateAudioGenInput(raw json.RawMessage, chunking json.RawMessage) error 
 	return nil
 }
 
+// validateVisionInput — PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md
+// L5) handler-level validation for operation=vision. Rejects empty
+// image/prompt, an oversize base64 image, and chunking config (not
+// supported — single upstream call, one image per job). Belt-and-
+// suspenders with adapter-level invariant pre-checks (openai_vision.go),
+// mirroring validateImageGenInput/validateVideoGenInput.
+func validateVisionInput(raw json.RawMessage, chunking json.RawMessage) error {
+	if len(chunking) > 0 && string(chunking) != "null" {
+		return fmt.Errorf("chunking not supported for vision")
+	}
+	var v struct {
+		ImageB64  string `json:"image_b64"`
+		MimeType  string `json:"mime_type"`
+		Prompt    string `json:"prompt"`
+		MaxTokens int    `json:"max_tokens"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return fmt.Errorf("vision input parse: %w", err)
+	}
+	if strings.TrimSpace(v.Prompt) == "" {
+		return fmt.Errorf("vision requires non-empty prompt")
+	}
+	if v.ImageB64 == "" {
+		return fmt.Errorf("vision requires non-empty image_b64")
+	}
+	if len(v.ImageB64) > provider.MaxVisionInputImageBytes {
+		return fmt.Errorf("vision image_b64 exceeds %d-byte cap (got %d)",
+			provider.MaxVisionInputImageBytes, len(v.ImageB64))
+	}
+	if v.MaxTokens < 0 {
+		return fmt.Errorf("vision max_tokens must be >= 0 (got %d)", v.MaxTokens)
+	}
+	return nil
+}
+
 // formatFieldList renders a slice of field names for the field-name
 // diagnostic in 'expected file field "audio"; got [...]' errors.
 func formatFieldList(names []string) string {
@@ -894,7 +967,7 @@ func formatFieldList(names []string) string {
 
 // getLlmJob — GET /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) getLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -942,7 +1015,7 @@ func (s *Server) doGetJob(w http.ResponseWriter, r *http.Request, userID uuid.UU
 // (spec §5.1 D2). Cancel is idempotent — a no-op if the job is already terminal.
 // cancelLlmJob — DELETE /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return

@@ -48,11 +48,24 @@ async def _noop_session():
 def _make_client():
     from app.main import app
     from app.middleware.jwt_auth import get_current_user
-    from app.deps import get_book_client, get_entity_alias_map_repo
+    from app.deps import (
+        get_book_client,
+        get_entity_alias_map_repo,
+        get_event_text_translations_repo,
+        get_glossary_client,
+        get_projects_repo,
+        get_translation_client,
+    )
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_book_client] = lambda: AsyncMock()
     app.dependency_overrides[get_entity_alias_map_repo] = lambda: AsyncMock()
+    # KG-TL — timeline router now resolves these eagerly (canonical path doesn't
+    # call them; they just need to construct without the live pool).
+    app.dependency_overrides[get_projects_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_glossary_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_translation_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_event_text_translations_repo] = lambda: AsyncMock()
     return TestClient(app, raise_server_exceptions=False)
 
 

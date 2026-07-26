@@ -1,7 +1,10 @@
 package tasks
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -75,6 +78,88 @@ func TestIsUndefinedTable(t *testing.T) {
 // fmtWrap wraps an error using errors.Join so errors.As still walks to the pgconn.PgError.
 func fmtWrap(err error) error {
 	return errors.Join(errors.New("query failed"), err)
+}
+
+// D-C-PRODUCER-OUTBOX — the delivery-outcome classifier decides retry vs drop.
+func TestClassifyNotifyStatus(t *testing.T) {
+	cases := []struct {
+		code             int
+		success, permTrm bool
+	}{
+		{200, true, false},  // created
+		{201, true, false},  // created
+		{204, true, false},  // idempotent-dedup / opt-out-suppressed 2xx
+		{400, false, true},  // malformed body — permanent (retry never fixes an identical payload)
+		{413, false, true},  // payload too large — permanent
+		{422, false, true},  // validation — permanent
+		// Config/deploy skews must NOT drop the notification — retry, preserved until fixed.
+		{401, false, false}, // wrong internal token — transient
+		{403, false, false}, // forbidden — transient
+		{404, false, false}, // route skew — transient (was wrongly permanent — review-impl MED-1)
+		{405, false, false}, // method skew — transient
+		{429, false, false}, // rate-limited — transient
+		{500, false, false}, // server error — transient
+		{503, false, false}, // notification-service down — transient
+	}
+	for _, c := range cases {
+		success, permanent := classifyNotifyStatus(c.code)
+		if success != c.success || permanent != c.permTrm {
+			t.Errorf("classifyNotifyStatus(%d) = (success=%v, permanent=%v), want (%v, %v)",
+				c.code, success, permanent, c.success, c.permTrm)
+		}
+	}
+}
+
+func TestHTTPNotifyDeliver(t *testing.T) {
+	t.Run("2xx is success", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-Internal-Token") != "tok" {
+				t.Errorf("missing/wrong internal token: %q", r.Header.Get("X-Internal-Token"))
+			}
+			if r.URL.Path != "/internal/notifications" {
+				t.Errorf("unexpected path %q", r.URL.Path)
+			}
+			w.WriteHeader(http.StatusCreated)
+		}))
+		defer srv.Close()
+		r := &OutboxRelay{NotifyURL: srv.URL, InternalToken: "tok"}
+		permanent, err := r.httpNotifyDeliver(context.Background(), []byte(`{"user_id":"u","title":"t"}`))
+		if err != nil || permanent {
+			t.Fatalf("2xx should be success: permanent=%v err=%v", permanent, err)
+		}
+	})
+
+	t.Run("4xx is permanent", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		defer srv.Close()
+		r := &OutboxRelay{NotifyURL: srv.URL}
+		permanent, err := r.httpNotifyDeliver(context.Background(), []byte(`{}`))
+		if err == nil || !permanent {
+			t.Fatalf("4xx should be a permanent reject: permanent=%v err=%v", permanent, err)
+		}
+	})
+
+	t.Run("5xx is transient", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+		r := &OutboxRelay{NotifyURL: srv.URL}
+		permanent, err := r.httpNotifyDeliver(context.Background(), []byte(`{}`))
+		if err == nil || permanent {
+			t.Fatalf("5xx should be transient (retry): permanent=%v err=%v", permanent, err)
+		}
+	})
+
+	t.Run("unconfigured URL is transient (never drops the row)", func(t *testing.T) {
+		r := &OutboxRelay{NotifyURL: ""}
+		permanent, err := r.httpNotifyDeliver(context.Background(), []byte(`{}`))
+		if err == nil || permanent {
+			t.Fatalf("no NotifyURL must be transient so the row is preserved: permanent=%v err=%v", permanent, err)
+		}
+	})
 }
 
 func TestNoteTableStateTransitions(t *testing.T) {

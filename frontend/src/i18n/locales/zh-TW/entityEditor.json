@@ -16,9 +16,15 @@
       "translations": "{{count}} 個翻譯",
       "evidences": "{{count}} 個佐證"
     },
+    "scope_label": {
+      "placeholder": "消除歧義（例如：世界/領域）...",
+      "aria": "範圍標籤 — 用於區分故事中不同情境下名稱相同的實體",
+      "duplicate": "這本書中已存在具有相同名稱、類型與範圍的實體"
+    },
     "tab": {
       "attributes": "屬性",
-      "evidences": "佐證"
+      "evidences": "佐證",
+      "history": "歷史"
     },
     "viewing_in_language": "以 {{lang}} 檢視",
     "viewing_original": "原文（{{lang}}）",
@@ -33,12 +39,20 @@
       "saved": "已儲存實體",
       "status_changed": "已將狀態變更為 {{status}}",
       "invalid_lang": "無效的語言代碼（例如：en、zh、zh-tw）"
-    }
+    },
+    "remove_attr_confirm": "要移除此屬性值嗎？您稍後可以再次新增。",
+    "remove_attr_success": "屬性值已移除",
+    "add_attr_heading": "為另一個屬性新增值",
+    "add_attr_pick": "選擇屬性…",
+    "add_attr_value_placeholder": "值",
+    "add_attr_button": "新增",
+    "add_attr_success": "屬性已新增"
   },
   "attr_card": {
     "required": "*必填",
     "modified": "已修改",
-    "has_translations": "有翻譯"
+    "has_translations": "有翻譯",
+    "remove": "移除此值"
   },
   "translation_row": {
     "confidence": {
@@ -52,6 +66,7 @@
     "save": "儲存",
     "delete_aria": "刪除翻譯",
     "placeholder": "{{lang}} 翻譯...",
+    "tags_add": "+ 新增別名",
     "delete_title": "刪除翻譯？",
     "delete_desc": "此屬性的 {{lang}} 翻譯將被永久刪除。",
     "delete_confirm": "刪除",
@@ -66,6 +81,14 @@
       "quote": "引用",
       "summary": "摘要",
       "reference": "參照"
+    },
+    "provenance": {
+      "ambiguous": "比對不確定",
+      "ambiguous_hint": "此引文在原文中比對到多個位置 — 確切位置不確定。",
+      "unmatched": "原文中找不到",
+      "unmatched_hint": "在章節內容中找不到此引文 — 可能是改寫或杜撰。請先查證再採信。",
+      "unverified": "未驗證",
+      "unverified_hint": "此引文尚未與原文比對。"
     },
     "filter": {
       "all": "全部",
@@ -110,6 +133,7 @@
       "cancel": "取消",
       "save": "儲存",
       "edit_title": "編輯",
+      "open_source": "開啟來源章節",
       "delete_title": "刪除",
       "translated": "已翻譯（{{lang}}）",
       "note_label": "備註：{{note}}"
@@ -119,6 +143,11 @@
       "clear_filters": "清除篩選",
       "prev_page": "上一頁",
       "next_page": "下一頁",
+      "first_page": "第一頁",
+      "last_page": "最後一頁",
+      "jump_to_page": "跳至頁面",
+      "page_size": "每頁列數",
+      "per_page": "{{n}} / 頁",
       "delete_title": "刪除佐證？",
       "delete_desc": "來自「{{attr}}」的佐證將被永久刪除。",
       "delete_confirm": "刪除"
@@ -129,5 +158,12 @@
       "created": "已建立佐證",
       "text_required": "原文為必填"
     }
+  },
+  "summarize": {
+    "canonical_label": "合併摘要",
+    "pending_dirty": "下次擷取後將重新摘要",
+    "pending_new": "下次擷取後將進行摘要",
+    "sources": "原始提及 ({{count}})",
+    "empty": "尚無提及"
   }
 }

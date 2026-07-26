@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -38,6 +39,7 @@ from app.middleware.jwt_auth import get_current_user
 
 _USER = uuid4()
 _PROJECT = uuid4()
+_SANDBOX = uuid4()  # R1: the hidden per-(user, model) benchmark sandbox the run targets
 
 
 def _project(*, embedding_model: str | None = "bge-m3") -> Project:
@@ -91,6 +93,11 @@ def _client_with(*, project=..., run_return=..., run_raises=None):
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(
         return_value=_project() if project is ... else project,
+    )
+    # R1: the run is routed to the hidden per-(user, model) sandbox, not the
+    # build project — so the handler resolves it via get_or_create_benchmark_sandbox.
+    projects_repo.get_or_create_benchmark_sandbox = AsyncMock(
+        return_value=SimpleNamespace(project_id=_SANDBOX),
     )
 
     run_mock = AsyncMock()
@@ -231,7 +238,8 @@ def test_post_benchmark_run_200_happy_path_default_runs():
     call = run_mock.await_args
     assert call.kwargs["runs"] == 3
     assert call.kwargs["user_id"] == _USER
-    assert call.kwargs["project_id"] == _PROJECT
+    # R1: the run targets the hidden sandbox, NOT the content-bearing build project.
+    assert call.kwargs["project_id"] == _SANDBOX
 
 
 def test_post_benchmark_run_200_forwards_explicit_runs():

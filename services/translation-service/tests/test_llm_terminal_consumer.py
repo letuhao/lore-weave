@@ -98,6 +98,7 @@ async def test_finalize_runs_full_path_when_update_applied():
     pool, db = _make_db("UPDATE 1")
     publish_event = AsyncMock()
     with patch.object(chapter_worker, "_insert_outbox_event", new=AsyncMock()) as outbox, \
+         patch.object(chapter_worker, "emit_translation_published", new=AsyncMock()), \
          patch.object(chapter_worker, "_emit_chapter_done", new=AsyncMock()) as done, \
          patch.object(chapter_worker, "_check_job_completion", new=AsyncMock()) as check, \
          patch.object(chapter_worker, "_save_chapter_memo", new=AsyncMock()), \
@@ -112,7 +113,10 @@ async def test_finalize_runs_full_path_when_update_applied():
             translated_body_json=None, translated_body_format="text",
             memo_text="body", input_tokens=1, output_tokens=1,
         )
-    # UPDATE + counter + active-version INSERT = 3 execute calls on the conn
+    # UPDATE + counter + active-version INSERT = 3 execute calls on the conn. (Pre-existing
+    # stale-assertion fix: the KG-ML M2 translation.published outbox emit added a 4th
+    # db.execute on the promoted path; patch it out — like the statistics _insert_outbox_event
+    # already is — so the count reflects the 3 core finalize writes the test means to assert.)
     assert db.execute.await_count == 3
     outbox.assert_awaited_once()
     done.assert_awaited_once()
@@ -153,6 +157,7 @@ async def test_handle_resumes_and_acks_for_decoupled_chapter():
     m["campaign_id"] = "camp-9"
     pool = MagicMock()
     pool.fetchrow = AsyncMock(return_value={"id": ct_id, "resume_state": {"msg": m, "source_lang": "zh"}})
+    pool.fetchval = AsyncMock(return_value="running")  # bug #34 cancel-gate: job not cancelled
     sdk = AsyncMock()
     sdk.get_job = AsyncMock(return_value=MagicMock(status="completed"))
     llm_client = MagicMock()
@@ -168,6 +173,43 @@ async def test_handle_resumes_and_acks_for_decoupled_chapter():
     # bound the campaign for the resumed submit, then cleared in finally
     assert set_camp.call_args_list[0].args[0] == "camp-9"
     assert set_camp.call_args_list[-1].args[0] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("parent_status", ["cancelled", "cancelling"])
+async def test_cancel_gate_stops_state_machine_without_resuming(parent_status):
+    """bug #34 (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED): when the parent translation job is
+    cancelled, a terminal event must NOT fold + submit the next batch (that would defeat the
+    cancel). The consumer clean-stops the chapter (clears resume_state, marks it
+    'job_cancelled', releases via _check_job_completion) and never calls the engine resume."""
+    ct_id = uuid4()
+    m = _msg()
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(return_value={"id": ct_id, "resume_state": {"msg": m}})
+    pool.fetchval = AsyncMock(return_value=parent_status)  # parent job cancelled
+    pool.execute = AsyncMock()
+    sdk = AsyncMock()
+    sdk.get_job = AsyncMock(return_value=MagicMock(status="cancelled"))
+    llm_client = MagicMock()
+    llm_client.sdk = sdk
+    publish_event = AsyncMock()
+    consumer = c.LLMTerminalConsumer("redis://x", pool, llm_client, publish_event)
+    r = AsyncMock()
+    with patch.object(c.decoupled_block_translate, "resume", new=AsyncMock()) as block_resume, \
+         patch.object(c.decoupled_translate, "resume", new=AsyncMock()) as text_resume, \
+         patch.object(chapter_worker, "_fail_chapter_idempotent", new=AsyncMock()) as fail, \
+         patch.object(chapter_worker, "_emit_chapter_done", new=AsyncMock()) as done, \
+         patch.object(chapter_worker, "_check_job_completion", new=AsyncMock()) as check:
+        await consumer._process_msg(r, "1-0", {"job_id": m["job_id"], "owner_user_id": "u", "status": "cancelled"})
+    # the engine resume is NEVER driven — no fold, no next-batch submit
+    block_resume.assert_not_awaited()
+    text_resume.assert_not_awaited()
+    # clean-stop: resume_state cleared, chapter marked job_cancelled, completion chokepoint hit
+    assert any("resume_state=NULL" in str(call.args[0]) for call in pool.execute.await_args_list)
+    assert fail.await_args.args[3] == "job_cancelled"
+    done.assert_awaited_once()
+    check.assert_awaited_once()
+    r.xack.assert_awaited_once()  # terminal handled → acked (no redelivery storm)
 
 
 # ── Wave 2a — stuck-resume sweeper ───────────────────────────────────────────

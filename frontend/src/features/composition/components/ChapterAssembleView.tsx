@@ -9,6 +9,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCorrection } from '../hooks/useAutoGenerate';
 import { useGenerateChapter, useSetAssemblyMode, useStitchChapter } from '../hooks/useChapterAssembly';
+import { useCriticStateOptional } from '../context/CriticStateContext';
+import { useAssembleStateOptional } from '../context/AssembleStateContext';
 import { CanonGatePanel } from './CanonGatePanel';
 import type { AssemblyMode, ChapterGeneration, CorrectionBody } from '../types';
 
@@ -22,7 +24,10 @@ type Props = {
   settings: Record<string, unknown>;
   scenesAllDone: boolean;
   token: string | null;
-  onAccept: (text: string) => void;
+  // Returns TRUE only when the assembled chapter actually landed in the editor. We keep the preview
+  // (and skip the edit-correction) on false, so accepting a whole generated chapter before the Editor
+  // is open on this chapter doesn't evaporate it (legacy co-mount always returns true).
+  onAccept: (text: string) => boolean;
 };
 
 export function ChapterAssembleView({
@@ -34,14 +39,31 @@ export function ChapterAssembleView({
   const stitch = useStitchChapter(token);
   const setMode = useSetAssemblyMode(bookId, token);
   const correction = useCorrection(token);
+  // WS-B1 — share the chapter's canon-gate verdict so the standing `critic` panel
+  // surfaces it (chapter assembly has no per-dimension critique → critic: null).
+  const criticState = useCriticStateOptional();
 
-  const [result, setResult] = useState<ChapterGeneration | null>(null);
-  const [edited, setEdited] = useState('');
-  const [last, setLast] = useState<'chapter' | 'stitch'>('chapter');
+  // WS-D — the draft {result, edited, last} is owned by the cross-window
+  // AssembleStateProvider when present (so a pop-out keeps an un-accepted draft);
+  // falls back to local state in a bare mount (unit tests / no windowing host).
+  const shared = useAssembleStateOptional();
+  const [localResult, setLocalResult] = useState<ChapterGeneration | null>(null);
+  const [localEdited, setLocalEdited] = useState('');
+  const [localLast, setLocalLast] = useState<'chapter' | 'stitch'>('chapter');
+  const result = shared ? shared.result : localResult;
+  const edited = shared ? shared.edited : localEdited;
+  const last = shared ? shared.last : localLast;
+  const setResult = shared ? shared.setResult : setLocalResult;
+  const setEdited = shared ? shared.setEdited : setLocalEdited;
+  const setLast = shared ? shared.setLast : setLocalLast;
 
   const busy = gen.isPending || stitch.isPending;
   const params = { projectId, chapterId, modelRef, modelKind, modelName };
-  const onResult = (r: ChapterGeneration) => { setResult(r); setEdited(r.text); };
+  const onResult = (r: ChapterGeneration) => {
+    setResult(r);
+    setEdited(r.text);
+    if (r.canon) criticState?.setVerdict({ critic: null, canon: r.canon, jobId: r.job_id });
+  };
 
   const runChapter = () => { setLast('chapter'); gen.mutate(params, { onSuccess: onResult }); };
   const runStitch = () => { setLast('stitch'); stitch.mutate(params, { onSuccess: onResult }); };
@@ -50,10 +72,12 @@ export function ChapterAssembleView({
   const correct = (body: CorrectionBody) => { if (result) correction.mutate({ jobId: result.job_id, body }); };
   const accept = () => {
     if (!result) return;
+    // Insert first; if it failed (no editor open on this chapter in the dock) keep the preview and do
+    // NOT capture a correction or clear — the writer can Accept again once the Editor is up.
+    if (!onAccept(edited)) return;
     // edit-capture: only a REAL change is a correction (the BE 422s a zero-change
     // edit; accept-as-is is not a kind — H2 self-reinforcement guard).
     if (edited.trim() !== result.text.trim()) correct({ kind: 'edit', edited_text: edited });
-    onAccept(edited);
     setResult(null);
   };
   const regenerate = () => { correct({ kind: 'regenerate' }); rerun(); };
@@ -107,6 +131,13 @@ export function ChapterAssembleView({
           {stitch.isPending ? t('stitching', { defaultValue: 'Stitching…' }) : t('stitchChapter', { defaultValue: 'Stitch chapter' })}
         </button>
         {!modelRef && <span className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
+        {/* D-S1-GATE-REASON-INLINE: once a model IS picked, the only remaining stitch gate is
+            scenes-done — surface it inline (not just the disabled button's tooltip). */}
+        {modelRef && !scenesAllDone && (
+          <span data-testid="assemble-stitch-blocked" className="self-center text-xs text-muted-foreground">
+            {t('stitchNeedsDone', { defaultValue: 'All scenes must be done to stitch' })}
+          </span>
+        )}
       </div>
 
       {errMsg && <div data-testid="assemble-error" className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">{errMsg}</div>}

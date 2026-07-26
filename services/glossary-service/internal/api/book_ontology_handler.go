@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,45 +35,51 @@ import (
 // loadBookGenreOne fetches one live book genre with its active flag. pgx.ErrNoRows if absent.
 func (s *Server) loadBookGenreOne(ctx context.Context, bookID, genreID uuid.UUID) (*bookGenreResp, error) {
 	var g bookGenreResp
+	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
 		SELECT bg.genre_id::text, bg.code, bg.name, bg.icon, bg.color, bg.sort_order,
-		       (bag.genre_id IS NOT NULL) AS active, bg.source_ref
+		       (bag.genre_id IS NOT NULL) AS active, bg.source_ref, bg.updated_at
 		FROM book_genres bg
 		LEFT JOIN book_active_genres bag ON bag.book_id = bg.book_id AND bag.genre_id = bg.genre_id
 		WHERE bg.book_id = $1 AND bg.genre_id = $2 AND bg.deprecated_at IS NULL`,
 		bookID, genreID,
-	).Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.Active, &g.SourceRef)
+	).Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.Active, &g.SourceRef, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
+	g.BaseVersion = formatBaseVersion(updatedAt)
 	return &g, nil
 }
 
 func (s *Server) loadBookKindOne(ctx context.Context, bookID, kindID uuid.UUID) (*bookKindResp, error) {
 	var k bookKindResp
+	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, source_ref
+		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, is_person, source_ref, updated_at
 		FROM book_kinds WHERE book_id = $1 AND book_kind_id = $2 AND deprecated_at IS NULL`,
 		bookID, kindID,
-	).Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.SourceRef)
+	).Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.IsPerson, &k.SourceRef, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
+	k.BaseVersion = formatBaseVersion(updatedAt)
 	return &k, nil
 }
 
 func (s *Server) loadBookAttrOne(ctx context.Context, bookID, attrID uuid.UUID) (*bookAttrResp, error) {
 	var a bookAttrResp
+	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
 		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description,
-		       field_type, is_required, sort_order, options, source_ref
+		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref, merge_strategy, updated_at
 		FROM book_attributes WHERE book_id = $1 AND attr_id = $2 AND deprecated_at IS NULL`,
 		bookID, attrID,
 	).Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
-		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.SourceRef)
+		&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef, &a.MergeStrategy, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
+	a.BaseVersion = formatBaseVersion(updatedAt)
 	if a.Options == nil {
 		a.Options = []string{}
 	}
@@ -284,6 +291,7 @@ func (s *Server) createBookKind(w http.ResponseWriter, r *http.Request) {
 		Color       string  `json:"color"`
 		SortOrder   int     `json:"sort_order"`
 		IsHidden    bool    `json:"is_hidden"`
+		IsPerson    bool    `json:"is_person"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
@@ -291,7 +299,7 @@ func (s *Server) createBookKind(w http.ResponseWriter, r *http.Request) {
 	}
 	detail, err := s.createBookKindCore(r.Context(), bookID, bookKindCreateParams{
 		Code: in.Code, Name: in.Name, Description: in.Description, Icon: in.Icon,
-		Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden,
+		Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden, IsPerson: in.IsPerson,
 	})
 	if err != nil {
 		writeBookCreateErr(w, err, "book kind")
@@ -392,6 +400,15 @@ func (s *Server) setBookKindGenres(w http.ResponseWriter, r *http.Request) {
 	}
 	genreIDs, ok := s.decodeBookGenreIDSet(w, r, bookID)
 	if !ok {
+		return
+	}
+	// A book kind must stay linked to ≥1 genre: the ontology is genre-first, so a
+	// zero-link kind is unreachable in the Manage drilldown and can hold no attributes
+	// (attributes are keyed per kind×genre). This is the load-bearing form of the FE
+	// modal's invariant (#25). (User-tier kinds are listed flat, so they allow zero.)
+	if len(genreIDs) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
+			"a kind must stay linked to at least one genre")
 		return
 	}
 

@@ -124,8 +124,8 @@ pub fn force_directed_converge(
     let mut current: Vec<Vec2> = seed_layout
         .iter()
         .map(|z| {
-            let jx = rng.gen_range(-jitter..=jitter);
-            let jy = rng.gen_range(-jitter..=jitter);
+            let jx = rng.random_range(-jitter..=jitter);
+            let jy = rng.random_range(-jitter..=jitter);
             clamp_unit(Vec2::new(z.pos.x + jx, z.pos.y + jy))
         })
         .collect();

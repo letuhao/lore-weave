@@ -133,6 +133,103 @@ class TestMcpExecuteToolResultFormatting:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_gate_handle_returns_task_envelope(self):
+        """ext-tasks (T1c(3)): a domain gate tool returns a durable task HANDLE in
+        structuredContent → mcp_execute_tool surfaces a task envelope the tool loop
+        suspends on (result=None; the task rides under 'task')."""
+        from app.services.task_detect import GATE_RESULT_TYPE
+
+        client = _make_client()
+        handle = {"type": GATE_RESULT_TYPE, "taskId": "task_x", "status": "input_required",
+                  "inputRequests": {"title": "Spawn dị bản?"}}
+        result = _call_tool_result(content=[_text_content("ok — see structuredContent")])
+        result.structuredContent = handle
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="user-1", session_id="sess-1",
+                tool_name="composition_create_derivative", tool_args={"project_id": "p"},
+            )
+        assert out["result"] is None and out["error"] is None
+        assert out["task"] == {"taskId": "task_x", "status": "input_required",
+                               "inputRequests": {"title": "Spawn dị bản?"}}
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gate_handle_nested_under_result_key(self):
+        """FastMCP may nest a dict return under a lone 'result' key in
+        structuredContent — the handle must still be detected."""
+        from app.services.task_detect import GATE_RESULT_TYPE
+
+        client = _make_client()
+        handle = {"type": GATE_RESULT_TYPE, "taskId": "task_y", "status": "input_required"}
+        result = _call_tool_result(content=[_text_content("ok")])
+        result.structuredContent = {"result": handle}
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                tool_name="composition_create_derivative", tool_args={},
+            )
+        assert out["task"]["taskId"] == "task_y"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_tasks_gate_disabled_sends_no_meta(self):
+        """Flag OFF: the tool call carries no tasks _meta → the domain falls back to
+        confirm_token (byte-unchanged).
+
+        Patches the flag EXPLICITLY. It used to rely on `tasks_gate_enabled` defaulting to
+        False, so when the gate was activated (default → True) this stopped testing the
+        disabled path and simply went red — the default-equals-expected false negative. A
+        test must SET the condition it names, never inherit it."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, _tf, _sf, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch, patch("app.config.settings.tasks_gate_enabled", False):
+            await client.mcp_execute_tool(user_id="u", session_id="s",
+                                          tool_name="memory_search", tool_args={})
+        assert mock_session.call_tool.await_args.kwargs["meta"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_tasks_gate_enabled_declares_capability_meta(self):
+        """T1c(3.f) activation — flag ON: the tool call declares the ext-tasks
+        extension in _meta so a capability-gated domain returns a durable task."""
+        from app.services.task_detect import tasks_capability_meta
+
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, _tf, _sf, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch, patch("app.config.settings.tasks_gate_enabled", True):
+            await client.mcp_execute_tool(user_id="u", session_id="s",
+                                          tool_name="composition_create_derivative", tool_args={})
+        assert mock_session.call_tool.await_args.kwargs["meta"] == tasks_capability_meta()
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_prefers_structured_content_over_placeholder(self):
+        """#9B — a heavy read returns a PLACEHOLDER in content[0].text + the real
+        payload in structuredContent. The parser must use structuredContent, not
+        try (and fail) to json.loads the placeholder → 'unparseable content'."""
+        client = _make_client()
+        real = {"ontology": {"kinds": ["character", "location"]}}
+        result = _call_tool_result(content=[_text_content("ok — see structuredContent")])
+        result.structuredContent = real
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="user-1",
+                session_id="sess-1",
+                tool_name="glossary_book_ontology_read",
+                tool_args={"book_id": "B1"},
+            )
+        assert out["success"] is True
+        assert out["result"] == real
+        assert out["error"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_context_headers_set_and_args_carry_no_scope(self):
         """user_id / session_id / project_id ride in the MCP context
         headers (design D3) and are NOT injected into tool_args."""
@@ -181,6 +278,38 @@ class TestMcpExecuteToolResultFormatting:
             )
         headers = transport_factory.call_args.kwargs["headers"]
         assert "X-Project-Id" not in headers
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_book_id_header_set_and_not_in_args(self):
+        """Studio context binding — the ambient book rides X-Book-Id (scope hint,
+        never authz) and is NOT injected into tool_args (SEC-1 / design D3)."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, transport_factory, _, mock_session = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                book_id="book-7",
+                tool_name="book_structure_read", tool_args={},
+            )
+        headers = transport_factory.call_args.kwargs["headers"]
+        assert headers["X-Book-Id"] == "book-7"
+        assert "book_id" not in mock_session.call_tool.await_args.args[1]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_book_id_header_omitted_when_none(self):
+        """An unbound surface (no studio book) omits X-Book-Id entirely."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content("{}")])
+        tpatch, spatch, transport_factory, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            await client.mcp_execute_tool(
+                user_id="u", session_id="s", tool_name="memory_search", tool_args={},
+                book_id=None,
+            )
+        assert "X-Book-Id" not in transport_factory.call_args.kwargs["headers"]
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -276,6 +405,43 @@ class TestMcpExecuteToolResultFormatting:
             )
         assert out["success"] is False
         assert "unparseable" in out["error"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_overlay_tool_plain_text_is_wrapped_as_success(self):
+        """REG-P2-03 — an EXTERNAL federated (overlay) tool (u_/b_/s_<hash>_…) may
+        return PLAIN TEXT (prose/markdown), a VALID result. It must be wrapped as
+        {"text": ...} success, NOT rejected like an internal tool's non-JSON. This is
+        the bug that broke every external-MCP tool result (e.g. DeepWiki)."""
+        client = _make_client()
+        text = "Available pages for x/y:\n- 1 Intro\n- 2 Architecture"
+        result = _call_tool_result(content=[_text_content(text)])
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                tool_name="u_a2bbc662_read_wiki_structure",
+                tool_args={"repoName": "x/y"},
+            )
+        assert out["success"] is True
+        assert out["result"] == {"text": text}
+        assert out["error"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_overlay_tool_json_still_parsed_as_dict(self):
+        """An overlay tool that DOES return JSON is parsed normally (the text
+        pass-through only triggers on a JSON decode failure — no double-wrap)."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content(json.dumps({"answer": "42"}))])
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                tool_name="u_a2bbc662_ask_question", tool_args={"q": "?"},
+            )
+        assert out["success"] is True
+        assert out["result"] == {"answer": "42"}
         await client.aclose()
 
     @pytest.mark.asyncio

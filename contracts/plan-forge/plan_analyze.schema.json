@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/plan_analyze.schema.json",
+  "title": "PlanAnalyze",
+  "description": "Intermediate LLM analysis of a natural-language planning document.",
+  "type": "object",
+  "required": ["version", "document_summary", "consistency_anchors", "variables", "mechanics", "arcs", "events", "forbids", "open_questions"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "document_summary": { "type": "string" },
+    "consistency_anchors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "range", "transition_rules"],
+        "properties": {
+          "code": { "type": "string" },
+          "name": { "type": "string" },
+          "range": { "type": "string" },
+          "transition_rules": { "type": "array", "items": { "type": "string" } },
+          "not_coupled_to": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "mechanics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "rules"],
+        "properties": {
+          "name": { "type": "string" },
+          "rules": { "type": "array", "items": { "type": "string" } },
+          "planner_secrets": { "type": "array", "items": { "type": "string" } },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section_id": { "type": "string" },
+                "excerpt_hash": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "arcs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "theme", "arc_kind"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "theme": { "type": "string" },
+          "arc_kind": { "type": "string" },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "arc_id", "title", "synopsis"],
+        "properties": {
+          "id": { "type": "string" },
+          "arc_id": { "type": "string" },
+          "title": { "type": "string" },
+          "synopsis": { "type": "string" },
+          "goal": { "type": "string" },
+          "planner_notes": { "type": "array", "items": { "type": "string" } },
+          "var_deltas": { "type": "array" },
+          "source_excerpt": { "type": "string" },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section_id": { "type": "string" },
+                "excerpt_hash": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "forbids": { "type": "array", "items": { "type": "string" } },
+    "style_constraints": { "type": "array", "items": { "type": "string" } },
+    "open_questions": { "type": "array", "items": { "type": "string" } }
+  }
+}

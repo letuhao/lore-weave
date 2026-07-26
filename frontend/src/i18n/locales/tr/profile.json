@@ -1,0 +1,49 @@
+{
+  "anonymous": "Anonim",
+  "joined": "{{date}} tarihinde katıldı",
+  "followers": "takipçi",
+  "following": "takip edilen",
+  "follow": "Takip Et",
+  "unfollow": "Takip Ediliyor",
+  "editProfile": "Profili Düzenle",
+  "loading": "Yükleniyor...",
+  "noBooks": "Henüz yayınlanmış kitap yok.",
+  "noTranslations": "Henüz çeviri yok.",
+  "errorLoading": "Profil yüklenemedi.",
+  "followError": "Kullanıcı takip edilemedi.",
+  "unfollowError": "Kullanıcı takipten çıkarılamadı.",
+  "userNotFound": "Kullanıcı bulunamadı.",
+  "achievements": "Başarılar",
+  "chapters": "bölüm",
+  "readers": "okuyucu",
+  "recentActivity": "Son Etkinlikler",
+  "last7d": "Son 7 gün",
+  "last30d": "Son 30 gün",
+  "translationLanguages": "Çeviri Dilleri",
+  "stats": {
+    "books": "Kitaplar",
+    "chaptersTranslated": "Çevrilen bölümler",
+    "totalReaders": "Toplam okuyucu",
+    "followers": "Takipçiler",
+    "totalTranslations": "Toplam çeviri",
+    "languages": "Diller"
+  },
+  "achievement": {
+    "booksPublished": "{{count}} Kitap Yayınlandı",
+    "booksPublished_other": "{{count}} Kitap Yayınlandı",
+    "kReaders": "{{count}}K+ Okuyucu",
+    "hundredReaders": "100+ Okuyucu",
+    "followers": "{{count}} Takipçi",
+    "multiLangTranslator": "{{count}}-Dilli Çevirmen",
+    "fiftyChapters": "50+ Bölüm Çevrildi"
+  },
+  "loadError": "Kitaplar yüklenemedi.",
+  "noWiki": "Henüz wiki katkısı yok.",
+  "wikiError": "Wiki katkıları yüklenemedi.",
+  "untitled": "Başlıksız",
+  "tabs": {
+    "books": "Kitaplar",
+    "translations": "Çeviriler",
+    "wiki": "Wiki Katkıları"
+  }
+}

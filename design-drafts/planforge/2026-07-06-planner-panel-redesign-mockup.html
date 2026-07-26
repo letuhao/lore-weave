@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Draft · PlanForge Planner panel redesign</title>
+<style>
+/*
+  D-PLANFORGE-GUI-AUDIT (2026-07-06) — redesign draft, v1.
+
+  WHY THIS EXISTS: a live browser audit (Playwright, real dev stack, test
+  account, an EXISTING book with prior runs) of the shipped Planner panel
+  (frontend/src/features/plan-forge/components/PlanRunView.tsx) found:
+    - a P0 crash on successful Compile (fixed same session, see
+      docs/sessions/SESSION_HANDOFF.md D-PLANFORGE-GUI-AUDIT entry)
+    - 4 real UX gaps, all confirmed live, not guessed from reading code:
+      1. Compile's arc_id is a bare text input with zero guidance — no
+         dropdown from the spec's own arcs[], no example, no default.
+      2. No spec/document viewer — Propose only shows 3-5 unclickable
+         "artifact" rows (kind + truncated UUID).
+      3. Source markdown doesn't resume when reopening an existing run.
+      4. No in-GUI error-recovery — plan_interpret_feedback /
+         plan_apply_revision / plan_handoff_autofix exist and work
+         (MCP/chat-agent only) but aren't exposed as GUI buttons.
+
+  ROOT DIAGNOSIS (user-confirmed direction): this isn't a missing-button
+  problem, it's a LEAKY ABSTRACTION problem. The shipped panel renders raw
+  backend vocabulary at a novel WRITER: literal arc_id strings ("arc_2"),
+  raw rule identifiers ("pa_not_realm", "sg_value_shift_per_scene"), raw
+  var_delta shapes. A writer has no reason to know any of this. The backend
+  pipeline itself (propose → self-check → interpret → apply → autofix →
+  checkpoint → validate → compile, 8 rules incl. the advisory-tier
+  sg_value_shift_per_scene added 2026-07-06) is sound and unchanged by this
+  draft — only the FRONTEND translation layer is being redesigned.
+
+  GROUND TRUTH sourced from the real code / real API responses (not
+  invented): NovelSystemSpec shape (arcs[], events[], layers.variables[],
+  meta.open_questions[]) from app/engine/plan_forge/{propose.py,validate.py}.
+  Rule set + advisory tier from validate.py::run_rules (2026-07-06 commit
+  61e2ed648). Real var codes/semantics (PA/HA/CD/THR + their one-line
+  meanings) from the story-plan-v1.md fixture — this mockup's sample data
+  IS that fixture's actual content, not a fabricated example. Compile
+  response shape (package/pipeline_job_id/work_id) from the real API.
+
+  STRUCTURE: one file, 5 states via a stepper + .panel/.active toggle (same
+  convention as design-drafts/screens/studio/screen-studio-agent-mode.html).
+  Dark theme tokens are literal copies of frontend/src/index.css's :root
+  HSL triples (the Studio's actual default theme) so this reads as "inside
+  the real app," not a generic doc. Not wired to any real API — click
+  affordances just switch panels/selection state for review purposes.
+
+  v2 (2026-07-06, same day) — EDGE CASE PASS after user pushback: "chức năng
+  này phải đủ dễ sử dụng, tránh tình huống check lỗi, người dùng phải mò và
+  sửa raw plan, họ không làm được đâu" (this must be easy enough to use —
+  never make the user hunt through and edit the raw plan themselves, they
+  can't do that). v1 still had 5 real gaps that would have forced exactly
+  that:
+    1. "Quick check" (the fragile regex parser, confirmed fixture-quality-
+       only across this session's testing) was the DEFAULT mode. A first-
+       time writer's own document structure will rarely match its narrow
+       patterns, producing a near-empty extraction with no explanation —
+       defaulted to "AI-assisted" instead; Quick check is now framed as an
+       iteration tool for a plan that's already working, not a first pass.
+    2. No state for "we couldn't understand your document" (0 arcs/0
+       characters extracted) — silently would have dumped the writer into
+       an empty Understood screen with no explanation of what went wrong or
+       what to do. Added a dedicated low-extraction panel (see "Simulate:
+       messy input" link on State 1).
+    3. "Continue anyway" let a writer skip PAST a hard "needs attention"
+       finding — but the REAL backend hard-blocks compile() on any hard-tier
+       rule failure (plan_forge_service._hard_rules_pass, shipped same
+       session). The mockup was lying about what happens next. Fixed: the
+       continue action is disabled with an explanatory label while a hard
+       finding is open; only advisory (💡) findings never block.
+    4. "Fix this for me" had no failure path shown — if an autofix can't
+       resolve something, the ONLY named fallback anywhere in this redesign
+       must still never be "go edit the structured plan." Added an explicit
+       autofix-failed state that suggests a concrete plain-language edit to
+       the ORIGINAL pasted text, or a chat hand-off — never raw JSON/spec.
+    5. The arc picker let you select an admittedly-incomplete Arc 1 with no
+       real guidance. Made incomplete arcs genuinely non-selectable, with an
+       "Ask AI to help complete this arc" escape hatch instead of a bare
+       description.
+
+  LOCKED DESIGN PRINCIPLE (carry into the eventual spec): this panel NEVER
+  exposes a raw spec/JSON editor as a fallback, at any failure point. Every
+  error path routes to exactly one of: (a) an automatic fix attempt, (b) a
+  specific plain-language suggested edit to the writer's OWN pasted text,
+  or (c) a hand-off to chat. The writer never touches structured data.
+*/
+:root{
+  --background:hsl(25 8% 8%); --foreground:hsl(40 30% 95%);
+  --card:hsl(25 7% 11%); --card-foreground:hsl(40 30% 95%);
+  --popover:hsl(25 7% 11%);
+  --primary:hsl(35 85% 55%); --primary-foreground:hsl(25 10% 6%);
+  --secondary:hsl(25 6% 16%); --secondary-foreground:hsl(40 15% 88%);
+  --muted:hsl(25 5% 16%); --muted-foreground:hsl(30 8% 62%);
+  --accent:hsl(170 40% 45%); --accent-foreground:hsl(170 45% 88%);
+  --destructive:hsl(0 72% 58%); --destructive-foreground:hsl(40 30% 96%);
+  --success:hsl(150 65% 48%); --success-foreground:hsl(150 50% 10%);
+  --warning:hsl(38 92% 55%); --warning-foreground:hsl(38 80% 10%);
+  --info:hsl(215 80% 60%); --info-foreground:hsl(210 60% 10%);
+  --border:hsl(25 6% 18%); --input:hsl(25 6% 14%); --ring:hsl(35 80% 55%);
+  --radius:0.5rem;
+  --sans:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:'Lora',Georgia,serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);font-size:14px;line-height:1.55;color:var(--foreground);background:var(--background)}
+.shell{max-width:1040px;margin:0 auto;padding:20px 20px 80px}
+
+/* fake studio chrome — just enough context, not the real app */
+.chrome{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);
+  border:1px solid var(--border);border-radius:10px 10px 0 0;font-size:12.5px;color:var(--muted-foreground)}
+.chrome .dot{width:9px;height:9px;border-radius:50%;background:var(--border)}
+.chrome b{color:var(--foreground);font-weight:600}
+.chrome .tabs{display:flex;gap:4px;margin-left:16px}
+.chrome .tab{padding:4px 10px;border-radius:6px;color:var(--muted-foreground)}
+.chrome .tab.on{background:var(--secondary);color:var(--foreground);font-weight:600}
+
+.panel-frame{background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;
+  padding:24px 26px 28px;min-height:560px}
+
+/* stepper */
+.stepper{display:flex;align-items:center;gap:0;margin-bottom:22px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:8px;padding:7px 12px 7px 8px;border-radius:20px;cursor:pointer;
+  color:var(--muted-foreground);font-size:12.5px;font-weight:600}
+.step .n{width:20px;height:20px;border-radius:50%;background:var(--secondary);color:var(--muted-foreground);
+  display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
+.step.done .n{background:hsl(150 65% 48% / 0.18);color:var(--success)}
+.step.on{color:var(--foreground);background:hsl(35 85% 55% / 0.12)}
+.step.on .n{background:var(--primary);color:var(--primary-foreground)}
+.step-sep{width:22px;height:1px;background:var(--border);flex:none;margin:0 2px}
+
+h1{font-family:var(--serif);font-weight:600;font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
+.lede{color:var(--muted-foreground);max-width:64ch;margin:0 0 20px;font-size:13px}
+.lede b{color:var(--foreground);font-weight:600}
+
+.panel{display:none}
+.panel.active{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* ── State 1: Start ─────────────────────────────────────────────── */
+textarea.paste{width:100%;min-height:180px;background:var(--input);border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--foreground);padding:12px 14px;font-family:var(--mono);
+  font-size:12.5px;line-height:1.6;resize:vertical}
+textarea.paste::placeholder{color:var(--muted-foreground);font-family:var(--sans)}
+.hint-row{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--muted-foreground)}
+.hint-row a{color:var(--info);text-decoration:none;cursor:pointer}
+.hint-row a:hover{text-decoration:underline}
+
+.mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.mode-card{border:1px solid var(--border);border-radius:10px;padding:13px 14px;cursor:pointer;background:var(--secondary)}
+.mode-card.on{border-color:var(--primary);background:hsl(35 85% 55% / 0.10)}
+.mode-card .mc-title{font-weight:600;font-size:13px;display:flex;align-items:center;gap:7px}
+.mode-card .mc-desc{color:var(--muted-foreground);font-size:11.5px;margin-top:4px;line-height:1.5}
+.mode-card.on .mc-title{color:var(--primary)}
+
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:8px;border:none;
+  font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}
+.btn-primary{background:var(--primary);color:var(--primary-foreground)}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{background:transparent;color:var(--muted-foreground);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--foreground);border-color:var(--muted-foreground)}
+.btn-fix{background:hsl(215 80% 60% / 0.14);color:var(--info);border:1px solid hsl(215 80% 60% / 0.35);
+  padding:5px 11px;font-size:11.5px;border-radius:7px}
+.btn-fix:hover{background:hsl(215 80% 60% / 0.22)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.actions{display:flex;gap:10px;margin-top:18px;align-items:center}
+.blocked-note{font-size:11.5px;color:var(--warning);display:flex;align-items:center;gap:6px}
+.spinner{width:12px;height:12px;border-radius:50%;border:2px solid hsl(215 80% 60% / 0.25);
+  border-top-color:var(--info);display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Low-extraction / "we couldn't understand this" state ─────── */
+.empty-hero{text-align:center;padding:36px 20px 8px}
+.empty-hero .ico{font-size:34px;opacity:.7}
+.empty-hero h2{font-family:var(--serif);font-size:19px;margin:12px 0 6px}
+.empty-hero p{color:var(--muted-foreground);max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6}
+.found-scraps{display:flex;justify-content:center;gap:10px;margin:18px 0;flex-wrap:wrap}
+.scrap{font-size:11.5px;color:var(--muted-foreground);background:var(--secondary);border:1px solid var(--border);
+  border-radius:20px;padding:5px 12px}
+.scrap b{color:var(--foreground)}
+.tips-card{background:var(--secondary);border:1px solid var(--border);border-radius:10px;padding:14px 16px;
+  max-width:520px;margin:16px auto 0;text-align:left}
+.tips-card .tt{font-size:12px;font-weight:600;margin-bottom:8px}
+.tips-card ul{margin:0;padding-left:18px;font-size:12px;color:var(--muted-foreground);line-height:1.8}
+
+/* ── Autofix-failed fallback card ──────────────────────────────── */
+.finding.failed-fix{background:hsl(0 72% 58% / 0.06);border:1px solid hsl(0 72% 58% / 0.25)}
+.suggest-box{background:var(--input);border:1px dashed var(--border);border-radius:8px;padding:9px 11px;
+  margin-top:9px;font-size:12px;color:var(--foreground);font-family:var(--mono)}
+.finding-actions{display:flex;gap:8px;margin-top:9px}
+
+.arc-pick-card.disabled{cursor:not-allowed;opacity:.55}
+.arc-pick-card.disabled:hover{border-color:var(--border)}
+.arc-pick-card .apt .lock{font-size:11px;margin-left:6px;color:var(--muted-foreground)}
+
+/* ── State 2: Understood ───────────────────────────────────────── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.card{border:1px solid var(--border);border-radius:12px;padding:15px 16px;background:var(--secondary)}
+.card h3{margin:0 0 10px;font-size:13px;display:flex;align-items:center;gap:8px;color:var(--foreground)}
+.card .emoji{font-size:15px}
+.card ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--muted-foreground);line-height:1.7}
+.card ul li b{color:var(--foreground)}
+.arc-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--border)}
+.arc-row:last-child{border-bottom:none}
+.arc-row .at{font-weight:600;font-size:12.5px;color:var(--foreground)}
+.arc-row .ad{color:var(--muted-foreground);font-size:11.5px;margin-top:2px}
+.badge{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 7px;
+  border-radius:20px;flex:none}
+.badge-discovery{background:hsl(170 40% 45% / 0.18);color:var(--accent)}
+.badge-setup{background:hsl(30 8% 62% / 0.18);color:var(--muted-foreground)}
+
+.var-row{padding:9px 0;border-bottom:1px solid var(--border)}
+.var-row:last-child{border-bottom:none}
+.var-row .vt{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;color:var(--foreground)}
+.var-row .vt span.code{font-family:var(--mono);font-size:10.5px;color:var(--muted-foreground);font-weight:500}
+.var-row .vd{color:var(--muted-foreground);font-size:11.5px;margin-top:3px;line-height:1.5}
+.meter{height:5px;border-radius:3px;background:var(--border);margin-top:6px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--primary);border-radius:3px}
+
+.oq-card ul{list-style:none;padding:0;margin:0}
+.oq-card li{padding:6px 0 6px 22px;position:relative;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--muted-foreground)}
+.oq-card li:last-child{border-bottom:none}
+.oq-card li::before{content:"?";position:absolute;left:0;top:5px;width:16px;height:16px;border-radius:50%;
+  background:var(--muted);color:var(--muted-foreground);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+
+/* ── State 3: Check & Fix ──────────────────────────────────────── */
+.summary-bar{display:flex;gap:16px;align-items:center;padding:12px 16px;border:1px solid var(--border);
+  border-radius:10px;background:var(--secondary);margin-bottom:16px;font-size:12.5px}
+.summary-bar .sb-item{display:flex;align-items:center;gap:6px}
+.summary-bar .sb-item.ok{color:var(--success)}
+.summary-bar .sb-item.warn{color:var(--warning)}
+.summary-bar .sb-item.tip{color:var(--info)}
+
+.finding{display:flex;gap:12px;padding:13px 14px;border-radius:10px;margin-bottom:9px;align-items:flex-start}
+.finding.warn{background:hsl(38 92% 55% / 0.08);border:1px solid hsl(38 92% 55% / 0.3)}
+.finding.tip{background:hsl(215 80% 60% / 0.08);border:1px solid hsl(215 80% 60% / 0.3)}
+.finding .fi{font-size:16px;flex:none;margin-top:1px}
+.finding .ft{font-size:12.5px;color:var(--foreground);line-height:1.5}
+.finding .ft small{display:block;color:var(--muted-foreground);margin-top:3px;font-size:11px}
+.finding .fa{margin-left:auto;flex:none}
+
+.passed-collapse{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:14px}
+.passed-head{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;color:var(--success);
+  font-size:12.5px;font-weight:600;background:hsl(150 65% 48% / 0.06)}
+.passed-body{display:none;padding:4px 14px 12px}
+.passed-collapse.open .passed-body{display:block}
+.passed-row{font-size:12px;color:var(--muted-foreground);padding:4px 0}
+.passed-row b{color:var(--foreground)}
+
+/* ── State 4: Ready to Draft ───────────────────────────────────── */
+.arc-pick{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.arc-pick-card{border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;display:flex;
+  justify-content:space-between;align-items:center;gap:12px}
+.arc-pick-card.sel{border-color:var(--primary);background:hsl(35 85% 55% / 0.08)}
+.arc-pick-card .apt{font-weight:600;font-size:13.5px}
+.arc-pick-card .apd{color:var(--muted-foreground);font-size:12px;margin-top:3px}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);flex:none;position:relative}
+.arc-pick-card.sel .radio{border-color:var(--primary)}
+.arc-pick-card.sel .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--primary)}
+
+/* ── State 5: Done ─────────────────────────────────────────────── */
+.done-hero{text-align:center;padding:40px 20px 30px}
+.done-hero .ico{font-size:40px}
+.done-hero h2{font-family:var(--serif);font-size:20px;margin:14px 0 6px}
+.done-hero p{color:var(--muted-foreground);max-width:48ch;margin:0 auto 20px;font-size:13px}
+.stat-row{display:flex;justify-content:center;gap:28px;margin:20px 0 26px}
+.stat{text-align:center}
+.stat .sv{font-family:var(--serif);font-size:22px;color:var(--primary)}
+.stat .sl{font-size:11px;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em}
+
+.note{font-size:11px;color:var(--muted-foreground);background:var(--secondary);border:1px dashed var(--border);
+  border-radius:8px;padding:8px 12px;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="chrome">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <b>Ma Nữ Nghịch Thiên (POC)</b> — Writing Studio
+    <div class="tabs">
+      <div class="tab">Compose</div><div class="tab">Editor</div>
+      <div class="tab on">Planner</div><div class="tab">Chapter Browser</div>
+    </div>
+  </div>
+
+  <div class="panel-frame">
+    <div class="stepper">
+      <div class="step done" onclick="go(1)"><div class="n">✓</div>Start</div>
+      <div class="step-sep"></div>
+      <div class="step done" onclick="go(2)"><div class="n">✓</div>Understood</div>
+      <div class="step-sep"></div>
+      <div class="step on" onclick="go(3)"><div class="n">3</div>Check &amp; Fix</div>
+      <div class="step-sep"></div>
+      <div class="step" onclick="go(4)"><div class="n">4</div>Ready to Draft</div>
+      <div class="step-sep"></div>
+      <div class="step" onclick="go(5)"><div class="n">5</div>Done</div>
+    </div>
+
+    <!-- ══════════════ STATE 1 — START ══════════════ -->
+    <div class="panel" id="p1">
+      <h1>Plan your story's system</h1>
+      <p class="lede">Paste your story bible or planning notes. We'll pull out your <b>characters</b>,
+        <b>story arcs</b>, and the hidden <b>variables</b> that drive your plot — then check it for
+        consistency before you start drafting.</p>
+
+      <textarea class="paste" placeholder="Paste your planning document here — character notes, arc outline, the mechanics that drive your story...">
+# STORY PLAN — Ma Nữ Nghịch Thiên
+
+## 1. Nhân Vật Chính — Character Seed
+Người hiện đại xuyên không vào thân xác một thiếu nữ. Vừa bị đào linh căn...
+
+## 4. Planner Variables
+PA = Perfection_Addiction — tăng mỗi lần đạt "hoàn mỹ"
+HA = Humanity_Anchor — neo điểm những khoảnh khắc bình dị
+...</textarea>
+      <div class="hint-row">
+        <span>1,240 words pasted</span>
+        <a>Don't have one yet? See an example →</a>
+      </div>
+
+      <div class="mode-cards">
+        <div class="mode-card">
+          <div class="mc-title">⚡ Quick check</div>
+          <div class="mc-desc">Free and instant, but literal — it looks for exact patterns. Best once your plan already works and you're making small edits, not for a first pass.</div>
+        </div>
+        <div class="mode-card on">
+          <div class="mc-title">✨ AI-assisted <span style="font-weight:400;color:var(--muted-foreground);font-size:10.5px">(recommended)</span></div>
+          <div class="mc-desc">Understands nuance, structure, and Vietnamese prose — the safer choice for your first pass. Uses your chosen writing model.</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="go(2)">Analyze my story →</button>
+        <button class="btn btn-ghost" onclick="go('empty')" style="margin-left:auto;font-size:11.5px;padding:6px 10px">Reviewer: simulate messy/incomplete input →</button>
+      </div>
+    </div>
+
+    <!-- ══════════════ STATE 1b — COULDN'T UNDERSTAND (low-extraction branch) ══════════════ -->
+    <div class="panel" id="p-empty">
+      <div class="empty-hero">
+        <div class="ico">🔍</div>
+        <h2>We only found a little to work with</h2>
+        <p>Your text didn't have enough of a clear structure for us to build a full plan yet.
+          That's normal for early notes — here's what we DID pick up:</p>
+        <div class="found-scraps">
+          <div class="scrap">👤 <b>0</b> characters</div>
+          <div class="scrap">🗺️ <b>0</b> story arcs</div>
+          <div class="scrap">⚙️ <b>1</b> possible variable <span style="opacity:.7">("power")</span></div>
+        </div>
+        <div class="tips-card">
+          <div class="tt">Try adding a bit more of these, then run it again:</div>
+          <ul>
+            <li>Who your main character is, in a sentence or two</li>
+            <li>A rough outline of what happens, in order</li>
+            <li>Anything that changes over time (a meter, a relationship, a countdown)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="actions" style="justify-content:center">
+        <button class="btn btn-primary" onclick="go(1)">← Add more detail</button>
+        <button class="btn btn-ghost">✨ Try AI-assisted instead</button>
+      </div>
+    </div>
+
+    <!-- ══════════════ STATE 2 — UNDERSTOOD ══════════════ -->
+    <div class="panel" id="p2">
+      <h1>Here's what we found in your story</h1>
+      <p class="lede">Check this over before we run a consistency check. If something looks wrong,
+        go back and adjust your notes — the more precise your source text, the better this is.</p>
+
+      <div class="grid2">
+        <div class="card">
+          <h3><span class="emoji">👤</span> Characters</h3>
+          <ul>
+            <li><b>Nữ chính</b> — protagonist. Modern-day soul transmigrated into a young woman's body, just stripped of her spiritual root.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><span class="emoji">🗺️</span> Story Arcs</h3>
+          <div class="arc-row">
+            <div><div class="at">Arc 1</div><div class="ad">Context pending — needs detail</div></div>
+            <span class="badge badge-setup">setup</span>
+          </div>
+          <div class="arc-row">
+            <div><div class="at">Arc 2 — Bước Lên Tiên Lộ</div><div class="ad">A powerless outcast begins a cultivation path no one else has walked</div></div>
+            <span class="badge badge-discovery">discovery</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3><span class="emoji">⚙️</span> Story Variables</h3>
+          <div class="var-row">
+            <div class="vt">Perfection Addiction <span class="code">PA</span></div>
+            <div class="vd">Rises each time she experiences something "perfect." This drives her slow corruption.</div>
+            <div class="meter"><i style="width:15%"></i></div>
+          </div>
+          <div class="var-row">
+            <div class="vt">Humanity Anchor <span class="code">HA</span></div>
+            <div class="vd">Falls as PA rises. Tied to small, mundane moments of ordinary life.</div>
+            <div class="meter"><i style="width:85%"></i></div>
+          </div>
+          <div class="var-row">
+            <div class="vt">Corruption Debt <span class="code">CD</span></div>
+            <div class="vd">Builds silently from practicing the flawed technique. Surfaces unpredictably.</div>
+            <div class="meter"><i style="width:8%"></i></div>
+          </div>
+        </div>
+        <div class="card oq-card">
+          <h3><span class="emoji">❓</span> Open Questions <span style="color:var(--muted-foreground);font-weight:400;font-size:11px">(6)</span></h3>
+          <ul>
+            <li>Protagonist's name</li>
+            <li>Story title</li>
+            <li>World's cultivation-realm system</li>
+            <li>Who Mị Đế is, and whether she's still alive</li>
+            <li>Is there a male lead?</li>
+            <li>Arc 1 details — what event costs her the spiritual root?</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="go(3)">Looks right → Check for issues</button>
+        <button class="btn btn-ghost" onclick="go(1)">Something's off? Edit the text</button>
+      </div>
+    </div>
+
+    <!-- ══════════════ STATE 3 — CHECK & FIX ══════════════ -->
+    <div class="panel active" id="p3">
+      <h1>Consistency check</h1>
+      <p class="lede">We checked your story against its own rules — the things you said in your
+        planning notes shouldn't happen, or must happen a certain way.</p>
+
+      <div class="summary-bar" id="summary-bar">
+        <div class="sb-item ok">✓ 6 checks passed</div>
+        <div class="sb-item warn" id="sb-warn">⚠ 1 needs attention</div>
+        <div class="sb-item tip">💡 1 suggestion</div>
+      </div>
+
+      <!-- Interactive fix demo: idle → fixing → resolved / couldn't-fix.
+           Reviewer control (not part of the real product) at the bottom
+           of this panel switches between the two possible outcomes. -->
+      <div class="finding warn" id="finding-warn">
+        <div class="fi">⚠</div>
+        <div class="ft">We couldn't confirm your Open Questions were preserved from your notes.
+          <small>Your source document lists 6 open questions, but the plan we built only kept 0 of them. This usually means a formatting mismatch in the "Open Questions" section.</small>
+        </div>
+        <div class="fa"><button class="btn btn-fix" id="fix-btn" onclick="tryFix()">🪄 Fix this for me</button></div>
+      </div>
+
+      <div class="finding" id="finding-resolved" style="display:none;background:hsl(150 65% 48% / 0.07);border:1px solid hsl(150 65% 48% / 0.3)">
+        <div class="fi" style="color:var(--success)">✓</div>
+        <div class="ft">Fixed — all 6 open questions are now carried into your plan.
+          <small>We matched them from your source text's "7. OPEN QUESTIONS" checklist.</small>
+        </div>
+      </div>
+
+      <div class="finding failed-fix" id="finding-failed" style="display:none">
+        <div class="fi">✕</div>
+        <div class="ft">We couldn't fix this automatically — your Open Questions section may use a format we don't recognize.
+          <small>Try changing your source text's list to plain checkbox items, like:</small>
+          <div class="suggest-box">- [ ] Protagonist's name<br>- [ ] Story title</div>
+          <div class="finding-actions">
+            <button class="btn btn-ghost" onclick="go(1)" style="font-size:11.5px;padding:6px 10px">← Edit my original text</button>
+            <button class="btn btn-fix">💬 Ask in chat instead</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="finding tip">
+        <div class="fi">💡</div>
+        <div class="ft">2 scenes don't move any story variable — <b>Event 3 (Thử Nghiệm)</b> and <b>Event 7 (Quyết Định Tiếp Tục)</b>.
+          <small>Every other scene changes something (PA, HA, CD…). These two might be missing a small consequence — or they're intentionally quiet beats. Your call.</small>
+        </div>
+        <div class="fa"><button class="btn btn-fix">🪄 Suggest a fix</button></div>
+      </div>
+
+      <div class="passed-collapse" onclick="this.classList.toggle('open')">
+        <div class="passed-head">▸ 6 checks passed — show details</div>
+        <div class="passed-body">
+          <div class="passed-row">✓ <b>Story variables</b> — PA, HA, CD, THR all defined</div>
+          <div class="passed-row">✓ <b>Perfection Addiction</b> isn't tied to cultivation realm — matches your design notes</div>
+          <div class="passed-row">✓ <b>Arc 2</b> reads as a discovery arc, not a power-fantasy arc</div>
+          <div class="passed-row">✓ <b>Anchors</b> — 4 consistency anchors found (dry humor, mundane happiness…)</div>
+          <div class="passed-row">✓ <b>Past-life mystery</b> isn't explained too early</div>
+          <div class="passed-row">✓ <b>Planner notes</b> are well-linked to your story variables</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="continue-btn" disabled title="Resolve the issue above first">Resolve the issue above to continue</button>
+        <button class="btn btn-ghost" onclick="go(2)">← Back to summary</button>
+      </div>
+      <div class="note">Suggestions (💡) never block you — they're worth a glance, not a requirement. "Needs attention" (⚠) items must be resolved (fixed or explicitly dismissed) before you can move on, since drafting would fail on them anyway.</div>
+      <div class="note" style="margin-top:8px">Reviewer — see the other outcome: <a href="#" onclick="showFixFailed();return false" style="color:var(--info)">what happens if auto-fix can't resolve it →</a></div>
+    </div>
+
+    <!-- ══════════════ STATE 4 — READY TO DRAFT ══════════════ -->
+    <div class="panel" id="p4">
+      <h1>Turn a story arc into a writing package</h1>
+      <p class="lede">Pick which arc you want to start drafting. We'll package its scenes, characters,
+        and constraints into something the writing tools can use.</p>
+
+      <div class="arc-pick">
+        <div class="arc-pick-card disabled">
+          <div>
+            <div class="apt">Arc 1 <span class="lock">🔒 needs more detail</span></div>
+            <div class="apd">Your notes don't describe what happens in this arc yet, so there's nothing to draft.</div>
+            <button class="btn btn-fix" style="margin-top:8px">✨ Ask AI to help complete this arc</button>
+          </div>
+        </div>
+        <div class="arc-pick-card sel">
+          <div>
+            <div class="apt">Arc 2 — Bước Lên Tiên Lộ</div>
+            <div class="apd">7 scenes · discovery arc · ready — all checks that matter have passed</div>
+          </div>
+          <div class="radio"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="go(5)">Compile Arc 2 →</button>
+        <button class="btn btn-ghost" onclick="go(3)">← Back to checks</button>
+      </div>
+    </div>
+
+    <!-- ══════════════ STATE 5 — DONE ══════════════ -->
+    <div class="panel" id="p5">
+      <div class="done-hero">
+        <div class="ico">🎉</div>
+        <h2>Your plan is ready</h2>
+        <p>Arc 2 — Bước Lên Tiên Lộ has been packaged. You can start drafting scene by scene, with
+          your characters, arc theme, and variables already in context.</p>
+        <div class="stat-row">
+          <div class="stat"><div class="sv">7</div><div class="sl">Scenes</div></div>
+          <div class="stat"><div class="sv">4</div><div class="sl">Variables tracked</div></div>
+          <div class="stat"><div class="sv">5</div><div class="sl">Constraints carried over</div></div>
+        </div>
+        <button class="btn btn-primary" onclick="go(1)">Start drafting in Compose →</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// IDs, not DOM order, drive panel switching — the low-extraction branch
+// (#p-empty) sits off the main 1..5 stepper path, so index-based toggling
+// would silently break as soon as a non-stepper panel is inserted in the
+// markup between two stepper panels.
+var PANEL_ID = {1:'p1', 2:'p2', 3:'p3', 4:'p4', 5:'p5', 'empty':'p-empty'};
+
+function go(n){
+  var targetId = PANEL_ID[n];
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('active', p.id === targetId); });
+  document.querySelector('.stepper').style.display = (typeof n === 'number') ? 'flex' : 'none';
+  if (typeof n === 'number') {
+    document.querySelectorAll('.step').forEach(function(s,i){
+      s.classList.toggle('on', i === n-1);
+      s.classList.toggle('done', i < n-1);
+    });
+  }
+}
+document.querySelectorAll('.mode-card').forEach(function(c){
+  c.addEventListener('click', function(){
+    document.querySelectorAll('.mode-card').forEach(function(x){ x.classList.remove('on'); });
+    c.classList.add('on');
+  });
+});
+document.querySelectorAll('.arc-pick-card').forEach(function(c){
+  c.addEventListener('click', function(e){
+    if (c.classList.contains('disabled')) return; // an incomplete arc can't be silently chosen
+    document.querySelectorAll('.arc-pick-card').forEach(function(x){ x.classList.remove('sel'); });
+    c.classList.add('sel');
+  });
+});
+document.querySelectorAll('.arc-pick-card.disabled .btn').forEach(function(b){
+  b.addEventListener('click', function(e){ e.stopPropagation(); }); // don't bubble into the (no-op) card click
+});
+
+// ── Check & Fix: interactive fix-attempt demo ──────────────────────────
+// Two possible outcomes on a REAL autofix call: it resolves the finding,
+// or it can't — and per the locked design principle, "can't" must still
+// never mean "go edit the raw plan yourself."
+function unlockContinue(){
+  var btn = document.getElementById('continue-btn');
+  btn.disabled = false;
+  btn.title = '';
+  btn.textContent = 'Continue → Choose your arc';
+  btn.onclick = function(){ go(4); };
+}
+function tryFix(){
+  var btn = document.getElementById('fix-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Fixing…';
+  setTimeout(function(){
+    document.getElementById('finding-warn').style.display = 'none';
+    document.getElementById('finding-resolved').style.display = 'flex';
+    document.getElementById('sb-warn').outerHTML = '';
+    unlockContinue();
+  }, 900);
+}
+function showFixFailed(){
+  document.getElementById('finding-warn').style.display = 'none';
+  document.getElementById('finding-resolved').style.display = 'none';
+  document.getElementById('finding-failed').style.display = 'flex';
+  // still blocked — an unresolved "needs attention" finding must keep
+  // blocking Continue, exactly like the real hard-tier gate does server-side
+}
+
+go(3); // open on the Check & Fix state — the highest-value redesign surface
+</script>
+</body>
+</html>

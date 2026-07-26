@@ -1,0 +1,60 @@
+{
+  "models": {
+    "Gemma-4-26B-200K": {
+      "hits": 3,
+      "total": 6,
+      "rows": [
+        {
+          "ask": "Update this book's description to something more dramatic.",
+          "must": "book_update_details",
+          "plan": [
+            "book_list",
+            "book_update_details"
+          ],
+          "ok": true
+        },
+        {
+          "ask": "Change the book's blurb.",
+          "must": "book_update_details",
+          "plan": [
+            "book_list",
+            "book_update_details"
+          ],
+          "ok": true
+        },
+        {
+          "ask": "Set the genre to dark fantasy.",
+          "must": "book_update_details",
+          "plan": [
+            "book_list",
+            "book_update_details"
+          ],
+          "ok": true
+        },
+        {
+          "ask": "Write a first chapter for my book.",
+          "must": "book_chapter_create",
+          "plan": [
+            "book_list"
+          ],
+          "ok": false
+        },
+        {
+          "ask": "Save the chapter prose I just wrote.",
+          "must": "book_chapter_save_draft",
+          "plan": [],
+          "ok": false
+        },
+        {
+          "ask": "Publish chapter 3 as canon.",
+          "must": "book_chapter_publish",
+          "plan": [
+            "book_list_chapters",
+            "composition_publish"
+          ],
+          "ok": false
+        }
+      ]
+    }
+  }
+}

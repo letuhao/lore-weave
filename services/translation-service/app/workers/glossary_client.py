@@ -18,7 +18,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 
@@ -106,12 +106,11 @@ async def fetch_translation_glossary(
         params["chapter_id"] = chapter_id
 
     try:
-        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
             resp = await client.get(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/translation-glossary",
                 params=params,
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -266,11 +265,10 @@ async def fetch_extraction_profile(book_id: str) -> dict | None:
     Returns the response dict with 'kinds' array, or None on failure.
     """
     try:
-        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
             resp = await client.get(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/extraction-profile",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -309,12 +307,11 @@ async def fetch_known_entities(
         params["before_chapter_index"] = str(before_chapter_index)
 
     try:
-        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
             resp = await client.get(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/known-entities",
                 params=params,
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -347,7 +344,7 @@ async def fetch_context_entities(
     if not book_id:
         return []
     try:
-        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
             resp = await client.post(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/select-for-context",
@@ -358,7 +355,6 @@ async def fetch_context_entities(
                     "max_tokens": max_tokens,
                     "exclude_ids": [],
                 },
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -396,6 +392,12 @@ async def post_extracted_entities(
     source_language: str,
     attribute_actions: dict[str, dict[str, str]],
     entities: list[dict],
+    *,
+    chapter_id: str | None = None,
+    content_hash: str | None = None,
+    writeback_key: str | None = None,
+    owner_user_id: str | None = None,
+    chapter_ordinal: int | None = None,
 ) -> dict | None:
     """Post extracted entities to glossary-service for upsert.
 
@@ -403,18 +405,38 @@ async def post_extracted_entities(
 
     Returns the response dict with created/updated/skipped counts,
     or None on failure.
+
+    M1 (extraction pipeline FND) — the optional two-ledger fields make this
+    whole-chapter writeback idempotent + tenant-scoped at the glossary boundary:
+    `writeback_key` keys the extraction_writeback_log so a retry/redelivery/
+    concurrent fresh run lands the chapter exactly once; `chapter_id`/`content_hash`/
+    `owner_user_id` populate that ledger row. All optional/additive — omitting them
+    keeps the legacy (non-idempotent) behavior, so other callers are unaffected.
     """
+    body: dict = {
+        "source_language": source_language,
+        "attribute_actions": attribute_actions,
+        "entities": entities,
+    }
+    if chapter_id:
+        body["chapter_id"] = chapter_id
+    if content_hash:
+        body["content_hash"] = content_hash
+    if writeback_key:
+        body["writeback_key"] = writeback_key
+    if owner_user_id:
+        body["owner_user_id"] = owner_user_id
+    # Temporal-knowledge Path A (§12): the chapter's story-time ordinal (0-based
+    # chapter_index). When present, glossary ALSO opens append-only bi-temporal facts
+    # valid-from this ordinal. Additive — omitting it keeps the flat-only behavior.
+    if chapter_ordinal is not None:
+        body["chapter_ordinal"] = chapter_ordinal
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30.0) as client:
             resp = await client.post(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/extract-entities",
-                json={
-                    "source_language": source_language,
-                    "attribute_actions": attribute_actions,
-                    "entities": entities,
-                },
-                headers={"X-Internal-Token": settings.internal_service_token},
+                json=body,
             )
             if resp.status_code != 200:
                 log.error(
@@ -425,6 +447,136 @@ async def post_extracted_entities(
             return resp.json()
     except Exception as exc:
         log.error("entity upsert request failed: %s", exc)
+        return None
+
+
+# ── #26/#7 summarize (merge-rewrite) — canonical-layer client ─────────────────
+
+
+async def fetch_canonical_dirty(book_id: str, limit: int = 500) -> list[dict]:
+    """Fetch the summarize attributes whose canonical value is stale (canonical_dirty).
+
+    Calls: GET /internal/books/{book_id}/canonical-dirty
+
+    Returns the list of work items (entity_id, entity_name, attr_code, attr_label,
+    raw_values, source_language, raw_fingerprint), or [] on any failure.
+    """
+    try:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/canonical-dirty",
+                params={"limit": str(limit)},
+            )
+            if resp.status_code != 200:
+                log.warning("canonical-dirty fetch returned %d for book=%s",
+                            resp.status_code, book_id)
+                return []
+            return resp.json().get("items", [])
+    except Exception as exc:
+        log.warning("canonical-dirty fetch failed for book=%s: %s", book_id, exc)
+        return []
+
+
+async def post_canonical(
+    book_id: str,
+    entity_id: str,
+    attr_code: str,
+    canonical_value: str,
+    *,
+    raw_fingerprint: str = "",
+) -> dict | None:
+    """Write a synthesized canonical value back to a summarize attribute.
+
+    Calls: POST /internal/books/{book_id}/entities/{entity_id}/canonical
+
+    `raw_fingerprint` (from fetch_canonical_dirty) enables compare-and-clear: the dirty
+    flag clears only if the raw set is unchanged since the fetch. Returns the response
+    dict, or None on any failure (best-effort — never raises).
+    """
+    try:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/entities/{entity_id}/canonical",
+                json={
+                    "attr_code": attr_code,
+                    "canonical_value": canonical_value,
+                    "raw_fingerprint": raw_fingerprint,
+                },
+            )
+            if resp.status_code != 200:
+                log.warning("post_canonical returned %d for book=%s entity=%s attr=%s",
+                            resp.status_code, book_id, entity_id, attr_code)
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.warning("post_canonical failed book=%s entity=%s: %s", book_id, entity_id, exc)
+        return None
+
+
+async def fetch_fold_dirty(book_id: str, limit: int = 100) -> list[dict]:
+    """F2-app — fetch entities whose canonical needs a re-fold (temporal-knowledge §12.1).
+
+    Calls: GET /internal/books/{book_id}/fold-dirty
+
+    Returns work items {entity_id, entity_name, facts:[{attr,value}], head_ordinal,
+    fold_fingerprint}, or [] on any failure (best-effort).
+    """
+    try:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/fold-dirty",
+                params={"limit": str(limit)},
+            )
+            if resp.status_code != 200:
+                log.warning("fold-dirty fetch returned %d for book=%s", resp.status_code, book_id)
+                return []
+            return resp.json().get("items", [])
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        log.warning("fold-dirty fetch failed for book=%s: %s", book_id, exc)
+        return []
+
+
+async def post_fold_snapshot(
+    book_id: str,
+    entity_id: str,
+    *,
+    content: str,
+    as_of_ordinal: int,
+    fold_fingerprint: str,
+    fold_algo_version: int = 1,
+    failed: bool = False,
+) -> dict | None:
+    """Write a folded canonical snapshot (or report a fold failure for backoff).
+
+    Calls: POST /internal/books/{book_id}/entities/{entity_id}/fold-snapshot
+
+    fold_fingerprint (from fetch_fold_dirty) drives compare-and-clear: dirty clears only if
+    no fact arrived during the fold. failed=True increments the backoff counter (B4).
+    Best-effort — never raises.
+    """
+    try:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/entities/{entity_id}/fold-snapshot",
+                json={
+                    "content": content,
+                    "as_of_ordinal": as_of_ordinal,
+                    "fold_algo_version": fold_algo_version,
+                    "fold_fingerprint": fold_fingerprint,
+                    "failed": failed,
+                },
+            )
+            if resp.status_code != 200:
+                log.warning("post_fold_snapshot returned %d for book=%s entity=%s",
+                            resp.status_code, book_id, entity_id)
+                return None
+            return resp.json()
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        log.warning("post_fold_snapshot failed book=%s entity=%s: %s", book_id, entity_id, exc)
         return None
 
 
@@ -503,7 +655,7 @@ async def writeback_name_pairs(book_id: str, source_language: str,
     if not entities:
         return None
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30.0) as client:
             resp = await client.post(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/extract-entities",
@@ -514,7 +666,6 @@ async def writeback_name_pairs(book_id: str, source_language: str,
                     "default_tags": ["ai-suggested"],
                     "park_unknown_kinds": False,
                 },
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning("name-pair writeback returned %d for book=%s",
@@ -545,12 +696,11 @@ async def fetch_translation_candidates(
         }
         if entity_ids:
             params["entity_ids"] = ",".join(entity_ids)
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30.0) as client:
             resp = await client.get(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/translation-candidates",
                 params=params,
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -573,12 +723,14 @@ async def post_apply_translations(
     if not items:
         return {"translated": 0, "skipped_verified": 0, "skipped_empty": 0, "failed": []}
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with build_internal_client(
+            settings.glossary_service_internal_url,
+            internal_token=settings.internal_service_token, timeout_s=60.0,
+        ) as client:
             resp = await client.post(
                 f"{settings.glossary_service_internal_url}"
                 f"/internal/books/{book_id}/apply-translations",
                 json={"target_language": target_language, "items": items},
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code != 200:
                 log.warning("apply-translations returned %d for book=%s", resp.status_code, book_id)

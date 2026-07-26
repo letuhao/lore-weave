@@ -9,7 +9,7 @@ vi.mock('../../api', () => ({
 }));
 
 import { useDivergenceWizard } from '../useDivergenceWizard';
-import { derivativeOverridesKey } from '../useDerivativeContext';
+import { derivativeContextKey } from '../useDerivativeContext';
 import type { Work } from '../../types';
 
 const sourceWork: Work = {
@@ -48,12 +48,14 @@ describe('useDivergenceWizard (C24 — 4-step → POST /works/{id}/derive)', () 
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useDivergenceWizard({ sourceWork, token: 'tok' }), { wrapper: Wrapper });
     act(() => {
+      result.current.setName('  Genderbend AU  '); // BE-13a: must be sent (trimmed), not dropped
       result.current.setBranchPoint(3);
       result.current.setTaxonomy('character_transform');
       result.current.setOverride('ent-zrc', { description: 'now a woman' });
       result.current.setCanonRules(['张若尘 is female', '  ']); // blank trimmed out
     });
     const body = result.current.buildBody();
+    expect(body.name).toBe('Genderbend AU'); // BE-13a — the name reaches the derive body, trimmed
     expect(body.branch_point).toBe(3);
     expect(body.divergence.taxonomy).toBe('character_transform');
     expect(body.divergence.canon_rule).toEqual(['张若尘 is female']);
@@ -91,16 +93,16 @@ describe('useDivergenceWizard (C24 — 4-step → POST /works/{id}/derive)', () 
     expect(onDerived).toHaveBeenCalledWith(expect.objectContaining({ project_id: 'deriv-proj' }));
   });
 
-  it('on success stashes the REAL submitted override-id set + source project under the derivative key', async () => {
+  it('on success invalidates the DURABLE derivative-context key (WS-B2 — no ephemeral stash)', async () => {
     deriveWorkMock.mockResolvedValue({ project_id: 'deriv-proj', source_work_id: 'srcwork' });
     const { Wrapper, qc } = makeWrapper();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
     const { result } = renderHook(() => useDivergenceWizard({ sourceWork, token: 'tok' }), { wrapper: Wrapper });
     act(() => { result.current.setName('AU'); result.current.setOverride('e1', { description: 'x' }); });
     act(() => result.current.submit());
     await waitFor(() => expect(deriveWorkMock).toHaveBeenCalled());
-    await waitFor(() => {
-      const meta = qc.getQueryData(derivativeOverridesKey('deriv-proj'));
-      expect(meta).toEqual({ sourceProjectId: 'src-proj', overrideIds: ['e1'] });
-    });
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: derivativeContextKey('deriv-proj') }),
+    );
   });
 });

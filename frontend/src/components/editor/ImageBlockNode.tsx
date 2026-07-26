@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import {
   ReactNodeViewRenderer,
   NodeViewWrapper,
@@ -9,29 +9,38 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
-import { aiModelsApi } from '@/features/ai-models/api';
 import { MediaPrompt } from './MediaPrompt';
 import { useResize } from './useResize';
 
-// --- Upload context (set by the editor page, read by NodeView) ---
+// --- Upload context ------------------------------------------------------
+// #16 Phase 2 (2.7) — PER-EDITOR-INSTANCE via `editor.storage.mediaUpload` (mirrors the
+// `editor.storage.mediaGuard.editorMode` shape already used in TiptapEditor.tsx). Historically
+// a module-level singleton (`_uploadCtx`/`setImageUploadContext`/`setOnOpenHistory`) — safe
+// only because exactly one ChapterEditorPage was ever mounted at a time. Writing Studio's
+// dockview allows MULTIPLE chapter tabs open simultaneously (each its own TiptapEditor
+// instance); a singleton would silently misattribute uploads/history-opens to whichever tab
+// last called the setter. The host now writes this via `TiptapEditorHandle.setUploadContext`
+// (see TiptapEditor.tsx) straight onto the owning editor instance's own storage.
 export interface ImageUploadContext {
   token: string;
   bookId: string;
   chapterId: string;
+  /** Opens the media version-history panel for a block. Shared between image and video blocks
+   *  — `VersionHistoryPanel` works for any block type. */
+  onOpenHistory?: (blockId: string, blockTitle: string, mediaSrc: string | null) => void;
+  /** Opens version history for a video block specifically. Kept as a distinct field only
+   *  because legacy wired it from a second setter (`VideoBlockNode.setOnOpenVideoHistory`) —
+   *  the two callbacks may point at the very same function. */
+  onOpenVideoHistory?: (blockId: string, blockTitle: string, mediaSrc: string | null) => void;
 }
 
-let _uploadCtx: ImageUploadContext | null = null;
-export function setImageUploadContext(ctx: ImageUploadContext | null) {
-  _uploadCtx = ctx;
-}
-export function getUploadContext(): ImageUploadContext | null {
-  return _uploadCtx;
-}
-
-// History panel callback — set by the editor page
-let _onOpenHistory: ((blockId: string, blockTitle: string, mediaSrc: string | null) => void) | null = null;
-export function setOnOpenHistory(fn: typeof _onOpenHistory) {
-  _onOpenHistory = fn;
+/** Reads the CALLING editor instance's own upload context off `editor.storage.mediaUpload`.
+ *  Accepts anything exposing `.storage` (a Tiptap `Editor`). For call sites that only have a
+ *  ProseMirror `EditorView` (no NodeView `editor` prop in scope — see
+ *  AudioAttachActionsExtension.ts), resolve the Editor via `(view.dom as any).editor` first
+ *  (Tiptap attaches the owning Editor instance there) and pass that in. */
+export function getUploadContext(editor: Pick<Editor, 'storage'> | null | undefined): ImageUploadContext | null {
+  return ((editor?.storage as Record<string, unknown> | undefined)?.mediaUpload as ImageUploadContext | undefined) ?? null;
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -58,6 +67,9 @@ export const ImageBlockExtension = Node.create({
       width: { default: 100 },
       title: { default: '' },
       ai_prompt: { default: '' },
+      /** Explicit user_model_id chosen via the MediaPrompt model picker — never
+       *  a silently-resolved default (D-MEDIA-MODEL-PICKER). */
+      ai_model_id: { default: null },
       _mode: { default: 'ai', rendered: false }, // transient, forces NodeView re-render on mode switch
     };
   },
@@ -108,6 +120,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
+  const uploadCtx = getUploadContext(editor);
   const src = node.attrs.src as string | null;
   const alt = (node.attrs.alt as string) || '';
   const caption = (node.attrs.caption as string) || '';
@@ -162,7 +175,8 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploadError(t(err.key, err.params));
         return;
       }
-      if (!_uploadCtx) {
+      const ctx = getUploadContext(editor);
+      if (!ctx) {
         setUploadError(t('image.upload_unavailable'));
         return;
       }
@@ -178,9 +192,9 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         }
 
         const result = await booksApi.uploadChapterMedia(
-          _uploadCtx.token,
-          _uploadCtx.bookId,
-          _uploadCtx.chapterId,
+          ctx.token,
+          ctx.bookId,
+          ctx.chapterId,
           file,
           (pct) => setUploadPct(pct),
           blockId,
@@ -195,7 +209,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploading(false);
       }
     },
-    [updateAttributes, node.attrs.blockId],
+    [updateAttributes, node.attrs.blockId, editor],
   );
 
   const handleDrop = useCallback(
@@ -246,7 +260,12 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const handleRegenerate = useCallback(async () => {
     const prompt = (node.attrs.ai_prompt as string)?.trim();
     if (!prompt) return;
-    const ctx = getUploadContext();
+    const modelId = node.attrs.ai_model_id as string | null;
+    if (!modelId) {
+      setRegenerateError(t('image.regen_no_model'));
+      return;
+    }
+    const ctx = getUploadContext(editor);
     if (!ctx) {
       setRegenerateError(t('image.regen_save_first'));
       return;
@@ -254,21 +273,13 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setRegenerating(true);
     setRegenerateError(null);
     try {
-      // Get preferred or first available image model
-      const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'image_gen' });
-      const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).imageModelId : '';
-      const imageModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
-      if (!imageModel) {
-        setRegenerateError(t('image.regen_no_model'));
-        return;
-      }
       const blockId = (node.attrs.blockId as string) || crypto.randomUUID().slice(0, 8);
       if (!node.attrs.blockId) updateAttributes({ blockId });
       const result = await booksApi.generateImage(ctx.token, ctx.bookId, ctx.chapterId, {
         block_id: blockId,
         prompt,
         model_source: 'user_model',
-        model_ref: imageModel.user_model_id,
+        model_ref: modelId,
       });
       updateAttributes({ src: result.url });
     } catch (e: any) {
@@ -280,14 +291,14 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     } finally {
       setRegenerating(false);
     }
-  }, [node.attrs.ai_prompt, node.attrs.blockId, updateAttributes]);
+  }, [node.attrs.ai_prompt, node.attrs.ai_model_id, node.attrs.blockId, updateAttributes, editor, t]);
 
   // --- Classic mode: compact locked placeholder with hover preview ---
   if (isClassic) {
     const title = (node.attrs.title as string) || t('image.default_title');
     return (
       <NodeViewWrapper className="group my-2">
-        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+        <div data-testid="image-block-classic-placeholder" className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
           {/* Thumbnail preview on hover */}
           {src && (
             <img src={src} alt="" className="h-6 w-6 rounded object-cover opacity-50" draggable={false} />
@@ -299,10 +310,10 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               {caption}
             </span>
           )}
-          {src && _onOpenHistory && (
+          {src && uploadCtx?.onOpenHistory && (
             <button
               type="button"
-              onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
+              onClick={() => uploadCtx.onOpenHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
               className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-colors hover:bg-card hover:text-foreground"
               title={t('image.version_history')}
             >
@@ -393,6 +404,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         ) : (
           /* Upload zone */
           <div
+            data-testid="image-block-upload-zone"
             className={cn(
               'flex flex-col items-center justify-center gap-2 rounded-t-lg border-2 border-dashed py-8 transition-colors',
               uploading
@@ -439,6 +451,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Resize handle — bottom-right corner (only when image loaded) */}
         {src && (
           <div
+            data-testid="image-block-resize-handle"
             className={cn(
               'absolute bottom-1 right-1 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm bg-primary/70 transition-opacity',
               selected ? 'opacity-80' : 'opacity-0 group-hover:opacity-100',
@@ -463,6 +476,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       >
         <ImageIcon className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
         <input
+          data-testid="image-block-caption"
           type="text"
           value={caption}
           onChange={handleCaptionChange}
@@ -479,6 +493,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && (
           <button
             type="button"
+            data-testid="image-block-replace"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('image.replace_title')}
@@ -486,10 +501,11 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             <Replace className="h-3 w-3" />
           </button>
         )}
-        {src && _onOpenHistory && (
+        {src && uploadCtx?.onOpenHistory && (
           <button
             type="button"
-            onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || t('image.default_title'), src)}
+            data-testid="image-block-version-history"
+            onClick={() => uploadCtx.onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || t('image.default_title'), src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('image.version_history')}
           >
@@ -499,6 +515,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Delete image block */}
         <button
           type="button"
+          data-testid="image-block-delete"
           onClick={() => deleteNode()}
           className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           title={t('image.delete_image_block')}
@@ -511,6 +528,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       <div className="border-t" contentEditable={false}>
         <button
           type="button"
+          data-testid="image-block-alt-toggle"
           onClick={() => setShowAlt(!showAlt)}
           className="flex w-full items-center gap-1.5 px-3 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={showAlt}
@@ -523,6 +541,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {showAlt && (
           <div className="border-t px-3 py-1.5">
             <input
+              data-testid="image-block-alt-input"
               type="text"
               value={alt}
               onChange={handleAltChange}
@@ -542,8 +561,13 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         prompt={(node.attrs.ai_prompt as string) || ''}
         onChange={(val) => updateAttributes({ ai_prompt: val })}
         onRegenerate={() => handleRegenerate()}
-        regenerateDisabled={regenerating || !(node.attrs.ai_prompt as string)?.trim()}
+        regenerateDisabled={
+          regenerating || !(node.attrs.ai_prompt as string)?.trim() || !(node.attrs.ai_model_id as string | null)
+        }
         regenerateLabel={regenerating ? t('media.generating') : t('media.regenerate')}
+        modelCapability="image_gen"
+        modelId={(node.attrs.ai_model_id as string | null) ?? null}
+        onModelChange={(id) => updateAttributes({ ai_model_id: id })}
       />
       {regenerateError && (
         <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>

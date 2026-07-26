@@ -59,6 +59,10 @@ export function usePlanner(projectId: string, token: string | null) {
   const [idemKey, setIdemKey] = useState('');
   const [error, setError] = useState<PlannerError | null>(null);
   const [needsReplace, setNeedsReplace] = useState<string[] | null>(null); // chapter_ids on 409
+  // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the chapters JUST committed, so the view
+  // can show the post-commit per-scene motif-binding surface (the bind happens on a
+  // COMMITTED node id, which only exists after this). Cleared on a fresh preview.
+  const [committedChapterIds, setCommittedChapterIds] = useState<string[]>([]);
 
   const previewMut = useMutation({
     mutationFn: (body: DecomposeBody) => compositionApi.decomposePreview(projectId, body, token!),
@@ -86,6 +90,7 @@ export function usePlanner(projectId: string, token: string | null) {
             setPreview(p);
             setDraft(toDraft(p));
             setIdemKey(newKey());
+            setCommittedChapterIds([]); // a new plan supersedes the prior commit's surface
           },
           onError: (e) => setError(asPlannerError(e)),
         },
@@ -111,8 +116,13 @@ export function usePlanner(projectId: string, token: string | null) {
     (replace: boolean) => {
       if (!draft) return;
       setError(null);
+      const committed = (draft ?? []).map((c) => c.chapter_id);
       commitMut.mutate(replace, {
-        onSuccess: () => { setNeedsReplace(null); setDraft(null); setPreview(null); },
+        onSuccess: () => {
+          setNeedsReplace(null); setDraft(null); setPreview(null);
+          // surface the just-committed chapters' scenes for motif binding (Shape A).
+          setCommittedChapterIds(committed);
+        },
         onError: (e) => {
           const pe = asPlannerError(e);
           if (pe.status === 409 && pe.code === 'CHAPTER_ALREADY_PLANNED') setNeedsReplace(pe.chapterIds ?? []);
@@ -135,6 +145,8 @@ export function usePlanner(projectId: string, token: string | null) {
     committing: commitMut.isPending,
     error,
     needsReplace,
+    committedChapterIds,
+    dismissCommitted: () => setCommittedChapterIds([]),
     cancelReplace: () => setNeedsReplace(null),
     runPreview,
     editScene, editChapter, addScene, removeScene,

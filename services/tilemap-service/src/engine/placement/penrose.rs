@@ -83,7 +83,7 @@ pub fn assign_zone_tiles(
     // Penrose vertex field — target count per §4.2 (max(zones × 10, 200)).
     let target = (zones.len() * 10).max(200);
     let mut rng = ChaCha8Rng::seed_from_u64(sub_seed(seed, "penrose"));
-    let rotation = rng.gen_range(0.0..TAU);
+    let rotation = rng.random_range(0.0..TAU);
     let vertices = penrose_vertices(target, rotation)?;
 
     // §4.3 step 1 — each vertex belongs to its nearest zone centre.
@@ -546,7 +546,7 @@ mod tests {
             let vb = build_vertex_buckets(&vertices);
             let mut rng = ChaCha8Rng::seed_from_u64(seed);
             for _ in 0..200 {
-                let p = Vec2::new(rng.gen_range(0.0..1.0), rng.gen_range(0.0..1.0));
+                let p = Vec2::new(rng.random_range(0.0..1.0), rng.random_range(0.0..1.0));
                 let bucketed = nearest_vertex_bucketed(p, &vb);
                 let naive = nearest_vertex_naive(p, &vertices);
                 assert_eq!(

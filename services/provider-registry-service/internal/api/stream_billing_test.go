@@ -6,7 +6,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -110,6 +112,45 @@ func TestStreamGuard_UsageCostUSD(t *testing.T) {
 	// 1000/1e6·2 + (500+100)/1e6·10 = 0.002 + 0.006 = 0.008.
 	if got := g.usageCostUSD(u); got != 0.008 {
 		t.Fatalf("usageCostUSD: got %v want 0.008", got)
+	}
+}
+
+// Cache-read tokens must bill at the DISCOUNT, not the full input rate (the LiteLLM
+// #19681 overcharge class; validated against OpenAI's own dashboard: cached input is a
+// separate, cheaper line). Default cached rate = 0.5×input when unset.
+func TestStreamGuard_UsageCostUSD_CacheReadDiscount(t *testing.T) {
+	g := &streamGuard{pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)}}
+	read, creation := 3000, 0
+	u := provider.StreamChunk{
+		Kind: provider.StreamChunkUsage, InputTokens: 4000, OutputTokens: 100,
+		CacheReadTokens: &read, CacheCreationTokens: &creation,
+	}
+	// uncached=1000@2 + read=3000@1(=2·0.5) + out=100@10 = 0.002+0.003+0.001 = 0.006
+	if got := g.usageCostUSD(u); math.Abs(got-0.006) > 1e-9 {
+		t.Fatalf("cache-read discount: got %v want 0.006", got)
+	}
+	fullRate := 4000.0/1e6*2 + 100.0/1e6*10 // 0.009 — the pre-fix overcharge
+	if g.usageCostUSD(u) >= fullRate {
+		t.Fatalf("cached turn must be cheaper than full-rate %v", fullRate)
+	}
+	// no cache activity (LM Studio) → reduces exactly to full input rate (no regression)
+	if got := g.usageCostUSD(provider.StreamChunk{Kind: provider.StreamChunkUsage, InputTokens: 4000, OutputTokens: 100}); math.Abs(got-fullRate) > 1e-9 {
+		t.Fatalf("no-cache path must equal full rate %v, got %v", fullRate, got)
+	}
+}
+
+// Anthropic cache WRITES bill at the 1.25× premium; an explicit CachedInputPerMTok wins.
+func TestStreamGuard_UsageCostUSD_CacheWritePremium_And_Override(t *testing.T) {
+	g := &streamGuard{pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10), CachedInputPerMTok: ptr(0.2)}}
+	read, creation := 1000, 400
+	u := provider.StreamChunk{
+		Kind: provider.StreamChunkUsage, InputTokens: 2000, OutputTokens: 0,
+		CacheReadTokens: &read, CacheCreationTokens: &creation,
+	}
+	// uncached=600@2 + read=1000@0.2(override) + creation=400@2.5(=2·1.25)
+	// = 0.0012 + 0.0002 + 0.001 = 0.0024
+	if got := g.usageCostUSD(u); got != 0.0024 {
+		t.Fatalf("cache-write premium + override: got %v want 0.0024", got)
 	}
 }
 
@@ -295,11 +336,11 @@ func TestStreamGuard_Settle_RecordUsage_HappyPath(t *testing.T) {
 	}
 }
 
-// TestStreamGuard_Settle_RecordUsage_SkipsOnAbort. A hard-aborted stream
-// reconciles its (partial) spend but MUST NOT write an audit row —
-// mirrors the jobs.Worker.settleBilling rule that /record fires only
-// on a `completed` status.
-func TestStreamGuard_Settle_RecordUsage_SkipsOnAbort(t *testing.T) {
+// TestStreamGuard_Settle_RecordUsage_RecordsOnAbort. P0-2 (B2): a hard-aborted
+// stream still spent real tokens + produced partial output, so it MUST write an
+// audit row (never zero rows) — carrying request_status="aborted". This overturns
+// the pre-P0-2 behavior that skipped /record on abort (the audit hole).
+func TestStreamGuard_Settle_RecordUsage_RecordsOnAbort(t *testing.T) {
 	srv, cap := newUsageStub(t)
 	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
 
@@ -312,24 +353,27 @@ func TestStreamGuard_Settle_RecordUsage_SkipsOnAbort(t *testing.T) {
 		finalUsage: &provider.StreamChunk{
 			Kind: provider.StreamChunkUsage, InputTokens: 1000, OutputTokens: 500,
 		},
-		aborted: true, // hard-abort from observe()
+		aborted:       true, // hard-abort from observe()
+		requestStatus: "aborted",
 	}
 	g.settle(context.Background())
 
 	if cap.reconcileCount != 1 {
 		t.Fatalf("expected 1 reconcile (always runs), got %d", cap.reconcileCount)
 	}
-	if cap.recordCount != 0 {
-		t.Fatalf("aborted stream must NOT call /record, got %d calls", cap.recordCount)
+	if cap.recordCount != 1 {
+		t.Fatalf("B2: an aborted stream MUST still record an audit row, got %d", cap.recordCount)
+	}
+	if cap.recordBody["request_status"] != "aborted" {
+		t.Errorf("request_status: got %v want aborted", cap.recordBody["request_status"])
 	}
 }
 
-// TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk. When the
-// provider omitted the final usage chunk, we have no authoritative
-// token counts. Skip /record rather than guess — the estimate-based
-// tally already drove reconcile, but the audit ledger only stores
-// confirmed numbers.
-func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
+// TestStreamGuard_Settle_RecordUsage_RecordsWithTallyWhenNoUsageChunk. P0-2 (B2):
+// when the provider omitted the final usage chunk (disconnect / provider quirk) we
+// still record — using the delta-estimated tally (the same numbers reconcile used)
+// so the call is never audit-invisible.
+func TestStreamGuard_Settle_RecordUsage_RecordsWithTallyWhenNoUsageChunk(t *testing.T) {
 	srv, cap := newUsageStub(t)
 	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
 
@@ -337,10 +381,12 @@ func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
 		guardrail: gc, reservationID: uuid.New(),
 		jobID: uuid.New(), ownerUserID: uuid.New(),
 		modelSource: "user_model", modelRef: uuid.New(),
-		op:           "chat",
-		pricing:      billing.Pricing{OutputPerMTok: ptr(10)},
-		inputCostUSD: 0.005,
-		outChars:     350,
+		op:            "chat",
+		pricing:       billing.Pricing{OutputPerMTok: ptr(10)},
+		inputCostUSD:  0.005,
+		inputTokens:   42,
+		outChars:      350, // → 100 Latin tokens via EstimateTokens
+		requestStatus: "success",
 		// finalUsage intentionally nil
 	}
 	g.settle(context.Background())
@@ -348,8 +394,167 @@ func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
 	if cap.reconcileCount != 1 {
 		t.Fatalf("expected 1 reconcile, got %d", cap.reconcileCount)
 	}
-	if cap.recordCount != 0 {
-		t.Fatalf("chat with no usage chunk must NOT call /record, got %d", cap.recordCount)
+	if cap.recordCount != 1 {
+		t.Fatalf("B2: chat with no usage chunk must still record (tally estimate), got %d", cap.recordCount)
+	}
+	if in, _ := cap.recordBody["input_tokens"].(float64); int(in) != 42 {
+		t.Errorf("input_tokens: got %v want 42 (estimated)", cap.recordBody["input_tokens"])
+	}
+	if out, _ := cap.recordBody["output_tokens"].(float64); int(out) != 100 {
+		t.Errorf("output_tokens: got %v want 100 (tally: 350 chars → 100 tokens)", cap.recordBody["output_tokens"])
+	}
+}
+
+// TestStreamGuard_Settle_ZeroBillOnPreflightProviderError. D-BILL-NO-USAGE-ON-PREFLIGHT-ERROR:
+// a chat provider_error that produced NEITHER a usage chunk NOR any output delta is a
+// pre-processing rejection (the provider — e.g. real OpenAI returning a 400 for an
+// unsupported param — billed us nothing). settle MUST still write the audit row (for
+// error observability) but with 0 input/output tokens + $0 cost, NEVER the up-front
+// input-token ESTIMATE, which would fabricate spend the user never incurred and inflate
+// the user-facing spend summary.
+func TestStreamGuard_Settle_ZeroBillOnPreflightProviderError(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op:      "chat",
+		pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)},
+		// Repro: preflight stamped the estimate, but the provider 400'd before
+		// streaming — no usage chunk, no output delta.
+		inputCostUSD:  0.001923,
+		inputTokens:   12820,
+		outChars:      0,
+		requestStatus: "provider_error",
+		// finalUsage intentionally nil
+	}
+	g.settle(context.Background())
+
+	if cap.reconcileCount != 1 {
+		t.Fatalf("expected 1 reconcile (always runs), got %d", cap.reconcileCount)
+	}
+	if cap.recordCount != 1 {
+		t.Fatalf("a rejected turn MUST still record an audit row (observability), got %d", cap.recordCount)
+	}
+	if in, _ := cap.recordBody["input_tokens"].(float64); int(in) != 0 {
+		t.Errorf("input_tokens: got %v want 0 — the provider consumed no prefill, must NOT bill the estimate", cap.recordBody["input_tokens"])
+	}
+	if out, _ := cap.recordBody["output_tokens"].(float64); int(out) != 0 {
+		t.Errorf("output_tokens: got %v want 0", cap.recordBody["output_tokens"])
+	}
+	if cost, ok := cap.recordBody["total_cost_usd"].(float64); !ok || cost != 0 {
+		t.Errorf("total_cost_usd: got %v want 0 (a rejected request bills nothing)", cap.recordBody["total_cost_usd"])
+	}
+	if cap.recordBody["request_status"] != "provider_error" {
+		t.Errorf("request_status: got %v want provider_error", cap.recordBody["request_status"])
+	}
+}
+
+// TestStreamGuard_Settle_MidStreamProviderErrorStillBills. The scope guard for the fix
+// above: a provider_error that arrived AFTER real output already streamed (outChars>0)
+// DID spend tokens — it must bill the delta tally, NOT be refunded. This is what keeps
+// the zero-bill narrowly targeted at pre-processing rejections.
+func TestStreamGuard_Settle_MidStreamProviderErrorStillBills(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op:            "chat",
+		pricing:       billing.Pricing{OutputPerMTok: ptr(10)},
+		inputCostUSD:  0.005,
+		inputTokens:   42,
+		outChars:      350, // real output streamed before the error → 100 tokens
+		requestStatus: "provider_error",
+		// finalUsage nil (errored before the usage chunk) but output DID stream
+	}
+	g.settle(context.Background())
+
+	if in, _ := cap.recordBody["input_tokens"].(float64); int(in) != 42 {
+		t.Errorf("input_tokens: got %v want 42 — real mid-stream usage stays billed", cap.recordBody["input_tokens"])
+	}
+	if out, _ := cap.recordBody["output_tokens"].(float64); int(out) != 100 {
+		t.Errorf("output_tokens: got %v want 100 (tally)", cap.recordBody["output_tokens"])
+	}
+}
+
+// TestStreamGuard_Settle_RecordUsage_LogsPayloads. P0-2 (B1): a completed chat
+// stream MUST record a non-empty request payload (the assembled messages) + response
+// payload (the accumulated completion) so the highest-volume path is auditable.
+func TestStreamGuard_Settle_RecordUsage_LogsPayloads(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op:      "chat",
+		pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)},
+		finalUsage: &provider.StreamChunk{
+			Kind: provider.StreamChunkUsage, InputTokens: 5, OutputTokens: 6,
+		},
+		requestStatus: "success",
+		requestPayload: map[string]any{
+			"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+		},
+	}
+	g.completion.WriteString("hello world")
+	g.settle(context.Background())
+
+	if cap.recordCount != 1 {
+		t.Fatalf("expected 1 record, got %d", cap.recordCount)
+	}
+	in, ok := cap.recordBody["input_payload"].(map[string]any)
+	if !ok || in["messages"] == nil {
+		t.Fatalf("B1: input_payload must carry the assembled request, got %v", cap.recordBody["input_payload"])
+	}
+	out, ok := cap.recordBody["output_payload"].(map[string]any)
+	if !ok || out["content"] != "hello world" {
+		t.Fatalf("B1: output_payload must carry the completion, got %v", cap.recordBody["output_payload"])
+	}
+	if cap.recordBody["request_status"] != "success" {
+		t.Errorf("request_status: got %v want success", cap.recordBody["request_status"])
+	}
+}
+
+// TestStreamGuard_FinalizeOutcome_Classifies locks the terminal-status mapping the
+// settle audit row records (P0-2 B2).
+func TestStreamGuard_FinalizeOutcome_Classifies(t *testing.T) {
+	cases := []struct {
+		name string
+		g    *streamGuard
+		err  error
+		want string
+	}{
+		{"success", &streamGuard{}, nil, "success"},
+		{"provider_error", &streamGuard{}, errors.New("boom"), "provider_error"},
+		{"cancelled", &streamGuard{}, context.Canceled, "cancelled"},
+		{"aborted", &streamGuard{aborted: true}, errStreamBudgetExceeded, "aborted"},
+	}
+	for _, c := range cases {
+		c.g.finalizeOutcome(c.err)
+		if c.g.requestStatus != c.want {
+			t.Errorf("%s: got %q want %q", c.name, c.g.requestStatus, c.want)
+		}
+	}
+	var nilG *streamGuard
+	nilG.finalizeOutcome(nil) // must not panic
+}
+
+// TestStreamGuard_Observe_AccumulatesCompletion. P0-2 (B1): observe accumulates the
+// visible answer (token deltas) but NOT reasoning deltas (hidden thinking).
+func TestStreamGuard_Observe_AccumulatesCompletion(t *testing.T) {
+	g := &streamGuard{op: "chat", abortUSD: 1e9}
+	g.observe(provider.StreamChunk{Kind: provider.StreamChunkToken, Delta: "Hello, "})
+	g.observe(provider.StreamChunk{Kind: provider.StreamChunkReasoning, Delta: "(thinking)"})
+	g.observe(provider.StreamChunk{Kind: provider.StreamChunkToken, Delta: "world"})
+	if got := g.completion.String(); got != "Hello, world" {
+		t.Fatalf("completion must accumulate token deltas only (not reasoning): got %q", got)
 	}
 }
 

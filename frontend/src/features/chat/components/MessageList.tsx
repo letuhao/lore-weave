@@ -68,7 +68,7 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6">
+    <div data-testid="chat-message-list" className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6">
       <div className="mx-auto flex w-full min-w-0 max-w-full md:max-w-[720px] 2xl:max-w-[900px] flex-col gap-5">
         {messages.map((msg, i) => (
           <MessageBubble

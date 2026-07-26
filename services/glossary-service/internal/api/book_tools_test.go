@@ -35,6 +35,46 @@ func newActionFixtureNoAdopt(t *testing.T, pool *pgxpool.Pool) *actionFixture {
 	return &actionFixture{srv: srv, jwt: signed, ownerID: owner, bookID: book}
 }
 
+// External MCP discoverability audit #11 — glossary_adopt_standards with no genres/kinds
+// specified is a genuine no-op (the book is already adopted, so even the always-included
+// universal/unknown add nothing new). It must still mint a valid, confirmable token (the
+// call itself isn't an error), but the response must carry a warning so a caller that
+// doesn't read preview_rows closely can't mistake it for a meaningful proposal.
+func TestBookTool_AdoptNoOpWarnsOnEmptyPayload(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool) // pre-adopted book — universal/unknown already present
+	_, card, err := f.srv.toolAdoptStandards(ctxWithUser(f.ownerID), nil,
+		adoptToolIn{BookID: f.bookID.String()}) // no Genres, no Kinds
+	if err != nil {
+		t.Fatalf("propose adopt: %v", err)
+	}
+	if asCard(card).ConfirmToken == "" {
+		t.Fatal("a no-op adopt must still mint a valid confirm_token (it is not an error)")
+	}
+	if asCard(card).Warning == "" {
+		t.Fatalf("a no-real-target adopt must carry a warning, got card=%+v", card)
+	}
+	if !strings.Contains(asCard(card).Warning, "nothing new") {
+		t.Errorf("warning should state that nothing new will be adopted, got %q", asCard(card).Warning)
+	}
+}
+
+// A non-empty adopt (real genres/kinds picked) must NOT carry the no-op warning, even
+// when some of the picked codes happen to already be present — the warning is specific to
+// "no real target was specified", not to the resulting new-count.
+func TestBookTool_AdoptWithTargetsCarriesNoWarning(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, card, err := f.srv.toolAdoptStandards(ctxWithUser(f.ownerID), nil,
+		adoptToolIn{BookID: f.bookID.String(), Genres: []string{"xianxia"}, Kinds: []string{"character"}})
+	if err != nil {
+		t.Fatalf("propose adopt: %v", err)
+	}
+	if asCard(card).Warning != "" {
+		t.Errorf("an adopt with real targets must not carry the no-op warning, got %q", asCard(card).Warning)
+	}
+}
+
 // adopt (C) round-trip: propose → preview (new counts) → confirm → ontology grows.
 func TestBookTool_AdoptRoundTrip(t *testing.T) {
 	pool := openTestDB(t)
@@ -46,12 +86,12 @@ func TestBookTool_AdoptRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("propose adopt: %v", err)
 	}
-	if card.Descriptor != descAdopt || card.Destructive {
+	if asCard(card).Descriptor != descAdopt || asCard(card).Destructive {
 		t.Fatalf("bad adopt card: %+v", card)
 	}
 
 	// preview enumerates new-vs-present (book is empty → xianxia+universal & character+unknown are new)
-	if w := f.preview(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.preview(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("preview: want 200, got %d (%s)", w.Code, w.Body.String())
 	} else {
 		var pv actionPreview
@@ -61,7 +101,7 @@ func TestBookTool_AdoptRoundTrip(t *testing.T) {
 		}
 	}
 	// confirm → adopt copy-down
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusOK {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusOK {
 		t.Fatalf("confirm adopt: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	// universal + xianxia present; character + unknown present
@@ -80,7 +120,7 @@ func TestBookTool_AdoptRoundTrip(t *testing.T) {
 		}
 	}
 	// replay the adopt confirm → single-use 422
-	if w := f.confirm(t, card.ConfirmToken); w.Code != http.StatusUnprocessableEntity {
+	if w := f.confirm(t, asCard(card).ConfirmToken); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("replay adopt: want 422 single-use, got %d", w.Code)
 	}
 }
@@ -126,21 +166,50 @@ func TestBookTool_PatchBaseVersion409(t *testing.T) {
 		t.Fatalf("seed kind: %v", err)
 	}
 
-	// stale base_version → 409-style error
+	// opt-out (empty base_version) → patches, returning the fresh version
 	nm := "Realm v2"
-	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
-		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
-		BaseVersion: "2000-01-01T00:00:00Z", Name: &nm,
-	}); err == nil || !strings.Contains(err.Error(), "changed since") {
-		t.Fatalf("stale base_version: want 409, got %v", err)
-	}
-
-	// opt-out (empty base_version) → patches
 	_, out, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
 		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm", Name: &nm,
 	})
 	if err != nil || out.Status != "patched" || out.Version == "" {
 		t.Fatalf("opt-out patch: %v %+v", err, out)
+	}
+	v1 := out.Version
+
+	// rotate the row's version once more so v1 becomes a PLAUSIBLE-but-stale base
+	_, out2, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm", Name: &nm,
+	})
+	if err != nil || out2.Version == "" || out2.Version == v1 {
+		t.Fatalf("rotate patch: %v %+v", err, out2)
+	}
+
+	// plausible-but-stale base_version → 409, and the error carries the CURRENT
+	// version so the model can retry in ONE step (W0 #1a).
+	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
+		BaseVersion: v1, Name: &nm,
+	}); err == nil || !strings.Contains(err.Error(), "changed since") {
+		t.Fatalf("stale base_version: want 409, got %v", err)
+	} else if !strings.Contains(err.Error(), out2.Version) {
+		t.Fatalf("409 must embed the current version %q, got %v", out2.Version, err)
+	}
+
+	// IMPLAUSIBLE base_version (before the row existed — the model hallucinated it,
+	// never read it) → treated as not-read: the patch APPLIES (W0 #1b, the
+	// hallucination shim; a fabricated timestamp must not start a 409 retry storm).
+	if _, hout, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
+		BaseVersion: "2000-01-01T00:00:00Z", Name: &nm,
+	}); err != nil || hout.Status != "patched" {
+		t.Fatalf("hallucinated base_version must be tolerated as not-read: %v %+v", err, hout)
+	}
+	// … and so is an unparseable one.
+	if _, hout, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
+		BaseVersion: "latest", Name: &nm,
+	}); err != nil || hout.Status != "patched" {
+		t.Fatalf("unparseable base_version must be tolerated as not-read: %v %+v", err, hout)
 	}
 	var got string
 	pool.QueryRow(context.Background(), `SELECT name FROM book_kinds WHERE book_id=$1 AND code='t1_realm'`, f.bookID).Scan(&got)
@@ -238,19 +307,28 @@ func TestBookTool_PatchAttributeLevel(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed attr: %v", err)
 	}
-	// stale base_version → 409
+	// opt-out → patches the right (kind×genre×code) row, returning its version
 	nm := "Title v2"
+	_, out, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal", Name: &nm,
+	})
+	if err != nil || out.Status != "patched" {
+		t.Fatalf("attr patch: %v %+v", err, out)
+	}
+	v1 := out.Version
+	// rotate once more so v1 is plausible-but-stale
+	_, out2, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal", Name: &nm,
+	})
+	if err != nil || out2.Version == v1 {
+		t.Fatalf("rotate attr patch: %v %+v", err, out2)
+	}
+	// plausible-but-stale base_version → 409 (real OCC conflict, kept)
 	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
 		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal",
-		BaseVersion: "2000-01-01T00:00:00Z", Name: &nm,
+		BaseVersion: v1, Name: &nm,
 	}); err == nil || !strings.Contains(err.Error(), "changed since") {
 		t.Fatalf("stale attr patch: want 409, got %v", err)
-	}
-	// opt-out → patches the right (kind×genre×code) row
-	if _, out, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
-		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal", Name: &nm,
-	}); err != nil || out.Status != "patched" {
-		t.Fatalf("attr patch: %v %+v", err, out)
 	}
 	var got string
 	pool.QueryRow(context.Background(),
@@ -258,6 +336,28 @@ func TestBookTool_PatchAttributeLevel(t *testing.T) {
 		 WHERE a.book_id=$1 AND k.code='character' AND a.code='t1_title'`, f.bookID).Scan(&got)
 	if got != nm {
 		t.Errorf("attr patch did not apply: name=%q", got)
+	}
+
+	// D-BOOKPATCH-GENRE-ERRMSG: patching an attribute under the WRONG genre (the
+	// common "move the attribute to another genre" mistake — genre is identity, not
+	// patchable) must NOT return the misleading generic "no live row with that code"
+	// message; it must explain the (kind, genre, code) identity + the delete+recreate
+	// path so the agent doesn't blindly retry.
+	_, _, err = f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title",
+		KindCode: "character", GenreCode: "xianxia", Name: &nm,
+	})
+	if err == nil {
+		t.Fatalf("patch under wrong genre: want resolve failure, got nil")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "no live row with that code") {
+		t.Errorf("still emits the misleading generic message: %q", msg)
+	}
+	for _, want := range []string{"kind, genre, code", "delete it and recreate", "xianxia"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("genre-move error missing %q: %q", want, msg)
+		}
 	}
 }
 
@@ -304,6 +404,97 @@ func TestBookTool_NonGranteeWriteDenied(t *testing.T) {
 	}
 	if _, _, err := f.srv.toolAdoptStandards(stranger, nil, adoptToolIn{BookID: f.bookID.String(), Genres: []string{"xianxia"}}); err == nil {
 		t.Error("non-grantee adopt must be denied")
+	}
+}
+
+// W0 HIGH — the OCC loop must be COMPLETABLE from reads: ontology_read emits a
+// base_version on every row; a patch using THAT exact value succeeds (no
+// hallucination-shim involvement); a stale-but-plausible value (the row rotated
+// in between) still 409s with the current version embedded. Also: create returns
+// the new row's version so a create→patch chain can thread it.
+func TestBookTool_OntologyReadEmitsBaseVersion_OCCLoop(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool) // pre-adopted ontology
+	octx := ctxWithUser(f.ownerID)
+
+	// create returns a non-empty version (F1b — a create→patch chain needs it)
+	_, created, err := f.srv.toolBookCreate(octx, nil, bookCreateToolIn{
+		BookID: f.bookID.String(), Level: "kind", Name: "Clan", Code: "t1_clan",
+	})
+	if err != nil || created.Version == "" {
+		t.Fatalf("create must return the row's base_version: %v %+v", err, created)
+	}
+	// and an attribute so the read covers all three levels
+	if _, _, err := f.srv.toolBookCreate(octx, nil, bookCreateToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Name: "Motto", Code: "t1_motto",
+		KindCode: "character", GenreCode: "universal",
+	}); err != nil {
+		t.Fatalf("seed attr: %v", err)
+	}
+
+	// ontology_read emits base_version on EVERY genre/kind/attribute row
+	_, read, err := f.srv.toolBookOntologyRead(octx, nil, bookOntologyReadToolIn{BookID: f.bookID.String()})
+	if err != nil || read.Ontology == nil {
+		t.Fatalf("ontology read: %v", err)
+	}
+	ont := read.Ontology
+	if len(ont.Genres) == 0 || len(ont.Kinds) == 0 || len(ont.Attributes) == 0 {
+		t.Fatalf("fixture ontology unexpectedly empty: g=%d k=%d a=%d", len(ont.Genres), len(ont.Kinds), len(ont.Attributes))
+	}
+	for _, g := range ont.Genres {
+		if g.BaseVersion == "" {
+			t.Errorf("genre %q read missing base_version", g.Code)
+		}
+	}
+	var clanVersion string
+	for _, k := range ont.Kinds {
+		if k.BaseVersion == "" {
+			t.Errorf("kind %q read missing base_version", k.Code)
+		}
+		if k.Code == "t1_clan" {
+			clanVersion = k.BaseVersion
+		}
+	}
+	for _, a := range ont.Attributes {
+		if a.BaseVersion == "" {
+			t.Errorf("attribute %q read missing base_version", a.Code)
+		}
+	}
+	if clanVersion == "" {
+		t.Fatalf("created kind not present in ontology read")
+	}
+	// the read's version matches what create returned (one format, no drift)
+	if clanVersion != created.Version {
+		t.Errorf("read base_version %q != create's %q", clanVersion, created.Version)
+	}
+
+	// a patch using EXACTLY the read value succeeds
+	nm := "Clan v2"
+	_, p1, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_clan",
+		BaseVersion: clanVersion, Name: &nm,
+	})
+	if err != nil || p1.Status != "patched" || p1.Version == "" || p1.Version == clanVersion {
+		t.Fatalf("patch with the read base_version must succeed + rotate: %v %+v", err, p1)
+	}
+
+	// the previously-read value is now STALE-but-plausible → a real 409, with the
+	// CURRENT version embedded for a one-step retry
+	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_clan",
+		BaseVersion: clanVersion, Name: &nm,
+	}); err == nil || !strings.Contains(err.Error(), "changed since") {
+		t.Fatalf("stale read base_version: want 409, got %v", err)
+	} else if !strings.Contains(err.Error(), p1.Version) {
+		t.Fatalf("409 must embed the current version %q, got %v", p1.Version, err)
+	}
+
+	// …and retrying with the version FROM the 409 (== p1.Version) completes the loop
+	if _, p2, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_clan",
+		BaseVersion: p1.Version, Name: &nm,
+	}); err != nil || p2.Status != "patched" {
+		t.Fatalf("retry with the 409's current version must succeed: %v %+v", err, p2)
 	}
 }
 

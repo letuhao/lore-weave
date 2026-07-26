@@ -20,6 +20,7 @@ import pytest_asyncio
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     delete_passages_for_source,
+    find_passages_by_fulltext,
     find_passages_by_vector,
     passage_canonical_id,
     upsert_passage,
@@ -120,6 +121,91 @@ async def test_delete_passages_for_source(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
+async def test_delete_passages_for_source_canon_scoping_keeps_both(
+    neo4j_driver, test_user
+):
+    """D-R20 (P-3, keep-both) proven live — the reap's canon scoping is DATA-LOSS
+    shaped: the ingester reaps with `canon=False` before writing a draft, and if
+    that scoping is wrong the draft index silently DESTROYS the user's published
+    passages. K27 (2026-07-24): this had only mock coverage (a unit test asserting
+    the kwarg reaches a stubbed cypher), which cannot catch a wrong WHERE clause.
+
+      canon=False → drops ONLY the draft; published + legacy(null) survive
+      canon=None  → drops every bucket (the publish / chapter-delete path)
+
+    The legacy node MUST live at the same `source_id` the reap targets. An earlier
+    draft of this test parked it under its own source_id, so the "legacy survives"
+    assertion passed vacuously — the reap never matched it on `source_id` in the
+    first place, and a flipped `coalesce(p.canon, true)` sailed through. Mutation
+    testing caught that; keep the legacy chunk inside the blast radius.
+    """
+    async def _seed():
+        async with neo4j_driver.session() as session:
+            await upsert_passage(
+                session, user_id=test_user, project_id="p-1",
+                source_type="chapter", source_id="keep-canon", chunk_index=0,
+                text="keep-canon text", embedding=_vec(0.5), embedding_dim=DIM,
+            )
+            # Draft + published share ONE source_id — the exact keep-both case.
+            for canon in (True, False):
+                await upsert_passage(
+                    session, user_id=test_user, project_id="p-1",
+                    source_type="chapter", source_id="keep-both", chunk_index=0,
+                    text=f"keep-both canon={canon}", embedding=_vec(0.5),
+                    embedding_dim=DIM, canon=canon,
+                )
+            # A pre-flag (null-canon) chunk of the SAME source — inside the reap's
+            # blast radius, so `coalesce(p.canon, true)` is what spares it.
+            await upsert_passage(
+                session, user_id=test_user, project_id="p-1",
+                source_type="chapter", source_id="keep-both", chunk_index=1,
+                text="keep-both legacy", embedding=_vec(0.5), embedding_dim=DIM,
+            )
+            await session.run(
+                "MATCH (l:Passage {user_id: $uid, source_id: 'keep-both', chunk_index: 1}) "
+                "REMOVE l.canon",
+                uid=test_user,
+            )
+
+    async def _texts(source_id):
+        async with neo4j_driver.session() as session:
+            res = await session.run(
+                "MATCH (p:Passage {user_id: $uid, source_id: $sid}) RETURN p.text AS t",
+                uid=test_user, sid=source_id,
+            )
+            return {r["t"] async for r in res}
+
+    await _seed()
+    async with neo4j_driver.session() as session:
+        dropped = await delete_passages_for_source(
+            session, user_id=test_user,
+            source_type="chapter", source_id="keep-both", canon=False,
+        )
+    # ONLY the draft bucket goes; the published twin AND the legacy null-canon
+    # chunk survive at the very same source — a legacy node coalesces to
+    # canon=True, so a canon=False reap must not touch it.
+    assert dropped == 1
+    assert await _texts("keep-both") == {"keep-both canon=True", "keep-both legacy"}
+
+    # canon=None → both buckets, the publish / chapter-delete path.
+    async with neo4j_driver.session() as session:
+        await upsert_passage(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="keep-both", chunk_index=0,
+            text="keep-both canon=False", embedding=_vec(0.5),
+            embedding_dim=DIM, canon=False,
+        )
+        dropped_all = await delete_passages_for_source(
+            session, user_id=test_user,
+            source_type="chapter", source_id="keep-both", canon=None,
+        )
+    assert dropped_all == 3
+    assert await _texts("keep-both") == set()
+    # Unrelated sources are untouched throughout.
+    assert await _texts("keep-canon") == {"keep-canon text"}
+
+
+@pytest.mark.asyncio
 async def test_find_passages_by_vector_respects_tenant(neo4j_driver, test_user):
     other_user = f"u-other-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:
@@ -175,15 +261,24 @@ async def test_find_passages_by_vector_canon_filter(neo4j_driver, test_user):
             embedding_model="bge-m3", canon=False,
         )
         # Legacy node with NO canon property (predates the flag) — must read as canon.
+        #
+        # K27 (2026-07-24): this was originally built by cloning the draft node
+        # (`CREATE (l:Passage) SET l = properties(p), l.id = 'legacy-null-canon', …`).
+        # That can never work against a real graph: `SET l = properties(p)` copies
+        # `p.id` first, which trips the `passage_id_unique` constraint immediately —
+        # the later `l.id = …` in the same SET never gets to rescue it. The test
+        # shipped with the feature (55b9eba25) and was never executed, so the flaw
+        # sat unnoticed. Writing a genuine passage and REMOVEing its `canon` flag
+        # models "predates the flag" more honestly anyway: a real node, a real id,
+        # simply missing the property.
+        await upsert_passage(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="chap-legacy", chunk_index=0,
+            text="legacy no-flag", embedding=_vec(0.5), embedding_dim=DIM,
+            embedding_model="bge-m3", canon=True,
+        )
         await session.run(
-            """
-            MATCH (p:Passage {user_id: $uid, source_id: 'chap-draft'})
-            CREATE (l:Passage)
-            SET l = properties(p),
-                l.id = 'legacy-null-canon', l.source_id = 'chap-legacy',
-                l.text = 'legacy no-flag'
-            REMOVE l.canon
-            """,
+            "MATCH (l:Passage {user_id: $uid, source_id: 'chap-legacy'}) REMOVE l.canon",
             uid=test_user,
         )
 
@@ -206,6 +301,52 @@ async def test_find_passages_by_vector_canon_filter(neo4j_driver, test_user):
     assert "unpublished draft" in all_texts
     # canon flag round-trips onto the projection.
     assert all(h.passage.canon for h in canon_only)
+
+
+@pytest.mark.asyncio
+async def test_find_passages_by_fulltext_canon_filter(neo4j_driver, test_user):
+    """K27 (2026-07-24) — the SAME canon gate lives in `find_passages_by_fulltext`
+    (`$include_drafts OR coalesce(node.canon, true) = true`), but until now it had
+    only MOCK wiring coverage: a unit test asserts the kwarg is forwarded, which a
+    wrong `coalesce` default would sail straight through. The vector twin above is
+    live-proven; this closes the gap on its sibling so a typo in either surfaces.
+
+    Same three fixtures as the vector case: published / draft / legacy(no flag).
+    """
+    async with neo4j_driver.session() as session:
+        for source_id, text, canon in (
+            ("ft-canon", "zenith published canon", True),
+            ("ft-draft", "zenith unpublished draft", False),
+            ("ft-legacy", "zenith legacy no-flag", True),
+        ):
+            await upsert_passage(
+                session, user_id=test_user, project_id="p-1",
+                source_type="chapter", source_id=source_id, chunk_index=0,
+                text=text, embedding=_vec(0.5), embedding_dim=DIM,
+                embedding_model="bge-m3", canon=canon,
+            )
+        # Strip the flag from the legacy node — it must still read as canon.
+        await session.run(
+            "MATCH (l:Passage {user_id: $uid, source_id: 'ft-legacy'}) REMOVE l.canon",
+            uid=test_user,
+        )
+
+        canon_only = await find_passages_by_fulltext(
+            session, user_id=test_user, project_id="p-1", query="zenith", limit=10,
+        )
+        all_surfaces = await find_passages_by_fulltext(
+            session, user_id=test_user, project_id="p-1", query="zenith", limit=10,
+            include_drafts=True,
+        )
+
+    canon_texts = {h.passage.text for h in canon_only}
+    all_texts = {h.passage.text for h in all_surfaces}
+    # The query must actually match, else the assertions below pass vacuously.
+    assert canon_texts, "fulltext returned nothing — the CJK index or query is broken"
+    assert "zenith published canon" in canon_texts
+    assert "zenith legacy no-flag" in canon_texts       # coalesce(canon, true)
+    assert "zenith unpublished draft" not in canon_texts
+    assert "zenith unpublished draft" in all_texts      # include_drafts opens the gate
 
 
 @pytest.mark.asyncio

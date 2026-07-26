@@ -9,7 +9,10 @@ import type { AdoptRequest } from '../../tieringTypes';
 import { OntologyColumn, type ColumnRow } from './OntologyColumn';
 import { AttributeEditorPanel } from './AttributeEditorPanel';
 import { AdoptPicklistModal } from './AdoptPicklistModal';
-import { QuickCreateModal } from './QuickCreateModal';
+import { BookKindGenresModal } from './BookKindGenresModal';
+import { QuickCreateModal, type QuickCreatePayload } from './QuickCreateModal';
+import { ConfirmDialog } from '@/components/shared';
+import { KindResearchPanel } from './KindResearchPanel';
 
 /** 01-manage: the book ontology Manage workspace. Genre → kind → attribute drilldown
  *  over the book-local ontology, with adopt copy-down + book-tier attribute editing.
@@ -23,6 +26,13 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const [attrId, setAttrId] = useState<string | null>(null);
   const [showAdopt, setShowAdopt] = useState(false);
   const [quickCreate, setQuickCreate] = useState<'genre' | 'kind' | null>(null);
+  const [editTarget, setEditTarget] = useState<{
+    type: 'genre' | 'kind';
+    id: string;
+    initial: { name: string; icon?: string; color?: string };
+  } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'genre' | 'kind'; id: string; name: string } | null>(null);
+  const [linkTarget, setLinkTarget] = useState<{ id: string; name: string } | null>(null);
 
   const { genres, kinds, kind_genres, attributes } = ont.ontology;
 
@@ -65,10 +75,39 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const adopt = (req: AdoptRequest) =>
     guard(() => ont.adopt(req), t('toast.adopted'), 'toast.adopt_failed');
 
-  const onQuickCreate = (payload: { name: string; icon?: string; code?: string }) =>
+  const onQuickCreate = (payload: QuickCreatePayload) =>
     quickCreate === 'genre'
       ? guard(() => ont.createGenre(payload), t('toast.saved'), 'toast.save_failed')
-      : guard(() => ont.createKind(payload), t('toast.saved'), 'toast.save_failed');
+      : guard(
+          async () => {
+            const k = (await ont.createKind(payload)) as { book_kind_id?: string };
+            // A book kind with no genre link is invisible in this genre-first drilldown
+            // (and can hold no attributes) — link the new kind to the genre it was
+            // created under so it appears immediately. (#25 create-then-vanish.)
+            if (genreId && k?.book_kind_id) await ont.setKindGenres(k.book_kind_id, [genreId]);
+          },
+          t('toast.saved'),
+          'toast.save_failed',
+        );
+
+  // Open the settings modal for a row, seeded from the live ontology (so the
+  // colour swatch + icon reflect the current value, not a stale row prop).
+  const openEditGenre = (id: string) => {
+    const g = genres.find((x) => x.genre_id === id);
+    if (g) setEditTarget({ type: 'genre', id, initial: { name: g.name, icon: g.icon, color: g.color } });
+  };
+  const openEditKind = (id: string) => {
+    const k = kinds.find((x) => x.book_kind_id === id);
+    if (k) setEditTarget({ type: 'kind', id, initial: { name: k.name, icon: k.icon, color: k.color } });
+  };
+  // Patch name/icon/color of the edited row. Code is the stable key (not sent).
+  const onEditSubmit = (payload: QuickCreatePayload) => {
+    if (!editTarget) return Promise.resolve();
+    const changes = { name: payload.name, icon: payload.icon ?? '', color: payload.color };
+    return editTarget.type === 'genre'
+      ? guard(() => ont.patchGenre(editTarget.id, changes), t('toast.saved'), 'toast.save_failed')
+      : guard(() => ont.patchKind(editTarget.id, changes), t('toast.saved'), 'toast.save_failed');
+  };
   const onNewAttr = () => {
     if (!genreId || !kindId) return;
     void guard(
@@ -76,6 +115,35 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
       t('toast.saved'),
       'toast.save_failed',
     );
+  };
+
+  // Genre/kind delete cascades server-side (deprecates attributes + kind links), so it
+  // goes through a destructive confirm. On success, clear any selection that pointed at
+  // the now-deleted row so the drilldown doesn't show a stale parent.
+  const onConfirmDelete = () => {
+    if (!confirmDelete) return;
+    const { type, id } = confirmDelete;
+    void guard(
+      async () => {
+        if (type === 'genre') {
+          await ont.deleteGenre(id);
+          if (genreId === id) {
+            setGenreId(null);
+            setKindId(null);
+            setAttrId(null);
+          }
+        } else {
+          await ont.deleteKind(id);
+          if (kindId === id) {
+            setKindId(null);
+            setAttrId(null);
+          }
+        }
+      },
+      t('toast.deleted'),
+      'toast.delete_failed',
+    );
+    setConfirmDelete(null);
   };
 
   if (ont.isLoading) return <p className="p-4 text-sm text-muted-foreground">{t('manage.loading')}</p>;
@@ -134,6 +202,10 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           onNew={() => setQuickCreate('genre')}
           newLabel={t('col.new_genre')}
           emptyText={t('col.select_genre')}
+          onEdit={(r) => openEditGenre(r.id)}
+          editLabel={t('col.edit_genre')}
+          onDelete={(r) => setConfirmDelete({ type: 'genre', id: r.id, name: r.label })}
+          deleteLabel={t('col.delete_genre')}
         />
         <OntologyColumn
           title={genreId ? t('col.kinds_in', { genre: genres.find((g) => g.genre_id === genreId)?.name ?? '' }) : t('col.kinds')}
@@ -147,6 +219,12 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           newLabel={t('col.new_kind')}
           emptyText={genreId ? t('col.empty_kinds') : t('col.select_genre')}
           disabled={!genreId}
+          onEdit={(r) => openEditKind(r.id)}
+          editLabel={t('col.edit_kind')}
+          onLinks={(r) => setLinkTarget({ id: r.id, name: r.label })}
+          linksLabel={t('col.links_kind')}
+          onDelete={(r) => setConfirmDelete({ type: 'kind', id: r.id, name: r.label })}
+          deleteLabel={t('col.delete_kind')}
         />
         <OntologyColumn
           title={t('col.attributes')}
@@ -173,7 +251,17 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
             'toast.delete_failed',
           )
         }
+        onRevert={(id) => guard(() => ont.revertAttribute(id), t('toast.reverted'), 'toast.revert_failed')}
       />
+
+      {/* D-BATCH-RESEARCH-JOB — batch web-research over all entities of the selected kind. */}
+      {kindId && (
+        <KindResearchPanel
+          bookId={bookId}
+          kindId={kindId}
+          kindName={kinds.find((k) => k.book_kind_id === kindId)?.name ?? ''}
+        />
+      )}
 
       {showAdopt && (
         <AdoptPicklistModal
@@ -185,11 +273,59 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
         />
       )}
 
+      {linkTarget && (
+        <BookKindGenresModal
+          key={linkTarget.id}
+          kindName={linkTarget.name}
+          genres={genres}
+          linkedGenreIds={kind_genres.filter((l) => l.kind_id === linkTarget.id).map((l) => l.genre_id)}
+          onSave={async (ids) => {
+            const r = await ont.setKindGenres(linkTarget.id, ids);
+            // If we just unlinked this kind from the genre currently in view, it leaves
+            // the kinds column — clear any drilldown selection pointing at it so the
+            // attribute panel + research panel don't keep targeting a detached kind.
+            if (linkTarget.id === kindId && genreId && !ids.includes(genreId)) {
+              setKindId(null);
+              setAttrId(null);
+            }
+            return r;
+          }}
+          onClose={() => setLinkTarget(null)}
+        />
+      )}
+
       {quickCreate && (
         <QuickCreateModal
           kind={quickCreate}
           onCreate={onQuickCreate}
           onClose={() => setQuickCreate(null)}
+        />
+      )}
+
+      {editTarget && (
+        <QuickCreateModal
+          kind={editTarget.type}
+          mode="edit"
+          initial={editTarget.initial}
+          onCreate={onEditSubmit}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setConfirmDelete(null);
+          }}
+          variant="destructive"
+          title={t(confirmDelete.type === 'genre' ? 'del.genre_title' : 'del.kind_title', {
+            name: confirmDelete.name,
+          })}
+          description={t(confirmDelete.type === 'genre' ? 'del.genre_body' : 'del.kind_body')}
+          confirmLabel={t('del.confirm')}
+          cancelLabel={t('del.cancel')}
+          onConfirm={onConfirmDelete}
         />
       )}
     </div>

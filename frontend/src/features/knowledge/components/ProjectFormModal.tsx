@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import { BookPicker } from '@/components/shared/BookPicker';
+import { useChatCapabilities } from '@/features/chat-ai-settings/hooks/useChatCapabilities';
 import { isVersionConflict } from '../api';
 import type {
   Project,
@@ -37,6 +38,13 @@ interface Props {
     payload: ProjectUpdatePayload,
     expectedVersion: number,
   ) => Promise<Project>;
+  /** D-KG-NO-CREATE-CTA: a caller that already knows WHICH book this project is
+   *  for (e.g. a book-scoped studio panel's "no project yet" empty state) locks
+   *  the BookPicker to that book instead of leaving it open to any book — the
+   *  whole reason the caller is showing this form is "create the KG for THIS
+   *  book". Create mode only; ignored in edit mode (book_id is edited via the
+   *  normal picker there). */
+  initialBookId?: string;
 }
 
 export function ProjectFormModal({
@@ -46,8 +54,17 @@ export function ProjectFormModal({
   project,
   onCreate,
   onUpdate,
+  initialBookId,
 }: Props) {
   const { t } = useTranslation('knowledge');
+  // D-WS4C-EFFECTIVE-VALUE — the deploy-tier ceiling on canon capture. The user
+  // knob below is only HALF the story: `effective = deploy_allows && knob`. A
+  // deployment can kill-switch capture platform-wide, so we surface that here
+  // instead of letting the toggle silently do nothing. Unknown (null / fetch
+  // failed) ⇒ assume allowed — the ceiling defaults on, so a transient outage
+  // must not fabricate a "disabled by deployment" warning.
+  const { capabilities } = useChatCapabilities();
+  const canonCaptureDeployAllows = capabilities?.canon_capture?.deploy_allows !== false;
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [projectType, setProjectType] = useState<ProjectType>('general');
@@ -69,6 +86,8 @@ export function ProjectFormModal({
   // the boolean-toggle pattern used elsewhere in the project UI.
   const [toolCallingEnabled, setToolCallingEnabled] = useState(true);
   const [memoryRememberConfirm, setMemoryRememberConfirm] = useState(false);
+  // WS-4C Half A — opt-in: each capture is an LLM call billed to the user's own model.
+  const [canonCaptureEnabled, setCanonCaptureEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   // D-K8-03: track the version at dialog open time so we can send it
   // back in If-Match on save. Updated on 412 so the user can retry
@@ -103,13 +122,14 @@ export function ProjectFormModal({
       setInitialRerankModel(project.rerank_model);
       setToolCallingEnabled(project.tool_calling_enabled);
       setMemoryRememberConfirm(project.memory_remember_confirm);
+      setCanonCaptureEnabled(project.canon_capture_enabled);
       setBaselineVersion(project.version);
     } else {
       setName('');
       setDescription('');
-      setProjectType('general');
+      setProjectType(initialBookId ? 'book' : 'general');
       setInstructions('');
-      setBookId('');
+      setBookId(initialBookId ?? '');
       setGenre('');
       setEmbeddingModel(null);
       setInitialEmbeddingModel(null);
@@ -117,9 +137,10 @@ export function ProjectFormModal({
       setInitialRerankModel(null);
       setToolCallingEnabled(true);
       setMemoryRememberConfirm(false);
+      setCanonCaptureEnabled(false);
       setBaselineVersion(null);
     }
-  }, [open, mode, project]);
+  }, [open, mode, project, initialBookId]);
 
   const trimmedName = name.trim();
   const trimmedDescription = description.trim();
@@ -159,6 +180,8 @@ export function ProjectFormModal({
           // edit — they're plain form fields like name/description.
           tool_calling_enabled: toolCallingEnabled,
           memory_remember_confirm: memoryRememberConfirm,
+          // WS-4C Half A — same plain-form-field treatment as the two above.
+          canon_capture_enabled: canonCaptureEnabled,
         };
         // K12.4: include embedding_model only when the user changed it.
         // Omitting the field leaves the column unchanged on the backend
@@ -294,13 +317,25 @@ export function ProjectFormModal({
           <span className="text-xs font-medium text-muted-foreground">
             {t('projects.form.bookId')}
           </span>
-          {/* C4 (BL-3/G6): pick a book by title — no raw UUID. Empty stays valid
-              (book optional); the stored value is the book_id. */}
-          <BookPicker
-            value={bookId === '' ? null : bookId}
-            onChange={(id) => setBookId(id ?? '')}
-            placeholder={t('projects.form.bookIdPlaceholder', { defaultValue: 'Search your books by title…' })}
-          />
+          {mode === 'create' && initialBookId ? (
+            // D-KG-NO-CREATE-CTA: opened from that book's own "no project yet"
+            // empty state — locked, not just pre-filled, so the create action
+            // can't accidentally attach the new project to a different book.
+            <p
+              data-testid="project-form-book-locked"
+              className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+            >
+              {t('projects.form.bookIdLocked', { defaultValue: 'This book (locked)' })}
+            </p>
+          ) : (
+            // C4 (BL-3/G6): pick a book by title — no raw UUID. Empty stays valid
+            // (book optional); the stored value is the book_id.
+            <BookPicker
+              value={bookId === '' ? null : bookId}
+              onChange={(id) => setBookId(id ?? '')}
+              placeholder={t('projects.form.bookIdPlaceholder', { defaultValue: 'Search your books by title…' })}
+            />
+          )}
         </label>
 
         <label className="flex flex-col gap-1">
@@ -406,6 +441,55 @@ export function ProjectFormModal({
                       'Facts the AI wants to remember wait for your approval instead of saving automatically.',
                   })}
                 </span>
+              </span>
+            </label>
+
+            {/* WS-4C Half A — canon auto-capture. OPT-IN: every capture is an LLM call
+                billed to the user's own model, so the hint says so plainly rather than
+                letting the cost be a surprise. Needs a linked book (there is no glossary
+                inbox without one), which mirrors the backend's `no_book` gate. */}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={canonCaptureEnabled}
+                onChange={(e) => setCanonCaptureEnabled(e.target.checked)}
+                disabled={saving || !bookId}
+                className="mt-0.5 h-3.5 w-3.5 rounded border"
+                data-testid="project-canon-capture-toggle"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium text-foreground">
+                  {t('projects.form.canonCapture', {
+                    defaultValue: 'Auto-capture new names from chat',
+                  })}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {bookId
+                    ? t('projects.form.canonCaptureHint', {
+                        defaultValue:
+                          'Every few turns, names your conversation introduces are added to this book’s glossary review inbox as suggestions — never as canon. Uses one extra AI call per capture, billed to your own model.',
+                      })
+                    : t('projects.form.canonCaptureNoBook', {
+                        defaultValue:
+                          'Link a book to this project to capture names into its glossary.',
+                      })}
+                </span>
+                {/* D-WS4C-EFFECTIVE-VALUE — the honest effective value + source. When
+                    the deployment kill-switches capture off, the knob above CAN'T take
+                    effect (effective = deploy_allows && knob). We say so plainly and
+                    keep the user's choice saved for when it's re-enabled, rather than
+                    letting the toggle read "on" while nothing captures. */}
+                {bookId && !canonCaptureDeployAllows && (
+                  <span
+                    className="text-[11px] font-medium text-amber-600 dark:text-amber-500"
+                    data-testid="project-canon-capture-ceiling-off"
+                  >
+                    {t('projects.form.canonCaptureCeilingOff', {
+                      defaultValue:
+                        'Turned off for this deployment — your choice is saved, but capture won’t run until an administrator re-enables it.',
+                    })}
+                  </span>
+                )}
               </span>
             </label>
           </div>

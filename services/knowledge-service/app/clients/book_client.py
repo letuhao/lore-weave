@@ -14,6 +14,7 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -51,13 +52,39 @@ class BookClient:
         timeout_s: float,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
+        # W3: shared factory bakes X-Internal-Token + JSON + per-request X-Trace-Id
+        # (trace_id_var). The local `tid` reads remain for the log lines.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, trace_id_provider=trace_id_var.get,
         )
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    async def get_book_kind(self, book_id: UUID, user_id: UUID) -> str | None:
+        """WS-1.4 — the book's ``kind`` ('novel'|'document'|'lore'|'diary'), or None on any
+        failure. Reads book-service's grant-gated ``GET /internal/books/{id}/access?user_id=``
+        (``kind`` rides that response behind a grant, WS-1.2 D16). Used to enforce that the
+        assistant knowledge project binds ONLY to a diary — anchoring it to a shareable novel
+        would let a collaborator read the assistant's private memory. Returns None (fail-safe)
+        when the book is unreachable/not visible; the caller must treat None as 'not a diary'
+        and refuse."""
+        url = f"{self._base_url}/internal/books/{book_id}/access"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(url, params={"user_id": str(user_id)})
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d (kind unknown → treat as non-diary), trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            kind = resp.json().get("kind")
+            return kind if isinstance(kind, str) else None
+        except (httpx.HTTPError, ValueError, KeyError):
+            logger.warning("book-service kind fetch failed (→ non-diary), trace_id=%s", tid)
+            return None
 
     async def count_chapters(
         self,
@@ -66,6 +93,7 @@ class BookClient:
         from_sort: int | None = None,
         to_sort: int | None = None,
         editorial_status: str | None = None,
+        kg_indexed: bool = False,
     ) -> int | None:
         """Return the number of active chapters for a book.
 
@@ -75,11 +103,18 @@ class BookClient:
         extraction estimate endpoint so users previewing "chapters
         10–20 only" see the range count rather than the whole book.
 
-        CM3c — the extraction cost-estimate passes ``editorial_status=
-        'published'`` so the preview count matches what the gated
-        whole-book rebuild actually extracts (drafts are skipped). The
-        same server-side filter backs the worker enumeration → no
-        estimate/enumeration divergence (R1-BLOCK#1).
+        WS-0.6 — the extraction cost-estimate passes ``kg_indexed=True`` so the
+        preview count matches what the re-keyed whole-book rebuild actually
+        extracts. The SAME server-side filter backs the worker enumeration
+        (worker-ai ``list_chapters(kg_indexed=True)``), so estimate and
+        enumeration cannot diverge (R1-BLOCK#1, restated against the new gate).
+
+        This replaces the old CM3c ``editorial_status='published'`` gate:
+        publishing no longer decides KG membership, so a preview keyed on it
+        would report "0 chapters" for a user who indexed 50 drafts.
+
+        ``editorial_status`` is kept for the callers that legitimately still ask
+        the publish question.
 
         Returns None on any failure (timeout, connection error, bad
         response) — the caller decides how to handle missing data.
@@ -91,13 +126,14 @@ class BookClient:
             params["to_sort"] = str(to_sort)
         if editorial_status is not None:
             params["editorial_status"] = editorial_status
+        if kg_indexed:
+            params["kg_indexed"] = "true"
         url = f"{self._base_url}/internal/books/{book_id}/chapters"
         tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url,
                 params=params,
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning(
@@ -125,13 +161,22 @@ class BookClient:
         book_id: UUID,
         *,
         editorial_status: str | None = None,
+        kg_indexed: bool = False,
     ) -> list[dict] | None:
         """D-RAWSEARCH-CANON-WIRING — list ALL a book's chapters (id + sort_order +
-        editorial_status) via ``GET /internal/books/{book_id}/chapters``, paging
-        past book-service's 100-row clamp so a >100-chapter book isn't silently
-        truncated. ``editorial_status='draft'`` scopes to unpublished chapters
-        (what the on-demand draft-indexing endpoint enumerates). Returns the full
-        item list, or None on any failure (caller decides)."""
+        editorial_status + kg_indexed_revision_id + kg_exclude) via
+        ``GET /internal/books/{book_id}/chapters``, paging past book-service's 100-row
+        clamp so a >100-chapter book isn't silently truncated.
+
+        ``editorial_status='draft'`` scopes to unpublished chapters (what the on-demand
+        draft-indexing endpoint enumerates).
+
+        WS-0.6: ``kg_indexed=True`` scopes to the chapters that are IN the knowledge
+        graph (``kg_indexed_revision_id IS NOT NULL AND NOT kg_exclude``) — the gate the
+        passage backfill/ingester enumerate on. It is a DIFFERENT question from
+        ``editorial_status``: publishing no longer decides KG membership.
+
+        Returns the full item list, or None on any failure (caller decides)."""
         url = f"{self._base_url}/internal/books/{book_id}/chapters"
         tid = trace_id_var.get()
         collected: list[dict] = []
@@ -144,10 +189,11 @@ class BookClient:
                 }
                 if editorial_status is not None:
                     params["editorial_status"] = editorial_status
+                if kg_indexed:
+                    params["kg_indexed"] = "true"
                 resp = await self._http.get(
                     url,
                     params=params,
-                    headers={"X-Trace-Id": tid} if tid else None,
                 )
                 if resp.status_code != 200:
                     logger.warning(
@@ -202,7 +248,6 @@ class BookClient:
             resp = await self._http.get(
                 url,
                 params={"user_id": str(user_id)},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
         except httpx.HTTPError as exc:
             logger.warning("book-service world-books unreachable: %s, trace_id=%s", exc, tid)
@@ -252,7 +297,6 @@ class BookClient:
                     "q": q, "limit": str(limit),
                     "granularity": granularity, "surface": surface,
                 },
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning(
@@ -269,8 +313,69 @@ class BookClient:
             )
             return None
 
+    async def get_reader_language(
+        self, book_id: UUID, user_id: UUID,
+    ) -> str | None:
+        """KG-ML M4 (DD3) — resolve a user's stored reader-language for a book.
+
+        Calls book-service GET /internal/books/{book_id}/reader-language?user_id=
+        (the M3 resolver source). Returns the stored tag (e.g. "vi") or None when
+        unset / on ANY failure — language-aware ranking then falls back to the
+        next resolver tier (detected query language) and never 500s the search.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/reader-language"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                params={"user_id": str(user_id)},
+            )
+            if resp.status_code != 200:
+                return None
+            lang = resp.json().get("reader_language")
+            return lang if isinstance(lang, str) and lang.strip() else None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service reader-language unavailable: %s, trace_id=%s", exc, tid,
+            )
+            return None
+
+    async def get_reading_position(
+        self, book_id: UUID, user_id: UUID,
+    ) -> UUID | None:
+        """W11-M2 (spec §4.2) — resolve a reader's FURTHEST-read chapter for a book,
+        so the reader facade can server-enforce a spoiler cutoff from the reader's
+        OWN position (never an LLM-supplied arg).
+
+        Calls book-service GET /internal/books/{book_id}/reading-position?user_id=
+        (W11-M1). Returns the furthest-read chapter_id, or **None** — the fail-closed
+        signal — when the reader has no active read chapter OR on ANY failure. Note
+        the route returns HTTP 200 with ``furthest_chapter_id: null`` for "no
+        position" (not a 404), so BOTH the 200-null case and a transport failure
+        collapse to None here; the facade then windows to nothing (a reader whose
+        position can't be pinned sees no future lore, never all of it).
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/reading-position"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(url, params={"user_id": str(user_id)})
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            raw = body.get("furthest_chapter_id") if isinstance(body, dict) else None
+            if not raw:
+                return None  # 200 with null furthest_chapter_id = no position (fail-closed)
+            return UUID(str(raw))
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            # ValueError also covers a malformed chapter_id (UUID() raises) → None, so a
+            # garbled book-service response fails CLOSED rather than 500-ing a reader tool.
+            logger.warning(
+                "book-service reading-position unavailable: %s, trace_id=%s", exc, tid,
+            )
+            return None
+
     async def get_chapter_titles(
-        self, chapter_ids: list[UUID],
+        self, chapter_ids: list[UUID], language: str | None = None,
     ) -> dict[UUID, str]:
         """C6 (D-K19b.3-01 + D-K19e-β-01) — batch-resolve chapter titles.
 
@@ -279,6 +384,15 @@ class BookClient:
         knowledge-service Timeline + Jobs responses to denormalize
         chapter titles inline so the FE can render
         "Chapter 12 — The Bridge Duel" instead of ``…last8chars``.
+
+        KG-TL M1 — ``language`` (optional reader-language subtag) forwards
+        to book-service so the heading resolves to the SIBLING-language
+        chapter when one exists, else the source heading. Omit / None →
+        legacy behavior (the requested chapter's own-language heading).
+        This is what removes the Timeline's "vi heading beside zh event"
+        mix: with a reader language the heading either matches the reader
+        OR honestly shows source — never the book's arbitrary display
+        language out of a language-blind join.
 
         Graceful on every failure path: returns ``{}`` so callers
         render the UUID-suffix fallback via the existing
@@ -289,11 +403,15 @@ class BookClient:
             return {}
         url = f"{self._base_url}/internal/chapters/titles"
         tid = trace_id_var.get()
+        payload: dict[str, object] = {
+            "chapter_ids": [str(cid) for cid in chapter_ids]
+        }
+        if language:
+            payload["language"] = language
         try:
             resp = await self._http.post(
                 url,
-                json={"chapter_ids": [str(cid) for cid in chapter_ids]},
-                headers={"X-Trace-Id": tid} if tid else None,
+                json=payload,
             )
             if resp.status_code != 200:
                 logger.warning(
@@ -320,6 +438,52 @@ class BookClient:
             )
             return {}
 
+    async def is_chapter_kg_excluded(self, book_id: UUID, chapter_id: UUID) -> bool:
+        """review-impl — is this chapter CURRENTLY excluded from the knowledge graph?
+
+        The event payload carries `kg_exclude` as of EMIT time, which is not enough: our
+        bus is at-least-once, so a `chapter.kg_indexed` / `chapter.published` message can
+        be redelivered and reclaimed AFTER the user excluded the chapter. Acting on the
+        stale payload would RESURRECT a chapter the user asked us to forget — facts,
+        passages and a re-armed extraction, permanently, with no further event to undo it.
+
+        So the KG-write handlers re-check the live state. Uses the existing batch
+        canon-markers route (book-scoped; the internal token authenticates us).
+
+        FAILS CLOSED. If book-service is unreachable, or the chapter is absent from the
+        response, we return True = "treat as excluded" and skip the write. Rationale: a
+        skipped index is recoverable (the user clicks again, or the sweeper heals it); an
+        un-retractable resurrection of forgotten prose is not. Do NOT "helpfully" default
+        to False here.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/canon-markers"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(url, json={"chapter_ids": [str(chapter_id)]})
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d — treating chapter %s as kg-EXCLUDED "
+                    "(fail-closed), trace_id=%s",
+                    url, resp.status_code, chapter_id, tid,
+                )
+                return True
+            marker = (resp.json().get("markers") or {}).get(str(chapter_id))
+            if marker is None:
+                logger.warning(
+                    "chapter %s absent from canon-markers (deleted/trashed?) — treating as "
+                    "kg-EXCLUDED (fail-closed), trace_id=%s",
+                    chapter_id, tid,
+                )
+                return True
+            return bool(marker.get("kg_exclude"))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable checking kg_exclude for chapter %s: %s — "
+                "treating as EXCLUDED (fail-closed), trace_id=%s",
+                chapter_id, exc, tid,
+            )
+            return True
+
     async def get_chapter_sort_orders(
         self, chapter_ids: list[UUID],
     ) -> dict[UUID, int]:
@@ -345,7 +509,6 @@ class BookClient:
             resp = await self._http.post(
                 url,
                 json={"chapter_ids": [str(cid) for cid in chapter_ids]},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning(
@@ -389,9 +552,7 @@ class BookClient:
         url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
         tid = trace_id_var.get()
         try:
-            resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.get(url)
             if resp.status_code != 200:
                 logger.warning(
                     "book-service %s returned %d, trace_id=%s",
@@ -421,9 +582,7 @@ class BookClient:
         url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
         tid = trace_id_var.get()
         try:
-            resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.get(url)
             if resp.status_code != 200:
                 return None, []
             data = resp.json()
@@ -461,9 +620,7 @@ class BookClient:
         )
         tid = trace_id_var.get()
         try:
-            resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.get(url)
             if resp.status_code != 200:
                 logger.warning(
                     "book-service %s returned %d, trace_id=%s",
@@ -499,9 +656,7 @@ class BookClient:
         url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}/scenes"
         tid = trace_id_var.get()
         try:
-            resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.get(url)
             if resp.status_code != 200:
                 logger.warning(
                     "book-service %s returned %d, trace_id=%s",
@@ -535,9 +690,7 @@ class BookClient:
         url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}/draft-text"
         tid = trace_id_var.get()
         try:
-            resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.get(url)
             if resp.status_code != 200:
                 logger.warning(
                     "book-service %s returned %d, trace_id=%s",

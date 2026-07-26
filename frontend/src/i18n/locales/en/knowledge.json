@@ -22,7 +22,40 @@
     "hint": "Scroll to zoom · drag empty space to pan · click a node for detail · ⊞ to expand",
     "loading": "Loading graph…",
     "loadFailed": "Failed to load graph: {{error}}",
-    "empty": "No knowledge graph yet — build this project to explore its network."
+    "empty": "No knowledge graph yet — build this project to explore its network.",
+    "emptyLens": "No relations match this lens — try another view or an earlier chapter, or clear the lens.",
+    "truncatedLens": "showing the first {{n}} relations of this lens",
+    "hintLens": "Scroll to zoom · drag to pan · click a node for detail",
+    "lens": {
+      "view": "View",
+      "noView": "All relations",
+      "asOf": "As of chapter",
+      "latest": "latest",
+      "clear": "Clear lens"
+    }
+  },
+  "schemaSection": {
+    "title": "Schema",
+    "subtitle": "Author this project's knowledge-graph schema — node kinds, edge types, fact types and vocab. Edits apply to this project's graph.",
+    "editCta": "Edit schema",
+    "freeEdges": "Off-vocabulary relations are allowed (free edges).",
+    "closedEdges": "Relations are limited to the declared edge-types; others go to triage.",
+    "error": "Couldn't load this project's schema.",
+    "emptyHelp": "This project has no schema yet. Start from scratch, clone a template, or adopt one.",
+    "newBlank": "New blank schema",
+    "schemaNamePlaceholder": "Schema name",
+    "createBlankButton": "Create blank",
+    "created": "Schema created",
+    "cloneTemplate": "Clone a template",
+    "pickTemplate": "Pick a template…",
+    "cloneButton": "Clone into my schemas",
+    "cloned": "Template cloned",
+    "adoptTemplate": "Adopt a template",
+    "adoptHelp": "Copy a template into this project (checks the glossary first).",
+    "adoptCta": "Adopt on the book's Ontology tab",
+    "adoptBooklessHint": "Adopt is available for book-linked projects.",
+    "forbidden": "You need Manage access on this project to author the schema.",
+    "createFailed": "Couldn't create the schema."
   },
   "shell": {
     "backToProjects": "All projects",
@@ -35,6 +68,7 @@
       "proposals": "Proposals",
       "gap": "Gap",
       "insights": "Insights",
+      "schema": "Schema",
       "graph": "Build / Explore graph"
     },
     "notFound": "Project not found.",
@@ -48,7 +82,8 @@
       "extractionDisabled": "Disabled",
       "book": "Book",
       "world": "World",
-      "none": "—"
+      "none": "—",
+      "triageNudge": "{{count}} extracted element(s) need triage"
     },
     "placeholder": {
       "proposals": "Pending proposals land here (C11).",
@@ -216,7 +251,12 @@
       "matchLabel": "Match score",
       "openLabel": "Open {{sourceType}} drawer with {{score}} match",
       "hubBadge": "Summary",
-      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface."
+      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface.",
+      "langHint": "Source language: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{count}} of {{total}} results are in your language ({{lang}}); the rest are shown in the source language.",
+      "none": "No results in your language ({{lang}}); showing source-language results."
     },
     "detail": {
       "title": "Drawer",
@@ -273,7 +313,8 @@
       "chapterLabel": "Chapter",
       "chapterUnresolved": "Chapter id {{id}} — title unresolved",
       "participantsMore": "+{{count}} more",
-      "confidenceLabel": "Confidence"
+      "confidenceLabel": "Confidence",
+      "timeLabel": "In-story time"
     },
     "detail": {
       "summary": "Summary",
@@ -286,7 +327,16 @@
       "refreshing": "refreshing…",
       "prev": "Previous",
       "next": "Next",
-      "backToFirst": "Back to first page"
+      "backToFirst": "Back to first page",
+      "pageSize": "Per page"
+    },
+    "localization": {
+      "sourceMarker": "Shown in source language — translation pending"
+    },
+    "search": {
+      "placeholder": "Search events…",
+      "label": "Search events",
+      "clear": "Clear search"
     }
   },
   "entities": {
@@ -346,6 +396,8 @@
       "edit": "Edit",
       "merge": "Merge into another entity",
       "metadata": "Metadata",
+      "description": "Description",
+      "descriptionSource": "From the linked glossary entry",
       "aliases": "Aliases",
       "relations": "Relations ({{count}})",
       "truncated": "Showing {{shown}} of {{total}} — filter or search in the table",
@@ -363,7 +415,8 @@
         "global": "Global",
         "confidence": "Confidence",
         "mentions": "Mentions",
-        "anchor": "Anchor score"
+        "anchor": "Anchor score",
+        "scope": "Scope"
       },
       "promote": "Promote to glossary",
       "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
@@ -378,10 +431,34 @@
       "factSource": "Chapter {{chapter}}",
       "factType": {
         "decision": "Decision",
-        "preference": "Preference",
-        "milestone": "Milestone",
-        "negation": "Negation"
-      }
+        "preference": "Likes / dislikes",
+        "milestone": "Milestone / event",
+        "negation": "Denial (not true)",
+        "statement": "Trait / fact",
+        "commitment": "Promise / commitment"
+      },
+      "addFact": "Add fact",
+      "addFactTitle": "Add a fact about this entity",
+      "factContentLabel": "Fact",
+      "factContentPlaceholder": "e.g. Distrusts the Council after the betrayal",
+      "factTypeLabel": "Type",
+      "factPredicatePlaceholder": "how they relate (e.g. loyal to)",
+      "factObjectPlaceholder": "the other entity (e.g. House Vaeth)",
+      "addFactSave": "Save fact",
+      "addFactCancel": "Cancel",
+      "addFactSuccess": "Fact added",
+      "addFactFailed": "Could not add fact: {{error}}",
+      "markWrong": "Mark wrong",
+      "markWrongConfirm": "Mark this fact as wrong? It will be invalidated (removed from recall) but kept in history.",
+      "markWrongSuccess": "Fact marked wrong",
+      "markWrongFailed": "Could not invalidate fact: {{error}}",
+      "factTypeHelp": "What kind of fact is this?",
+      "factAdvancedToggle": "Link to another entity (optional)",
+      "replaceFact": "Replace this fact",
+      "replaceFactSave": "Save replacement",
+      "replaceFactSuccess": "Fact replaced",
+      "markWrongUndo": "Undo",
+      "markWrongUndoFailed": "Could not undo: {{error}}"
     },
     "edit": {
       "title": "Edit entity",
@@ -421,6 +498,41 @@
       "errArchived": "Cannot merge archived entities. Restore them first.",
       "errGlossaryConflict": "Both entities are anchored to different glossary entries. Resolve the glossary anchors before merging.",
       "errUnknown": "Merge failed: {{reason}}"
+    },
+    "create": {
+      "title": "New entity",
+      "description": "Hand-author a knowledge-graph entity. It starts as discovered; anchor it later to make it canonical.",
+      "newButton": "New Entity",
+      "needsProject": "Select a project first",
+      "field": {
+        "name": "Name",
+        "kind": "Kind"
+      },
+      "save": "Create",
+      "saving": "Creating…",
+      "cancel": "Cancel",
+      "success": "Entity created — {{name}} ({{kind}})",
+      "dedup": "Already existed — showing {{name}} ({{kind}})",
+      "failed": "Could not create entity — {{error}}",
+      "discoveredHint": "New entities start as discovered. Canonical status is earned by anchoring to the glossary."
+    },
+    "kind": {
+      "character": "Character",
+      "location": "Location",
+      "organization": "Organization",
+      "concept": "Concept",
+      "item": "Item"
+    },
+    "archive": {
+      "action": "Archive",
+      "confirm": "Hide this entity? Its relations and glossary anchor are kept; it disappears from the active list. You can Undo right after, or surface it again via the Archived filter.",
+      "success": "Entity archived.",
+      "failed": "Could not archive — {{error}}",
+      "undo": "Undo"
+    },
+    "restore": {
+      "success": "Entity restored.",
+      "failed": "Could not restore — {{error}}"
     }
   },
   "jobs": {
@@ -546,7 +658,9 @@
         "oldest": "Oldest first",
         "name_asc": "Name (A–Z)",
         "name_desc": "Name (Z–A)"
-      }
+      },
+      "thisBookOnly": "This book only",
+      "showAllBooks": "Show all books"
     },
     "card": {
       "staticMemory": "Static memory",
@@ -589,7 +703,7 @@
         "success": "Benchmark complete for {{model}} (recall@3 {{recall}}).",
         "errorNoModel": "Pick an embedding model before running the benchmark.",
         "errorUnknownModel": "This embedding model isn’t supported by the benchmark harness.",
-        "errorNotBenchmarkProject": "Benchmarks must run on a dedicated project. Create a new project before running.",
+        "errorNotBenchmarkProject": "The benchmark couldn’t start on its sandbox — please retry in a moment.",
         "errorAlreadyRunning": "A benchmark is already running for this project. Wait and retry.",
         "errorProviderFlake": "Embedding provider failed mid-run. Please retry.",
         "errorGeneric": "Benchmark failed: {{message}}"
@@ -669,12 +783,15 @@
           "durationMin": "~{{n}} min estimated"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} items",
+          "progress": "{{processed}} / {{total}} items (chapters + chat + glossary)",
           "elapsed": "Elapsed: {{elapsed}}",
           "spent": "Spent: ${{spent}}",
           "spentOfBudget": "Spent: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "Parallel calls",
-          "concurrencyApply": "Apply"
+          "concurrencyApply": "Apply",
+          "stagesTitle": "Build stages",
+          "stages": "Entities → Relations · Events · Facts → Summaries",
+          "stagesNote": "Passes run in this order. Facts and Summaries run after Entities and Relations finish, so they appear later in a full build — stopping early skips them."
         },
         "building_paused_user": {
           "body": "You paused this job. Resume when ready, or cancel to keep the partial graph."
@@ -834,7 +951,15 @@
       "partialPolicy": "Partial matches:",
       "policyKeep": "Keep",
       "policyDrop": "Drop",
+      "defaultModel": "Default extraction model",
+      "defaultModelNone": "Use my global default",
+      "defaultModelHint": "The model every extraction step uses unless overridden below. Left empty, roles fall back to your global default model (Settings), then the model this build runs on.",
       "recoveryEnabled": "Entity recovery (recover missed entities)",
+      "recoveryModel": "Recovery model (optional)",
+      "recoveryModelNone": "Use default extraction model",
+      "recoveryModelHint": "LLM that recovers entities the main pass missed. Left as default, it reuses the default extraction model above.",
+      "recoveryBatch": "Batch size",
+      "recoveryBatchHint": "names per classifier call (1-20; default 5)",
       "autocreateEnabled": "Writer autocreate (mint entities referenced by relations)",
       "promptWarning": "Advanced: custom prompts replace the default extraction instructions for that step and can degrade quality. Leave blank to use the default. JSON output is always enforced.",
       "promptPlaceholder": "Leave blank to use the default prompt",
@@ -1025,9 +1150,34 @@
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
       "failed": "Couldn't save the correction: {{error}}"
+    },
+    "create": {
+      "title": "Link entity",
+      "description": "Create a relation from {{subject}} to another of your entities.",
+      "action": "Link entity",
+      "subject": "From",
+      "predicate": "Relation",
+      "object": "To",
+      "objectPlaceholder": "Search your entities…",
+      "noMatches": "No matching entities.",
+      "save": "Create link",
+      "saving": "Linking…",
+      "cancel": "Cancel",
+      "success": "Relation created.",
+      "notYours": "Could not create link — an endpoint isn't one of your entities.",
+      "selfLoop": "An entity cannot relate to itself.",
+      "failed": "Could not create link — {{error}}"
     }
   },
   "events": {
+    "create": {
+      "title": "Add event",
+      "description": "Author a new timeline event for this character.",
+      "success": "Event added.",
+      "failed": "Add failed: {{error}}",
+      "saving": "Adding…",
+      "save": "Add event"
+    },
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
@@ -1103,5 +1253,64 @@
       "divergent": "Divergent"
     },
     "totalRuns": "{{count}} runs total"
+  },
+  "triage": {
+    "loading": "Loading triage queue…",
+    "loadFailed": "Could not load the triage queue: {{error}}",
+    "empty": "Nothing to triage — every extracted element matched your schema.",
+    "resolved": "Resolved {{count}} item(s)",
+    "resolveFailed": "Could not resolve: {{error}}",
+    "handoffToGlossary": "Opening glossary to finish this in your codex…",
+    "itemType": {
+      "unknown_node_kind": "Unknown entity kind",
+      "unknown_edge_type": "Unknown relationship type",
+      "edge_kind_mismatch": "Relationship endpoint mismatch",
+      "unknown_vocab_value": "Off-vocabulary value",
+      "edge_cardinality_conflict": "Conflicting active relationships"
+    },
+    "action": {
+      "map": "Map to existing",
+      "add_to_vocab": "Add to vocabulary",
+      "add_to_schema": "Add to schema",
+      "re_target": "Point to the right entity",
+      "widen_target_kinds": "Widen allowed kinds",
+      "drop_edge": "Drop",
+      "close_previous": "Close previous",
+      "set_multi_active": "Allow multiple",
+      "promote_to_glossary_kind": "Promote to glossary kind",
+      "demote_to_attribute": "Demote to attribute",
+      "dismiss": "Dismiss"
+    },
+    "prompt": {
+      "target_entity_id": "Corrected target entity id",
+      "map_to": "Map to (leave blank to use the detected value)"
+    },
+    "itemDismissed": "Item dismissed",
+    "confirmSchemaWrite": "Add this to your schema? It changes how future extractions are validated.",
+    "evidence": {
+      "unknown_edge_type": "The relationship “{{predicate}}” isn’t in your schema yet.",
+      "unknown_vocab_value": "The value “{{value}}” isn’t in the “{{set}}” list yet.",
+      "edge_kind_mismatch": "“{{predicate}}” was used between a {{source}} and a {{target}}, which your schema doesn’t allow.",
+      "unknown_node_kind": "The kind “{{kind}}” isn’t in your schema yet.",
+      "edge_cardinality_conflict": "There are conflicting active “{{predicate}}” relationships.",
+      "generic": "This extracted element didn’t match your schema."
+    },
+    "retarget": {
+      "title": "Point to the right entity",
+      "description": "Search your entities and pick the one this relationship should point to.",
+      "searchPlaceholder": "Search entities by name…",
+      "noMatches": "No matching entities.",
+      "cancel": "Cancel",
+      "confirm": "Re-point"
+    },
+    "map": {
+      "title": "Map to an existing item",
+      "description": "Pick the schema item this off-schema element should be treated as.",
+      "label": "Map to",
+      "keepDetected": "Keep the detected value",
+      "cancel": "Cancel",
+      "confirm": "Map"
+    },
+    "emptyHint": "Triage collects anything extraction found that doesn’t fit your schema yet — a clean queue means everything lined up."
   }
 }

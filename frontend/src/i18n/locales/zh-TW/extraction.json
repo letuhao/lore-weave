@@ -19,9 +19,13 @@
     "selectAllKinds": "全選",
     "deselectAllKinds": "全部取消",
     "attrsSelected": "{{count}} 個屬性",
+    "actionDefault": "預設（智慧）",
+    "actionAppend": "附加",
     "actionFill": "填補缺失",
     "actionOverwrite": "覆寫",
     "actionSkip": "跳過",
+    "allDefault": "全部預設",
+    "allAppend": "全部附加",
     "allFill": "全部填補",
     "allOverwrite": "全部覆寫",
     "required": "必填",
@@ -76,7 +80,10 @@
     "activityLog": "活動日誌",
     "cancel": "取消",
     "cancelConfirm": "取消此提取任務？已處理的章節結果將保留。",
-    "cancelRequested": "已要求取消"
+    "cancelRequested": "已要求取消",
+    "background": "在背景執行",
+    "backgroundToast": "擷取作業正在背景執行。",
+    "viewInJobs": "在工作中檢視"
   },
   "results": {
     "title": "提取完成",

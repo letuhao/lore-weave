@@ -146,5 +146,13 @@
       "system": "系統"
     },
     "error": "無法載入版本歷史。"
+  },
+  "createAs": "將「{{name}}」建立為…",
+  "kind": {
+    "character": "角色",
+    "location": "地點",
+    "organization": "組織",
+    "concept": "概念",
+    "item": "物品"
   }
 }

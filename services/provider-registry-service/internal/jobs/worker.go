@@ -117,23 +117,35 @@ func (w *Worker) finalizeAndNotify(
 		}
 	}
 
-	// S4b (decision C) — build the usage-outbox payload for a COMPLETED job with
-	// resolvable token usage, computing the real per-model cost ONCE (reused for
-	// the reservation reconcile below). usage stays nil for failed/cancelled or
-	// media/no-token jobs → no outbox row, and a nil cost reconciles at estimate.
+	// S4b (decision C) + #32 — build the usage-outbox payload. A COMPLETED job with
+	// resolvable token usage carries real tokens + the per-model cost (computed ONCE,
+	// reused for the reservation reconcile below). #32: failed/cancelled (and a
+	// completed job whose tokens didn't resolve) now ALSO emit a row — cost 0 / nil,
+	// tokens 0 — so usage-billing audits EVERY call; RequestStatus distinguishes them
+	// and the repo attaches the truncated request/response payloads for tracing. Still
+	// gated on billingFound (billing wired); a nil cost reconciles at estimate.
 	var usage *UsageOutbox
 	var cost *float64
-	if billingFound && status == "completed" {
-		if tokIn, tokOut, ok := usageTokens(result); ok {
-			cost = w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
-			usage = &UsageOutbox{
-				ModelSource:  modelSource,
-				ModelRef:     modelRef,
-				Operation:    operation,
-				InputTokens:  tokIn,
-				OutputTokens: tokOut,
-				CostUSD:      cost,
+	if billingFound {
+		requestStatus := "success"
+		if status != "completed" {
+			requestStatus = status // "failed" | "cancelled"
+		}
+		var tokIn, tokOut int
+		if status == "completed" {
+			if ti, to, ok := usageTokens(result); ok {
+				tokIn, tokOut = ti, to
+				cost = w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
 			}
+		}
+		usage = &UsageOutbox{
+			ModelSource:   modelSource,
+			ModelRef:      modelRef,
+			Operation:     operation,
+			InputTokens:   tokIn,
+			OutputTokens:  tokOut,
+			CostUSD:       cost,
+			RequestStatus: requestStatus,
 		}
 	}
 
@@ -385,6 +397,15 @@ func (w *Worker) Process(
 		return
 	}
 
+	// PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5) —
+	// vision-caption dispatch. Routes BEFORE chat-streaming whitelist
+	// because vision uses adapter.CaptionImage (not Stream), has no
+	// chunker, and no aggregator. Mirrors image/video dispatch above.
+	if isVisionJobOperation(operation) {
+		w.processVisionJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
 	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
 	// shape for chat/completion AND for the *_extraction operations:
@@ -407,6 +428,17 @@ func (w *Worker) Process(
 		logger.Error("resolve creds failed", "err", err)
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_MODEL_NOT_FOUND", err.Error(), "")
 		return
+	}
+
+	// D-PROVIDER-CONCURRENCY-CONFIG — the concurrency class (credential id) +
+	// its cap (NULL → 0 = unlimited). Fail-open: if the lookup errors, fall back
+	// to the provider kind as the class + unlimited, so a transient DB hiccup
+	// never wedges a job. (repo is non-nil here — MarkRunning ran above.)
+	concClass, concLimit := providerKind, 0
+	if k, lim, ok, cerr := w.repo.ResolveConcurrency(ctx, modelSource, ownerUserID, modelRef); cerr != nil {
+		logger.Warn("resolve concurrency failed — defaulting to unlimited", "err", cerr)
+	} else if ok {
+		concClass, concLimit = k, lim
 	}
 
 	adapter, err := w.adapter(providerKind)
@@ -434,14 +466,14 @@ func (w *Worker) Process(
 	// Otherwise we fall through to single-call Phase 2b path unchanged.
 	chunkPieces := w.maybeChunk(inputMap, chunking, logger)
 	if len(chunkPieces) > 1 {
-		if err := w.processChunks(ctx, jobID, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
+		if err := w.processChunks(ctx, jobID, agg, adapter, concClass, concLimit, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
 			errCode := classifyStreamErrorCode(err)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, err.Error(), "")
 			return
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
-		streamErr := w.streamWithRetry(ctx, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
+		streamErr := w.streamWithRetry(ctx, agg, adapter, concClass, concLimit, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
@@ -494,7 +526,8 @@ func (w *Worker) processChunks(
 	jobID uuid.UUID,
 	agg Aggregator,
 	adapter provider.Adapter,
-	providerKind string,
+	concClass string,
+	concLimit int,
 	endpointBaseURL, secret, providerModelName string,
 	inputMap map[string]any,
 	chunks []string,
@@ -515,7 +548,7 @@ func (w *Worker) processChunks(
 			// S3a: governor + circuit-breaker wrap the provider call. Inside
 			// retryTransient so each retry re-checks the breaker + re-acquires
 			// a slot, and a transient failure counts toward opening.
-			return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+			return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
 				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
 			})
 		})
@@ -552,7 +585,8 @@ func (w *Worker) streamWithRetry(
 	ctx context.Context,
 	agg Aggregator,
 	adapter provider.Adapter,
-	providerKind string,
+	concClass string,
+	concLimit int,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
 	emit EmitFn,
@@ -561,7 +595,7 @@ func (w *Worker) streamWithRetry(
 	err := retryTransient(ctx, w.maxRetries, logger, func() error {
 		agg.StartChunk(0)
 		// S3a: governor + circuit-breaker wrap the provider call (see processChunks).
-		return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+		return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
 			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
 		})
 	})

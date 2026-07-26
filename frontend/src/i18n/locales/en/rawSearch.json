@@ -28,5 +28,11 @@
   "index_drafts_error": "Draft indexing failed.",
   "copy": "Copy text",
   "copied": "Copied",
-  "degraded": "Some results may be limited — a search backend is unavailable."
+  "degraded": "Some results may be limited — a search backend is unavailable.",
+  "content_view": {
+    "chapter_label": "Ch. {{n}}",
+    "block_position": "block {{n}}",
+    "passage_position": "passage {{n}}",
+    "jump": "Jump to source"
+  }
 }

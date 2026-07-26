@@ -1,10 +1,13 @@
 {
-  "translateIntent": { "hint": "Chọn một cuốn sách để dịch — mở nó, rồi dùng tab Dịch để bắt đầu dịch." },
+  "translateIntent": {
+    "hint": "Chọn một cuốn sách để dịch — mở nó, rồi dùng tab Dịch để bắt đầu dịch."
+  },
   "workspace": "Sách của tôi",
   "new_book": "Sách mới",
   "search_placeholder": "Tìm sách...",
   "all_languages": "Tất cả ngôn ngữ",
   "all_states": "Tất cả trạng thái",
+  "select_language": "Chọn ngôn ngữ…",
   "book_count": "{{count}} sách",
   "book_count_other": "{{count}} sách",
   "translated_to": "Đã dịch sang: {{langs}}",
@@ -29,6 +32,7 @@
     "no_language": "Chưa đặt ngôn ngữ"
   },
   "detail": {
+    "open_studio": "Xưởng",
     "not_found": "Không tìm thấy sách",
     "updated": "Cập nhật {{date}}",
     "readers": "{{count}} độc giả",
@@ -37,6 +41,7 @@
       "chapters": "Chương",
       "translation": "Bản dịch",
       "glossary": "Thuật ngữ",
+      "kgOntology": "Lược đồ đồ thị",
       "enrichment": "Bồi đắp",
       "wiki": "Wiki",
       "sharing": "Chia sẻ",
@@ -113,6 +118,7 @@
     "count": "{{count}} chương",
     "count_other": "{{count}} chương",
     "import": "Nhập",
+    "importPdf": "Nhập PDF",
     "new": "Chương mới",
     "col": {
       "title": "Tiêu đề",
@@ -122,6 +128,7 @@
     },
     "action": {
       "edit": "Sửa",
+      "translations": "Xem bản dịch",
       "extract": "Trích xuất thuật ngữ",
       "download": "Tải xuống",
       "trash": "Thùng rác"
@@ -186,17 +193,26 @@
     "range": "{{start}}–{{end}} trên {{total}}",
     "page_size_label": "Mỗi trang",
     "page_size": "{{count}} / trang",
-    "pager": { "page": "Trang", "prev": "Trang trước", "next": "Trang sau" },
+    "pager": {
+      "page": "Trang",
+      "prev": "Trang trước",
+      "next": "Trang sau"
+    },
     "page_empty": "Trang này trống.",
     "page_empty_first": "Về trang đầu",
-    "match_field": { "name": "tên", "alias": "biệt danh", "translation": "bản dịch" },
+    "match_field": {
+      "name": "tên",
+      "alias": "biệt danh",
+      "translation": "bản dịch"
+    },
     "kind_label": "Loại",
     "status_label": "Trạng thái",
     "status_all": "Tất cả",
     "status": {
       "draft": "Bản nháp",
       "active": "Hoạt động",
-      "inactive": "Không hoạt động"
+      "inactive": "Không hoạt động",
+      "rejected": "Đã từ chối"
     },
     "bulk": {
       "select_row": "Chọn thực thể",
@@ -207,7 +223,14 @@
       "clear": "Bỏ chọn",
       "done": "Đã đặt {{count}} thực thể sang {{status}}",
       "select_all_matching": "Chọn tất cả {{count}} mục khớp",
-      "cap_note": "Chỉ chọn tối đa {{cap}} thực thể"
+      "cap_note": "Chỉ chọn tối đa {{cap}} thực thể",
+      "delete": "Xóa",
+      "deleted": "Đã xóa {{count}} thực thể",
+      "delete_confirm": {
+        "title": "Xóa {{count}} thực thể?",
+        "description": "{{count}} thực thể đã chọn sẽ được chuyển vào thùng rác."
+      },
+      "reject": "Từ chối"
     },
     "clear_filters": "Xóa tất cả bộ lọc",
     "deleted": "Đã xóa thực thể",
@@ -231,7 +254,8 @@
       "title": "Xóa thực thể?",
       "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
       "confirm": "Xóa"
-    }
+    },
+    "scope_label_title": "Phạm vi — giúp phân biệt thực thể này với các thực thể khác có cùng tên"
   },
   "sharing": {
     "title": "Hiển thị",
@@ -265,7 +289,11 @@
     "subtitle": "Mời người khác qua email để xem, chỉnh sửa hoặc quản lý sách này.",
     "email_placeholder": "Email của cộng tác viên",
     "role_label": "Vai trò",
-    "roles": { "view": "Người xem", "edit": "Người chỉnh sửa", "manage": "Người quản lý" },
+    "roles": {
+      "view": "Người xem",
+      "edit": "Người chỉnh sửa",
+      "manage": "Người quản lý"
+    },
     "invite": "Mời",
     "invited": "Đã mời {{email}}",
     "invite_failed": "Không thể mời cộng tác viên đó",
@@ -310,7 +338,12 @@
       "public": "Hiển thị với mọi người trong danh mục"
     },
     "discard": "Hủy thay đổi",
-    "save": "Lưu cài đặt"
+    "save": "Lưu cài đặt",
+    "world": {
+      "title": "Thế giới",
+      "hint": "Gộp cuốn sách này vào một thế giới để đưa nó vào biểu đồ và dòng thời gian của thế giới đó.",
+      "open": "Mở trong thế giới"
+    }
   },
   "translate": {
     "title": "Dịch chương",

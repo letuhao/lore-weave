@@ -1,0 +1,146 @@
+{
+  "loading": "Cargando...",
+  "chapter_of": "Capítulo {{current}} de {{total}}",
+  "stop_reading": "Dejar de leer",
+  "read_aloud": "Leer en voz alta",
+  "reading_theme": "Tema de lectura",
+  "edit_chapter": "Editar este capítulo",
+  "back_to_book": "Volver al libro",
+  "chapter_label": "Capítulo {{n}}",
+  "chars": "caracteres",
+  "words": "palabras",
+  "min_read": "~{{minutes}} min de lectura",
+  "loading_translation": "Cargando traducción...",
+  "empty_chapter": "Capítulo vacío: aún no se ha escrito nada.",
+  "end_of_chapter": "Fin del capítulo {{n}}",
+  "next_in": "Siguiente capítulo en {{seconds}}s...",
+  "cancel": "Cancelar",
+  "progress": "Capítulo {{current}} de {{total}} · {{percent}} % completado",
+  "ch_short": "Cap. {{n}}",
+  "history": {
+    "title": "Historial de lectura",
+    "subtitle": "Tus libros y capítulos leídos recientemente.",
+    "empty": "Aún no hay historial de lectura. ¡Empieza a leer un capítulo!",
+    "chapters_read": "{{count}} capítulos leídos",
+    "fully_read": "{{percent}} % completado",
+    "last_read": "Última lectura: {{date}}",
+    "continue": "Continuar"
+  },
+  "theme": {
+    "title": "Tema de lectura",
+    "presets": "Ajustes de tema",
+    "preset": {
+      "dark": {
+        "name": "Oscuro",
+        "desc": "Fondo oscuro cálido"
+      },
+      "light": {
+        "name": "Claro",
+        "desc": "Fondo blanco limpio"
+      },
+      "sepia": {
+        "name": "Sepia",
+        "desc": "Tono de papel cálido"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "Negro puro para pantallas OLED"
+      },
+      "parchment": {
+        "name": "Pergamino",
+        "desc": "Sensación de pergamino clásico"
+      },
+      "forest": {
+        "name": "Bosque",
+        "desc": "Relajante para la vista durante la noche"
+      }
+    },
+    "font": "Fuente",
+    "typography": "Tipografía",
+    "font_size": "Tamaño de fuente",
+    "line_height": "Interlineado",
+    "text_width": "Ancho del texto",
+    "spacing": "Espaciado",
+    "reading_mode": "Modo de lectura",
+    "show_indices": "Mostrar índices de bloque (modo traductor)",
+    "auto_next": "Cargar automáticamente el siguiente capítulo",
+    "auto_scroll": "Desplazamiento automático con TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "Adjunto",
+      "ai": "TTS de IA",
+      "browser": "Navegador",
+      "inline": "Audio"
+    },
+    "prev_block": "Bloque anterior (Shift+Izquierda)",
+    "play": "Reproducir (Espacio)",
+    "pause": "Pausa (Espacio)",
+    "next_block": "Bloque siguiente (Shift+Derecha)",
+    "cycle_speed": "Ciclar velocidad",
+    "autoscroll_on": "Desplazamiento automático: ACTIVADO",
+    "autoscroll_off": "Desplazamiento automático: DESACTIVADO",
+    "settings": "Ajustes de TTS",
+    "stop": "Detener (Escape)",
+    "speed": "Velocidad",
+    "browser_voice": "Voz del navegador",
+    "default": "Predeterminado",
+    "no_voices": "No hay voces disponibles. Es posible que tu navegador no sea compatible con la Web Speech API.",
+    "ai_model": "Modelo de IA para TTS",
+    "none_browser": "Ninguno (solo TTS del navegador)",
+    "no_models": "No hay modelos configurados. Añade un proveedor en Ajustes > Proveedores.",
+    "ai_voice": "Voz de IA",
+    "openai_voices": "Voces de OpenAI: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Comportamiento",
+    "autoscroll_active": "Desplazamiento automático al bloque activo",
+    "highlight_active": "Resaltar bloque activo",
+    "now_playing": "Reproduciendo ahora",
+    "block_label": "Bloque: {{id}}",
+    "status": {
+      "playing": "reproduciendo",
+      "paused": "pausado",
+      "loading": "cargando"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "Adjunto",
+      "ai": "IA TTS",
+      "browser": "Navegador",
+      "inline": "Bloque de audio",
+      "none": "Ninguno"
+    },
+    "coverage": "Cobertura de audio",
+    "summary": "{{speakable}} bloques legibles · {{missing}} usando TTS del navegador",
+    "generate_missing": "Generar audio faltante",
+    "block_chars": "{{count}} bloque · ~{{chars}} caracteres",
+    "block_chars_other": "{{count}} bloques · ~{{chars}} caracteres",
+    "est_cost": "est. ${{cost}}",
+    "generating": "Generando... {{progress}}/{{total}}",
+    "select_model_alert": "Primero selecciona un modelo de TTS en la Configuración de TTS.",
+    "generate_all": "Generar todo ({{count}})",
+    "blocks": "Bloques",
+    "audio_block_preview": "Bloque de audio"
+  },
+  "block": {
+    "audio_unavailable": "Audio no disponible",
+    "audio_fallback": "Tu navegador no es compatible con el elemento de audio.",
+    "image_unavailable": "Imagen no disponible",
+    "video_unavailable": "Video no disponible"
+  },
+  "indicator": {
+    "pause": "Pausar",
+    "play": "Reproducir audio adjunto",
+    "mismatch": "El audio de los subtítulos difiere del texto del bloque"
+  },
+  "citation": {
+    "aria": "Cita {{n}}",
+    "jump": "Ir a la fuente",
+    "relevance": "Relevancia",
+    "source": {
+      "glossary": "Glosario",
+      "kg": "Conocimiento",
+      "passage": "Pasaje"
+    }
+  }
+}

@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import time
+from types import SimpleNamespace
 from typing import AsyncGenerator
 from uuid import uuid4
 
@@ -26,18 +27,38 @@ import asyncpg
 
 from loreweave_llm import AudioChunkEvent, Client, DoneEvent, SttResult
 
+from app.client.auth_client import resolve_local_date
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.events.voice_events import emit_voice_turn
 from app.models import ProviderCredentials
+from app.services.injection_defense import neutralize_injection
 from app.services.sentence_buffer import SentenceBuffer
 from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _stream_via_gateway
+from app.services.working_memory import resolve_anchor
 from app.storage.minio_client import upload_file
+from loreweave_context import build_system_message
 
 logger = logging.getLogger(__name__)
+
+
+async def _billed_voice_log(
+    billing, *, kind: str, model_source: str, model_ref: str, user_id: str, units: float,
+    purpose: str, session_id: str, message_id: str, input_payload: dict, output_payload: dict,
+) -> None:
+    """C6 — resolve the STT/TTS $ from provider-registry (per_second / per_kchar) then record the usage
+    under its lane WITH the real cost. Best-effort throughout (pricing → 0.0 on any failure; the log is
+    itself swallowed by billing.log_usage), so a pricing hiccup never affects the voice turn."""
+    cost = await get_provider_client().price_voice(model_source, model_ref, user_id, kind, units)
+    await billing.log_usage(
+        user_id=user_id, model_source=model_source, model_ref=model_ref,
+        provider_kind="", input_tokens=0, output_tokens=0,
+        session_id=session_id, message_id=message_id, purpose=purpose,
+        input_payload=input_payload, output_payload=output_payload, cost_usd=cost,
+    )
 
 
 # Voice system prompt — injected server-side when input_method='voice'
@@ -73,6 +94,7 @@ def _new_llm_client(user_id: str) -> Client:
         auth_mode="internal",
         internal_token=settings.internal_service_token,
         user_id=user_id,
+        idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
 
 
@@ -269,6 +291,8 @@ async def voice_stream_response(
     transcript = _sanitize_transcript(transcript)
 
     # ── Step 2: Save user message ────────────────────────────────────
+    # DBT-11 — resolve the local day before acquiring the conn (auth call on cache miss).
+    _local_date = await resolve_local_date(user_id)
     async with pool.acquire() as conn:
         seq = await conn.fetchval(
             "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id=$1 AND branch_id=0",
@@ -283,10 +307,11 @@ async def voice_stream_response(
         await conn.execute(
             """
             INSERT INTO chat_messages
-              (message_id, session_id, owner_user_id, role, content, content_parts, sequence_num, branch_id)
-            VALUES ($1,$2,$3,'user',$4,$5::jsonb,$6, 0)
+              (message_id, session_id, owner_user_id, role, content, content_parts, sequence_num, branch_id, local_date)
+            VALUES ($1,$2,$3,'user',$4,$5::jsonb,$6, 0, $7)
             """,
             user_msg_id, session_id, user_id, transcript, content_parts, seq,
+            _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
         )
         await conn.execute(
             "UPDATE chat_sessions SET message_count = message_count + 1, updated_at = now() WHERE session_id = $1",
@@ -296,7 +321,9 @@ async def voice_stream_response(
     # ── Step 3: LLM stream + TTS pipeline ────────────────────────────
     # Load session settings (same as stream_response)
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, project_ids, working_memory_seed, "
+        "session_kind, message_count, created_at "  # A4 (RV-M5): anchor progress + wrap on voice too
+        "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -304,7 +331,18 @@ async def voice_stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+    # Resolve the session-stored reasoning pref to WIRE fields (review-impl H):
+    # raw "off"/"auto" crashes StreamRequest validation. Voice has no creds in
+    # scope (the gateway resolves the model) → creds=None conservative control.
+    from app.services.stream_service import _resolve_and_stash_reasoning
+
+    _resolve_and_stash_reasoning(gen_params, None)
     project_id = session_row.get("project_id") if session_row else None
+    # Track B B1(2) — multi-KG: same effective-target resolution as the text path.
+    from app.services.stream_service import resolve_grounding_target
+    _build_project_id, _build_project_ids = resolve_grounding_target(
+        session_row, str(project_id) if project_id else None,
+    )
 
     # ── K5: build memory block via knowledge-service ────────────────────────
     # Voice mode benefits from memory just like text mode. Failures
@@ -313,9 +351,35 @@ async def voice_stream_response(
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
-        project_id=str(project_id) if project_id else None,
+        project_id=_build_project_id,
+        project_ids=_build_project_ids,
         message=transcript,
     )
+
+    # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection
+    # in the retrieved knowledge block before it is spliced into the voice system
+    # prompt (same untrusted-data defense as the text path). Multilingual-safe;
+    # clean text unchanged. The user's transcript + session persona are NOT touched.
+    kctx.context = neutralize_injection(kctx.context)
+
+    # ── Anchoring (interview-roleplay) — same shared helper as the text path so
+    # the 2h voice session (the real use) gets the anchor too (EC-3).
+    # A4 (RV-M5) — same interview progress + wrap as the text path (compute_progress).
+    _wm_msg_count = session_row.get("message_count") if session_row else None
+    _wm_elapsed = None
+    _wm_created = session_row.get("created_at") if session_row else None
+    if _wm_created is not None:
+        from datetime import datetime, timezone
+        _wm_elapsed = max(0, int((datetime.now(timezone.utc) - _wm_created).total_seconds() // 60))
+    wm_pinned, wm_tail = resolve_anchor(
+        kctx.working_memory,
+        session_row.get("working_memory_seed") if session_row else None,
+        message_count=_wm_msg_count,
+        elapsed_min=_wm_elapsed,
+    )
+    # P0-5 — sanitize the rendered roleplay anchor (untrusted state) too.
+    wm_pinned = neutralize_injection(wm_pinned)
+    wm_tail = neutralize_injection(wm_tail)
 
     # Build message history sized by knowledge_service
     history_limit = max(1, kctx.recent_message_count)
@@ -329,20 +393,22 @@ async def voice_stream_response(
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
-    # Compose the system prompt: memory → session prompt. Strip each part
-    # so trailing newlines don't stack with "\n\n" into triple-newline
-    # runs (K5-I3).
-    system_parts: list[str] = []
-    if kctx.context:
-        stripped = kctx.context.strip()
-        if stripped:
-            system_parts.append(stripped)
-    if system_prompt:
-        stripped = system_prompt.strip()
-        if stripped:
-            system_parts.append(stripped)
-    if system_parts:
-        messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
+    # Compose the system prompt: memory → anchor → session prompt (K5-I3: each part
+    # stripped so trailing newlines don't stack into triple-newline runs). T3.4 — the
+    # shared kernel renderer (plain path, no cache, no skills/steering — voice is a
+    # minimal surface), retiring the byte-copy of chat's assembly ladder. VOICE_SYSTEM_PROMPT
+    # + wm_tail are inserted separately below (they are their own messages, not this block).
+    _voice_system = build_system_message(
+        use_cache=False,
+        kctx_context=kctx.context,
+        kctx_stable="",
+        kctx_volatile="",
+        wm_pinned=wm_pinned,
+        system_prompt=system_prompt,
+        tail_blocks=[],
+    )
+    if _voice_system:
+        messages.insert(0, {"role": "system", "content": _voice_system})
 
     # Voice system prompt (Layer 0) — always for voice
     messages.insert(
@@ -350,29 +416,80 @@ async def voice_stream_response(
         {"role": "system", "content": VOICE_SYSTEM_PROMPT},
     )
 
+    # Tail anchor (recency) — closest to the latest user turn (EC-3/EC-7).
+    if wm_tail:
+        messages.insert(max(len(messages) - 1, 0), {"role": "system", "content": wm_tail})
+
     # Phase 1c-ii: gateway resolves api_key / base_url / model_string
     # internally — no per-service resolution needed.
     full_content: list[str] = []
     msg_id = str(uuid4())
     stream_start = time.monotonic()
     ttft: float | None = None
+    # WS-4.2a — the LLM UsageEvent arrives on the trailing chunk from
+    # `_stream_via_gateway`; voice used to DISCARD it and bill 0/0. Capture it so
+    # both the DB row AND the SSE `finish-message` the FE reads carry real tokens.
+    last_usage = None
+    tts_chars = 0  # WS-4.2b — TTS is metered by CHARACTERS spoken (not tokens)
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
     pending_segments: list[tuple[int, str, bytes]] = []  # (index, text, audio_data)
 
     try:
-        chunk_stream = _stream_via_gateway(
+        # WS-4.1-tools — voice consumes the SHARED tool-capable generator (_stream_with_tools),
+        # not the raw gateway stream, so a voice turn can call memory/recall tools mid-response
+        # (the sealed "shared inner generator"). Blast radius is contained: this is a NEW caller,
+        # _stream_with_tools is unchanged. permission_mode='ask' — a spoken turn may READ (recall)
+        # but never fire a destructive write mid-speech (no client confirm loop exists for voice).
+        # A tool set fetch failure degrades to NO tools (voice still answers), never breaks the turn.
+        from app.services.stream_service import _stream_with_tools
+        try:
+            _voice_tools = await knowledge_client.get_tool_definitions(user_id=user_id)
+        except Exception:
+            logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
+            _voice_tools = []
+        chunk_stream = _stream_with_tools(
             model_source=model_source,
             model_ref=model_ref,
             user_id=user_id,
             messages=messages,
             gen_params=gen_params,
+            tools=_voice_tools,
+            knowledge_client=knowledge_client,
+            session_id=session_id,
+            project_id=_build_project_id,
+            permission_mode="ask",
         )
 
         async for chunk_data in chunk_stream:
-            content = chunk_data["content"]
+            # WS-4.1-tools — robust chunk handling: _stream_with_tools yields tool_call /
+            # suspend / agent_surface chunks that carry NO 'content' key (the KeyError the
+            # sealed decision flags). A tool_call is surfaced as an SSE event but never spoken;
+            # suspend/agent_surface are inapplicable to a voice turn (no client resume) → skipped.
+            content = chunk_data.get("content", "")
             reasoning = chunk_data.get("reasoning_content", "")
+            # WS-4.2a — the trailing chunk carries usage (content=="" so it skips
+            # the TTS path below); keep the last non-null one for billing.
+            if chunk_data.get("usage") is not None:
+                last_usage = chunk_data["usage"]
+            # WS-4.1-tools cold-review H1 — a SUSPEND ends the generator with NO terminal usage
+            # chunk (a paid Tier-R read or a frontend tool suspends even in 'ask' mode). Voice has
+            # no client resume loop, so: BILL the tokens the suspend payload carries (not 0/0 — the
+            # exact WS-4.2a mis-bill, re-created on this path) and surface an explicit error instead
+            # of a silent half-turn. Then fall through to save/finish with the REAL usage.
+            _susp = chunk_data.get("suspend")
+            if _susp:
+                last_usage = SimpleNamespace(
+                    prompt_tokens=int(_susp.get("input_tokens", 0) or 0),
+                    completion_tokens=int(_susp.get("output_tokens", 0) or 0),
+                )
+                yield _sse("error", {"errorText": "That needs a confirmation I can't do by voice — try it in text chat."})
+                break
+            _tc = chunk_data.get("tool_call")
+            if _tc:
+                yield _sse("tool-call", {"tool": _tc.get("name") or _tc.get("tool") or "tool"})
+                continue  # a tool_call chunk has no speakable content
 
             if ttft is None and (content or reasoning):
                 ttft = (time.monotonic() - stream_start) * 1000
@@ -412,6 +529,7 @@ async def voice_stream_response(
                     # Collect audio for upload after message is saved (FK constraint)
                     if audio_chunks:
                         pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
+                        tts_chars += len(speakable)  # WS-4.2b — meter TTS by chars spoken
 
                     sentence_index += 1
 
@@ -433,6 +551,7 @@ async def voice_stream_response(
 
                 if audio_chunks:
                     pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
+                    tts_chars += len(speakable)  # WS-4.2b — meter TTS by chars spoken
                 sentence_index += 1
             else:
                 skipped_count += 1
@@ -440,6 +559,9 @@ async def voice_stream_response(
         # ── Step 4: Save assistant message ───────────────────────────
         response_time_ms = (time.monotonic() - stream_start) * 1000
         final_text = "".join(full_content)
+        # WS-4.2a — real LLM token counts (0 only if the provider reported none).
+        input_tokens = int(getattr(last_usage, "prompt_tokens", 0) or 0)
+        output_tokens = int(getattr(last_usage, "completion_tokens", 0) or 0)
 
         async with pool.acquire() as conn:
             seq = await conn.fetchval(
@@ -457,15 +579,75 @@ async def voice_stream_response(
                 """
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
-                   sequence_num, model_ref, branch_id)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0)
+                   sequence_num, model_ref, branch_id, local_date)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
+                _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
             )
-            await conn.execute(
-                "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), updated_at=now() WHERE session_id=$1",
+            _mc_row = await conn.fetchrow(
+                "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "
+                "updated_at=now() WHERE session_id=$1 RETURNING message_count",
                 session_id,
             )
+            _new_message_count = _mc_row["message_count"] if _mc_row else None
+
+        # WS-4.1 — canon auto-capture on voice turns (the gap the WS-4.5 stopgap worked
+        # around). Mirrors the text path's post-turn block (stream_service._emit_chat_turn):
+        # resolve the session's book from its project, build the SAME CaptureContext, fire
+        # maybe_capture_canon + persist the decision. Self-gates — a bookless / off-cadence /
+        # too-short turn returns fire=False WITH a reason (so the home strip shows capture
+        # visibly OFF, never a silent drop). Replaces the WS-4.5 'voice_path_unsupported'
+        # stopgap now that capture actually runs on a voice turn.
+        try:
+            from app.services.canon_capture import (
+                CaptureContext, maybe_capture_canon, persist_capture_status,
+            )
+            _cap_book_id = None
+            if _build_project_id:
+                _cap_book_id = await knowledge_client.resolve_book_id(
+                    user_id=user_id, project_id=str(_build_project_id),
+                )
+            _cap_decision = maybe_capture_canon(
+                ctx=CaptureContext(
+                    book_id=_cap_book_id,
+                    project_enables=kctx.canon_capture_enabled,
+                    grounding_enabled=True,  # voice always builds a knowledge context
+                ),
+                user_id=str(user_id),
+                assistant_turn_count=seq,
+                user_message=transcript,
+                assistant_message=final_text,
+                model_ref=model_ref if model_source == "user_model" else None,
+            )
+            await persist_capture_status(pool, session_id, _cap_decision)
+        except Exception:
+            logger.warning("voice canon capture failed for session %s", session_id, exc_info=True)
+
+        # ACP A2.4 (RV-M7) — the executive TICK on the VOICE path. It was TEXT-ONLY, so a
+        # voice-only roleplay never advanced `state` (phase/covered froze at the seed) — and the
+        # code calls the long voice session "the real use". Mirror the text post-turn cadence
+        # (stream_service): every N assistant turns on a roleplay session (working_memory_seed
+        # present), fire a best-effort executive pass so voice sessions advance like text. The
+        # import is function-level (voice ↔ stream siblings) to avoid any module-load cycle.
+        try:
+            from app.services.stream_service import (
+                EXECUTIVE_EVERY_N_TURNS,
+                _fire_executive_tick,
+            )
+            _is_roleplay = bool(session_row and session_row.get("working_memory_seed"))
+            if (
+                _is_roleplay
+                and _new_message_count is not None
+                and _new_message_count % EXECUTIVE_EVERY_N_TURNS == 0
+            ):
+                asyncio.create_task(
+                    _fire_executive_tick(
+                        str(session_id), str(user_id), model_source, model_ref, pool
+                    )
+                )
+        except Exception:
+            logger.warning("voice executive tick scheduling failed for %s", session_id, exc_info=True)
 
         # Upload audio segments AFTER message is saved (FK: message_audio_segments → chat_messages)
         if pending_segments:
@@ -483,7 +665,7 @@ async def voice_stream_response(
         # Finish event
         yield _sse("finish-message", {
             "finishReason": "stop",
-            "usage": {"promptTokens": 0, "completionTokens": 0},
+            "usage": {"promptTokens": input_tokens, "completionTokens": output_tokens},
             "timing": {
                 "responseTimeMs": round(response_time_ms),
                 "timeToFirstTokenMs": round(ttft) if ttft else None,
@@ -498,14 +680,49 @@ async def voice_stream_response(
                 model_source=model_source,
                 model_ref=model_ref,
                 provider_kind=creds.provider_kind,
-                input_tokens=0,
-                output_tokens=0,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 session_id=session_id,
                 message_id=msg_id,
                 input_payload={"voice_transcript": transcript},
                 output_payload={"content": final_text},
             )
         )
+
+        # WS-4.2b — STT + TTS usage plumbing. These were previously DISCARDED (the day was
+        # metered by the LLM half only). Record them under distinct lanes with their real
+        # metering unit (STT = audio-seconds, TTS = characters) in the payload; token fields
+        # stay 0 so a token-priced cost is NOT faked — precise per-minute/per-char pricing is
+        # the billing cost-model follow-on. This makes the STT/TTS usage VISIBLE + auditable.
+        # L1 fix — explicit None check (a clip whose ms rounds to 0.0 is falsy and would
+        # silently fall to the byte-estimate). M1 fix — provider_kind="" (unknown), NOT
+        # creds.provider_kind: `creds` is the CHAT LLM credential; STT/TTS routinely use a
+        # different provider (whisper/Kokoro), so stamping the chat provider corrupts any
+        # per-provider rollup. model_source/model_ref correctly identify the STT/TTS model.
+        # C6 — price each voice record from the model's provider-registry rate (STT per audio-second,
+        # TTS per character) and record the real $ (was $0). A local Whisper/Kokoro prices to $0.
+        if speech_duration_ms:
+            _stt_seconds = round(speech_duration_ms / 1000, 2)
+        else:
+            # No duration signal → a crude kb→seconds proxy (~16kb/s for the typical PCM upload). Under
+            # C6 this DOES drive the STT charge for a priced cloud model, so it's approximate billing;
+            # a local $0 STT model (the common case) is unaffected. Prefer speech_duration_ms when present.
+            _stt_seconds = round(audio_size_kb / 16, 2)
+        asyncio.create_task(_billed_voice_log(
+            billing, kind="stt", model_source=stt_model_source, model_ref=stt_model_ref,
+            user_id=user_id, units=_stt_seconds, purpose="voice_stt",
+            session_id=session_id, message_id=msg_id,
+            input_payload={"audio_seconds": _stt_seconds, "audio_kb": audio_size_kb},
+            output_payload={"transcript_chars": len(transcript)},
+        ))
+        if tts_chars > 0 and tts_model_ref:
+            asyncio.create_task(_billed_voice_log(
+                billing, kind="tts", model_source=tts_model_source, model_ref=tts_model_ref,
+                user_id=user_id, units=float(tts_chars), purpose="voice_tts",
+                session_id=session_id, message_id=msg_id,
+                input_payload={"tts_characters": tts_chars, "tts_voice": tts_voice},
+                output_payload={"sentences": sentence_index},
+            ))
 
         # Voice analytics event (background)
         asyncio.create_task(emit_voice_turn(
@@ -599,7 +816,7 @@ async def generate_tts_for_message(
             audio_chunks: list[bytes] = []
             try:
                 async for event, raw in _generate_tts_chunks(
-                    speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                    speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
                 ):
                     yield _sse("audio-chunk", event)
                     if raw:

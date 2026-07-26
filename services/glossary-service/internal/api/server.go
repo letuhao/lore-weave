@@ -11,12 +11,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/foundation/contracts/adminjwt"
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/glossary-service/internal/config"
@@ -35,6 +36,19 @@ type Server struct {
 	// those endpoints fail closed. adminKID = KeyFingerprint(adminPub).
 	adminPub *rsa.PublicKey
 	adminKID string
+	// emitTenantAudit is the P2·F cross-tenant audit hook. Production wires it to
+	// (*Server).asyncTenantAudit; tests override it with a synchronous spy. nil ⇒
+	// no-op (struct-literal Server / nil pool).
+	emitTenantAudit func(actorID, bookID uuid.UUID, outcome string)
+	// auditDedup bounds the P2·F audit WRITE path to first-per-window. nil ⇒ no dedup
+	// (still correct — the DB ON CONFLICT dedups the row). Wired in NewServer.
+	auditDedup *tenantAuditDedup
+	// actionTasks is the durable ext-tasks human-gate store (D-MCPTASKS-GO-STORE),
+	// wired in mcpHandler() and shared by every KIND-C propose tool via the gate
+	// helpers (action_task_gate.go). nil ⇒ struct-literal Server / no MCP handler —
+	// GateOrConfirm only touches it for a tasks-capable client, so a nil store is
+	// safe for the confirm_token fallback path (and for existing unit tests).
+	actionTasks lwmcp.TaskStore
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -44,6 +58,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		secret:      []byte(cfg.JWTSecret),
 		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
 	}
+	s.emitTenantAudit = s.asyncTenantAudit
+	s.auditDedup = &tenantAuditDedup{}
 	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
 		pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw))
 		if err != nil {
@@ -114,6 +130,12 @@ func (s *Server) Router() http.Handler {
 	// service token and lifts X-User-Id into ctx for the ownership guard.
 	r.Handle("/mcp", s.mcpHandler())
 
+	// ── Admin MCP server (System-tier tools, ai-gateway admin surface) ────
+	// PHYSICALLY SEPARATE from /mcp (INV-T6): the transport middleware verifies an
+	// RS256 admin:write token in X-Admin-Token BEFORE tools/list — a non-admin can't
+	// even enumerate these tools. System-tier tools NEVER appear on /mcp.
+	r.Handle("/mcp/admin", s.adminMCPHandler())
+
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
@@ -122,17 +144,37 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
+		// WS-4C Half A — chat's post-turn canon auto-capture. UNLIKE its siblings here,
+		// this route grant-checks the supplied owner_user_id (Edit) against the book: it
+		// is driven by a chat session, so its book_id traces back to user-supplied data
+		// and the internal token alone must not authorize a write into it.
+		r.Post("/books/{book_id}/capture-canon", s.captureCanon)
+		// M7 backfill — deterministic per-chapter mention_count recount (no LLM). The
+		// producer computes counts (it holds chapter text + matcher) and POSTs a targeted,
+		// idempotent UPDATE batch here.
+		r.Post("/books/{book_id}/recount-mention-counts", s.internalRecountMentionCounts)
 		r.Get("/books/{book_id}/translation-candidates", s.internalTranslationCandidates)
 		r.Post("/books/{book_id}/apply-translations", s.internalApplyTranslations)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
+		// Track-C rail driver — the entity-triage rail's completion signal: how many
+		// AI-suggested items still await a triage decision (the review pile). Grounds
+		// `done_when:"suggestions < 1"` so the driver knows a half-triaged pile from a clean one.
+		r.Get("/books/{book_id}/suggestions-count", s.internalSuggestionsCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
+		// KG-ML M5 (C9) — batch localized entity display names for the knowledge
+		// KG graph-view / edge-timeline (resolves name/term attr → language).
+		r.Post("/books/{book_id}/entity-display-names", s.internalEntityDisplayNames)
 		// C13 — per-entity mention-span + coverage for the build-wizard auto-pin
 		// suggestion banner (bounded GROUP-BY over chapter_entity_links).
 		r.Get("/books/{book_id}/entities/stats", s.internalEntityStats)
 		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
 		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
+		// D-GLOSSARY-ST-DEDUP M3b — remediate pre-existing CJK simplified/traditional
+		// (+ full-width/case) entity name-variant duplicates: group by the folded key
+		// and merge each group into one winner. DRY-RUN unless ?apply=true.
+		r.Post("/books/{book_id}/dedup-name-variants", s.internalDedupNameVariants)
 		// Set canonical content (short_description) on an existing entity.
 		// Used by lore-enrichment promote to write enriched canon THROUGH the
 		// glossary SSOT (Q2) — extract-entities can't set this column.
@@ -141,6 +183,34 @@ func (s *Server) Router() http.Handler {
 		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
 		// write failed transiently, a re-promote reads NULL here and re-writes.
 		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
+		// #26/#7 summarize (merge-rewrite) — the end-of-extraction-job LLM pass fetches
+		// the dirty summarize attributes here, rewrites their accumulated raw mentions into
+		// one canonical value, and writes it back (compare-and-clear on canonical_dirty).
+		r.Get("/books/{book_id}/canonical-dirty", s.internalCanonicalDirty)
+		r.Post("/books/{book_id}/entities/{entity_id}/canonical", s.internalWriteCanonical)
+		// Temporal-knowledge (F4-live) — the append-only bi-temporal fact SSOT surface the
+		// KAL (knowledge-gateway) reads/writes through. Reads return bounded results
+		// (kal.v1.yaml); writes wrap the fact core (appendFact/retractFacts/ingestEpisode).
+		r.Get("/books/{book_id}/entities/{entity_id}/facts", s.internalGetFacts)
+		r.Get("/books/{book_id}/entities/{entity_id}/timeline", s.internalFactTimeline)
+		r.Get("/books/{book_id}/entities/{entity_id}/attr-values", s.internalListAttrValues)
+		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
+		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
+		r.Post("/books/{book_id}/facts/close", s.internalCloseFact)
+		r.Post("/books/{book_id}/facts/retract", s.internalRetractFacts)
+		r.Post("/books/{book_id}/facts/merge", s.internalFactMerge)
+		r.Post("/books/{book_id}/facts/resolve-entity", s.internalResolveEntity)
+		r.Post("/books/{book_id}/facts/split", s.internalSplitEntity)
+		// F2-app — the canonical fold loop (the LLM fold runs in the translation fold worker).
+		r.Get("/books/{book_id}/fold-dirty", s.internalFoldDirty)
+		r.Post("/books/{book_id}/entities/{entity_id}/fold-snapshot", s.internalWriteFoldSnapshot)
+		// KAL fold_canonical trigger — mark dirty so the next worker pass re-folds (no LLM here).
+		r.Post("/books/{book_id}/entities/{entity_id}/fold", s.internalTriggerFold)
+		r.Get("/books/{book_id}/entities/{entity_id}/canonical-snapshot", s.internalGetCanonical)
+		// Per-episode translation surface (§6B/§7.6) — on-demand, cached translation of the
+		// as-of folded canonical into the reader's display language. Read-through + single-flight
+		// background fill via translation-service (BYOK MT, provider-registry); no LLM in glossary.
+		r.Get("/books/{book_id}/entities/{entity_id}/canonical-translation", s.internalGetCanonicalTranslation)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.
@@ -161,6 +231,23 @@ func (s *Server) Router() http.Handler {
 		// wiki-llm M8 (D-WIKI-M8-FEWSHOT) — gold AI→human revision pairs (plaintext,
 		// truncated) for few-shot generation in knowledge-service.
 		r.Get("/books/{book_id}/wiki/gold-pairs", s.listWikiGoldPairs)
+		// D-KG-LG-REAL — the KG ontology resolver / adopt-gate node-kind source
+		// (knowledge-service glossary_ontology_client). Book tier + the System
+		// standards baseline for book-less projects.
+		r.Get("/books/{book_id}/ontology", s.internalBookOntology)
+		r.Get("/users/{user_id}/glossary-standards", s.internalUserGlossaryStandards)
+		// KG adopt auto-seed — knowledge-service's graph-schema adopt calls this to
+		// idempotently copy the schema's REQUIRED node-kinds into the book tier
+		// (System→book copy-down), so adopting a KG schema no longer 422s
+		// KG_ADOPT_NEEDS_GLOSSARY and silently does nothing. Internal-token gated;
+		// the caller (knowledge-service) already verified the user's MANAGE grant.
+		r.Post("/books/{book_id}/ontology/adopt-kinds", s.internalAdoptBookKinds)
+		// WS-1.6 (spec 05 §Q5) — get-or-create the user's is_self identity entity in their
+		// diary (the assistant provisioner calls this after adopt-kinds).
+		r.Post("/books/{book_id}/self-entity", s.internalSeedSelfEntity)
+		// D-R27 — the assistant-erase orchestrator (gateway) HARD-deletes all captured entities of a
+		// diary (the flip side of self-entity/adopt-kinds). Internal-token; book-scoped.
+		r.Delete("/books/{book_id}/entities", s.internalEraseBookEntities)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
@@ -177,6 +264,15 @@ func (s *Server) Router() http.Handler {
 		// the retired /schema/confirm. /preview is non-consuming (current-state card).
 		r.Post("/actions/confirm", s.confirmAction)
 		r.Post("/actions/preview", s.previewAction)
+		// #27/#29/#30 coalesce — ONE human card commits/previews the N child tokens a chat
+		// turn minted (the run-loop bundles strays). Reuses the per-descriptor effects above.
+		r.Post("/actions/confirm-batch", s.confirmActionBatch)
+		r.Post("/actions/preview-batch", s.previewActionBatch)
+		// T4 — System-tier admin confirm path, RS256-gated (requireAdminScope inside),
+		// SEPARATE from the HS256 user /actions/confirm above. The MCP admin tools
+		// propose (authorityAdmin token); a human admin confirms a System write here.
+		r.Post("/actions/admin/confirm", s.confirmAdminAction)
+		r.Post("/actions/admin/preview", s.previewAdminAction)
 		// Kind-resolution epic: alias table READ (alias_code → kind) for the
 		// unknown-kind review GUI. The write (createKindAlias + reassign) was removed
 		// in SS-4 Milestone C; it returns in SS-7 retargeted at the tiered model.
@@ -246,18 +342,23 @@ func (s *Server) Router() http.Handler {
 		r.Route("/system-genres", func(r chi.Router) {
 			r.Post("/", s.createSystemGenre)
 			r.Patch("/{genre_id}", s.patchSystemGenre)
-			r.Delete("/{genre_id}", s.deleteSystemGenre)
+			r.Delete("/{genre_id}", s.deleteSystemGenre)        // soft-delete (G-C8)
+			r.Post("/{genre_id}/restore", s.restoreSystemGenre) // recycle-bin restore (G-C8)
 		})
 		r.Route("/system-kinds", func(r chi.Router) {
 			r.Post("/", s.createSystemKind)
 			r.Patch("/{kind_id}", s.patchSystemKind)
 			r.Delete("/{kind_id}", s.deleteSystemKind)
+			r.Post("/{kind_id}/restore", s.restoreSystemKind)
 		})
 		r.Route("/system-attributes-admin", func(r chi.Router) {
 			r.Post("/", s.createSystemAttribute)
 			r.Patch("/{attr_id}", s.patchSystemAttribute)
 			r.Delete("/{attr_id}", s.deleteSystemAttribute)
+			r.Post("/{attr_id}/restore", s.restoreSystemAttribute)
 		})
+		// Recycle bin: all soft-deleted System rows (G-C8). admin:write-gated.
+		r.Get("/system-trash", s.listSystemTrash)
 
 		r.Route("/user-attributes", func(r chi.Router) {
 			r.Get("/", s.listUserAttributes)
@@ -286,6 +387,7 @@ func (s *Server) Router() http.Handler {
 					r.Route("/{genre_id}", func(r chi.Router) {
 						r.Patch("/", s.patchBookGenre)
 						r.Delete("/", s.deleteBookGenre)
+						r.Post("/revert", s.revertBookGenre) // G-U1 revert to parent tier
 					})
 				})
 				r.Route("/kinds", func(r chi.Router) {
@@ -294,6 +396,7 @@ func (s *Server) Router() http.Handler {
 						r.Patch("/", s.patchBookKind)
 						r.Delete("/", s.deleteBookKind)
 						r.Put("/genres", s.setBookKindGenres)
+						r.Post("/revert", s.revertBookKind)
 					})
 				})
 				r.Route("/attributes", func(r chi.Router) {
@@ -301,6 +404,7 @@ func (s *Server) Router() http.Handler {
 					r.Route("/{attr_id}", func(r chi.Router) {
 						r.Patch("/", s.patchBookAttribute)
 						r.Delete("/", s.deleteBookAttribute)
+						r.Post("/revert", s.revertBookAttribute)
 					})
 				})
 			})
@@ -340,6 +444,10 @@ func (s *Server) Router() http.Handler {
 					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
 				})
 				r.Get("/suggestions", s.listWikiSuggestions)
+				// Submitter-facing read of their OWN suggestions WITH accept/reject status
+				// (no grant — `ws.user_id = caller` is the scope). Static 2-seg route wins
+				// over `/{article_id}/...` in chi's trie, so "mine" is never an article_id.
+				r.Get("/suggestions/mine", s.listMyWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)
 				r.Route("/{article_id}", func(r chi.Router) {
@@ -349,6 +457,7 @@ func (s *Server) Router() http.Handler {
 					r.Post("/suggestions", s.submitWikiSuggestion)
 					r.Route("/suggestions/{sug_id}", func(r chi.Router) {
 						r.Patch("/", s.reviewWikiSuggestion)
+						r.Delete("/", s.withdrawWikiSuggestion)
 					})
 					r.Route("/revisions", func(r chi.Router) {
 						r.Get("/", s.listWikiRevisions)
@@ -361,6 +470,10 @@ func (s *Server) Router() http.Handler {
 			})
 			r.Get("/entity-names", s.listEntityNames)
 			r.Get("/translation-languages", s.listBookTranslationLanguages)
+			// S4 — batch-translate dialog: list candidates (View) + apply drafts (Edit),
+			// reusing the internal worker cores behind a grant gate.
+			r.Get("/translation-candidates", s.bookTranslationCandidates)
+			r.Post("/apply-translations", s.bookApplyTranslations)
 			// Kind-resolution epic: the per-book unknown-kind review queue.
 			r.Get("/unknown-entities", s.listUnknownEntities)
 			// mui #1c: revert a recorded entity merge.
@@ -369,6 +482,22 @@ func (s *Server) Router() http.Handler {
 			// Confirm == the existing entities/{id}/merge endpoint.
 			r.Get("/merge-candidates", s.listMergeCandidates)
 			r.Post("/merge-candidates/{candidate_id}/dismiss", s.dismissMergeCandidate)
+			// D-BATCH-RESEARCH-JOB — async batch entity-research over a kind. create +
+			// estimate are kind-scoped (Manage/View); list + status are book-scoped (View).
+			// Lifecycle actions (pause/resume/cancel) arrive with the M2 worker.
+			r.Post("/kinds/{kind_id}/research-jobs", s.createResearchJob)
+			r.Get("/kinds/{kind_id}/research-estimate", s.researchEstimate)
+			r.Get("/research-jobs", s.listResearchJobs)
+			r.Get("/research-jobs/{job_id}", s.getResearchJob)
+			r.Post("/research-jobs/{job_id}/pause", s.pauseResearchJob)
+			r.Post("/research-jobs/{job_id}/resume", s.resumeResearchJob)
+			r.Post("/research-jobs/{job_id}/cancel", s.cancelResearchJob)
+			// M6 — "Canon at chapter N" public read surface (composition inspector).
+			// Both View-grant gated, bare-array responses. known-entities is a public
+			// mirror of the internal getKnownEntities (+ first/last/coverage); chapter-
+			// entities is the new chapter→entities direction (idx_cel_chapter).
+			r.Get("/known-entities", s.publicKnownEntities)
+			r.Get("/chapter-entities", s.publicChapterEntities)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -376,6 +505,9 @@ func (s *Server) Router() http.Handler {
 				// feed the translation glossary). Static path — registered before
 				// /{entity_id} so chi matches it first.
 				r.Post("/bulk-status", s.bulkSetEntityStatus)
+				// Bulk soft-delete (clean up duplicate/unwanted entities). Static
+				// path — registered before /{entity_id} so chi matches it first.
+				r.Post("/bulk-delete", s.bulkDeleteEntities)
 				r.Route("/{entity_id}", func(r chi.Router) {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)
@@ -411,8 +543,16 @@ func (s *Server) Router() http.Handler {
 							r.Post("/restore", s.restoreEntityRevision)
 						})
 					})
+					// S-06 — add a value for an attr-def added AFTER the entity existed (the
+					// add-later path that was MCP-only). Collection-level POST.
+					r.Post("/attributes", s.addAttributeValue)
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
+						// S-06 — remove the value ROW entirely (cascades children), distinct
+						// from a PATCH-to-empty which keeps the blank row.
+						r.Delete("/", s.deleteAttributeValue)
+						// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 3 — per-item verify/tombstone.
+						r.Patch("/items/{item_id}", s.patchAttributeValueItem)
 						r.Route("/translations", func(r chi.Router) {
 							r.Post("/", s.createTranslation)
 							r.Route("/{translation_id}", func(r chi.Router) {
@@ -455,10 +595,6 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 
 // ── auth ─────────────────────────────────────────────────────────────────────
 
-type accessClaims struct {
-	jwt.RegisteredClaims
-}
-
 // requireUserID extracts and validates the Bearer JWT, returning the user UUID.
 func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 	auth := r.Header.Get("Authorization")
@@ -466,20 +602,11 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
+	claims, err := platformjwt.Verify(tokenStr, s.secret)
+	if err != nil {
 		return uuid.Nil, false
 	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	id, err := claims.UserID()
 	if err != nil {
 		return uuid.Nil, false
 	}

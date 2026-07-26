@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
+import { Download, Gauge, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { cn } from '@/lib/utils';
 import { MemoryIndicator } from '@/features/knowledge/components/MemoryIndicator';
+import { ContextMeter } from './ContextMeter';
 import { chatApi } from '../api';
-import type { ChatSession } from '../types';
+import type { CompactControls } from '../hooks/useCompactSession';
+import type { ChatSession, ContextBudget } from '../types';
 
 interface ChatHeaderProps {
   session: ChatSession;
@@ -20,9 +22,27 @@ interface ChatHeaderProps {
   onOpenVoiceSettings?: () => void;
   /** Mobile: open session sidebar */
   onOpenSidebar?: () => void;
+  /** Embedded hosts inject a compact session switcher here; when present it
+   *  replaces the static title (the switcher renders the title itself). */
+  sessionSwitcher?: React.ReactNode;
+  /** RAID Wave A3: last turn-finish context-budget snapshot → the header meter.
+   *  Null before the first turn finishes (meter renders nothing). */
+  contextBudget?: ContextBudget | null;
+  /** W2: opens the tool/skill manager from the context breakdown panel's tool
+   *  rows. Omitted on surfaces without the rack. */
+  onManageContextTools?: () => void;
+  /** W3: the context breakdown panel's "Compact now" controls. */
+  compactControls?: CompactControls;
+  /** W6: external "open the breakdown panel" signal (the rack's summary chip). */
+  breakdownOpen?: boolean;
+  onBreakdownClose?: () => void;
+  /** Context Compiler · Trace Inspector — opens the standalone inspector focused on
+   *  THIS session (spec §11). Omitted on embedded surfaces (editor/studio) where a
+   *  navigation away would tear down the host. */
+  onOpenInspector?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools, compactControls, breakdownOpen, onBreakdownClose, onOpenInspector }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -57,7 +77,9 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           </button>
         )}
         <div className="min-w-0">
-        <h2 className="truncate text-sm font-semibold text-foreground">{session.title}</h2>
+        {sessionSwitcher ?? (
+          <h2 className="truncate text-sm font-semibold text-foreground">{session.title}</h2>
+        )}
         <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
           {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? t('header.my_model') : t('header.platform'))} &middot;{' '}
           {t('header.messages', { count: messageCount ?? session.message_count })}
@@ -70,10 +92,12 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         </div>
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">
-        <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} compact={compact} />
+        <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} projectCount={session.project_ids?.length} compact={compact} />
+        <ContextMeter budget={contextBudget ?? null} compact={compact} onManageTools={onManageContextTools} compactControls={compactControls} externalPanelOpen={breakdownOpen} onExternalPanelClose={onBreakdownClose} />
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"
+            data-testid="chat-voice-mode-toggle"
             onClick={onToggleVoiceMode}
             title={t('header.voice_mode')}
             aria-label={t('header.voice_mode')}
@@ -91,11 +115,24 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         {onOpenVoiceSettings && session.status !== 'archived' && (
           <button
             type="button"
+            data-testid="chat-voice-settings-button"
             onClick={onOpenVoiceSettings}
             title={t('header.voice_settings')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <SlidersHorizontal className="h-4 w-4" />
+          </button>
+        )}
+        {onOpenInspector && (
+          <button
+            type="button"
+            onClick={onOpenInspector}
+            data-testid="chat-context-inspector-button"
+            title={t('header.context_inspector')}
+            aria-label={t('header.context_inspector')}
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Gauge className="h-4 w-4" />
           </button>
         )}
         <button
@@ -109,6 +146,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         {onRename && (
           <button
             type="button"
+            data-testid="chat-rename-session"
             onClick={onRename}
             title={t('header.rename')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"

@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/plan_document.schema.json",
+  "title": "PlanDocument",
+  "description": "Parsed source document from NL planning markdown. Traceability to raw spans.",
+  "type": "object",
+  "required": ["version", "source", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "source": {
+      "type": "object",
+      "required": ["path", "checksum_sha256", "char_count"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "checksum_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "char_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/PlanSection" }
+    }
+  },
+  "definitions": {
+    "PlanSection": {
+      "type": "object",
+      "required": ["id", "kind", "title", "body", "line_start", "line_end"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "character_seed",
+            "mechanics",
+            "planner_variables",
+            "arc_overview",
+            "writing_principles",
+            "open_questions",
+            "other"
+          ]
+        },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

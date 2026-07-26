@@ -1,0 +1,816 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Entities API
+  version: 1.0.0
+  description: >-
+    The authored-SSOT entity route family: entity CRUD, attribute-VALUE lifecycle
+    (add-later / PATCH / delete), per-value translations + evidences + list-items,
+    chapter-links, revisions, merge/reassign/pin, and bulk status/delete. All routes
+    are book-scoped and grant-gated (E0 View/Edit/Manage). Documented as part of
+    D-GLOSSARY-CONTRACT-FIRST (spec docs/specs/2026-07-18-glossary-contract-first-restoration.md,
+    P2). Scope is path+method+shape; the conformance gate (TestOpenAPIRouteConformance)
+    enforces every route here is routed and every routed /v1 entity route is here.
+servers:
+  - url: https://glossary-service.loreweave.dev
+
+paths:
+  /v1/glossary/books/{book_id}/entities:
+    get:
+      tags: [entities]
+      summary: List entities in a book (paged, filterable)
+      description: Grant View. Filter by kind/status/tags/free-text; paged by limit+offset.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+        - { name: kind, in: query, schema: { type: string }, description: kind code filter }
+        - { name: status, in: query, schema: { type: string, enum: [draft, active, archived] } }
+        - { name: q, in: query, schema: { type: string }, description: free-text name filter }
+      responses:
+        '200':
+          description: Paged entity list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [entities]
+      summary: Create an entity
+      description: Grant Edit. Seeds one attribute-value per applicable kind/genre attr-def.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind_id]
+              properties:
+                kind_id: { type: string, format: uuid, description: the book_kind_id }
+                genre_ids: { type: array, items: { type: string, format: uuid } }
+                display_name: { type: string }
+                status: { type: string, enum: [draft, active] }
+                tags: { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: The created entity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/bulk-status:
+    post:
+      tags: [entities]
+      summary: Bulk-set status on many entities
+      description: Grant Edit. E.g. activate freshly-extracted drafts so they feed the translation glossary.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, entity_ids]
+              properties:
+                status: { type: string, enum: [draft, active, archived] }
+                entity_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Count updated
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/bulk-delete:
+    post:
+      tags: [entities]
+      summary: Bulk soft-delete many entities
+      description: Grant Edit. Soft-deletes (recoverable via the recycle-bin).
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_ids]
+              properties:
+                entity_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Count deleted
+          content:
+            application/json:
+              schema: { type: object, properties: { deleted: { type: integer } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}:
+    get:
+      tags: [entities]
+      summary: Get one entity (detail — with chapter-links + attribute-values)
+      description: Grant View. Response carries an updated_at usable as an If-Match version.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Entity detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntityDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [entities]
+      summary: Patch an entity (partial; OCC via If-Match on updated_at)
+      description: Grant Edit. If-Match carrying the read-time updated_at → 412 on drift.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: If-Match, in: header, schema: { type: string }, description: entity updated_at version }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EntityPatch' }
+      responses:
+        '200':
+          description: The updated entity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+    delete:
+      tags: [entities]
+      summary: Soft-delete an entity
+      description: Grant Edit. Recoverable via the book recycle-bin.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/apply-edit:
+    post:
+      tags: [entities]
+      summary: Atomic multi-field entity edit (assistant diff-card Apply)
+      description: Grant Edit. EDIT-ATOMIC — applies a set of field changes in one transaction.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                base_version: { type: string, description: read-time version for OCC }
+                changes: { type: array, items: { type: object }, description: field diffs to apply }
+      responses:
+        '200':
+          description: The updated entity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/pin:
+    post:
+      tags: [entities]
+      summary: Pin an entity for context selection
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Pinned }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [entities]
+      summary: Unpin an entity
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Unpinned }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/reassign-kind:
+    post:
+      tags: [entities]
+      summary: Move a parked/unknown entity onto a real kind
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind_id]
+              properties:
+                kind_id: { type: string, format: uuid }
+      responses:
+        '200': { description: Reassigned }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/merge:
+    post:
+      tags: [entities]
+      summary: Merge loser entities into this (winner) entity
+      description: Grant Manage. Consolidates attribute-values/links/evidences onto the winner.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loser_ids]
+              properties:
+                loser_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Merge outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  winner_id: { type: string, format: uuid }
+                  results: { type: array, items: { type: object } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/chapter-links:
+    get:
+      tags: [chapter-links]
+      summary: List an entity's chapter links
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Chapter links
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ChapterLink' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [chapter-links]
+      summary: Link an entity to a chapter
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chapter_id]
+              properties:
+                chapter_id: { type: string, format: uuid }
+                relevance: { type: string, enum: [major, appears, mentioned] }
+                note: { type: string }
+      responses:
+        '201':
+          description: The created link
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterLink' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/chapter-links/{link_id}:
+    patch:
+      tags: [chapter-links]
+      summary: Update a chapter link (relevance/note)
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: link_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                relevance: { type: string, enum: [major, appears, mentioned] }
+                note: { type: string }
+      responses:
+        '200':
+          description: The updated link
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChapterLink' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [chapter-links]
+      summary: Remove a chapter link
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: link_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/evidences:
+    get:
+      tags: [evidences]
+      summary: List all evidences across an entity's attribute-values
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Evidences
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/revisions:
+    get:
+      tags: [revisions]
+      summary: List an entity's revision history
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Revision summaries (newest first)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EntityRevisionSummary' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/revisions/{rev_id}:
+    get:
+      tags: [revisions]
+      summary: Get one revision's full snapshot
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: rev_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Revision detail (summary + captured snapshot)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/EntityRevisionSummary'
+                  - type: object
+                    properties:
+                      snapshot: { type: object }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/revisions/{rev_id}/restore:
+    post:
+      tags: [revisions]
+      summary: Restore an entity to a prior revision
+      description: Grant Edit (a view-only collaborator must not write via restore).
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: rev_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The restored entity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Entity' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes:
+    post:
+      tags: [attribute-values]
+      summary: Add a value for an attr-def added AFTER the entity existed (add-later)
+      description: >-
+        Grant Edit. The REST form of the previously MCP-only add-later path (S-06). Validates
+        the attr-def is applicable to the entity's kind + not deprecated. 409 if a value row
+        already exists (use PATCH to edit). Marked 'verified' (human-authored).
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attribute_def_id, value]
+              properties:
+                attribute_def_id: { type: string, format: uuid }
+                value: { type: string }
+      responses:
+        '201':
+          description: The created attribute value
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttributeValue' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: The attr-def is not applicable to this entity's kind (or is deprecated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}:
+    patch:
+      tags: [attribute-values]
+      summary: Edit an attribute value (OCC via If-Match on the entity's updated_at)
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: If-Match, in: header, schema: { type: string }, description: entity updated_at version }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                original_value: { type: string }
+                original_language: { type: string }
+      responses:
+        '200':
+          description: The updated attribute value
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttributeValue' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+    delete:
+      tags: [attribute-values]
+      summary: Remove an attribute value ROW entirely (cascades children)
+      description: >-
+        Grant Edit. Distinct from a PATCH-to-empty (which keeps a blank row). Cascades the
+        value's translations + list-items via FK ON DELETE CASCADE. Emits entity_updated (S-06).
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted (children cascaded) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/items/{item_id}:
+    patch:
+      tags: [attribute-values]
+      summary: Verify / tombstone one item of a multi-row attribute value
+      description: Grant Edit. D-GLOSSARY-MULTIROW-ATTR-VALUES — per-item status + confidence.
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: item_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string }
+                confidence: { type: string }
+      responses:
+        '200': { description: The updated item }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/translations:
+    post:
+      tags: [translations]
+      summary: Add a translation for an attribute value
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [language_code, value]
+              properties:
+                language_code: { type: string }
+                value: { type: string }
+                confidence: { type: string, enum: [draft, machine, verified] }
+                translator: { type: string }
+      responses:
+        '201':
+          description: The created translation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Translation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/translations/{translation_id}:
+    patch:
+      tags: [translations]
+      summary: Edit a translation
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: translation_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value: { type: string }
+                confidence: { type: string, enum: [draft, machine, verified] }
+                translator: { type: string }
+      responses:
+        '200':
+          description: The updated translation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Translation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [translations]
+      summary: Remove a translation
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: translation_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/evidences:
+    post:
+      tags: [evidences]
+      summary: Add an evidence citation for an attribute value
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [evidence_type, original_text]
+              properties:
+                evidence_type: { type: string }
+                original_text: { type: string }
+                original_language: { type: string }
+                chapter_id: { type: string, format: uuid }
+                chapter_title: { type: string }
+                chapter_index: { type: integer }
+                block_or_line: { type: string }
+                note: { type: string }
+      responses:
+        '201':
+          description: The created evidence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Evidence' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/evidences/{evidence_id}:
+    patch:
+      tags: [evidences]
+      summary: Edit an evidence citation
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: evidence_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                original_text: { type: string }
+                note: { type: string }
+                block_or_line: { type: string }
+      responses:
+        '200':
+          description: The updated evidence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Evidence' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [evidences]
+      summary: Remove an evidence citation
+      parameters:
+        - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: attr_value_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: evidence_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Caller lacks the required grant on this book
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found in this book
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: A conflicting row already exists (use PATCH to edit)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PreconditionFailed:
+      description: If-Match version drift (optimistic-concurrency conflict)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+    KindSummary:
+      type: object
+      properties:
+        kind_id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        icon: { type: string }
+        color: { type: string }
+    EntityListItem:
+      type: object
+      properties:
+        entity_id: { type: string, format: uuid }
+        book_id: { type: string, format: uuid }
+        kind_id: { type: string }
+        kind: { $ref: '#/components/schemas/KindSummary' }
+        display_name: { type: string }
+        display_name_translation: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, archived] }
+        tags: { type: array, items: { type: string } }
+        short_description: { type: string, nullable: true }
+        scope_label: { type: string }
+        is_pinned_for_context: { type: boolean }
+        chapter_link_count: { type: integer }
+        translation_count: { type: integer }
+        evidence_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Entity:
+      $ref: '#/components/schemas/EntityListItem'
+    EntityDetail:
+      allOf:
+        - $ref: '#/components/schemas/EntityListItem'
+        - type: object
+          properties:
+            chapter_links: { type: array, items: { $ref: '#/components/schemas/ChapterLink' } }
+            attribute_values: { type: array, items: { $ref: '#/components/schemas/AttributeValue' } }
+    EntityPatch:
+      type: object
+      description: Partial — any subset of the mutable entity fields.
+      properties:
+        status: { type: string, enum: [draft, active, archived] }
+        tags: { type: array, items: { type: string } }
+        short_description: { type: string }
+        scope_label: { type: string }
+    EntityListResponse:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/EntityListItem' } }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    AttributeDef:
+      type: object
+      properties:
+        attr_def_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        field_type: { type: string }
+        is_required: { type: boolean }
+        is_system: { type: boolean }
+        sort_order: { type: integer }
+        options: { type: array, items: { type: string } }
+        merge_strategy: { type: string }
+    AttributeValue:
+      type: object
+      properties:
+        attr_value_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        attr_def_id: { type: string, format: uuid }
+        attribute_def: { $ref: '#/components/schemas/AttributeDef' }
+        original_language: { type: string }
+        original_value: { type: string }
+        translations: { type: array, items: { $ref: '#/components/schemas/Translation' } }
+        evidences: { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+        canonical_value: { type: string, nullable: true }
+        canonical_dirty: { type: boolean }
+    Translation:
+      type: object
+      properties:
+        translation_id: { type: string, format: uuid }
+        attr_value_id: { type: string, format: uuid }
+        language_code: { type: string }
+        value: { type: string }
+        confidence: { type: string }
+        translator: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
+    EvidenceTranslation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        evidence_id: { type: string, format: uuid }
+        language_code: { type: string }
+        value: { type: string }
+        confidence: { type: string }
+    Evidence:
+      type: object
+      properties:
+        evidence_id: { type: string, format: uuid }
+        attr_value_id: { type: string, format: uuid }
+        chapter_id: { type: string, format: uuid, nullable: true }
+        chapter_title: { type: string, nullable: true }
+        block_or_line: { type: string }
+        evidence_type: { type: string }
+        original_language: { type: string }
+        original_text: { type: string }
+        note: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        translations: { type: array, items: { $ref: '#/components/schemas/EvidenceTranslation' } }
+    ChapterLink:
+      type: object
+      properties:
+        link_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        chapter_id: { type: string, format: uuid }
+        chapter_title: { type: string, nullable: true }
+        chapter_index: { type: integer, nullable: true }
+        relevance: { type: string }
+        note: { type: string, nullable: true }
+        added_at: { type: string, format: date-time }
+        mention_count: { type: integer }
+    EntityRevisionSummary:
+      type: object
+      properties:
+        revision_id: { type: string, format: uuid }
+        revision_num: { type: integer }
+        op: { type: string }
+        actor_type: { type: string }
+        actor_id: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }

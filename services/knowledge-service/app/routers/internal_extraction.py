@@ -13,6 +13,7 @@ Trusts the caller's user_id — worker-ai reads it from extraction_jobs.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Literal
 from uuid import UUID
@@ -21,14 +22,25 @@ from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.clients.default_model import resolve_user_default_model
 from app.clients.glossary_client import get_glossary_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
+from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.job_logs import JobLogsRepo
+from app.db.repositories.projects import ProjectsRepo
+from app.db.repositories.triage import TriageRepo
+from app.extraction.model_roles import resolve_role_model
+from loreweave_extraction import EntityRecoveryConfig
+from app.ontology.extraction_projection import (
+    build_extraction_schema,
+    resolved_to_extraction_dict,
+)
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
+from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -240,6 +252,187 @@ _anchor_cache: TTLCache[tuple[str, str], list[Anchor]] = TTLCache(
 )
 
 
+# ── L7 activation — per-project resolved-schema cache for the write boundary ──
+#
+# /persist-pass2 resolves the project's effective KG schema and passes it to the
+# Pass-2 writer so M3 schema_version stamping + the closed-edge guard + triage
+# park go live. The resolve is a bounded Postgres read; a 100-chapter job would
+# otherwise re-resolve per chapter. Cache the PROJECTED ExtractionSchema per
+# (user_id, project_id) with a 30s TTL — long enough to collapse a bulk job's
+# repeats, short enough that an adopt/sync is picked up almost immediately
+# (matches OntologyResolver's own 30s design intent). Only successful resolves
+# are cached; a transient failure degrades to "no schema this call" and is
+# re-tried next call (not locked in for 30s). Per-process; empties on restart.
+_SCHEMA_CACHE_TTL_S = 30.0
+_SCHEMA_CACHE_MAX = 256
+_schema_cache: TTLCache[tuple[str, str], ExtractionSchema] = TTLCache(
+    maxsize=_SCHEMA_CACHE_MAX, ttl=_SCHEMA_CACHE_TTL_S,
+)
+
+
+async def _resolve_schema_for_persist(
+    *, user_id: UUID, project_id: UUID | None,
+) -> ExtractionSchema | None:
+    """L7 activation — resolve the project's effective schema (AUTHORITATIVE) for
+    the write boundary: the closed-edge guard + triage park + ``schema_version``
+    stamp.
+
+    Returns ``None`` for chat/global (no project) or on any resolution failure —
+    extraction still persists, just without the stamp/guard this call (fail-soft,
+    exactly like the anchor pre-load). Cached per ``(user_id, project_id)`` for
+    30s.
+
+    NOT advisory: carries the schema's real ``allow_free_edges`` so the writer is
+    the SOLE closed-set enforce+park point. (The SDK extraction-prompt path uses
+    ``advisory=True`` separately, so it injects vocab as a hint but never
+    pre-drops — which would otherwise rob this park of the off-schema edge.)
+    """
+    if project_id is None:
+        return None
+    cache_key = (str(user_id), str(project_id))
+    cached = _schema_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(project_id))
+        schema = build_extraction_schema(resolved, advisory=False)
+    except Exception:
+        logger.warning(
+            "L7: schema resolve failed for project=%s — persist will not stamp/"
+            "enforce schema this call",
+            project_id, exc_info=True,
+        )
+        return None  # don't cache failures
+    _schema_cache[cache_key] = schema
+    return schema
+
+
+async def _resolve_schemas_for_extract_item(
+    *, user_id: UUID, project_id: UUID | None,
+) -> tuple[ExtractionSchema | None, ExtractionSchema | None]:
+    """L7B (D-KG-L7B-EXTRACT-ITEM) — resolve the L7 schema SPLIT for the
+    combined extract-then-write ``/extract-item`` path.
+
+    Returns ``(advisory, authoritative)``:
+
+      * **advisory** (``allow_free_edges`` forced True) → fed to the SDK
+        extraction prompt as a vocab *hint* so it never pre-drops an off-vocab
+        predicate (which would rob the write boundary's triage park of the edge);
+      * **authoritative** (real ``allow_free_edges``) → handed to
+        ``write_pass2_extraction`` so the closed-edge guard + ``schema_version``
+        stamp + off-schema triage park go live there.
+
+    Same posture split ``/persist-pass2`` (authoritative) + ``/resolve-schema``
+    (advisory) use, but resolved ONCE here because this endpoint runs both the
+    SDK extraction AND the write in a single in-process pipeline.
+
+    Returns ``(None, None)`` for chat/global (no project) or on any resolution
+    failure — extraction still persists, just with the static prompt + no
+    stamp/guard this call (fail-soft, exactly like the anchor pre-load and
+    ``_resolve_schema_for_persist``). The general fallback = today's behavior.
+    """
+    if project_id is None:
+        return (None, None)
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(project_id))
+        advisory = build_extraction_schema(resolved, advisory=True)
+        authoritative = build_extraction_schema(resolved, advisory=False)
+    except Exception:
+        logger.warning(
+            "L7B: schema resolve failed for project=%s — extract-item will use "
+            "the static prompt + no stamp/guard this call",
+            project_id, exc_info=True,
+        )
+        return (None, None)
+    return (advisory, authoritative)
+
+
+_ER_ENV_REF = "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF"
+_ER_ENV_SOURCE = "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE"
+_ER_ENV_MAX_BATCH = "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH"
+
+
+async def _resolve_entity_recovery_config(
+    *, user_id: str, project_id: str | None,
+    job_model_source: str, job_model_ref: str,
+) -> EntityRecoveryConfig | None:
+    """KN model-roles — resolve THIS job's entity-recovery config per-project.
+
+    Enablement (opt-in — recovery is an optional refinement, NOT on-by-default):
+      * `extraction_config.entity_recovery.enabled == True` → on (per-project)
+      * else the legacy env floor (`KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF`
+        set) → on (back-compat)
+      * else → OFF (returns None → byte-identical to pre-KN behavior when nothing
+        is configured).
+
+    When ON, the MODEL resolves via the precedence chain (resolve_role_model):
+    role override (`entity_recovery.model_ref`) → project default (THIS job's
+    extraction model — already the resolved `llm_model`) → user-global default
+    (`chat` capability) → env floor. Fail-soft: any read failure degrades to the
+    env config / off (never blocks extraction).
+    """
+    env_ref = (os.environ.get(_ER_ENV_REF, "") or "").strip()
+    extraction_config: dict = {}
+    if project_id:
+        try:
+            repo = ProjectsRepo(get_knowledge_pool())
+            proj = await repo.get(UUID(user_id), UUID(project_id))
+            extraction_config = (proj.extraction_config or {}) if proj else {}
+        except Exception:
+            logger.debug(
+                "entity_recovery: extraction_config read failed (advisory)",
+                exc_info=True,
+            )
+    er_cfg = extraction_config.get("entity_recovery") or {}
+    enabled = er_cfg.get("enabled") if isinstance(er_cfg, dict) else None
+    if enabled is False:
+        return None
+    env_source = os.environ.get(_ER_ENV_SOURCE) or "user_model"
+
+    if enabled is True:
+        # Per-project OPT-IN → the precedence chain (role override → project
+        # default → user-global → env floor). Project default = the persisted
+        # `extraction_config.llm_model` (the FE "Default LLM" picker) when set,
+        # else THIS job's extraction model (so recovery matches extraction by
+        # default rather than diverging to a different model).
+        user_default = await resolve_user_default_model(user_id)
+        synthetic = dict(extraction_config)
+        if not synthetic.get("llm_model"):
+            synthetic["llm_model"] = job_model_ref
+            synthetic["llm_model_source"] = job_model_source
+        resolved = resolve_role_model(
+            synthetic, "entity_recovery",
+            user_default_ref=user_default,
+            env_source=env_source,
+            env_ref=(env_ref or None),
+        )
+    elif env_ref:
+        # Legacy env-only floor (NOT opted-in per-project) → use the env model
+        # EXACTLY as before, without substituting the job's extraction model.
+        from app.extraction.model_roles import RoleModel
+        resolved = RoleModel(env_source, env_ref)
+    else:
+        return None  # not opted-in per-project, no env floor → off
+    if resolved is None:
+        return None
+
+    # max batch: per-project override → env → default 5.
+    raw_batch = er_cfg.get("max_items_per_batch") if isinstance(er_cfg, dict) else None
+    if raw_batch is None:
+        raw_batch = (os.environ.get(_ER_ENV_MAX_BATCH, "5") or "5").strip()
+    try:
+        max_batch = max(1, int(raw_batch))
+    except (ValueError, TypeError):
+        max_batch = 5
+    return EntityRecoveryConfig(
+        model_ref=resolved.model_ref,
+        model_source=resolved.model_source,  # type: ignore[arg-type]
+        max_items_per_batch=max_batch,
+    )
+
+
 async def _load_anchors_for_extraction(
     *, user_id: UUID, project_id: UUID | None,
 ) -> list[Anchor]:
@@ -348,6 +541,35 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         user_id=body.user_id, project_id=body.project_id,
     )
 
+    # L7B (D-KG-L7B-EXTRACT-ITEM) — resolve the L7 schema SPLIT internally so
+    # this endpoint gets the same ontology customization /persist-pass2 has,
+    # WITHOUT changing the cross-service contract (composition-service C27 sends
+    # no schema field). The advisory schema feeds the SDK extraction prompt as a
+    # vocab hint; the authoritative schema + triage_repo go to the writer for the
+    # closed-edge guard + off-schema park + schema_version stamp. Both None
+    # (chat/global or resolve failure) → general fallback (today's behavior).
+    advisory_schema, write_schema = await _resolve_schemas_for_extract_item(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+    # Best-effort like the JobLogsRepo producer above: if the pool isn't
+    # initialised (unit tests that only mock the extractor helpers), triage_repo
+    # stays None — the writer only parks inside the closed-edge guard (which needs
+    # a resolved authoritative schema), so None never changes behavior for a
+    # free-edge/None schema.
+    try:
+        triage_repo: TriageRepo | None = TriageRepo(get_knowledge_pool())
+    except Exception:
+        triage_repo = None
+
+    # KN model-roles — resolve THIS job's entity-recovery config (per-project
+    # opt-in + model precedence). None ⇒ off / env floor (byte-identical today).
+    entity_recovery_override = await _resolve_entity_recovery_config(
+        user_id=str(body.user_id),
+        project_id=str(body.project_id) if body.project_id else None,
+        job_model_source=body.model_source,
+        job_model_ref=body.model_ref,
+    )
+
     try:
         async with neo4j_session() as session:
             if body.item_type == "chapter":
@@ -370,6 +592,10 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
+                    schema=advisory_schema,  # L7B — advisory vocab hint for SDK
+                    write_schema=write_schema,  # L7B — authoritative write guard
+                    triage_repo=triage_repo,  # L7B — park off-schema edges
+                    entity_recovery_override=entity_recovery_override,  # KN model-roles
                 )
             else:  # "chat_turn" — Pydantic Literal rejects other values at 422
                 if not body.user_message and not body.assistant_message:
@@ -392,6 +618,10 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
+                    schema=advisory_schema,  # L7B — advisory vocab hint for SDK
+                    write_schema=write_schema,  # L7B — authoritative write guard
+                    triage_repo=triage_repo,  # L7B — park off-schema edges
+                    entity_recovery_override=entity_recovery_override,  # KN model-roles
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)
@@ -507,6 +737,47 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     )
 
     project_id_str = str(body.project_id) if body.project_id else None
+
+    # PP-5 (spec 08 R7) — resolve WORK mode: an assistant/diary project's facts must not carry durable
+    # behavioral-TRAIT (`preference`) claims about real colleagues. One cheap PG read per persist (this
+    # is per-extraction-item, not a hot per-token path); default False (novel/global) on any miss so the
+    # fiction path is unchanged. The writer coerces preference→statement when this is True.
+    #
+    # DEFENSE-IN-DEPTH (review H2): the PRIMARY R7 guarantee is upstream — `queue_diary_facts` writes
+    # every distilled diary fact as `fact_type='statement'` (never a preference), and per-turn chat
+    # extraction is gated OFF for `is_assistant` projects (`may_extract_chat_turn`), so a diary fact
+    # never reaches this writer today. PP-5 here is a fail-safe for the future case where an assistant
+    # project's CHAPTERS are chapter-extracted, or per-turn work-capture is ever enabled — so a
+    # `preference` can never slip in via this path either. It defaults False (fail-open is acceptable
+    # BECAUSE the primary guard is elsewhere; failing closed here would over-coerce every novel's
+    # preferences on a transient DB blip).
+    work_mode = False
+    if body.project_id is not None:
+        try:
+            work_mode = bool(await get_knowledge_pool().fetchval(
+                "SELECT is_assistant FROM knowledge_projects WHERE project_id=$1", body.project_id,
+            ))
+        except Exception:  # noqa: BLE001 — a resolution failure must not fail the extraction; fail to novel-mode.
+            logger.warning("persist_pass2: PP-5 is_assistant resolve failed; defaulting work_mode=False", exc_info=True)
+
+    # L7 activation — resolve the project's effective KG schema for the write
+    # boundary. None (chat/global, or resolve failure) → today's behavior (no
+    # stamp/guard). When present, the writer stamps schema_version on every edge
+    # (M3) and, for a project that CLOSES its edge set, drops + parks off-schema
+    # edges to triage. The TriageRepo is always wired (cheap); the writer only
+    # parks inside the closed-edge guard, so a free-edge/None schema never parks.
+    schema = await _resolve_schema_for_persist(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+    # Best-effort like the JobLogsRepo producer below: if the pool isn't
+    # initialised (unit tests that only mock the writer), triage_repo=None — the
+    # writer only parks inside the closed-edge guard (which needs a resolved
+    # schema), so None never changes behavior for a free-edge/None schema.
+    try:
+        triage_repo: TriageRepo | None = TriageRepo(get_knowledge_pool())
+    except Exception:
+        triage_repo = None
+
     async with neo4j_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
@@ -550,6 +821,9 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             autocreate_enabled=autocreate_enabled,
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
             provenance=body.provenance,  # CM5
+            schema=schema,  # L7 — schema_version stamp + closed-edge guard
+            triage_repo=triage_repo,  # L7/C4 — park off-schema edge drops
+            work_mode=work_mode,  # PP-5 — coerce preference→statement in an assistant/diary project
         )
         # CM3b-RETRACT-FIX: after re-writing, sweep nodes whose evidence the
         # retract dropped to zero (disappeared from the new revision) — this
@@ -568,6 +842,37 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                     "CM3b-RETRACT-FIX: persist-pass2 swept zero-evidence orphans "
                     "source_id=%s entities=%d events=%d facts=%d",
                     body.source_id, swept.entities, swept.events, swept.facts,
+                )
+            # F3 (§12.3.3 step B.3.5, A3) — re-stitch the story-time interval
+            # chains after the retract. A swept fact/relation leaves its
+            # predecessor's valid_to_ordinal dangling at the now-deleted
+            # instance's valid_from_ordinal (an as-of read between them would
+            # return nothing). Re-running the ordinal-aware chain-maintenance over
+            # the survivors re-extends each predecessor to the next surviving
+            # instance, so retract auto-restitches and never leaves a dangling
+            # close. Gated on removed > 0 (same as the sweep) so it stays off the
+            # first-extract hot path. Best-effort: a re-stitch failure must not
+            # 500 a successful write — the repair job is the INV-FACTS backstop.
+            try:
+                from app.db.neo4j_repos.temporal import (
+                    restitch_chains_after_retract,
+                )
+                restitched = await restitch_chains_after_retract(
+                    session,
+                    user_id=str(body.user_id),
+                    project_id=project_id_str,
+                )
+                if restitched:
+                    logger.info(
+                        "F3-RESTITCH: persist-pass2 re-derived %d story-time "
+                        "interval(s) after retract source_id=%s",
+                        restitched, body.source_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "F3-RESTITCH: chain re-stitch after retract failed "
+                    "(non-fatal) source_id=%s",
+                    body.source_id, exc_info=True,
                 )
 
     elapsed = time.perf_counter() - started
@@ -616,6 +921,20 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 "P3: summary enqueue failed source_id=%s (non-fatal)",
                 body.source_id, exc_info=True,
             )
+    elif summaries_requested:
+        # D-KG-SUMMARIES-TARGET-NOOP — de-silence: summaries were requested but
+        # a P3 dep was missing so NO summary enqueued. Previously invisible;
+        # now diagnosable ([[silent-success-is-a-bug-not-environment]]). The
+        # caller (worker-ai) also logs, but this covers direct callers.
+        logger.warning(
+            "P3: summary enqueue SKIPPED source_id=%s: "
+            "hierarchy_paths=%s embedding_model_uuid=%s embedding_dimension=%s "
+            "— no chapter summary generated",
+            body.source_id,
+            hierarchy_paths is not None,
+            body.embedding_model_uuid is not None,
+            body.embedding_dimension is not None,
+        )
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
         "entities=%d relations=%d events=%d facts=%d statuses=%d in %.1fs",
@@ -769,6 +1088,76 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         facts_merged=result.facts_merged,
         evidence_edges=result.evidence_edges,
         duration_seconds=round(elapsed, 2),
+    )
+
+
+# ── L7 activation (Milestone B) — resolve the advisory extraction schema ──────
+
+
+class ResolveSchemaRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID | None = None
+
+
+class ResolveSchemaResponse(BaseModel):
+    """The ADVISORY extraction-prompt projection of a project's resolved KG schema.
+
+    `allow_free_edges` is forced True so worker-ai's SDK injects the vocab as a
+    prompt *hint* but never pre-drops an off-vocab predicate — the write boundary
+    (/persist-pass2, Milestone A) resolves the AUTHORITATIVE schema server-side and
+    stays the sole closed-set enforce+park point (the R3 pre-drop reconciliation).
+
+    `has_schema=False` ⇒ no project / resolve failure ⇒ worker-ai passes
+    `schema=None` (today's static prompt behavior)."""
+
+    has_schema: bool
+    entity_kinds: list[str] = []
+    edge_predicates: list[str] = []
+    event_kinds: list[str] = []
+    fact_types: list[str] = []
+    allow_free_edges: bool = True
+    label: str = ""
+    schema_version: int | None = None
+
+
+@router.post(
+    "/resolve-schema",
+    response_model=ResolveSchemaResponse,
+    status_code=status.HTTP_200_OK,
+    summary="L7 — resolve a project's advisory extraction-schema projection",
+    description=(
+        "Worker-ai calls this ONCE per job at start to get the project's KG vocab "
+        "for the extraction prompt. Returns the ADVISORY projection "
+        "(allow_free_edges forced True → hint, never pre-drop); /persist-pass2 is "
+        "the authoritative enforce+park point. Behind X-Internal-Token. Degrades "
+        "to has_schema=False (no project / resolve error) → static prompt."
+    ),
+)
+async def resolve_extraction_schema(
+    body: ResolveSchemaRequest,
+) -> ResolveSchemaResponse:
+    if body.project_id is None:
+        return ResolveSchemaResponse(has_schema=False)
+    try:
+        repo = GraphSchemasRepo(get_knowledge_pool())
+        resolved = await repo.resolve_for_project(str(body.project_id))
+        d = resolved_to_extraction_dict(resolved, advisory=True)
+    except Exception:
+        logger.warning(
+            "L7: resolve-schema failed for project=%s — worker-ai will use the "
+            "static prompt this job",
+            body.project_id, exc_info=True,
+        )
+        return ResolveSchemaResponse(has_schema=False)
+    return ResolveSchemaResponse(
+        has_schema=True,
+        entity_kinds=d["entity_kinds"],
+        edge_predicates=d["edge_predicates"],
+        event_kinds=d["event_kinds"],
+        fact_types=d["fact_types"],
+        allow_free_edges=d["allow_free_edges"],
+        label=d["label"],
+        schema_version=d["schema_version"],
     )
 
 
@@ -1148,6 +1537,463 @@ async def process_summarize_message_endpoint(
         skipped_retry_exhausted=result.skipped_retry_exhausted,
         summary_id=str(result.summary_id) if result.summary_id else None,
     )
+
+
+# ── D-W8-MOTIF-BEAT-EXTRACTOR — motif-beat sequences (Option A) ────────
+#
+# Server side of composition-service's frozen `get_motif_beat_sequences`
+# client (app/clients/knowledge_client.py). The miner (narrative-pattern-
+# library W8) consumes ORDERED beat sequences as its PrefixSpan input.
+#
+# Option A: derive the sequences from the EXISTING extracted `:Event`
+# timeline (event_order axis) — deterministic, no new LLM call. Each event
+# → a {beat, thread, tension, role_mentions} step; one sequence per book.
+# The LLM-quality `motif_beat` map-extractor (spec §12.4) is the follow-up
+# (D-W8-MOTIF-BEAT-LLM-EXTRACTOR); until then this rides the event data and
+# the composition client degrades on [] for any book without events.
+
+
+class MotifBeatsRequest(BaseModel):
+    """Frozen wire shape — mirrors knowledge_client.get_motif_beat_sequences:
+    `{user_id, book_id?, corpus?, language?, extractor_version?}`."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    corpus: bool = False
+    language: str | None = None
+    # The composition client sends its `motif_mine_extractor_version`
+    # ("motif_beat@v1") so a future cache/version axis can key on it. Option A
+    # is deterministic over event data, so we accept + echo it but don't branch
+    # on it yet (the LLM extractor follow-up will).
+    extractor_version: str | None = None
+
+
+class MotifBeatStep(BaseModel):
+    """One ordered beat step. Frozen field names — the composition miner reads
+    exactly these keys (knowledge_client.py L218/L266)."""
+
+    beat: str
+    thread: str
+    # ADDITIVE (D-W10-ARC-CONFORMANCE-THREAD-TAG): the classifier-assigned narrative thread
+    # (combat/romance/…), "" until tagged. `thread` stays the chapter axis; this is orthogonal.
+    narrative_thread: str = ""
+    # ADDITIVE (D-W10-ARC-CONFORMANCE-SUCCESSION): the realized arc-placement motif code, "" until tagged.
+    realized_motif_code: str = ""
+    tension: int
+    role_mentions: list[str] = Field(default_factory=list)
+
+
+class MotifBeatsResponse(BaseModel):
+    """A LIST of beat sequences, one per book/chapter container, each an
+    `event_order`-ordered list of steps. Empty/absent corpus → `[]` (the
+    composition client degrades cleanly on the empty list)."""
+
+    sequences: list[list[MotifBeatStep]] = Field(default_factory=list)
+
+
+@router.post(
+    "/motif-beats",
+    response_model=MotifBeatsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="W8 — derive ordered motif-beat sequences from the event timeline",
+    description=(
+        "Option A motif-beat source for the composition-side miner. Returns "
+        "`event_order`-ordered `{beat, thread, tension, role_mentions}` "
+        "sequences (one per book), derived deterministically from the extracted "
+        ":Event timeline — no LLM call. Scoped to `user_id` (a cross-user book → "
+        "[]). Behind X-Internal-Token. An empty/absent corpus → `{sequences: []}`."
+    ),
+)
+async def motif_beats(body: MotifBeatsRequest) -> MotifBeatsResponse:
+    """Derive motif-beat sequences for the composition miner (W8).
+
+    Needs Neo4j (the :Event timeline lives there). With Neo4j unconfigured we
+    return an empty list rather than 503 — the composition client treats any
+    non-success as the deferred-extractor degrade path, and `{sequences: []}`
+    is the cleaner, contract-shaped equivalent (mining reports
+    `mined: 0` instead of erroring)."""
+    if not settings.neo4j_uri:
+        logger.info("motif-beats: Neo4j not configured — returning empty sequences")
+        return MotifBeatsResponse(sequences=[])
+
+    from app.extraction.motif_beat import derive_motif_beat_sequences
+
+    raw_sequences = await derive_motif_beat_sequences(
+        user_id=body.user_id,
+        book_id=body.book_id,
+        corpus=body.corpus,
+        language=body.language,
+    )
+    # raw_sequences is list[list[dict]] in the frozen shape; Pydantic validates
+    # each step into MotifBeatStep (a field-name mismatch would 422 here, which
+    # is the contract guard we want).
+    return MotifBeatsResponse(sequences=raw_sequences)  # type: ignore[arg-type]
+
+
+# ── D-W10-ARC-CONFORMANCE-THREAD-TAG — narrative-thread classifier ─────
+
+
+def _neutralize_event_dicts(events: list, *, project_id: str) -> list[dict]:
+    """Build the classifier event dicts with extracted prose neutralized
+    (D-EXTRACTOR-PROMPT-INJECTION). The tag classifiers embed each event's title/summary/
+    participants into an LLM prompt; this passes them through the knowledge-service injection
+    defense first so a planted instruction in the source text is tagged, not obeyed. Output is
+    still vocab/id-validated downstream, so this is defense-in-depth, not the only guard."""
+    from app.extraction.injection_defense import neutralize_injection
+
+    def _clean(text: str) -> str:
+        return neutralize_injection(text or "", project_id=project_id)[0]
+
+    out = []
+    for e in events:
+        out.append({
+            "id": e.id,
+            "title": _clean(e.title),
+            "summary": _clean(e.summary),
+            "participants": [_clean(p) for p in (e.participants or [])],
+        })
+    return out
+
+
+def _neutralize_motif_vocab(motifs: list[dict]) -> list[dict]:
+    """Neutralize the catalog-vocab name/summary before they enter the classifier prompt
+    (D-EXTRACTOR-PROMPT-INJECTION). UNLIKE the arc placements tag-motifs uses (the caller's
+    OWN authored motifs), the tag-beats mining catalog includes OTHER users' PUBLIC motifs
+    (list_for_caller scope='all'), whose name/summary are attacker-controllable free text — so
+    a planted instruction in a public motif must be tagged, not obeyed, when another tenant
+    mines. The `code` is NOT touched: it is the controlled answer-key (validated against the
+    same vocab downstream), never free prose. Defense-in-depth — output is still code-validated."""
+    from app.extraction.injection_defense import neutralize_injection
+
+    def _clean(text) -> str:
+        return neutralize_injection(str(text or ""), project_id="motif-catalog")[0]
+
+    out = []
+    for m in motifs:
+        if not m.get("code"):
+            continue
+        out.append({"code": m["code"], "name": _clean(m.get("name")),
+                    "summary": _clean(m.get("summary"))})
+    return out
+
+
+class TagThreadsRequest(BaseModel):
+    """Tag a book's :Event timeline with narrative-thread labels from the caller's
+    vocabulary (the arc template's threads). model_source/model_ref resolve the BYOK
+    classify model (provider-gateway invariant — composition resolves it, passes it here)."""
+
+    user_id: UUID
+    book_id: UUID
+    threads: list[dict] = Field(default_factory=list)   # [{key, label?}]
+    model_source: str
+    model_ref: str
+
+
+class TagThreadsResponse(BaseModel):
+    tagged: int = 0                       # events whose narrative_thread was written
+    events_seen: int = 0                  # events considered
+    threads_assigned: dict[str, int] = Field(default_factory=dict)  # thread_key → count
+
+
+@router.post(
+    "/tag-threads",
+    response_model=TagThreadsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with narrative-thread labels (deep arc-conformance)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one of the caller's "
+        "thread keys via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.narrative_thread so motif-beats emits real threads. ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-threads: Neo4j not configured — no-op")
+        return TagThreadsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_narrative_threads
+    from app.extraction.motif_beat import _list_user_book_projects
+    from app.extraction.thread_tag import classify_event_threads
+
+    valid = [t for t in body.threads if t.get("key")]
+    if not valid:
+        return TagThreadsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_threads(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, threads=valid)
+            # Pass the full considered scope so a stale tag on an event the classifier no
+            # longer picks is cleared, not left to pollute deep conformance (retag-stale).
+            tagged += await set_narrative_threads(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for th in assignments.values():
+                counts[th] = counts.get(th, 0) + 1
+    return TagThreadsResponse(tagged=tagged, events_seen=seen, threads_assigned=counts)
+
+
+# ── D-W10-ARC-CONFORMANCE-SUCCESSION — realized-motif classifier ───────
+
+
+class TagMotifsRequest(BaseModel):
+    """Tag a book's :Event timeline with the arc-placement motif each event realizes (by
+    code). model_source/model_ref resolve the BYOK classify model (provider-gateway invariant)."""
+
+    user_id: UUID
+    book_id: UUID
+    motifs: list[dict] = Field(default_factory=list)   # [{code, name?, summary?}]
+    model_source: str
+    model_ref: str
+
+
+class TagMotifsResponse(BaseModel):
+    tagged: int = 0
+    events_seen: int = 0
+    motifs_assigned: dict[str, int] = Field(default_factory=dict)   # motif_code → count
+
+
+@router.post(
+    "/tag-motifs",
+    response_model=TagMotifsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with the arc-placement motif they realize (deep succession)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one of the arc's placement "
+        "motif codes via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.realized_motif_code so motif-beats emits the realized motif order. ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-motifs: Neo4j not configured — no-op")
+        return TagMotifsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_realized_motifs
+    from app.extraction.motif_beat import _list_user_book_projects
+    from app.extraction.motif_tag import classify_event_motifs
+
+    valid = [m for m in body.motifs if m.get("code")]
+    if not valid:
+        return TagMotifsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_motifs(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, motifs=valid)
+            # Clear a stale realized_motif_code on any considered event left unassigned.
+            tagged += await set_realized_motifs(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for code in assignments.values():
+                counts[code] = counts.get(code, 0) + 1
+    return TagMotifsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
+
+
+# ── D-W8-MOTIF-BEAT-LLM-EXTRACTOR — catalog-motif classifier (mining source) ────
+
+
+class TagBeatsRequest(BaseModel):
+    """Tag a book's (or the whole corpus's) :Event timeline with the catalog motif each event
+    most embodies (by code), classified against the user's VISIBLE motif catalog — NOT an arc.
+    Persists :Event.mined_motif_code so a subsequent motif-beats read emits GENERIC beat/thread
+    axes (namespace:local) and corpus PrefixSpan mines reusable motif-sequences. model_source/
+    model_ref resolve the BYOK classify model (provider-gateway invariant — composition resolves
+    the user's pick and passes it here; NO platform model literal)."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    corpus: bool = False
+    motifs: list[dict] = Field(default_factory=list)   # [{code, name?, summary?}] — the catalog
+    model_source: str
+    model_ref: str
+
+
+class TagBeatsResponse(BaseModel):
+    tagged: int = 0
+    events_seen: int = 0
+    motifs_assigned: dict[str, int] = Field(default_factory=dict)   # motif_code → count
+
+
+@router.post(
+    "/tag-beats",
+    response_model=TagBeatsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with the catalog motif they embody (W8 mining source)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one code of the user's "
+        "VISIBLE motif catalog via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.mined_motif_code so motif-beats emits generic beat/thread axes for corpus "
+        "mining. Scope is one book (book_id) or the whole corpus (corpus=true). ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-beats: Neo4j not configured — no-op")
+        return TagBeatsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_mined_motif_codes
+    from app.extraction.motif_beat import _list_user_book_projects
+    # Reuse the realized-motif classifier engine verbatim — same task shape (classify each
+    # event into one code of a provided vocab); only the vocab source (catalog vs arc) and the
+    # persisted property differ. No duplicate prompt/parse logic.
+    from app.extraction.motif_tag import classify_event_motifs
+
+    # Neutralize the catalog vocab — it may carry OTHER tenants' public-motif free text
+    # (cross-tenant prompt-injection surface; the events are already neutralized below).
+    valid = _neutralize_motif_vocab(body.motifs)
+    if not valid:
+        return TagBeatsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=body.corpus)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_motifs(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, motifs=valid)
+            # Clear a stale mined_motif_code on any considered event left unassigned (re-mine
+            # after the catalog changed must not leave orphaned generic labels).
+            tagged += await set_mined_motif_codes(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for code in assignments.values():
+                counts[code] = counts.get(code, 0) + 1
+    return TagBeatsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
+
+
+# ── D-W10-ARC-CONFORMANCE-SUCCESSION F2 — causal-edge inference ────────
+
+
+class CausalEdgesRequest(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    model_source: str
+    model_ref: str
+    # infer only over the motif-tagged subset (the arc-relevant beats) by default — bounds cost.
+    tagged_only: bool = True
+
+
+class CausalEdgesResponse(BaseModel):
+    edges_written: int = 0
+    events_considered: int = 0
+
+
+@router.post(
+    "/causal-edges",
+    response_model=CausalEdgesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Infer (:Event)-[:CAUSES]->(:Event) edges (deep succession causal-verify)",
+    description=(
+        "Infers direct causal links over the ordered :Event timeline (LLM, operation=chat → "
+        "provider-registry), MERGEing :CAUSES edges so deep arc-conformance can flip a legal "
+        "succession transition causally-verified. By default runs over the motif-tagged subset "
+        "(bounds cost). ADVISORY / uncalibrated; degrades to fewer/no edges. X-Internal-Token."
+    ),
+)
+async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
+    if not settings.neo4j_uri:
+        logger.info("causal-edges: Neo4j not configured — no-op")
+        return CausalEdgesResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, merge_causal_edges
+    from app.extraction.causal_edges import infer_causal_edges
+    from app.extraction.motif_beat import _list_user_book_projects
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    considered = 0
+    written = 0
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if body.tagged_only:
+                events = [e for e in events if e.realized_motif_code]
+            if len(events) < 2:
+                continue
+            considered += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            pairs = await infer_causal_edges(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts)
+            if pairs:
+                written += await merge_causal_edges(
+                    session, user_id=str(body.user_id), pairs=pairs)
+    return CausalEdgesResponse(edges_written=written, events_considered=considered)
+
+
+class CausalMotifPairsRequest(BaseModel):
+    user_id: UUID
+    book_id: UUID
+
+
+class CausalMotifPairsResponse(BaseModel):
+    pairs: list[list[str]] = Field(default_factory=list)   # [[cause_code, effect_code]]
+
+
+@router.post(
+    "/causal-motif-pairs",
+    response_model=CausalMotifPairsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Read realized CAUSES edges in motif-code space (deep succession causal-verify)",
+    description=(
+        "The realized :CAUSES edges projected to (cause_motif_code, effect_motif_code) over "
+        "events whose both endpoints are motif-tagged — the causal_code_pairs deep "
+        "arc-conformance flips a transition causally-verified with. X-Internal-Token."
+    ),
+)
+async def causal_motif_pairs(body: CausalMotifPairsRequest) -> CausalMotifPairsResponse:
+    if not settings.neo4j_uri:
+        return CausalMotifPairsResponse()
+
+    from app.db.neo4j_repos.events import get_causal_motif_pairs
+    from app.extraction.motif_beat import _list_user_book_projects
+
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen: set[tuple[str, str]] = set()
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            for c, e in await get_causal_motif_pairs(
+                    session, user_id=str(body.user_id), project_id=str(project_id)):
+                seen.add((c, e))
+    return CausalMotifPairsResponse(pairs=[[c, e] for c, e in sorted(seen)])
 
 
 # ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────

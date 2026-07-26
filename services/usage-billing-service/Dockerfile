@@ -8,6 +8,10 @@ RUN apk add --no-cache git
 # context: .. and dockerfile: services/usage-billing-service/Dockerfile.
 # Copy the shared module first (separate cache layer), then service files.
 COPY sdks/go/observability /src/sdks/go/observability
+# contracts/{platformjwt,adminjwt} — shared HS256 user-JWT verifier + RS256 admin-JWT
+# verifier (D-JWT-ROLE-GATE); their replace directives must resolve inside the container.
+COPY contracts/platformjwt /src/contracts/platformjwt
+COPY contracts/adminjwt /src/contracts/adminjwt
 COPY services/usage-billing-service /src/services/usage-billing-service
 
 WORKDIR /src/services/usage-billing-service

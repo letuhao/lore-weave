@@ -1,0 +1,349 @@
+{
+  "header": "Tinjauan Pengayaan",
+  "subtitle": "Tinjau lore yang diusulkan AI untuk entitas yang kurang terdeskripsi, lalu promosikan apa yang Anda setujui ke dalam kanon buku ini. Draf yang diperkaya adalah varian pribadi sampai Anda mempromosikannya.",
+  "untitled": "Tanpa Judul",
+  "panel": {
+    "compose": "Buat",
+    "proposals": "Usulan",
+    "gaps": "Celah",
+    "sources": "Sumber",
+    "jobs": "Pekerjaan",
+    "settings": "Profil"
+  },
+  "compose": {
+    "title": "Buat pengayaan",
+    "subtitle": "Mulai pengayaan dengan cara Anda — perluas draf yang telah Anda tulis, atau isi celah yang terdeteksi. Semua yang Anda buat adalah varian yang diperkaya sampai Anda mempromosikannya.",
+    "soon": "segera",
+    "mode_soon": "Akan hadir di pembaruan mendatang.",
+    "mode": {
+      "draft": "Dari draf",
+      "gap": "Isi celah",
+      "intent": "Dari ide",
+      "context": "Tempel konteks",
+      "files": "Lampirkan file"
+    },
+    "draft": {
+      "label": "Draf Anda",
+      "placeholder": "Tempel atau tulis draf Anda untuk entitas ini. Draf akan diperluas ke dalam dimensi buku, dengan gaya bahasa buku...",
+      "expand_mode": "Cara memperluas",
+      "rewrite": "Tulis ulang",
+      "rewrite_hint": "Tulis ulang + sinkronisasi gaya bahasa dengan buku, dengan tetap menjaga makna Anda; isi semua dimensi.",
+      "add_only": "Hanya tambah",
+      "add_only_hint": "Pertahankan prosa Anda apa adanya; hanya tambahkan dimensi yang hilang."
+    },
+    "context": {
+      "label": "Teks referensi",
+      "placeholder": "Tempel teks referensi tentang entitas ini. Teks akan diproses sebagai dasar dan pengayaan akan dihasilkan darinya (dengan gaya bahasa buku).",
+      "license_label": "Lisensi sumber",
+      "license": {
+        "public_domain": "Domain publik",
+        "licensed": "Berlisensi untuk penggunaan ini",
+        "owned": "Saya pemilik / penulis ini",
+        "copyrighted": "Memiliki hak cipta (tidak dapat digunakan)"
+      },
+      "copyrighted_warning": "Materi berhak cipta tidak dapat diproses. Gunakan teks domain publik, berlisensi, atau teks milik Anda sendiri.",
+      "responsibility": "Anda bertanggung jawab atas hak atas teks ini. Bukan saran hukum."
+    },
+    "files": {
+      "license_label": "Lisensi file",
+      "dropzone": "Seret file ke sini atau klik untuk menelusuri",
+      "accept": ".txt .md .pdf .docx .epub — PDF hasil pindaian akan di-OCR",
+      "ready": "{{chars}} karakter{{ocr}}",
+      "ocr": "OCR",
+      "processing": "mengekstrak...",
+      "failed": "gagal",
+      "responsibility": "Saya memiliki hak atas file-file ini (milik sendiri / berlisensi / domain publik). Bukan saran hukum."
+    },
+    "intent": {
+      "label": "Apa yang ingin Anda buat?",
+      "placeholder": "Deskripsikan dengan kata-kata Anda sendiri — misal. \"penasihat bijak yang membantu raja mendirikan dinasti\".",
+      "resolve": "Selesaikan",
+      "resolving": "Menyelesaikan...",
+      "resolve_hint": "Mengusulkan target di bawah — tinjau & edit, lalu Jalankan."
+    },
+    "target": {
+      "existing": "Entitas yang sudah ada",
+      "new": "Entitas baru",
+      "name": "Nama",
+      "name_placeholder": "misal. 碧遊宮",
+      "kind": "Jenis",
+      "existing_hint": "Memperkaya entitas glosarium yang sudah ada dengan nama ini.",
+      "new_hint": "Membuat entitas baru — tidak ada yang ditulis ke glosarium Anda sampai Anda mempromosikan usulan tersebut."
+    },
+    "kind": {
+      "character": "Karakter",
+      "location": "Lokasi",
+      "item": "Item",
+      "faction": "Faksi",
+      "event": "Peristiwa",
+      "generic": "Umum"
+    },
+    "config": {
+      "gen_model": "Model generasi",
+      "embed_model": "Model embedding",
+      "select_model": "Pilih...",
+      "max_spend": "Maks. penggunaan (token)",
+      "no_cap": "tanpa batas",
+      "top_k": "Top-K",
+      "technique": "Teknik",
+      "technique_opt": {
+        "retrieval": "Retrieval (P1)",
+        "fabrication": "Fabrication (P2)",
+        "recook": "Re-cook (P3)"
+      },
+      "eval_gate_warning": "P2/P3 memerlukan kelolosan gerbang evaluasi — pekerjaan akan ditolak sampai lolos.",
+      "dimensions": {
+        "auto": "Otomatis — perkuat semua dimensi yang hilang"
+      }
+    },
+    "safety": "① lisensi · ② abstraksi · ③ penjaga regurgitasi · ④ Anda mempromosikan — hasil pengayaan tetap menjadi varian sampai Anda mempromosikannya.",
+    "run_hint": "Berjalan sebagai pekerjaan latar belakang — usulan akan muncul di bawah Usulan setelah siap.",
+    "save_corpus": "Simpan ke sumber (simpan — jangan hapus otomatis)",
+    "run": "Buat draf",
+    "composing": "Memulai...",
+    "enqueued": "Pengayaan dimulai — usulan akan muncul di bawah Usulan."
+  },
+  "h0": {
+    "marker": "varian",
+    "tooltip": "Varian yang diperkaya — tidak akan menjadi kanon resmi sampai Anda mempromosikannya."
+  },
+  "technique": {
+    "template": "templat",
+    "retrieval": "retrieval",
+    "fabrication": "fabrication",
+    "recook": "recook"
+  },
+  "review": {
+    "proposed": "Diusulkan",
+    "author_reviewing": "Sedang ditinjau",
+    "approved": "Disetujui",
+    "promoted": "Dipromosikan",
+    "rejected": "Ditolak"
+  },
+  "verify": {
+    "none": "Tidak ada anotasi verifikasi.",
+    "clean": "Terverifikasi bersih — tidak ditemukan kontradiksi, anakronisme, injeksi, atau regurgitasi.",
+    "degraded": "Verifikasi menurun — kanon tidak tersedia, sehingga kontradiksi tidak dapat diperiksa sepenuhnya.",
+    "status": {
+      "verified_clean": "terverifikasi",
+      "needs_review": "perlu ditinjau",
+      "quarantined": "dikarantina",
+      "degraded": "menurun",
+      "auto_rejected": "ditolak otomatis"
+    },
+    "flag": {
+      "contradiction": "Kontradiksi dengan kanon",
+      "anachronism": "Anakronisme",
+      "injection": "Prompt injection",
+      "regurgitation": "Regurgitasi sumber"
+    },
+    "severity": {
+      "low": "rendah",
+      "medium": "sedang",
+      "high": "tinggi"
+    }
+  },
+  "prov": {
+    "technique": "Teknik",
+    "confidence": "Kepercayaan",
+    "origin": "Asal",
+    "entity_kind": "Jenis",
+    "model": "Model",
+    "recook_abstracted": "Disusun ulang dari fakta abstrak — dibuat dari poin-poin fakta netral, bukan dari prosa sumber (②).",
+    "grounding": "Sumber grounding",
+    "skipped": "Sumber dilewati (tanpa lisensi)"
+  },
+  "license": {
+    "public_domain": "domain publik",
+    "public-domain": "domain publik",
+    "licensed": "berlisensi",
+    "unlicensed": "tanpa lisensi",
+    "copyrighted": "hak cipta",
+    "restricted": "terbatas",
+    "unknown": "tidak diketahui"
+  },
+  "detail": {
+    "h0_note": "Ini adalah varian yang diperkaya (origin=enrichment, confidence<1.0). Menjadi kanon hanya jika Anda mempromosikannya.",
+    "h0_banner": "Ini adalah varian yang diperkaya — bukan kanon asli. Menjadi kanon hanya jika Anda mempromosikannya.",
+    "dimensions": "{{count}} dimensi",
+    "show_more": "+ tampilkan {{count}} lagi",
+    "show_less": "Tampilkan lebih sedikit",
+    "content": "Lore yang dihasilkan",
+    "verify": "Verifikasi",
+    "provenance": "Provenans & sumber"
+  },
+  "card": {
+    "confidence": "conf {{value}}",
+    "summary": "{{dims}} dimensi · berbasis pada {{sources}} sumber",
+    "advisory": "⚠ {{count}} bendera peringatan",
+    "auto_rejected": "Ditolak otomatis"
+  },
+  "proposals": {
+    "search": "Cari proposal…",
+    "status_all": "Semua",
+    "technique": "Teknik",
+    "project": "Proyek",
+    "all_projects": "Semua",
+    "none": "Tidak ada proposal yang cocok.",
+    "error": "Tidak dapat memuat proposal. Silakan coba lagi.",
+    "empty": {
+      "title": "Belum ada proposal",
+      "description": "Deteksi celah dan perkaya secara otomatis untuk menghasilkan proposal untuk buku ini."
+    }
+  },
+  "actions": {
+    "promote": "Promosikan ke kanon",
+    "approve": "Setujui",
+    "edit": "Edit",
+    "reject": "Tolak",
+    "reject_reason": "Alasan penolakan (opsional)",
+    "reject_confirm": "Konfirmasi penolakan",
+    "retract": "Tarik dari kanon",
+    "retract_confirm_title": "Tarik dari kanon?",
+    "retract_confirm_desc": "Ini akan menghapus suplemen yang diperkaya dari kanon buku ini. Entitas asli tetap dipertahankan — Anda dapat mempromosikannya kembali nanti.",
+    "author_only": "Hanya penulis buku yang dapat meninjau dan mempromosikan pengayaan.",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "already_promoted": "Sudah dipromosikan ke kanon.",
+    "rejected_note": "Proposal ini telah ditolak.",
+    "approved": "Proposal disetujui",
+    "rejected": "Proposal ditolak",
+    "edited": "Proposal diperbarui",
+    "promoted": "Dipromosikan ke kanon",
+    "retracted": "Ditarik"
+  },
+  "promote": {
+    "title": "Promosikan ke kanon",
+    "h0": "Varian yang diperkaya ini akan menjadi kanon penulis untuk buku ini. Penanda asal permanen tetap dipertahankan, sehingga tetap dapat dilacak sebagai hasil pengayaan asli.",
+    "responsibility": "Dengan mempromosikan, Anda mengadopsi konten ini sebagai penulis dan mengonfirmasi bahwa Anda memegang hak atas sumber yang digunakan. Bukan saran hukum.",
+    "confirm": "Promosikan",
+    "promoting": "Memproses promosi…"
+  },
+  "gaps": {
+    "title": "Celah",
+    "subtitle": "Entitas yang kurang terdeskripsi dalam glosarium buku ini, diurutkan berdasarkan kepentingan. Deteksi, lalu perkaya celah terpilih secara otomatis sebagai tugas latar belakang.",
+    "detect": "Deteksi celah",
+    "detect_hint": "Klik \"Deteksi celah\" untuk memindai cakupan glosarium buku ini.",
+    "none": "Tidak ada celah terdeteksi — setiap entitas sudah terdeskripsi dengan baik.",
+    "extract_first": "Belum ada entitas — ekstrak buku ini terlebih dahulu (Tab Pengetahuan). Pengayaan mengisi celah pada entitas yang sudah diketahui platform.",
+    "extract_cta": "Ekstrak entitas sekarang",
+    "technique": "Teknik",
+    "gen_model": "Model generasi",
+    "embed_model": "Model embedding",
+    "select_model": "Pilih…",
+    "max_gaps": "Maks. celah",
+    "max_spend": "Maks. penggunaan (token)",
+    "no_cap": "tanpa batas",
+    "top_k": "Top-K",
+    "gate_note": "Fabrikasi P2 / Recook P3 memerlukan kelulusan gerbang evaluasi (juri beragam).",
+    "auto_enrich": "Perkaya otomatis",
+    "enrich_one": "Perkaya",
+    "enrich_one_hint": "Pilih model generasi + embedding di bawah untuk memperkaya.",
+    "enriching": "Antrean…",
+    "enqueued": "{{count}} celah telah dimasukkan ke antrean pengayaan",
+    "col": {
+      "entity": "Entitas",
+      "kind": "Jenis",
+      "missing": "Dimensi yang hilang",
+      "rank": "Peringkat",
+      "action": "Tindakan"
+    }
+  },
+  "sources": {
+    "title": "Sumber",
+    "subtitle": "Korpus bertanda lisensi untuk pengambilan / penyusunan ulang.",
+    "register": "Daftarkan sumber",
+    "name": "Nama",
+    "kind": "Jenis",
+    "license": "Lisensi",
+    "embed_model": "Model embedding",
+    "ingest": "Impor teks",
+    "ingesting": "Mengimpor…",
+    "ingested": "Tersimpan — {{count}} fragmen tersemat",
+    "ingest_placeholder": "Tempel teks sumber domain publik / berlisensi untuk pemotongan + penyematan…",
+    "chunks": "{{count}} fragmen",
+    "embedded": "tersemat ✓",
+    "partial": "{{done}}/{{total}} tersemat",
+    "none": "Belum ada sumber yang terdaftar.",
+    "recook_ok": "recook-OK",
+    "recook_refused": "recook ditolak (default-deny)",
+    "default_deny": "Default-deny: hanya sumber domain publik / berlisensi yang boleh disusun ulang. Anda bertanggung jawab atas lisensi sumber yang Anda daftarkan.",
+    "registered": "Sumber terdaftar",
+    "grounded": "Terground — {{count}} bab tersemat"
+  },
+  "ground": {
+    "title": "Grounding dari bab",
+    "subtitle": "Pilih bab tertentu untuk disematkan sebagai korpus grounding — prosa mentah di luar apa yang dicakup oleh RAG pengetahuan + kanon glosarium. Teks ini adalah milik Anda sendiri.",
+    "no_chapters": "Buku ini belum memiliki bab.",
+    "showing": "Menampilkan {{shown}} dari {{total}} bab — jalur grounding utama (RAG pengetahuan) sudah mencakup semua bab; ini untuk pemilihan ekstra yang disengaja.",
+    "ingest": "Ground {{count}} bab",
+    "ingesting": "Menyematkan…"
+  },
+  "jobs": {
+    "none": "Belum ada tugas pengayaan.",
+    "resume": "Lanjutkan",
+    "resumed": "Resume tugas dimasukkan ke antrean",
+    "col": {
+      "technique": "Teknik",
+      "status": "Status",
+      "proposals": "Proposal",
+      "cost": "Biaya",
+      "created": "Dibuat"
+    },
+    "status": {
+      "pending": "Menunggu",
+      "estimating": "Estimasi",
+      "running": "Berjalan",
+      "paused": "Dijeda",
+      "completed": "Selesai",
+      "failed": "Gagal",
+      "cancelled": "Dibatalkan"
+    },
+    "error": {
+      "gateLocked": "Terkunci oleh gerbang evaluasi — jalankan evaluasi pengayaan terlebih dahulu.",
+      "internal": "Pengayaan gagal (kesalahan internal). Arahkan kursor untuk detail.",
+      "insufficientGrounding": "Tidak ada dasar korpus yang dapat digunakan untuk entitas ini — tempelkan konteks referensi atau gunakan Fabrication."
+    }
+  },
+  "settings": {
+    "title": "Profil pengayaan",
+    "subtitle": "Pandangan dunia per-buku yang menghilangkan bias pada hasil generatif — bahasa, era, gaya bahasa, dan dimensi yang diisi oleh pengayaan. Perubahan akan diterapkan pada pekerjaan baru.",
+    "error": "Gagal memuat profil. Silakan coba lagi.",
+    "worldview": "Pandangan dunia",
+    "language": "Bahasa output",
+    "voice": "Gaya bahasa",
+    "era_policy": "Kebijakan era",
+    "era_hint": "Batasan era/anakronisme, misal: \"tidak ada teknologi pasca-Shang-Zhou\". Kosong = pemeriksaan anakronisme dimatikan.",
+    "markers": "Penanda anakronisme",
+    "markers_placeholder": "istilah | alasan (satu per baris)",
+    "markers_hint": "Satu per baris dengan format \"istilah | alasan\". Ini adalah istilah yang akan ditandai oleh pemeriksaan anakronisme. Menghapusnya akan mematikan pemeriksaan.",
+    "dimensions": "Override dimensi",
+    "kind": {
+      "character": "Karakter",
+      "location": "Lokasi",
+      "item": "Item",
+      "faction": "Faksi",
+      "event": "Peristiwa"
+    },
+    "add_dimension": "Tambah dimensi",
+    "no_extra_dims": "Menggunakan dimensi bawaan untuk jenis ini.",
+    "dim_id": "id",
+    "dim_label": "label",
+    "dim_weight": "bobot",
+    "dim_required": "wajib",
+    "remove_dimension": "Hapus dimensi",
+    "hide": "Sembunyikan",
+    "suggest": "Saran dari buku",
+    "suggesting": "Menganalisis...",
+    "suggest_model": "Model saran",
+    "select_model": "Pilih model...",
+    "suggest_hint": "AI membaca metadata buku + bab untuk mengusulkan draf yang dapat Anda edit. Tidak ada yang disimpan sampai Anda menekan Simpan.",
+    "suggested": "Draf disarankan — tinjau, lalu Simpan",
+    "saving": "Menyimpan...",
+    "saved": "Profil disimpan",
+    "source": "Sumber: {{source}}",
+    "source_seed": "seed",
+    "source_ai_suggested": "Disarankan AI",
+    "source_manual": "manual"
+  }
+}

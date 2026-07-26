@@ -18,11 +18,17 @@ function renderValue(v: unknown): string {
   }
 }
 
+// bug #37 — these call-count keys are rendered specially in the Progress panel
+// ("LLM calls: done / total"), so keep them out of the raw key/value grid here.
+const _PROGRESS_KEYS = new Set(['estimated_llm_calls', 'llm_calls_done']);
+
 /** Dynamic parameters panel — a key/value grid built from the job's `params` JSONB.
  *  Renders nothing when there are no params (avoids an empty card). */
 export function JobParametersPanel({ params }: { params: JobParams | null }) {
   const { t } = useTranslation('jobs');
-  const entries = params ? Object.entries(params) : [];
+  const entries = params
+    ? Object.entries(params).filter(([k]) => !_PROGRESS_KEYS.has(k))
+    : [];
   if (entries.length === 0) return null;
 
   return (

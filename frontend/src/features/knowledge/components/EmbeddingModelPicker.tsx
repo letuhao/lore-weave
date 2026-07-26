@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { AddModelCta } from '@/components/shared/AddModelCta';
-import { aiModelsApi, type UserModel } from '../../ai-models/api';
+import { ModelPicker } from '@/components/model-picker';
 import { knowledgeApi } from '../api';
 import {
   useRunBenchmark,
@@ -16,19 +15,22 @@ import type { BenchmarkStatus } from '../types';
 /**
  * K12.4 — Embedding model picker for knowledge projects.
  *
- * Fetches the user's BYOK models tagged `capability=embedding` from
- * provider-registry and renders a `<select>` bound to the caller's
- * state. The bound value is the model's `user_model_id` UUID — the
- * provider `model_ref` the backend embeds with (D-EMB-MODEL-REF-03;
- * the backend probes the UUID to derive `embedding_dimension`).
- * Selecting `""` clears the project's embedding model (backend treats
+ * W5: now a THIN WRAPPER around the shared {@link ModelPicker}
+ * (`capability="embedding"`) — the bespoke fetch effect + orphan-option
+ * logic moved into the shared component. This wrapper keeps the
+ * site-specific label / hint / empty-state copy and the K17.9
+ * benchmark-status badge + Run-benchmark CTA.
+ *
+ * The bound value is the model's `user_model_id` UUID — the provider
+ * `model_ref` the backend embeds with (D-EMB-MODEL-REF-03; the backend
+ * probes the UUID to derive `embedding_dimension`). Selecting the
+ * "None" option clears the project's embedding model (backend treats
  * null as "no L3 for this project").
  *
  * Why this lives in the knowledge feature rather than ai-models:
  * ai-models is the registry management page (add/remove/edit
  * credentials); knowledge/ is the consumer-side that picks WHICH
- * registered model this project uses. The picker is a small view
- * wrapper; the actual model list API stays in ai-models/api.ts.
+ * registered model this project uses.
  *
  * T2-close-1b-FE: when `projectId` + a selected model are both
  * present, the picker renders a K17.9 benchmark-status badge
@@ -49,8 +51,6 @@ interface Props {
 export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: Props) {
   const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
-  const [models, setModels] = useState<UserModel[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   // T2-close-1b-FE — benchmark-status badge. Only fires when the
   // caller passes a projectId AND a model is selected. Stale-for-60s
@@ -66,108 +66,38 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
     retry: false,
   });
 
-  useEffect(() => {
-    if (!accessToken) {
-      setModels([]);
-      return;
-    }
-    let cancelled = false;
-    setError(null);
-    aiModelsApi
-      .listUserModels(accessToken, { capability: 'embedding', include_inactive: false })
-      .then((resp) => {
-        if (cancelled) return;
-        setModels(resp.items);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setModels([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken]);
-
-  const loading = models === null;
-  // Guard: if the project's current `value` (a user_model UUID) doesn't
-  // appear in the fetched models (model deleted from registry, etc.)
-  // the <select> would render no matching <option> and the browser
-  // would silently show "None" — misrepresenting the real state.
-  // Detect and surface a synthetic option so the user sees the truth.
-  const valueInOptions =
-    value === null ||
-    (models?.some((m) => m.user_model_id === value) ?? false);
-
   return (
-    <label className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <span className="text-xs font-medium text-muted-foreground">
         {t('projects.form.embeddingModel', {
           defaultValue: 'Embedding model',
         })}
       </span>
-      <select
-        value={value ?? ''}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === '' ? null : v);
-        }}
-        disabled={disabled || loading}
-        className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-      >
-        <option value="">
-          {t('projects.form.embeddingModelNone', {
-            defaultValue: 'None (no semantic passages)',
-          })}
-        </option>
-        {!valueInOptions && value !== null && (
-          <option value={value}>
-            {t('projects.form.embeddingModelOrphan', {
-              defaultValue: 'Previously selected model (no longer in your registry)',
-            })}
-          </option>
-        )}
-        {(models ?? []).map((m) => {
-          const label = m.alias
-            ? `${m.alias} (${m.provider_model_name})`
-            : `${m.provider_kind}/${m.provider_model_name}`;
-          return (
-            <option key={m.user_model_id} value={m.user_model_id}>
-              {label}
-            </option>
-          );
+      <ModelPicker
+        capability="embedding"
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        allowNone
+        noneLabel={t('projects.form.embeddingModelNone', {
+          defaultValue: 'None (no semantic passages)',
         })}
-      </select>
-      {loading && (
-        <span className="text-[11px] text-muted-foreground">
-          {t('projects.form.embeddingModelLoading', {
-            defaultValue: 'Loading embedding models…',
-          })}
-        </span>
-      )}
-      {error && (
-        <span className="text-[11px] text-destructive">
-          {t('projects.form.embeddingModelError', {
-            defaultValue: 'Failed to load embedding models.',
-          })}
-        </span>
-      )}
-      {!loading && !error && accessToken && (models?.length ?? 0) === 0 && (
-        // Only show "registry empty" when we actually attempted to load
-        // with a valid token. Without this gate, an unauthed render
-        // (hypothetical — route guards normally prevent it) would
-        // falsely tell the user to add a model.
-        // C5 (KN-1/BL-16): embedding is the real build-graph precondition — when
-        // none is configured, offer the in-flow AddModelCta (deep-link + return)
-        // instead of a dead-end "go to settings" sentence.
-        <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          {t('projects.form.embeddingModelEmpty', {
-            defaultValue:
-              'No embedding-capable models configured — extraction needs one.',
-          })}
-          <AddModelCta capability="embedding" variant="link" />
-        </span>
-      )}
+        ariaLabel={t('projects.form.embeddingModel', {
+          defaultValue: 'Embedding model',
+        })}
+        emptyState={
+          // C5 (KN-1/BL-16): embedding is the real build-graph precondition — when
+          // none is configured, offer the in-flow AddModelCta (deep-link + return)
+          // instead of a dead-end "go to settings" sentence.
+          <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+            {t('projects.form.embeddingModelEmpty', {
+              defaultValue:
+                'No embedding-capable models configured — extraction needs one.',
+            })}
+            <AddModelCta capability="embedding" variant="link" />
+          </span>
+        }
+      />
       <span className="text-[11px] text-muted-foreground">
         {t('projects.form.embeddingModelHint', {
           defaultValue:
@@ -185,7 +115,7 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
           )}
         </>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -216,11 +146,28 @@ function BenchmarkBadge({ status }: { status: BenchmarkStatus }) {
       </span>
     );
   }
+  // Not passed. Distinguish "inconclusive" (too few passes — NOT a model-quality
+  // problem; recall@3 may be perfect) from a genuine metric failure. R2: never
+  // claim "low-quality" when the only failing gate is insufficient_runs.
+  const gates = status.gate_failures ?? [];
+  const inconclusiveOnly =
+    gates.length > 0 && gates.every((g) => g === 'insufficient_runs');
+  if (inconclusiveOnly) {
+    return (
+      <span className="text-[11px] text-amber-600 dark:text-amber-400">
+        {t('projects.form.benchmarkInconclusive', {
+          defaultValue:
+            '⋯ Benchmark inconclusive (recall@3 {{recall}}) — needs ≥3 passes to validate this model. Re-run it.',
+          recall: status.recall_at_3?.toFixed(2) ?? '—',
+        })}
+      </span>
+    );
+  }
   return (
     <span className="text-[11px] text-destructive">
       {t('projects.form.benchmarkFailed', {
         defaultValue:
-          '✗ Benchmark failed (recall@3 {{recall}}) — extraction would produce low-quality results.',
+          '✗ Benchmark not passing (recall@3 {{recall}}) — this model scored below the quality bar for extraction; try a different embedding model.',
         recall: status.recall_at_3?.toFixed(2) ?? '—',
       })}
     </span>
@@ -241,11 +188,6 @@ function BenchmarkBadge({ status }: { status: BenchmarkStatus }) {
  * throws on undefined.
  *
  * /review-impl notes (accepted findings):
- *   - LOW #5: button lives inside the outer `<label>` that wraps the
- *     picker. Browsers don't forward label clicks to the sibling
- *     `<select>` when the direct event target is a `<button>`, so
- *     this is safe in practice. Matches the placement of
- *     `BenchmarkBadge` immediately above.
  *   - COSMETIC #6: rapid double-click race is blocked by the
  *     `disabled={mutation.isPending}` attribute being updated
  *     synchronously within React's event tick. Backend sentinel
@@ -256,7 +198,7 @@ function RunBenchmarkButton({ projectId }: { projectId: string }) {
   const { t } = useTranslation('knowledge');
   const mutation = useRunBenchmark(projectId, {
     onSuccess: (resp) => {
-      // review-impl MED #1: the user can change the picker's <select>
+      // review-impl MED #1: the user can change the picker's selected
       // value mid-run (15-60s wait). The toast resolves for the model
       // the BE scored against (resp.embedding_model), which may no
       // longer match the currently-displayed selection. Naming the
@@ -318,9 +260,12 @@ function runBenchmarkErrorMessage(
           'This embedding model isn’t supported by the benchmark harness.',
       });
     case 'not_benchmark_project':
+      // R1: benchmarks now run automatically on a hidden per-model sandbox, so
+      // this is effectively unreachable from the Run-benchmark button; keep a
+      // neutral retry message rather than the old (now-wrong) "make a new project".
       return t('projects.form.benchmark.errorNotBenchmarkProject', {
         defaultValue:
-          'Benchmarks must run on a dedicated project. Create a new project before running.',
+          'The benchmark couldn’t start on its sandbox — please retry in a moment.',
       });
     case 'benchmark_already_running':
       return t('projects.form.benchmark.errorAlreadyRunning', {

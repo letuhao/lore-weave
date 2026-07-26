@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@source "../../index.html";
+@source "../../src/**/*.{ts,tsx}";
 
 html, body, #root {
   height: 100%;
