@@ -45,8 +45,15 @@ requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
 
 **▶ NEXT (see CHECKLIST.md for the full board):**
 - **C1/C2** browser pass on the repaired checkpoint editor (FE is unit-proven only so far).
-- **C4** re-run `scenes` after an edit and prove the edit *changed the output* — an edit that stales
-  but does not influence would be the same bug class again.
+- ~~**C4**~~ **DONE — the shaped curve reaches the scenes.** Full legitimate chain driven live (cast →
+  seed apply → accept → beats → accept → character_arcs → scenes): **25 scenes / 10 chapters**, every
+  `beat_role` propagated, and **9 of 10 chapters' scene peak hits its tension target exactly**
+  (65/65 · 35/35 · 58/58 · 55/55 · 68/68 · 82→60⚠ · 66/66 · 90/90 · **100/100 climax** · 52→48).
+  Before this track: 10 NULL roles and a flat 50→72 ramp.
+- **STALE DEFERRAL CLEARED:** the note below claiming "no MCP tool for the cast/beats seed apply, so
+  the co-writer cannot drive the compiler past cast/beats" is **no longer true** —
+  `plan_bootstrap_apply` (confirm-gated) applies a cast SEED proposal by id (`proposal_status:
+  applied`), and `plan_review_checkpoint` then clears the PF-7 gate. Proven live.
 - **E7** re-run `scenes`/`self_heal` against the real curve; **E8** FE structure picker
   (`StructureTemplatesPanel` is 462 lines of CRUD with **zero** links to a plan run — authored beat
   sheets still cannot reach a plan from the GUI).
