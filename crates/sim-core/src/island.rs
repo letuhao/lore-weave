@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::domain::Domain;
 use crate::ingress::{Ingress, Lane};
+use crate::metrics::IslandMetrics;
 use crate::rng::DetRng;
 use crate::seen::{SeenSet, SeenWindow};
 use crate::types::{
@@ -51,6 +52,7 @@ pub struct Island<D: Domain> {
     /// accepted): while buffered, an id is absent from `seen`, so a concurrent
     /// true duplicate can apply in its place; exactly-one-applies still holds.
     currently_buffered: std::collections::BTreeSet<InputId>,
+    metrics: IslandMetrics,
 }
 
 impl<D: Domain> Island<D> {
@@ -78,6 +80,7 @@ impl<D: Domain> Island<D> {
             schedule: BTreeMap::new(),
             buffered: Vec::new(),
             currently_buffered: std::collections::BTreeSet::new(),
+            metrics: IslandMetrics::default(),
         }
     }
 
@@ -120,7 +123,9 @@ impl<D: Domain> Island<D> {
     // ─── admission (stamps Seq, validates NOTHING — spec §5) ───
 
     pub fn submit(&mut self, lane: Lane, input: QueuedInput<D>) -> Seq {
-        self.ingress.push(lane, input)
+        let seq = self.ingress.push(lane, input);
+        IslandMetrics::gauge_peak(&mut self.metrics.peak_ingress_depth, self.ingress.len());
+        seq
     }
 
     /// Admit `input` when the island's logical clock reaches `due`.
@@ -137,6 +142,7 @@ impl<D: Domain> Island<D> {
     /// seen-set even with a TTL window. Cell islands must tick periodically.
     pub fn tick(&mut self, dt: u64) {
         self.tick = Tick(self.tick.0.saturating_add(dt));
+        self.metrics.ticks += 1;
 
         // Due timers → admission (stamped now, validated at their step).
         let due: Vec<Tick> = self
@@ -148,6 +154,7 @@ impl<D: Domain> Island<D> {
             if let Some(items) = self.schedule.remove(&t) {
                 for (lane, input) in items {
                     self.ingress.push(lane, input);
+                    self.metrics.scheduled_fired += 1;
                 }
             }
         }
@@ -159,7 +166,7 @@ impl<D: Domain> Island<D> {
         }
 
         // Eviction runs on the tick path, never the per-item path.
-        self.seen.evict_expired(self.tick);
+        self.metrics.seen_evictions += self.seen.evict_expired(self.tick);
     }
 
     // ─── the step function (spec §5, verbatim semantics) ───
@@ -170,19 +177,23 @@ impl<D: Domain> Island<D> {
             return StepStatus::Idle;
         };
         let seq = item.seq;
+        self.metrics.steps_processed += 1;
 
         // I2 — idempotency. A duplicate is a normal recorded outcome.
         if !self.seen.insert(item.input_id, self.tick) {
+            self.metrics.discarded_duplicate += 1;
             self.record(seq, Outcome::Discarded {
                 reason: DiscardReason::Duplicate,
             });
             return StepStatus::Processed(seq);
         }
+        IslandMetrics::gauge_peak(&mut self.metrics.peak_seen_len, self.seen.len());
 
         // Preconditions re-validated NOW, never at admission.
         match self.check_all(&item) {
             Ok(()) => {
                 self.currently_buffered.remove(&item.input_id);
+                self.metrics.applied += 1;
                 let events = D::apply(&mut self.state, &self.rules, &item, &mut self.rng);
                 self.externals.extend(D::externals(&events));
                 self.record(seq, Outcome::Applied { events });
@@ -243,6 +254,7 @@ impl<D: Domain> Island<D> {
         match item.on_invalid.clone() {
             Fallback::Drop => {
                 self.currently_buffered.remove(&item.input_id);
+                self.metrics.discarded_precondition += 1;
                 self.record(seq, Outcome::Discarded {
                     reason: DiscardReason::PreconditionFailed(violation),
                 });
@@ -255,6 +267,8 @@ impl<D: Domain> Island<D> {
                     preconditions: Vec::new(),
                     ..item
                 };
+                self.metrics.applied += 1;
+                self.metrics.substituted += 1;
                 let events = D::apply(&mut self.state, &self.rules, &sub, &mut self.rng);
                 self.externals.extend(D::externals(&events));
                 self.record(seq, Outcome::Applied { events });
@@ -265,6 +279,7 @@ impl<D: Domain> Island<D> {
                 // reason is a presentation hint and must never overwrite the
                 // audit record (review-impl finding 2: a client could declare
                 // `Expired` over a real EntityAlive failure and falsify the log).
+                self.metrics.discarded_precondition += 1;
                 self.record(seq, Outcome::Discarded {
                     reason: DiscardReason::PreconditionFailed(violation),
                 });
@@ -278,18 +293,23 @@ impl<D: Domain> Island<D> {
                 // input grows the log without bound (review-impl finding 1).
                 if !self.currently_buffered.contains(&item.input_id) {
                     self.currently_buffered.insert(item.input_id);
+                    self.metrics.buffered_episodes += 1;
                     self.record(seq, Outcome::Buffered);
+                } else {
+                    self.metrics.rebuffer_cycles += 1;
                 }
                 // Re-offer on the item's OWN lane (review finding 1: the
                 // prior hardcoded Live was a priority inversion for
                 // Background items).
                 self.buffered.push((lane, item));
+                IslandMetrics::gauge_peak(&mut self.metrics.peak_buffered_len, self.buffered.len());
             }
         }
     }
 
     fn record(&mut self, seq: Seq, outcome: Outcome<D>) {
         self.outcomes.push((seq, outcome));
+        IslandMetrics::gauge_peak(&mut self.metrics.peak_outcomes_len, self.outcomes.len());
     }
 
     // ─── read surface (host + tests) ───
@@ -308,6 +328,21 @@ impl<D: Domain> Island<D> {
 
     pub fn ingress_len(&self) -> usize {
         self.ingress.len()
+    }
+
+    pub fn seen_len(&self) -> usize {
+        self.seen.len()
+    }
+
+    pub fn buffered_len(&self) -> usize {
+        self.buffered.len()
+    }
+
+    /// The kernel's observability surface — deterministic counters + peak
+    /// gauges. The HOST emits these as real telemetry (DP-R8); tests assert
+    /// they agree with the outcome log (a drift = a silent outcome path).
+    pub fn metrics(&self) -> &IslandMetrics {
+        &self.metrics
     }
 
     /// Drain effects that must LEAVE the island (SC-A4). sim-core never

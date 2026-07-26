@@ -36,8 +36,13 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > log growth · **Notify audit-falsification** · saturating Gen/Tick; 2 documented as contracts; 2
 > deferred). 5 recorded spec deviations incl. edition-2024 `gen` keyword and the undefined `External`
 > type (→ next REC batch). **⚠ workspace `[profile.release] panic="abort"` confirmed = the docs-14/15
-> trap — HARD S3 GATE ITEM** (commit-service host needs unwind). **NEXT: S1a-stress** (scenario matrix +
-> perf/stress, user-ordered) → S1b (invalidation cascade + panic containment + chaos) → S2 multi-island.
+> trap — HARD S3 GATE ITEM** (commit-service host needs unwind). **S1a-stress DONE same night** (approved 00:17): **IslandMetrics** (metrics-are-data rule — kernel counts, host emits per DP-R8;
+> metrics⇄outcome-log cross-check test makes silent outcome paths a test failure) + 6-scenario matrix
+> (incl. 100k bounded-memory soak) + stress profiles — **25 tests green; 167–215 ns/step across all
+> adversarial mixes (~4.6–6 M steps/sec/island); ~4 ns per precondition check**. Suite limits stated:
+> single-island, toy domain. **NEXT: S1b** (invalidation cascade + panic containment + panic-profile CI
+> check + chaos injection) → **S2 multi-island** (IslandMessage, SL-Q9 IPC measurement) → Layer-1 lints
+> (parallel) → POC-2 LLM vertical slice (needs REC-54/55/56 path; answers cost/turn).
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

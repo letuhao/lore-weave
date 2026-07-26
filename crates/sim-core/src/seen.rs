@@ -59,9 +59,13 @@ impl SeenSet {
 
     /// Evict expired entries. Called from `tick()`, never from `step()` —
     /// eviction cost stays off the per-item path.
-    pub fn evict_expired(&mut self, now: Tick) {
+    pub fn evict_expired(&mut self, now: Tick) -> u64 {
         if let SeenWindow::TtlTicks(ttl) = self.window {
+            let before = self.map.len();
             self.map.retain(|_, t| now.0.saturating_sub(t.0) <= ttl);
+            (before - self.map.len()) as u64
+        } else {
+            0
         }
     }
 

@@ -22,6 +22,7 @@
 
 pub mod domain;
 pub mod ingress;
+pub mod metrics;
 pub mod island;
 pub mod rng;
 pub mod seen;
@@ -29,6 +30,7 @@ pub mod types;
 
 pub use domain::Domain;
 pub use ingress::{Ingress, Lane};
+pub use metrics::IslandMetrics;
 pub use island::{Island, StepStatus};
 pub use rng::DetRng;
 pub use seen::{SeenSet, SeenWindow};
