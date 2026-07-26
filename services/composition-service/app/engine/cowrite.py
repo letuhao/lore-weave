@@ -125,10 +125,10 @@ def build_messages(
     # word goal the model free-runs short (measured: 83 words). Only on the scene-draft path
     # (target_words passed); selection/revise ops pass None and stay unchanged.
     length_steer = (
-        f"\n\nLENGTH: write a FULL scene of approximately {target_words} words. Dramatise it "
+        f"\n\nLENGTH: write a FULL passage of approximately {target_words} words. Dramatise it "
         "with concrete action, sensory detail, and dialogue where it fits — do NOT summarise, "
-        "compress, or stop early; a short sketch is a failure. Keep writing until the scene's "
-        "beat is fully played out at roughly that length."
+        "compress, or stop early; a short sketch is a failure. Keep writing until the planned "
+        "beats are fully played out at roughly that length."
     ) if target_words and target_words > 0 else ""
     user = packed_prompt + "\n\n" + instruction + promise_steer + length_steer + (
         f"\n\nAuthor guidance: {guide}" if guide else "")

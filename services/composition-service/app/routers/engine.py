@@ -64,8 +64,8 @@ from app.engine.canon_reflect import run_canon_reflect
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import (
-    SELECTION_MAX_CHARS, build_messages, build_selection_messages,
-    estimate_prompt_tokens, stream_draft,
+    DEFAULT_SCENE_TARGET_WORDS, SELECTION_MAX_CHARS, build_messages,
+    build_selection_messages, estimate_prompt_tokens, stream_draft,
 )
 from app.engine.critic import judge_prose
 from app.engine.critic_override import (
@@ -1027,7 +1027,17 @@ async def generate_chapter(
     except BookClientError:
         raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
 
-    messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide)
+    # Chapter LENGTH target — a whole-chapter pass with no target free-runs short
+    # and uneven (pacing dips; a max_output_tokens cap is a CEILING, not a target —
+    # the same reason the scene path passes target_words). Sum the scenes' planned
+    # targets (each scene's own target_words if the planner set one, else the
+    # per-scene default) so the drafter writes a full chapter proportional to its
+    # scene count, honoring any per-scene targets the planner sets in future.
+    _chapter_target = sum(
+        (getattr(sc, "target_words", None) or DEFAULT_SCENE_TARGET_WORDS) for sc in scenes
+    )
+    messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide,
+                              target_words=_chapter_target)
     prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
     prompt_ceiling = _pack_budget * 2
     if prompt_estimate > prompt_ceiling:

@@ -163,6 +163,25 @@ def test_build_messages_neutral_no_forced_language():
     assert "language with code" not in msgs[0]["content"]
 
 
+def test_build_messages_length_steer_fires_with_target_and_is_generic():
+    # Fix #3 (2026-07-26): a whole-chapter draft passes a chapter-level target_words
+    # (previously the chapter path passed none → free-runs short → pacing dips). The
+    # LENGTH directive must fire on any target, and be worded GENERICALLY (not "FULL
+    # scene") so it reads correctly for the chapter path too.
+    user = cowrite.build_messages("ctx", NEUTRAL, "draft_chapter", "", target_words=2400)[1]["content"]
+    assert "LENGTH:" in user and "2400" in user
+    assert "FULL passage" in user            # generic — works for scene AND chapter
+    assert "FULL scene of approximately" not in user  # the old scene-only wording is gone
+
+
+def test_build_messages_no_length_steer_without_target():
+    # selection/revise/no-target callers stay unchanged (no LENGTH directive).
+    user = cowrite.build_messages("ctx", NEUTRAL, "draft_scene")[1]["content"]
+    assert "LENGTH:" not in user
+    user0 = cowrite.build_messages("ctx", NEUTRAL, "draft_scene", target_words=0)[1]["content"]
+    assert "LENGTH:" not in user0
+
+
 def test_build_messages_has_anti_reestablishment_instruction():
     # LOOM-36: the draft prompt must tell the drafter the context is ALREADY
     # established and to continue forward, not re-narrate prior scenes (the
