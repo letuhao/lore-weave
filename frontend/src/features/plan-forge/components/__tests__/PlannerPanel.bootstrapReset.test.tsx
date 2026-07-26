@@ -76,6 +76,6 @@ describe('PlannerPanel — bootstrap reset on recompile', () => {
     fireEvent.click(screen.getByTestId('plan-compile-btn'));
 
     expect(bootstrapReset).toHaveBeenCalledTimes(1);
-    expect(runCompile).toHaveBeenCalledWith('arc_1');
+    expect(runCompile).toHaveBeenCalledWith('arc_1', undefined, undefined, undefined);
   });
 });

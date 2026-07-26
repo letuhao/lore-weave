@@ -1,6 +1,7 @@
 // The read-out for a plan run: status + artifacts + self-check gaps + validate report + a compile
 // affordance (arc_id input). Render-only — all handlers come from the usePlanRun controller.
 import { useState } from 'react';
+import type { StructureTemplate } from '@/features/composition/types';
 import type {
   PlanCompileResult,
   PlanRunDetail,
@@ -17,7 +18,11 @@ interface Props {
   compileResult: PlanCompileResult | null;
   onSelfCheck: () => void;
   onValidate: () => void;
-  onCompile: (arcId: string) => void;
+  /** `structureTemplateId` omitted ⇒ keep whatever structure the run already uses. */
+  onCompile: (arcId: string, structureTemplateId?: string) => void;
+  /** The story-structure library (built-ins + the user's own) for the compile picker.
+   *  Optional: absent ⇒ the picker offers only "keep current". */
+  structures?: StructureTemplate[];
   /** PS-9 — open one artifact read-only in the json-editor (fed by BE-3). */
   onOpenArtifact: (artifactId: string) => void;
   // ⑨ Repair strip — appears ONLY when self-check found gaps (recovery tools are meaningless
@@ -30,11 +35,17 @@ interface Props {
 }
 
 export function PlanRunView({
-  run, polling, busy, selfCheck, validation, compileResult,
+  // Defaulted, not required: the picker is an affordance over degrade-safe data (the hook already
+  // swallows a failed library load), so an absent list must render "keep current" — never crash the
+  // whole compile panel over a decoration.
+  run, polling, busy, selfCheck, validation, compileResult, structures = [],
   onSelfCheck, onValidate, onCompile, onOpenArtifact,
   repairOutput, canRepair, onExplain, onApplyFix, onAutofix,
 }: Props) {
   const [pickedArcId, setPickedArcId] = useState('');
+  // '' = "keep current" — deliberately NOT pre-selected to a default, so opening the panel and
+  // hitting Compile can never silently re-shape a plan the author already structured.
+  const [pickedStructureId, setPickedStructureId] = useState('');
   // PS-6 — a paid repair action confirms before spending; one confirm at a time.
   const [pendingRepair, setPendingRepair] = useState<null | { label: string; run: () => void }>(null);
   // Derived default (same pattern as PlannerPanel's effectiveModelRef) — no
@@ -180,20 +191,46 @@ export function PlanRunView({
             No arcs found in this plan yet — run Self-check or Validate above to see what's missing.
           </p>
         ) : (
-          <div className="flex gap-2">
-            <select
-              data-testid="plan-arc-picker" value={arcId} onChange={(e) => setPickedArcId(e.target.value)}
-              className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-ring"
-            >
-              {run.arcs.map((a) => (
-                <option key={a.id} value={a.id}>{a.title}</option>
-              ))}
-            </select>
-            <button
-              type="button" data-testid="plan-compile-btn" onClick={() => onCompile(arcId)}
-              disabled={busy || polling || !arcId}
-              className="rounded bg-primary px-2 py-1 text-primary-foreground hover:brightness-110 disabled:opacity-40"
-            >Compile</button>
+          <div className="space-y-1">
+            <div className="flex gap-2">
+              <select
+                data-testid="plan-arc-picker" value={arcId} onChange={(e) => setPickedArcId(e.target.value)}
+                className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-ring"
+              >
+                {run.arcs.map((a) => (
+                  <option key={a.id} value={a.id}>{a.title}</option>
+                ))}
+              </select>
+              <button
+                type="button" data-testid="plan-compile-btn"
+                onClick={() => onCompile(arcId, pickedStructureId || undefined)}
+                disabled={busy || polling || !arcId}
+                className="rounded bg-primary px-2 py-1 text-primary-foreground hover:brightness-110 disabled:opacity-40"
+              >Compile</button>
+            </div>
+            {/* D-PLANFORGE-BEATS-UNWIRED — the STORY STRUCTURE picker.
+                Until now a GUI author had no way to choose one, so every compile silently used the
+                platform default and the `beats` pass mapped chapters onto whatever that was. The
+                library, its 6 built-ins and a full CRUD panel all already existed — nothing linked
+                them to a plan run. Blank = keep whatever the run already uses. */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="plan-structure-picker" className="text-[10px] text-muted-foreground">Structure</label>
+              <select
+                id="plan-structure-picker" data-testid="plan-structure-picker"
+                value={pickedStructureId} onChange={(e) => setPickedStructureId(e.target.value)}
+                disabled={busy || polling}
+                className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-[11px] outline-none focus:border-ring disabled:opacity-40"
+              >
+                <option value="">
+                  {structures.length ? 'Keep current structure' : 'Loading structures…'}
+                </option>
+                {structures.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}{t.beats?.length ? ` · ${t.beats.length} beats` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
         {compileResult && (

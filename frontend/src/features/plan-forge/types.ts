@@ -201,6 +201,9 @@ export interface CompilePlanBody {
   arc_id: string;
   run_pipeline?: boolean;
   model_ref?: string;
+  /** D-PLANFORGE-BEATS-UNWIRED — the story structure whose ordered beats the `beats` pass maps
+   *  chapters onto. Omit to keep the run's stored choice (or the recorded platform default). */
+  structure_template_id?: string;
 }
 
 /** A job/run status is "settled" (poll can stop) unless it's actively running. */

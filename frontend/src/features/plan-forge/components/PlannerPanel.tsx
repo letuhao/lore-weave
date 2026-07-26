@@ -286,7 +286,11 @@ export function PlannerPanel(props: IDockviewPanelProps) {
                 compileResult={plan.compileResult}
                 onSelfCheck={() => void plan.runSelfCheck()}
                 onValidate={() => void plan.runValidate()}
-                onCompile={(arcId) => { bootstrap.reset(); void plan.runCompile(arcId); }}
+                onCompile={(arcId, structureTemplateId) => {
+                  bootstrap.reset();
+                  void plan.runCompile(arcId, undefined, undefined, structureTemplateId);
+                }}
+                structures={plan.structures}
                 onOpenArtifact={openArtifact}
                 repairOutput={plan.repairOutput}
                 canRepair={!plan.busy && !plan.polling && effectiveModelRef.length > 0}
