@@ -185,6 +185,30 @@ observation. A claim that a check passed, without its output, does **not** tick 
 CRUD routes and 5 MCP tools — and **zero consumers**. Built, then not wired. That is the exact
 failure mode the human predicted, and the matrix exists to find the rest of them.
 
+## ⚠️ Commit provenance — where this track's code actually landed
+
+**Phase E + Phase B code is in commit `439d9037a`, NOT in a commit of its own.**
+
+A second Claude session was working this same repo and branch concurrently (its commits:
+`77dc6f3e2` state-ledger, `221846ca8` critic remediation, `ef53eb47e` chapter length target, all
+21:18–21:55). At 21:55 it ran a commit while this track's 18 files were staged, so they were swept
+into its commit — 1757 insertions filed under the message
+`docs(session): record chapter-quality fixes #1–#3 shipped + proven`.
+
+- **Nothing was lost or clobbered.** File sets were disjoint: that session touched `compress.py`,
+  `cowrite.py`, `config.py`, `routers/engine.py`, `authoring_run_service.py` + tests; this track
+  touched `structure.py`, `arc_plan.py`, `plan_forge_service.py`, `plan_pass_adapters.py`,
+  `plan_runs.py`, `migrate.py`, `mcp/server.py`, `routers/plan_forge.py` + the plan-forge FE.
+- **History was deliberately NOT rewritten** (human decision): amending a commit a live concurrent
+  session may already be building on is riskier than an inaccurate message.
+- **Caveat on this track's live evidence:** the composition images were rebuilt from a working tree
+  that also carried that session's in-flight changes, so the smoke ran on a *mixed* image. The beats
+  findings still hold — their changes are in compress/critic/length, structurally unrelated to beat
+  mapping, and the 10/10 `beat_role` + climax curve follows directly from populating
+  `package["beats"]` — but it was not an isolated image, and a future re-verify should be.
+- **Two agents rebuilding `composition-service` against one working tree is a standing hazard.**
+  Coordinate before the next long run.
+
 ## Registers
 
 ### Decisions
