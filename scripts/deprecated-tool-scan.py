@@ -165,6 +165,20 @@ _INTERNAL_DISPATCH = re.compile(r"_dispatch\(")
 _STRINGS = re.compile(r'"([^"\\]*(?:\\.[^"\\]*)*)"' r"|'([^'\\]*(?:\\.[^'\\]*)*)'" r"|`([^`]*)`")
 
 
+_OWNER = re.compile(r'(?:addTool\w*\(\s*srv,\s*|Name:\s*|name=)"([a-z_][a-z0-9_]*)"')
+
+
+def _owner_at(raw: str, lineno: int) -> str | None:
+    """The tool whose registration most recently PRECEDES this line — i.e. whose description
+    the reference sits in. Used to tell a live claim from dead-to-dead staleness."""
+    lines = raw.splitlines()[:lineno]
+    for ln in reversed(lines):
+        m = _OWNER.search(ln)
+        if m:
+            return m.group(1)
+    return None
+
+
 def _string_text(line: str) -> str:
     """Concatenated contents of every string literal on the line (Go/Python, incl. backticks)."""
     return " ".join(g for m in _STRINGS.finditer(line) for g in m.groups() if g)
@@ -210,10 +224,17 @@ def scan(legacy: dict[str, str | None], advertised: set[str]) -> list[dict]:
                         "DEPRECATED" in line or "superseded" in line.lower()):
                     continue
                 if tok in legacy:
+                    owner = _owner_at(raw, lineno) if kind == "tool-desc" else None
                     findings.append({
                         "kind": kind, "file": str(path.relative_to(ROOT)).replace("\\", "/"),
                         "line": lineno, "tool": tok, "problem": "retired",
                         "replacement": legacy[tok],
+                        # Which tool's description this sits in, and whether the MODEL can see it.
+                        # A retired tool's description referencing another retired tool never
+                        # reaches anyone — real staleness, but not the loop bug. Sorting by this
+                        # is what turns a flat list into a migration order.
+                        "owner": owner,
+                        "reaches_model": owner is None or owner in advertised,
                     })
     return findings
 
