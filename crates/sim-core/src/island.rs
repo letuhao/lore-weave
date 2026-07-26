@@ -21,6 +21,9 @@ pub enum StepStatus {
     Idle,
     /// Exactly one item processed (its admission stamp).
     Processed(Seq),
+    /// S1b: a previous `apply` panicked; the island refuses further work
+    /// until the host rebuilds it (SC-A8 poison-not-resume).
+    Poisoned,
 }
 
 pub struct Island<D: Domain> {
@@ -47,6 +50,16 @@ pub struct Island<D: Domain> {
     /// `Fallback::Buffer` parking; re-offered at next `tick()` with original
     /// `Seq` preserved (spec §5.3).
     buffered: Vec<(Lane, QueuedInput<D>)>,
+    /// S1b island generation (spec §7). Items are stamped at admission; a
+    /// bump supersedes everything stamped older, O(1).
+    island_gen: Gen,
+    /// S1b panic containment (SC-A8/A9). `containment=false` lets panics
+    /// propagate (chaos-harness mode per spec §10.4 — surfacing beats
+    /// swallowing in tests).
+    containment: bool,
+    poisoned: bool,
+    /// Quarantined poison-pill inputs (≤1 in V1: first quarantine poisons).
+    quarantine: Vec<QueuedInput<D>>,
     /// InputIds currently in a buffered episode — `Buffered` is recorded once
     /// per episode, not once per re-park (finding 1). NOTE (finding 4,
     /// accepted): while buffered, an id is absent from `seen`, so a concurrent
@@ -81,6 +94,10 @@ impl<D: Domain> Island<D> {
             buffered: Vec::new(),
             currently_buffered: std::collections::BTreeSet::new(),
             metrics: IslandMetrics::default(),
+            island_gen: Gen(0),
+            containment: true,
+            poisoned: false,
+            quarantine: Vec::new(),
         }
     }
 
@@ -120,9 +137,34 @@ impl<D: Domain> Island<D> {
         self.encounters.remove(&id);
     }
 
-    // ─── admission (stamps Seq, validates NOTHING — spec §5) ───
+    /// Chaos-harness mode: panics PROPAGATE instead of poisoning (spec
+    /// §10.4 — "do NOT catch in sim/debug builds"). Default is containment ON.
+    pub fn set_containment(&mut self, on: bool) {
+        self.containment = on;
+    }
 
-    pub fn submit(&mut self, lane: Lane, input: QueuedInput<D>) -> Seq {
+    /// S1b — the O(1) invalidation cascade (spec §7): every item admitted
+    /// under an older generation discards as `Superseded` at its pop, with
+    /// no queue walk. Their input_ids are NOT burned in `seen`, so a
+    /// re-submission after the bump processes normally.
+    pub fn bump_island_gen(&mut self) -> Gen {
+        self.island_gen = Gen(self.island_gen.0.saturating_add(1));
+        self.metrics.island_gen_bumps += 1;
+        self.island_gen
+    }
+
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    pub fn quarantined(&self) -> &[QueuedInput<D>] {
+        &self.quarantine
+    }
+
+    // ─── admission (stamps Seq + island_gen, validates NOTHING — spec §5) ───
+
+    pub fn submit(&mut self, lane: Lane, mut input: QueuedInput<D>) -> Seq {
+        input.admitted_gen = self.island_gen;
         let seq = self.ingress.push(lane, input);
         IslandMetrics::gauge_peak(&mut self.metrics.peak_ingress_depth, self.ingress.len());
         seq
@@ -152,7 +194,10 @@ impl<D: Domain> Island<D> {
             .collect();
         for t in due {
             if let Some(items) = self.schedule.remove(&t) {
-                for (lane, input) in items {
+                for (lane, mut input) in items {
+                    // Stamped at FIRE time — a scheduled item outliving a
+                    // dissolution belongs to the new epoch.
+                    input.admitted_gen = self.island_gen;
                     self.ingress.push(lane, input);
                     self.metrics.scheduled_fired += 1;
                 }
@@ -173,11 +218,32 @@ impl<D: Domain> Island<D> {
 
     /// Process exactly ONE ingress item, atomically (SL-A9 per-item atomicity).
     pub fn step(&mut self) -> StepStatus {
+        if self.poisoned {
+            return StepStatus::Poisoned;
+        }
         let Some((lane, item)) = self.ingress.pop() else {
             return StepStatus::Idle;
         };
         let seq = item.seq;
         self.metrics.steps_processed += 1;
+
+        // S1b §7 — generation gate FIRST, before the seen-set: a superseded
+        // item must not burn its input_id (re-submit after invalidation is
+        // legitimate), and this is the O(1) half of the cascade.
+        if item.admitted_gen != self.island_gen {
+            self.currently_buffered.remove(&item.input_id);
+            self.metrics.discarded_superseded += 1;
+            self.record(seq, Outcome::Discarded { reason: DiscardReason::Superseded });
+            return StepStatus::Processed(seq);
+        }
+
+        // S1b SL-A4 — deadline, resolved through the declared fallback.
+        if let Some(d) = item.deadline
+            && self.tick > d
+        {
+            self.resolve_expiry(lane, item);
+            return StepStatus::Processed(seq);
+        }
 
         // I2 — idempotency. A duplicate is a normal recorded outcome.
         if !self.seen.insert(item.input_id, self.tick) {
@@ -193,14 +259,77 @@ impl<D: Domain> Island<D> {
         match self.check_all(&item) {
             Ok(()) => {
                 self.currently_buffered.remove(&item.input_id);
-                self.metrics.applied += 1;
-                let events = D::apply(&mut self.state, &self.rules, &item, &mut self.rng);
-                self.externals.extend(D::externals(&events));
-                self.record(seq, Outcome::Applied { events });
+                match self.apply_contained(&item) {
+                    Ok(events) => {
+                        self.metrics.applied += 1;
+                        self.externals.extend(D::externals(&events));
+                        self.record(seq, Outcome::Applied { events });
+                    }
+                    Err(()) => {
+                        // SC-A8/A9: poison, quarantine the pill, record —
+                        // half-mutated state is never observable because no
+                        // further step runs.
+                        self.poisoned = true;
+                        self.metrics.quarantined += 1;
+                        self.record(seq, Outcome::Discarded {
+                            reason: DiscardReason::Quarantined,
+                        });
+                        self.quarantine.push(item);
+                    }
+                }
             }
             Err(violation) => self.resolve_fallback(lane, item, violation),
         }
         StepStatus::Processed(seq)
+    }
+
+    /// S1b SC-A8: containment boundary. `AssertUnwindSafe` is sound HERE
+    /// because every Err path poisons the island before returning — the
+    /// possibly-half-mutated state can never be observed by another step.
+    fn apply_contained(&mut self, item: &QueuedInput<D>) -> Result<Vec<D::Event>, ()> {
+        if self.containment {
+            let state = &mut self.state;
+            let rules = &self.rules;
+            let rng = &mut self.rng;
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                D::apply(state, rules, item, rng)
+            }))
+            .map_err(|_| ())
+        } else {
+            Ok(D::apply(&mut self.state, &self.rules, item, &mut self.rng))
+        }
+    }
+
+    /// S1b SL-A4 expiry: resolved through the declared fallback; `Buffer`
+    /// coerces to Drop (retrying a dead item forever is never right).
+    fn resolve_expiry(&mut self, _lane: Lane, item: QueuedInput<D>) {
+        let seq = item.seq;
+        self.currently_buffered.remove(&item.input_id);
+        match item.on_invalid.clone() {
+            Fallback::Substitute(payload) => {
+                let sub = QueuedInput { payload, preconditions: Vec::new(), ..item };
+                match self.apply_contained(&sub) {
+                    Ok(events) => {
+                        self.metrics.applied += 1;
+                        self.metrics.substituted += 1;
+                        self.externals.extend(D::externals(&events));
+                        self.record(seq, Outcome::Applied { events });
+                    }
+                    Err(()) => {
+                        self.poisoned = true;
+                        self.metrics.quarantined += 1;
+                        self.record(seq, Outcome::Discarded {
+                            reason: DiscardReason::Quarantined,
+                        });
+                        self.quarantine.push(sub);
+                    }
+                }
+            }
+            _ => {
+                self.metrics.discarded_expired += 1;
+                self.record(seq, Outcome::Discarded { reason: DiscardReason::Expired });
+            }
+        }
     }
 
     /// Structural preconditions from island registries; semantic ones
@@ -267,11 +396,22 @@ impl<D: Domain> Island<D> {
                     preconditions: Vec::new(),
                     ..item
                 };
-                self.metrics.applied += 1;
-                self.metrics.substituted += 1;
-                let events = D::apply(&mut self.state, &self.rules, &sub, &mut self.rng);
-                self.externals.extend(D::externals(&events));
-                self.record(seq, Outcome::Applied { events });
+                match self.apply_contained(&sub) {
+                    Ok(events) => {
+                        self.metrics.applied += 1;
+                        self.metrics.substituted += 1;
+                        self.externals.extend(D::externals(&events));
+                        self.record(seq, Outcome::Applied { events });
+                    }
+                    Err(()) => {
+                        self.poisoned = true;
+                        self.metrics.quarantined += 1;
+                        self.record(seq, Outcome::Discarded {
+                            reason: DiscardReason::Quarantined,
+                        });
+                        self.quarantine.push(sub);
+                    }
+                }
             }
             Fallback::Notify(_entity, _declared) => {
                 // Delivery is the host's `turn.outcome` frame (REC-64). The

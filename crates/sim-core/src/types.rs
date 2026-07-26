@@ -78,6 +78,16 @@ pub struct QueuedInput<D: Domain> {
     pub payload: D::Payload,
     pub preconditions: Vec<Precondition<D>>,
     pub on_invalid: Fallback<D>,
+    /// Island generation at ADMISSION (S1b, spec §7). Stamped by the island;
+    /// a bump supersedes every item stamped older — O(1) cascade cancel with
+    /// zero per-item inspection. PRESERVED across buffered repark so
+    /// dissolution also cancels parked work.
+    pub admitted_gen: Gen,
+    /// SL-A4 deadline (logical). `now > deadline` at step ⇒ expiry, resolved
+    /// through `on_invalid` (Substitute = the AGT-A2 "Defend" pattern).
+    /// `Buffer` on expiry is coerced to Drop — retrying a dead item forever
+    /// is never right.
+    pub deadline: Option<Tick>,
 }
 
 /// Preconditions, re-validated at step time (spec §5). The island evaluates
@@ -140,6 +150,8 @@ impl<D: Domain> Clone for QueuedInput<D> {
             payload: self.payload.clone(),
             preconditions: self.preconditions.clone(),
             on_invalid: self.on_invalid.clone(),
+            admitted_gen: self.admitted_gen,
+            deadline: self.deadline,
         }
     }
 }
@@ -154,6 +166,8 @@ impl<D: Domain> core::fmt::Debug for QueuedInput<D> {
             .field("payload", &self.payload)
             .field("preconditions", &self.preconditions)
             .field("on_invalid", &self.on_invalid)
+            .field("admitted_gen", &self.admitted_gen)
+            .field("deadline", &self.deadline)
             .finish()
     }
 }
@@ -252,4 +266,8 @@ pub enum DiscardReason {
     Superseded,
     /// Deadline passed before step (SL-A4).
     Expired,
+    /// The input's `apply` PANICKED; the item is quarantined and the island
+    /// poisoned (SC-A9). Fifth variant added at S1b — amends the REC-63
+    /// four-variant note (flagged in the reconciliation register).
+    Quarantined,
 }

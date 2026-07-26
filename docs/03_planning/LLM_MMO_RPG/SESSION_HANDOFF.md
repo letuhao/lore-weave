@@ -40,9 +40,17 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > metrics⇄outcome-log cross-check test makes silent outcome paths a test failure) + 6-scenario matrix
 > (incl. 100k bounded-memory soak) + stress profiles — **25 tests green; 167–215 ns/step across all
 > adversarial mixes (~4.6–6 M steps/sec/island); ~4 ns per precondition check**. Suite limits stated:
-> single-island, toy domain. **NEXT: S1b** (invalidation cascade + panic containment + panic-profile CI
-> check + chaos injection) → **S2 multi-island** (IslandMessage, SL-Q9 IPC measurement) → Layer-1 lints
-> (parallel) → POC-2 LLM vertical slice (needs REC-54/55/56 path; answers cost/turn).
+> single-island, toy domain. **S1b DONE same night (00:31, user-directed long-run to completion):**
+> §7 **O(1) invalidation cascade** (`admitted_gen` stamped at admission; `bump_island_gen()` kills ALL
+> pending — queued/scheduled/buffered — zero per-item work; superseded ids NOT burned in seen, re-submit
+> after dissolution works) · **SC-A8/A9 panic containment** (`catch_unwind` → quarantine-the-pill +
+> poison-not-resume, `StepStatus::Poisoned`; `set_containment(false)` = §10.4 chaos passthrough;
+> `panic_unwinds_in_test_profile` canary guards the panic-abort trap; `DiscardReason` +5th variant
+> **`Quarantined`** — amends REC-63, flagged for register) · **SL-A4 deadline expiry** via declared
+> fallback (Substitute = AGT-A2 "Defend"; Buffer-on-expiry coerced to Drop). **32 tests green (8 chaos),
+> clippy 0; containment costs ~13 ns/step (167→180, big-state 215→229) — measured, accepted.**
+> **NEXT: S2 multi-island** (IslandMessage, handoff, dissolution-via-cascade, serde checkpoints, SL-Q9
+> IPC measurement) → Layer-1 lints (parallel) → POC-2 LLM vertical slice (REC-54/55/56; cost/turn).
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

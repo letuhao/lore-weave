@@ -13,6 +13,8 @@ pub struct TestDomain;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TestPayload {
+    /// S1b chaos: panics inside `apply` — the poison pill.
+    Panic,
     /// Increment `id`'s counter by `by`, clamped to `rules.max_counter`.
     Inc { id: EntityId, by: i64 },
     /// Spend `amount` qi (guard with `Precondition::ResourceAtLeast`).
@@ -82,6 +84,7 @@ impl Domain for TestDomain {
         rng: &mut DetRng,
     ) -> Vec<Self::Event> {
         match &input.payload {
+            TestPayload::Panic => panic!("TestDomain poison pill (chaos harness)"),
             TestPayload::Inc { id, by } => {
                 let c = state.counters.entry(*id).or_insert(0);
                 *c = (*c + by).min(rules.max_counter);
@@ -126,5 +129,19 @@ pub fn input(
         payload,
         preconditions,
         on_invalid,
+        admitted_gen: sim_core::Gen(u32::MAX), // stamped at admission
+        deadline: None,
     }
+}
+
+/// `input()` with an SL-A4 deadline.
+pub fn input_deadline(
+    input_id: u128,
+    payload: TestPayload,
+    deadline: sim_core::Tick,
+    on_invalid: sim_core::Fallback<TestDomain>,
+) -> QueuedInput<TestDomain> {
+    let mut q = input(input_id, payload, vec![], on_invalid);
+    q.deadline = Some(deadline);
+    q
 }

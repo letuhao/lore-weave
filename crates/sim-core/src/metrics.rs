@@ -27,6 +27,13 @@ pub struct IslandMetrics {
     /// outcome log deliberately does NOT show (review-impl finding 1).
     pub rebuffer_cycles: u64,
 
+    // ─── S1b: containment + cascade ───
+    /// Inputs whose `apply` panicked (island poisons after the first, so ≤1
+    /// by construction in V1).
+    pub quarantined: u64,
+    /// Island-generation bumps — each is an O(1) invalidation cascade.
+    pub island_gen_bumps: u64,
+
     // ─── time + scheduling ───
     pub ticks: u64,
     pub scheduled_fired: u64,
@@ -53,6 +60,13 @@ impl IslandMetrics {
     /// Tests assert this; a drift here means a silent outcome path exists.
     pub fn accounted(&self) -> u64 {
         self.applied + self.discarded_total() + self.buffered_episodes + self.rebuffer_cycles
+    }
+
+    /// S1b: `Quarantined` outcomes count under `discarded_total` via their
+    /// own counter — kept separate because a quarantine is an INCIDENT, not
+    /// a routine discard.
+    pub fn discarded_and_quarantined(&self) -> u64 {
+        self.discarded_total() + self.quarantined
     }
 
     pub(crate) fn gauge_peak(peak: &mut u64, current: usize) {
