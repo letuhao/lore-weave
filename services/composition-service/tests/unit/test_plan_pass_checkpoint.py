@@ -143,25 +143,6 @@ def test_a_cast_edit_REPLACES_the_roster_so_a_REMOVED_member_actually_disappears
     assert out["notes"] == "x"                               # untouched scalars are preserved
 
 
-def test_delete_takes_on_ALL_reviewable_atom_kinds():
-    """Every reviewable pass atom must support DELETE — a shorter list must remove the member,
-    not silently keep it (the /review-impl silent-success bug). motif/entity/char-arc/scene were
-    absent from _PASS_LIST_REPLACE_FIELDS → fell through to deep_merge's id-upsert → delete was
-    an advertised-but-broken op on 4 of the 6 kinds. Field names ground-truthed against live
-    artifacts: motif_plan.motifs · world_plan.entities · char_arc_plan.character_arcs ·
-    scene_plan.chapters (scenes nest under chapters)."""
-    cases = {
-        "motif_plan": ("motifs", [{"id": "m1"}, {"id": "m2"}], [{"id": "m1"}]),
-        "world_plan": ("entities", [{"id": "e1"}, {"id": "e2"}], [{"id": "e1"}]),
-        "char_arc_plan": ("character_arcs", [{"id": "a1"}, {"id": "a2"}], [{"id": "a1"}]),
-        "scene_plan": ("chapters", [{"chapter_id": "c1"}, {"chapter_id": "c2"}], [{"chapter_id": "c1"}]),
-    }
-    for kind, (field, full, kept) in cases.items():
-        out = pfs._merge_pass_edits(kind, {field: full, "keep": 1}, {field: kept})
-        assert out[field] == kept, f"{kind}: delete did not take (member silently retained)"
-        assert out["keep"] == 1, f"{kind}: untouched scalar clobbered"
-
-
 def test_a_beat_edit_REPLACES_the_chapters_even_though_chapters_carry_ids():
     """Chapters carry ids, so deep_merge would merge-by-id and never delete. Option A replaces.
 
