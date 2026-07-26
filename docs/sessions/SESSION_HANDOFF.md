@@ -67,6 +67,25 @@ requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
 only `package.json` and runs `npm install`, so it resolves 5.x and is unaffected. Fix locally with
 `npm install` in `frontend/` (its `package-lock.json` is gitignored).
 
+## 🎭 Mị ĐẾ AUTHOR-DOGFOOD → 10 platform fixes + PIVOT DECISION (2026-07-26/27, in flight)
+**Run doc (findings 1–23 + evidence): [`docs/sessions/2026-07-26-mide-author-dogfood.md`](2026-07-26-mide-author-dogfood.md).**
+Played a real Vietnamese author using the studio E2E (book "Mị Đế" 019f9f2d…, gemma local). The run
+surfaced and FIXED (each proven at the wire, committed separately): frontend-tool endless loop
+(D-FE-TOOL-LOOP, 205→2 calls), rail next-step budget exemption, pass-text re-echo (v1+v2), FE
+context-id injection, activated-LRU refresh, auto-mode tool_load persistence, injected-skill
+named-tools ride, rail repeat-step flags (registry seed), dedicated rail budget (6000), ambient
+book_id schema projection. **Commits:** 516d33eba · 5c2752aca · 2bab783c6 · 0b873be47 · ebbc36ce0 ·
+b79688e37 · 1ec31e748 · 820cbdd72.
+
+**🔴 PIVOT (PO decision, 2026-07-27):** even after all fixes, a FRESH gemma session still mis-picks
+`glossary_propose_entity_edit` for creation. Weak-model tool-CHOICE is the unfixable link.
+**NEXT: build deterministic server-side workflows for GLOSSARY-BUILD and KG-BUILD** — the PlanForge
+pattern (state machine outside the agent; LLM only fills content inside steps; human checkpoints;
+studio panel like Pass Rail). Chat stays the supporter for atomic edits (consistent with the
+ARCHITECTURE decision below). Book state for the resumed run: Lâm Uyên (active) + Lâm gia (draft)
+exist; 3 characters (Tô Thanh Dao, Lâm Trạch, Huyết Vô Thường) still to create — the first test
+case for the new workflow.
+
 ## 🏗️ ARCHITECTURE — chat = supporter, compile+draft = subagent (2026-07-26)
 **Human decision (this session):** the chat agent is a lightweight **SUPPORTER** (atomic edits —
 edit plan/glossary/KG, suggestions); the heavy **COMPILE + long-run DRAFTING** runs in the
