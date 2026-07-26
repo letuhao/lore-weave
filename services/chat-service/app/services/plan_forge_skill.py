@@ -37,13 +37,45 @@ accepted-but-unchanged refine returns `no_change` (never claim an edit that didn
 `rejected` carries a diagnosis. Report the real status.
 5. **Batch-fix gaps** — `plan_handoff_autofix(book_id, run_id, model_ref?, max_rounds=3)` \
 runs a bounded self-check→refine loop; report the per-round summary it returns.
-6. **Approve the checkpoint** — `plan_review_checkpoint(book_id, run_id, approved)` when \
-the author is happy (approved=true) or wants to keep refining (approved=false).
+6. **Approve the SPEC checkpoint** — `plan_review_checkpoint(book_id, run_id, approved)` \
+(no `pass_id`) when the author is happy (approved=true) or wants to keep refining \
+(approved=false).
 7. **Validate** — `plan_validate(book_id, run_id)` runs the S1–S8 golden linter + a \
 fidelity report. Surface failing rules; do not compile until they pass.
 8. **Compile** — `plan_compile(book_id, run_id, arc_id)` produces the PlanningPackage for \
 an arc (blocked if validation fails). `run_pipeline=true` also starts the drafting \
 pipeline — say it STARTED and offer the job to watch; never claim chapters are written.
+
+## After compile — the 7-pass compiler, and EDITING what it produced
+Compile emits a skeleton. The story itself is built by seven passes, in order: \
+**motifs → cast → world → beats → character_arcs → scenes → self_heal**.
+9. **Run a pass** — `plan_run_pass(book_id, run_id, pass_id, model_ref?)`. It REFUSES (409, \
+blockers named) while an upstream is stale or unaccepted. `cast` and `beats` are BLOCKING \
+checkpoints only the author can clear — you cannot bypass them, so do not try; report the \
+blockers and ask.
+10. **Read the rail** — `plan_pass_status(book_id, run_id)` returns each pass's status, \
+decision, freshness and blockers. Read it before claiming where the plan stands.
+11. **EDIT AN ATOM — this is the one the author asks for most.** \
+`plan_review_checkpoint(book_id, run_id, pass_id, approved, edits?)` revises what a pass \
+produced. This is how you help someone fix a wrong character, a wrong story beat, a wrong \
+scene. Send the WHOLE list back — a shorter list DELETES; that is the only way to remove a \
+member. `approved=false` WITH `edits` HOLDS the pass with your revision (it does not reject \
+it); `approved=true` accepts. The edit writes a NEW artifact and stales everything \
+downstream by derivation, so say that re-running the later passes is needed.
+    - `cast` → `{"cast": [...]}` · `beats` → `{"chapters": [...]}` (each with `beat_role`) \
+· `motifs` → `{"motifs": [...]}` · `world` → `{"entities": [...]}` · `character_arcs` → \
+`{"character_arcs": [...]}` · `scenes`/`self_heal` → `{"chapters": [...]}` with nested \
+`scenes`.
+    - **Read the artifact first** and edit from what it really contains — never invent a \
+field name. A `beat_role` outside the artifact's own `available_beats` is silently dropped \
+and the chapter falls to a neutral pacing band.
+12. **Choose the story STRUCTURE** — the beats pass maps chapters onto the ordered beats of a \
+structure (Save the Cat, Hero's Journey, Story Circle, Web Novel Arc, Kishōtenketsu, \
+Three-Act, plus the author's own). Load the structure-template tool with `tool_load` to list \
+the library and get a `template_id`, then pass it as \
+`plan_compile(..., structure_template_id=…)` to re-shape the arc. If the author says the \
+story feels shapeless, or that every chapter reads the same, this is usually why — check \
+`structure.source` on the beat artifact: `"default"` means nobody ever chose one.
 
 ## Rules
 - **model_ref is optional** for every LLM step (`mode="llm"` propose, interpret, apply, \
