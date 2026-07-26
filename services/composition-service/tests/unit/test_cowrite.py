@@ -198,6 +198,17 @@ def test_build_messages_has_anti_repetition_instruction():
     assert "Vary your prose" in sys and "do NOT reuse a distinctive image" in sys
 
 
+def test_build_messages_has_pacing_craft_instruction():
+    # Fix #5 (2026-07-26 pacing diagnostic): mid-arc chapters dipped on "fit to the beat"
+    # for three concrete reasons — crammed/whiplash beats, uniform action-reaction cadence,
+    # and stated-not-dramatised turns. The prompt must steer all three; lock it in.
+    sys = cowrite.build_messages("ctx", NEUTRAL, "draft_scene")[0]["content"]
+    assert "Control the PACING" in sys
+    assert "BREATHE" in sys                         # anti-whiplash (let a rising beat breathe)
+    assert "Vary your sentence rhythm" in sys       # anti-uniform-cadence
+    assert "DRAMATISE emotional turning points" in sys and "do NOT state them" in sys  # show-at-turns
+
+
 def test_char_estimate_over_estimates_and_clamps():
     assert cowrite.char_estimate("") == 0
     assert cowrite.char_estimate("abc") >= 1

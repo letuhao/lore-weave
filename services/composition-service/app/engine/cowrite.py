@@ -108,7 +108,19 @@ def build_messages(
         "Vary your prose: do NOT reuse a distinctive image, metaphor, or "
         "sentence-opening you have already used in this work (e.g. a recurring "
         "weather or colour motif, or a repeated opening line) — each passage should "
-        "read freshly with its own sensory language."
+        "read freshly with its own sensory language. "
+        # Pacing craft (2026-07-26 pacing diagnostic): mid-arc chapters scored low on
+        # "fit to the beat" for three concrete reasons — beats crammed together
+        # (whiplash escalation), a uniform action-then-reaction sentence cadence, and
+        # emotional turns STATED rather than dramatised. A model-agnostic craft nudge,
+        # not tied to any one chapter's content.
+        "Control the PACING so the prose rhythm fits the beat: let a rising or "
+        "high-tension beat BREATHE — build the dread or anticipation before the turn "
+        "and do not rush several escalations together into a few lines. Vary your "
+        "sentence rhythm and length — avoid a uniform action-then-reaction cadence "
+        "that reads as rapid jump-cuts. And DRAMATISE emotional turning points "
+        "through action, sensory detail, and interiority — do NOT state them outright "
+        "(not \"the realisation hit her like a blow\"; show the blow landing)."
         + lang + voice + style
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")
