@@ -146,15 +146,18 @@ pub trait Domain: Sized {
     type Event:    Clone + Serialize;
     type ResKind:  Copy + Eq;
 
+    type Rules;   // immutable, digest-pinned ruleset — see RLS-A12/A13, §4.0.1
+
     /// sim-core evaluates STRUCTURAL preconditions (EntityAlive, EncounterActive,
     /// IslandOwns, ActorEligible) from generations it already tracks.
     /// The domain evaluates only SEMANTIC ones (ResourceAtLeast, and its own).
-    fn check(state: &Self::State, p: &Precondition<Self>) -> Result<(), Violation>;
+    fn check(state: &Self::State, rules: &Self::Rules, p: &Precondition<Self>)
+        -> Result<(), Violation>;
 
     /// Apply a VALIDATED input. MUST be deterministic and total —
     /// no I/O, no ambient clock; randomness only via the seeded `DetRng`.
-    fn apply(state: &mut Self::State, input: &QueuedInput<Self>, rng: &mut DetRng)
-        -> Vec<Self::Event>;
+    fn apply(state: &mut Self::State, rules: &Self::Rules,
+             input: &QueuedInput<Self>, rng: &mut DetRng) -> Vec<Self::Event>;
 
     /// Which effects LEAVE this island and therefore need commit-service
     /// authorization (SC-A4 §5.1) — loot→inventory, xp→progression, cross-island.
@@ -163,6 +166,30 @@ pub trait Domain: Sized {
 ```
 
 `apply` is only reachable through `check` (§5), so a domain handler can never see unvalidated input.
+
+#### 4.0.1 `Rules` is a fourth replay input — I5 amended (2026-07-26)
+
+`&Self::Rules` was **added after** the peer session's [`16_ruleset_loader_and_registry.md`](16_ruleset_loader_and_registry.md)
+(**RLS-A12**) and its use in [`17` §R2](17_game_data_architecture.md) step 4. It is not cosmetic:
+
+> ⚠️ **I5 as first written was incomplete.** It said *"replay of the recorded `Seq` order → byte-identical
+> state"*. With rules as an `apply` input, replaying the same input order under a **different ruleset**
+> reproduces a different state. **The replay tuple is `(input order, ruleset digest, RNG seed)`**, and
+> the digest must therefore be **recorded alongside the event stream** and asserted on replay. §12 and
+> §13 updated.
+
+Two upstream tensions are **RLS-owned, not `sim-core`'s to resolve** — doc 16 flags both against itself,
+which is why they are cited rather than assumed:
+
+- **RLS-A12 vs EVT-A9** — *"generation rules … only DP-readable projection state"*; `&D::Rules` is
+  neither, so it needs an explicit carve-out justified by immutability + digest pinning.
+- **RLS-A13 vs EVT-A10 / EVT-L18** — EVT-L18 defines replay inputs as a **closed list** (*"same input
+  event log + same fiction-clock state + same RNG seed"*) and EVT-A10 says the event log alone is
+  *sufficient*. Digest pinning adds a non-event-sourced fourth input, so **both axioms need amending**.
+
+`sim-core` simply takes `Rules` as an opaque immutable parameter; **if the carve-out is refused
+upstream, the fix lands in 16, not here** — but I5's tuple is correct either way, because it describes
+what determinism actually depends on.
 
 ### 4.1 `Payload` is an enum, not a trait object (SC-Q2 — RESOLVED)
 
@@ -520,7 +547,7 @@ reservation/saga pattern borrowed from flash-sale inventory.
 | **I2** | No input applied twice (`input_id`) | every step |
 | **I3** | An actor never acts twice in one turn | every step |
 | **I4** | No resource negative; no double-spend | every step |
-| **I5** | Replay of the recorded `Seq` order → byte-identical state hash | end of run |
+| **I5** | Replay of the **tuple** `(recorded Seq order, ruleset digest, RNG seed)` → byte-identical state hash. **Amended 2026-07-26** (§4.0.1): the ruleset is an `apply` input (RLS-A12), so input order alone does not determine state. A replay run whose digest differs from the recorded one **fails loudly rather than silently diverging.** | end of run |
 | **I6** | A slow producer never blocks a fast one | every tick |
 | **I7** | Every deadline fires; no actor waits forever | every tick |
 | **I8** | Cross-island message delivered exactly once | every step |
@@ -549,6 +576,7 @@ failing seed reproduces the bug exactly.
 | Deadline expiry | forced |
 | Cross-island message | delayed, reordered, target-dissolved |
 | Island dissolve | mid-flight, with work pending |
+| **Ruleset digest mismatch** (§4.0.1) | replay under a *different* digest must **fail loudly**, not diverge silently — the bite-test for the amended I5 |
 | **Handler panic** (SC-A8) | injected mid-`apply()`; asserts poison → quarantine → rebuild, and that the poison-pill input is **not** replayed |
 | **Writer-node death** (§10.5) | injected at any step; asserts rebuild from snapshot+events, stale-epoch writes rejected, in-flight decisions resolve via AGT-A2 fallback |
 
