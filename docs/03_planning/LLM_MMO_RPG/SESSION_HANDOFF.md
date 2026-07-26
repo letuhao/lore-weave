@@ -82,9 +82,27 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > (`tokens_unknown`). **Live round 3: 100% validity · 0 fallback · 434in+14out tok/turn
 > (out 23× down) · p50 645 ms (5× down) · zero timeouts — bounded NPC pick ≈ 450 tokens,
 > sub-second, $0 BYOK.**
-> **NEXT:** Layer-1 lints (parallel agent task) → S3 proper (proposal bus consume + EVT-V pipeline
-> + epoch-token event_log on commit-service; meter via `provider.call.completed`, not client
-> usage) → S4b real-IPC → register AMEND batch (REC-54c + REC-63 Quarantined + THR-A4 id/state).
+> **CONTINUE-RUN (01:33–02:1x, "continue as your suggestion") — three deliverables:**
+> **(1) Register §15a recorded** (`5c3f83ea6`): REC-77 (ai-gateway not LLM-Originator) ·
+> REC-78 (Quarantined) · REC-79 (id/state split). **(2) Layer-1 design-lint SHIPPED**
+> (`bde88026a`, agent-built, bite-proven): `scripts/design-lint.py` — first real run IS the
+> finding: **17,120 findings — the id catalog declares 32 of 81 live prefixes (16,014 refs);
+> 1,106 broken links** (pre-reorg monolith names; `locked_decisions.md` ×475); phantom-registration
+> 0 (non-vacuous). Follow-up: catalog backfill + link sweep (mechanical, agent-batchable).
+> **(3) S3a COMMIT-SERVICE SPINE LIVE** (`8da8977a0` + chunk B): migration **0014**
+> (channel cols + `channel_writer_state` CAS + `channel_event_index`) — **REC-80 candidate: DP-Ch11's
+> UNIQUE is unimplementable on the range-partitioned `events`; delivered as CAS-fence +
+> non-partitioned index table**; `dp-kernel::channel` — **the DP-A16 epoch fence is REAL at the DB**
+> (live bite: stale-epoch writer rejected, zero rows; new epoch continues sequence); commit-service
+> bus rail (EVT-L2/L3/L4/L6: mkstream/ack-on-success/XAUTOCLAIM/dead-letter) + admission
+> (schema · dedup-triple · vocabulary · **10 unbuilt stages recorded NotRun in the committed
+> metadata** — D6 no-silent-skip, provable in the durable row) + `spine` bin. **Live end-to-end on
+> real Redis+PG: 4 consumed → 2 committed (channel_event_id 1,2 under epoch 2) · dup rejected at
+> idempotency · off-vocab rejected at vocabulary · PEL 0.** CP-less lease issuance (fence real,
+> issuer simplified — plan D3).
+> **NEXT:** S3b (outbox→bus emission of committed events + projections; Rejected commits via t2;
+> meter via `provider.call.completed`) → catalog backfill + link sweep (design-lint follow-up,
+> agent-batchable) → S4b real-IPC → doc 20 client wire contract.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

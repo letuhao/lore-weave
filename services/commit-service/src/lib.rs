@@ -14,6 +14,8 @@
 //! SC-A8 containment: one panicking island would take the whole node. The
 //! `panic_canary` test guards the runtime behavior.
 
+pub mod admission;
+pub mod bus;
 pub mod domain;
 pub mod llm_driver;
 pub mod vocabulary;

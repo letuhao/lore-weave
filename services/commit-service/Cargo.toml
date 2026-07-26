@@ -29,5 +29,12 @@ uuid = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 
+# ── S3a spine (bus → admission → island → epoch-fenced commit) ──
+# The DP SDK: channel-ordered, epoch-fenced event append (DP-A16).
+dp-kernel = { path = "../../crates/dp-kernel" }
+redis = { workspace = true }
+sqlx = { workspace = true }
+blake3 = { workspace = true }
+
 [dev-dependencies]
 wiremock = { workspace = true }
