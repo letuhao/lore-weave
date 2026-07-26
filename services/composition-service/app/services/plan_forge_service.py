@@ -91,6 +91,19 @@ _PASS_LIST_REPLACE_FIELDS: dict[str, tuple[str, ...]] = {
     # to a field no pass reads — while still staling `scenes`+`self_heal` and forcing a paid re-run
     # that could not change the outcome. Verified against live artifacts before changing it.
     "beat_plan": ("chapters",),
+    # The remaining four kinds were absent entirely, so they fell through to `_deep_merge`'s
+    # id-upsert: an author (or the co-writer) could ADD a motif/entity/arc/scene but could never
+    # REMOVE one — a shorter list silently kept the deleted member and reported success. Since
+    # `plan_review_checkpoint` accepts edits for ANY pass, "delete" was a advertised-but-broken
+    # operation on 4 of the 6 atom kinds. Field names verified against live artifacts:
+    #   motif_plan {motifs|selected_motifs} · world_plan {entities} ·
+    #   char_arc_plan {character_arcs} · scene_plan {arc_title, chapters, motif_coverage,
+    #   unmapped_beats}  (scene_plan's scenes are nested under chapters, so replacing `chapters`
+    #   is what makes a scene deletion take).
+    "motif_plan": ("motifs", "selected_motifs"),
+    "world_plan": ("entities",),
+    "char_arc_plan": ("character_arcs",),
+    "scene_plan": ("chapters",),
 }
 
 

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from app.services import plan_forge_service as pfs
 from app.services.bootstrap_service import BootstrapService
 
@@ -208,9 +210,11 @@ def test_a_non_list_edit_still_DEEP_MERGES_and_an_unknown_kind_is_untouched():
     out = pfs._merge_pass_edits("cast_plan", {"cast": [{"id": "c1"}], "meta": {"a": 1}}, {"meta": {"b": 2}})
     assert out["meta"] == {"a": 1, "b": 2}                   # object deep-merged
     assert [m["id"] for m in out["cast"]] == ["c1"]          # list untouched when not in the edit
-    # an unknown kind: no list field declared → pure deep_merge (id-upsert), list preserved
-    un = pfs._merge_pass_edits("motif_plan", {"motifs": [{"id": "m1"}]}, {"motifs": [{"id": "m2"}]})
-    assert {m["id"] for m in un["motifs"]} == {"m1", "m2"}   # upsert, not replace
+    # A kind with NO declared list field → pure deep_merge (id-upsert), list preserved. This used
+    # to use `motif_plan`, which is now a declared replace-kind (every atom must support delete);
+    # `heal_report` is a real artifact kind that is not a reviewable atom, so it keeps the fallback.
+    un = pfs._merge_pass_edits("heal_report", {"findings": [{"id": "m1"}]}, {"findings": [{"id": "m2"}]})
+    assert {m["id"] for m in un["findings"]} == {"m1", "m2"}   # upsert, not replace
 
 
 def test_serialize_run_and_pass_status_AGREE_on_the_compiled_field():
@@ -532,3 +536,39 @@ def test_a_RUNNING_pass_cannot_be_ACCEPTED_and_nothing_downstream_can_run():
         __import__("app.services.plan_forge_service", fromlist=["x"]).PlanForgeService._review_pass,
     )
     assert 'if entry.get("status") != "completed":' in src
+
+
+# ── every atom kind must support DELETE, not just add ────────────────────────────────────────────
+# `plan_review_checkpoint` accepts `edits` for ANY pass, but `_PASS_LIST_REPLACE_FIELDS` originally
+# named only cast_plan/beat_plan. The other four fell through to `_deep_merge`'s id-upsert, so a
+# shorter list silently KEPT the removed member and the call still reported success — an advertised
+# operation that could not work. Field names are the producers': run_motifs {motifs},
+# run_world {entities}, run_character_arcs {character_arcs}, run_scenes {chapters}.
+
+@pytest.mark.parametrize(("kind", "field"), [
+    ("motif_plan", "motifs"),
+    ("motif_plan", "selected_motifs"),
+    ("world_plan", "entities"),
+    ("char_arc_plan", "character_arcs"),
+    ("scene_plan", "chapters"),
+])
+def test_every_atom_kind_can_DELETE_a_member(kind: str, field: str):
+    content = {field: [{"id": "a"}, {"id": "b"}, {"id": "c"}]}
+
+    out = pfs._merge_pass_edits(kind, content, {field: [{"id": "a"}, {"id": "c"}]})
+
+    assert [x["id"] for x in out[field]] == ["a", "c"], f"{kind}.{field} must delete, not upsert"
+
+
+def test_scene_plan_delete_removes_a_nested_SCENE_too():
+    """scene_plan's scenes hang off chapters, so replacing `chapters` is what makes a scene
+    deletion actually take."""
+    content = {"arc_title": "A", "chapters": [
+        {"chapter": {"chapter_id": "c1"}, "scenes": [{"title": "s1"}, {"title": "s2"}]},
+    ]}
+    trimmed = [{"chapter": {"chapter_id": "c1"}, "scenes": [{"title": "s1"}]}]
+
+    out = pfs._merge_pass_edits("scene_plan", content, {"chapters": trimmed})
+
+    assert [s["title"] for s in out["chapters"][0]["scenes"]] == ["s1"]
+    assert out["arc_title"] == "A", "untouched siblings survive"
