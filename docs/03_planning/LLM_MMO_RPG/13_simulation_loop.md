@@ -309,6 +309,20 @@ applied to the loop. AOI (RTM-A6..A8) already defines "live". Cold→Hot transit
 
 ## 9. Persistence — the loop writes to the event store as a *sink*
 
+> **Concrete write path: [`17_game_data_architecture.md`](17_game_data_architecture.md) §R2** (peer
+> session, 2026-07-26). It composed this tier against `02_storage` and found **GDA-F2**: `02_storage`
+> §4.4/§4.6 describe a **pre-`sim-core`** write path — command handler writes directly in a DB
+> transaction, validating against a *projection read* — which contradicts SC-A4 (the island is the
+> writer) and SC-A1 (preconditions re-validated at step time, not at admission).
+>
+> **Resolved as GDA-D10, and the split is sharper than "the old design is wrong":** §4.4's *sequence*
+> is obsolete, but §4.6's *synchronous in-transaction projection* is an **independent** choice that
+> survives — it merely re-homes from the command handler to `commit-service` step 5. **No change is
+> needed here**: that insert happens *after* `sim-core` has applied to island memory, so the log is
+> still a sink. The write-amplification arithmetic below concerns **Class A at 20 Hz**, which never
+> reaches that path at all (SL-D11 / SC-D11 — Class A is never event-sourced); at Class B turn rates an
+> in-transaction projection costs nothing.
+
 Published MMO practice is explicit that the database is a **persistence medium, not the source of
 truth** ([PRDeving](https://prdeving.wordpress.com/2023/09/29/mmo-architecture-source-of-truth-dataflows-i-o-bottlenecks-and-how-to-solve-them/)),
 with per-component durability classes rather than one uniform model
