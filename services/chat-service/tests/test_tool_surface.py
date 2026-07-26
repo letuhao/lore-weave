@@ -302,9 +302,9 @@ class TestTokenBudgetedSeed:
         # Neutral names (no hot-domain prefix) + a bare surface, so the rail budget is the ONLY
         # path these tools can enter — isolating exactly the fix.
         pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
-        big = 9000  # ~2.2K tok — one such tool alone fills the 2K budget
+        big = 9000  # ~2.2K tok each — a few fill the dedicated rail budget
         cat = ([_tool_big(f"zdone_{i}", big) for i in range(3)]
-               + [_tool_big("zplan_spec", 400)])  # the small late step that got starved
+               + [_tool_big("zplan_spec", big)])  # the late step that got starved
         rail = ["zdone_0", "zdone_1", "zdone_2", "zplan_spec"]
         done = {"zdone_0", "zdone_1", "zdone_2"}
         # WITHOUT the exclusion: step-order budgeting spends the whole budget on the first done
@@ -330,10 +330,10 @@ class TestTokenBudgetedSeed:
         # with "call kg_project_entities_to_nodes first" while that exact tool was
         # budget-dropped; the step-runner redrove a step whose tool was invisible, 8×.
         pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
-        big = 9000  # ~2.2K tok — one alone fills the 2K budget
-        cat = ([_tool_big(f"zearly_{i}", big) for i in range(2)]
-               + [_tool_big("znodes_project", 600)])   # the mid-rail step being driven
-        rail = ["zearly_0", "zearly_1", "znodes_project"]
+        big = 9000  # ~2.2K tok each — a few fill the dedicated rail budget
+        cat = ([_tool_big(f"zearly_{i}", big) for i in range(3)]
+               + [_tool_big("znodes_project", big)])   # the mid-rail step being driven
+        rail = ["zearly_0", "zearly_1", "zearly_2", "znodes_project"]
         cold = discovery_seed_for_surface(
             cat, pins=pins, editor=False, book_scoped=False, pinned_step_tools=rail,
         )

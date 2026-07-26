@@ -1058,6 +1058,31 @@ def _catalog_index(catalog: list[dict]) -> dict[str, dict]:
     return idx
 
 
+def _project_ambient_book_schema(td: dict) -> dict:
+    """D-AMBIENT-BOOK-SCHEMA-PROJECTION (2026-07-26, Mị Đế dogfood): on a BOOK-BOUND
+    session, an `ambient_book` tool's advertised schema drops `book_id` entirely —
+    the backend resolves it from the studio binding (X-Book-Id) and the arg-injection
+    seam backfills/overrides it anyway, so the model must never be ASKED for it. A
+    weak model shown a book_id property treats it as a demand and stalls hunting for
+    the id (live: "mọi nỗ lực tự tìm book_id của tôi đều thất bại vì các lệnh đọc
+    cũng yêu cầu phải có book_id"). Absent from the schema, the belief cannot form."""
+    fn = td.get("function") if isinstance(td, dict) else None
+    if not isinstance(fn, dict):
+        return td
+    meta = fn.get("_meta") or {}
+    if not meta.get("ambient_book"):
+        return td
+    params = fn.get("parameters") or {}
+    props = params.get("properties") or {}
+    if "book_id" not in props:
+        return td
+    new_params = dict(params)
+    new_params["properties"] = {k: v for k, v in props.items() if k != "book_id"}
+    if isinstance(params.get("required"), list):
+        new_params["required"] = [r for r in params["required"] if r != "book_id"]
+    return {**td, "function": {**fn, "parameters": new_params}}
+
+
 def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
@@ -1066,6 +1091,7 @@ def _advertise_discovery_tools(
     has_workflows: bool = False,
     suppress_tool_list: bool = False,
     suppress_names: set[str] | frozenset[str] = frozenset(),
+    book_bound: bool = False,
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -1096,6 +1122,8 @@ def _advertise_discovery_tools(
         if not name or name in seen:
             return
         seen.add(name)
+        if book_bound:
+            td = _project_ambient_book_schema(td)
         out.append(strip_tool_meta(td))
 
     # Always-on core: prefer the catalog's own def (if a core tool is federated),
@@ -1857,6 +1885,7 @@ async def _stream_with_tools(
                         has_workflows=bool(turn_workflows),
                         suppress_tool_list=suppress_tool_list,
                         suppress_names=_suppress,
+                        book_bound=bool((context_ids or {}).get("book_id")),
                     )
                 else:
                     advertised = (
@@ -5277,7 +5306,8 @@ async def stream_response(
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
                 # {seed ∪ discovered}), but a non-empty value flips use_tools True.
                 tool_defs = _advertise_discovery_tools(
-                    _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend
+                    _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend,
+                    book_bound=bool(_ctx_book_id),
                 )
             else:
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
@@ -7006,7 +7036,8 @@ async def resume_stream_response(
                 injected_skill_codes=resume_injected_skills,
             )
             tool_defs = _advertise_discovery_tools(
-                _catalog_index(catalog), resume_seed_names, resume_extra_frontend
+                _catalog_index(catalog), resume_seed_names, resume_extra_frontend,
+                book_bound=bool(susp.book_id),
             )
         elif stream_format == "agui":
             # No catalog (gateway down) → no discovery, but still re-advertise the
