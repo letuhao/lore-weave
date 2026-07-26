@@ -108,10 +108,19 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > 1**) → ce5(turn 2): EVT-V4's no-turn-on-rejection is now provable from the durable record.
 > Found en route: `events_outbox` PK is bare `event_id` (no reality scoping) — surfaced by a test
 > collision; pre-existing schema shape, flagged. Suites 22/22 + 3/3 live; clippy 0 new.
-> **NEXT:** wire the Go publisher to a game reality (ops) + a committed-events consumer PoC
-> (game-server room projection seam) → catalog backfill + link sweep (design-lint follow-up,
-> agent-batchable) → S4b real-IPC → doc 20 client wire contract → CP lease issuance service
-> (replaces the CP-less `acquire_writer_lease` issuer; fence unchanged).
+> **DOC 20 WRITTEN (02:2x — "do recommendation"):** [`20_client_wire_contract.md`](20_client_wire_contract.md)
+> DRAFT — closes **REC-70 + REC-74** (the last undesigned surface). CWC-A1..A8/D1..D8/Q1..Q4 over
+> the settled seam (Colyseus-only transport · `from_tokens` map · DTO layer · `client_protocol` +
+> upcast-before-fanout · i18n per-message-class). Load-bearing new rules: **BIGINT-as-decimal-string
+> on the wire** (JS 2^53) · **three-store client model** (session memory / IndexedDB
+> content-addressed digest cache — reconciles GDA-D6 with no-localStorage / server-synced prefs) ·
+> `TurnSubmit.action` = the `contracts/agent/` Decision envelope verbatim (four drivers, one wire
+> shape) · turn.outcome truth-in-labeling (rejected≠discarded≠resolved), citing the LIVE spine
+> turn law. **`CWC` prefix + DTO rows PENDING `_boundaries` lock** (stated, not claimed).
+> **Catalog-backfill + link-sweep agents dispatched in parallel** (worktrees; harvest next).
+> **NEXT:** harvest cleanup agents + commit → `contracts/game-wire/` scaffolding + first client
+> slice (CWC-D3/Q4) → publisher wiring (ops) + committed-events room-consumer PoC → S4b real-IPC
+> → CP lease issuance (fence unchanged) → boundary batch incl. CWC registration.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**
