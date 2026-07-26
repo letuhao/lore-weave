@@ -290,22 +290,58 @@ EF_001 §4's implementation matrix declares the Item type default as
 `be_examined + be_used + be_given + be_received`. PL_007 **implements `EntityKind for ItemInstance`**
 and refines that per class:
 
+> **How the per-class default actually reaches the validator (reworked at cold-start review
+> 2026-07-26).** The first draft wrote
+> `fn type_default_affordances(&self) -> AffordanceSet { class_default(self.def_id.class()) }`, which
+> **cannot be implemented**, for two independent reasons:
+>
+> 1. `ItemDefId` is a `String` newtype (§2) — it has no `.class()`. The class lives on the
+>    `ItemDefDecl` in the manifest, and `item_instance` (§4.1) stores only `def_id`.
+> 2. More fundamentally, **EF_001's contract is one default per `EntityType`, not per class.** EF_001
+>    §4 says the validator "looks up `entity_type → type_default_affordances` from a registry", and the
+>    trait method deliberately takes **`&self` only** — EF_001 §4 states that explicitly, so the trait
+>    stays object-safe for `&dyn EntityKind` dispatch. A `&self`-only method on a body holding just a
+>    `def_id` has no route to the manifest, so "8 per-class defaults" does not fit the slot EF_001
+>    offers at all.
+>
+> **Resolution — use the mechanism EF_001 already has, and stop fighting the trait.** The per-class set
+> is materialised **at instance birth** into the existing `entity_binding.affordance_overrides` field:
+
 ```rust
 impl EntityKind for ItemInstance {
     fn entity_id(&self) -> EntityId { EntityId::Item(self.instance_id) }
     fn entity_type(&self) -> EntityType { EntityType::Item }
-    fn type_default_affordances(&self) -> AffordanceSet { class_default(self.def_id.class()) }
+
+    /// EF_001's per-EntityType default — the honest one, identical for every item, exactly as
+    /// EF_001 §4's matrix declares it. Per-class refinement does NOT happen here (see above).
+    fn type_default_affordances(&self) -> AffordanceSet {
+        BeExamined | BeUsed | BeGiven | BeReceived
+    }
+
     fn display_name(&self, locale: &str) -> String { /* custom_name ?? def.display_name */ }
+}
+
+/// Computed ONCE at ItemInstanceBorn, written to entity_binding.affordance_overrides.
+/// Pure function of the def — no runtime lookup on the read path (ITM-C12).
+fn effective_affordances_at_birth(def: &ItemDefDecl) -> AffordanceSet {
+    def.affordance_overrides.unwrap_or_else(|| class_default(def.class))
 }
 ```
 
+Consequences, all of them improvements:
+
+- **The read path stays a single `entity_binding` read.** Stage 3.5.a already reads the binding; it
+  needs no manifest join and no `item_defs` lookup per validated target.
+- **`class_default → def override → instance override` still holds**, but it is resolved at *birth*
+  rather than per read. The tier-merge shape (System → per-def → per-instance) is unchanged; only the
+  evaluation time moves.
 - `Armor` and `Valuable` **lack `BeUsed`** — so "use the robe" rejects with EF_001
-  `entity.affordance_missing` at Stage 3.5.a with no PL_007 code involved. This is the affordance
-  system doing real work rather than every class carrying the full set.
-- Per-*instance* exceptions (EF_001's "Talking Sword" example) go through
-  `entity_binding.affordance_overrides`, which already exists. `ItemDefDecl.affordance_overrides` is
-  the per-*def* layer above it. Resolution: `class_default → def override → instance override`
-  (lowest precedence first), mirroring the platform's System → per-user → per-book tier merge.
+  `entity.affordance_missing` at Stage 3.5.a with no PL_007 code in the path, which was the point.
+- Per-*instance* exceptions (EF_001's "Talking Sword") are a later write to the same field.
+- **New consequence that must be handled:** because the set is materialised at birth, a
+  `Forge:EditItemDef` that changes `class` or `affordance_overrides` does **not** retroactively update
+  live instances. That is now an explicit rule rather than an accident — see **ITM-C9** (§9.4), which
+  the cold-start review extended to cover exactly this.
 
 ---
 
@@ -349,7 +385,10 @@ pub struct EquipDecl {
 }
 
 pub enum EquipRequirement {
-    ProgressionLevel { kind_id: ProgressionKindId, min_level: u32 },  // PROG_001
+    /// PROG_001 gate. NOTE the field name: `min_raw_value`, NOT "min_level".
+    MinProgression { kind_id: ProgressionKindId, min_raw_value: u64 },
+    /// Optional tier gate for realities that declare tiers (PROG_001 tier_max / TierAdvance).
+    MinProgressionTier { kind_id: ProgressionKindId, min_tier: u32 },
     // V1+ reserved: RaceAllowed(Vec<RaceId>) · FactionMember(FactionId) · TitleHeld(TitleId)
 }
 
@@ -363,6 +402,15 @@ pub struct CombatItemProfile {
 `strike_kinds` closes a real hole: PL_005b §3.1 lets any Strike declare `Slash`, but nothing said a
 club cannot slash. Now `Strike { tool: Item(club), strike_kind: Slash }` rejects with
 `item.strike_kind_unsupported`.
+
+> **`min_level` → `min_raw_value` (corrected at cold-start review 2026-07-26).** The first draft wrote
+> `ProgressionLevel { min_level: u32 }`. **PROG_001 has no level concept and explicitly forbids one** —
+> its §1 carries a user-directed locked decision: *"NO level / NO power-rating concept. Combat outcomes
+> derive from RELEVANT specific attributes/skills, not aggregate 'power level'."* What PROG_001 actually
+> exposes is `ProgressionInstance.raw_value: u64` plus an optional tier (`tier_max` / `TierAdvance`).
+> Shipping a field called `min_level` would have re-introduced the exact aggregate-power framing the
+> progression substrate was designed to avoid, and ITM-V5 would have read a field that does not exist.
+> Hence the two variants above, both named in PROG_001's own vocabulary.
 
 ### 6.3 The DF07 seam (ITM-A3) — PL_007 is the body DF7-D1 deferred
 
@@ -461,12 +509,26 @@ pub enum InstrumentMatch {
 }
 ```
 
-Resolution: an `instrument_match` is satisfied when the actor's **`main_hand`-equipped** item (V1;
-`off_hand` V1+ per ITM-D19) matches by `def_id` or carries the tag. DF07's example becomes
-`instrument_match: Some(InstrumentMatch::ItemTag(InstrumentTag("blade")))` with no change to DF07's
-law. Author-declared rather than a closed enum, for the same reason RES_001's kinds are: a wuxia
-reality's weapon taxonomy is not a sci-fi reality's. Registered as ITM-C7 and as closure-pass
-extensions to PROG_001 (§12.6) and DF07 (§12.5).
+**Resolution depends on the consumer — and this is the part the first draft got wrong.** It stated a
+single rule ("the `main_hand`-equipped item"), which silently changed PROG_001's existing semantics.
+PROG_001's training pseudocode evaluates `rule.instrument_match.matches(current_turn.instrument)` — the
+**instrument of the turn being processed**, i.e. `InteractionPayloadBase.tools[0]`, not whatever happens
+to be worn. The two consumers genuinely need two different resolutions:
+
+| Consumer | Resolves against | Why |
+|---|---|---|
+| **PROG_001 training rules** (`Action { instrument_match }`) | the **turn's instrument** — `tools[0]` of the `Interaction` being processed (PROG_001's existing semantic, unchanged) | training is *what you just did with what you had in your hand*. A `Tool`-class item (lockpick, flint) is **never equippable** (§5.2), so an equipped-only rule would make *"train lockpicking while using a lockpick"* permanently unsatisfiable — a whole category of training rule silently dead. |
+| **DF07 `StatTerm.instrument_match`** | the **`main_hand`-equipped** item (V1; `off_hand` V1+ per ITM-D19) | a stat term is a *standing* contribution resolved by `resolve_stat_block` outside any turn — there is no "current turn instrument" to read, and a passive bonus for briefly holding something would be incoherent. |
+
+Both use the same `InstrumentMatch` enum and the same `instrument_tags` operand; only the *subject* they
+match against differs, and each owner resolves its own. **PL_007 supplies the vocabulary and the tags;
+it does not define one global resolution rule.** DF07's example becomes
+`instrument_match: Some(InstrumentMatch::ItemTag(InstrumentTag("blade")))` with no change to DF07's law,
+and PROG_001's training rules keep behaving exactly as specified.
+
+Author-declared rather than a closed enum, for the same reason RES_001's kinds are: a wuxia reality's
+weapon taxonomy is not a sci-fi reality's. Registered as ITM-C7 and as closure-pass extensions to
+PROG_001 (§12.6) and DF07 (§12.5).
 
 ### 6.5 When modifiers apply
 
@@ -487,8 +549,37 @@ effective stats subscribes to `actor_equipment` (§12.1).
 
 ### 7.1 `UseEffectDecl` — closed enum, 7 V1 variants
 
-Every variant routes to an aggregate **already owned by another feature**. PL_007 adds no new effect
-substrate — it is a dispatch vocabulary, which is what keeps it bounded for AGT-A2.
+PL_007 adds no new effect substrate — it is a dispatch vocabulary, which is what keeps it bounded for
+AGT-A2. **But the first draft's blanket claim that "every variant routes to an aggregate already owned
+by another feature" was false for two of the seven, and the correction matters because it changes what
+a player experiences.** Corrected at cold-start review 2026-07-26:
+
+| Variant | V1 durable sink | Status |
+|---|---|---|
+| `VitalDelta` | RES_001 `vital_pool` | ✅ real |
+| `StatusApply` / `StatusDispel` | PL_006 `actor_status` | ✅ real |
+| `ResourceGrant` | RES_001 `resource_inventory` | ✅ real |
+| `Inert` | — (none by design) | ✅ honest by construction |
+| `Unlock` | **none** — §7.3: "validate the key, log the unlock, narrate it, **mutate nothing**"; blocked on the unwritten EnvObject body | ⚠️ **narrative-only V1** |
+| `Reveal` | **none** — PL_005b §5.6 places `KnowledgeAccrual` at "V1+ when PCS_001 `knowledge_tags` ships"; the Oracle read is a query, not a write | ⚠️ **narrative-only V1** |
+
+The risk this creates, stated plainly: `Unlock` and `Reveal` **pass ITM-V8** (`use_effect.is_some()`)
+and return **success with no state change**, which from the player's side is indistinguishable from a
+bug — and from a QA side is untestable, since there is nothing to assert. So V1 makes it explicit
+rather than silent:
+
+> **Narrative-only effects must be declared, not discovered.** `UseEffectDecl::Unlock` and `Reveal`
+> resolve to an **accepted turn carrying the `item.use_effect_narrative_only` warning** (the same
+> warning-on-accept shape as `item.inventory.cap_partial`), so the audit log records that a Use
+> succeeded with no durable delta, and the narrator is told to describe an outcome rather than imply a
+> persistent world change. An author who wants a *mechanical* lock should model it as
+> `StatusApply`/`ResourceGrant` on the actor until the EnvObject body lands (ITM-D4).
+
+Consequence for §5.2's class table, worth naming since it decides whether two classes are worth
+shipping: **`Key` is narrative-only in V1** (its only sensible effect is `Unlock`), and `Document` is
+narrative-only unless the author gives it a `ResourceGrant`/`StatusApply` instead of `Reveal`. Both
+classes stay in V1 — they carry `display_name`, `description`, Examine text, Give/trade behaviour and
+digest grouping, which is real content — but neither has a mechanical effect until ITM-D4.
 
 ```rust
 pub enum UseEffectDecl {
@@ -541,9 +632,25 @@ PL_007 introduces **no new lifecycle states**. It writes EF_001 §6 transitions 
 | `Existing` → `Destroyed` | embedded child whose parent EnvObject died | `HolderCascade` |
 | `Existing` → `Removed` | admin decanonize (WA_002/WA_003) | `AdminDecanonize` |
 | any → `Existing` | admin restore | `AdminRestoreFromRemoved` |
+| `Existing` → `Suspended` | **holder** suspends (NPC cold-decay) — cascade only, never independent | `HolderCascade` |
+| `Suspended` → `Existing` | **holder** restores on cell-load — cascade only | `AutoRestoreOnCellLoad` |
 
-**Items never go `Suspended` in V1** — EF_001 §6 already states this explicitly ("V1 only NPCs go
-Suspended"). Item cold-loading is ITM-D10.
+**Suspension: cascade-only, never independent (corrected at cold-start review 2026-07-26).** The
+earlier flat claim *"items never go `Suspended` in V1"* was **wrong**, and it contradicted this doc's
+own ITM-C4 (§4.2), which requires an equipped item's lifecycle to move in **lockstep with its holder**.
+Both statements cannot hold. EF_001 is the arbiter and says both halves precisely:
+
+- **EF_001 §6 transitions table** — "V1 only NPCs go Suspended; Items + EnvObjects stay `Existing`
+  even at distant cells V1" ⇒ an item has **no independent cold-decay path**. Nothing suspends an item
+  *because of the item*.
+- **EF_001 §6.1 cascade table** — `Existing → Suspended` on a holder transitions "all directly-held +
+  contained + embedded entities" to `Suspended` ⇒ an item **does** suspend *because of its holder*.
+
+So the correct rule is the conjunction, and the two cascade rows above are now in the table (they were
+missing, which is what let the contradiction sit unnoticed): **an item never initiates a suspension and
+never suspends alone; it follows its holder, and the `actor_equipment` slot survives untouched.**
+ITM-D10 ("item cold-loading") is therefore specifically about giving items an *independent* suspension
+path — not about the cascade, which is live in V1.
 
 ### 8.2 Four `EVT-T1 Submitted` sub-types (ITM-A7)
 

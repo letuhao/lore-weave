@@ -92,7 +92,7 @@ ITM-V9 uses **cell membership**, not fine position, on purpose: fine position is
 (RTM-A1 / ILR-A2 layer 2) and a durable validator must not depend on state that is not in the log.
 Reach-based pickup is ITM-D11 and belongs to the realtime layer if it ever lands.
 
-### 9.2 `item.*` rule_id namespace — 23 V1 total (21 rejects + 2 warnings)
+### 9.2 `item.*` rule_id namespace — 24 V1 total (21 rejects + 3 warnings)
 
 Counted explicitly, because the total is spread over four places and a hand-wave here becomes a
 mismatched registration later. *(The first draft claimed "13 V1" by counting only the validator table
@@ -108,7 +108,8 @@ again at the review pass.)*
 | §6.1 added at review — `slot_profile_too_large` | 1 | — |
 | [PL_007b §8](PL_007b_inventory.md) — `inventory.cap_exceeded` · `inventory.cell_cap_exceeded` · `inventory.digest_bound_violated` | 3 | — |
 | PL_007b — `inventory.cap_partial` (reported on an **accepted** turn) | — | 1 |
-| **Total** | **21** | **2** |
+| §7.1 added at cold-start review — `use_effect_narrative_only` (an `Unlock`/`Reveal` Use succeeded with **no durable delta**; declared rather than silent, so the audit log distinguishes "designed narrative outcome" from "silently did nothing") | — | 1 |
+| **Total** | **21** | **3** |
 
 `item.def_invalid` is deliberately **one** rule_id carrying three distinct Stage-0 causes (ITM-C5
 two-handed/`also_blocks` mismatch · ITM-C8 charge-config · ITM-C11 nutrition flag). They are all
@@ -143,7 +144,9 @@ no item side to match against.
 | **ITM-C6** | `initial_item_distribution[*].holder ∈ canonical_actors ∪ places` | PL_007 + ACT_001 + PF_001 | `item.unknown_holder` (Stage 0) |
 | **ITM-C7** | every `InstrumentMatch::ItemTag(t)` in `progression_kinds[*].training_rules` and in `stat_slots[*].terms[*].instrument_match` resolves to a tag declared by at least one `item_defs[*].instrument_tags`. Otherwise the rule is **silently unsatisfiable** — the worst failure mode here, because the author sees a declared bonus that never fires. | PL_007 + PROG_001 + DF07 | `item.instrument_tag_unreferenced` (Stage 0 **warning**, not reject — an author may legitimately declare tags ahead of the items that carry them) |
 | **ITM-C8** (added at review) | charge-config coherence: `consume_on_exhaust == true` ⇒ `max_charges == Some(n)` with `n > 0`. The two contradictory combos are otherwise silently accepted — `consume_on_exhaust` with `max_charges: None` declares an item that is destroyed on exhaustion but can never exhaust (dead flag), and `max_charges: Some(0)` mints an item born already exhausted (destroyed on its first `Use`, or immediately, depending on implementation order — an ambiguity better rejected than resolved). | PL_007 | `item.def_invalid` (Stage 0) |
-| **ITM-C9** (added at review) | `Forge:EditItemDef` may not change `equip.slot` / `equip.also_blocks` / remove `equip` while **any** live instance of that def sits in an `actor_equipment` slot. Otherwise the edit silently leaves equipped instances in slots the def no longer names, violating ITM-V3 for already-committed state — the class of bug the track already solved once, in TVL_001's `route.remove_blocked_by_active_journey` gate. Same shape: block the admin edit, name the blocker. Admin unequips first (or uses `Forge:DestroyItem`). | PL_007 + WA_003 | `item.def_edit_blocked_by_equipped` (Stage 7 Forge admin) |
+| **ITM-C12** (added at cold-start review) | **Class↔capability coherence on `ItemDefDecl`.** The §5.2 "Equip?" column and the implications of `ItemClass` were **documentation with no validator** — nothing rejected `ItemClass::Document` with `equip: Some(..)`, or `ItemClass::Consumable` with `max_charges: None` (an infinitely reusable consumable), or `ItemClass::Valuable` with a `use_effect` its affordance set forbids it from ever using. Three coherence rules, all Stage 0: (a) `equip.is_some()` ⇒ `class ∈ {Weapon, Armor, Trinket}`; (b) `class == Consumable` ⇒ `max_charges.is_some()`; (c) `use_effect.is_some()` ⇒ the class default (or `affordance_overrides`) contains `BeUsed` — otherwise the effect is unreachable by construction. | PL_007 | `item.def_invalid` (Stage 0) |
+| **ITM-C13** (added at cold-start review) | **Birth-materialised affordances are not retroactive.** Because §5.3 resolves the per-class/per-def affordance set **at instance birth** into `entity_binding.affordance_overrides`, a later `Forge:EditItemDef` changing `class` or `affordance_overrides` does **not** update live instances. Either outcome is defensible; the failure mode is leaving it undecided, so V1 decides: the edit **applies to instances born after it** and existing instances keep their materialised set. `Forge:EditItemDef` therefore **reports** how many live instances retain the old set (audit-visible, not a reject), and an admin wanting a full retrofit uses `Forge:DestroyItem` + `Forge:SpawnItem`. | PL_007 + WA_003 | (no reject — `forge_audit_log` entry records the retained-instance count) |
+| **ITM-C9** (added at review; **scope extended at cold-start review** — it originally covered only the three `equip` fields, which left `class`, `use_effect` and `max_charges` editable under live instances: `class` silently diverges from birth-materialised affordances (ITM-C13), `use_effect` changes what an already-held item does with no player-visible cause, and lowering `max_charges` leaves instances holding `charges` above the new maximum with nothing to clamp them. All three are now in scope: the edit is rejected while live instances exist unless the admin passes an explicit `accept_instance_divergence` flag, which routes the outcome through ITM-C13's audit path.) | `Forge:EditItemDef` may not change `equip.slot` / `equip.also_blocks` / remove `equip` — **nor `class`, `use_effect`, or lower `max_charges`** — while **any** live instance of that def sits in an `actor_equipment` slot. Otherwise the edit silently leaves equipped instances in slots the def no longer names, violating ITM-V3 for already-committed state — the class of bug the track already solved once, in TVL_001's `route.remove_blocked_by_active_journey` gate. Same shape: block the admin edit, name the blocker. Admin unequips first (or uses `Forge:DestroyItem`). | PL_007 + WA_003 | `item.def_edit_blocked_by_equipped` (Stage 7 Forge admin) |
 | **ITM-C10** (added at review) | **Untracked actors hold no item instances and have no `actor_equipment` row.** An AIT_001 Untracked NPC's gear is *flavour resolved from its DF07 `stat_archetypes` block*, never instanced. Items materialise only on **promotion** to Minor/Major (the existing AIT_001/AGT-D5 promotion path). Without this rule, COMB_005's default-`Untracked` hostile spawns would mint one `item_instance` + one `entity_binding` row per bandit per weapon — the entity-count explosion AIT_001 exists to prevent, arrived at through the item system's back door. Consistent with COMB_005 §7 ("*zero per-actor state*" for Untracked) and with COMB_004 generating loot from **tables**, not from a corpse's actual carried inventory. | PL_007 + AIT_001 + COMB_005 | `item.untracked_actor_cannot_hold` (Stage 0 + 3.5.e) |
 | **ITM-C11** (added at review) | **`nutritional` is a `resource_kinds` property only — an `ItemDefDecl` can never be food.** RES_001 §7.2's `Scheduled:HungerTick` scans `actor.resource_inventory` for a nutritional consumable; it does **not** and should not walk held item entities. Without this rule an author declares `travel_ration` as an `ItemClass::Consumable` item def, the PC carries twenty of them, and **starves to death** while "holding food" — a silent, fully-reachable bug with a mortality consequence (RES_001 §7.2 escalates `Hungry` magnitude 7 → `MortalityTransitionTrigger`). Food must be fungible in V1. If per-instance rations are ever wanted, the hunger tick has to learn to read held instances — that is the real prerequisite, recorded as ITM-D23. | PL_007 + RES_001 | `item.def_invalid` (Stage 0; rejects an item def carrying a nutrition flag) |
 
@@ -391,6 +394,51 @@ RealityBootstrapper Stage 0:
     `item.not_in_cell` (it is not `InCell`). Taking from a living owner is Strike-cascade theft
     (RES_001 §8.1), never a pickup. *(ITM-V9)*
 
+
+### 14.2 Added at the cold-start `/review-impl` pass 2026-07-26
+
+24. **AC-ITM-24 — suspension cascades, and the slot survives it.** An NPC with an equipped sword
+    cold-decays: the sword's `lifecycle_state` becomes `Suspended` **in lockstep** (EF_001 §6.1), the
+    `actor_equipment` row is retained, and restore re-arms it. Then the other half, which the flat
+    "items never go Suspended" claim would have forbidden: assert **no independent** item suspension —
+    an item at a distant cell with an `Existing` holder stays `Existing`. *(§8.1 — the two rows the
+    transition table was missing; this AC is what makes the ITM-C4 / §8.1 contradiction unable to
+    recur)*
+25. **AC-ITM-25 — the equip gate reads PROG_001's real field.** An `EquipRequirement::MinProgression
+    { kind_id: "swordsmanship", min_raw_value: 40 }` gates on `actor_progression.values[kind].raw_value`
+    and rejects `item.equip_requirement_unmet` below it. **The test fails to compile/resolve against any
+    `min_level` field** — PROG_001 has none and forbids the concept. *(§6.2)*
+26. **AC-ITM-26 — the two `instrument_match` consumers resolve differently, on purpose.** With a
+    lockpick (`ItemClass::Tool`, never equippable) used as `tools[0]` in an `Interaction:Use`:
+    (a) a PROG_001 training rule `instrument_match: ItemTag("lockpick")` **fires**, because PROG_001
+    matches the *turn's* instrument; (b) a DF07 `StatTerm` with the same `instrument_match` does **not**
+    contribute, because DF07 matches the *equipped* item and a Tool can never be equipped. Under the
+    pre-review single rule ("main_hand-equipped"), (a) was permanently unsatisfiable — an entire
+    category of training rule silently dead. *(§6.4)*
+27. **AC-ITM-27 — affordances are materialised at birth, and the read path stays a single read.**
+    Spawning an `ItemClass::Armor` instance writes an `entity_binding.affordance_overrides` **without**
+    `BeUsed`; `Use` on it rejects `entity.affordance_missing` at Stage 3.5.a. Assert the mechanism, not
+    just the outcome: the validator performs **no `item_defs` manifest lookup** while validating.
+    *(§5.3 — the original `self.def_id.class()` was unimplementable)*
+28. **AC-ITM-28 — narrative-only effects are declared, not silent.** `Use` of a `Key` with
+    `UseEffectDecl::Unlock` returns an **accepted** turn carrying `item.use_effect_narrative_only`, and
+    **zero** durable deltas across `vital_pool` / `actor_status` / `resource_inventory` /
+    `entity_binding`. Same for `Reveal`. Asserting the warning is what distinguishes "designed
+    narrative outcome" from "silently did nothing". *(§7.1)*
+29. **AC-ITM-29 — incoherent defs reject (ITM-C12).** Each of these rejects `item.def_invalid` at
+    bootstrap: `ItemClass::Document` with `equip: Some(..)`; `ItemClass::Consumable` with
+    `max_charges: None`; `ItemClass::Valuable` with `use_effect: Some(..)` (unreachable — its class
+    default lacks `BeUsed`). *(ITM-C12 — all three passed every validator before this pass)*
+30. **AC-ITM-30 — a def edit under live instances is reported, not silent (ITM-C13).**
+    `Forge:EditItemDef` changing `class` with 5 live instances rejects without
+    `accept_instance_divergence`; with the flag it succeeds, the 5 instances keep their birth-materialised
+    affordances, and the `forge_audit_log` entry records the retained-instance count. *(ITM-C9 extended
+    / ITM-C13)*
+31. **AC-ITM-31 — the digest prefers usable items over spent husks.** An actor holding a spent wand
+    (`charges: Some(0)`, `consume_on_exhaust: false`) and a sword (`charges: None`,
+    `use_effect: Some(..)`) with `digest_top_n = 1`: the **sword** appears in `notable`. Under
+    `has_charges = is_some()` the husk won. *(PL_007b §5.1)*
+
 ---
 
 ## §15 Deferrals
@@ -460,24 +508,26 @@ three months.
 - [x] **`InstrumentTag` closes a three-way latent break** — PROG_001's `InstrumentMatch::Specific(ResourceKind)` and DF07's `Some(Blade)` were both unsatisfiable once ITM-A2 withdraws `ResourceKind::Item`; resolves PROG-D15 as a side effect (§6.4 / ITM-C7)
 - [x] Equipment as slot assignment, keeping `LocationKind` closed (ITM-A5)
 - [x] 4 `Item:*` EVT-T1 sub-types with the PL_005-closed-set argument recorded (ITM-A7 / ITM-Q2)
-- [x] 23 V1 `item.*` rule_ids (21 rejects + 2 warnings, counted per source in §9.2) + 4 V1+ reservations; **6 checks explicitly delegated** to EF/PF/CSC/COMB rather than duplicated (§9.1)
+- [x] 24 V1 `item.*` rule_ids (21 rejects + 3 warnings, counted per source in §9.2) + 4 V1+ reservations; **6 checks explicitly delegated** to EF/PF/CSC/COMB rather than duplicated (§9.1)
 - [x] New validator sub-stage **3.5.e** with an applicability predicate
-- [x] 11 cross-aggregate consistency rules (ITM-C1..C11), incl. the `ItemId`/`ItemInstanceId` drift resolution; C8–C11 added at the review pass (charge coherence · def-edit gate · Untracked scaling · the nutrition/starvation rule)
+- [x] 11 cross-aggregate consistency rules (ITM-C1..C13), incl. the `ItemId`/`ItemInstanceId` drift resolution; C8–C11 added at the review pass (charge coherence · def-edit gate · Untracked scaling · the nutrition/starvation rule)
 - [x] Event-model mapping: 4 T1 + 1 T4 + 2 T3 + 4 T8 + 1 V1+30d T5; no new EVT-T* category
 - [x] 3 RealityManifest extensions, all OPTIONAL V1 with engine defaults
 - [x] 12 closure-pass-extensions declared; 5 marked load-bearing (§12)
 - [x] EF-D3 resolved by decision; RES-D1 resolved by withdrawal; RES-D2/D4 given schema homes
 - [x] 5 sequences, incl. two rejects and the cascade
-- [x] 23 V1-testable acceptance criteria (AC-ITM-1..23), each naming its rule_id; **AC-ITM-14..23 added at the review pass, each one biting a defect that pass found** (§14.1)
+- [x] 23 V1-testable acceptance criteria (AC-ITM-1..31), each naming its rule_id; **AC-ITM-14..23 added at the review pass, each one biting a defect that pass found** (§14.1)
 - [x] 17 deferrals (ITM-D1..D12, D19..D23) with target phases
 - [x] **All 5 open questions RESOLVED (§16)** — 2 decided, 3 deferred with named triggers; none left as "we'll see"
 - [x] **Review pass 2026-07-26 — 11 defects found and fixed** (§19): ITM-C4 lifecycle contradiction · unequip soft-lock · item-side destroy cascade · vacuous CSC delegation · vacuous ITM-V13 · digest bound vs author profile · nutritional-item starvation · charge-config incoherence · def-edit orphaning · Untracked instance explosion · rule_id undercount
 - [x] ABL_001's two routed questions **answered** (ABL-Q9 merge + `grants_ability`) — §12.13
 - [x] Loot seam handed over without designing the loot module (§8.5 / AUD-F9); COMB_004 then consumed it with no schema change
 - [x] Multiverse fork inheritance stated (§8.7) — the track convention every other aggregate row carries
-- [x] Self-review pass complete (§19)
-- [ ] `/review-impl` cold-start adversarial pass — **still recommended** (§19 was author self-review; author blindness is exactly what `/review-impl` exists to catch)
-- [ ] CANDIDATE-LOCK closure pass — no longer blocked on an open question; gated only on `/review-impl` + the ABL-Q9 merge landing at whichever feature closes first
+- [x] Self-review pass complete (§19) — 11 defects
+- [x] **Cold-start `/review-impl` pass complete (§19.1) — 11 further defects, 4 HIGH**, this time in the docs' own interior (`ItemClass` / `UseEffectDecl` / `EquipDecl` / the `EntityKind` impl), exactly where §19 predicted it was under-challenged. One finding was *introduced by* the self-review pass (the §8.1 ↔ ITM-C4 suspension contradiction), which is the clearest evidence the cold-start step earns its cost.
+- [x] 13 consistency rules (ITM-C1..C13) · 31 acceptance criteria (AC-ITM-1..31) · 24 V1 rule_ids
+- [ ] CANDIDATE-LOCK closure pass — gated on: the 4 closure-pass extensions this pass created (PROG_001 `InstrumentMatch` variants + `EquipRequirement` field names · DF07 resolution-subject note · WA_003 `Forge:EditItemDef` divergence flag · CSC_001 3.5.d predicate) landing at their owners, plus the ABL-Q9 merge
+- [ ] A **second** cold-start pass is *not* recommended before implementation — two passes found 22 defects with sharply different profiles; a third on unchanged text has low expected yield. The next real test is building against it (AUD-F8).
 
 ---
 
@@ -511,3 +561,31 @@ blindness POST-REVIEW warns about — the defects it found cluster in *cross-fea
 re-read someone else's doc to check myself) and thin out in PL_007's own interior, which is suspicious
 rather than reassuring. A cold-start `/review-impl` should still run, and should be pointed at §5–§7
 (the def/equip/use vocabularies), which this pass barely challenged.
+
+### 19.1 Cold-start `/review-impl` pass — findings ledger (2026-07-26)
+
+Run immediately after the commit, aimed at §5–§7 per the prediction above. **The prediction held: 11
+more findings, 4 HIGH — and this time they are in the interior, not the seams.** One of them was
+*introduced by the self-review pass itself*, which is the strongest possible argument for the cold-start
+step existing.
+
+| # | Severity | Defect | Fix |
+|---|---|---|---|
+| 1 | **HIGH** | **§8.1 contradicted ITM-C4 — and the self-review created it.** §8.1 said flatly "items never go `Suspended` in V1"; the review-pass rewrite of ITM-C4 requires lifecycle **lockstep with the holder**. Both cannot hold. EF_001 says both halves precisely: §6 = no *independent* item suspension, §6.1 = held items *do* cascade-suspend. The §8.1 transition table was also **missing both cascade rows**, which is what let the contradiction hide. | §8.1 restated as *cascade-only, never independent*, with the two rows added; ITM-D10 rescoped to mean *independent* suspension. **AC-ITM-24** |
+| 2 | **HIGH** | **`EquipRequirement::ProgressionLevel { min_level }` invents a concept PROG_001 explicitly forbids.** PROG_001 §1 carries a user-directed locked decision: *"NO level / NO power-rating concept."* It exposes `raw_value: u64` + optional tiers. ITM-V5 would have read a field that does not exist, and the name would have re-imported the aggregate-power framing the substrate exists to avoid. | Replaced with `MinProgression { min_raw_value }` + `MinProgressionTier { min_tier }`, both in PROG_001's own vocabulary. **AC-ITM-25** |
+| 3 | **HIGH** | **§6.4 silently changed PROG_001's `instrument_match` semantics.** PROG_001 evaluates `rule.instrument_match.matches(current_turn.instrument)` — the **turn's** `tools[0]`. §6.4 redefined resolution as "the `main_hand`-equipped item", one global rule for two consumers. Because `ItemClass::Tool` is never equippable, *every* "train X while using tool Y" rule became permanently unsatisfiable — a whole category of training rule silently dead. | Resolution split per consumer: PROG_001 → turn instrument (unchanged); DF07 → equipped item. PL_007 supplies vocabulary + tags, **not** one global rule. **AC-ITM-26** |
+| 4 | **HIGH** | **`type_default_affordances()` was unimplementable.** Written as `class_default(self.def_id.class())` — but `ItemDefId` is a `String` newtype with no class, and more fundamentally EF_001's contract is **one default per `EntityType`** with a deliberately `&self`-only signature (kept object-safe for `&dyn EntityKind`), so a body holding only a `def_id` has no route to the manifest. "8 per-class defaults" does not fit the slot EF_001 offers. | Per-class set **materialised at instance birth** into the existing `entity_binding.affordance_overrides`; the trait returns EF_001's honest per-type default. Read path stays one binding read, no manifest join. **AC-ITM-27** |
+| 5 | **MED** | **§7.1's central claim was false for 2 of 7 variants.** "Every variant routes to an aggregate already owned by another feature" — `Unlock` mutates nothing (§7.3, blocked on the unwritten EnvObject body) and `Reveal` has no durable sink (PL_005b §5.6 puts `KnowledgeAccrual` at V1+). Both **pass ITM-V8** and return success with zero state change: indistinguishable from a bug to a player, unassertable to QA. | Per-variant sink table; `Unlock`/`Reveal` now emit `item.use_effect_narrative_only` on an accepted turn. `Key` is documented as narrative-only in V1. **AC-ITM-28** |
+| 6 | **MED** | **The §5.2 "Equip?" column was documentation with no validator** — `ItemClass::Document` with `equip: Some(..)` passed everything. | **ITM-C12(a)**. **AC-ITM-29** |
+| 7 | **MED** | **`Consumable` did not imply finite charges** — `ItemClass::Consumable` + `max_charges: None` = an infinitely reusable consumable. | **ITM-C12(b)** |
+| 8 | **MED** | **An unreachable-by-construction effect was legal** — `use_effect: Some(..)` on a class whose affordance default lacks `BeUsed`. | **ITM-C12(c)** |
+| 9 | **MED** | **ITM-C9 covered too little.** It gated `equip.*` edits only, leaving `class` (diverges from birth-materialised affordances), `use_effect` (changes what a held item does, with no player-visible cause) and `max_charges` (lowering it leaves instances above the new max, unclamped) freely editable under live instances. | ITM-C9 scope extended + **ITM-C13** decides the retroactivity question explicitly (edit applies to future instances; live ones keep their set; count reported to `forge_audit_log`). **AC-ITM-30** |
+| 10 | **LOW** | **`has_charges DESC` was ambiguous in the worst direction.** Over `Option<u32>`, read as `is_some()` it ranks a **spent husk** (`Some(0)`) above a usable charge-less sword (`None`) — the digest's scarce lines advertising exactly what the actor cannot use. | Predicate spelled out: `charges.map_or(true, \|c\| c > 0) && use_effect.is_some()`. **AC-ITM-31** |
+| 11 | **LOW** | **Dead declarations.** `ItemOrigin::Trade` is marked "V1 unused" with no writer — a variant nothing can produce. `EquipSlotProfileId` / `profile_id` is unreferenced, because §11 holds a single `Option<EquipSlotProfileDecl>` with no keyed lookup to reference it *by*. | Accept and document: both are forward-declarations for ITM-D2 (per-race profiles) and ITM-D7 (custody chain). Flagged so a reader does not hunt for the writer. |
+
+**What the two passes together say about the shape of the risk.** Self-review found seam defects and
+missed interior ones; cold-start found interior defects and *inherited* one the self-review created. The
+generalizable lesson for this track: a feature that integrates with eight others will have its seams
+checked by the act of writing it (you must read the neighbour to write the sentence) and its **own closed
+enums and trait impls** left unchecked, because nothing forces a second look at them. `ItemClass`,
+`UseEffectDecl`, and `EquipDecl` were all authored once and never re-derived — and all three had defects.

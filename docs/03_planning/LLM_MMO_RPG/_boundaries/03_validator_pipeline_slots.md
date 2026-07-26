@@ -212,7 +212,7 @@ Helps onboarding — quick lookup "which stage owns my rule_id":
 | **3.5.b** | **place_structural** | **`place.*`** | **PF_001 (12 V1)** | 4 V1+ (scheduled_decay_collision, cross_reality_connection, procedural_generation_rejected, connection_gate_unresolved) |
 | **3.5.c** | **map_layout** | **`map.*`** | **MAP_001 (13 V1)** | 3 V1+ (cross_reality_layout, layout_too_dense, connection_method_unsupported) |
 | **3.5.d** | **cell_scene** | **`csc.*`** | **CSC_001 (9 V1)** | 4 V1+ (skeleton_invalid, procedural_density_too_high, narration_unsafe_content, layer3_occupant_set_changed) |
-| **3.5.e** | **item_structural** (added 2026-07-26) | **`item.*`** + `item.inventory.*` | **PL_007 + PL_007b (21 V1 rejects + 2 V1 warnings)** | 4 V1+ (durability_exhausted, bound_to_other_actor, container_depth_exceeded, ammunition_missing) |
+| **3.5.e** | **item_structural** (added 2026-07-26) | **`item.*`** + `item.inventory.*` | **PL_007 + PL_007b (21 V1 rejects + 3 V1 warnings)** | 4 V1+ (durability_exhausted, bound_to_other_actor, container_depth_exceeded, ammunition_missing) |
 | 4 | lex_check | `lex.*` | WA_001 | — |
 | 5 | heresy_check | `heresy.*` | WA_002 | — |
 | 6 | A6 output filter | (logged) | 05_llm_safety A6 | — |

@@ -285,7 +285,8 @@ v3 LLM-as-grid draft cost 31K tokens against v4 LLM-as-zone at 2.5K — the same
 
 ```
 sort unequipped items by:
-  1. has_charges DESC          (things that can be used now matter for decisions)
+  1. is_usable_now DESC        // charges.map_or(true, |c| c > 0) && def.use_effect.is_some()
+                               // NOT `charges.is_some()` — see the note below
   2. def.price DESC            (None sorts last)
   3. class as u8 ASC
   4. instance_id ASC           (total-order tiebreak — replay determinism)
@@ -294,6 +295,14 @@ take digest_top_n
 
 No RNG, no recency clock, no LLM involvement in the selection. Recency was deliberately excluded: it
 would make two replays with different wall-clock ordering diverge.
+
+> **Corrected at cold-start review 2026-07-26.** Key 1 was written as `has_charges DESC` over a
+> `charges: Option<u32>`, which is ambiguous in the worst direction: read as `is_some()` it ranks an
+> **exhausted husk** (`Some(0)` — a spent wand kept because `consume_on_exhaust: false`) *above* a
+> perfectly usable charge-less item (`None` — a sword, a rope). The prompt would then spend its scarce
+> `notable` lines advertising items the actor cannot use, while omitting ones it can. The predicate is
+> now spelled out, and it also folds in `use_effect.is_some()` so that an item with no effect at all
+> does not outrank one that has a usable effect.
 
 ### 5.2 Elision must be visible
 
