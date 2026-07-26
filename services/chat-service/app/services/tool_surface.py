@@ -48,6 +48,15 @@ ACTIVATED_TOOLS_CAP = 64
 # via find_tools. Set LW_HOT_SEED_TOKEN_BUDGET=0 for the original pure-index design, or 4000
 # to restore the prior default.
 HOT_SEED_TOKEN_BUDGET = int(os.environ.get("LW_HOT_SEED_TOKEN_BUDGET", "2000"))  # ~4-6 tools hot; rest lazy
+# D-RAIL-OWN-BUDGET (2026-07-26, Mị Đế dogfood): a PINNED rail's step tools get their own,
+# larger ceiling — separate from the discovery hot-seed. The 2000-token seed budget is
+# surface economy against DISCOVERY sprawl (a weak model does worse with more tools); a
+# pinned rail is the opposite of sprawl — a curated, bounded recipe whose TEXT names every
+# step tool, so dropping one re-creates the "recipe names a tool the agent cannot see"
+# silent no-op (measured live all day: glossary_propose_entities was the perpetual drop).
+# 6000 tok fits a ~9-step rail with two large schemas; the budget remains a safety valve
+# for a pathological rail, not a routine constraint.
+RAIL_STEP_TOKEN_BUDGET = int(os.environ.get("LW_RAIL_STEP_TOKEN_BUDGET", "6000"))
 ACTIVATED_TOOLS_TOKEN_BUDGET = 6000  # cap the find_tools-accumulated set by tokens
 
 # Read/query verbs → the tools safe to keep hot (writes/proposes are discovered on
@@ -236,6 +245,7 @@ def discovery_seed_for_surface(
     binding_categories: list[str] | None = None,
     pinned_step_tools: list[str] | None = None,
     rail_done_step_tools: set[str] | None = None,
+    rail_repeat_done_step_tools: set[str] | None = None,
     rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
     injected_skill_codes: list[str] | None = None,
@@ -393,7 +403,20 @@ def discovery_seed_for_surface(
         # candidate set first, so the not-done steps win the budget. A tool still owed by a
         # not-done step is NOT in this set (rail_gate_suppressions keeps it), so this never
         # hides a tool the agent still needs.
-        _rail_candidates = [t for t in pinned_step_tools if t not in (rail_done_step_tools or set())]
+        # D-RAIL-REPEAT-BUDGET (v2 of the done-exclusion): done steps are REORDERED to the
+        # back of the budget queue, not hard-dropped. The rail TEXT names every step tool;
+        # a done-but-repeatable step (save-cast — "add MORE characters") must still ride
+        # when room remains, it just can never starve a never-done step. Priority:
+        # never-done → repeat-done (the ones a user re-invokes) → one-shot-done (advertise-
+        # suppressed by the gate anyway — budget spent on them is pure waste). A done tool
+        # that loses the budget is reported like any other drop.
+        _done = rail_done_step_tools or set()
+        _repeat_done = (rail_repeat_done_step_tools or set()) & _done
+        _rail_candidates = (
+            [t for t in pinned_step_tools if t not in _done]
+            + [t for t in pinned_step_tools if t in _repeat_done]
+            + [t for t in pinned_step_tools if t in _done - _repeat_done]
+        )
         # D-RAIL-NEXT-STEP-EXEMPT (2026-07-26, Mị Đế dogfood): the rail's NEXT step tools are
         # budget-EXEMPT. Dropping by declared order still starved the step the agent needs NOW
         # when earlier not-done steps ate the budget — live wedge: kg_propose_edge failed with
@@ -403,7 +426,7 @@ def discovery_seed_for_surface(
         _next_exempt = (rail_next_step_tools or set()) & set(_rail_candidates)
         kept, dropped = budget_rail_tools(
             catalog, [t for t in _rail_candidates if t not in _next_exempt],
-            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+            token_budget=scale_by_window(RAIL_STEP_TOKEN_BUDGET, context_length),
         )
         names = names | kept | _next_exempt
         if dropped:

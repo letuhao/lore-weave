@@ -5223,15 +5223,30 @@ async def stream_response(
                     )
                 except Exception:  # noqa: BLE001 — stickiness is best-effort; never break the turn
                     _sticky_domains = set()
-                # Budget priority (2026-07-26): the fully-DONE rail step tools, so the rail's
+                # Budget priority (2026-07-26): the DONE rail step tools, so the rail's
                 # token budget is spent on the steps still to do (not on completed early steps
-                # that would starve `plan_propose_spec` et al.). Same "fully done" set the
-                # action-space gate uses; computed regardless of gate MODE (budget prioritization
-                # is independent of runtime suppression).
-                _rail_done_tools = (
-                    rail_gate_suppressions(_rail_progress_objs, set(), "done_suppress")
-                    if _rail_progress_objs else set()
-                )
+                # that would starve `plan_propose_spec` et al.).
+                # v2 (D-RAIL-REPEAT-BUDGET): computed DIRECTLY from progress — ALL done steps,
+                # INCLUDING `repeat` ones. The gate function now exempts repeat steps (they must
+                # stay advertisable: "add MORE characters" re-invokes a done save-cast), but for
+                # BUDGET priority a done-but-repeatable step still yields to never-done steps —
+                # tool_surface reorders these to the back of the queue instead of dropping them.
+                _rail_done_tools = {
+                    s.tool
+                    for p in (_rail_progress_objs or [])
+                    for s in p.steps
+                    if s.done and s.tool
+                }
+                # Within the done group, a REPEATABLE done step outranks a one-shot done
+                # step for budget: the one-shots are advertise-suppressed by the gate
+                # anyway, so budget spent on them is pure waste — while a repeat step
+                # (save-cast: "add MORE characters") is the one a user actually re-invokes.
+                _rail_repeat_done_tools = {
+                    s.tool
+                    for p in (_rail_progress_objs or [])
+                    for s in p.steps
+                    if s.done and s.tool and s.repeat
+                }
                 # D-RAIL-NEXT-STEP-EXEMPT — the tool of each rail's NEXT actionable step is
                 # budget-exempt in the surface seed: the step being driven must be callable.
                 _rail_next_tools = {
@@ -5251,6 +5266,7 @@ async def stream_response(
                     binding_categories=(mode_binding.seed_tool_categories if mode_binding else None),
                     pinned_step_tools=pinned_step_tools,
                     rail_done_step_tools=_rail_done_tools,
+                    rail_repeat_done_step_tools=_rail_repeat_done_tools,
                     rail_next_step_tools=_rail_next_tools,
                     sticky_domains=_sticky_domains,
                     # D-SKILL-NAMED-TOOLS-RIDE — the tools these injected skill prompts

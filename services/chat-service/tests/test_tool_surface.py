@@ -347,6 +347,29 @@ class TestTokenBudgetedSeed:
             "always be on the wire, or the runner redrives a step the agent cannot execute"
         )
 
+    def test_rail_repeat_done_step_outranks_one_shot_done_for_budget(self):
+        # D-RAIL-REPEAT-BUDGET — Mị Đế layer 2: marking save-cast `repeat` removed it
+        # from the gate's done-set, so ALL steps re-entered the budget in declared order
+        # and the late repeatable step STILL lost. Order must be: never-done →
+        # repeat-done → one-shot-done (the gate hides one-shot-done anyway).
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        big = 9000
+        cat = ([_tool_big(f"zoneshot_{i}", big) for i in range(3)]     # done, NOT repeat
+               + [_tool_big("znotdone_next", 400)]                     # never-done, small
+               + [_tool_big("zsave_cast", 600)])                       # done + repeat
+        rail = ["zoneshot_0", "zoneshot_1", "zoneshot_2", "zsave_cast", "znotdone_next"]
+        done = {"zoneshot_0", "zoneshot_1", "zoneshot_2", "zsave_cast"}
+        out = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False,
+            pinned_step_tools=rail, rail_done_step_tools=done,
+            rail_repeat_done_step_tools={"zsave_cast"},
+        )
+        assert "znotdone_next" in out          # active step always wins first
+        assert "zsave_cast" in out, (
+            "a done-but-REPEATABLE step must outrank one-shot-done steps for budget — "
+            "it is the step a user actually re-invokes ('add MORE characters')"
+        )
+
     def test_injected_skills_named_tools_ride_budget_exempt(self):
         # D-SKILL-NAMED-TOOLS-RIDE — THE Mị Đế root cause, proven on the wire: the
         # injected glossary skill's prose says "Add new entities:

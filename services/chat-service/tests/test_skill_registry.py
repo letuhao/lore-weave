@@ -386,6 +386,30 @@ _KNOWN_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({
     "composition_structure_template_create", "composition_structure_template_update",
     "composition_structure_template_archive", "composition_structure_template_restore",
     "composition_structure_template_clone",
+
+    # ── book (2026-07-27) ───────────────────────────────────────────────────────────────────
+    # book_skill named FOURTEEN of these, plus `book_delete`, which has never been registered
+    # anywhere. Two distinct retirements:
+    #   * reads folded into the unified `book_list` (ls) / `book_read` (cat) pair;
+    #   * publish/unpublish, delete/trash, purge, book-create and the three PRICED media tools
+    #     became MANUAL UI actions on purpose ("the agent does not publish / delete / bill").
+    # This is not cosmetic: a skill that names a tool the agent can never discover sends it into
+    # a discovery loop hunting for it, burning the turn.
+    "book_get", "book_get_chapter", "book_list_chapters", "book_list_revisions",
+    "book_scene_list", "book_scene_get", "book_chapter_reorder", "book_chapter_set_part",
+    "book_structure_part_archive",
+    "book_create", "book_set_cover", "book_purge",
+    "book_chapter_delete", "book_chapter_purge",
+    "book_chapter_publish", "book_chapter_unpublish",
+    "book_audio_generate", "book_media_generate",
+})
+
+# Tool names a skill must never mention because NO tool of that name has ever existed. A skill
+# naming one is strictly worse than naming a legacy tool: there is not even a retired handler to
+# find, so the agent can only loop. `book_delete` sat in book_skill's "confirm-gated group" and
+# its trash-vs-purge section for as long as both existed.
+_NONEXISTENT_TOOL_NAMES: frozenset[str] = frozenset({
+    "book_delete",
 })
 
 # Skills exempt from the domain-hot-seed check entirely: `admin` advertises its OWN
@@ -494,7 +518,12 @@ class TestSkillClaimsLint:
                 continue
             prompt = skill.prompt_loader()
             for token, _domain in sorted(_named_tool_domains(prompt)):
-                if token in _KNOWN_LEGACY_TOOL_NAMES:
+                if token in _NONEXISTENT_TOOL_NAMES:
+                    failures.append(
+                        f"{skill.code}: references '{token}', which is not a tool and never "
+                        f"was — the agent can only loop looking for it. Delete the mention."
+                    )
+                elif token in _KNOWN_LEGACY_TOOL_NAMES:
                     failures.append(
                         f"{skill.code}: references legacy tool '{token}' — point at "
                         f"its replacement instead (see docs/specs/2026-07-06-tool-"
