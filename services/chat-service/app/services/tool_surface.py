@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import (
@@ -236,6 +238,7 @@ def discovery_seed_for_surface(
     rail_done_step_tools: set[str] | None = None,
     rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
+    injected_skill_codes: list[str] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -408,6 +411,21 @@ def discovery_seed_for_surface(
                 "pinned rail step tools dropped by the token budget: %s — the rail names "
                 "tools the agent cannot see", ", ".join(dropped),
             )
+    # D-SKILL-NAMED-TOOLS-RIDE (2026-07-26, Mị Đế dogfood — THE root cause of the
+    # entity_edit/propose_entities confusion): a skill PROMPT injected this turn can
+    # NAME tools directly ("Add new entities: `glossary_propose_entities`"), but the
+    # budgeted hot seed can drop exactly those tools under domain pressure — proven
+    # on the wire: the request's instructions named glossary_propose_entities while
+    # the 21 advertised tools carried only glossary_propose_entity_edit, so the
+    # model mapped the create intent onto the similarly-named edit tool, every turn.
+    # The authoring-time lint (test_every_skills_named_tools_are_in_its_hot_domains)
+    # guarantees named ⊆ hot_domains, but a runtime budget still breaks the
+    # invariant. Rule: an INJECTED instruction must never name a tool that is not
+    # on the wire — the named tools of every injected skill ride budget-exempt,
+    # exactly like a pinned rail's next-step tools. Bounded: a skill names a
+    # handful of tools, and only skills actually injected THIS turn contribute.
+    if injected_skill_codes:
+        names = names | skill_named_tools(injected_skill_codes, catalog)
     # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
     # session regardless of curated/auto mode; it bypasses find_tools entirely
     # (the whole point of the escape hatch is that the tool is otherwise
@@ -474,6 +492,36 @@ def effective_enabled_tools(
 # tool_load'ed alive across turns, small enough that a stale accumulation can't
 # re-inflate the surface.
 AUTO_ACTIVATED_TAIL = 6
+
+
+@lru_cache(maxsize=64)
+def _skill_prompt_named_tokens(skill_code: str) -> frozenset[str]:
+    """Backtick-quoted snake_case tokens a skill's PROSE names (candidate tool names).
+
+    Cached per skill code — prompts are static module constants. The catalog
+    intersection happens per call in `skill_named_tools` (the catalog can change)."""
+    from app.services.skill_registry import SYSTEM_SKILLS
+
+    skill = SYSTEM_SKILLS.get(skill_code)
+    if skill is None:
+        return frozenset()
+    try:
+        prompt = skill.prompt_loader()
+    except Exception:  # noqa: BLE001 — a skill that can't load contributes nothing
+        return frozenset()
+    return frozenset(re.findall(r"`([a-z][a-z0-9_]{3,})`", prompt))
+
+
+def skill_named_tools(skill_codes: list[str], catalog: list[dict]) -> set[str]:
+    """The REAL catalog tools directly named by these skills' prompts.
+
+    D-SKILL-NAMED-TOOLS-RIDE: an injected instruction must never name a tool that
+    is not on the wire — the caller unions this set budget-exempt."""
+    catalog_names = {tool_name(td) for td in catalog}
+    out: set[str] = set()
+    for code in skill_codes:
+        out |= _skill_prompt_named_tokens(code) & catalog_names
+    return out
 
 
 def assemble_initial_active_names(

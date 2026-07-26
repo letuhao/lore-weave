@@ -347,6 +347,33 @@ class TestTokenBudgetedSeed:
             "always be on the wire, or the runner redrives a step the agent cannot execute"
         )
 
+    def test_injected_skills_named_tools_ride_budget_exempt(self):
+        # D-SKILL-NAMED-TOOLS-RIDE — THE Mị Đế root cause, proven on the wire: the
+        # injected glossary skill's prose says "Add new entities:
+        # `glossary_propose_entities`" while the budgeted hot seed had dropped that
+        # exact tool — the request advertised only glossary_propose_entity_edit, so
+        # the model mapped the create intent onto the similarly-named edit tool,
+        # every turn. An injected instruction must never name a tool that is not on
+        # the wire.
+        from app.services.tool_surface import skill_named_tools
+
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        cat = [_tool("glossary_propose_entities"), _tool("glossary_search")]
+        # bare auto surface (editor/book_scoped off) → hot seed contributes nothing;
+        # the ONLY way the tool gets on the wire is the injected-skill exemption.
+        cold = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=False)
+        assert "glossary_propose_entities" not in cold, "precondition: seed alone drops it"
+        warm = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False,
+            injected_skill_codes=["glossary"],
+        )
+        assert "glossary_propose_entities" in warm, (
+            "a tool the injected skill prompt NAMES must ride the surface — the "
+            "instructions must never point at a tool the model cannot see"
+        )
+        # sanity on the extractor: the glossary skill really does name the tool
+        assert "glossary_propose_entities" in skill_named_tools(["glossary"], cat)
+
     def test_recall_and_timeline_classified_as_reads(self):
         from app.services.tool_surface import _is_read_tool
         assert _is_read_tool("memory_recall_entity")

@@ -5253,6 +5253,9 @@ async def stream_response(
                     rail_done_step_tools=_rail_done_tools,
                     rail_next_step_tools=_rail_next_tools,
                     sticky_domains=_sticky_domains,
+                    # D-SKILL-NAMED-TOOLS-RIDE — the tools these injected skill prompts
+                    # name directly must be on the wire (budget-exempt).
+                    injected_skill_codes=injected_skill_codes,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -6983,6 +6986,8 @@ async def resume_stream_response(
                 # the flagship rail broke at its very first gate. Captured at suspend time
                 # because the resume has no book_id to re-resolve the binding with.
                 pinned_step_tools=susp.pinned_step_tools,
+                # D-SKILL-NAMED-TOOLS-RIDE — same guarantee on the resume pass.
+                injected_skill_codes=resume_injected_skills,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend
