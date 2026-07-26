@@ -2561,7 +2561,15 @@ async def _stream_with_tools(
                             "(use tool_list to see what's available)."
                         )
                     active_tool_names.update(names_to_activate)
-                    if curated and activation_state is not None:
+                    # D-TOOL-LOAD-PERSISTS (2026-07-26, Mị Đế dogfood) — UNGATED like
+                    # workflow_load, no longer curated-only. In auto mode a tool_load
+                    # evaporated at turn end; the model re-loaded glossary_propose_entities
+                    # every turn, found it gone the next, and fell back to the always-
+                    # visible frontend edit tool (the placeholder_id loop). An explicit
+                    # tool_load is the same strength of signal as workflow_load: the agent
+                    # NAMED the tool it needs. Auto-mode re-advertisement is bounded to the
+                    # recency tail (assemble_initial_active_names), not the whole set.
+                    if activation_state is not None:
                         from app.services.tool_surface import merge_activated_tools
                         activation_state["activated_tools"] = merge_activated_tools(
                             activation_state["activated_tools"], loaded,

@@ -469,6 +469,13 @@ def effective_enabled_tools(
     return list(dict.fromkeys([*enabled_tools, *sorted(hot)]))
 
 
+# D-TOOL-LOAD-PERSISTS — how many of the most-recently-activated tools an AUTO-mode
+# turn re-advertises. Small on purpose: enough to keep the tool the model just
+# tool_load'ed alive across turns, small enough that a stale accumulation can't
+# re-inflate the surface.
+AUTO_ACTIVATED_TAIL = 6
+
+
 def assemble_initial_active_names(
     *,
     curated: bool,
@@ -491,9 +498,21 @@ def assemble_initial_active_names(
     # tools` is the union of the turn's visible workflows' step tools; intersecting keeps
     # in-flight rail tools and drops everything else. Default None → the original strict
     # auto behavior (hot-seed only), so a caller that doesn't supply the filter can't leak.
+    #
+    # D-TOOL-LOAD-PERSISTS amendment (2026-07-26, Mị Đế dogfood): PLUS the recency TAIL of
+    # the persisted set. tool_load now persists in auto mode too (stream_service — the
+    # measured failure: the model's freshly-loaded create tool evaporated every turn while
+    # the frontend edit tool stayed visible, so the create intent kept landing on the wrong
+    # tool). The tail is bounded (last AUTO_ACTIVATED_TAIL names, most-recent-last thanks to
+    # the LRU refresh), so a curated-then-flipped session leaks at most a handful of its
+    # most recently REQUESTED tools — not the whole accumulation the review note rejected.
     if not curated:
         wf = workflow_step_tools or set()
-        return set(hot_seed_names) | (set(activated_tools) & wf)
+        return (
+            set(hot_seed_names)
+            | (set(activated_tools) & wf)
+            | set(activated_tools[-AUTO_ACTIVATED_TAIL:])
+        )
     return set(enabled_tools) | set(activated_tools)
 
 

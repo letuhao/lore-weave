@@ -48,35 +48,46 @@ class TestToolSurface:
         # re-advertise them in auto mode (the S03 cross-turn drop) — BUT ONLY those that
         # belong to a currently-visible workflow. A stale find_tools accumulation left in
         # activated_tools by a prior curated phase MUST be dropped (review-impl leak fix).
+        # D-TOOL-LOAD-PERSISTS amendment: the RECENCY TAIL also re-advertises now
+        # (an explicit tool_load persists like workflow_load), so a stale accumulation
+        # is bounded out by pushing it beyond the tail — not by set intersection alone.
+        from app.services.tool_surface import AUTO_ACTIVATED_TAIL
+
         hot = {"glossary_search", "glossary_list"}
+        stale = [f"stale_{i}" for i in range(AUTO_ACTIVATED_TAIL + 5)]
         out = assemble_initial_active_names(
             curated=False,
             enabled_tools=[],
             activated_tools=[
-                "glossary_propose_status_change",  # current workflow step tool
-                "glossary_propose_merge",          # current workflow step tool
-                "translation_start_job",           # STALE find_tools accumulation
-                "kg_build_graph",                  # STALE find_tools accumulation
+                "glossary_propose_status_change",  # current workflow step tool (oldest)
+                *stale,                            # STALE accumulation pushes it out of tail
+                "glossary_propose_merge",          # current workflow step tool (recent)
             ],
             hot_seed_names=hot,
             workflow_step_tools={"glossary_propose_status_change", "glossary_propose_merge"},
         )
-        assert out == hot | {"glossary_propose_status_change", "glossary_propose_merge"}
-        assert "translation_start_job" not in out
-        assert "kg_build_graph" not in out
+        # workflow step tools survive REGARDLESS of tail position (the ∩ wf arm)
+        assert {"glossary_propose_status_change", "glossary_propose_merge"} <= out
+        # the stale front (older than the tail) does not leak
+        assert "stale_0" not in out
 
-    def test_assemble_auto_mode_no_workflow_filter_stays_hot_seed_only(self):
-        # No workflow_step_tools supplied → strict original auto behavior: hot-seed only,
-        # activated_tools (whatever they are) NEVER leak. Defends the resume path, which
-        # does not pass the filter.
+    def test_assemble_auto_mode_no_workflow_filter_keeps_only_the_recency_tail(self):
+        # No workflow_step_tools supplied → hot seed + the bounded recency tail
+        # (D-TOOL-LOAD-PERSISTS). An accumulation beyond the tail NEVER leaks —
+        # defends the resume path, which does not pass the filter.
+        from app.services.tool_surface import AUTO_ACTIVATED_TAIL
+
         hot = {"glossary_search"}
+        many = [f"stale_{i}" for i in range(AUTO_ACTIVATED_TAIL + 10)] + ["freshly_loaded"]
         out = assemble_initial_active_names(
             curated=False,
             enabled_tools=[],
-            activated_tools=["translation_start_job", "kg_build_graph"],
+            activated_tools=many,
             hot_seed_names=hot,
         )
-        assert out == hot
+        assert "freshly_loaded" in out          # the just-loaded tool survives the turn boundary
+        assert "stale_0" not in out             # the old accumulation stays gone
+        assert len(out - hot) <= AUTO_ACTIVATED_TAIL
 
     def test_assemble_curated_uses_pins_and_activated(self):
         out = assemble_initial_active_names(
@@ -121,6 +132,27 @@ class TestToolSurface:
             "most recently REQUESTED, not the oldest"
         )
         assert merged[-1] == "t0"  # recency actually refreshed, not just retained
+
+    def test_auto_mode_readvertises_the_recency_tail_of_activated_tools(self):
+        # D-TOOL-LOAD-PERSISTS: an auto-mode turn re-advertises the LAST few activated
+        # tools (the ones the model most recently tool_load'ed) — the live failure was
+        # glossary_propose_entities evaporating every turn while the frontend edit tool
+        # stayed visible, so the create intent kept landing on the wrong tool.
+        from app.services.tool_surface import (
+            AUTO_ACTIVATED_TAIL,
+            assemble_initial_active_names,
+        )
+        activated = [f"old_{i}" for i in range(20)] + ["glossary_propose_entities"]
+        names = assemble_initial_active_names(
+            curated=False, enabled_tools=[], activated_tools=activated,
+            hot_seed_names={"book_get_chapter"},
+        )
+        assert "glossary_propose_entities" in names, (
+            "the most recently loaded tool must survive into the next auto turn"
+        )
+        # bounded: the stale front of the accumulation does NOT leak back
+        assert "old_0" not in names
+        assert len(names & {f"old_{i}" for i in range(20)}) <= AUTO_ACTIVATED_TAIL
 
     def test_merge_activated_tools_scales_budget_with_context_length(self):
         # A 1M-context session must NOT get the same token-budget cap a 200K

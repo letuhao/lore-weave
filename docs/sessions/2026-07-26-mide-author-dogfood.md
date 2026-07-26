@@ -56,6 +56,10 @@ Continuity editor · Line editor · Character coach · Genre reader (tu chân kh
 - **#15 → FIXED** (D-FE-TOOL-CONTEXT-IDS) — frontend branch now runs `_inject_context_ids` (fill-blank + replace-malformed + studio override) before validation.
 - **#16 → FIXED** (D-PASS-TEXT-REECHO v2) — lstripped probe vs stripped turn text.
 - **#18 → FIXED** (D-ACTIVATED-LRU-REFRESH) — re-activation moves the name to the recency end; the just-requested tool now survives eviction.
+
+| 19 | activated state | **HIGH→FIXED** | **The deeper layer under #18**: this session is AUTO mode (no pins), and `tool_load` activation was persisted only `if curated` — every load evaporated at turn end BY DESIGN; auto seed re-advertised only hot-seed ∪ (activated ∩ workflow steps). The model could never keep the create tool visible no matter what it did. Answer to "wrong instruction or never seen?": **never seen** — instructions are good (model even tool_loads the right name); the edit tool is frontend-core (always visible) so the create intent kept landing there. | session row: enabled_tools={} activated_tools={}; advertised sets lack propose_entities the turn after its tool_load✓ |
+
+- **#19 → FIXED** (D-TOOL-LOAD-PERSISTS) — tool_load persists ungated (the workflow_load precedent, same rationale); auto-mode seed re-advertises a bounded recency tail (`AUTO_ACTIVATED_TAIL=6`) so the freshly-loaded tool survives the turn boundary while stale accumulations stay bounded out.
 - **#10 → FIXED** (D-PASS-TEXT-REECHO) — continuation-pass opening tokens held while they verbatim-prefix the turn's streamed text; full echo swallowed, divergence flushed unchanged (incl. straddling delta). 3 regression tests.
 - **#5 → FIXED** `516d33eba` — frontend tools now feed the shared repeated-failure breaker + get de-advertised at the same cap (D-FE-TOOL-LOOP). 4 regression tests.
 - **#3 → FIXED** (D-RAIL-NEXT-STEP-EXEMPT) — the rail's NEXT actionable step tools are budget-exempt in the surface seed; the driven step is always on the wire. Note: the RESUME path still seeds from `susp.pinned_step_tools` without done/next info (pre-existing, lower risk) — tracked here, not fixed.
