@@ -84,9 +84,29 @@ observation. A claim that a check passed, without its output, does **not** tick 
 
 ## Phase C — real-run proof (the gate that actually matters)
 
-- [ ] **C1** GUI: edit a `beats` atom in a **real browser**. *(Not yet — FE is unit-proven only;
-      the browser pass is still owed.)*
-- [ ] **C2** GUI: edit a `cast` atom incl. a deletion in a real browser. *(Same.)*
+- [x] **C1/C2** 🎯 **BROWSER PASS DONE — and it caught a bug 1596 unit tests missed.**
+      Drove the real studio (chrome-devtools MCP; the Playwright profile was held by the concurrent
+      session) on book `019f9d2b`, run `019f9d2e`.
+
+      🔴 **F10 — the editors were UNREACHABLE.** `PassRow.awaitingReview`
+      (`blocking && completed && decision==='pending'`) was the ONLY route to `CheckpointReview`,
+      the ONLY host of every structured editor. So the four ADVISORY atoms (motifs, world,
+      character_arcs, scenes) **never rendered a door** — four editors, including the scene_plan one
+      built minutes earlier, were dead UI — and cast/beats became uneditable the moment they were
+      approved (a one-way door on the two atoms most likely to need revision).
+      **Why no test caught it:** every editor test renders `CheckpointReview` *directly* with a
+      fabricated `pass`, so the host was always "open" and the gate was never exercised. This is the
+      same shape as F3 (testing the consumer's assumption instead of the real path) — one layer up.
+      **Fix:** any COMPLETED pass with an artifact gets a quiet `edit…` door onto the same host; the
+      warning-styled `review →` CTA stays exclusive to blocking+pending.
+
+      **Live evidence after the fix:** all 6 doors render (self_heal correctly none — no artifact) ·
+      `scenes` shows the readable chapter/scene/tension view, not raw JSON · Edit opens the **nested**
+      `ScenePlanEditor` (flat one correctly not used), 10 chapter blocks · retitled scene 1 and
+      deleted scene 3 → saved → **DB: new artifact `019f9f24-3154`, 25→24 scenes, ch1 3→2, title
+      "The Erasure (BROWSER EDIT)", and `present_entity_ids` PRESERVED (`019f9d2f-a1a3…`)** — the
+      scene's grounding survived an unrelated title edit, which is the invariant the editor was
+      built around.
 - [x] **C3** 🎯 **AGENT EDIT PROVEN LIVE via MCP** — both editable kinds, on the real book/run.
 
       **beat_plan** — `plan_review_checkpoint(pass_id='beats', approved=false, edits={chapters})`
@@ -313,4 +333,5 @@ into its commit — 1757 insertions filed under the message
 | 2026-07-26 | **Nearly declared E4 done with a half-fix.** The beats wire was working and the unit tests were green; I only caught the `_BANDS` gap (E5b) because the live `op=list` output happened to show Hero's Journey keys (`ordinary_world`, `call_to_adventure`) that I recognised as absent from the band table. Had the default template been anything other than Web Novel Arc, the "fixed" pipeline would have produced beat roles and a flat curve — a *quieter* version of the same bug, now with a green test suite vouching for it. Lesson: after fixing a lookup, check the WHOLE key space, not just the path the default happens to take. |
 | 2026-07-26 | `plan_compile` MCP arg was written before `op=list` existed, i.e. an argument the agent had no way to populate. Caught only by asking "how would the co-writer actually get this id?" — the affordance question, not the code question. |
 | 2026-07-26 | Reached for `force=true` to shortcut the C4 chain. It was silently ignored and the pass refused — which is the design (the bypass is withheld from agents *by absence*). Had it been exposed, I would have skipped the two human checkpoints to save ~8 minutes and called the result an end-to-end proof, when it would have proven nothing about the gate. The honest chain took 4 passes and a seed apply. |
+| 2026-07-26 | **The big one.** I reported "5 of 6 atoms GUI-editable" on the strength of 1596 green unit tests. The first real browser pass showed FOUR of those editors had no door to open them — advisory passes never render the review CTA. The claim was true of the components and false of the product. I had even written the `scene_plan` editor and its 9 tests without ever checking that a user could reach it. Every editor test renders `CheckpointReview` directly, so the gate was never in the test path. Lesson, again: "the tests pass" is not "the feature works" — and I was one turn away from calling atom edit DONE. |
 | 2026-07-26 | Sweeping for more `auto`-sentinel filters, I found `arc_template_repo`'s language clause and nearly reported it as a second instance. It takes an explicit query param defaulting to `None` (which skips the clause), not the book profile's `"auto"` — verified the callers before claiming. Negative results need the same rigour as positive ones. |
