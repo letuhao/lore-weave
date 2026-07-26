@@ -170,8 +170,18 @@ observation. A claim that a check passed, without its output, does **not** tick 
 - [ ] **E7** Re-run `scenes` + `self_heal` and confirm the scene decomposition now honours the real
       curve (pass 6 reads `tension_curve` verbatim). **Not yet done — the shape is proven at the
       beat layer only.**
-- [ ] **E8** FE: surface the structure picker + show `structure.name`/`source` at the beats
-      checkpoint. Currently the author cannot see or change the structure in the GUI.
+- [x] **E8** FE structure picker shipped. `CompilePlanBody.structure_template_id` → `runCompile` →
+      a picker beside the arc picker, labelled with each structure's beat count. `usePlanRun` loads
+      the library once per token (synchronization effect) and exposes `structures`.
+      Blank ("keep current") is **never pre-selected** and the id is **omitted rather than sent as
+      null**, so opening the panel and hitting Compile cannot silently re-shape an already-structured
+      plan. `structures` is optional/defaulted — a failed library load degrades the picker instead of
+      blocking the compile. 3 tests incl. the degraded-library case.
+      *(Confirms the "built but never wired" thesis again: `StructureTemplatesPanel` = 462 lines of
+      CRUD, `compositionApi.listTemplates` already served the data, and nothing referenced a plan
+      run.)*
+- [ ] **E9** Show `structure.name` / `source` / `unshaped_beat_keys` at the beats checkpoint, so the
+      author can SEE which structure shaped the arc and whether it was defaulted.
 
 ## Phase F — atom inventory matrix (scopes the rest of Phase B, per Q2)
 
