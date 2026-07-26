@@ -287,7 +287,7 @@ pub enum TransitionTrigger {
 
 ### §3.3 V1+ deferred aggregates (PCS-D4)
 
-- `pc_stats_v1_stub` — DEFERRED V1+ per Q4 LOCKED. PROG_001 actor_progression + RES_001 vital_pool + PL_006 actor_status cover stats. V1+ may activate cache layer if combat hot-path performance demands.
+- `pc_stats_v1_stub` — **PCS-D4 RESOLVED 2026-07-26 — not deferred, unnecessary** (DF07_001 Actor Stat Block DRAFT, DF7-Q1). The derived-stat layer that this stub anticipated is a **law, not an aggregate**: a stat block is a pure function of `actor_progression` + equipment + `actor_status` + manifest (DF7-A2), so there is no second SSOT to drift. The "V1+ cache layer if combat hot-path demands" is likewise superseded — combat snapshots the block into the ephemeral `combat_session` with a `StatEpoch` (DF7-Q5), which is the cache, epoch-invalidated and replay-asserted. **Reserved consumer hook:** the fog-of-war vision range this file's TMP_001 closure note (§4 header) promises PC vision/perception attributes for is the V1+ `VisionRange` stat slot (DF7-D5) — no PCS_001 schema change when it activates. See [DF07_001 §11 closure item 5](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md).
 
 ### §3.4 PcBodyMemory schema (nested in pc_user_binding; per Q5 REFINEMENT)
 
@@ -486,9 +486,9 @@ V1 supports 2 paths: (1) canonical seed declares PC actor_id; (2) Forge admin bi
 - (D) admin-only — no clear path to multi-user V1+
 - (C) wins — canonical seed for narrative realities; Forge admin V1 immediate; V1+ PO_001 player self-onboarding
 
-### §8.5 Defer pc_stats_v1_stub V1+ (Q4 LOCKED)
+### §8.5 Defer pc_stats_v1_stub V1+ (Q4 LOCKED → **RESOLVED 2026-07-26**)
 
-PROG_001 actor_progression + RES_001 vital_pool + PL_006 actor_status cover stats; PCS_001 V1 = 2 aggregates instead of 3.
+PROG_001 actor_progression + RES_001 vital_pool + PL_006 actor_status cover stats; PCS_001 V1 = 2 aggregates instead of 3. **2026-07-26 (DF07_001 DRAFT):** the deferral is now *closed*, not pending — DF7 owns the derived-stat projection over exactly those three inputs and deliberately stores nothing (DF7-A2), so PCS_001 stays at 2 aggregates permanently. PCS-D4 moves to "resolved / won't-build".
 
 **Reasoning:**
 - PROG_001 superseded DF7 placeholder per PROG_001 DRAFT (commit a76a4e4)

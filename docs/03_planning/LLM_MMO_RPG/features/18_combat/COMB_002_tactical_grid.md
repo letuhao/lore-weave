@@ -1,13 +1,26 @@
-# COMB_002 — Tactical-Grid Combat (design)
+# COMB_002 — Tactical-Grid Combat
 
-> **Status:** DRAFT — 2026-06-20. Detailed design for the **tactical-grid combat layer** introduced
-> by decision **AUD-F1** ([`10_medium_blast_radius_audit.md`](../../10_medium_blast_radius_audit.md)),
-> which reversed COMB_001's abstract/no-zone-graph V1 stance under the rendered 2D/2.5D medium.
-> **This unblocks COMB_001 DRAFT promotion.** Builds on the COMB_001 locked combat model (action set,
-> HSR action-value initiative, 4-step damage law-chain, 3-layer LLM-zero-math architecture, Q1–Q9) —
-> **none of which this changes.** It adds the spatial layer those decisions deferred.
-> **Decisions** `TG-D1..D8`; axioms `TG-A1..A4`. Pending `_boundaries/` lock for the COMB-owned
-> `tactical_grid` aggregate before promotion.
+> **Status:** **CANDIDATE-LOCK 2026-07-26** (DRAFT 2026-06-20 → this closure pass). Detailed design for the
+> **tactical-grid combat layer** introduced by decision **AUD-F1**
+> ([`10_medium_blast_radius_audit.md`](../../10_medium_blast_radius_audit.md)), which reversed COMB_001's
+> abstract/no-zone-graph V1 stance under the rendered 2D/2.5D medium.
+> Builds on the COMB_001 locked combat model (action set, HSR action-value initiative, 4-step damage
+> law-chain, 3-layer LLM-zero-math architecture, Q1–Q9) — **none of which this changes.** It adds the
+> spatial layer those decisions deferred.
+> **Decisions** `TG-D1..D8`; axioms `TG-A1..A4`. The `tactical_grid` aggregate is registered in
+> `_boundaries/01_feature_ownership_matrix.md` (2026-06-20 registration batch).
+>
+> **Promoted 2026-07-26 because its two dangling references now resolve.** The DRAFT depended on symbols
+> no doc declared: `move_range`'s inputs, `skill.range`, and TG-A4's *target*. All three now have owners:
+>
+> | Was dangling | Now owned by |
+> |---|---|
+> | `move_range = base_move + ⌊speed / K⌋` — no `speed` source, constants unowned | **DF07_001** §3 `Speed` slot + `stat_tuning` (`base_move` / `speed_per_tile` / `max_move`) — §3 below is superseded on the constants only; the TG-A3 formula and its double-dip note are unchanged |
+> | `skill.range` (§5) — no declaring type | **ABL_001** `AbilityDecl.range` (Chebyshev) + `requires_los` |
+> | TG-A4 stances all take a `target` — nothing chose one | **COMB_003** threat ordering (THR-A1); an LlmDriver picks its stance *and* its target from the same bounded top-K list |
+> | §7 wilderness arena generator — **no caller existed** | **COMB_005** §6 step 2 (encounter formation on a non-cell tile). No change to the generator itself |
+>
+> See [`COMB_001` §0](COMB_001_combat_foundation.md) for the family map.
 
 ---
 
@@ -54,6 +67,12 @@ melee-vs-ranged distinction) without a hex substrate. Default size **16×16** (C
 - `move_range` = engine-computed from the actor's **speed** stat (configurable; default `base_move +
   ⌊speed / K⌋`, clamped). Fast units act *more often* (AV) **and** reach *farther* (move_range), as in
   HoMM3 — tunable if double-dipping speed proves too strong.
+  > **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (DF07 closure item 6).** `move_range` is now DF07 `StatSlot`
+  > `MoveRange`, the one slot with an engine *derivation* rather than an author term list, and the three
+  > constants relocate to `RealityManifest.stat_tuning`: `base_move` (default 3), `speed_per_tile`
+  > (default 50, the `K` above), `max_move` (default 10) — so default `Speed` 100 ⇒ **5 tiles** on a 16×16
+  > grid. **TG-A3 semantics are unchanged**; authors tune the double-dip via `speed_per_tile` rather than
+  > by decoupling the slots, exactly as this section anticipated.
 - "No Move verb V1" (COMB_001 §6) is **superseded**: movement is a turn *phase*, not a competing verb —
   the one-action-per-turn rule (Strike/Skill/…) is preserved exactly.
 
@@ -100,6 +119,16 @@ melee-vs-ranged distinction) without a hex substrate. Default size **16×16** (C
 > The engine scores candidate tiles via an **influence map** (per the turn-based-AI literature) and
 > A*-paths to the best, deterministically. The LLM gets positional agency (kite/flank/cover) at **flat
 > token cost** — never reasoning over raw cells.
+
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — where the `target` comes from (COMB_003).** Every stance above
+> takes a `target`, and the DRAFT never said who picks it. It is now **COMB_003**: the engine ranks
+> targets by threat (THR-A1) and hands an LlmDriver a **top-K vague-labelled candidate list** (THR-A4,
+> K = 3 default). The NPC chooses its stance **and** its target from that one bounded payload — so
+> positional and target agency cost the same flat tokens, and neither can name something the engine did
+> not offer. `TakeCover`'s *"live enemies"* resolves to the same eligible set (COMB_003 §7).
+> **Minor NPC** proximity AI uses `TargetSelector::NearestHostile`; **Untracked** bulk uses
+> `HighestThreat` against the group's single pooled threat row — the closed selector enum that replaces
+> the concept notes' bare `"lowest_hp_hostile"` string.
 
 - **Minor NPC:** scripted proximity AI — move toward nearest enemy, attack if in range (the literature's
   baseline). **Untracked:** engine bulk-resolve, no movement nuance.
@@ -176,7 +205,10 @@ units, facing/flanking bonuses, zone-of-control. All slot onto this grid additiv
 
 ## 12. Cross-references
 
-- AUD-F1 + audit — [`10_medium_blast_radius_audit.md`](../../10_medium_blast_radius_audit.md)
+- AUD-F1 + audit — [`10_medium_blast_radius_audit.md`](../../10_medium_blast_radius_audit.md) · [`12_module_coverage_audit.md`](../../12_module_coverage_audit.md)
+- Family map — [`COMB_001` §0](COMB_001_combat_foundation.md)
+- Target source for TG-A4 — [`COMB_003`](COMB_003_threat_and_targeting.md) · Arena caller — [`COMB_005`](COMB_005_encounter_spawning.md) §6
+- `move_range` slot + tuning — [`DF07_001`](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) §3, §5.2 · `skill.range` — [`ABL_001`](../19_ability/ABL_001_ability_foundation.md) §5.2
 - Combat foundation — [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (action set, initiative, damage, layers)
 - Instanced scene / handoff — [`08_realtime_movement_authority.md`](../../08_realtime_movement_authority.md) (RTM-Q4)
 - Grid substrate — [`features/00_cell_scene/CSC_001_cell_scene_composition.md`](../00_cell_scene/CSC_001_cell_scene_composition.md), [`features/00_tilemap/TMP_001_tilemap_foundation.md`](../00_tilemap/TMP_001_tilemap_foundation.md)

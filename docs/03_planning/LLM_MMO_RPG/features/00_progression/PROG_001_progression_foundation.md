@@ -6,9 +6,10 @@
 >
 > **CLOSURE-PASS-EXTENSION 2026-04-27 (TDIL_001 DRAFT promotion):** Q3f "DailyBoundary only V1" Generator semantic SUPERSEDED by TDIL-A3 per-turn O(1) Generator semantic (architecture-scale TDIL_001 Time Dilation Foundation). Mechanical revision: `Scheduled:CultivationTick` Generator binding changes from `EVT-G2 FictionTimeMarker (day-boundary)` to **per-turn fire** with elapsed-time parameter. Computation invariant: `delta = base_rate × elapsed_time × multiplier` (O(1) regardless of `time_flow_rate` magnitude). Per TDIL-A4 actor-bound clock-source matrix, CultivationTick reads `body_clock` (BodyOrSoul::Body progressions) or `soul_clock` (BodyOrSoul::Soul progressions) per ProgressionKindDecl.body_or_soul discriminator — NOT channel `wall_clock`. NO semantic change to user-facing behavior (PCs still cultivate per fiction-time elapsed; Tracked NPCs lazy materialization preserved); all V1 acceptance scenarios AC-PROG-1..12 preserved. Cross-realm tu tiên (Tây Du Ký heaven 0.0027× / Dragon Ball chamber 365×) now correctly handled by elapsed-time multiplication. Affected sections: §6 Training Triggers (Time-source semantic), §7 Hybrid Observation NPC Model (Tracked NPC lazy materialization formula), §12 Generator Bindings (Scheduled:CultivationTick binding row), §14 Cascade Integration (EVT-G2 → per-turn fire). PROG-D19 RES_001 alignment concern resolved via TDIL-A3 unified per-turn semantic. See [TDIL_001 §6 Generator clock-source matrix](../17_time_dilation/TDIL_001_time_dilation_foundation.md#6-generator-clock-source-matrix-q6-locked) for full clock-source matrix and [TDIL_001 §6.4 closure-pass coordination](../17_time_dilation/TDIL_001_time_dilation_foundation.md#64-closure-pass-coordination) for cascade rationale.
 > **⚠ CLOSURE-PASS-EXTENSION 2026-06-20 — COMB_001 Combat Foundation DRAFT promotion:** PROG_001 §9 V1 Strike formula is **REVERSED** — the hybrid "LLM-proposes-damage → engine-clamps" direction is replaced by **engine-computes-damage** end-to-end via the COMB_001 4-step damage law-chain (LLM-zero-math, COMB-A1). The simple PROG-D24 deterministic form is promoted to V1; the LLM **never** proposes a `damage_amount`. No PROG schema change beyond the §9 formula-direction note — the damage computation lives in the CombatEngine. See [COMB_001 §4](../18_combat/COMB_001_combat_foundation.md) + [COMB_002 tactical grid](../18_combat/COMB_002_tactical_grid.md).
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — DF07_001 Actor Stat Block DRAFT:** §9's `StrikeFormulaDecl.offense_terms` / `.defense_terms` are **SUPERSEDED** by DF7 `StatSlotDecl` for the `StrikePower` / `Armor` slots — same `StatTerm` shape (DF7 becomes its owner-of-record), one declaration site instead of two. `post_damage_hooks` stays with combat. PROG-D24 / PROG-D30 ("DF7-equivalent full damage law") now point at a real document: [DF07_001](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md). **PROG-D25 (crit deferred V1+) is REVERSED** — crit ships V1 as the `CritChance` / `CritMult` slots, because COMB_001's locked V1 law-chain and RNG seed roles already assume it (DF7-Q11). No PROG schema change; the projection law lives in DF7. See DF07_001 §6.1 (`instrument_match` reuse) + §11 closure items 1–2.
 > **i18n compliance:** Conforms to RES_001 §2 cross-cutting pattern — all stable IDs English `snake_case` / `PascalCase`; all user-facing strings `I18nBundle`.
 > **V1 testable acceptance:** 12 scenarios AC-PROG-1..12 (§16).
-> **Supersedes:** DF7 PC Stats placeholder (V1-blocking deferred since 2026-04-23). DF7-V1+ becomes "Combat Damage Formulas Full" sub-feature reading PROG_001 ProgressionInstance values (per chaos-backend law chain — PROG-D24).
+> **Supersedes:** DF7 PC Stats placeholder as originally scoped (inventory / relationships / simple stats, deferred since 2026-04-23). **Partially reversed 2026-07-26:** DF7 was re-scoped to the *derived-stat projection layer* (engine slot set + resolution law) which PROG_001 deliberately does not own — see [DF07_001](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) §1. PROG_001 remains the open author-declared value substrate; DF7 is the closed engine-facing projection of it.
 
 ---
 
@@ -752,6 +753,15 @@ Both V1+30d but separate mechanisms. Atrophy uses `last_trained_at_fiction_ts`; 
 ---
 
 ## §9 — Combat Damage Formula V1 (Q7 LOCKED)
+
+> **⚠ 2026-07-26 — direction + ownership now settled.** Two dated corrections apply to this whole section:
+> (a) **COMB_001 2026-06-20** reversed the hybrid direction — the LLM never proposes `damage_amount`; the
+> engine computes the 4-step law-chain end-to-end (COMB-A1, LLM-zero-math).
+> (b) **DF07_001 2026-07-26** takes over the *stat inputs* — `offense_terms` / `defense_terms` below are
+> superseded by the `StrikePower` / `Armor` `StatSlotDecl`s (identical `StatTerm` shape), and the stat
+> resolution runs in fixed-point milli-units per DF7-A4. `damage_floor` + `post_damage_hooks` remain with
+> the combat engine. **Read §9.2–§9.5 as historical derivation**, with the live contract at
+> [DF07_001 §5–§8](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) + [COMB_001 §4](../18_combat/COMB_001_combat_foundation.md).
 
 ### §9.1 Hybrid V1 architecture
 

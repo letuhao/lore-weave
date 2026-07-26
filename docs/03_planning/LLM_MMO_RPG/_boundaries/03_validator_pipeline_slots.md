@@ -67,6 +67,19 @@ incoming TurnEvent / EVT-T* candidate
     │         purpose: cell-internal layout constraints — zone integrity;
     │                  walkable/placeable for write events modifying cell state
     │
+    │   3.5.e ★ item_structural ★            → PL_007 (added 2026-07-26)
+    │         purpose: item/equipment constraints no other sub-stage can express —
+    │                  def known · held-by-agent · equip slot valid/free · equip
+    │                  requirements · charges remaining · use-effect declared ·
+    │                  pickup in-cell · StrikeKind permitted by the weapon ·
+    │                  equipped-item transfer forbidden · capacity (V1+30d)
+    │         position: LAST in the group — most specific, per the group's
+    │                  fail-fast common-case-first ordering convention
+    │         DELEGATES rather than duplicates (5 checks): item exists +
+    │                  destroyed/removed + affordance-missing → 3.5.a EF_001;
+    │                  place destroyed → 3.5.b PF_001; drop-tile not placeable →
+    │                  3.5.d CSC_001 `csc.item_on_non_placeable`
+    │
   [stage 4] ★ lex_check ★
     │   purpose: hard physics-axiom enforcement (does this ability exist in this reality?)
     │   owner: WA_001 Lex
@@ -121,6 +134,7 @@ These run AFTER commit (queued during validator pipeline; executed in same handl
 | Idempotency cache write | PL_001 §14 | After every accepted/rejected turn (60s TTL) |
 | **PlaceDestroyed cascade** (added 2026-04-26 alignment review) | PF_001 §6.1 | After Accepted PF_001 place state delta `→ Destroyed`; emits dedicated EVT-T3 sub-shape with occupants list; consumer features (PCS_001 / NPC_001 / future Item / future EnvObject) subscribe for cascade response; cascade ordering 4-step deterministic per PF_001 §7 |
 | **EntityLifecycle cascade (HolderCascade)** (added 2026-04-26) | EF_001 §6.1 | After Accepted EF_001 lifecycle delta from cascade source (parent destroyed → held items drop / containers cascade); deterministic atomic batch with cascading entity_binding deltas |
+| **Equipment clearing on holder cascade** (added 2026-07-26) | PL_007 §8.4 (hooks EF_001 §6.1) | Runs **inside** the EF_001 HolderCascade atomic batch, not after it: when an actor transitions to `Destroyed`/`Removed`, every `actor_equipment` slot for that actor is cleared in the same batch. EF_001 §6.1 already drops held items to the ground (`HeldBy → InCell`, lifecycle preserved — "the items survive their owner"); without this hook the equipment rows would still reference them and **C38/ITM-C4 would be violated**. This is the concrete consumer EF_001 §6.1's "future Item" placeholder anticipated. Also bumps `equipment_version`, so DF07's `StatEpoch` invalidates the dead actor's cached stat block. AC-ITM-9. |
 
 ---
 
@@ -133,7 +147,18 @@ Each sub-stage in the structural-validators group has an applicability predicate
 | **3.5.a entity_affordance** | EVT-T1 Submitted with target entity_ids in payload (PL_005 InteractionKinds: Speak/Strike/Examine/Give/Use); EVT-T1 sub-types referencing entities | EVT-T4 System (DP-emitted; no actor target) · EVT-T8 Administrative scope-based (no entity reference) · EVT-T3 Derived (already-validated cascade outputs) · payload has no entity_id field |
 | **3.5.b place_structural** | Any event with cell-context (most PC actions; PL_005 InteractionKinds; Travel) | EVT-T8 Administrative pre-canon-active phase · cross-reality refs (V1+ only; structural across realities) · pure metadata events (no place reference) |
 | **3.5.c map_layout** | Travel events specifically (PL_001 §13 cell-to-cell or non-cell-tier scripted-NPC-travel); Forge:EditMapLayout admin events | Non-Travel EVT-T1 · cell-internal events (PL_005 Speak/Strike/Examine/Give/Use within same cell) · entity_binding lifecycle deltas (handled by entity_affordance instead) |
-| **3.5.d cell_scene** | Write events modifying cell state — Forge:EditCellScene; PL_005 Strike Destructive cascade triggers (place state transition); CSC's own Layer 3 LLM commit | Read events (cell scene UI subscribe) · non-cell scope events · already-canonical events that don't mutate cell layout |
+| **3.5.d cell_scene** | Write events modifying cell state — Forge:EditCellScene; PL_005 Strike Destructive cascade triggers (place state transition); CSC's own Layer 3 LLM commit; **`Item:Drop` + `Item:PickUp`** (added 2026-07-26 — see the note below) | Read events (cell scene UI subscribe) · non-cell scope events · already-canonical events that don't mutate cell layout |
+
+> **3.5.d predicate extended 2026-07-26 (PL_007 review pass) — a delegated check that could not fire.**
+> PL_007 §9.1 delegated "drop target tile not placeable" to `csc.item_on_non_placeable` at 3.5.d, but the
+> predicate as written matched none of the `Item:*` sub-types, so 3.5.d early-exited on every drop and the
+> delegated check would never have run — items could be dropped onto non-placeable tiles indefinitely
+> while both docs read as though it were covered. `Item:Drop` and `Item:PickUp` are therefore added to the
+> predicate (they do mutate cell occupancy, so they belong here on the predicate's own terms).
+> **Ownership:** the predicate is CSC_001's, so this is registered as a **CSC_001 closure-pass extension**
+> (PL_007 §12.8) for CSC_001 to absorb when next opened. Bite test: PL_007 AC-ITM-16 fails if 3.5.d
+> early-exits on a drop.
+| **3.5.e item_structural** (added 2026-07-26) | EVT-T1 Submitted of sub-type `Item:PickUp` / `Item:Drop` / `Item:Equip` / `Item:Unequip`; **and** PL_005 `Use` / `Give` / `Strike` whose `tools[0]` is `InstrumentRef::Item` | Every other event — which is most of them (Speak · Examine · Travel · all EVT-T3/T4/T5 · EVT-T8 except the 4 `Forge:*Item*` sub-shapes · any PL_005 kind with a non-Item tool or no tool) |
 
 **Applicability is determined by event-kind match against the predicate table.** Each sub-stage's owner-feature documents the predicate in their spec (EF_001 §11 / PF_001 §12 / MAP_001 §12 / CSC_001 §13). Validator implementation calls `applies_to_event(event)` first; skips cleanly if false.
 
@@ -187,6 +212,7 @@ Helps onboarding — quick lookup "which stage owns my rule_id":
 | **3.5.b** | **place_structural** | **`place.*`** | **PF_001 (12 V1)** | 4 V1+ (scheduled_decay_collision, cross_reality_connection, procedural_generation_rejected, connection_gate_unresolved) |
 | **3.5.c** | **map_layout** | **`map.*`** | **MAP_001 (13 V1)** | 3 V1+ (cross_reality_layout, layout_too_dense, connection_method_unsupported) |
 | **3.5.d** | **cell_scene** | **`csc.*`** | **CSC_001 (9 V1)** | 4 V1+ (skeleton_invalid, procedural_density_too_high, narration_unsafe_content, layer3_occupant_set_changed) |
+| **3.5.e** | **item_structural** (added 2026-07-26) | **`item.*`** + `item.inventory.*` | **PL_007 + PL_007b (21 V1 rejects + 2 V1 warnings)** | 4 V1+ (durability_exhausted, bound_to_other_actor, container_depth_exceeded, ammunition_missing) |
 | 4 | lex_check | `lex.*` | WA_001 | — |
 | 5 | heresy_check | `heresy.*` | WA_002 | — |
 | 6 | A6 output filter | (logged) | 05_llm_safety A6 | — |
@@ -265,6 +291,15 @@ Cross-aggregate consistency rules run at **bootstrap time** (canonical seed vali
 | **C33 (PO-C4): Mode B/C draft_data per-feature schema validation** | PO_001 (delegates to per-feature validators: race_id ∈ canonical_races / language_id ∈ canonical_languages / archetype_id ∈ 12 V1 archetypes / origin_pack ∈ canonical_origin_packs / ideology_id ∈ canonical_ideologies / faction_id ∈ canonical_factions / role_id ∈ FactionDecl.roles / dynasty_id ∈ canonical_dynasties / progression_kind_id ∈ progression_kinds / resource_kind ∈ resource_kinds / spawn_cell ∈ places) | At Forge:CompleteOnboarding, validate draft_data against all per-feature canonical seed validators | `onboarding.draft_invalid` (PO_001 namespace; aggregates per-feature failures) |
 | **C34 (PO-C5): PC cap=1 V1 per actor_user_session.user_id (matches PCS-C13)** | PO_001 + PCS_001 | At Forge:CompleteOnboarding, count existing canonical_actors[kind=Pc] where user_id_init = current user_id within reality_id; reject if ≥ reality.max_pc_count (V1 cap=1 per PCS-A9) | `onboarding.user_already_has_pc` + `onboarding.pc_cap_exceeded` (PO_001 namespace) |
 | **C35 (PO-C6): Mode A canonical PC binding — actor.user_id_init must be None at bind time** | PO_001 + PCS_001 | At Forge:CompleteOnboarding (Mode A), verify selected canonical_pc.user_id_init.is_none() (not yet bound to other user); reject if Some | `onboarding.canonical_pc_unavailable` (PO_001 namespace) |
+| **C36 (ITM-C2): `item_defs.def_id` ∩ `resource_kinds.kind_id` = ∅** | PL_007 | Canonical seed: an `ItemDefId` equal to any `resource_kinds.kind_id` means the same thing would exist BOTH as a fungible balance and as instanced entities — the two-representations drift ITM-A2 forbids. **This is the rule that makes ITM-A2 enforced rather than asserted** (AC-ITM-2). | `item.def_collides_with_resource_kind` (PL_007 namespace) |
+| **C37 (ITM-C3): `item_instance` row ⟺ `entity_binding` row** | PL_007 + EF_001 | An instanced item's body and its binding are created and destroyed in the SAME transaction; neither may exist alone. The binding carries location + lifecycle, the instance carries identity + def + charges (split for the same write-frequency reason EF_001 split `entity_lifecycle_log`). Killing the transaction between the two writes must leave **neither** row (AC-ITM-3). | `entity.unknown_entity` / `item.unknown_def` |
+| **C38 (ITM-C4): every `actor_equipment` slot references a held, Existing instance** | PL_007 | Every `slots[*].instance` MUST satisfy `entity_binding.location == HeldBy(actor_ref)` AND `lifecycle_state == Existing`. Enforced at write, AND re-asserted by the **RUNTIME cascade hook below** — without the hook, a holder's death leaves `actor_equipment` pointing at items now lying on the floor. | `item.not_held` (write-time); cascade auto-clears (no reject) |
+| **C39 (ITM-C7): `instrument_match` tags resolve to a declared item tag** | PL_007 + PROG_001 + DF07 | Every `InstrumentMatch::ItemTag(t)` in `progression_kinds[*].training_rules` and every `stat_slots[*].terms[*].instrument_match` must resolve to a tag carried by at least one `item_defs[*].instrument_tags`. Otherwise the rule is **silently unsatisfiable** — the author sees a declared bonus that can never fire, which is worse than an error. **Warning, not reject** (an author may legitimately declare tags before the items that carry them). | `item.instrument_tag_unreferenced` (PL_007 namespace; **warning**) |
+| **C40 (ITM-C8): item charge-config coherence** (added 2026-07-26 review) | PL_007 | `consume_on_exhaust == true` ⇒ `max_charges == Some(n)`, `n > 0`. Both contradictory combos are otherwise silently accepted: `consume_on_exhaust` + `max_charges: None` is a destroy-on-exhaustion item that can never exhaust (dead flag), and `Some(0)` mints an item born exhausted (destroyed on first use, or immediately, depending on implementation order — an ambiguity better rejected than resolved). | `item.def_invalid` (Stage 0) |
+| **C41 (ITM-C9): a def edit may not orphan equipped instances** (added 2026-07-26 review) | PL_007 + WA_003 | `Forge:EditItemDef` may not change `equip.slot` / `equip.also_blocks` / remove `equip` while any live instance of that def occupies an `actor_equipment` slot — otherwise already-committed state violates ITM-V3 with no path that re-validates it. Same shape as TVL_001's `route.remove_blocked_by_active_journey` gate: block the admin edit and name the blocker. | `item.def_edit_blocked_by_equipped` (Stage 7 Forge admin) |
+| **C42 (ITM-C10): Untracked actors hold no items and have no equipment row** (added 2026-07-26 review) | PL_007 + AIT_001 + COMB_005 | An AIT_001 Untracked NPC's gear is flavour resolved from its DF07 `stat_archetypes` block, never instanced; items materialise only on promotion to Minor/Major via the existing AGT-D5 path. **Scaling invariant, not an optimisation:** without it, COMB_005's default-`Untracked` hostile spawns mint one `item_instance` + one `entity_binding` per enemy per weapon — the entity-count explosion AIT_001 exists to prevent, reached through the item system's back door. Consistent with COMB_005 §7 ("zero per-actor state") and COMB_004 generating loot from tables rather than from a corpse's carried inventory. | `item.untracked_actor_cannot_hold` (Stage 0 + 3.5.e) |
+| **C43 (ITM-C11): `nutritional` is a `resource_kinds` property only** (added 2026-07-26 review) | PL_007 + RES_001 | An `ItemDefDecl` can never be food. RES_001 §7.2's `Scheduled:HungerTick` scans `actor.resource_inventory`; it does not walk held item entities. Without this rule an author declares `travel_ration` as an `ItemClass::Consumable` item, the PC carries twenty, and **starves** — `Hungry` magnitude 7 escalates to `MortalityTransitionTrigger`. A silent, fully-reachable bug with a mortality consequence. Instanced food needs the hunger tick to read held instances first (ITM-D23, RES_001-owned). | `item.def_invalid` (Stage 0) |
+| **C44 (PL_007 §6.1): equip slot profile ≤ 12** (added 2026-07-26 review) | PL_007 | An author-declared profile with no bound silently breaks PL_007b's ITM-A9 digest guarantee: `InventoryDigest` renders every equipped item in full, so a 30-slot reality emits 30 equipped lines and trips the bound assertion on a **legitimate config** rather than a defect. Fixed together with restating the bound as a formula over profile size (PL_007b §5). | `item.slot_profile_too_large` (Stage 0) |
 
 ### Rule application discipline
 

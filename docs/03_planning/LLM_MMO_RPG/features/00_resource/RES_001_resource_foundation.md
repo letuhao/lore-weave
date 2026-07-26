@@ -268,6 +268,19 @@ Author can override any default by declaring same `kind_id`.
 
 ### §4.1 `vital_pool` aggregate
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — DF07_001 Actor Stat Block DRAFT.** `VitalInstance.max_value` is
+> no longer a static per-actor-class constant: it is **derived** from the DF7 `MaxHp` / `MaxStamina` stat
+> slots, and `VitalProfile.max_value` degrades to that slot's `base` term (so existing `vital_profiles`
+> declarations keep working unchanged, with progression/equipment/status now layering on top).
+> **This resolves RES-Q1** ("what max_value for PC vs NPC peasant vs NPC noble?") — the answer is *derived*,
+> not declared per class. New delta_kind on `aggregate_type=vital_pool`: **`VitalMaxRecomputed { kind,
+> old_max, new_max }`** with two locked rules — max **increase** leaves `current_value` untouched (growth
+> does not heal; otherwise an equipment swap is a heal exploit), and max **decrease** clamps
+> `current_value` **without** firing `OnZeroEffect` (a clamp must never kill; only damage does).
+> `RegenRule` / `DepletionRule` / `OnZeroEffect` remain RES_001-owned — DF7 supplies the ceiling only.
+> Mid-combat, changes apply at the next round boundary per DF7-Q5. See
+> [DF07_001 §7](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md).
+
 **Scope:** T2/Reality (per DP-A14). One instance per Actor (PC + NPC).
 **Owner:** Body-bound — `vital_pool.actor_ref` MUST resolve to an entity_binding with body-presence.
 **Transferable:** NO (type-system enforced — no transfer event accepts vital_pool source/target).

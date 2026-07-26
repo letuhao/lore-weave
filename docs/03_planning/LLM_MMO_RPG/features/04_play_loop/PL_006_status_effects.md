@@ -197,6 +197,25 @@ Single `actor_status` aggregate covers PC + NPC. PCS_001 references via `pc_stat
 
 V1+ kinds declare their stack policy at registration in boundary matrix.
 
+### 8.3b Stat-layer effects per flag (DF07_001 closure-pass-extension 2026-07-26)
+
+> Until now every V1 flag was **narrative-only**. DF7 gives them mechanics by mapping each flag to
+> `StatModifier`s over the closed DF7 stat-slot set. PL_006 keeps owning the flags, magnitudes, stack
+> policy and lifecycle; **DF7 owns the mapping**; combat-resolution-only effects stay with COMB_001.
+
+| Flag | `stat_layer` | Stat modifiers (magnitude `m`) |
+|---|---|---|
+| `Drunk` | ✅ | `Accuracy` Flat −20·m ‰ · `Dodge` Flat −10·m ‰ |
+| `Exhausted` | ✅ | `Speed` Pct −5·m % · `StrikePower` Pct −3·m % |
+| `Wounded` | ✅ | `StrikePower` Pct −4·m % · `Dodge` Flat −15·m ‰ — **never `MaxHp`** (resizing the pool while `current_value` stands is a status that silently deals damage, breaking COMB_001's "status applies AFTER damage" invariant) |
+| `Frightened` | ✅ | `Accuracy` Flat −15·m ‰ · `StrikePower` Pct −3·m % |
+| `Hungry` | ✅ | `Speed` Pct −2·m % · `StrikePower` Pct −2·m % (supersedes the §8.4 "V1+30d −10% Stamina max" note — a max-pool change now goes through RES_001 `VitalMaxRecomputed`, not a raw clamp) |
+| `defending` · `slowed` · `hasted` · `stunned` · `knocked_out` (registration pending per COMB_001 closure item 3) | ❌ | **resolution-time, COMB-owned** — the AV mutations are pinned to exact percentages that a `Speed` modifier cannot reproduce (`av = 10000/speed` is non-linear), and applying them in both layers double-counts (DF7-A8). Registering one as a stat modifier trips validator DF7-V6. |
+
+**Rule for new flags (V1+):** at boundary-matrix registration each flag declares `stat_layer: bool`. A flag
+is stat-layer only if it is meaningful *outside* combat resolution. See
+[DF07_001 §6.3](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md).
+
 ### 8.4 Magnitude semantics
 
 `magnitude: u8` range 1..=10 V1. Higher = more intense effect. Specific behavior per flag:

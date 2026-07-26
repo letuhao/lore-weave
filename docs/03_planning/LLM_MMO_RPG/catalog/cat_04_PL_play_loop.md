@@ -44,4 +44,12 @@ generated_by: scripts/chunk_doc.py
 | PL-12 | Swipe / regenerate variants (SillyTavern pattern) | 📦 | V2 | PL-5 | Feature comparison doc |
 | PL-13 | Bookmarks / branch a session (SillyTavern pattern) | 📦 | V3 | PL-1 | Feature comparison doc |
 | PL-14 | Reasoning pass-through (Claude extended thinking etc.) | 📦 | V2 | PL-5 | Feature comparison doc |
+| PL-26 | Item definition registry (`item_defs` in RealityManifest; System-tier, `Forge:EditItemDef` the only runtime write path per ITM-A1) | 🟡 | V1 | EF-1, RES-1 | [PL_007 §5](../features/04_play_loop/PL_007_item.md) |
+| PL-27 | Item instances (`item_instance` aggregate; charges + provenance; paired 1:1 with an EF_001 `entity_binding` row per ITM-C3) | 🟡 | V1 | PL-26 | [PL_007 §4.1](../features/04_play_loop/PL_007_item.md) |
+| PL-28 | Equipment slots (`actor_equipment`; author-declarable profile with a 6-slot engine default; multi-slot items via `blocked_by_primary`) | 🟡 | V1 | PL-27 | [PL_007 §4.2, §6](../features/04_play_loop/PL_007_item.md) |
+| PL-29 | Equipment → stat contribution (`EquipmentStats` impl feeding DF07's `resolve_stat_block`; equipped-only; `InstrumentTag` for conditional "while wielding" bonuses) | 🟡 | V1 | PL-28, DF7 | [PL_007 §6.3, §6.4](../features/04_play_loop/PL_007_item.md) |
+| PL-30 | Item use effects (`UseEffectDecl` 7 V1 variants; charges; consume-on-exhaust → EF_001 Destroyed) | 🟡 | V1 | PL-27, PL-5 (Use kind) | [PL_007 §7](../features/04_play_loop/PL_007_item.md) |
+| PL-31 | Item-management actions (`Item:PickUp` / `Drop` / `Equip` / `Unequip` — engine-authoritative, no LLM; NOT new InteractionKinds per ITM-A7) | 🟡 | V1 | PL-27, PL-28 | [PL_007 §8.2](../features/04_play_loop/PL_007_item.md) |
+| PL-32 | Unified inventory view (`actor_inventory_view` + `cell_item_view` projections; capacity accounting; single-vs-bulk boundary behaviour) | 🟡 | V1 | PL-27, RES-1 | [PL_007b §3, §4](../features/04_play_loop/PL_007b_inventory.md) |
+| PL-33 | Bounded inventory prompt digest (`InventoryDigest` ≤29 lines regardless of inventory size; truthful elision; hostile-actor hiding per COMB_001 Q6) | 🟡 | V1 | PL-32, PL-4 | [PL_007b §5](../features/04_play_loop/PL_007b_inventory.md) |
 

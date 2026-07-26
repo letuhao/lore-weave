@@ -14,9 +14,9 @@
 | DF2 | Monetization / PC slot purchase | V1+30d | — | not yet designed |
 | DF3 | Canonization / Author Review | V2+ | — | pre-spec locked in `02_storage/S13_canonization_pre_spec.md` |
 | **DF4** | **World Rules** (per-reality rule engine) | **V1** | [DF04_world_rules/](DF04_world_rules/) | placeholder |
-| **DF5** | **Session / Group Chat** | **V1** | [DF05_session_group_chat/](DF05_session_group_chat/) | placeholder |
+| **DF5** | **Session / Group Chat** | **V1** | [DF05_session_group_chat/](DF05_session_group_chat/) | **CANDIDATE-LOCK 2026-04-27** — [`DF05_001_session_foundation.md`](DF05_session_group_chat/DF05_001_session_foundation.md) *(row corrected 2026-07-26; was stale "placeholder")* |
 | DF6 | World Travel | V3+ | — | not yet designed |
-| **DF7** | **PC Stats & Capabilities** | **V1** | [DF07_pc_stats/](DF07_pc_stats/) | placeholder |
+| **DF7** | **Actor Stat Block** (was "PC Stats & Capabilities") | **V1** | [DF07_pc_stats/](DF07_pc_stats/) | **DRAFT 2026-07-26** — [`DF07_001_actor_stat_block.md`](DF07_pc_stats/DF07_001_actor_stat_block.md); resolves AUD-F6 + PCS-D4 |
 | DF8 | NPC persona from PC history | V2+ | — | not yet designed |
 | DF9 | Admin Ops | V1+30d | — | referenced by R2/R6/R8/R9 |
 | DF10 | Event Schema Tooling | V1+30d → V3 | — | referenced by R3 |
@@ -49,8 +49,9 @@ Each file ~150-250 lines. Not 10-layer strategy.
 
 ## V1-blocking priorities (from SESSION_HANDOFF agenda)
 
-1. **DF5 Session/Group Chat** — biggest V1 unknown; DF4 + DF7 hang off its session boundaries
-2. **DF4 World Rules** — many features reference World Rules; clearer scope after DF5
-3. **DF7 PC Stats** — smallest; mostly schema work
-
-Recommend designing in that order.
+1. ~~**DF5 Session/Group Chat**~~ — **DONE** (CANDIDATE-LOCK 2026-04-27)
+2. **DF4 World Rules** — still CONCEPT; the last V1-blocking DF. DF7 registered its one hook into it (the
+   per-reality Lex stat clamp, DF7-D4); COMB_001 Q4 anti-grief covers the interim.
+3. ~~**DF7 PC Stats**~~ — **DRAFT 2026-07-26**, re-scoped from "PC schema" to the **derived-stat projection
+   layer** (the actual V1 blocker that AUD-F6 found). Not "mostly schema work": it owns 0 aggregates and
+   1 resolution law.
