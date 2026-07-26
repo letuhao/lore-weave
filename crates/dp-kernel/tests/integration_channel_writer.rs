@@ -2,7 +2,8 @@
 //!
 //! Gated on `LOREWEAVE_TEST_PG_URL` (same convention as
 //! `integration_event_store.rs`); skips cleanly when unset. Requires
-//! per-reality migrations 0002 + 0013 + **0014** pre-applied, PLUS the
+//! per-reality migrations 0002 + **0005** (outbox) + 0013 + **0014**
+//! pre-applied, PLUS the
 //! `events_y2026m05` partition — the shared-suite `envelope()` pins
 //! 2026-05-29 timestamps and migration 0002 only auto-creates the month
 //! current at migration time:
@@ -17,7 +18,16 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use dp_kernel::channel::{acquire_writer_lease, ChannelError, ChannelId, ChannelWriter};
-use dp_kernel::event_store::shared_test_suite::envelope;
+use dp_kernel::envelope::EventEnvelope;
+
+/// Shared-suite envelope with a RANDOM event_id: the suite derives event_id
+/// from aggregate_version, but `events_outbox`'s PK is bare event_id — the
+/// derived ids collide across tests sharing one DB.
+fn envelope(reality: Uuid, at: &str, ai: &str, ver: u64, et: &str) -> EventEnvelope {
+    let mut e = dp_kernel::event_store::shared_test_suite::envelope(reality, at, ai, ver, et);
+    e.event_id = Uuid::new_v4();
+    e
+}
 
 fn dsn() -> Option<String> {
     std::env::var("LOREWEAVE_TEST_PG_URL").ok()
@@ -74,6 +84,18 @@ async fn channel_append_allocates_monotonically() {
     .await
     .unwrap();
     assert_eq!(max_in_events, Some(5), "event rows carry the channel columns");
+
+    // S3b: the I13 outbox row rides the SAME tx — one unpublished row per
+    // committed event, ready for the platform publisher's drain.
+    // Kill-mutation: outbox insert outside the tx (or dropped).
+    let (outbox,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM events_outbox WHERE reality_id = $1 AND published = FALSE",
+    )
+    .bind(reality)
+    .fetch_one(&*pool)
+    .await
+    .unwrap();
+    assert_eq!(outbox, 5, "outbox row per committed event, atomically");
 }
 
 /// THE DP-A16 fence bite: after a newer lease exists, the old writer's

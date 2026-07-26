@@ -207,6 +207,17 @@ impl ChannelWriter {
         .execute(&mut *tx)
         .await?;
 
+        // ── 4: I13 outbox row, SAME tx (S3b) — every channel event fans
+        //    out via the platform publisher (Go, FOR UPDATE SKIP LOCKED
+        //    drain → per-reality stream). The atomicity contract is
+        //    `outbox.rs`: the row rides the transaction that inserted the
+        //    event, or neither exists.
+        sqlx::query(crate::outbox::insert_sql())
+            .bind(env.event_id)
+            .bind(env.reality_id)
+            .execute(&mut *tx)
+            .await?;
+
         tx.commit().await?;
         Ok(ChannelAppended { channel_event_id })
     }

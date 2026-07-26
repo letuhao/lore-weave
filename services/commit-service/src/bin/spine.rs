@@ -134,6 +134,11 @@ async fn main() -> anyhow::Result<()> {
 
     let (mut consumed, mut admitted, mut rejected, mut committed, mut aggregate_version) =
         (0u64, 0u64, 0u64, 0u64, 0u64);
+    // DP-A17 turn counter for this channel: an APPLIED resolution advances
+    // it; a validator rejection NEVER does (EVT-V4 — "turn_number /
+    // fiction_clock do NOT advance"; the player retries without burning a
+    // turn slot). Seeded 0 = "never advanced".
+    let mut turn_number: u64 = 0;
 
     loop {
         // Reclaim stale PEL entries first (dead prior consumers), then fresh.
@@ -166,8 +171,35 @@ async fn main() -> anyhow::Result<()> {
             match record.outcome {
                 AdmissionOutcome::Rejected { stage, ref reason } => {
                     rejected += 1;
-                    // EVT-L2 ack-on-reject: the rejection is the resolution.
-                    println!("REJECT [{stage}] {} — {reason}", msg.id);
+                    // S3b / CS-A4: a validator rejection is COMMITTED, not
+                    // just logged — the doc-15 "t2_write" outcome. It rides
+                    // the channel's audit order but does NOT advance
+                    // turn_number (EVT-V4).
+                    aggregate_version += 1;
+                    let env = EventEnvelope {
+                        event_id: Uuid::new_v4(),
+                        event_type: "proposal.rejected".into(),
+                        event_version: 1,
+                        aggregate_id: format!("enc-{}", args.channel),
+                        aggregate_type: "combat_session".into(),
+                        aggregate_version,
+                        reality_id: args.reality,
+                        occurred_at: now_rfc3339(),
+                        recorded_at: now_rfc3339(),
+                        payload: serde_json::json!({
+                            "rejected_at_stage": stage,
+                            "reason": reason,
+                        }),
+                        metadata: Some(serde_json::json!({
+                            "event_category": "T6",
+                            "turn_number": turn_number, // NOT advanced
+                        })),
+                    };
+                    let appended = writer.append(&env, &serde_json::json!([])).await?;
+                    println!(
+                        "REJECT-COMMIT [{stage}] {} → channel_event_id {} (turn stays {turn_number}) — {reason}",
+                        msg.id, appended.channel_event_id
+                    );
                     to_ack.push(msg.id.clone());
                 }
                 AdmissionOutcome::Admitted(input) => {
@@ -187,6 +219,10 @@ async fn main() -> anyhow::Result<()> {
                         .map(|(n, _)| *n)
                         .collect();
                     aggregate_version += 1;
+                    // DP-A17: only an APPLIED resolution consumes the turn.
+                    if matches!(outcome, Outcome::Applied { .. }) {
+                        turn_number += 1;
+                    }
                     let env = EventEnvelope {
                         event_id: Uuid::new_v4(),
                         event_type: match &outcome {
@@ -210,6 +246,7 @@ async fn main() -> anyhow::Result<()> {
                             "event_category": "T6",
                             "input_id": input_id.0.to_string(),
                             "admission_notrun_stages": notrun,
+                            "turn_number": turn_number,
                         })),
                     };
                     let appended = writer.append(&env, &serde_json::json!([])).await?;
@@ -233,6 +270,7 @@ async fn main() -> anyhow::Result<()> {
     println!("admitted  : {admitted}");
     println!("rejected  : {rejected} (schema/dedup/vocabulary — acked, recorded)");
     println!("committed : {committed} channel-ordered events under epoch {}", writer.lease().epoch);
+    println!("turn      : {turn_number} (rejections advanced NOTHING — EVT-V4)");
     println!("pel depth : {}", bus.pel_len().await?);
     println!("island    : applied={} metrics-accounted={}", isle.metrics().applied, isle.metrics().accounted());
     Ok(())

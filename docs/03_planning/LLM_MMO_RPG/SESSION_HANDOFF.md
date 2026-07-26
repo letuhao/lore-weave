@@ -100,9 +100,18 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > real Redis+PG: 4 consumed → 2 committed (channel_event_id 1,2 under epoch 2) · dup rejected at
 > idempotency · off-vocab rejected at vocabulary · PEL 0.** CP-less lease issuance (fence real,
 > issuer simplified — plan D3).
-> **NEXT:** S3b (outbox→bus emission of committed events + projections; Rejected commits via t2;
-> meter via `provider.call.completed`) → catalog backfill + link sweep (design-lint follow-up,
-> agent-batchable) → S4b real-IPC → doc 20 client wire contract.
+> **S3b DONE (02:0x, "continue S3"):** ChannelWriter::append now writes the **I13 outbox row in
+> the SAME tx** (dp-kernel `insert_sql` contract; emission = the existing Go publisher, CS-D6
+> reuse — wiring it to the throwaway DB is ops config, not code); **validator rejections COMMIT**
+> (`proposal.rejected`, channel-ordered — CS-A4 both-kinds-durable, doc-15's "t2_write" outcome);
+> **DP-A17 turn_number live** — the committed log reads ce3(turn 1) → ce4 rejected(**turn stays
+> 1**) → ce5(turn 2): EVT-V4's no-turn-on-rejection is now provable from the durable record.
+> Found en route: `events_outbox` PK is bare `event_id` (no reality scoping) — surfaced by a test
+> collision; pre-existing schema shape, flagged. Suites 22/22 + 3/3 live; clippy 0 new.
+> **NEXT:** wire the Go publisher to a game reality (ops) + a committed-events consumer PoC
+> (game-server room projection seam) → catalog backfill + link sweep (design-lint follow-up,
+> agent-batchable) → S4b real-IPC → doc 20 client wire contract → CP lease issuance service
+> (replaces the CP-less `acquire_writer_lease` issuer; fence unchanged).
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**
