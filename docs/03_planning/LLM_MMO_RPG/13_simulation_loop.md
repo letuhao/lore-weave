@@ -3,7 +3,7 @@
 > **Status:** DRAFT — 2026-07-26. The missing **simulation tier**: what advances the world, at what
 > cadence, in what order, and how work that takes **seconds to hours** coexists with movement that must
 > resolve in **milliseconds**. Opened by **AUD-F7** ([`12_module_coverage_audit.md`](12_module_coverage_audit.md)).
-> **Axioms** `SL-A1..A13`; decisions `SL-D1..D25`.
+> **Axioms** `SL-A1..A14`; decisions `SL-D1..D27`.
 > **Revision 1 — 2026-07-26 (PO challenge):** §7 **Concurrency** added — the original draft specified
 > the scheduler's *logic* but no *concurrency model*, which would have pinned the simulation to a single
 > CPU core. Islands, cross-island messaging, migration, and overload absorption now specified.
@@ -297,6 +297,47 @@ open — a `sim-core` instance is isolated, single-threaded and holds no ambient
 
 ---
 
+### 7.7 Dilation vs backpressure (SL-Q11 — RESOLVED, premise corrected)
+
+**SL-Q11 asserted a feedback loop: dilation slows consumption → the PEL grows → EVT-L5 throttles harder
+→ … Working it through, that is wrong, and the direction is worth being explicit about.**
+
+**Dilation slows *fiction-time*, not *processing*.** An island dilated 10× advances one fiction-second
+per ten wall-seconds, so action-values pop **less often in wall-clock terms** → fewer turns per second →
+**fewer `LlmDriver` dispatches** → **fewer inbound proposals**. The PEL therefore **shrinks**. Dilation
+is not a consumption brake; it is a **dispatch-rate brake**, and dispatch is what fills the bus.
+
+Nor can player input take up the slack: Gate 2 buffers **one pending intent per actor** (§6), so an
+input backlog coalesces rather than accumulating.
+
+> **SL-A14 — Dilation and backpressure answer *different* overloads, and dilation relieves both.**
+> `SL-A13` dilation responds to **simulation** overload (too much work per tick inside an island);
+> `EVT-L5` responds to **pipeline** overload (commit-service cannot drain the bus). Because dilating
+> lowers dispatch rate, it drains the PEL too — so they are **complementary, not competing**.
+
+**The real risk is double-correction**, not oscillation: if both fire independently on one overload you
+get dilation *and* producer throttling for a single cause, which feels far worse to players than either
+alone.
+
+> **SL-D26 — One actuator, two inputs.** Dilation is the **sole** first-line response; island step-time
+> **and** PEL depth are both *inputs* to it, never separate controllers.
+>
+> ```
+> load = max(normalised_step_time, normalised_pel_depth)
+> dilation = f(load)                       // primary actuator, continuous
+> ```
+
+> **SL-D27 — EVT-L5 producer throttling is an ESCALATION, not a parallel path.** It engages only when
+> dilation is already at its floor and load is still rising. Precedent: EVE caps TiDi at 10 % and does
+> not stack a second mechanism underneath it.
+
+**Signal scoping caveat:** dilation is **per-island** but the PEL is **per-stream**, and `CS-D10` puts
+encounter proposals on the parent **cell's** stream. So PEL depth is a *cell-scoped* signal covering the
+cell island **and** its encounter islands; step-time stays per-island. When a shared stream backs up,
+every island feeding it dilates. Simple, and it errs toward relieving the actual bottleneck.
+
+---
+
 ## 8. Region hotness — what ticks when nobody is there
 
 > Nothing. A region is **Hot** if it contains ≥1 live entity (a PC, or an NPC promoted by engagement per
@@ -413,6 +454,8 @@ for:
 | **SL-D22** | **Shot clock granularity** | **Per-turn**, not per-round — *forced*: HSR action-value initiative has no well-defined round (fast actors act more often), so "per-round" cannot be expressed without inventing a boundary the initiative model lacks. |
 | **SL-D23** | **Load dilation vs fiction time** | **Separate multipliers.** `effective_rate = fiction_rate × load_factor`. `fiction_rate` is canonical, player-visible and **replayed**; `load_factor` is operational, invisible and **always 1.0 on replay** — forced by SL-A6, since server load is an environmental artifact, not a game event. |
 | **SL-D24** | **Class C late results** | **Stall that aggregate's Class C lane only** — never Classes A/B, never another aggregate. Deadline → **skip to next cycle**, recorded. No compensating corrections in V1 (economy-scale delay is player-invisible). |
+| **SL-D26** | **Overload control — one actuator** | Dilation is the **sole** first-line response; island **step-time** and **PEL depth** are both *inputs* to it (`load = max(norm_step_time, norm_pel_depth)`), never separate controllers. Prevents double-correction (§7.7, SL-A14). |
+| **SL-D27** | **Producer throttling is escalation** | `EVT-L5` throttling engages **only** when dilation is at its floor and load is still rising — not in parallel with it. Precedent: EVE caps TiDi at 10 % without stacking a second mechanism. |
 | **SL-D25** | **Prefetch policy** | Prefetch actor *N+1* **only if no timer/generator/AoE event is scheduled to fire before N+1's turn** — the scheduler can inspect its own timer queue, so for *scheduled* events the risk is **computable, not guessed**. Track `decisions_dispatched` vs `decisions_committed`; **auto-disable prefetch on an island exceeding ~25 % waste**. Residual risk is unpredictable player input only. Closes SL-Q5 against AGT-D5. |
 
 ---
@@ -463,7 +506,7 @@ S1 is unblocked **today** and is the natural first code of the game tier.
 | # | Question | Why it is open |
 |---|---|---|
 | **SL-Q9** | Does the ≈1 ms cross-island IPC cost (SL-D20) actually matter in play? | Only measurable once S4b runs. If cross-region traffic turns out to be common, `worker_threads` returns to the table — but that means rebuilding Colyseus room distribution, so the bar is high. |
-| **SL-Q11** | **Do EVT-L5 backpressure and SL-A13 load dilation fight each other?** | Both react to the same overload, but in opposing directions: EVT-L5 throttles *producers* when the PEL grows, while SL-A13 dilates the island's tick — which **slows consumption**, growing the PEL further, throttling harder. A plausible feedback loop. Needs settling **before both are built** (S6/S7), and the likely answer is that dilation must feed a *damping* term into the PEL threshold rather than being independent of it. |
+| ~~**SL-Q11**~~ | ~~Do EVT-L5 backpressure and SL-A13 dilation fight each other?~~ | ✅ **RESOLVED 2026-07-26 → §7.7. The premise was wrong** — dilation *reduces* bus pressure rather than increasing it, so there is no feedback loop. The real risk is **double-correction**, fixed by making dilation the sole actuator with two inputs (SL-A14 / SL-D26 / SL-D27). |
 | ~~**SL-Q10**~~ | ~~Is a CSC_001 tile ~1 m?~~ | ✅ **RESOLVED 2026-07-26 — the question had a false premise.** CSC_001 defines **no metres-per-tile at all**; positions are abstract `TileCoord`. Nothing in the design needs a real-world scale. The research finding is a **ratio** (FOV ≈ 1.5 × partition size) and is therefore **unit-free**, so SL-D21's target is properly stated as **AOI radius ≈ 24 *tiles*** for a 16-tile cell. The "~24 m" phrasing imported metres that do not exist in this design; corrected. If a world scale is ever defined, **nothing here changes**. |
 
 ---
