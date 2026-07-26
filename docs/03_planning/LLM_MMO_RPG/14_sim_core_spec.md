@@ -5,7 +5,11 @@
 > Implements [`13_simulation_loop.md`](13_simulation_loop.md) (SL-A1..A13 / SL-D1..D18).
 > **Design intent:** this crate is the **POC and the production module** — built pure and WASM-ready
 > from the first commit (SL-A8) so integration into `game-server` is a wiring change, never a rewrite.
-> **Prefix** `SC-*`. Axioms `SC-A1..A7`; decisions `SC-D1..D3`. Pending `_boundaries/` lock alongside `SL-*`.
+> **Prefix** `SC-*`. Axioms `SC-A1..A10`; decisions `SC-D1..D3`. Pending `_boundaries/` lock alongside `SL-*`.
+> **Revision 3 — 2026-07-26 (failure-mode sweep):** two gaps closed that CS-A5 (native host) made urgent —
+> **§10.4 panic containment** (`SC-A8` poison-not-resume, `SC-A9` quarantine the poison-pill input) and
+> **§10.5 crash recovery** (`SC-A10` the event log *is* the recovery source; Class B needs no separate
+> checkpoint). Both change `sim-core`'s structure, so they land **before S1**.
 > **Revision 2 — 2026-07-26 (pre-build clarity sweep):** resolved a **contradiction** — `apply()` mutated
 > island state while `drain_proposals()` claimed sim-core never writes. **PO decision: the island is the
 > writer** (SC-A4); only effects *leaving* the island remain Proposals (SC-A5). Also closed five
@@ -73,6 +77,12 @@ WASM, or a native test binary — owns the process. Veloren uses exactly this sh
 
 **Dependency rule:** `sim-core` may depend on `serde`, `smallvec`, `rand_chacha`. It may **not** depend
 on `tokio`, `std::time`, `sqlx`, or any I/O crate. Enforced by a CI check on `Cargo.toml`.
+
+**Profile rule (SC-A8):** the `commit-service` build profile **must not** set `panic = "abort"` —
+`catch_unwind` cannot catch an aborting panic, so the §10.4 containment boundary would silently become a
+no-op. Also CI-checked, because that failure mode is invisible until a panic happens in production. (The
+neighbouring Veloren workspace sets `panic = "abort"` in its dev profile — an easy pattern to copy by
+accident.)
 
 ---
 
@@ -236,10 +246,15 @@ pub fn drain_proposals(&mut self) -> Vec<Proposal>;  // requests -> authorize
 **Aggregate identity (was unspecified).** The island *is* the aggregate, which is what makes SL-A11's
 per-aggregate ordering work:
 
-| Island | `aggregate_type` | `aggregate_id` | `aggregate_version` |
-|---|---|---|---|
-| encounter | `combat_session` *(already registered)* | `encounter_id` | committed-event count |
-| cell | `cell` | `cell_id` | committed-event count |
+| Island | `aggregate_type` | `aggregate_id` | `aggregate_version` | `channel_id` (CS-A6) |
+|---|---|---|---|---|
+| encounter | `combat_session` *(already registered)* | `encounter_id` | committed-event count | **own** ephemeral child channel, `level_name="encounter"` |
+| cell | `cell` | `cell_id` | committed-event count | the cell channel |
+
+**Aggregate and channel are different axes, and both apply** ([15 §7b.1](15_commit_service.md)): the
+*aggregate* is the state; the *channel* is its DP-A15 total-ordering + visibility scope. An island has
+one of each. Ordering within an island is therefore enforced twice over — by `aggregate_version` at the
+event-store level and by `UNIQUE(reality_id, channel_id, channel_event_id)` at the DB.
 
 ### 5.2 Advancing time (was unspecified for event-driven islands)
 
@@ -408,6 +423,76 @@ Not everything may move. Orleans marks grain types `Immovable`. Ours:
 Mid-combat migration buys little and risks the determinism guarantee; encounters are short-lived by
 construction (RTM-Q4), so pinning is cheap.
 
+## 10.4 Panic containment (closed 2026-07-26)
+
+**CS-A5 created this risk and it must be answered before S1.** With `sim-core` linked *natively* into
+`commit-service`, a panic is no longer sandboxed — a WASM host would have contained it; a native crate
+does not. One out-of-bounds index in one island's `step()` would otherwise kill the writer process and
+**every island on it**.
+
+> **SC-A8 — Every `step()` and `tick()` runs inside a panic boundary, and a panicking island is
+> POISONED, never resumed.** A panic can occur part-way through `apply()`, so the island's invariants
+> may be mid-mutation. It is therefore *not* recoverable in place: it is marked poisoned, dissolved with
+> `DissolutionReason::Unresponsive` (§10.1), and rebuilt per §10.5.
+
+```rust
+match std::panic::catch_unwind(AssertUnwindSafe(|| island.step())) {
+    Ok(outcome) => outcome,
+    Err(_payload) => {
+        island.poison();                       // state is UNKNOWN — do not resume
+        quarantine(item);                      // EVT-V2 `quarantine` — see poison-pill below
+        dissolve(island, Unresponsive);        // → rebuild, §10.5
+    }
+}
+```
+
+**The poison-pill trap.** Rebuilding replays committed events and re-consumes un-acked bus entries. If
+the input that caused the panic is simply replayed, it panics again — **an infinite crash loop**. So:
+
+> **SC-A9 — The input in flight when a panic occurs is QUARANTINED, never retried.** `EVT-V2` already
+> defines `quarantine` (isolate for manual operator review, SEV2, no auto-reject and no auto-commit) —
+> that is exactly the right destination, and it exists already.
+
+Three implementation requirements, all easy to get wrong:
+
+| | Requirement |
+|---|---|
+| **`panic = "abort"` must NOT be set** for the `commit-service` profile | `catch_unwind` cannot catch an aborting panic. Note the neighbouring Veloren workspace sets `panic = "abort"` in its dev profile — an easy pattern to copy by accident. |
+| `AssertUnwindSafe` + explicit poison flag | `&mut Island` is not `UnwindSafe`; this is the same discipline `std::sync::Mutex` poisoning uses, for the same reason. |
+| **Do NOT catch in `sim` / debug builds** | `cfg`-gate the boundary off so the chaos harness surfaces panics as test failures instead of silently quarantining them. |
+
+## 10.5 Crash recovery (closed 2026-07-26)
+
+§10.1 named `Unresponsive → "force-kill; rebuild from last checkpoint"` but never said *how*. The
+procedure, almost entirely from mechanisms that already exist:
+
+| # | Step | Mechanism |
+|---|---|---|
+| 1 | CP detects writer-node death, reassigns the writer | **DP-A16** — *"reassigned only on writer-node death"* |
+| 2 | New writer receives a **new epoch token** | **DP-A16 is already a fencing token**: the old writer's token is now stale, so its `event_log` inserts fail. This *is* the split-brain guard — no new mechanism needed. |
+| 3 | Rebuild island state = latest snapshot + events since | **`dp-kernel::load_aggregate`** over `aggregate_snapshots` + delta events — already built (and F8 shows RobustToolbox validating the same snapshot+delta shape) |
+| 4 | Re-subscribe to the bus; un-acked entries redeliver | Redis Streams **PEL** at-least-once; **EVT-L3** idempotency dedup makes redelivery safe |
+| 5 | Ephemeral state is re-derived or dropped (below) | — |
+
+> **SC-A10 — Class B needs no separate checkpoint mechanism.** Every Class B commit is already durable
+> in the event log, so **the event log is the recovery source**. Snapshots are a *speed* optimisation,
+> not a correctness requirement. (Class A is the opposite — never event-sourced, so its RTM-Q4 position
+> checkpoint *is* load-bearing.)
+
+**What is lost on rebuild — stated, because silence here becomes a bug:**
+
+| Lost | Consequence |
+|---|---|
+| **In-flight LLM decisions** (dispatched, not returned) | **Self-healing** — the actor is `AwaitingDecision` with no outstanding dispatch, so its deadline fires and **AGT-A2 fallback** commits. No special handling required. |
+| **Buffered intents** (Gate-2 misses) | Lost; the player re-issues. They were never committed, so no invariant breaks. |
+| **Class A ephemeral position** | Restored from the RTM-Q4 checkpoint (already designed). |
+| **Un-stamped trusted-origin input in the gateway** | Lost; the player re-issues. Bus-borne input redelivers via PEL. |
+
+The pleasing part: **the deadline/fallback machinery designed for slow LLMs turns out to be the recovery
+mechanism for lost ones too.** Nothing extra to build.
+
+---
+
 ## 11. Driver port
 
 ```rust
@@ -461,6 +546,8 @@ failing seed reproduces the bug exactly.
 | Deadline expiry | forced |
 | Cross-island message | delayed, reordered, target-dissolved |
 | Island dissolve | mid-flight, with work pending |
+| **Handler panic** (SC-A8) | injected mid-`apply()`; asserts poison → quarantine → rebuild, and that the poison-pill input is **not** replayed |
+| **Writer-node death** (§10.5) | injected at any step; asserts rebuild from snapshot+events, stale-epoch writes rejected, in-flight decisions resolve via AGT-A2 fallback |
 
 **Scenario 1 — "the meteor" (named regression):** 4v4 encounter island + 2 cell islands with live
 players + RES_001 generators firing + a cross-island meteor that kills both remaining combatants while

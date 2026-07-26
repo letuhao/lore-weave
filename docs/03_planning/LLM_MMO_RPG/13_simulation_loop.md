@@ -150,10 +150,16 @@ The one-path property matters: two schedulers would mean two determinism stories
 
 ## 6. Where the loop runs (PO decision 2026-07-26)
 
-> **SL-A8 — The simulation core is a pure Rust crate compiled to WASM, hosted inside the TypeScript
-> game-server.** This is the **same pattern already locked by RTM-Q10** for walkability/speed — the Rust
-> kernel publishes the rules, the TS game-server executes them in-process. Zero rule-drift, no per-turn
-> RPC.
+> **SL-A8 — The simulation core is a *pure* Rust crate** — no I/O, no ambient clock, no ambient
+> randomness.
+>
+> ⚠️ **REVISED 2026-07-26 (CS-A5 / SL-D7 above).** As first written this axiom also said "*compiled to
+> WASM, hosted inside the TypeScript game-server*", citing RTM-Q10. That host binding is **withdrawn**:
+> `commit-service` links `sim-core` as a **native** crate, because the epoch token and `event_log` writes
+> must be co-located with the island (DP-A16) and game services must be Rust (DP-A3). **The purity
+> requirement — which is the load-bearing half — is unchanged**, and it was never WASM-specific: purity
+> plus single-thread-steppability (SC-A2) are what make replay determinism and the chaos harness work.
+> RTM-Q10's WASM remains in force for Class A walkability in `game-server`.
 
 ```
 game-server  (TypeScript / Colyseus)
@@ -375,7 +381,7 @@ for:
 | **SL-D4** | Commit ordering | By logical key `(T_due, action_value, actor_id)` — never arrival time (SL-A5). |
 | **SL-D5** | Wall-clock events | Recorded as events; replay never re-consults a clock (SL-A6). |
 | **SL-D6** | Turn pressure | **PO 2026-07-26** — hybrid: solo `pc_deadline: None`, group 20 s shot clock; `npc_deadline` always bounded; AFK guard always on (SL-A7). |
-| **SL-D7** | Host | **PO 2026-07-26** — pure Rust `sim-core` → WASM inside the TS game-server, per the RTM-Q10 precedent (SL-A8). |
+| ~~**SL-D7**~~ | ~~Host — `sim-core` → WASM inside the TS game-server~~ | ⚠️ **REVISED 2026-07-26 by [15](15_commit_service.md) CS-A5/CS-D7.** `commit-service` must be native Rust (it does I/O; DP-A3), and DP-A16 requires the epoch token to sit on the writer node **with** the island — so `commit-service` **hosts `sim-core` as a plain Rust crate**, and `game-server` (TS) reverts to WS edge only. RTM-Q10's WASM stays for **Class A** walkability near the client; extending it to the **Class B** scheduler was an over-reach introduced here, not in RTM-Q10. **`sim-core`'s crate contract is unchanged** — purity (SL-A8) and single-thread-steppability (SC-A2) still hold; only *who links it* changed. |
 | **SL-D8** | V1 scope | **PO 2026-07-26** — design all three classes now; **stage the build** (§13). |
 | **SL-D9** | Latency hiding | Speculative prefetch of the next actor's decision at current-actor commit; validated at commit (§10). |
 | **SL-D10** | Region hotness | Cold regions receive no Class A tick; Class C only (§8). |
@@ -389,7 +395,7 @@ for:
 | **SL-D18** | Overload | Absorbed by **dilating the island's tick** (EVE TiDi), never by dropping work or splitting a live encounter. Reuses TDIL_001 clock machinery with a load-derived multiplier (SL-A13). |
 | **SL-D19** | **Tick rate — per island class** *(supersedes SL-D12)* | **Cell island: 20 Hz sim / 10 Hz snapshot** + client interpolation (RTM-A2). **Encounter island: event-driven, no fixed tick** — a turn-based encounter has nothing to integrate between turns. Precedent: AzerothCore's per-map-class timers (F3); WoW ticks ~20 Hz; network tick is commonly 10–12 Hz and is **distinct from** sim tick. Doubling tick rate roughly doubles both CPU and bandwidth. |
 | **SL-D20** | **Host threading** | **One OS process per core, PM2 fork mode** (Colyseus native; *not* cluster mode), `instances = os.cpus().length`, Redis presence for coordination. **SL-D20b:** islands of a region co-locate on one process, so only cross-*region* messages pay ≈1 ms IPC (§7.6). |
-| **SL-D21** | **Island granularity** | The **CSC_001 cell** stays the unit. Research: best performance at **FOV ≈ 1.5 × partition size**, ~20 m cells common; a 16-tile cell ≈ 16 m ⇒ **target AOI radius ≈ 24 m**. Cold cells **merge into a region-level island** so empty space costs no per-island overhead. |
+| **SL-D21** | **Island granularity** | The **CSC_001 cell** stays the unit. Research: best performance at **FOV ≈ 1.5 × partition size** — a **unit-free ratio**, so for a 16-tile cell the target is **AOI radius ≈ 24 tiles** (SL-Q10: CSC_001 defines no metres-per-tile, and does not need to). Cold cells **merge into a region-level island** so empty space costs no per-island overhead. |
 | **SL-D22** | **Shot clock granularity** | **Per-turn**, not per-round — *forced*: HSR action-value initiative has no well-defined round (fast actors act more often), so "per-round" cannot be expressed without inventing a boundary the initiative model lacks. |
 | **SL-D23** | **Load dilation vs fiction time** | **Separate multipliers.** `effective_rate = fiction_rate × load_factor`. `fiction_rate` is canonical, player-visible and **replayed**; `load_factor` is operational, invisible and **always 1.0 on replay** — forced by SL-A6, since server load is an environmental artifact, not a game event. |
 | **SL-D24** | **Class C late results** | **Stall that aggregate's Class C lane only** — never Classes A/B, never another aggregate. Deadline → **skip to next cycle**, recorded. No compensating corrections in V1 (economy-scale delay is player-invisible). |
@@ -404,7 +410,7 @@ yet exist (AUD-F5 items, AUD-F6 stats, AUD-F8 commit-service).
 
 | Stage | Delivers | Prerequisites |
 |---|---|---|
-| **S1** | `sim-core` crate skeleton — logical clock, priority queue, class registry, pure-function boundary, input-tape test harness. **One instance = one island** from the first commit (SL-D13). | none |
+| **S1** | `sim-core` crate skeleton — logical clock, priority queue, class registry, pure-function boundary, input-tape test harness. **One instance = one island** from the first commit (SL-D13). **Panic boundary + poison flag from the first commit** ([14 §10.4](14_sim_core_spec.md), SC-A8/A9) — retrofitting containment around an already-written `step()` means auditing every handler. | none |
 | **S2** | Class B turn scheduler + dispatch/ingest + deadline/fallback; `ScriptDriver` only | AUD-F6 stats |
 | **S3** | Proposal emission → `commit-service` → event store; **per-island** replay-determinism test | **AUD-F8 commit-service** |
 | **S4** | Class A tick — movement, walkability, AOI; WASM host integration in game-server | RTM-Q10 WASM seam |
@@ -443,7 +449,8 @@ S1 is unblocked **today** and is the natural first code of the game tier.
 | # | Question | Why it is open |
 |---|---|---|
 | **SL-Q9** | Does the ≈1 ms cross-island IPC cost (SL-D20) actually matter in play? | Only measurable once S4b runs. If cross-region traffic turns out to be common, `worker_threads` returns to the table — but that means rebuilding Colyseus room distribution, so the bar is high. |
-| **SL-Q10** | Is a CSC_001 tile actually ~1 m? | The ~24 m AOI target in SL-D21 is derived from *tiles × metres-per-tile*. If the tile scale differs, the AOI radius moves with it. Cheap to confirm against TMP_001/CSC_001. |
+| **SL-Q11** | **Do EVT-L5 backpressure and SL-A13 load dilation fight each other?** | Both react to the same overload, but in opposing directions: EVT-L5 throttles *producers* when the PEL grows, while SL-A13 dilates the island's tick — which **slows consumption**, growing the PEL further, throttling harder. A plausible feedback loop. Needs settling **before both are built** (S6/S7), and the likely answer is that dilation must feed a *damping* term into the PEL threshold rather than being independent of it. |
+| ~~**SL-Q10**~~ | ~~Is a CSC_001 tile ~1 m?~~ | ✅ **RESOLVED 2026-07-26 — the question had a false premise.** CSC_001 defines **no metres-per-tile at all**; positions are abstract `TileCoord`. Nothing in the design needs a real-world scale. The research finding is a **ratio** (FOV ≈ 1.5 × partition size) and is therefore **unit-free**, so SL-D21's target is properly stated as **AOI radius ≈ 24 *tiles*** for a 16-tile cell. The "~24 m" phrasing imported metres that do not exist in this design; corrected. If a world scale is ever defined, **nothing here changes**. |
 
 ---
 
