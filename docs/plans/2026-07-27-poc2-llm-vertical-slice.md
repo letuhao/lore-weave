@@ -104,6 +104,26 @@ must be separate fields.** Flagged for COMB_003's candidate-list shape.
 **Observed NPC behavior (round 2):** strike → strike → (timeout→Defend) → strike → defend →
 defend as hp fell; downed turn 6 in a 2-v-1. Tactically coherent under a 4-tool vocabulary.
 
+## Bug-fix round (2026-07-27 01:26, user: "solve bug we found first")
+
+Both open report findings root-caused and fixed:
+
+1. **Thinking-runaway timeouts → an SDK MIRROR-DRIFT bug.** The Go gateway and Python SDK both
+   carry `reasoning_effort` (`none|low|medium|high`) + `chat_template_kwargs` — with the Python
+   comment literally documenting `"none"` as the verified LM-Studio off-switch — but the **Rust
+   SDK never got the fields**, so no Rust caller could bound thinking (the exact polyglot-drift
+   class CLAUDE.md's machine-contract rule warns about). Fixed: `ReasoningEffort` enum + both
+   fields + builders in `loreweave_llm` (absent-from-wire when unset — 2 wire-format regression
+   tests); driver defaults to `none` + `max_tokens 256`; runner `--reasoning` flag.
+2. **Timeout rows averaged in as 0 tokens** → `Dispatch.tokens_unknown`; the report now excludes
+   them from token averages and says so (provider still burned them; S3 meters via
+   `provider.call.completed`).
+
+**Live round 3 (reasoning=none):** **validity 5/5 (100 %) · fallback 0 % · 434 in + 14 out
+tokens/turn (out: 330→14, 23×) · p50 645 ms / p95 763 ms (was 3 071/30 000) · zero timeouts.**
+Tactics stayed coherent: 4 strikes → fled at 30 hp in a 2-v-1. **Cost/turn for a bounded
+Minor/Major NPC pick: ~450 total tokens, sub-second locally, $0 BYOK.**
+
 ## /review notes (2-stage, self)
 
 - Timeout turns record 0 tokens but the provider still burned them server-side (the aborted

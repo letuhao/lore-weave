@@ -16,7 +16,7 @@ use commit_service::{
     decide, Actor, CombatDomain, CombatPayload, CombatRules, CombatState, DecisionContext,
     Vocabulary, COMBAT_V1_JSON,
 };
-use loreweave_llm::{GatewayClient, ModelSource};
+use loreweave_llm::{GatewayClient, ModelSource, ReasoningEffort};
 use sim_core::{
     Class, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane, Producer, QueuedInput,
     RulesetDigest, SeenWindow, Seq, StepStatus, Tick,
@@ -29,6 +29,7 @@ struct Args {
     turns: u32,
     model_source: ModelSource,
     deadline_ms: u64,
+    reasoning: ReasoningEffort,
 }
 
 fn parse_args() -> anyhow::Result<Args> {
@@ -37,6 +38,7 @@ fn parse_args() -> anyhow::Result<Args> {
     let mut turns = 10u32;
     let mut model_source = ModelSource::UserModel;
     let mut deadline_ms = 30_000u64;
+    let mut reasoning = ReasoningEffort::None;
 
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -62,6 +64,16 @@ fn parse_args() -> anyhow::Result<Args> {
                 deadline_ms = argv.get(i + 1).ok_or_else(|| anyhow::anyhow!("--deadline-ms needs a value"))?.parse()?;
                 i += 2;
             }
+            "--reasoning" => {
+                reasoning = match argv.get(i + 1).map(String::as_str) {
+                    Some("none") => ReasoningEffort::None,
+                    Some("low") => ReasoningEffort::Low,
+                    Some("medium") => ReasoningEffort::Medium,
+                    Some("high") => ReasoningEffort::High,
+                    other => anyhow::bail!("--reasoning must be none|low|medium|high, got {other:?}"),
+                };
+                i += 2;
+            }
             other => anyhow::bail!("unknown arg: {other}"),
         }
     }
@@ -71,6 +83,7 @@ fn parse_args() -> anyhow::Result<Args> {
         turns,
         model_source,
         deadline_ms,
+        reasoning,
     })
 }
 
@@ -120,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
         // The LlmDriver dispatch races the SL-A4 deadline.
         let dispatch = match tokio::time::timeout(
             std::time::Duration::from_millis(args.deadline_ms),
-            decide(&client, args.model_source, args.model_ref, args.user_id, &vocab, &ctx),
+            decide(&client, args.model_source, args.model_ref, args.user_id, &vocab, &ctx, args.reasoning),
         )
         .await
         {
@@ -128,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
             Err(_) => commit_service::Dispatch {
                 reject: Some(format!("deadline {}ms elapsed (AGT-A2 timeout)", args.deadline_ms)),
                 latency_ms: args.deadline_ms as u128,
+                tokens_unknown: true,
                 ..Default::default()
             },
         };
@@ -196,10 +210,15 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── the numbers POC-2 exists to produce ──
-    let n = dispatches.len().max(1) as u64;
+    // Token averages EXCLUDE timeout rows: their counts are unknown
+    // client-side (the provider still burned them), and averaging zeros in
+    // silently flatters cost/turn.
     let valid = dispatches.iter().filter(|d| d.payload.is_some()).count();
-    let total_in: u64 = dispatches.iter().map(|d| d.input_tokens as u64).sum();
-    let total_out: u64 = dispatches.iter().map(|d| d.output_tokens as u64).sum();
+    let counted: Vec<_> = dispatches.iter().filter(|d| !d.tokens_unknown).collect();
+    let n = counted.len().max(1) as u64;
+    let unknown = dispatches.len() - counted.len();
+    let total_in: u64 = counted.iter().map(|d| d.input_tokens as u64).sum();
+    let total_out: u64 = counted.iter().map(|d| d.output_tokens as u64).sum();
     let mut lat: Vec<u128> = dispatches.iter().map(|d| d.latency_ms).collect();
     lat.sort_unstable();
     let p = |q: f64| lat.get(((lat.len() as f64 * q) as usize).min(lat.len().saturating_sub(1))).copied().unwrap_or(0);
@@ -208,8 +227,10 @@ async fn main() -> anyhow::Result<()> {
     println!("turns dispatched      : {}", dispatches.len());
     println!("validity rate         : {}/{} ({:.0}%)", valid, dispatches.len(), 100.0 * valid as f64 / dispatches.len().max(1) as f64);
     println!("fallback rate         : {fallbacks}/{} ({:.0}%)", dispatches.len(), 100.0 * fallbacks as f64 / dispatches.len().max(1) as f64);
-    println!("tokens/turn (avg)     : {} in + {} out", total_in / n, total_out / n);
-    println!("tokens total          : {} in + {} out", total_in, total_out);
+    println!("tokens/turn (avg)     : {} in + {} out (over {} measured turns{})",
+        total_in / n, total_out / n, counted.len(),
+        if unknown > 0 { format!("; {unknown} timeout turn(s) EXCLUDED — tokens unknown client-side, provider still burned them") } else { String::new() });
+    println!("tokens total (counted): {} in + {} out", total_in, total_out);
     println!("latency p50 / p95     : {}ms / {}ms", p(0.50), p(0.95));
     println!("cost                  : $0 on a local BYOK model; for priced models multiply tokens by the provider-registry pricing row (never a literal here — no-hardcoded-pricing rule)");
     println!("island outcomes       : applied={} discarded={} substituted={}",

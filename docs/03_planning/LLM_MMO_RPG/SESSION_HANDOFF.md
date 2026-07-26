@@ -75,6 +75,13 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > contract lesson (validity 50%→83%): candidate labels must separate IDENTITY from STATE — the
 > model echoes the id token and strips descriptors (→ flag THR-A4/COMB_003 candidate-list shape).
 > 17 tests (wiremock dispatch + domain + vocab + panic canary), clippy 0, language-rule PASS.
+> **POC-2 bug-fix round (01:26):** the timeout runaway was an **SDK mirror-drift bug** — Go
+> gateway + Python SDK carry `reasoning_effort`/`chat_template_kwargs`, the Rust SDK didn't, so
+> no Rust caller could bound thinking. Fixed in `loreweave_llm` (+2 wire-format regressions);
+> driver defaults `reasoning=none` + `max_tokens 256`; timeout rows excluded from token averages
+> (`tokens_unknown`). **Live round 3: 100% validity · 0 fallback · 434in+14out tok/turn
+> (out 23× down) · p50 645 ms (5× down) · zero timeouts — bounded NPC pick ≈ 450 tokens,
+> sub-second, $0 BYOK.**
 > **NEXT:** Layer-1 lints (parallel agent task) → S3 proper (proposal bus consume + EVT-V pipeline
 > + epoch-token event_log on commit-service; meter via `provider.call.completed`, not client
 > usage) → S4b real-IPC → register AMEND batch (REC-54c + REC-63 Quarantined + THR-A4 id/state).

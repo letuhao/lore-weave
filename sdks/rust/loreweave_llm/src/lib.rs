@@ -42,6 +42,7 @@ pub use client::{GatewayClient, StreamHandle};
 pub use errors::LlmError;
 pub use models::{
     ChatStreamRequest, FinishReason, GATEWAY_BASE_URL_DEFAULT, INTERNAL_STREAM_PATH, ModelSource,
-    Operation, PUBLIC_STREAM_PATH, StreamEvent, StreamFormat, TEMPERATURE_MAX, TEMPERATURE_MIN,
+    Operation, PUBLIC_STREAM_PATH, ReasoningEffort, StreamEvent, StreamFormat, TEMPERATURE_MAX,
+    TEMPERATURE_MIN,
 };
 pub use tool::{CompletedToolCall, ToolCallAccumulator};

@@ -4,7 +4,7 @@
 //! payload, and every reject route.
 
 use commit_service::{decide, Candidate, CombatPayload, DecisionContext, Vocabulary, COMBAT_V1_JSON};
-use loreweave_llm::{GatewayClient, ModelSource};
+use loreweave_llm::{GatewayClient, ModelSource, ReasoningEffort};
 use sim_core::EntityId;
 use uuid::Uuid;
 use wiremock::matchers::{method, path};
@@ -40,7 +40,7 @@ async fn run(body: &str) -> commit_service::Dispatch {
     mount_sse(&server, body).await;
     let client = GatewayClient::new(server.uri(), "test-token");
     let vocab = Vocabulary::from_json(COMBAT_V1_JSON).unwrap();
-    decide(&client, ModelSource::UserModel, Uuid::nil(), Uuid::nil(), &vocab, &ctx()).await
+    decide(&client, ModelSource::UserModel, Uuid::nil(), Uuid::nil(), &vocab, &ctx(), ReasoningEffort::None).await
 }
 
 /// Happy path: fragmented strike tool-call reassembles, validates against

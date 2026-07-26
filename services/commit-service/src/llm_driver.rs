@@ -15,7 +15,8 @@
 use std::time::Instant;
 
 use loreweave_llm::{
-    ChatStreamRequest, GatewayClient, ModelSource, StreamEvent, StreamFormat, ToolCallAccumulator,
+    ChatStreamRequest, GatewayClient, ModelSource, ReasoningEffort, StreamEvent, StreamFormat,
+    ToolCallAccumulator,
 };
 use serde_json::json;
 use sim_core::EntityId;
@@ -108,6 +109,11 @@ pub struct Dispatch {
     pub finish_reason: Option<String>,
     pub raw_tool: Option<String>,
     pub raw_arguments: String,
+    /// True when the dispatch was cut off client-side (deadline). Token
+    /// counts are then UNKNOWN, not zero — the provider still burned them
+    /// server-side; reports must exclude these rows from token averages
+    /// (the S3 meter counts via `provider.call.completed` instead).
+    pub tokens_unknown: bool,
 }
 
 const SYSTEM_PROMPT: &str = "You are the combat decision-maker for one NPC in a turn-based RPG. \
@@ -117,6 +123,9 @@ move to reposition, flee only when critical. \
 For strike, `target` MUST be copied verbatim from the offered candidates list.";
 
 /// One LlmDriver dispatch: context → sanctioned chain → validated proposal.
+/// `reasoning` bounds the provider's hidden thinking — `None` (the default
+/// for Minor/Major NPC combat picks) is the AGT-D5 cost lever at the
+/// request level.
 pub async fn decide(
     client: &GatewayClient,
     model_source: ModelSource,
@@ -124,6 +133,7 @@ pub async fn decide(
     user_id: Uuid,
     vocab: &Vocabulary,
     ctx: &DecisionContext,
+    reasoning: ReasoningEffort,
 ) -> Dispatch {
     let user_payload = json!({
         "you": {
@@ -152,6 +162,16 @@ pub async fn decide(
     // "required": the model must call SOME tool but chooses which — that is
     // the whole point of a bounded vocabulary (vs tilemap's forced single).
     .with_tool_choice(json!("required"))
+    // A 4-tool combat pick needs no hidden essay: unbounded thinking burned
+    // 150–900 reasoning tokens per decision and occasionally blew the 30 s
+    // deadline (POC-2 rounds 1–2). `none` is the verified LM-Studio
+    // off-switch; the kwargs toggle covers llama.cpp/vLLM-style backends.
+    .with_reasoning_effort(reasoning)
+    .with_chat_template_kwargs(json!({
+        "enable_thinking": !matches!(reasoning, ReasoningEffort::None)
+    }))
+    // Belt-and-braces against runaway generation regardless of reasoning.
+    .with_max_tokens(256)
     .normalize();
 
     let mut out = Dispatch::default();
