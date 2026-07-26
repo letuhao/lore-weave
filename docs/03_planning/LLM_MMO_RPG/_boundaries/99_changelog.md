@@ -6,6 +6,23 @@
 
 ---
 
+## 2026-07-26 — Simulation tier registration (`SL-*` / `SC-*` / `CS-*` / `DL-*`)
+
+- **Lock CLAIMED 21:16 SEAST, `Owner:` set BEFORE the first edit**, per the discipline the preceding entry established. Released after.
+- **4 NEW Stable-ID prefix rows:**
+  - **`SL-*`** — `13_simulation_loop.md` (closes AUD-F7). Three execution classes with "a slower class may never block a faster one" (SL-A2); the **island** as unit of parallelism (SL-A9); cross-island async-message-only (SL-A10); commit order by logical key not arrival time (SL-A5) + wall-clock events recorded-not-re-evaluated (SL-A6), which preserve TDIL-A9 replay.
+  - **`SC-*`** — `14_sim_core_spec.md`. `crates/sim-core`: order-independent safety (SC-A1), preconditions re-validated at execution, generational invalidation, two-lane ingress, panic containment (SC-A8/A9).
+  - **`CS-*`** — `15_commit_service.md` (closes AUD-F8). **Adds no new semantics** — EVT-A5/A7, EVT-V1..V7, EVT-L1..L6, DP-A15/A16/A17, DP-R7 already specified the behaviour; supplies **shape only**.
+  - **`DL-*`** — `features/12_daily_life/DL_001_daily_life_foundation.md` (closes **DF1**, absorbs **DF8**, resolves **AUD-F13**).
+- **NO new aggregate, and that is the load-bearing finding.** An island **is** a **DP-A16 channel**, not a feature aggregate — `SL-A9` turned out to be a rediscovery of what the data plane locked in April. DP-A16 therefore supplies four mechanisms 13/14 lacked: the **epoch token** forgery guard, **CP-coordinated writer handoff** (so `CS-D1` declares SL-A12 migration to *be* DP-A16 handoff rather than a second protocol), SDK `route_channel_write` gRPC, and DB-level total order.
+- **NEW channel level `"encounter"`** (`CS-A6`) — an ephemeral child channel of its cell, `Dissolved` on resolution. **Legal under DP-Ch1 as written** (`level_name` is a free-form `String`, `ChannelLifecycle` has `Dissolved`, Q27 bubble-up and Q32 privacy are unblocked) — **no DP change required**.
+- **2 NEW drift watchpoints:** `SL-D7→CS-A5` (host moved WASM-in-game-server → native in `commit-service`; RTM-Q10 **narrowed not reversed** — Class A walkability stays WASM) · `DL-A1 vs B3-D1` (narrow amendment of a locked decision; *"no between-session activity"* preserved literally, *"NPCs resume where last session ended"* superseded).
+- **Superseded within `SL-*`:** `SL-D7` (by CS-A5) and `SL-D12` (by SL-D19, per-island-class tick rates).
+- **Outstanding, deliberately not done here:** an amendment row for **`B3-D1`** in `decisions/locked_decisions.md` — that file was in a peer session's active area at registration time, and the preceding entry's lesson is that writing into a peer's live surface is exactly how the record gets corrupted. Tracked on the `DL-A1 vs B3-D1` watchpoint.
+- **Files within `_boundaries/`:** `_LOCK.md` + `01_feature_ownership_matrix.md` (4 prefix rows + 2 drift rows) + `99_changelog.md`. **Files outside:** none this cycle (13/14/15 already committed; DL_001 + its `_index.md` commit separately).
+
+---
+
 ## 2026-07-26 — DF07-session record correction (lock held for real; no surface change)
 
 - **Lock genuinely CLAIMED and RELEASED** — `Owner:` set in `_LOCK.md` **before** the first edit and cleared after, which is exactly what the three cycles it corrects failed to do. **No boundary surface changed**; this claim existed only to fix the record with the mutex actually held.
