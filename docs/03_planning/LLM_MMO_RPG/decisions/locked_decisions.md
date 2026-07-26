@@ -43,7 +43,7 @@ As user confirms items, they move here with the answer and any rationale.
 | PC-C2 | PC personality | 2026-04-23 | User IS PC while active; LLM persona only when NPC-converted | No LLM persona layer for active PC |
 | PC-C3 | PC stats model | 2026-04-23 | Simple state-based (no RPG mechanics) | Concrete schema in DF7 |
 | PC-D1 | Party / group system | 2026-04-23 | No parties — Session replaces all group mechanics | Details in DF5 |
-| PC-D2 | PvP | 2026-04-23 | Enabled within a session | Consent model in DF4/DF5 |
+| PC-D2 | PvP | 2026-04-23 | Enabled within a session | Consent model in DF4/DF5 — ✅ **DISCHARGED 2026-07-26 by [`COMB_006`](../features/18_combat/COMB_006_pvp_and_stakes.md)**, not by DF4/DF5. The substance (enabled + consent-gated) stands; *"within a session"* is **amended** as medium-stale (PVP-Q7) — it was text-medium shorthand for "an explicit bounded mutual context", which the `Duel` channel preserves exactly, while `ContestedZone` supplies what the rendered medium made possible. Home per `02_world_authoring/_index.md`'s own note (*"PvP→combat … when those consumer features open"*); the `WA_NNN_pvp_consent` reservation is **retired**. |
 | PC-D3 | Interaction scope | 2026-04-23 | Session only — no global chat | Details in DF5 |
 | PC-E1 | PC actions affect L2 canon | 2026-04-23 | Yes, via canonization — **deferred** | DF3 |
 | PC-E2 | Author notified of canon-worthy acts | 2026-04-23 | Yes — **deferred** | DF3 |
@@ -621,3 +621,41 @@ As user confirms items, they move here with the answer and any rationale.
 
 ---
 
+
+---
+
+## Combat family — COMB_003/004/005/006 + ABL_001 (LOCKED 2026-07-26)
+
+Closes audit findings **AUD-F9** (spawning · threat · loot) and **AUD-F10** (abilities), and **COMB-Q3**
+(PvP). Full derivations live in each feature doc; only the load-bearing calls are reproduced here.
+**Net new aggregates across all five: zero.**
+
+| # | Decision | Resolution |
+|---|---|---|
+| **THR-Q1** | Threat: explicit table or infer each round? | **Explicit accumulating table.** State-inference has no memory, so nothing a player *did* can influence targeting — tanking becomes impossible and taunts have nowhere to write. |
+| **THR-Q2** | Instant target switching? | **No — switch-margin hysteresis.** Near-tied threats would flicker every round, which reads as broken AI rather than tactics. |
+| **THR-Q4** | Does the LLM pick the target? | **Engine ranks, LLM picks within top-K** (vague-labelled). Engine-only kills the Chorus's dramatic agency; LLM-only is unbounded and un-replayable. Flat token cost. |
+| **THR-Q5** | Is threat randomised? | **No — deterministic and seedless.** COMB_001 Q8's role set is unchanged by this feature. |
+| **THR-Q7** | Anti-grief at selection or accrual? | **Accrual.** Guarding at selection leaves protection one driver-bug away; refusing the *write* means no path can target a protected actor. |
+| **SPO-Q1** | When does loot roll? | **At defeat finalisation, never at KO.** COMB_001 Q3's KO is revivable for 5 rounds — rolling at HP=0 lets a party loot a body then revive it, minting items from a reversible state. |
+| **SPO-Q2** | Weighted pick or per-entry rolls? | **Independent per-entry Bernoulli.** A single weighted pick silently re-rates every existing entry when one is added — the classic loot-table footgun. |
+| **SPO-Q11** | Bind tiers? | **`Unbound` / `BodyBound` / `SoulBound`** — PROG_001's existing `BodyOrSoul` axis applied to objects (it already says *"soul-bound"*). **No new metaphysics.** |
+| **SPO-Q12** | Is binding absolute? | **No — three defeasance paths** (sunder / severance / overwhelm). Absolute binding makes permadeath meaningless; unconditional loss makes it unplayable. |
+| **SPO-Q13** | Random chance to lose a bound item? | **Never.** All three paths are deterministic. A random gear-loss roll is incompatible with the family's replay guarantees and is the mechanic players most resent. |
+| **SPN-Q1** | Who owns population? | **AIT_001 owns population; COMB_005 owns hostility, engagement and respawn.** Two population owners would give two answers to "how crowded is this cell". |
+| **SPN-Q2** | Respawn timers or epochs? | **Epoch arithmetic** (`floor((fiction_day + phase_offset) / period)`). Timers need durable state, a scheduler, unload cleanup and a time-dilation policy; epochs need none and are replay-exact. |
+| **SPN-Q3** | Who decides a fight starts? | **The engine, via a pure predicate.** An LLM that could initiate encounters could initiate them anywhere, past every safety band. |
+| **SPN-Q7** | Newbie-zone guard at schema or runtime? | **Schema.** A runtime clamp ships the bad declaration and depends on every path remembering to clamp; a schema reject makes the reality **unloadable**. Builds COMB_001 §9 closure item 8. |
+| **SPN-Q8** | Difficulty scaling to the party? | **No — won't-fix.** Contradicts PROG_001 §1's *"no level / no power-rating"* direction. A place's danger is a property of the place. |
+| **ABL-Q1** | Is a combat `Skill` a PROG `Skill` kind? | **No — different types.** A progression kind is a number that grows; an ability is an effect you fire. The concept-notes conflation left `skill_id` with no declaring type and `combat.skill_unknown` with nothing to check. |
+| **ABL-Q3** | Do abilities compute damage? | **No — `PowerTerm` substitutes into COMB_001 §4 step 1.** An ability emitting a final number would undo COMB_001's own `damage_amount` removal through the back door. |
+| **ABL-Q4** | Ability acquisition? | **Threshold-derived, zero aggregates** (mirrors DF7-A2). A spend model needs a ledger — the stored state both axioms avoid. |
+| **ABL-Q9** | Merge `UseEffectDecl` into `EffectOp`? | **Yes — resolved as a defect, not a preference.** The enums diverged within 24 h, and `VitalDelta { amount: i32 }` in **both** docs bypassed the damage law-chain, the hit roll, the Q4 disparity cap and the PvP predicate at once. `VitalRestore { u32 }` makes harm unrepresentable; `ABL-V9` asserts all vital reduction passes the chain. |
+| **ABL-Q10** | Who owns the merged vocabulary? | **ABL_001**, on the DF07 `StatModifier` precedent — superset, owns `PowerTerm`, owns the replay discipline. PL_007 keeps every entry-point rule. |
+| **PVP-Q1/Q2** | Consent channels? | **Duel** (mutual challenge, stakes declared at challenge time: `Spar` / `LifeAndDeath`) **+ ContestedZone** (a PF_001 band where entering *is* consent; **no flag timer** — the place is the truth). |
+| **PVP-Q3** | Faction-war channel? | **Deferred to DIPL_001** — not a preference: FAC_001 `RelationStance` is a closed 3-variant enum **static at canonical seed**, so there is no war state to read. |
+| **PVP-Q4** | Does the Q4 disparity cap apply in PvP? | **Waived between consenting parties only.** Applying it makes consensual duels unplayable *and* contested zones fictional. The waiver is also what licenses binding **overwhelm** — the same ratio read backwards, and `cap_applies`/`cap_waived` are complements, so the two can never both fire. |
+| **PVP-Q5** | Defeat consequence? | **Full WA_006, permadeath included** (user direction). PvP is not a special death; survivability comes from the Binding Contest, not a softer death. |
+| **PVP-Q6** | Master gate default? | **Disabled.** WA_006 already defaults to `Permadeath` (PC-B1); two harsh defaults must not compose without an author choosing. |
+| **PVP-Q7** | Does *"within a session"* (PC-D2) survive the medium correction? | **Amended, not overturned** — see the PC-D2 row above. |
+| **PVP-Q8** | Spawn-camping under permadeath? | **Post-incarnation grace** (10 fiction-min, forfeited by attacking). Without it, permadeath + a contested respawn point is a character-ending camp. |

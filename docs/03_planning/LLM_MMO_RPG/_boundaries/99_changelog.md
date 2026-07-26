@@ -6,6 +6,70 @@
 
 ---
 
+## 2026-07-26 — combat-family boundary registration `[boundaries-lock-claim+release]`
+
+**A catch-up cycle, and worth recording as one.** COMB_003/004/005/006 + ABL_001 were authored earlier
+today while the `_boundaries/` lock was held by the parallel session (DF07 → PL_007 → seam review). The
+correct move at the time was to stay out of the folder, and the registration was tracked in
+`features/18_combat/_index.md` under "Outstanding registration" instead. But tracking is not registering:
+by the time the parallel session committed those docs (`6fee77360`, `5cb6f59a3`), **five stable-ID
+prefixes existed on the branch that appear in no catalog** — precisely the drift signal `00_README.md`
+names (*"a feature design uses a stable-ID prefix that's not in the foundation/06_id_catalog"*). This
+cycle closes it. Surfaced by the user asking directly whether the lock had been held.
+
+**Registered — `01_feature_ownership_matrix.md`:**
+- **5 stable-ID prefixes:** `THR-*` (COMB_003) · `SPO-*` (COMB_004) · `SPN-*` (COMB_005) · `PVP-*`
+  (COMB_006) · `ABL-*` (ABL_001, **new namespace `features/19_ability/`**), each with its full ID ranges.
+- **`EffectOp` — the shared effect vocabulary** as a new Schema/envelope row: **one owner (ABL_001), many
+  producers** (ABL abilities, PL_007 item use-effects, V1+ Lex/quests/crafting) — the same shape as DF07's
+  `StatModifier`. Records ABL-Q9/Q10 and the defect that forced the merge (below).
+- **A negative claim: `NO NEW AGGREGATE`** for all five features, recorded deliberately because five
+  features landing without one reads as an oversight to a later reader. Everything is either derived
+  (population = `f(place, decl_index, epoch, seed)`; the known-ability set) or hosted on the
+  already-ephemeral `combat_session`. The only genuinely-stored additions are three ephemerals:
+  `spoils_claim`, `SpawnGroupLootState`, `DuelOffer`.
+
+**Registered — `02_extension_contracts.md`:**
+- **§1.4** five reject namespaces: `threat.*` (6) · `spoils.*` (12) · `spawn.*` (10) · `ability.*` (14) ·
+  `pvp.*` (9).
+- **NEW §1.4a** the `EffectOp` shared vocabulary, including the reason the merge was **not** optional:
+  PL_007's `UseEffectDecl` and ABL's `EffectOp` had **already diverged within 24 hours** (`StatusApply`
+  arity; `VitalDelta` field name), and `VitalDelta { amount: i32 }` — in **both** docs — was a
+  **damage-law-chain bypass**. A signed vital write reachable from `UseItem` skips COMB_001 §4's chain
+  (armour, variance), takes **no hit roll**, accrues **no COMB_003 threat** (accrual reads
+  `damage_applied` *from* the chain), and ignores both COMB_001 Q4's disparity cap and COMB_006's PvP
+  predicate — i.e. **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, silently
+  falsifying COMB_001's *"the 4-step chain is the sole damage authority"*. Fixed by
+  `VitalRestore { amount: u32 }` (harm **unrepresentable by type**) + **`ABL-V9`**.
+- **NEW §2.AB** RealityManifest extensions: `threat_config` · `loot_tables` · `abilities` · `pvp_policy`
+  (all optional/defaultable — a reality declaring none of them still plays), plus the two that land on
+  other features' declarations (`PlaceDecl.hostile_spawns` + the `Contested` safety band; TMP
+  `TerrainSpawnDecl`).
+- **§4** three Forge sub-actions: `Forge:EditLootTable` · `Forge:EditSpawnDecl` · `Forge:EditPvpPolicy`,
+  each carrying its System-tier rationale (SPO-A7 / SPN-A8 / PVP-A7).
+
+**Registered outside `_boundaries/`:**
+- `00_foundation/06_id_catalog.md` — the same five prefixes with full ID ranges.
+- `decisions/locked_decisions.md` — **NEW "Combat family" block** (27 load-bearing decisions), and
+  **`PC-D2` marked DISCHARGED**: locked 2026-04-23 as *"PvP enabled within a session"* with its consent
+  model deferred to DF4/DF5 and never built. COMB_006 supplies it — **not DF4/DF5** — and amends
+  *"within a session"* as medium-stale (PVP-Q7): it was text-medium shorthand for "an explicit bounded
+  mutual context", which the `Duel` channel preserves exactly.
+- `features/02_world_authoring/_index.md` — **`WA_NNN_pvp_consent` RETIRED.** That section predicted
+  *"PvP→combat … when those consumer features open, their author may choose to put the override in their
+  own folder"*. Combat opened; the prediction held; the reservation is closed rather than left dangling.
+  Note the V1 default **changed**: no longer *"enabled within session hardcoded"* but `pvp_policy: None`
+  ⇒ **PvP unreachable**, because WA_006 already defaults to `Permadeath` (PC-B1) and two harsh defaults
+  must not compose without an author choosing (PVP-A2).
+
+**Still outstanding (tracked, not silently dropped):** the two catalog files
+(`cat_18_COMB_combat.md`, `cat_19_ABL_ability.md`) remain uncreated — the matrix has said "defer to
+DRAFT-stable cycle" for COMB since 2026-06-20; and **the one-line PL_007 §7.1 change**
+(`pub type UseEffectDecl = EffectOp;`) belongs to that doc's owner — the *decision* is made, only the
+edit is pending, and **until it lands the bypass stands in the item path**.
+
+---
+
 ## 2026-07-26 — PL_007 cold-start `/review-impl` pass (11 further defects, 4 HIGH — all interior)
 
 Follow-up to the entry below, run at the user's request immediately after commit `6fee77360`, aimed at

@@ -156,6 +156,35 @@ Each feature owns a prefix in the `rule_id` string namespace:
 
 | `stat.*` | **DF07_001 Actor Stat Block** (added 2026-07-26 DRAFT — closes audit finding AUD-F6 "*PC stats absent — STRUCTURAL, V1-blocking*"; the derived-stat projection layer between PROG_001's open author schema and the engine's closed slot set); **10 V1 rule_ids** (`tuning_invalid` added by the DF07_002 closure pass — `stat_tuning.speed_per_tile` is a divisor, so a zero must reject at seed rather than panic on the first `MoveRange` resolve) — `slot_unknown` (a `StatSlotDecl` or an item/status modifier naming a slot outside the closed 10-slot enum — this is why the stat identity is an enum and not a free-form string: a typo rejects at manifest validation instead of silently contributing nothing at runtime) / `duplicate_slot_decl` / `term_kind_unknown` (a `StatTerm.kind_id` ∉ `progression_kinds`) / `clamp_invalid` (`min > max`, or `MaxHp.clamp.min < 1`) / `percent_out_of_range` (per-mille slot clamped outside `0..=1000`, DF7-A11) / `derived_slot_terms_forbidden` (`terms` declared on `MoveRange`, which the engine derives from `Speed`) / `archetype_unknown` / `synthetic_actor_forbidden` / `snapshot_epoch_mismatch` (replay-stage determinism assertion DF7-V4 — epoch-equal inputs MUST reproduce a byte-identical block). All carry `RejectReason.user_message: I18nBundle` per the RES_001 §2 contract. See [DF07_001 §12](../features/DF/DF07_pc_stats/DF07_001_actor_stat_block.md). |
 
+| `threat.*` | **COMB_003 Threat & Targeting** (added 2026-07-26 DRAFT — closes the threat third of audit finding AUD-F9 "*combat loop has no ends*"; supplies the target-priority model COMB_002's TG-A4 stance vocabulary always presupposed and the closed `TargetSelector` that replaces the concept-notes' bare `"lowest_hp_hostile"` string). 6 V1 rule_ids — target_ineligible / target_out_of_candidates / selector_unknown / no_eligible_target / config_invalid / modify_scope_invalid. **No aggregate** — `threat_table` + `current_target` are `combat_session` fields (COMB_001 §2). Threat is **deterministic and seedless** (THR-A2), so COMB_001 Q8's role set is unchanged by this feature. Anti-grief is guarded at **accrual**, not selection (THR-Q7), so no driver can route around a safe zone. i18n: I18nBundle from day 1. |
+| `spoils.*` | **COMB_004 Loot & Spoils** (added 2026-07-26 DRAFT — closes the loot third of AUD-F9; accepts the seam PL_007 §8.5 handed over, incl. `ItemOrigin::Loot` promoted V1+ → V1 active). 12 V1 rule_ids — not_entitled / table_entry_invalid / subject_unknown / class_unknown / already_rolled / roll_on_ko_forbidden / condition_unresolvable / progression_scaling_forbidden / bind_tier_unknown / sever_target_not_defeated / sever_tier_exceeded / overwhelm_blocked_by_cap. Adds seed role **`loot`** and (with §16) **`bind`** to COMB_001 Q8. **The family's only new structure** is the ephemeral `spoils_claim` (loot-rights window) + `SpawnGroupLootState` (the `first_kill_only` claimed-set); both die with their scope. **§16 Binding Contest** owns defeat-time item disposition for `BindTier` (`Unbound`/`BodyBound`/`SoulBound`, reusing PROG_001's `BodyOrSoul` axis) — PL_007 owns the field, COMB_004 owns the contest. i18n: I18nBundle from day 1. |
+| `spawn.*` | **COMB_005 Encounter Spawning & Hostile Population** (added 2026-07-26 DRAFT — closes the spawning third of AUD-F9 **and builds COMB_001 §9 closure item 8**, the NewbieZone high-tier-spawn validator declared 2026-06-20 and never written). 10 V1 rule_ids — danger_tier_exceeds_band / aggro_in_sanctuary / archetype_unknown / group_size_invalid / respawn_period_invalid / density_truncated (warning) / promotion_capped (warning) / condition_unresolvable / formation_truncated (warning) / session_already_active. **No aggregate** — population is a pure function of `(place, decl_index, epoch, blake3 seed)` (SPN-A2); respawn is **epoch arithmetic, not timers** (SPN-A3), so it is replay-exact and time-dilation-safe by construction. **Layers on AIT_001, does not replace it** (SPN-A1): hostile groups *are* AIT_001 untracked NPCs, counted against `cell_untracked_density` and `tier_capacity_caps`. i18n: I18nBundle from day 1. |
+| `ability.*` | **ABL_001 Ability Foundation** (added 2026-07-26 DRAFT, namespace `features/19_ability/` — closes audit finding AUD-F10 "*no abilities/skills module*"; supplies the declaring type for COMB_001 §3's `Skill { skill_id }`, which the concept notes had pointed at PROG_001 kinds — a category error that left `combat.skill_unknown` with nothing to check). 14 V1 rule_ids — unknown / duplicate_id / requires_kind_unknown / effect_count_invalid / power_term_slot_invalid / grant_only_derivable / no_context / wrong_context / on_cooldown / insufficient_resource / invalid_target / out_of_range / force_move_self_invalid / duration_meaningless. **No aggregate** — the known-ability set is *derived* (ABL-A4, mirroring DF7-A2); cooldowns are `combat_session` fields. **Owns the `EffectOp` shared effect vocabulary** — see the §1.4a note below. i18n: I18nBundle from day 1. |
+| `pvp.*` | **COMB_006 PvP & Stakes** (added 2026-07-26 DRAFT — closes `COMB-Q3` and **discharges `PC-D2`**, locked 2026-04-23 as *"PvP enabled within a session"* with its consent model deferred to DF4/DF5 and never built. Homed in COMB per [`features/02_world_authoring/_index.md`](../features/02_world_authoring/_index.md), which reserved `WA_NNN_pvp_consent` while naming combat as its home *"when those consumer features open"* — **that reservation is retired by this cycle**). 9 V1 rule_ids — disabled_in_reality / no_consent_channel / safe_zone_forbidden / lex_forbids / grace_active / duel_offer_expired / duel_eligibility_stale / stakes_not_permitted / already_engaged. **No aggregate** — a `DuelOffer` is ephemeral, an active duel *is* a `combat_session`, contested status is a PF_001 place property. **Master gate defaults Disabled** (PVP-A2) because WA_006 already defaults to `Permadeath` (PC-B1) and two harsh defaults must not compose without an author choosing. i18n: I18nBundle from day 1. |
+
+### §1.4a — `EffectOp`: the shared effect vocabulary (ABL-Q9/Q10, 2026-07-26)
+
+**One cross-feature type, owned by ABL_001 §4.1, produced by many** — the same shape as DF07's
+`StatModifier` (owned by DF07, produced by PL_007 / PL_006 / Lex / Forge). 11 V1 variants; every variant
+dispatches into an aggregate another feature already owns, so ABL invents no effect substrate.
+
+- **PL_007's `UseEffectDecl` retires into it** — `pub type UseEffectDecl = EffectOp;`. The merge was
+  resolved as a **defect, not a preference**: the two enums had already diverged in under 24 hours
+  (`StatusApply` arity, `VitalDelta` field name), and — more seriously — `VitalDelta { amount: i32 }` in
+  **both** docs was a **damage-law-chain bypass**. A signed vital write reachable from `UseItem` skips
+  COMB_001 §4's chain (armour, variance), takes no hit roll, accrues no COMB_003 threat, ignores COMB_001
+  Q4's disparity cap and ignores COMB_006's PvP predicate — i.e. an unmissable, armour-ignoring PvP weapon
+  usable inside a sanctuary, silently falsifying COMB_001's *"the 4-step chain is the sole damage
+  authority"*.
+- **Fix:** `VitalRestore { amount: u32 }` — harm is **unrepresentable by type**, and all damage routes
+  through `Damage { power: PowerTerm }`. **`ABL-V9`** asserts that every point of vital reduction passes
+  the law-chain, and is the check that will catch the *next* vital-writing path (a status tick, a Lex
+  effect, a quest script).
+- **No item/ability op restriction.** Items may declare every op (an explosive talisman is `Damage`);
+  context gating (`usable_in_combat` / `usable_out_of_combat`) is the correct axis.
+- **Status: decided; the one-line PL_007 edit is outstanding** and belongs to that doc's owner
+  (ABL_001 §4.2.3 carries it copy-pasteable). Until adopted, the defect stands in the item path.
+
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
 ---
@@ -905,6 +934,47 @@ as `StatModifier`s through DF07's resolution law (ITM-A3), never by declaring a 
 additive per I14. See [PL_007c §11](../features/04_play_loop/PL_007c_integration.md) +
 [PL_007b §9](../features/04_play_loop/PL_007b_inventory.md).
 
+### §2.AB COMB_003/004/005/006 + ABL_001 RealityManifest extensions (DRAFT 2026-07-26)
+
+The combat family's manifest surface. **Every field is `Option`al or defaultable**, so a reality that
+declares none of them is still fully playable — the composability discipline PROG_001 §11.3, DF7-A6 and
+ITM-Q9 all follow.
+
+```rust
+pub struct RealityManifest {
+    // ... existing fields ...
+
+    /// COMB_003 — threat tuning. None ⇒ all engine defaults (a working, balanced-enough model).
+    pub threat_config: Option<ThreatConfig>,
+
+    /// COMB_004 — drop tables keyed by ActorClassRef, the SAME key DF07 §9 uses for stat_archetypes
+    /// and COMB_005 uses for spawn archetypes. One identifier ties an actor class's stats, drops and
+    /// spawn behaviour together. Absent/empty ⇒ that class drops nothing (not an error).
+    pub loot_tables: HashMap<ActorClassRef, LootTableDecl>,
+
+    /// ABL_001 — the ability catalogue. Absent ⇒ the reality has no abilities; `Skill` never enters
+    /// `allowed_tools` and combat runs on Strike/Defend/UseItem/Flee.
+    pub abilities: Vec<AbilityDecl>,
+
+    /// COMB_006 — the PvP master gate. **None ⇒ PvP is unreachable** (PVP-A2): PC-on-PC Strike rejects
+    /// in every place, including Perilous. Deliberately opt-in, because WA_006 defaults to Permadeath.
+    pub pvp_policy: Option<PvpPolicy>,
+}
+```
+
+**Two extensions land on other features' declarations rather than on the manifest root** (both are
+COMB_005 closure items, declared for application when those docs next open):
+
+| Target | Field | Note |
+|---|---|---|
+| PF_001 `PlaceDecl` | `hostile_spawns: Vec<HostileSpawnDecl>` | plus `combat_safety` gains the `Contested` band (COMB_006 §4.1) and the `max_danger_tier_for` mapping enforced at **schema stage** by SPN-V4 |
+| TMP_001 terrain | `TerrainSpawnDecl` keyed by `TerrainKind` | forest → wolves, mountain → bandits; same shape as `HostileSpawnDecl` |
+
+**No new aggregate is introduced by any of the five docs** — see the ownership-matrix note. Ephemeral
+structures only: `spoils_claim`, `SpawnGroupLootState`, `DuelOffer`, and fields on the already-ephemeral
+`combat_session` (`threat_table`, `current_target`, `cooldowns`, `stat_snapshots`, `group_pools`,
+`origin_spawn_group`).
+
 ### Pending action
 
 Creating `features/01_infrastructure/IF_001_reality_manifest.md` to formally own the envelope is a deferred action. Until that feature ships, this contract IS the truth — features cite "per `_boundaries/02_extension_contracts.md` §2".
@@ -989,6 +1059,10 @@ Top-level event category EVT-T8 owned by **07_event_model agent** (Phase 1 LOCKE
 | `Forge:DestroyItem { instance, reason }` (added 2026-07-26 PL_007 DRAFT — EF_001 `Existing → Destroyed`, `reason_kind = InteractionDestructive`; clears any `actor_equipment` slot holding it in the same batch per ITM-C4) | PL_007 Item Foundation |
 | `Forge:EditItemDef { def_id, before, after }` (added 2026-07-26 PL_007 DRAFT — **the ONLY def-write path**, per ITM-A1: `item_defs` are System-tier and no regular actor may mutate them. Existing instances of an edited def see the change on next resolution; `def_id` itself is immutable) | PL_007 Item Foundation |
 | `Forge:GrantItems { holder: EntityRef, defs: Vec<(ItemDefId, u32)> }` (added 2026-07-26 PL_007 DRAFT — bulk convenience over `Forge:SpawnItem`, used by PO_001's onboarding cascade and by admin restitution) | PL_007 Item Foundation |
+
+| `Forge:EditLootTable { actor_class, before, after }` (added 2026-07-26 COMB_004 DRAFT — the only write path for `loot_tables`, per **SPO-A7**: drop tables are System-tier and author/admin-only. A player-writable drop table would let one player change every player's rewards — a cross-tenant defect, not a feature.) |
+| `Forge:EditSpawnDecl { place_ref, decl_index, before, after }` (added 2026-07-26 COMB_005 DRAFT — the only write path for `hostile_spawns` / `TerrainSpawnDecl`, per **SPN-A8**. No player action creates, moves or suppresses a spawn declaration; a player-writable spawn table would let one player repopulate — or depopulate — the world for everyone. Edits are re-validated against SPN-V4's danger band, so an admin cannot introduce a boss into a Newbie zone either.) |
+| `Forge:EditPvpPolicy { before, after }` (added 2026-07-26 COMB_006 DRAFT — the only write path for `pvp_policy` and for a place's `Contested` band, per **PVP-A7**. This is the highest-consequence author action in the family: enabling PvP in a reality whose WA_006 `DeathMode` is `Permadeath` makes permanent character loss reachable, so the audit trail matters more here than anywhere else.) |
 
 ### Extension rules
 

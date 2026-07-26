@@ -126,27 +126,75 @@ Translation: LLM intervention should be minimal or zero in combat. LLM only part
 | COMB_004 | **Loot & Spoils** (SPO) | **DRAFT 2026-07-26** — AUD-F9. `LootTableDecl` keyed by `ActorClassRef`; **independent per-entry seeded rolls** (not one weighted pick); **rolls at defeat finalisation, never at KO** (SPO-A1); spoils land via PL_007 §8.5's substrate; `spoils_claim` rights window; **progression award** (the part that makes fighting worth it); epoch-keyed anti-farm. | DRAFT | [`COMB_004_loot_and_spoils.md`](COMB_004_loot_and_spoils.md) | this commit |
 | COMB_005 | **Encounter Spawning** (SPN) | **DRAFT 2026-07-26** — AUD-F9. Layers on AIT_001's population ownership (SPN-A1). `HostileSpawnDecl`; **epoch respawn** (`floor(fiction_day / period)`) — no timers, no roster, time-dilation-safe; aggro/engagement predicate (COMB_001's trigger-3 stub, generalised); encounter formation + arena choice; tier promotion with soft-fail; **the newbie-zone validator COMB_001 declared and never built** (SPN-V4, schema stage). | DRAFT | [`COMB_005_encounter_spawning.md`](COMB_005_encounter_spawning.md) | this commit |
 
+| COMB_006 | **PvP & Stakes** (PVP) | **DRAFT 2026-07-26** — closes **COMB-Q3** and discharges **PC-D2** (locked 2026-04-23, consent model deferred to DF4/DF5 and never built). Two channels: **Duel** with stakes declared at challenge time (`Spar` / `LifeAndDeath` 生死战) and **ContestedZone** (a new PF_001 `combat_safety` band where entering *is* consent). Master gate **defaults Disabled**; full WA_006 mortality applies (PVP-A4); **disparity-cap waiver is pairwise**; post-incarnation grace prevents permadeath spawn-camping; REP_001 notoriety is the social consequence. | DRAFT | [`COMB_006_pvp_and_stakes.md`](COMB_006_pvp_and_stakes.md) | this commit |
+
 **Sibling namespace:** [`../19_ability/ABL_001_ability_foundation.md`](../19_ability/ABL_001_ability_foundation.md) — **ABL_001 Ability Foundation** (DRAFT 2026-07-26, AUD-F10). Homed outside `18_combat` because PL_005/PL_007 call it too; see its `_index.md` for the reasoning.
+
+> ## ✅ COMB-Q3 CLOSED — PvP designed 2026-07-26
+>
+> **It was never an open design question.** `PC-D2` locked *"PvP enabled within a session"* on
+> **2026-04-23**, deferring only the consent model to DF4/DF5 — where DF5 deferred it again (DF5-D3 → V2)
+> and DF4 is still CONCEPT-only. Meanwhile [`02_world_authoring/_index.md`](../02_world_authoring/_index.md)
+> reserved `WA_NNN_pvp_consent` **and named combat as its home** once combat opened: *"the others have
+> stronger affinity to their consumer (**PvP→combat**)."* Combat opened; the condition fired; the WA
+> reservation can be **retired**.
+>
+> **Three findings shaped the design:**
+> 1. **Anti-grief was already built** — four layers (TDIL-A1/A6 turn economics, WA_001 Lex axiom, PF_001
+>    `combat_safety`, COMB_001 Q4 disparity cap). PvP needed none of its own.
+> 2. **Faction war is structurally unavailable** — FAC_001 `RelationStance` is a closed 3-variant enum
+>    **static at canonical seed**; there is no `AtWar` to read. Deferred to DIPL_001 (PVP-D1), not by
+>    preference but by foundation lock.
+> 3. **The death default is permadeath** (WA_006 / PC-B1) — so PvP + no config would let a stranger
+>    permanently delete a character with no author choosing it. Hence the master gate defaults **Disabled**.
+>
+> ### The Binding Contest ([COMB_004 §16](COMB_004_loot_and_spoils.md))
+>
+> Per user direction, PvP defeat is **full WA_006 including permadeath** — made survivable not by a softer
+> death but by making what you lose **degradable, contestable and reclaimable**. `BindTier`
+> (`Unbound / BodyBound / SoulBound`) reuses **PROG_001's existing `BodyOrSoul` axis** — which already
+> calls soul-carried progressions *"soul-bound"* — so the mechanic needs **no new metaphysics**. Three
+> deterministic loss paths, no random gear-loss roll: **sunder** (attrition across deaths), **severance**
+> (an authored `SeverBinding` ability, `Break` or `Claim`), **overwhelm** (raw power ratio).
+>
+> **The structural result worth naming:** overwhelm reads *the same ratio* as COMB_001 Q4's disparity cap,
+> in the opposite direction — the cap protects the weak, overwhelm rewards the overwhelming — and since
+> `cap_applies` and `cap_waived` are complements, **the two can never both fire**. A strong player
+> therefore *cannot* follow a weak one into a newbie zone and strip their bindings: the anti-grief property
+> falls out of the arithmetic rather than being a check someone added.
+>
+> **⚠ One hard dependency:** sunder consumes PL_007's `durability`, currently `V1: ALWAYS None`
+> (**RES-D4**, schema reservation only). **Binding degradation cannot ship until RES-D4 is activated**
+> (SPO-D11). Severance and overwhelm are unaffected, so the V1+ subset is coherent — bindings can be
+> *taken*, just not yet *worn down*.
 
 ---
 
-## ⚠ Outstanding registration (lock-gated — NOT done in this cycle)
+## ✅ Boundary registration COMPLETE (2026-07-26, `[boundaries-lock-claim+release]`)
 
-`_boundaries/` was **held by a parallel session** throughout this cycle (DF07 + PL_007 registration,
-2026-07-26), so this work deliberately did **not** claim it. The following must land in a later
-`[boundaries-lock-claim+release]` cycle:
+The family's design landed while `_boundaries/` was held by the parallel session, so registration was
+tracked here rather than applied. **It has now been applied** — see
+[`_boundaries/99_changelog.md`](../../_boundaries/99_changelog.md) (top entry).
 
-| Target | Entry |
+| Target | Registered |
 |---|---|
-| `01_feature_ownership_matrix.md` — prefixes | `THR-*` (COMB_003) · `SPO-*` (COMB_004) · `SPN-*` (COMB_005) · `ABL-*` (ABL_001, new `19_ability` namespace) |
-| `01_feature_ownership_matrix.md` — aggregates | **none** — record explicitly that the closure added zero aggregates; `threat_table` / `cooldowns` / `stat_snapshots` are `combat_session` fields, and COMB_004's `spoils_claim` is ephemeral |
-| `02_extension_contracts.md` §1.4 — reject namespaces | `threat.*` (6) · `spoils.*` (8) · `spawn.*` (8) · `ability.*` (12) |
-| `02_extension_contracts.md` §2 — RealityManifest | `threat_config` (opt) · `loot_tables` · `abilities` (opt) · `hostile_spawns` on `PlaceDecl` · `TerrainSpawnDecl` on TMP terrain |
-| `02_extension_contracts.md` §4 — Forge sub-actions | `Forge:EditLootTable` · `Forge:EditSpawnDecl` |
-| `00_foundation/06_id_catalog.md` | the four prefixes above |
-| `decisions/locked_decisions.md` | `THR-Q1..Q8` · `SPO-Q1..Q9` · `SPN-Q1..Q9` · `ABL-Q1..Q9` |
-| `catalog/` | `cat_18_COMB_combat.md` + `cat_19_ABL_ability.md` (both still uncreated) |
-| **Cross-track coordination** | **ABL-Q9** — the `UseEffectDecl` ⊂ `EffectOp` merge is *proposed*, not applied. It needs the PL_007 owner's agreement before either enum changes. |
+| `01_feature_ownership_matrix.md` — prefixes | ✅ `THR-*` · `SPO-*` · `SPN-*` · `PVP-*` · `ABL-*`, with full ID ranges |
+| `01_feature_ownership_matrix.md` — aggregates | ✅ an explicit **`NO NEW AGGREGATE`** negative claim for all five features (recorded deliberately, since five features landing without one otherwise reads as an oversight) |
+| `01_feature_ownership_matrix.md` — shared schema | ✅ **`EffectOp`** — one owner (ABL_001), many producers; the DF07 `StatModifier` shape |
+| `02_extension_contracts.md` §1.4 | ✅ `threat.*` (6) · `spoils.*` (12) · `spawn.*` (10) · `ability.*` (14) · `pvp.*` (9) |
+| `02_extension_contracts.md` §1.4a | ✅ **NEW** — the `EffectOp` vocabulary + the law-chain-bypass defect that forced the merge |
+| `02_extension_contracts.md` §2.AB | ✅ **NEW** — `threat_config` · `loot_tables` · `abilities` · `pvp_policy` · `PlaceDecl.hostile_spawns` + `Contested` band · TMP `TerrainSpawnDecl` |
+| `02_extension_contracts.md` §4 | ✅ `Forge:EditLootTable` · `Forge:EditSpawnDecl` · `Forge:EditPvpPolicy` |
+| `00_foundation/06_id_catalog.md` | ✅ all five prefixes |
+| `decisions/locked_decisions.md` | ✅ NEW combat-family block (27 decisions); **`PC-D2` marked DISCHARGED** by COMB_006 |
+| `02_world_authoring/_index.md` | ✅ **`WA_NNN_pvp_consent` RETIRED** — its own prediction (*"PvP→combat when those consumer features open"*) held |
+
+| `catalog/cat_18_COMB_combat.md` | ✅ **created 2026-07-26** — the matrix had carried "NOT YET CREATED" since 2026-06-20 |
+| `catalog/cat_19_ABL_ability.md` | ✅ **created 2026-07-26** with the namespace |
+| PL_007 §7.1 `UseEffectDecl` → `EffectOp` | ✅ **ABL-Q9 closure note applied** to PL_007 §7.1 (dated additive note, the track's behavioural-closure pattern); the schema edit lands when that doc is next opened |
+
+**Nothing outstanding.** Every open question in the family is closed — the 8 `-QO` items, `COMB-Q1`,
+`COMB-Q2`, `COMB-Q3` and `ABL-Q9` — and the boundary surface is fully registered.
 
 ---
 

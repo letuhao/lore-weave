@@ -549,6 +549,46 @@ effective stats subscribes to `actor_equipment` (§12.1).
 
 ### 7.1 `UseEffectDecl` — closed enum, 7 V1 variants
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (combat family / ABL-Q9) — `UseEffectDecl` retires into
+> `EffectOp`, and the reason is a defect, not tidiness.**
+>
+> ```rust
+> pub type UseEffectDecl = EffectOp;   // ABL_001 §4.1 owns the vocabulary (ABL-Q9/Q10)
+> ```
+>
+> `ItemDef.use_effect: Option<UseEffectDecl>` is **unchanged in shape** — only the type it names moves.
+> Two findings forced this, both caught by reading the two enums side by side one day after both were
+> written:
+>
+> 1. **They had already diverged.** `StatusApply` here takes `{ flag, magnitude }`; ABL's takes
+>    `{ flag, magnitude, duration_rounds }` (combat has rounds). `VitalDelta` here names its field `kind`,
+>    ABL's names it `vital`. Neither doc was wrong alone — which is exactly how two closed enums over one
+>    concept drift.
+> 2. **`VitalDelta { amount: i32 }` was a damage-law-chain bypass, in both docs.** The field is *signed*,
+>    so `UseItem { poison_vial, target } → VitalDelta { Hp, −30 }` writes damage that skips COMB_001 §4's
+>    chain (**ignores `Armor`**, elem, resist, variance), takes **no hit roll**, accrues **no COMB_003
+>    threat** (accrual reads `damage_applied` *from* the chain), ignores **COMB_001 Q4's disparity cap**,
+>    and ignores **COMB_006's PvP eligibility predicate** — which guards `Strike` and `Damage`, not a raw
+>    vital write. Net: **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, silently
+>    falsifying COMB_001's *"the 4-step chain is the sole damage authority"*.
+>
+> **Fix:** `VitalDelta` → **`VitalRestore { vital, amount: u32 }`** — harm becomes **unrepresentable by
+> type**, and every path that reduces another actor's vitals is `Damage { power: PowerTerm }`, which
+> passes the chain, the hit roll, the disparity cap and the PvP predicate. `ABL-V9` asserts it. This is
+> the same *unrepresentable-not-merely-invalid* discipline as **ITM-A7** (equipment is a slot assignment)
+> and THR-Q7.
+>
+> **What PL_007 gains, not loses:** `Unlock` moves into `EffectOp` as its 11th variant (nothing lost), and
+> items become able to declare `Damage` — so an **explosive talisman (符)** is finally expressible, which
+> the 7-variant enum could not do except via the bypass above. **ITM-A4 is strengthened:** the item still
+> emits no number; a damaging talisman declares a `PowerTerm` (a multiplier on a stat slot) and the engine
+> computes the damage. **PL_007's narrative-only `Unlock`/`Reveal` treatment below is preserved verbatim**
+> and has been adopted by ABL for the same reason.
+>
+> Registered in [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md)
+> §1.4a and the ownership matrix. Applied here as a dated note per the track's behavioural-closure
+> pattern; the schema edit lands when this doc is next opened.
+
 PL_007 adds no new effect substrate — it is a dispatch vocabulary, which is what keeps it bounded for
 AGT-A2. **But the first draft's blanket claim that "every variant routes to an aggregate already owned
 by another feature" was false for two of the seven, and the correction matters because it changes what
