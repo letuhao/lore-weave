@@ -362,6 +362,30 @@ _KNOWN_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({
     # Track D CD5 — superseded by the universal `web_search` (provider-registry). Demoted
     # in place, not renamed: the C-GW prefix gate binds a name to its provider.
     "glossary_web_search",
+
+    # ── composition (2026-07-27) ────────────────────────────────────────────────────────────
+    # This list is HAND-MAINTAINED, and that is its weakness: it covered only glossary, so it
+    # was blind to composition-service's 51 `visibility="legacy"` tools. The composition skill
+    # was consequently teaching FOURTEEN de-advertised names — including every atom-edit tool
+    # (outline_node_create/update/delete/restore, motif_create/patch/archive, motif_bind/unbind,
+    # scene_link_create/delete) — so the co-writer was told to edit outline nodes, motifs and
+    # scene links with tools it cannot discover. The lint passed the whole time.
+    #
+    # Deriving this set from the owning service's `visibility="legacy"` markers would be the
+    # real fix (a generated contract, like contracts/plan-artifacts.contract.json), but that is
+    # a cross-service change; tracked rather than silently skipped. Until then, KEEP THIS LIST
+    # IN SYNC when a composition tool is superseded.
+    "composition_outline_node_create", "composition_outline_node_update",
+    "composition_outline_node_delete", "composition_outline_node_restore",
+    "composition_motif_create", "composition_motif_patch", "composition_motif_archive",
+    "composition_motif_bind", "composition_motif_unbind",
+    "composition_scene_link_create", "composition_scene_link_delete",
+    "composition_write_prose", "composition_publish", "composition_get_prose",
+    "composition_canon_rule_create", "composition_canon_rule_update",
+    "composition_canon_rule_delete", "composition_canon_rule_restore",
+    "composition_structure_template_create", "composition_structure_template_update",
+    "composition_structure_template_archive", "composition_structure_template_restore",
+    "composition_structure_template_clone",
 })
 
 # Skills exempt from the domain-hot-seed check entirely: `admin` advertises its OWN
