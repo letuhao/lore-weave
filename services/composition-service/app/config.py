@@ -130,7 +130,13 @@ class Settings(BaseSettings):
     stitch_max_tokens: int = 8192
     # Per-scene output budget for the proportional chapter/stitch sizing (so a
     # multi-scene chapter gets room instead of a flat cap that silently truncates).
-    chapter_gen_per_scene_tokens: int = 700
+    # Raised 700→1200 (2026-07-26): the logs showed a chapter cut off mid-scene
+    # (finish_reason=length, truncated=true) — and the longest NATURAL chapter (1608
+    # words / ~3 scenes) was already sitting at the old 3×700 ceiling, so any chapter
+    # that ran a little longer got chopped (a broken ending). 1200/scene gives a
+    # 3-scene chapter ~2700 words of headroom to finish naturally; chapter_gen_max_
+    # tokens (8192) still bounds a runaway.
+    chapter_gen_per_scene_tokens: int = 1200
     # FD-1 / narrative_thread S2 — cap on NEW promise threads a single generated
     # passage may open, so a verbose detector can't flood the ledger. The pass
     # itself is per-Work opt-in via `work.settings["narrative_thread_enabled"]`.

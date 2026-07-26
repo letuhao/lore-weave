@@ -28,6 +28,10 @@ from uuid import UUID
 import httpx
 
 from app.config import settings
+
+# Mirror knowledge-service's /drawers/search `query` max_length (DRAWERS_QUERY_MAX_
+# LENGTH) — a longer query 422s. Cap the composition-side query to stay under it.
+_DRAWERS_QUERY_MAX_LENGTH = 1000
 from app.logging_config import trace_id_var
 
 logger = logging.getLogger(__name__)
@@ -505,6 +509,12 @@ class KnowledgeClient:
         in-language passages first (matched-first partition, not a filter) so a vi
         author's lore lens surfaces vi passages — the headline scenario. Omitted →
         relevance order only (back-compat)."""
+        # The /drawers/search endpoint 422s a query over DRAWERS_QUERY_MAX_LENGTH
+        # (1000). The chapter packer passes the whole combined multi-scene synopsis
+        # as the query, which for a long chapter EXCEEDS that — so the lore lens
+        # silently 422'd and the drafter lost its semantic-lore grounding (seen in
+        # the 2026-07-26 logs). Cap it: a 1000-char prefix is ample retrieval signal.
+        query = query[:_DRAWERS_QUERY_MAX_LENGTH]
         params: dict[str, Any] = {
             "project_id": str(project_id), "query": query, "limit": limit,
         }

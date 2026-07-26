@@ -261,6 +261,23 @@ async def test_get_entity_and_search_drawers():
 
 
 @respx.mock
+async def test_search_drawers_caps_an_overlong_query_so_it_does_not_422():
+    # 2026-07-26 logs: the packer passes the whole combined multi-scene synopsis as
+    # the query; for a long chapter it exceeds the endpoint's 1000-char max and 422s,
+    # silently killing the lore lens. The client must cap the query to stay valid.
+    route = respx.get(f"{BASE}/v1/knowledge/drawers/search").mock(
+        return_value=httpx.Response(200, json={"hits": []})
+    )
+    c = await _client()
+    try:
+        await c.search_drawers("jwt", project_id=PROJECT, query="x" * 2000)
+    finally:
+        await c.aclose()
+    sent = route.calls.last.request.url.params["query"]
+    assert len(sent) == 1000  # capped, not the raw 2000 → no 422
+
+
+@respx.mock
 async def test_lenses_degrade_to_empty_on_failure():
     respx.get(f"{BASE}/v1/knowledge/timeline").mock(return_value=httpx.Response(500))
     respx.get(f"{BASE}/v1/knowledge/drawers/search").mock(side_effect=httpx.ConnectError("x"))
