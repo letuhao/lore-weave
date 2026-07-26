@@ -12,16 +12,16 @@
   "dependencies": {
     "@tanstack/react-query": "^5.101.3",
     "lucide-react": "^1.24.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "react-router-dom": "^7.18.1",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "^29.0.1",
     "postcss": "^8.5.20",
