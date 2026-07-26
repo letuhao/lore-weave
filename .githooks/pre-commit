@@ -1,12 +1,33 @@
 #!/usr/bin/env sh
-# LoreWeave pre-commit — enforce AI provider invariants (CLAUDE.md › Key Rules):
-#   • Provider gateway invariant: no direct provider-SDK usage outside the gateway
-#   • No hardcoded model names in runtime code
-# Checks only STAGED files (fast). Bypass in a true emergency with `git commit --no-verify`.
+# LoreWeave pre-commit. Checks only STAGED files (fast).
+# Bypass in a true emergency with `git commit --no-verify`.
 #
 # Activate (per checkout):  git config core.hooksPath .githooks
+#
+#   1. AI provider invariants (CLAUDE.md › Key Rules)
+#        • Provider gateway invariant: no direct provider-SDK usage outside the gateway
+#        • No hardcoded model names in runtime code
+#   2. I3 language rule (PRR-16 / PRR-21)
+#        • services/<name>/ detected language must match contracts/language-rule.yaml
+#        • a service present on disk with NO row is a FAIL (completeness)
+#   3. _boundaries/ single-writer mutex
+#        • a _boundaries/ edit must carry an evidenced claim+release cycle
+#
+# Checks 2 and 3 were added 2026-07-26 after two failures in one day that both had
+# the same shape — a documented rule with no enforcement point:
+#   • jobs-service landed 2026-06-15 with no language-rule row; the lint had been
+#     FAILing for ~6 weeks because it sat on no commit path.
+#   • Three _boundaries/ changelog entries asserted lock cycles that never happened,
+#     and a peer wrote 99_changelog.md while another session held the lock.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY=python
 command -v python >/dev/null 2>&1 || PY=python3
+
 "$PY" "$ROOT/scripts/ai-provider-gate.py" --staged
+
+# Repo-wide, not staged-scoped: PRR-21 completeness is a property of the tree
+# (a service can be added with no row by a commit that touches no yaml at all).
+sh "$ROOT/scripts/language-rule-lint.sh"
+
+"$PY" "$ROOT/scripts/boundaries-lock-gate.py" --staged
