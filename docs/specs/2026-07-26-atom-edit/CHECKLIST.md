@@ -278,7 +278,20 @@ observation. A claim that a check passed, without its output, does **not** tick 
 - [x] **F1** Atom types enumerated across composition / book / glossary / knowledge (~22 kinds,
       matching the human's "24+"): 6 PlanForge pass artifacts · 11 composition `*_edit` families ·
       book chapter/details/structure · glossary entity/ontology/wiki · kg node/schema/view/template.
-- [~] **F2** Matrix in progress. Confirmed so far:
+- [~] **F2** Matrix in progress. **Surface presence swept 2026-07-27** — all 11 composition
+      `*_edit` families have BOTH a live unified MCP tool and an FE write path:
+      `motif`/`motif_link`/`motif_bind` (`motifApi.create|patch|archive|restore|createLink|
+      deleteLink|bind|unbind`, 71 tsx under `motif/`), `arc` (`motif/arcApi.ts`),
+      `arc_template` (`arcTemplates/api.ts` + `create|update|archive|restore|clone`),
+      `structure_template` (panel + now wired, E8), `outline_node` (`create|patch|archive|
+      restore|reorderNode`), `canon_rule` (`create|patch|delete|restore`), `entity_override`
+      (`add|update|delete`), `scene_link` (`create|delete`), `derivative`
+      (`deriveWork`/`patchDivergenceSpec`/`getDerivativeContext`), plus `authoring_run`
+      manage/review (`authoringRuns/api.ts`).
+      ⚠️ **Presence is NOT proof.** All 6 PlanForge atoms also "had both sides" and 8 of them were
+      broken (F10: four editors with no door; B6: four kinds where DELETE silently no-op'd). The
+      matrix's real column — *real-run proven?* — is still **empty for all 11**. → F3.
+      Earlier confirmations:
       - **Consumed & wired:** canon_rule, motif, motif_bind/link, scene_link, reference,
         entity_override (all → `pack()` at draft time); arc, outline_node (→ propose grounding);
         arc_template (→ `arc_apply`).
@@ -291,6 +304,12 @@ observation. A claim that a check passed, without its output, does **not** tick 
         silently keeps the removed member. Live shapes confirmed. → **B6**
       - **FE cannot edit 4 of 6 kinds at all** (read-only JSON fallback). → **B5**
 - [ ] **F3** Rank the remaining gaps; fold the "built but never wired" ones into Phase B.
+      **Proof sweep design (2026-07-27):** proving 11 families × 4 ops live is ~44 round-trips and
+      most would pass. Prioritise by *failure mode observed in this track*, not by count:
+      1. **DELETE / archive first** — the op that failed silently on 4 of 6 PlanForge kinds (B6).
+      2. **Then the FE door** — does a completed/advisory state actually render a way in? (F10).
+      3. **Then round-trip preservation** — does an unrelated edit drop an unexposed field? (B8).
+      Ops that merely add a row are the least likely to be silently wrong; sample them.
 
 ---
 
