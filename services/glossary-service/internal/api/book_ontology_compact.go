@@ -77,7 +77,7 @@ func compactBookOntologyOf(ont *bookOntologyResp) *compactBookOntology {
 		Kinds:  make([]compactKind, 0, len(ont.Kinds)),
 		Note: "Compact view: each attribute's heavy definition fields (its long description, its " +
 			"choice list, and its auto-fill instruction) are omitted — you do not need them to reason " +
-			"about or patch the structure. To edit any row, call glossary_book_patch with the code + " +
+			"about or patch the structure. To edit any row, call glossary_ontology_upsert with the code + " +
 			"base_version shown here.",
 	}
 	for _, g := range ont.Genres {

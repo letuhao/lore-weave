@@ -635,7 +635,7 @@ async def composition_list_outline(
     name="composition_get_outline_node",
     description=(
         "Read ONE outline node by id — its fields plus `version`, the concurrency "
-        "token you pass back to composition_outline_node_update. Use this instead of "
+        "token you pass back to composition_outline_node_edit (op=\"update\"). Use this instead of "
         "listing the whole outline when you only need one node's current state or "
         "version (e.g. before a status/title edit). Owner/grant-filtered (VIEW)."
     ),
@@ -823,8 +823,8 @@ async def _resolve_or_create_default_project(
     every other composition↔knowledge interaction already uses
     (`app/clients/knowledge_client.py`), reached via a minted service bearer —
     the established MCP→JWT-only-route seam (`app/mcp/service_bearer.py`, the
-    same pattern `composition_get_prose`/`composition_write_prose` already use
-    to reach book-service).
+    same pattern the retired composition prose proxies already used to reach
+    book-service).
 
     Returns the resolved/created project_id, or None on a knowledge-service
     OUTAGE (down/timeout/5xx) so the caller can degrade to a lazy pending Work —
@@ -2461,13 +2461,13 @@ class _GenerateArgs(ForbidExtra):
     description=(
         "PROPOSE running the grounded cowrite ENGINE to generate prose — a SCENE "
         "(pass outline_node_id) or a whole CHAPTER (pass chapter_id; persisted to the "
-        "book draft). This is DISTINCT from composition_write_prose, which only SAVES "
+        "book draft). This is DISTINCT from book_chapter_save_draft, which only SAVES "
         "text you wrote yourself: this invokes the canon-grounded drafter+critic engine "
         "and SPENDS LLM tokens, so it is cost-gated — it returns a `confirm_token` + "
         "descriptor and generates NOTHING until the user confirms via confirm_action. "
         "Pass EXACTLY ONE of outline_node_id / chapter_id. EDIT on the book required. "
         "For a chapter, first build its outline (a chapter node + at least one scene "
-        "node) with the composition_outline_node_create tool."
+        "node) with composition_outline_node_edit (op=\"create\")."
     ),
     meta=require_meta(
         "W", "book",
@@ -5517,8 +5517,8 @@ async def composition_package_tree(
         "Find-references for an entity, across the SPEC layer: which outline nodes have it as POV or "
         "present, which scenes, which arc rosters bind it, which motif applications and canon rules "
         "and narrative threads name it. Returns EXACT counts per source plus a capped sample of rows. "
-        "Composition-scope: for the PROSE side also call glossary_list_chapter_links / "
-        "glossary_get_entity_evidence, and for the GRAPH side kg_entity_edge_timeline — this tool "
+        "Composition-scope: for the PROSE side also call glossary_get_entity (it carries the "
+        "chapter links + evidence), and for the GRAPH side kg_entity_edge_timeline — this tool "
         "does not federate to them. VIEW required."
     ),
     meta=require_meta(
@@ -5572,8 +5572,8 @@ async def composition_find_references(
         "sources": out_sources,
         "_meta": {
             "note": (
-                "Composition scope only. The prose side is glossary_list_chapter_links + "
-                "glossary_get_entity_evidence; the graph side is kg_entity_edge_timeline."
+                "Composition scope only. The prose side is glossary_get_entity (chapter links + "
+                "evidence); the graph side is kg_entity_edge_timeline."
             ),
         },
     }
@@ -5709,7 +5709,7 @@ async def composition_arc_list(
     name="composition_arc_get",
     description=(
         "Read ONE arc/saga by id, ENRICHED with everything the arc inspector needs: "
-        "the node's own fields + `version` (the OCC token for composition_arc_update), "
+        "the node's own fields + `version` (the OCC token for composition_arc_edit), "
         "the CASCADE-RESOLVED `tracks`/`roster`/`roster_bindings` (root saga → this "
         "arc, leaf-shadowed by key), the DERIVED `span` (min/max story_order + "
         "chapter_count + warn-only is_contiguous over member chapters), and the "

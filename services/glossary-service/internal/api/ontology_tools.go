@@ -39,7 +39,7 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 			"creates and updates freely. Omit base_version on an item to create it; include " +
 			"the current base_version to update it with optimistic locking. Accepts 1-50 " +
 			"items; each item succeeds or fails independently. (For a human-confirmed proposal " +
-			"of a single new attribute instead, use glossary_propose_new_attribute.)",
+			"of a single new attribute instead, use glossary_propose_batch.)",
 		InputSchema: ontologyUpsertSchema(),
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"add a kind", "add a genre", "add an attribute", "edit a kind", "rename a kind", "new entity type",
@@ -51,7 +51,7 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 		Description: "Delete book- or user-tier ontology row(s). scope=book mints a confirm " +
 			"token — a human must approve before the delete executes; returns {confirm_token, " +
 			"preview}. scope=user executes immediately as a reversible soft-delete (undo via " +
-			"glossary_user_restore); returns {results}. Deleting an already-deleted row is a " +
+			"glossary_ontology_upsert to re-add); returns {results}. Deleting an already-deleted row is a " +
 			"no-op, not an error.",
 		InputSchema: ontologyDeleteSchema(),
 		// _meta.tier is ONE value covering two behaviorally-different branches (book=confirm-

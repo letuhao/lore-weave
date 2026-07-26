@@ -152,11 +152,18 @@ def instruction_files() -> list[tuple[str, Path, str]]:
 
 TOKEN = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
 _LOGGING = re.compile(r"\b(?:slog|logger|logging|log)\.\w+\(|logger\.(?:warning|info|debug|error)")
-#: Internal routing by tool NAME — `_dispatch(ctx, "kg_create_node", args)` is how a unified tool
-#: reaches its implementation, not text the model ever sees. NOT filtered: `_undo(...)` /
-#: `undo_hint`, which the agent DOES read — an undo hint pointing at a retired tool is precisely
-#: the bug this scanner exists to find.
-_INTERNAL_DISPATCH = re.compile(r"_dispatch\(")
+#: Tool names used as DISPATCH KEYS, not as prose.
+#:
+#: `_dispatch(ctx, "kg_create_node", args)` is how a unified tool reaches its implementation.
+#: `undoResult("book_chapter_delete", …)` / `_undo(…)` emit `_meta.undo_hint = {tool, args}` —
+#: the name there is the key a client calls to REVERSE the operation, with args shaped for that
+#: exact tool. Retired tools deliberately stay CALLABLE (hidden, not deleted) so undo and cached
+#: workflows keep working, so pointing an undo hint at the "replacement" would hand it a tool
+#: with a different signature and silently break the undo.
+#:
+#: An earlier version of this file argued the opposite — that an undo hint naming a retired tool
+#: was the bug. It is not: it is the mechanism working as designed.
+_INTERNAL_DISPATCH = re.compile(r"_dispatch\(|undoResult\(|_undo\(")
 #: Only text INSIDE a string literal can reach the model. A bare identifier is code — and the
 #: unified `*_edit` tools legitimately CALL their retired predecessors' handler functions
 #: (`composition_outline_node_edit` dispatches into `composition_outline_node_create`), which is

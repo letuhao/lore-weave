@@ -219,7 +219,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "Apply MANY ontology changes on ONE confirm — the DETERMINISTIC batch path. Pass the " +
 			"operations EXPLICITLY in `ops` and they are validated + minted into a SINGLE execute_plan confirm " +
 			"card (no planner model is called — use this, not glossary_plan, when you already know the exact " +
-			"changes). ALWAYS prefer this over calling glossary_propose_new_kind / glossary_propose_new_attribute / " +
+			"changes). ALWAYS prefer this over calling the per-kind / per-attribute propose tools or " +
 			"glossary_book_* repeatedly: emitting several individual confirm cards in one turn FAILS — only the first " +
 			"can be confirmed. Each op is {type, params, rationale?}. Op types and their params: " +
 			"adopt_genres {genres:[code],kinds:[code]}; " +

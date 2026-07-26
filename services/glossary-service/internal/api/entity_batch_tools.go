@@ -31,7 +31,7 @@ func (s *Server) RegisterEntityBatchTools(srv *mcp.Server) {
 		Description: "Create/author/add one or more NEW entities (character, place, item, concept, ...) " +
 			"with their attribute values for a book's glossary IN ONE CALL -- also the tool to use for a " +
 			"SINGLE new entity (pass items with just one item), not only for batches; prefer this over " +
-			"calling the legacy glossary_propose_new_entity. Each item is created as a DRAFT suggestion " +
+			"calling a per-entity propose tool. Each item is created as a DRAFT suggestion " +
 			"in the review inbox -- NOT canon -- and succeeds or fails independently (not all-or-nothing). " +
 			"If a name already exists, or was previously rejected, that item is skipped, not duplicated -- " +
 			"this tool only CREATES new entities; to add or change attributes on an entity that already " +
@@ -164,7 +164,7 @@ func (s *Server) toolProposeEntities(ctx context.Context, _ *mcp.CallToolRequest
 		if allFailuresAreUnknownKind(out.Results) {
 			msg += ". An 'unknown kind' means that category does not exist in this book yet — " +
 				"create the categories first (glossary_adopt_standards to adopt the system kinds, or " +
-				"glossary_propose_kinds for custom ones), then retry."
+				"glossary_propose_batch for custom ones), then retry."
 		} else {
 			msg += "."
 		}

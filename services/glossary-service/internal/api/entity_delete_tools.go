@@ -60,7 +60,7 @@ func (s *Server) RegisterEntityDeleteTools(srv *mcp.Server) {
 		Description: "Propose DELETING one glossary entity (soft-delete — recoverable via " +
 			"glossary_entity_restore until purged). Use this for a genuinely empty/garbage entity " +
 			"(no name, no attributes, no evidence) — NOT for triaging an unknown-kind entity that just " +
-			"needs re-classifying (use glossary_propose_reassign_kind for that). High-impact: returns a " +
+			"needs re-classifying (use glossary_propose_curation with op=reassign_kind for that). High-impact: returns a " +
 			"confirm_token + a preview of what would be lost (name if any, attribute count, chapter-link " +
 			"count) — a human must approve via glossary_confirm_action before anything is deleted. " +
 			"Deleting an already-deleted entity is a no-op, not an error.",

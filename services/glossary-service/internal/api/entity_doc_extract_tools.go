@@ -86,7 +86,7 @@ const (
 // sentinel because the two callers report it differently: the MCP tool returns a plain
 // non-thrashing message; the capture route returns 409 so chat can log "ontology not set
 // up" instead of treating it as a transient failure and re-firing every cadence tick.
-var errNoBookKinds = errors.New("this book has no entity kinds yet — set up its ontology first (e.g. glossary_plan or glossary_propose_kinds), then extract")
+var errNoBookKinds = errors.New("this book has no entity kinds yet — set up its ontology first (e.g. glossary_plan or glossary_propose_batch), then extract")
 
 // RegisterEntityDocExtractTools adds glossary_extract_entities_from_doc to the
 // user/book /mcp server (append-only registration convention, matches the sibling
