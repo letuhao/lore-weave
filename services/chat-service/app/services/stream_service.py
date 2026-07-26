@@ -3052,6 +3052,32 @@ async def _stream_with_tools(
                         # reset/increment rule at the backend dispatch site below).
                         if _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
                             blank_tool_args_streak += 1
+                        # D-FE-TOOL-LOOP — frontend tools bypassed BOTH loop guards (the
+                        # repeated-failure breaker and the blank-args cap both live on the
+                        # backend dispatch path, below this branch), so a model that kept
+                        # re-emitting the same invalid frontend call looped unbounded.
+                        # Measured live (Mị Đế dogfood, session 019f9f2e): ~205 identical
+                        # malformed glossary_propose_entity_edit calls in ONE turn while the
+                        # backend sibling tripped its breaker at 2. Feed the shared
+                        # (tool → error → count) map and short-circuit + de-advertise at the
+                        # same cap a backend tool gets.
+                        _err_sig = _fe_err[:200]
+                        _fe_fails = fail_by_tool_error.setdefault(c["name"], {})
+                        _fe_fails[_err_sig] = _fe_fails.get(_err_sig, 0) + 1
+                        if _fe_fails[_err_sig] > REPEATED_FAILURE_CAP:
+                            _fe_err = (
+                                f"'{c['name']}' has already FAILED {_fe_fails[_err_sig]} times "
+                                f"this turn with the same invalid arguments: {_err_sig} — "
+                                "retrying it keeps hitting the same wall. STOP calling it. "
+                                "Fix EXACTLY what that error says is wrong, use a DIFFERENT "
+                                "tool, or tell the user plainly what is blocking you."
+                            )
+                            failure_suppress.add(c["name"])
+                            logger.info(
+                                "repeated-failure breaker (frontend): %s failed %d× with the "
+                                "same validation error this turn — short-circuited + "
+                                "de-advertised", c["name"], _fe_fails[_err_sig],
+                            )
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
                             "content": tool_result_content({"error": _fe_err}),
@@ -3062,6 +3088,9 @@ async def _stream_with_tools(
                         }}
                         continue
                     blank_tool_args_streak = 0  # a valid frontend-tool call
+                    # A valid call breaks the failure loop — reset the tool's failure map
+                    # (mirrors the backend success-clears rule at the dispatch site below).
+                    fail_by_tool_error.pop(c["name"], None)
                     suspended_call = {
                         "id": c["id"],
                         "name": c["name"],
