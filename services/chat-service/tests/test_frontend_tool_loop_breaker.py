@@ -125,6 +125,38 @@ class TestFrontendToolLoopBreaker:
         assert "done" in text
 
     @pytest.mark.asyncio
+    async def test_session_book_id_is_injected_before_validation(self):
+        """D-FE-TOOL-CONTEXT-IDS: a frontend tool call whose book_id the model omitted
+        (or mangled) gets the session's ambient book injected BEFORE validation — the
+        weak-model 'ID giả định' failure mode. The call must then fail (if at all) on
+        its OTHER args, never on book_id."""
+        import app.services.stream_service as ss
+
+        book = "019f9f2d-f9f1-7037-ba78-8ccc3e19c956"
+        # entity_id + changes present and well-formed; book_id OMITTED entirely
+        args = (
+            '{"entity_id":"019f9f41-5f71-75c5-b23f-18984376efe1",'
+            '"base_version":"2026-07-26T00:00:00Z",'
+            '"changes":[{"field":"description","new_value":"x"}]}'
+        )
+        kc = _kc()
+        chunks = []
+        with patch.object(ss, "Client", _fake_client_fe_looping(1, arguments=args)):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "sửa mô tả"}],
+                gen_params={"max_tokens": 100}, tools=[GLOSSARY_PROPOSE_EDIT_TOOL],
+                knowledge_client=kc, session_id="s", project_id=None,
+                permission_mode="write",
+                context_ids={"book_id": book, "studio": True},
+            ):
+                chunks.append(ch)
+        errs = [t["error"] for t in _tool_calls(chunks) if not t.get("ok")]
+        assert not any("book_id" in (e or "") for e in errs), (
+            f"book_id must be injected from the session, not demanded of the model: {errs}"
+        )
+
+    @pytest.mark.asyncio
     async def test_a_model_that_never_recovers_is_still_bounded(self):
         """A model that re-emits the invalid call forever is cut off by the pass ceiling —
         the live failure ran ~205 calls; anything ≤ the ceiling proves the bound."""

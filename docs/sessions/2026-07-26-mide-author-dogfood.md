@@ -43,7 +43,15 @@ Continuity editor · Line editor · Character coach · Genre reader (tu chân kh
 | 10 | every multi-round turn | MED→**FIXED** | Reply bubble repeats the same content once per tool round (observed 4×) — gemma re-emits its full prior text verbatim each continuation pass and the stream concatenates passes. | persist 943→1884 (2×), 771→1542; 4-copy bubble at 11:42 PM |
 | 11 | breaker verify | INFO (good) | Post-fix live turn: the same entity_edit misuse stopped at **2 calls** (vs 205), model apologised honestly + formed the correct 4-step plan. Fix #5 verified by effect. | tool_calls: 2×✗ then honest text |
 
+| 12 | cast setup | MED | Cross-turn misuse persistence: each NEW turn the model reaches for `entity_edit`-to-create again — the breaker + de-advertise are per-turn, and its own history keeps re-teaching the mistake. | 3 consecutive turns, same wrong tool first |
+| 13 | ontology | MED (UX) | Guided setup adopted only 3 real kinds (character/location/item) — no faction/organization for a xianxia book; "Lâm gia" had no valid kind until I adopted more via Ontology → Adopt more (works well). | New-entity dialog showed 4 kinds |
+| 14 | cast setup | **HIGH (model)** | Read-then-act hallucination: model `tool_load`ed `glossary_propose_entities` then ANNOUNCED all 3 characters proposed — never called the tool. DB: nothing created. | msg f632d173: tool_calls=[tool_load✓ only] + "Đã xong!" |
+| 15 | cast setup | **HIGH→FIXED** | Frontend tools never receive the session's context-ids (the S02 injector sits below the FE branch) — the model must transcribe book_id itself, invents one ("ID giả định"), fails validation every time. | msg 854e5a33: 2×✗ "book_id must be a real UUID" |
+| 16 | echo guard v1 | MED→**FIXED** | First echo-guard cut missed every real echo: gemma opens the re-echo with "\n\n", the exact-prefix match diverged on char 1. Now whitespace-tolerant at the seams. | msg 854e5a33 content: copy1+"\n\n"+copy2 |
+
 **Fixes landed this run (hard-block / wedge class):**
+- **#15 → FIXED** (D-FE-TOOL-CONTEXT-IDS) — frontend branch now runs `_inject_context_ids` (fill-blank + replace-malformed + studio override) before validation.
+- **#16 → FIXED** (D-PASS-TEXT-REECHO v2) — lstripped probe vs stripped turn text.
 - **#10 → FIXED** (D-PASS-TEXT-REECHO) — continuation-pass opening tokens held while they verbatim-prefix the turn's streamed text; full echo swallowed, divergence flushed unchanged (incl. straddling delta). 3 regression tests.
 - **#5 → FIXED** `516d33eba` — frontend tools now feed the shared repeated-failure breaker + get de-advertised at the same cap (D-FE-TOOL-LOOP). 4 regression tests.
 - **#3 → FIXED** (D-RAIL-NEXT-STEP-EXEMPT) — the rail's NEXT actionable step tools are budget-exempt in the surface seed; the driven step is always on the wire. Note: the RESUME path still seeds from `susp.pinned_step_tools` without done/next info (pre-existing, lower risk) — tracked here, not fixed.

@@ -2003,7 +2003,13 @@ async def _stream_with_tools(
             reasoning_hold = ""
             # D-PASS-TEXT-REECHO — guard only continuation passes with real prior text
             # (a short accumulator is not worth guarding and raises false-hold risk).
-            _echo_scan = iteration > 0 and len(turn_text_so_far) >= 40
+            # Matching is whitespace-tolerant at the seams: gemma's re-echo opens with
+            # "\n\n" before the copied text (measured live — the exact-prefix first cut
+            # missed every real echo because of it), and the copy may drop the turn
+            # text's trailing newline. Compare a lstripped probe against the stripped
+            # turn text; flush the ORIGINAL buffer on divergence so nothing is lost.
+            _turn_norm = turn_text_so_far.strip()
+            _echo_scan = iteration > 0 and len(_turn_norm) >= 40
             _echo_buf = ""
             finish_reason: str | None = None
             # D-REASONING-LOOP — one detector per pass, fed BOTH channels. On a trip
@@ -2023,17 +2029,20 @@ async def _stream_with_tools(
                             # D-PASS-TEXT-REECHO — hold the pass's opening tokens while
                             # they verbatim-prefix the text already shown this turn.
                             _echo_buf += _delta
-                            if turn_text_so_far.startswith(_echo_buf):
-                                if len(_echo_buf) == len(turn_text_so_far):
+                            _probe = _echo_buf.lstrip()
+                            if not _probe:
+                                continue  # pure leading whitespace — keep holding
+                            if _turn_norm.startswith(_probe):
+                                if len(_probe) == len(_turn_norm):
                                     # full re-echo swallowed; stream the rest normally
                                     _echo_scan = False
                                     _echo_buf = ""
                                 continue
                             _echo_scan = False
-                            if _echo_buf.startswith(turn_text_so_far):
+                            if _probe.startswith(_turn_norm):
                                 # a delta straddled the echo's end: swallow the echo,
                                 # keep only the genuinely-new excess
-                                _delta = _echo_buf[len(turn_text_so_far):]
+                                _delta = _probe[len(_turn_norm):].lstrip("\n")
                             else:
                                 # diverged → not an echo: flush everything held, unchanged
                                 _delta = _echo_buf
@@ -3068,6 +3077,20 @@ async def _stream_with_tools(
                         or frontend_tool_def_by_name(c["name"])
                     )
                     _fe_args = _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def)
+                    # D-FE-TOOL-CONTEXT-IDS (2026-07-26, Mị Đế dogfood) — S02 parity for
+                    # frontend tools: they are validated BEFORE the backend dispatch's
+                    # context-id injection, so the session's known book_id never reached
+                    # them and a weak model had to transcribe it itself — it invented one
+                    # (live: "mình sẽ sử dụng một ID giả định") → guaranteed validation
+                    # failure, every call. Same injector, same conservative rules
+                    # (fill-blank + replace-malformed + studio single-book override).
+                    _inject_context_ids(
+                        _fe_args, _fe_def,
+                        book_id=(context_ids or {}).get("book_id"),
+                        chapter_id=(context_ids or {}).get("chapter_id"),
+                        project_id=(context_ids or {}).get("project_id"),
+                        studio=bool((context_ids or {}).get("studio")),
+                    )
                     # Phase 0 (frontend-tools → MCP migration) — the MCP-native
                     # validation seam. A frontend tool used to SUSPEND on its raw
                     # args with no validation, so a mis-shaped call (the reported

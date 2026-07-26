@@ -103,6 +103,15 @@ class TestPassTextReecho:
         assert cont in text
 
     @pytest.mark.asyncio
+    async def test_reecho_with_leading_whitespace_is_still_swallowed(self):
+        """THE live miss of the first cut: gemma opens the re-echo with a blank line
+        ("\\n\\n" + copy). An exact-prefix match diverges on the first char and flushes
+        the whole copy — the guard must match through the whitespace seam."""
+        text = await _drive("\n\n" + _PASS1_TEXT + _NEW_TEXT)
+        assert text.count("Đã xong!") == 1, "a whitespace-prefixed re-echo must not render twice"
+        assert _NEW_TEXT.strip() in text
+
+    @pytest.mark.asyncio
     async def test_partial_echo_fragment_is_dropped_not_leaked(self):
         """A pass that emits ONLY part of the echo then stops adds nothing new —
         the fragment (a strict prefix of what is already on screen) is dropped."""
