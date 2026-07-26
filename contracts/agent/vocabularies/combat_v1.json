@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "loreweave://contracts/agent/vocabularies/combat_v1.json",
+  "vocabulary_id": "combat_v1",
+  "description": "Combat decision vocabulary (COMB_001 action set, POC-2 slice). Closed set: a decision outside it rejects to fallback_tool (AGT-A2). Spatial resolution is engine-owned — the model picks a STANCE, never a tile (TG-A4 / LLM-zero-space).",
+  "fallback_tool": "defend",
+  "tools": [
+    {
+      "name": "strike",
+      "description": "Basic attack against one hostile target in the offered candidate list.",
+      "parameters": {
+        "type": "object",
+        "required": ["target"],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Entity id of the target. MUST be one of the candidates offered in the decision context (THR-A4: the engine offers, the model chooses — it cannot name anyone it was not offered)."
+          }
+        }
+      }
+    },
+    {
+      "name": "defend",
+      "description": "Defensive stance until the actor's next turn. The vocabulary fallback: commits on reject, timeout, or deadline expiry (AGT-A2).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "move",
+      "description": "Reposition. The engine resolves the destination tile from the stance via influence-map (TG-A4) — the model never emits coordinates.",
+      "parameters": {
+        "type": "object",
+        "required": ["stance"],
+        "additionalProperties": false,
+        "properties": {
+          "stance": {
+            "type": "string",
+            "enum": ["kite", "flank", "cover", "hold"],
+            "description": "Positioning intent (TG-A4 closed set)."
+          }
+        }
+      }
+    },
+    {
+      "name": "flee",
+      "description": "Attempt to leave the encounter through the nearest exit; the engine resolves success and path.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    }
+  ]
+}

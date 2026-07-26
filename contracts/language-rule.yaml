@@ -29,6 +29,7 @@ services:
   travel-service: rust
   tilemap-service: rust
   roleplay-service: rust           # scaffolded 2026-06-24 — first user-facing Rust service (scripts + actor-memory + start-orchestration; the MMO roleplay-service seed). Pulled forward from "L4 cycle 17+".
+  commit-service: rust             # scaffolded 2026-07-27 (POC-2) — writer-node role hosting sim-core natively (15_commit_service.md CS-A1/A5) + LlmDriver NPC-decision dispatch via loreweave_llm → provider-registry. Ships ONLY with --profile release-commit (panic="unwind" — SC-A8).
 
   # ── Go: foundation + existing novel-platform services
   admin-cli: go

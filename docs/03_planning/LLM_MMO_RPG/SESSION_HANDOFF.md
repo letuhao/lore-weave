@@ -61,9 +61,23 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > (SC-A7: kernel holds no island registry; +1-tick latency + dead-letter recording live there).
 > **46 tests green, clippy 0. SL-Q9 ANSWERED (in-process): 443 ns/msg, 2.26 M msgs/sec — co-location
 > is ~2 250× cheaper than the ~1 ms IPC estimate; SL-D20b firmly justified; real IPC at S4b.**
-> **NEXT:** POC-2 LLM vertical slice (REC-54/55/56 path; answers cost/turn — kernel prerequisites all
-> exist now) → Layer-1 lints (parallel agent task) → S3 commit-service host (HARD GATE: needs
-> `panic="unwind"` profile — workspace sets `panic="abort"` in release) → S4b real-IPC measurement.
+> **POC-2 DONE same run (LLM vertical slice — cost/turn ANSWERED):** `services/commit-service`
+> (Rust, the CS-A5 writer-node-role SEED: hosts sim-core natively + the AGT-A3 **LlmDriver**) +
+> `contracts/agent/` scaffolded (Decision envelope + combat_v1 closed vocabulary, enum-locked
+> stances, fallback=defend). **⚠ REC-54c AMENDMENT (surface-research-backed, queue for register):
+> ai-gateway has NO LLM surface** — it is MCP tool-federation only; the sanctioned chain is
+> caller → `loreweave_llm` SDK → provider-registry `/internal/llm/stream` (what chat-service +
+> tilemap-service already do). LlmDriver originates; tools are proposal-schemas executing nothing,
+> so MCP-first has no executable tool in scope. **S3 panic gate SOLVED for real:**
+> `[profile.release-commit] panic="unwind"` + ship-rule + canary (workspace release stays abort).
+> **LIVE NUMBERS (lm_studio Gemma-4 26B BYOK, $0): ~360in+330out tokens/turn · p50 ~3s ·
+> validity 83% · deadline→Defend fallback proven live twice.** Round-1 smoke exposed a REAL
+> contract lesson (validity 50%→83%): candidate labels must separate IDENTITY from STATE — the
+> model echoes the id token and strips descriptors (→ flag THR-A4/COMB_003 candidate-list shape).
+> 17 tests (wiremock dispatch + domain + vocab + panic canary), clippy 0, language-rule PASS.
+> **NEXT:** Layer-1 lints (parallel agent task) → S3 proper (proposal bus consume + EVT-V pipeline
+> + epoch-token event_log on commit-service; meter via `provider.call.completed`, not client
+> usage) → S4b real-IPC → register AMEND batch (REC-54c + REC-63 Quarantined + THR-A4 id/state).
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

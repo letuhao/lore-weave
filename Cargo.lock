@@ -483,6 +483,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "commit-service"
+version = "0.1.0-poc2"
+dependencies = [
+ "anyhow",
+ "loreweave_llm",
+ "serde",
+ "serde_json",
+ "sim-core",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2847,6 +2862,17 @@ dependencies = [
  "digest 0.10.7",
  "rand_core 0.6.4",
 ]
+
+[[package]]
+name = "sim"
+version = "0.1.0"
+dependencies = [
+ "sim-core",
+]
+
+[[package]]
+name = "sim-core"
+version = "0.1.0"
 
 [[package]]
 name = "simd-adler32"
