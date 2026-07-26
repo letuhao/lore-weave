@@ -142,11 +142,63 @@ def e3_planner_executor() -> dict:
             "coverage": len(items), "built": built, "exec_secs": round(exec_secs, 1)}
 
 
+def e4_steered_deep_build() -> dict:
+    """PO experiment (2026-07-27): can gemma reach a DEEPER detail level via a
+    multi-step STEERING loop? 1 plan call (outline the profile sections), then one
+    steered call PER SECTION in the SAME conversation (profile-so-far in context).
+    Compare against E1/E3's single-shot ~8 attrs × ~80 chars."""
+    target = "Tô Thanh Dao"
+    convo: list[dict] = [
+        {"role": "system", "content": (
+            "Bạn là biên tập viên hồ sơ nhân vật cho tiểu thuyết huyền huyễn tu chân. "
+            "Làm đúng theo từng bước được yêu cầu — không nhảy bước, không lặp lại nội dung đã viết.")},
+        {"role": "user", "content": (
+            f"BỐI CẢNH TRUYỆN:\n{STORY}\n\n"
+            f"Chúng ta sẽ xây hồ sơ THẬT SÂU cho nhân vật {target}, từng bước một.\n"
+            "BƯỚC 1 — LẬP DÀN Ý: trả về DUY NHẤT một JSON array 6-8 mục "
+            '[{"section":"tên mục","focus":"câu hỏi trọng tâm mục này phải trả lời"}] '
+            "cho hồ sơ nhân vật này. KHÔNG viết nội dung chi tiết ở bước này.")},
+    ]
+    ptext, pdt, pfin = call(convo, max_tokens=900)
+    plan = parse_json(ptext) or []
+    sections = [p for p in plan if isinstance(p, dict) and p.get("section")]
+    convo.append({"role": "assistant", "content": ptext})
+
+    details, loop_secs, finishes = [], 0.0, []
+    for p in sections[:8]:
+        convo.append({"role": "user", "content": (
+            f"BƯỚC TIẾP — VIẾT CHI TIẾT mục \"{p['section']}\" "
+            f"(trọng tâm: {p.get('focus', '')}).\n"
+            "Viết 4-7 câu CỤ THỂ, có chi tiết riêng (tên, con số, thói quen, mâu thuẫn nội tâm) — "
+            "nhất quán với các mục đã viết ở trên. Chỉ viết mục này, không viết mục khác.")})
+        dtext, dt, dfin = call(convo, max_tokens=700)
+        loop_secs += dt
+        finishes.append(dfin)
+        convo.append({"role": "assistant", "content": dtext})
+        details.append({"section": p["section"], "chars": len(dtext.strip()),
+                        "text_head": dtext.strip()[:120]})
+
+    total_chars = sum(d["chars"] for d in details)
+    return {
+        "plan_ok": bool(sections), "plan_secs": round(pdt, 1), "plan_finish": pfin,
+        "sections": [p["section"] for p in sections],
+        "n_sections_built": len(details),
+        "chars_per_section": round(total_chars / max(1, len(details))),
+        "total_chars": total_chars,
+        "loop_secs": round(loop_secs, 1),
+        "finishes": finishes,
+        "details": details,
+    }
+
+
 if __name__ == "__main__":
+    only = sys.argv[1] if len(sys.argv) > 1 else None
     res = {}
-    for name, fn in (("E1_vertical", e1_vertical),
-                     ("E2_horizontal_naive", e2_horizontal_naive),
-                     ("E3_planner_executor", e3_planner_executor)):
+    all_exps = (("E1_vertical", e1_vertical),
+                ("E2_horizontal_naive", e2_horizontal_naive),
+                ("E3_planner_executor", e3_planner_executor),
+                ("E4_steered_deep_build", e4_steered_deep_build))
+    for name, fn in ((n, f) for n, f in all_exps if not only or n.startswith(only)):
         print(f"== {name} ...", flush=True)
         try:
             res[name] = fn()
@@ -155,7 +207,8 @@ if __name__ == "__main__":
         print(json.dumps(res[name], ensure_ascii=False)[:600], flush=True)
     import os
     os.makedirs("eval/out", exist_ok=True)
-    with open("eval/out/glossary_build_poc.json", "w", encoding="utf-8") as f:
+    out_path = f"eval/out/glossary_build_poc{'_' + only if only else ''}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=2)
-    print("saved eval/out/glossary_build_poc.json")
+    print("saved", out_path)
     sys.exit(0)

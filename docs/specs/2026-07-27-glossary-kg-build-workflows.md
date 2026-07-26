@@ -106,3 +106,22 @@ resolves the model via provider-registry like every other pipeline; no invariant
 - Cost: ~5s/entity local; a 13-item build ≈ 70s of LLM time, fully parallelizable later.
 
 **⇒ Proceed to DESIGN with this exact two-phase shape; E2-style single-call breadth is dead.**
+
+### E4 — steered deep-build (PO experiment: plan → steer per section, one conversation)
+
+1 plan call (outline the profile as 6-8 sections with focus questions) + 1 steered call per
+section in the SAME conversation, profile-so-far in context (Tô Thanh Dao, same entity as E1):
+
+| | E1 single-shot | **E4 steered loop** |
+|---|---|---|
+| Output | 8 attrs × 74 chars ≈ **590 chars** | 6 sections × 1,148 chars = **6,887 chars (≈10×)** |
+| Structure | flat attribute values | Diện mạo · Năng lực/tu luyện · Tâm lý/hệ giá trị · Quan hệ/động lực · Biến cố · Mặt tối/điểm yếu |
+| Quality | correct but thin | **invents consistent canon-fitting specifics** ("Trận pháp Ứng dụng Hệ thống", "Chủ nghĩa Thực dụng Cực đoan", "Thiên Linh Động", "Điểm mù của sự kiểm soát") — cross-section consistent (accumulated context works) |
+| Cost / risk | 4.2s | 33s total (plan 4.7s + 6×~5s), **all finish=stop, zero loops** |
+
+**Design consequence — the executor gets a DEPTH DIAL, assigned by the planner per item:**
+- `depth: "standard"` — single-shot (E1/E3 shape, ~5s) for minor entities (a terminology, a prop).
+- `depth: "deep"` — plan+steer loop (E4 shape, ~35s) for major entities (protagonists, factions,
+  the power system). The steering loop is bounded by its OWN plan (6-8 sections, one call each,
+  one retry per section) — same no-loop guarantee, just more steps.
+The planner's worklist item shape gains `depth` (closed set: standard|deep) + `priority`.

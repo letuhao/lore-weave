@@ -1,0 +1,59 @@
+{
+  "E4_steered_deep_build": {
+    "plan_ok": true,
+    "plan_secs": 4.7,
+    "plan_finish": "stop",
+    "sections": [
+      "Thông tin cơ bản & Diện mạo",
+      "Năng lực & Hệ thống tu luyện",
+      "Tâm lý học & Hệ giá trị",
+      "Mối quan hệ & Động lực",
+      "Biến cố & Nút thắt",
+      "Mặt tối & Điểm yếu"
+    ],
+    "n_sections_built": 6,
+    "chars_per_section": 1148,
+    "total_chars": 6887,
+    "loop_secs": 28.6,
+    "finishes": [
+      "stop",
+      "stop",
+      "stop",
+      "stop",
+      "stop",
+      "stop"
+    ],
+    "details": [
+      {
+        "section": "Thông tin cơ bản & Diện mạo",
+        "chars": 1006,
+        "text_head": "Tô Thanh Dao sở hữu vẻ đẹp thanh lãnh, chuẩn mực với đôi mắt phượng luôn giữ ở trạng thái tĩnh lặng như mặt hồ không gợn"
+      },
+      {
+        "section": "Năng lực & Hệ thống tu luyện",
+        "chars": 1066,
+        "text_head": "Tô Thanh Dao là một thiên tài về Trận pháp học, chuyên về mảng \"Trận pháp Ứng dụng Hệ thống\" nhằm tối ưu hóa việc điều p"
+      },
+      {
+        "section": "Tâm lý học & Hệ giá trị",
+        "chars": 1140,
+        "text_head": "Hệ giá trị của Tô Thanh Dao được xây dựng trên nền tảng \"Chủ nghĩa Thực dụng Cực đoan\", nơi mọi mối quan hệ đều được địn"
+      },
+      {
+        "section": "Mối quan hệ & Động lực",
+        "chars": 1259,
+        "text_head": "Động lực cốt lõi của Tô Thanh Dao là sự kết hợp giữa lòng trung thành tuyệt đối với sự tồn vong của Tô gia và khao khát "
+      },
+      {
+        "section": "Biến cố & Nút thắt",
+        "chars": 1163,
+        "text_head": "Trong cuộc tranh đoạt cơ duyên tại Thiên Linh Động, Tô Thanh Dao đóng vai trò là \"mắt xích điều phối\" then chốt, người đ"
+      },
+      {
+        "section": "Mặt tối & Điểm yếu",
+        "chars": 1253,
+        "text_head": "Mặt tối lớn nhất của Tô Thanh Dao chính là \"Điểm mù của sự kiểm soát\", khi nàng quá tin tưởng vào khả năng tính toán của"
+      }
+    ]
+  }
+}
