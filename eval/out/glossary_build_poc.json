@@ -1,0 +1,200 @@
+{
+  "E1_vertical": {
+    "ok": true,
+    "secs": 4.2,
+    "finish": "stop",
+    "depth": {
+      "n_attrs": 8,
+      "chars_per_attr": 74,
+      "n_relations": 0
+    },
+    "raw_head": "{\"name\": \"Tô Thanh Dao\", \"kind\": \"character\", \"attributes\": {\"gender\": \"Nữ\", \"role\": \"Đại tiểu thư Tô gia, người phản bội hôn thê\", \"social_class\": \"Thiếu nữ thuộc gia tộc quyền thế\", \"affiliation\": \""
+  },
+  "E2_horizontal_naive": {
+    "ok": true,
+    "secs": 12.9,
+    "finish": "stop",
+    "coverage": 9,
+    "names": [
+      "Lâm Uyên",
+      "Tô Thanh Dao",
+      "Lâm Trạch",
+      "Huyết Vô Thường",
+      "Lâm gia",
+      "Linh năng học",
+      "Thanh Tâm Ấn",
+      "Trận pháp và Luyện khí",
+      "Cạm bẫy tranh đoạt cơ duyên"
+    ],
+    "depths": [
+      {
+        "n_attrs": 7,
+        "chars_per_attr": 51,
+        "n_relations": 3
+      },
+      {
+        "n_attrs": 6,
+        "chars_per_attr": 41,
+        "n_relations": 2
+      },
+      {
+        "n_attrs": 6,
+        "chars_per_attr": 36,
+        "n_relations": 2
+      },
+      {
+        "n_attrs": 4,
+        "chars_per_attr": 28,
+        "n_relations": 1
+      },
+      {
+        "n_attrs": 2,
+        "chars_per_attr": 87,
+        "n_relations": 0
+      },
+      {
+        "n_attrs": 1,
+        "chars_per_attr": 98,
+        "n_relations": 0
+      },
+      {
+        "n_attrs": 1,
+        "chars_per_attr": 118,
+        "n_relations": 0
+      },
+      {
+        "n_attrs": 1,
+        "chars_per_attr": 113,
+        "n_relations": 0
+      },
+      {
+        "n_attrs": 1,
+        "chars_per_attr": 110,
+        "n_relations": 0
+      }
+    ]
+  },
+  "E3_planner_executor": {
+    "planner_ok": true,
+    "planner_secs": 8.0,
+    "planner_finish": "stop",
+    "worklist": [
+      [
+        "Tô Thanh Dao",
+        "character"
+      ],
+      [
+        "Lâm Trạch",
+        "character"
+      ],
+      [
+        "Huyết Vô Thường",
+        "character"
+      ],
+      [
+        "Tô gia",
+        "organization"
+      ],
+      [
+        "Linh năng học",
+        "power_system"
+      ],
+      [
+        "Trận pháp",
+        "terminology"
+      ],
+      [
+        "Luyện khí",
+        "terminology"
+      ],
+      [
+        "Thanh Tâm Ấn",
+        "power_system"
+      ],
+      [
+        "Chân Linh",
+        "terminology"
+      ],
+      [
+        "Vật liệu",
+        "terminology"
+      ],
+      [
+        "Sự kiện Tranh đoạt cơ duyên",
+        "event"
+      ],
+      [
+        "Mối quan hệ Lâm Uyên - Tô Thanh Dao",
+        "relationship"
+      ],
+      [
+        "Mối quan hệ Lâm Uyên - Lâm Trạch",
+        "relationship"
+      ]
+    ],
+    "coverage": 13,
+    "built": [
+      {
+        "name": "Tô Thanh Dao",
+        "ok": true,
+        "finish": "stop",
+        "depth": {
+          "n_attrs": 8,
+          "chars_per_attr": 84,
+          "n_relations": 3
+        }
+      },
+      {
+        "name": "Lâm Trạch",
+        "ok": true,
+        "finish": "stop",
+        "depth": {
+          "n_attrs": 8,
+          "chars_per_attr": 76,
+          "n_relations": 2
+        }
+      },
+      {
+        "name": "Huyết Vô Thường",
+        "ok": true,
+        "finish": "stop",
+        "depth": {
+          "n_attrs": 6,
+          "chars_per_attr": 90,
+          "n_relations": 0
+        }
+      },
+      {
+        "name": "Tô gia",
+        "ok": true,
+        "finish": "stop",
+        "depth": {
+          "n_attrs": 6,
+          "chars_per_attr": 87,
+          "n_relations": 0
+        }
+      },
+      {
+        "name": "Linh năng học",
+        "ok": true,
+        "finish": "stop",
+        "depth": {
+          "n_attrs": 3,
+          "chars_per_attr": 193,
+          "n_relations": 0
+        }
+      },
+      {
+        "name": "Trận pháp",
+        "ok": true,
+        "finish": "stop",
+        "depth": {
+          "n_attrs": 3,
+          "chars_per_attr": 166,
+          "n_relations": 0
+        }
+      }
+    ],
+    "exec_secs": 29.0
+  }
+}
