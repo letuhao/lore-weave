@@ -49,8 +49,21 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > **`Quarantined`** — amends REC-63, flagged for register) · **SL-A4 deadline expiry** via declared
 > fallback (Substitute = AGT-A2 "Defend"; Buffer-on-expiry coerced to Drop). **32 tests green (8 chaos),
 > clippy 0; containment costs ~13 ns/step (167→180, big-state 215→229) — measured, accepted.**
-> **NEXT: S2 multi-island** (IslandMessage, handoff, dissolution-via-cascade, serde checkpoints, SL-Q9
-> IPC measurement) → Layer-1 lints (parallel) → POC-2 LLM vertical slice (REC-54/55/56; cost/turn).
+> **S2 DONE same run (multi-island — the kernel is feature-complete for the POC tier):** §9
+> `IslandMessage` (exactly-once I8 = the existing I2 seen-set — `delivery_id` IS the `input_id`,
+> no second dedup mechanism); SL-A12 handoff (`Domain::Portable` + `extract`/`install`;
+> `depart()` strips the registry BEFORE any message can exist → entity-in-exactly-one-island is
+> structural); **`dissolve(self, reason)` CONSUMES the island** — "Gone" is unrepresentable by
+> move semantics, §10.1 policy matrix implemented (transfer-class carries pending; stale-gen items
+> never resurrect through a migration; SC-A9 pills ride `quarantined`, never `transferable`);
+> §10.5 checkpoint/restore (stepping-identical: rng+seen+gen+Seq-continuity proven;
+> **poisoned island refuses checkpoint** — review catch); `Realm` reference router in `crates/sim`
+> (SC-A7: kernel holds no island registry; +1-tick latency + dead-letter recording live there).
+> **46 tests green, clippy 0. SL-Q9 ANSWERED (in-process): 443 ns/msg, 2.26 M msgs/sec — co-location
+> is ~2 250× cheaper than the ~1 ms IPC estimate; SL-D20b firmly justified; real IPC at S4b.**
+> **NEXT:** POC-2 LLM vertical slice (REC-54/55/56 path; answers cost/turn — kernel prerequisites all
+> exist now) → Layer-1 lints (parallel agent task) → S3 commit-service host (HARD GATE: needs
+> `panic="unwind"` profile — workspace sets `panic="abort"` in release) → S4b real-IPC measurement.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

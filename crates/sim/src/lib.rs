@@ -47,6 +47,14 @@ pub struct TestRules {
     pub max_counter: i64,
 }
 
+/// S2 handoff payload — TestDomain's slice of one entity. Zero-valued fields
+/// are carried explicitly (extract is TOTAL; install is its exact inverse).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TestPortable {
+    pub counter: i64,
+    pub qi: i64,
+}
+
 impl Domain for TestDomain {
     type Payload = TestPayload;
     type State = TestState;
@@ -55,6 +63,7 @@ impl Domain for TestDomain {
     type Rules = TestRules;
     /// `Spent` leaves the island (a stand-in for loot→inventory etc.).
     type External = TestEvent;
+    type Portable = TestPortable;
 
     fn check(
         state: &Self::State,
@@ -111,7 +120,22 @@ impl Domain for TestDomain {
             .cloned()
             .collect()
     }
+
+    fn extract(state: &mut Self::State, id: EntityId) -> Self::Portable {
+        TestPortable {
+            counter: state.counters.remove(&id).unwrap_or(0),
+            qi: state.qi.remove(&id).unwrap_or(0),
+        }
+    }
+
+    fn install(state: &mut Self::State, id: EntityId, p: Self::Portable) {
+        state.counters.insert(id, p.counter);
+        state.qi.insert(id, p.qi);
+    }
 }
+
+pub mod realm;
+pub use realm::{DeadLetter, Realm};
 
 /// Convenience input constructor (Seq is stamped at admission; the value here
 /// is a placeholder the ingress overwrites).

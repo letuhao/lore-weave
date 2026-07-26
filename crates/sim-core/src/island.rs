@@ -4,14 +4,16 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::checkpoint::{Dissolution, IslandCheckpoint};
 use crate::domain::Domain;
 use crate::ingress::{Ingress, Lane};
 use crate::metrics::IslandMetrics;
 use crate::rng::DetRng;
 use crate::seen::{SeenSet, SeenWindow};
 use crate::types::{
-    DiscardReason, EntityId, Fallback, Gen, InputId, IslandId, Outcome, Precondition,
-    PreconditionKind, QueuedInput, RulesetDigest, Seq, Tick, Violation,
+    Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
+    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest,
+    Seq, Tick, Violation,
 };
 
 /// Result of one `step()` call.
@@ -173,6 +175,180 @@ impl<D: Domain> Island<D> {
     /// Admit `input` when the island's logical clock reaches `due`.
     pub fn schedule_at(&mut self, due: Tick, lane: Lane, input: QueuedInput<D>) {
         self.schedule.entry(due).or_default().push((lane, input));
+    }
+
+    /// S2 §9 — accept a cross-island message. `delivery_id` becomes the
+    /// `input_id`, so exactly-once (I8) IS the existing I2 seen-set dedup —
+    /// a router redelivery discards as `Duplicate`, recorded like any other.
+    /// The +1-tick latency lives in the ROUTER (it delivers at the target's
+    /// next tick boundary); the kernel just admits.
+    ///
+    /// `from`/`causality` are NOT retained here — the ROUTER is the audit
+    /// point for cross-island provenance (it sees every message; the kernel
+    /// sees only what was delivered). A message arrives with no
+    /// preconditions, so its payload must be TOTAL/defensive in `apply`
+    /// (same bar as a `Substitute` fallback).
+    pub fn deliver(&mut self, lane: Lane, msg: IslandMessage<D>) -> Seq {
+        self.metrics.cross_island_delivered += 1;
+        self.submit(lane, QueuedInput {
+            seq: Seq(u64::MAX), // overwritten at admission
+            input_id: msg.delivery_id,
+            class: Class::B,
+            source: Producer::CrossIsland,
+            payload: msg.payload,
+            preconditions: Vec::new(),
+            on_invalid: Fallback::Drop,
+            admitted_gen: self.island_gen, // re-stamped in submit anyway
+            deadline: None,
+        })
+    }
+
+    // ─── S2 handoff (SL-A12: EntityDeparted → EntityArrived) ───
+
+    /// Remove `id` from this island and return its portable state. The
+    /// registry entry is removed BEFORE any message can exist, so
+    /// entity-in-exactly-one-island is structural, not a protocol promise.
+    /// In-flight inputs referencing it now fail `EntityAlive`/`IslandOwns`
+    /// at their step (S1a machinery, unchanged).
+    pub fn depart(&mut self, id: EntityId) -> Option<(Gen, D::Portable)> {
+        let generation = self.entities.remove(&id)?;
+        Some((generation, D::extract(&mut self.state, id)))
+    }
+
+    /// Install a departed entity. Arriving over an entity this island already
+    /// owns bumps its generation (the old epoch's refs go stale) — arrivals
+    /// never silently merge.
+    pub fn arrive(&mut self, id: EntityId, portable: D::Portable) -> Gen {
+        let generation = match self.entities.get(&id) {
+            Some(g) => Gen(g.0.saturating_add(1)),
+            None => Gen(0),
+        };
+        self.entities.insert(id, generation);
+        D::install(&mut self.state, id, portable);
+        generation
+    }
+
+    // ─── S2 checkpoint / restore / dissolve (spec §10.1 / §10.5) ───
+
+    /// Snapshot everything needed to rebuild a stepping-identical island.
+    /// Pending work is EXCLUDED by contract (§10.5 loss table). A speed
+    /// optimisation for Class B (the event log is the recovery truth,
+    /// SC-A10); load-bearing for Class A ephemera (RTM-Q4).
+    ///
+    /// Returns `None` on a POISONED island — its state may be half-mutated
+    /// (SC-A8), and a checkpoint of it restored later would smuggle the
+    /// corruption past the poison flag. Post-panic forensics go through
+    /// `dissolve(Unresponsive)`, whose checkpoint field is explicitly
+    /// labelled last-known-state.
+    pub fn checkpoint(&self) -> Option<IslandCheckpoint<D>>
+    where
+        D::State: Clone,
+    {
+        if self.poisoned {
+            return None;
+        }
+        Some(IslandCheckpoint {
+            id: self.id,
+            tick: self.tick,
+            island_gen: self.island_gen,
+            digest: self.digest,
+            entities: self.entities.clone(),
+            encounters: self.encounters.clone(),
+            state: self.state.clone(),
+            rng: self.rng.clone(),
+            seen: self.seen.clone(),
+            next_seq: self.ingress.next_seq(),
+        })
+    }
+
+    /// Rebuild from a checkpoint: stepping-identical to the island at
+    /// `checkpoint()` time — same rng position, same seen-set (bus redelivery
+    /// dedups), same generations, continuing `Seq` stamps. Fresh metrics
+    /// (cumulative telemetry is the HOST's aggregation concern), empty
+    /// queues (§10.5), containment on, not poisoned.
+    pub fn restore(cp: IslandCheckpoint<D>, rules: Arc<D::Rules>) -> Self {
+        Self {
+            id: cp.id,
+            tick: cp.tick,
+            entities: cp.entities,
+            encounters: cp.encounters,
+            ingress: Ingress::with_next_seq(cp.next_seq),
+            seen: cp.seen,
+            state: cp.state,
+            rules,
+            digest: cp.digest,
+            rng: cp.rng,
+            outcomes: Vec::new(),
+            externals: Vec::new(),
+            schedule: BTreeMap::new(),
+            buffered: Vec::new(),
+            currently_buffered: std::collections::BTreeSet::new(),
+            metrics: IslandMetrics::default(),
+            island_gen: cp.island_gen,
+            containment: true,
+            poisoned: false,
+            quarantine: Vec::new(),
+        }
+    }
+
+    /// Dissolve, CONSUMING the island — "Gone" is unrepresentable by move
+    /// semantics, not a runtime flag. The §10.1 policy: transfer-class
+    /// reasons carry current-generation pending work in `transferable`;
+    /// everything else (and every stale-generation item) is counted
+    /// discarded. Quarantined pills ride their own field, NEVER
+    /// `transferable` (SC-A9 — replaying one is the infinite crash loop).
+    pub fn dissolve(mut self, reason: DissolutionReason) -> Dissolution<D> {
+        let mut pending = self.ingress.drain_all();
+        for (_, items) in std::mem::take(&mut self.schedule) {
+            // Scheduled items were never admitted — stamp them into the
+            // current epoch so a transfer target treats them as fresh.
+            pending.extend(items.into_iter().map(|(lane, mut i)| {
+                i.admitted_gen = self.island_gen;
+                (lane, i)
+            }));
+        }
+        pending.append(&mut self.buffered);
+
+        let total = pending.len() as u64;
+        let transferable: Vec<(Lane, QueuedInput<D>)> = if reason.transfers_pending() {
+            pending
+                .into_iter()
+                .filter(|(_, i)| i.admitted_gen == self.island_gen)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let discarded_pending = total - transferable.len() as u64;
+
+        let checkpoint = IslandCheckpoint {
+            id: self.id,
+            tick: self.tick,
+            island_gen: self.island_gen,
+            digest: self.digest,
+            entities: self.entities,
+            encounters: self.encounters,
+            state: self.state,
+            rng: self.rng,
+            seen: self.seen,
+            next_seq: self.ingress.next_seq(),
+        };
+
+        Dissolution {
+            reason,
+            transferable,
+            discarded_pending,
+            checkpoint,
+            quarantined: self.quarantine,
+            outcomes: self.outcomes,
+            metrics: self.metrics,
+            was_poisoned: self.poisoned,
+        }
+    }
+
+    /// SC-A3 — a host must only `dissolve(Migrating)` a quiescent island
+    /// (encounters migrate between turns; cells when drained).
+    pub fn is_quiescent(&self) -> bool {
+        self.ingress.is_empty() && self.buffered.is_empty() && self.schedule.is_empty()
     }
 
     // ─── time (injected, never read — TDIL-A9) ───

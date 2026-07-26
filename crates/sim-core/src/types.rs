@@ -255,6 +255,71 @@ impl<D: Domain> core::fmt::Debug for Outcome<D> {
     }
 }
 
+/// S2 — cross-island message (spec §9, shape verbatim + generic payload).
+/// Delivered into the target's ingress at its NEXT tick (+1 tick latency,
+/// SL-A10 — the +1 is the ROUTER's property; the kernel just receives).
+/// `delivery_id` doubles as the target-side `InputId`, so exactly-once (I8)
+/// IS the existing I2 seen-set — no second dedup mechanism exists.
+pub struct IslandMessage<D: Domain> {
+    pub from: IslandId,
+    pub to: IslandId,
+    /// Sender's `Seq` at emission — causal (not total) order for audit.
+    pub causality: Seq,
+    pub delivery_id: InputId,
+    pub payload: D::Payload,
+}
+
+impl<D: Domain> Clone for IslandMessage<D> {
+    fn clone(&self) -> Self {
+        Self {
+            from: self.from,
+            to: self.to,
+            causality: self.causality,
+            delivery_id: self.delivery_id,
+            payload: self.payload.clone(),
+        }
+    }
+}
+
+impl<D: Domain> core::fmt::Debug for IslandMessage<D> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("IslandMessage")
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .field("causality", &self.causality)
+            .field("delivery_id", &self.delivery_id)
+            .field("payload", &self.payload)
+            .finish()
+    }
+}
+
+/// S2 — why an island dissolved (spec §10.1, modelled on Orleans
+/// `DeactivationReasonCode`). The reason DETERMINES the pending-work policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DissolutionReason {
+    /// Encounter concluded: discard pending, checkpoint + release entities.
+    Resolved,
+    /// Last live entity left: nothing pending expected.
+    Idle,
+    /// Moving to another node: pending work TRANSFERS with the island.
+    Migrating,
+    /// Force-kill (poisoned/hung): pending lost; rebuild from checkpoint.
+    Unresponsive,
+    /// Evicted under pressure: discard pending.
+    MemoryPressure,
+    /// Drain-then-handoff: pending work TRANSFERS.
+    NodeShuttingDown,
+    /// Crashed: discard pending, log, rebuild from checkpoint.
+    Failed,
+}
+
+impl DissolutionReason {
+    /// §10.1: only `Migrating` and `NodeShuttingDown` carry pending work.
+    pub fn transfers_pending(self) -> bool {
+        matches!(self, Self::Migrating | Self::NodeShuttingDown)
+    }
+}
+
 /// REC-63's closed enum — referenced throughout doc 14, enumerated here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiscardReason {

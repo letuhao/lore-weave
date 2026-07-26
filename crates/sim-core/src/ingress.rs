@@ -61,6 +61,30 @@ impl<D: Domain> Ingress<D> {
         self.background.pop_front().map(|i| (Lane::Background, i))
     }
 
+    /// S2 dissolution: remove EVERYTHING, Live first (stable order for the
+    /// transfer path — the successor re-admits in this order).
+    pub fn drain_all(&mut self) -> Vec<(Lane, QueuedInput<D>)> {
+        let mut out = Vec::with_capacity(self.len());
+        out.extend(self.live.drain(..).map(|i| (Lane::Live, i)));
+        out.extend(self.background.drain(..).map(|i| (Lane::Background, i)));
+        out
+    }
+
+    /// S2 checkpoint: the next stamp this ingress would assign. Restored via
+    /// [`Ingress::with_next_seq`] so post-restore stamps never collide with
+    /// pre-checkpoint ones in host logs.
+    pub fn next_seq(&self) -> u64 {
+        self.next_seq
+    }
+
+    pub fn with_next_seq(next_seq: u64) -> Self {
+        Self {
+            live: VecDeque::new(),
+            background: VecDeque::new(),
+            next_seq,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.live.len() + self.background.len()
     }

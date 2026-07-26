@@ -2,7 +2,7 @@
 //! (the game). Spec §4.0, plus the RLS-A12 `Rules` parameter.
 
 use crate::rng::DetRng;
-use crate::types::{Precondition, QueuedInput, Violation};
+use crate::types::{EntityId, Precondition, QueuedInput, Violation};
 
 /// sim-core owns *scheduling*; the domain owns *rules*.
 ///
@@ -23,6 +23,10 @@ pub trait Domain: Sized {
     type ResKind: Copy + Eq + core::fmt::Debug;
     type Rules;
     type External;
+    /// S2 handoff payload (SL-A12 `EntityDeparted` → `EntityArrived`): the
+    /// domain-owned slice of one entity's state, extracted on departure and
+    /// installed on arrival. The kernel moves it; it never looks inside.
+    type Portable: Clone + core::fmt::Debug;
 
     /// Evaluate a SEMANTIC precondition (`ResourceAtLeast`, and the domain's
     /// own). The island never routes structural variants here.
@@ -42,4 +46,14 @@ pub trait Domain: Sized {
 
     /// Which of these events leave the island (need external authorization).
     fn externals(events: &[Self::Event]) -> Vec<Self::External>;
+
+    /// S2 handoff: remove `id`'s domain state and return it as a portable
+    /// payload. TOTAL — an entity with no domain rows yet still departs (the
+    /// portable encodes the empty case). Only called by `Island::depart`,
+    /// which gates on registry ownership first.
+    fn extract(state: &mut Self::State, id: EntityId) -> Self::Portable;
+
+    /// S2 handoff: install a departed entity's state on the arrival island.
+    /// Deterministic; must be the inverse of `extract`.
+    fn install(state: &mut Self::State, id: EntityId, portable: Self::Portable);
 }

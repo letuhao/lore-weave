@@ -34,6 +34,11 @@ pub struct IslandMetrics {
     /// Island-generation bumps — each is an O(1) invalidation cascade.
     pub island_gen_bumps: u64,
 
+    // ─── S2: cross-island ───
+    /// Messages accepted via `deliver()` (admissions, not step outcomes —
+    /// their fate shows up in the step counters like any other input).
+    pub cross_island_delivered: u64,
+
     // ─── time + scheduling ───
     pub ticks: u64,
     pub scheduled_fired: u64,
