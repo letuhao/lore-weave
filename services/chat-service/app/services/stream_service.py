@@ -5169,6 +5169,13 @@ async def stream_response(
                     rail_gate_suppressions(_rail_progress_objs, set(), "done_suppress")
                     if _rail_progress_objs else set()
                 )
+                # D-RAIL-NEXT-STEP-EXEMPT — the tool of each rail's NEXT actionable step is
+                # budget-exempt in the surface seed: the step being driven must be callable.
+                _rail_next_tools = {
+                    p.next_step.tool
+                    for p in (_rail_progress_objs or [])
+                    if getattr(p, "next_step", None) is not None
+                }
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -5181,6 +5188,7 @@ async def stream_response(
                     binding_categories=(mode_binding.seed_tool_categories if mode_binding else None),
                     pinned_step_tools=pinned_step_tools,
                     rail_done_step_tools=_rail_done_tools,
+                    rail_next_step_tools=_rail_next_tools,
                     sticky_domains=_sticky_domains,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;

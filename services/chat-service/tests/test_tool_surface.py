@@ -274,6 +274,30 @@ class TestTokenBudgetedSeed:
             "otherwise the agent reads a recipe naming a tool it cannot see"
         )
 
+    def test_rail_next_step_tool_is_budget_exempt(self):
+        # REGRESSION (live 2026-07-26, Mị Đế dogfood, D-RAIL-NEXT-STEP-EXEMPT): excluding
+        # DONE steps is not enough — EARLIER NOT-DONE steps can still eat the whole budget
+        # and starve the step the runner is driving RIGHT NOW. Live: kg_propose_edge failed
+        # with "call kg_project_entities_to_nodes first" while that exact tool was
+        # budget-dropped; the step-runner redrove a step whose tool was invisible, 8×.
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        big = 9000  # ~2.2K tok — one alone fills the 2K budget
+        cat = ([_tool_big(f"zearly_{i}", big) for i in range(2)]
+               + [_tool_big("znodes_project", 600)])   # the mid-rail step being driven
+        rail = ["zearly_0", "zearly_1", "znodes_project"]
+        cold = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False, pinned_step_tools=rail,
+        )
+        assert "znodes_project" not in cold, "precondition: the driven step is starved without the fix"
+        warm = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False, pinned_step_tools=rail,
+            rail_next_step_tools={"znodes_project"},
+        )
+        assert "znodes_project" in warm, (
+            "the rail's NEXT step tool must be budget-exempt — the step being DRIVEN must "
+            "always be on the wire, or the runner redrives a step the agent cannot execute"
+        )
+
     def test_recall_and_timeline_classified_as_reads(self):
         from app.services.tool_surface import _is_read_tool
         assert _is_read_tool("memory_recall_entity")

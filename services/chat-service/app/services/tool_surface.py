@@ -234,6 +234,7 @@ def discovery_seed_for_surface(
     binding_categories: list[str] | None = None,
     pinned_step_tools: list[str] | None = None,
     rail_done_step_tools: set[str] | None = None,
+    rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
@@ -390,11 +391,18 @@ def discovery_seed_for_surface(
         # not-done step is NOT in this set (rail_gate_suppressions keeps it), so this never
         # hides a tool the agent still needs.
         _rail_candidates = [t for t in pinned_step_tools if t not in (rail_done_step_tools or set())]
+        # D-RAIL-NEXT-STEP-EXEMPT (2026-07-26, Mị Đế dogfood): the rail's NEXT step tools are
+        # budget-EXEMPT. Dropping by declared order still starved the step the agent needs NOW
+        # when earlier not-done steps ate the budget — live wedge: kg_propose_edge failed with
+        # "call kg_project_entities_to_nodes first" while that exact tool was budget-dropped,
+        # so the step-runner redrove a step whose tool the agent could not see, 8 times, and
+        # the model reported success anyway. The step being DRIVEN must always be on the wire.
+        _next_exempt = (rail_next_step_tools or set()) & set(_rail_candidates)
         kept, dropped = budget_rail_tools(
-            catalog, _rail_candidates,
+            catalog, [t for t in _rail_candidates if t not in _next_exempt],
             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
         )
-        names = names | kept
+        names = names | kept | _next_exempt
         if dropped:
             logger.warning(
                 "pinned rail step tools dropped by the token budget: %s — the rail names "
