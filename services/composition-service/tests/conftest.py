@@ -15,6 +15,31 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_token")
 os.environ.setdefault("JWT_SECRET", "s" * 32)
 os.environ.setdefault("CONFIRM_TOKEN_SIGNING_SECRET", "c" * 32)
 
+# Point outbound service URLs at a closed local port during tests.
+#
+# The Settings defaults are docker-compose hostnames ("http://book-service:8082", …). Outside
+# the compose network those do not resolve, and a FAILED lookup is not free — measured on a
+# Windows dev host: provider-registry-service 1,276 ms, book-service 7,259 ms (NetBIOS/LLMNR/
+# suffix-search fallback), versus 2 ms for 127.0.0.1. Every un-mocked outbound call therefore
+# stalls for seconds and the suite reads as hung rather than slow.
+#
+# 127.0.0.1:1 is closed, so the connection is REFUSED immediately. Outcomes are identical — an
+# un-mocked call still fails — it just fails in microseconds. setdefault, so a real compose/CI
+# environment that exports these keeps its own values.
+_DEAD = "http://127.0.0.1:1"
+for _var in (
+    "KNOWLEDGE_INTERNAL_URL",
+    "GLOSSARY_INTERNAL_URL",
+    "BOOK_INTERNAL_URL",
+    "LLM_GATEWAY_INTERNAL_URL",
+    "AUTH_INTERNAL_URL",
+    "KNOWLEDGE_GATEWAY_URL",
+    "USAGE_BILLING_SERVICE_URL",
+    "NOTIFICATION_SERVICE_INTERNAL_URL",
+):
+    os.environ.setdefault(_var, _DEAD)
+os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:1")
+
 
 @pytest.fixture(autouse=True)
 def _isolate_mcp_session_manager():

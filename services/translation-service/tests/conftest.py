@@ -18,6 +18,36 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_internal_token")
 # required config from the envelope token. Tests mint/verify confirm tokens with it.
 os.environ.setdefault("CONFIRM_TOKEN_SIGNING_SECRET", "test_confirm_signing_secret")
 
+# Point outbound service URLs at a closed local port during tests.
+#
+# The Settings defaults are docker-compose hostnames ("http://book-service:8082", …). Outside
+# the compose network those do not resolve, and a FAILED lookup is not free — measured on a
+# Windows dev host: provider-registry-service 1,276 ms, book-service 7,259 ms (NetBIOS/LLMNR/
+# suffix-search fallback), versus 2 ms for 127.0.0.1. Every un-mocked outbound call therefore
+# stalls for seconds and the suite reads as hung rather than slow.
+#
+# 127.0.0.1:1 is closed, so the connection is REFUSED immediately. Outcomes are identical — an
+# un-mocked call still fails — it just fails in microseconds. setdefault, so a real compose/CI
+# environment that exports these keeps its own values.
+_DEAD = "http://127.0.0.1:1"
+for _var in (
+    "BOOK_SERVICE_INTERNAL_URL",
+    "GLOSSARY_SERVICE_INTERNAL_URL",
+    "NOTIFICATION_SERVICE_INTERNAL_URL",
+):
+    os.environ.setdefault(_var, _DEAD)
+
+# provider-registry keeps its PORT. test_llm_client.py::test_get_llm_client_constructs_with
+# _internal_auth asserts `"provider-registry" in base_url or "8085" in base_url` — it is
+# checking that the SDK client captured its base_url FROM SETTINGS rather than hard-coding one,
+# and it identifies "from settings" by that substring. Redirecting to a bare :1 would have
+# broken a real assertion for a cosmetic reason, so the loopback address keeps port 8085:
+# closed all the same (instant refuse), while the test's intent still holds.
+_DEAD_REGISTRY = "http://127.0.0.1:8085"
+for _var in ("PROVIDER_REGISTRY_SERVICE_URL", "PROVIDER_REGISTRY_INTERNAL_URL"):
+    os.environ.setdefault(_var, _DEAD_REGISTRY)
+os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:1")
+
 
 @pytest.fixture(autouse=True)
 def _stub_model_name_resolve(monkeypatch):
