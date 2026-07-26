@@ -416,7 +416,7 @@ yet exist (AUD-F5 items, AUD-F6 stats, AUD-F8 commit-service).
 | **S4** | Class A tick — movement, walkability, AOI; WASM host integration in game-server | RTM-Q10 WASM seam |
 | **S4b** | **Island parallelism** — host threading model (SL-Q6), cross-island message bus, migration handoff | SL-Q6 decided |
 | **S5** | `LlmDriver` dispatch + prefetch + budget governor | ai-gateway MCP tools |
-| **S6** | Class C dispatch/ingest via outbox + workers | — |
+| **S6** | **Class C complete** — `sim-rtsim` full rule set: NPC schedules, ambient activity, resource replenishment, ambient economy, PC→NPC conversion; dispatch/ingest via outbox + workers; the `sync` seam back to `sim-core`. **Scope raised 2026-07-26 by AUD-F13** (full daily life in V1, promoting DL from V2). | **DL feature tier must be designed first** — currently an empty namespace |
 | **S7** | Load-dilation (SL-A13) wired to TDIL_001 clock | SL-Q8 decided |
 
 **Note on S1:** the island boundary must exist in the crate's type signatures from the first commit —

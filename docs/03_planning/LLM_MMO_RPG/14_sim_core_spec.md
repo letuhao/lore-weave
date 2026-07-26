@@ -67,7 +67,10 @@ crates/sim-core/
   sim/              deterministic chaos harness (separate bin)
 
 crates/sim-rtsim/   Class C background world simulation — SEPARATE crate (F15)
-  src/rule/         one module per background rule (economy, faction, resources, cleanup)
+  src/rule/         one module per background rule. V1 set raised by AUD-F13
+                    (full daily life in V1): npc_schedule · ambient_activity ·
+                    replenish_resources · ambient_economy · pc_to_npc · cleanup
+  src/data/         persistent background state (Veloren rtsim `data/` shape)
   src/sync.rs       the explicit seam back into sim-core (dispatch/ingest, SL-A4)
 ```
 
