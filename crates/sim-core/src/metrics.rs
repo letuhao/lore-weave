@@ -61,17 +61,16 @@ impl IslandMetrics {
     }
 
     /// Self-check: every processed step ended as exactly one of
-    /// applied / discarded / buffered-episode / silent-rebuffer.
-    /// Tests assert this; a drift here means a silent outcome path exists.
+    /// applied / discarded / buffered-episode / silent-rebuffer /
+    /// quarantined. Tests assert this; a drift here means a silent outcome
+    /// path exists. (`quarantined` was missing until review-impl S2
+    /// finding 5 — the self-check had a silent path of its own.)
     pub fn accounted(&self) -> u64 {
-        self.applied + self.discarded_total() + self.buffered_episodes + self.rebuffer_cycles
-    }
-
-    /// S1b: `Quarantined` outcomes count under `discarded_total` via their
-    /// own counter — kept separate because a quarantine is an INCIDENT, not
-    /// a routine discard.
-    pub fn discarded_and_quarantined(&self) -> u64 {
-        self.discarded_total() + self.quarantined
+        self.applied
+            + self.discarded_total()
+            + self.buffered_episodes
+            + self.rebuffer_cycles
+            + self.quarantined
     }
 
     pub(crate) fn gauge_peak(peak: &mut u64, current: usize) {

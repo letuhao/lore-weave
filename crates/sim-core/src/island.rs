@@ -105,8 +105,14 @@ impl<D: Domain> Island<D> {
 
     // ─── structural registry (S1a surface; the invalidation CASCADE is S1b) ───
 
+    /// Spawning over an id this island ALREADY tracks bumps its generation
+    /// (same rule as `arrive` — review-impl S2 finding 2): re-inserting at
+    /// Gen(0) would RESURRECT old-epoch refs pinned to Gen(0).
     pub fn spawn_entity(&mut self, id: EntityId) -> Gen {
-        let g = Gen(0);
+        let g = match self.entities.get(&id) {
+            Some(prev) => Gen(prev.0.saturating_add(1)),
+            None => Gen(0),
+        };
         self.entities.insert(id, g);
         g
     }
@@ -129,8 +135,12 @@ impl<D: Domain> Island<D> {
         self.entities.get(&id).copied()
     }
 
+    /// Same anti-resurrection rule as `spawn_entity`.
     pub fn start_encounter(&mut self, id: EntityId) -> Gen {
-        let g = Gen(0);
+        let g = match self.encounters.get(&id) {
+            Some(prev) => Gen(prev.0.saturating_add(1)),
+            None => Gen(0),
+        };
         self.encounters.insert(id, g);
         g
     }
@@ -310,7 +320,13 @@ impl<D: Domain> Island<D> {
         pending.append(&mut self.buffered);
 
         let total = pending.len() as u64;
-        let transferable: Vec<(Lane, QueuedInput<D>)> = if reason.transfers_pending() {
+        // A POISONED island never transfers pending work regardless of the
+        // reason the host picked — §10.1 says a dead island's pending is
+        // LOST, and migrating a queue out of a corrupted context would
+        // launder it (review-impl S2 finding 3).
+        let transferable: Vec<(Lane, QueuedInput<D>)> = if reason.transfers_pending()
+            && !self.poisoned
+        {
             pending
                 .into_iter()
                 .filter(|(_, i)| i.admitted_gen == self.island_gen)
@@ -359,6 +375,11 @@ impl<D: Domain> Island<D> {
     /// the per-item path — a host that steps without ever ticking leaks the
     /// seen-set even with a TTL window. Cell islands must tick periodically.
     pub fn tick(&mut self, dt: u64) {
+        // SC-A8: poisoned = NEVER resumed — firing timers and reparking
+        // buffered items is work (review-impl S2 finding 6).
+        if self.poisoned {
+            return;
+        }
         self.tick = Tick(self.tick.0.saturating_add(dt));
         self.metrics.ticks += 1;
 
@@ -413,14 +434,6 @@ impl<D: Domain> Island<D> {
             return StepStatus::Processed(seq);
         }
 
-        // S1b SL-A4 — deadline, resolved through the declared fallback.
-        if let Some(d) = item.deadline
-            && self.tick > d
-        {
-            self.resolve_expiry(lane, item);
-            return StepStatus::Processed(seq);
-        }
-
         // I2 — idempotency. A duplicate is a normal recorded outcome.
         if !self.seen.insert(item.input_id, self.tick) {
             self.metrics.discarded_duplicate += 1;
@@ -430,6 +443,21 @@ impl<D: Domain> Island<D> {
             return StepStatus::Processed(seq);
         }
         IslandMetrics::gauge_peak(&mut self.metrics.peak_seen_len, self.seen.len());
+
+        // S1b SL-A4 — deadline, resolved through the declared fallback.
+        // AFTER the seen-set, deliberately (review-impl S2 finding 1): expiry
+        // is a FINAL outcome, so it must burn the input_id — otherwise a
+        // redelivery re-expires and a `Substitute` fallback COMMITS TWICE,
+        // and a duplicate of an already-applied input whose deadline has
+        // since passed would misreport as Expired instead of Duplicate.
+        // (The gen gate stays BEFORE seen: a cascade cancel is "never
+        // happened", not a final outcome — re-submit is legitimate there.)
+        if let Some(d) = item.deadline
+            && self.tick > d
+        {
+            self.resolve_expiry(lane, item);
+            return StepStatus::Processed(seq);
+        }
 
         // Preconditions re-validated NOW, never at admission.
         match self.check_all(&item) {
@@ -497,6 +525,9 @@ impl<D: Domain> Island<D> {
                         self.record(seq, Outcome::Discarded {
                             reason: DiscardReason::Quarantined,
                         });
+                        // The SUBSTITUTE is quarantined, not the original —
+                        // it is the object that panicked, which is what the
+                        // operator reviews (accepted, review-impl finding 7).
                         self.quarantine.push(sub);
                     }
                 }

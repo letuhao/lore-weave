@@ -67,9 +67,16 @@ impl<D: Domain> Realm<D> {
     pub fn tick_all(&mut self, dt: u64) {
         for msg in std::mem::take(&mut self.mailbox) {
             match self.islands.get_mut(&msg.to) {
-                Some(isle) => {
+                // A poisoned island never steps again — delivering into it
+                // maroons the message silently. Dead-letter it instead
+                // (§9: discarded WITH a recorded reason, never an error).
+                Some(isle) if !isle.is_poisoned() => {
                     isle.deliver(Lane::Live, msg);
                 }
+                Some(_) => self.dead_letters.push(DeadLetter {
+                    message: msg,
+                    reason: "poisoned island",
+                }),
                 None => self.dead_letters.push(DeadLetter {
                     message: msg,
                     reason: "unknown-or-dissolved island",

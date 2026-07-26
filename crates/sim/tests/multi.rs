@@ -414,6 +414,76 @@ fn realm_dissolution_end_to_end() {
     assert_eq!(realm.island(IslandId(2)).unwrap().state().counters[&e], 5, "entity survived the dissolution");
 }
 
+/// Review-impl S2 finding 2: re-spawning over a live id bumps the
+/// generation — inserting Gen(0) again would RESURRECT old-epoch refs.
+/// Kill-mutation: spawn_entity unconditionally inserting Gen(0).
+#[test]
+fn respawn_bumps_generation_no_resurrection() {
+    let mut isle = island(1, 7);
+    let e = EntityId(1);
+    let g0 = isle.spawn_entity(e);
+    let g1 = isle.spawn_entity(e); // host double-spawn
+    assert!(g1 > g0, "re-spawn is a new epoch, not a reset");
+
+    isle.submit(Lane::Live, input(
+        1,
+        TestPayload::Inc { id: e, by: 1 },
+        vec![Precondition::EntityAlive { id: e, generation: g0 }],
+        Fallback::Drop,
+    ));
+    while isle.step() != StepStatus::Idle {}
+    assert!(matches!(
+        isle.outcomes().last().unwrap().1,
+        Outcome::Discarded {
+            reason: DiscardReason::PreconditionFailed(Violation {
+                kind: PreconditionKind::EntityAlive,
+                ..
+            })
+        }
+    ), "old-epoch ref stays dead");
+}
+
+/// Review-impl S2 finding 3: a poisoned island NEVER transfers pending work,
+/// even if the host picks a transfer-class reason — §10.1 says a dead
+/// island's pending is LOST. Kill-mutation: dropping the poison guard in
+/// dissolve().
+#[test]
+fn poisoned_dissolve_migrating_transfers_nothing() {
+    let mut isle = island(1, 7);
+    let e = EntityId(1);
+    isle.spawn_entity(e);
+
+    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: e, by: 3 }, vec![], Fallback::Drop));
+    while !matches!(isle.step(), StepStatus::Poisoned | StepStatus::Idle) {}
+    assert!(isle.is_poisoned());
+
+    let d = isle.dissolve(DissolutionReason::Migrating);
+    assert!(d.transferable.is_empty(), "corrupted context launders nothing");
+    assert_eq!(d.discarded_pending, 1, "the pending Inc is counted lost");
+    assert_eq!(d.quarantined.len(), 1, "the pill stays quarantined");
+}
+
+/// Review-impl S2 finding 4: a message routed to a POISONED island is
+/// dead-lettered with a recorded reason — delivering it would maroon it in
+/// a queue that never steps again. Kill-mutation: Realm delivering without
+/// the is_poisoned check.
+#[test]
+fn realm_dead_letters_message_to_poisoned_island() {
+    let mut realm: Realm<TestDomain> = Realm::new();
+    let mut a = island(1, 7);
+    a.spawn_entity(EntityId(1));
+    a.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    while !matches!(a.step(), StepStatus::Poisoned | StepStatus::Idle) {}
+    realm.insert(a);
+
+    realm.send(msg(2, 1, 100, TestPayload::Noop));
+    realm.tick_all(1);
+
+    assert_eq!(realm.dead_letters.len(), 1);
+    assert_eq!(realm.dead_letters[0].reason, "poisoned island");
+}
+
 /// A POISONED island refuses `checkpoint()` — its state may be half-mutated
 /// (SC-A8); snapshotting it would smuggle corruption past the poison flag.
 /// Kill-mutation: checkpoint() ignoring the poison flag.

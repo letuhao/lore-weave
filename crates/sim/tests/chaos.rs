@@ -48,6 +48,11 @@ fn panic_is_contained_quarantined_and_poisons() {
 
     assert_eq!(isle.quarantined().len(), 1, "the pill is quarantined");
     assert_eq!(isle.metrics().quarantined, 1);
+    assert_eq!(
+        isle.metrics().accounted(),
+        isle.metrics().steps_processed,
+        "a quarantined step is an ACCOUNTED step (review-impl S2 finding 5)"
+    );
     assert!(matches!(
         isle.outcomes().last().unwrap().1,
         Outcome::Discarded { reason: DiscardReason::Quarantined }
@@ -149,6 +154,77 @@ fn deadline_expiry_substitute_commits_fallback() {
 
     assert_eq!(isle.state().counters[&e], 1, "fallback committed, not the stale intent");
     assert_eq!(isle.metrics().substituted, 1);
+}
+
+/// Review-impl S2 finding 1 (HIGH), half A: expiry is a FINAL outcome and
+/// burns the input_id — a redelivery of an expired `Substitute` input must
+/// NOT re-commit the fallback. Kill-mutation: the original bug (deadline
+/// check before the seen-set insert).
+#[test]
+fn expired_substitute_redelivery_commits_fallback_once() {
+    let mut isle = island(7);
+    let e = EntityId(1);
+    isle.spawn_entity(e);
+
+    let expired_sub = || input_deadline(
+        1,
+        TestPayload::Inc { id: e, by: 100 },
+        Tick(3),
+        Fallback::Substitute(TestPayload::Inc { id: e, by: 1 }),
+    );
+    isle.tick(10); // deadline already passed at first delivery
+    isle.submit(Lane::Live, expired_sub());
+    isle.submit(Lane::Live, expired_sub()); // router/bus redelivery
+    while isle.step() != StepStatus::Idle {}
+
+    assert_eq!(isle.state().counters[&e], 1, "fallback committed EXACTLY once");
+    assert_eq!(isle.metrics().substituted, 1);
+    assert_eq!(isle.metrics().discarded_duplicate, 1, "the redelivery deduped");
+}
+
+/// Review-impl S2 finding 1, half B: a duplicate of an ALREADY-APPLIED input
+/// reports Duplicate even when its deadline has since passed — reporting
+/// Expired would tell the client "never landed" and invite a re-issue under
+/// a fresh id (double apply). Kill-mutation: same as above.
+#[test]
+fn duplicate_of_applied_input_reports_duplicate_not_expired() {
+    let mut isle = island(7);
+    let e = EntityId(1);
+    isle.spawn_entity(e);
+
+    isle.submit(Lane::Live, input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(30), Fallback::Drop));
+    while isle.step() != StepStatus::Idle {}
+    assert_eq!(isle.state().counters[&e], 5, "applied in time");
+
+    isle.tick(50); // deadline passes AFTER the apply
+    isle.submit(Lane::Live, input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(30), Fallback::Drop));
+    while isle.step() != StepStatus::Idle {}
+
+    assert!(matches!(
+        isle.outcomes().last().unwrap().1,
+        Outcome::Discarded { reason: DiscardReason::Duplicate }
+    ), "the truth is Duplicate (it landed), never Expired");
+    assert_eq!(isle.state().counters[&e], 5);
+}
+
+/// Review-impl S2 finding 6: a poisoned island is NEVER resumed — tick()
+/// must not fire timers into the ingress. Kill-mutation: tick() without the
+/// poison guard.
+#[test]
+fn poisoned_island_tick_does_no_work() {
+    let mut isle = island(7);
+    let e = EntityId(1);
+    isle.spawn_entity(e);
+    isle.schedule_at(Tick(5), Lane::Live, input(2, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+
+    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    while !matches!(isle.step(), StepStatus::Poisoned | StepStatus::Idle) {}
+    assert!(isle.is_poisoned());
+
+    let before = isle.now();
+    isle.tick(10);
+    assert_eq!(isle.now(), before, "clock frozen");
+    assert_eq!(isle.ingress_len(), 0, "no timer fired into the ingress");
 }
 
 /// Replay determinism SURVIVES the chaos features: same stream incl. a bump
