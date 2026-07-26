@@ -495,6 +495,24 @@ At `CombatSessionBorn`, the engine resolves each combatant's block **once** and 
 already-ephemeral `combat_session` (COMB_001 §2) alongside its `StatEpoch`. Every law-chain read in §4 of
 COMB_001 reads the snapshot, not live state.
 
+```rust
+pub struct StatSnapshot {
+    pub stats: StatBlock,                          // the resolved block (§4)
+    pub prog:  BTreeMap<ProgressionKindId, u64>,   // ONLY the kinds referenced by a declared
+                                                   //   PowerTerm.scale (ABL_001 §4.3) — bounded,
+                                                   //   known at schema stage via ABL-V3
+    pub epoch: StatEpoch,                          // §8.2
+}
+```
+
+**Why the snapshot carries progression values too** (added 2026-07-26 by the `/review-impl` seam pass —
+[DF07_002 §1.5 HIGH-2](DF07_002_edge_cases_and_closure.md)): ABL_001's `PowerTerm.scale` read
+`actor_progression` **live** at cast time. PROG_001's `Action` trigger trains *during* combat — striking
+trains swordsmanship — so ability damage drifted mid-encounter while every slot stayed frozen, breaking
+COMB_001's AC-COMB-15 and AC-COMB-16. **DF7-V4 could not catch it**: the epoch guards the block, and a
+direct progression read goes around the block entirely. Capturing the referenced kinds in the snapshot puts
+them under the same `progression_turn` epoch, so scaling and slots move together or not at all.
+
 | COMB_001 §4 symbol | Slot |
 |---|---|
 | `atk.strike_power` | `StrikePower` |

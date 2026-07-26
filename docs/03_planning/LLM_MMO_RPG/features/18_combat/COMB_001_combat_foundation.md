@@ -28,6 +28,7 @@ declared.
 | [`COMB_003`](COMB_003_threat_and_targeting.md) | **whom** a hostile attacks — threat accrual, hysteresis, bounded candidate list | AUD-F9 (threat) |
 | [`COMB_004`](COMB_004_loot_and_spoils.md) | what an encounter **produces** — loot tables, seeded rolls, rights window, progression award | AUD-F9 (loot) |
 | [`COMB_005`](COMB_005_encounter_spawning.md) | what puts enemies in the world and **starts** the fight — spawn decls, epoch respawn, aggro, formation | AUD-F9 (spawning) |
+| [`COMB_006`](COMB_006_pvp_and_stakes.md) | **when a player may fight a player** — consent channels, stakes, the disparity-cap waiver, notoriety | COMB-Q3 / PC-D2 |
 | [`ABL_001`](../19_ability/ABL_001_ability_foundation.md) | what `Skill` refers to — ability catalogue, `EffectOp`, `PowerTerm` | AUD-F10 |
 
 **Consumed from outside the family** (both authored in a parallel track, 2026-07-26):
@@ -80,8 +81,11 @@ pub struct CombatSession {
     // ALL ordered maps, deliberately: the per-round checkpoint serialises this struct, so a hash
     // container would put iteration order into the replay bytes and make DF7-V4's byte-identical
     // assertion fail nondeterministically (DF07_002 EC-3; same reason ABL uses BTreeSet, ABL-V7).
-    pub stat_snapshots: BTreeMap<ActorRef, (StatBlock, StatEpoch)>, // DF07 §8.1 — resolved once at Born,
-                                                //   epoch-refreshed at round boundaries only
+    pub stat_snapshots: BTreeMap<ActorRef, StatSnapshot>,           // DF07 §8.1 — { stats, prog, epoch };
+                                                //   resolved once at Born, epoch-refreshed at round
+                                                //   boundaries only. `prog` carries the kinds any declared
+                                                //   ABL PowerTerm.scale reads, so ability scaling cannot
+                                                //   drift while slots stay frozen (DF07_002 HIGH-2)
     pub threat_table: BTreeMap<(ActorRef, ActorRef), i32>,          // COMB_003 §3 — (observer, target)
     pub current_target: BTreeMap<ActorRef, ActorRef>,               // COMB_003 §4.2 hysteresis anchor
     pub cooldowns: BTreeMap<(ActorRef, AbilityId), u8>,             // ABL_001 §7.2 — decremented per round
@@ -184,6 +188,12 @@ Closed `allowed_tools` set (AGT-A2) for a combatant, V1: **Strike · Defend · S
 - **Seed (Q8):** `(reality_id, turn_id, actor_id, action_idx, role)` with `role ∈ {damage, crit, hit,
   position, **loot**}`; `action_idx` monotonic per `combat_session.next_action_idx`. Hidden V1;
   `combat_seed_visible` dev-mode V1+.
+  > **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (b) — role `bind` added** (COMB_004 §16 Binding Contest, with
+  > COMB_006 PvP). The severance path may carry variance (tier resistance, partial success); putting it in
+  > the seed family keeps binding loss replay-exact, which matters more here than anywhere else in the
+  > family — under full-permadeath PvP (PVP-A4) a non-reproducible binding loss is an unrecoverable,
+  > unauditable one. Roles are now `{damage, crit, hit, position, loot, bind}`.
+  >
   > **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — role `loot` added** (COMB_004 SPO-A2). Reward rolls join the
   > same seed family, so drops replay byte-identically alongside damage. **No other role was added:**
   > COMB_003 threat is deterministic and seedless (THR-A2), and COMB_005 population seeds off
@@ -360,24 +370,29 @@ alliance, an already-engaged actor's new aggressors join their existing session,
 three-sided is deferred. So V1 has no undefined behaviour, and V1+ multi-side becomes a pure *relaxation*
 of one rule rather than a redesign. **Closed as a V1 question; retained as a V1+ feature.**
 
-**COMB-Q3 — PvP. REMAINS OPEN, and deliberately so — but now scoped rather than merely named.** It is not
-a combat-mechanics gap: every mechanism a PvP fight needs (grid, initiative, law-chain, threat, spoils)
-already exists and is agnostic about who controls the actors. What is missing is **everything around** the
-fight, and none of it belongs to this family:
-> a consent model (opt-in flag, duelling agreement, or zone-scoped) · a defeat-consequence policy distinct
-> from PvE (PCS_001 / WA_006 own PC death; COMB_004 §5 currently refuses to roll on a PC defeat precisely
-> to avoid pre-empting this) · item-loss rules (SPO-D7) · anti-grief beyond the PF_001 safety band, since
-> a consenting duel must be able to *bypass* the disparity cap · and a reputation/faction consequence
-> (REP_001 / FAC_001).
->
-> **The V1 posture is therefore explicit, not accidental:** PvP is *unreachable*, because COMB_005 §5's
-> engagement predicate never fires PC-on-PC and COMB_001 §6 rejects `Strike` on a non-hostile actor. It is
-> not "undefined" — it is closed. Opening it is a **new feature with its own doc**, not a COMB_001 revision.
+**COMB-Q3 — PvP. ✅ CLOSED 2026-07-26 → [`COMB_006_pvp_and_stakes.md`](COMB_006_pvp_and_stakes.md).**
+This entry previously read *"remains open, and deliberately so"*. That was **wrong on the facts**, and the
+deep dive that followed found why: PvP was never an open design question. **`PC-D2` locked *"PvP enabled
+within a session"* on 2026-04-23**, deferring only the *consent model* to DF4/DF5 — where DF5 deferred it
+again (DF5-D3 → V2) and DF4 remains CONCEPT-only. It was a **built decision with no mechanism**, and it
+read as an open question only because no doc owned it.
+
+- **The home was already assigned.** [`02_world_authoring/_index.md`](../02_world_authoring/_index.md)
+  reserved `WA_NNN_pvp_consent` and wrote that *"the others have stronger affinity to their consumer
+  (**PvP→combat**) — when those consumer features open, their author may choose to put the override in
+  their own folder."* Combat opened; COMB_006 is that folder; the WA reservation is retired.
+- **The prediction above held.** Every item this entry listed as missing is exactly what COMB_006 supplies
+  (consent channels, defeat policy, item rules via COMB_004 §16, the disparity-cap waiver, REP/FAC
+  consequence) — and the *"a consenting duel must be able to bypass the disparity cap"* line became
+  **PVP-Q4**, which turned out to be the load-bearing rule of the whole design (§6 there).
+- **The V1 posture is unchanged.** PvP remains **unreachable by default** — `pvp_policy` defaults to
+  `None` (PVP-A2), so COMB_005 §5's predicate still never fires PC-on-PC in a reality that has not opted
+  in. What changed is that opting in is now *possible and specified*, rather than undefined.
 
 ## §11 — Cross-references
 
 - Concept + full derivation — [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md)
-- Family — [`COMB_002`](COMB_002_tactical_grid.md) · [`COMB_003`](COMB_003_threat_and_targeting.md) · [`COMB_004`](COMB_004_loot_and_spoils.md) · [`COMB_005`](COMB_005_encounter_spawning.md) · [`ABL_001`](../19_ability/ABL_001_ability_foundation.md)
+- Family — [`COMB_002`](COMB_002_tactical_grid.md) · [`COMB_003`](COMB_003_threat_and_targeting.md) · [`COMB_004`](COMB_004_loot_and_spoils.md) · [`COMB_005`](COMB_005_encounter_spawning.md) · [`COMB_006`](COMB_006_pvp_and_stakes.md) · [`ABL_001`](../19_ability/ABL_001_ability_foundation.md)
 - Consumed substrate — [`DF07_001`](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) · [`PL_007`](../04_play_loop/PL_007_item.md) · [`PL_007b`](../04_play_loop/PL_007b_inventory.md)
 - Agent drivers — [`../../11_agent_decision_standard.md`](../../11_agent_decision_standard.md) (AGT-A3)
 - Instanced scene — [`../../08_realtime_movement_authority.md`](../../08_realtime_movement_authority.md) (RTM-Q4)

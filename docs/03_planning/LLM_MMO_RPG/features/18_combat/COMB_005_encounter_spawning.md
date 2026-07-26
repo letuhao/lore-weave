@@ -73,7 +73,7 @@ What AIT_001 does **not** answer — and what the audit means by *"nothing puts 
 | Mid-encounter reinforcement waves | V1+ (SPN-D4) | `combat_session` sides are fixed at Born (COMB_001 §2); adding mid-fight members reopens initiative and threat seeding |
 | Summoned combatants (from ABL abilities) | V2+ (SPN-D5 ≡ ABL-D7) | same reason as SPN-D4 |
 | Named-boss rare-spawn timers / world bosses | V1+30d (SPN-D6) | needs cross-cell coordination and an announcement surface |
-| PvP matchmaking / arenas | V1+ (SPN-D7) | PvP has no owner at all yet (audit taxonomy) |
+| PvP matchmaking / arenas | V2 (SPN-D7 ≡ PVP-D2/D5) | PvP now has an owner — [`COMB_006`](COMB_006_pvp_and_stakes.md), 2026-07-26. Its `Duel` channel is a mutual challenge, **not** matchmaking; ladders and team arenas are PVP-D2/D5. COMB_005 stays out: a duel is formed by consent, not spawned |
 | Spawn-density heat balancing / telemetry | V1+30d (SPN-D8) | ops concern; the epoch model makes it measurable when wanted |
 | Player-placed spawns (traps, lures) | V2 (SPN-D9) | SPN-A8 forbids player writes to spawn declarations; a lure would be a distinct authored mechanic |
 
@@ -336,7 +336,7 @@ AGT-D5 specifies engagement promote/demote as *the* cost lever. Applied here:
 
 | `tier_hint` | At spawn | On engagement | After the encounter |
 |---|---|---|---|
-| `Untracked` (default) | one archetype block for the whole group (DF07 §9); zero per-actor state | **stays Untracked** — `EngineDriver` bulk resolve, group HP pool, zero LLM | discarded |
+| `Untracked` (default) | one archetype block for the whole group (DF07 §9); zero per-actor state | **stays Untracked** — `EngineDriver` bulk resolve, pooled body in `combat_session.group_pools` (COMB_001 §2; COMB_005 supplies `member_count` at formation, DF07 the ceiling), zero LLM | discarded |
 | `Minor` | untracked until engaged | promoted to Minor Tracked; `ScriptDriver` reaction table; **zero LLM** | demoted after `demote_after_days`, unless it took a durable action |
 | `Major` | untracked until engaged | promoted to Major Tracked; `LlmDriver` via NPC_002 Chorus | stays Tracked (a named actor persists) |
 

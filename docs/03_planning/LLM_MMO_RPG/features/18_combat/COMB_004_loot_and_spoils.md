@@ -557,7 +557,215 @@ survived, which is a property of the *enemy*, not of how carelessly the player f
 See the §1 "V1 NOT shipping" table for SPO-D1..D9; **SPO-D10** (persisting `first_kill_only` across an
 unload/re-observe inside one epoch) is added by §4.2. **No open questions remain.**
 
-## §16 — Cross-references
+## §16 — The Binding Contest (SPO-Q10..Q14 LOCKED 2026-07-26)
+
+> **User direction 2026-07-26:** *"full WA_006, but item system have some bind item — bind item will
+> damage but still follow the soul for next reclaim; but still lost by damage or steal if the enemy have
+> special ability or too strong. That needs a mechanism — a serious design in loot feature or something."*
+>
+> This is that mechanism. It is what makes [COMB_006](COMB_006_pvp_and_stakes.md)'s **full-permadeath PvP**
+> survivable without softening death: what you lose is **degradable, contestable and reclaimable** rather
+> than simply gone.
+
+### §16.1 Why this is a loot problem and not an item problem
+
+PL_007 will own **what a bound item is** (the `BindTier` field, its authoring, its UI). This section owns
+**what happens to it when its holder is defeated** — which is defeat-time item disposition, and that is
+already COMB_004's remit (§6). The split mirrors the DF7/PL_007 precedent exactly: *this doc owns the
+contract and the contest; PL_007 owns the body.*
+
+Three loss paths, from the user's direction, and they are deliberately **different in kind**:
+
+| Path | Trigger | Feels like | Deterministic? |
+|---|---|---|---|
+| **Sunder** (§16.4) | accumulated deaths | attrition — *"it weakened each time"* | yes, no roll |
+| **Severance** (§16.5) | an enemy ability | a technique — *"they knew how to strip it"* | yes, seeded |
+| **Overwhelm** (§16.6) | raw power ratio | helplessness — *"they were simply beyond me"* | yes, threshold |
+
+None is a random chance to lose your gear. **Every path is something the loser can see coming and the
+winner had to earn** — which is the difference between stakes and punishment.
+
+### §16.2 `BindTier` — the contract PL_007 implements
+
+```rust
+/// PL_007 owns the field + authoring; COMB_004 owns the contest (§16.3–§16.6).
+pub enum BindTier {
+    Unbound,      // default — drops on death via the existing EF_001 §6.1 cascade
+    BodyBound,    // bound to the flesh: survives KO, lost with the body on permanent death
+    SoulBound,    // bound to the soul: follows the soul through death and re-incarnation
+}
+```
+
+**This is not a new metaphysics — it is PROG_001's, applied to objects.** PROG_001 §4.3 already splits
+progression by `BodyOrSoul { Body, Soul }` for xuyên không: *"Body progressions stay with body — new soul
+inherits martial skills … Soul progressions travel with soul."* PROG_001 line 226 even calls the latter
+**"soul-bound"** already. `BindTier` is the same axis with the same words, so an author who understands
+why their swordsmanship stays with the corpse already understands why their master's blade does not.
+
+That is worth more than tidiness: it means the mechanic is **explicable in-fiction** without inventing a
+new law of the world, which is exactly the bar a xianxia/tu-tiên setting sets.
+
+### §16.3 Disposition at defeat finalisation
+
+Extends §6, and runs **only at finalisation** — never at KO (SPO-A1 governs here too):
+
+| Tier | On permanent death | Rationale |
+|---|---|---|
+| `Unbound` | drops to the cell (EF_001 §6.1) — **unchanged** | today's behaviour |
+| `BodyBound` | drops **with the corpse**, lootable | the flesh it was bound to is gone |
+| `SoulBound` | **does not drop.** Stays `HeldBy(actor)`, marked `Reclaimable` | the soul persists (§16.7) |
+
+> **No new aggregate, no new `EntityLocation` variant.** A soulbound item simply *is not dropped* — its
+> `entity_binding.location` stays `HeldBy(actor)` while the actor transitions incarnation, because
+> ACT_001's `actor_core` identity is soul-continuous across xuyên không (PCS_001 owns that transition).
+> The family's zero-new-aggregate property survives. This is the whole reason `SoulBound` is cheap: it is
+> the **absence** of a cascade, not the presence of an escrow.
+
+### §16.4 Sunder — *"will damage but still follow the soul"*
+
+Each death applies `bind_sunder` damage to every bound item the actor carried. At zero integrity the
+**binding breaks**: the item becomes `Unbound` and drops **at the place of the death that broke it**.
+
+```
+on_finalisation(actor, death_place):
+    for item in bound_items(actor):
+        item.durability.current -= policy.bind_sunder_per_death       // deterministic, no roll
+        if item.durability.current == 0:
+            item.bind_tier = Unbound
+            drop_to(item, death_place)                                 // the binding failed, publicly
+```
+
+So repeated death is **expensive but recoverable**, and a character who dies constantly eventually loses
+their bindings — attrition, not a dice roll. It also creates a legible in-fiction signal: a scarred,
+nearly-sundered blade is visibly the record of its owner's failures.
+
+> **⚠ HARD DEPENDENCY — this path cannot ship yet.** PL_007 §4.1 declares
+> `durability: Option<Durability>` with the comment **`V1: ALWAYS None (RES-D4). Schema reservation
+> only.`** Sunder consumes exactly that field. **Binding degradation is blocked until RES-D4 is activated**
+> and `durability` leaves reservation. Recorded as **SPO-D11** and flagged to PL_007's owner. Until then,
+> §16.5 and §16.6 are the only live loss paths — which is a coherent V1+ subset (bindings can be *taken*,
+> just not *worn down*), not a broken half-feature.
+
+### §16.5 Severance — *"if the enemy have special ability"*
+
+A new ABL_001 effect op, usable **only** against a defeated target:
+
+```rust
+EffectOp::SeverBinding {
+    max_tier: BindTier,      // an ability may be able to strip BodyBound but not SoulBound
+    outcome: SeverOutcome,   // Break (destroy the binding) | Claim (take the item)
+}
+pub enum SeverOutcome { Break, Claim }
+```
+
+- **`Claim` is the "steal" case** the user named. The item transfers to the severer with
+  `provenance.origin = Loot` and its binding cleared. This is a **transfer, not a generation** — which is
+  why PVP-Q9's *"a PvP kill produces no loot-table roll"* remains true and consistent (§5): nothing is
+  minted; something changes hands.
+- **Gated on defeat, not on a hit.** Severance fires at finalisation, against an actor who has already
+  lost. It is a coup-de-grâce, not a combat move — so it can never be a mid-fight disarm (that is
+  PL_005b's `StrikeIntent::Disarm`, still V1+ and a different mechanic entirely).
+- **Tier-capped.** An ability that can strip `SoulBound` should be rare, authored, and probably legendary.
+  `max_tier` makes that an authoring decision rather than a balance accident.
+- **Seeded** from the COMB_001 Q8 family with **`role = bind`** — a sixth role joining
+  `{damage, crit, hit, position, loot}`. Any variance (partial success, tier resistance) is replay-exact.
+
+### §16.6 Overwhelm — *"or too strong"*, and why it is the disparity cap read backwards
+
+The third path needs no ability at all: sufficient power differential strips a binding by itself.
+
+```
+ratio = attacker_power / defender_power          // COMB_001 Q4's EXISTING measure, reused verbatim
+overwhelm fires  ⟺  ratio ≥ pvp_policy.overwhelm_threshold_milli / 1000   ∧   the Q4 cap is WAIVED
+```
+
+**This is the single most load-bearing structural point in the design.** COMB_001 Q4's disparity cap and
+the overwhelm threshold read *the same ratio* in *opposite directions*:
+
+| | Q4 disparity cap | §16.6 overwhelm |
+|---|---|---|
+| Reads | attacker ≫ defender | attacker ≫ defender |
+| Does | **caps damage** | **permits binding severance** |
+| Protects | the weak | — |
+| Rewards | — | the overwhelming |
+| Active when | `cap_applies` | `cap_waived` |
+
+`cap_applies` and `cap_waived` are **complements**, so the two can never both fire. Concretely: a place
+where the weak are protected is a place where bindings **cannot** be stripped, and a channel where the cap
+is waived (a consented duel, a contested zone — COMB_006 §6) is a place where they can. One number, one
+comparison, two opposite consequences, **structurally mutually exclusive** — which is why this is a rule
+rather than two features someone must remember to keep in sync.
+
+The consequence that matters: **a strong player cannot follow a weak one into a newbie zone and strip
+their bindings**, because that is precisely where the cap applies. The anti-grief property is not a check
+someone added — it falls out of the arithmetic.
+
+### §16.7 Reclamation
+
+A `SoulBound` item marked `Reclaimable` returns to the actor's **next incarnation**:
+
+- **V1+: immediate on re-incarnation.** The item is already `HeldBy(actor)` (§16.3); re-incarnation simply
+  clears `Reclaimable`. Sunder damage from the death (§16.4) has already been applied, so what returns is
+  a *diminished* item — the loss is real, just not total.
+- **Equipped state is not preserved** — items return to inventory, not to slots. A new body has not yet
+  taken up the blade.
+- **Rituals, pilgrimages, reclamation costs** are **SPO-D12** (V2). They are good fiction and add nothing
+  mechanical that `bind_sunder` does not already provide.
+- **Ties to PROG-D37** (`RebirthBonusDecl`, V2 rebirth cultivation — *chết trùng sinh mạnh hơn*): when that
+  lands, a reclaimed soulbound item is the *object* analogue of a rebirth bonus, and both key off the same
+  PCS_001 xuyên không soul-layer. Flagged so the two are designed together rather than twice.
+
+### §16.8 Decisions
+
+| # | Question | Resolution |
+|---|---|---|
+| **SPO-Q10** | Where does binding live — item system or loot? | **Split, on the DF7/PL_007 precedent.** PL_007 owns `BindTier` (the field, authoring, UI); COMB_004 owns the contest (what happens at defeat). Defeat-time disposition is already §6's job. |
+| **SPO-Q11** | What are the tiers? | **`Unbound / BodyBound / SoulBound`** (§16.2) — PROG_001's existing `BodyOrSoul` axis applied to objects, reusing vocabulary the world already has (*"soul-bound"* is PROG_001's own word). No new metaphysics. |
+| **SPO-Q12** | Is binding absolute? | **No — three defeasance paths** (§16.4–§16.6), per user direction. Absolute binding makes death costless and permadeath meaningless; unconditional loss makes it unplayable. Defeasible binding is the middle that makes full WA_006 survivable. |
+| **SPO-Q13** | Random chance to lose a bound item? | **Never.** All three paths are deterministic — accumulated deaths, an authored ability, or a power threshold. A random gear-loss roll is the mechanic players hate most, and it is incompatible with the family's replay guarantees anyway. |
+| **SPO-Q14** | Does severance mint an item? | **No — it transfers one** (§16.5). Generation (loot tables) and transfer (severance) stay separate mechanisms, which is what lets PVP-Q9's *"PvP produces no loot roll"* stay literally true. |
+
+### §16.9 Surface added
+
+**Rejects:** `spoils.bind_tier_unknown` (0 schema) · `spoils.sever_target_not_defeated` (2 validate —
+severance attempted on a living target) · `spoils.sever_tier_exceeded` (2 validate — ability's `max_tier`
+below the item's tier) · `spoils.overwhelm_blocked_by_cap` (runtime, informational — the Q4 cap applies
+here, so severance is impossible by §16.6).
+
+**Validators:**
+
+| ID | Stage | Check |
+|---|---|---|
+| **SPO-V8** | runtime | **`cap_applies` and overwhelm are mutually exclusive** — no code path severs a binding in a place or pairing where the COMB_001 Q4 disparity cap is active (§16.6) |
+| **SPO-V9** | runtime | severance only ever fires at **defeat finalisation**, never mid-encounter (§16.5); and `SoulBound` items are **never** written to the EF_001 §6.1 drop cascade (§16.3) |
+| **SPO-V10** | replay | sunder and severance are byte-identical on replay under `role = bind`; no wall-clock, no unseeded RNG |
+
+> **SPO-V8 is the non-vacuous one, and it is the whole anti-grief guarantee.** It can fail: the natural
+> implementation checks the overwhelm ratio where severance is *applied*, far from where the Q4 cap is
+> *evaluated*, and the two drift apart the moment either is refactored. Its bite-test is a strong actor
+> attacking a weak one in a `Newbie` band — severance must be impossible, and if the check has drifted it
+> will succeed. SPO-V9's bite-test is a soulbound item appearing in a drop list.
+
+**Acceptance criteria (AC-SPO-14..20):**
+
+14. **Unbound unchanged** — a defeated actor's unbound gear drops exactly as it does today.
+15. **BodyBound** — drops with the corpse on permanent death; survives KO untouched.
+16. **SoulBound survives death** — does not appear in the drop list, remains `HeldBy(actor)` marked
+    `Reclaimable`, and returns on re-incarnation, unequipped.
+17. **Sunder** — N deaths reduce integrity by exactly `N × bind_sunder_per_death`; at zero the binding
+    breaks and the item drops at that death's place. *(Blocked on SPO-D11 / RES-D4.)*
+18. **Severance `Claim`** — a `SeverBinding { max_tier: BodyBound, outcome: Claim }` against a defeated
+    holder transfers the item; the same ability against a `SoulBound` item rejects
+    `spoils.sever_tier_exceeded`.
+19. **Severance is post-defeat** — attempted against a living target, rejects
+    `spoils.sever_target_not_defeated` (SPO-V9).
+20. **Overwhelm exclusivity (bite test)** — a far stronger actor defeating a weaker one **in a `Newbie`
+    band** cannot sever any binding, because the Q4 cap applies there; moving the ratio check away from
+    the cap evaluation makes SPO-V8 fail (§16.6).
+
+---
+
+## §17 — Cross-references
 
 - Audit finding — [`12_module_coverage_audit.md`](../../12_module_coverage_audit.md) AUD-F9
 - **The seam this doc accepts** — [`PL_007`](../04_play_loop/PL_007_item.md) §8.5, `ItemOrigin::Loot`

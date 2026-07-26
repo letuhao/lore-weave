@@ -43,6 +43,21 @@
 
 ---
 
+## 2026-07-26 — `/review-impl` seam pass across the same-day family (7 cross-doc defects, all fixed)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).
+- **Scope:** the eight docs authored the same day by two parallel sessions — DF07_001/002, PL_007/PL_007b, COMB_001 (CANDIDATE-LOCK), COMB_003/004/005, ABL_001 — reviewed **at the seams**, on the theory that docs cross-referencing each other's unfinished text is where defects hide. Findings and fixes recorded in [`DF07_002 §1.5`](../features/DF/DF07_pc_stats/DF07_002_edge_cases_and_closure.md).
+- **HIGH-1 — the Untracked group HP pool had no declaring owner.** AC-COMB-7 required a pooled HP bar, COMB_004 SPO-A1/A6 fired **loot generation when it reached zero**, DF07 §9 supplied its ceiling — and **no doc stored the current value**; Untracked actors hold no `vital_pool` row (AIT-A8). Since Untracked is the default tier for every COMB_005 spawn, the default enemy path was unimplementable. **Fixed:** NEW `combat_session.group_pools: BTreeMap<ActorRef, GroupPool { max, current, member_count }>` (COMB_001 §2 owns it; DF07 the ceiling; COMB_004 the zero-trigger; COMB_005 the member count), with COMB_001 §4 win/lose, COMB_004 SPO-A1/A6 and COMB_005 §7 all repointed at it.
+- **HIGH-2 — ABL_001 `PowerTerm.scale` read progression live**, while every other law-chain input came from the DF07 snapshot. PROG_001 `Action` training fires *during* combat (striking trains swordsmanship), so ability damage drifted mid-encounter while `Strike` stayed frozen — breaking AC-COMB-15 and AC-COMB-16. **DF7-V4 could not catch it**: the epoch guards the block; a direct progression read bypasses the block entirely. **Fixed:** the snapshot became `StatSnapshot { stats, prog, epoch }` (DF07 §8.1), `prog` carrying exactly the kinds any declared `PowerTerm.scale` references (bounded, known at schema stage via ABL-V3); ABL §4.3 reads `snapshot.prog` and saturating-multiplies (LOW-7).
+- **MED-3 — innate abilities leaked to Untracked actors** via a vacuous quantifier (`∀ req ∈ []` is true, so an empty `requires` admitted an ability to an actor with no progression row, contradicting ABL's own prose). **Fixed:** ABL §6 short-circuits on an absent row; a missing `kind_id` reads as 0.
+- **MED-4 — round-scoped status expiry was asserted by three docs and owned by none.** `duration_rounds`, `knocked_out`'s 5-round lifecycle and the `defending`/`slowed`/`hasted`/`stunned` set all need expiry; **PL_006 V1 has no auto-expire at all** (scheduler is V1+30d), so a 3-round debuff was permanent. **Fixed:** COMB_001 §4 now owns in-combat expiry at the round boundary via `CombatRoundDelta`; PL_006's scheduler keeps out-of-combat fiction-time expiry.
+- **MED-5 — Untracked ability costs had no store** (costs deduct from `vital_pool`; archetype-granted abilities are exactly the Untracked case). **Fixed:** NEW **ABL-V8** schema-stage warning; a pooled stamina bar was declined — it would put a second resource on the one tier that exists to have none.
+- **LOW-6 — COMB_004 wrote `actor_progression` outside PROG_001's closed `TrainingSource` enum.** **Fixed:** `TrainingSource::CombatVictory` declared (schema-additive per I14); reusing `Action` would have double-counted, since `Action` already trains per blow during the fight.
+- **Also applied:** every `combat_session` map is now a `BTreeMap` — the per-round checkpoint serialises the struct, so hash iteration order would have entered the replay bytes and made DF7-V4 fail nondeterministically (DF07_002 EC-3 generalised beyond `StatBlock`).
+- **Files:** `01_feature_ownership_matrix.md` (`combat_session` row — `group_pools`, `StatSnapshot`, ordered-map discipline) + `_LOCK.md` + this entry; outside `_boundaries/`: COMB_001 §2/§4, COMB_004 §2/§event-map, COMB_005 §7, ABL_001 §1/§4.3/§6/§7/§10/§12, DF07_001 §8.1/§9, DF07_002 §1.5 + AC-DF7-22..23. **Two DF07 statements written against the broken behaviour were corrected, not papered over** (EC-6 described a promotion path COMB_005 forbids and leaned on an HP value Untracked actors do not have). NEXT: commit the batch / DF4 World Rules.
+
+---
+
 ## 2026-07-26 — DF07_002 closure pass (adversarial edge-case review of the stat law; 4 defects fixed)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).

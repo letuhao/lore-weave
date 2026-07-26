@@ -50,15 +50,17 @@ category error rather than a shortcut. This doc supplies the missing declaring t
 - **0 new aggregates** (ABL-A4). The known-ability set is *derived* from `actor_progression` + equipment;
   cooldown state is a field inside COMB_001's already-ephemeral `combat_session`.
 - **`AbilityDecl`** — a RealityManifest extension (§3), OPTIONAL; a reality with no abilities plays.
-- **Closed `EffectOp` dispatch vocabulary — 9 V1** (§4), a strict superset of PL_007 §7.1's
-  `UseEffectDecl`, every variant routing into an aggregate someone else already owns.
+- **Closed `EffectOp` dispatch vocabulary — 10 V1** (§4; 9 at first draft, `SeverBinding` added
+  2026-07-26 with the COMB_004 §16 Binding Contest), a strict superset of PL_007 §7.1's `UseEffectDecl`,
+  every variant routing into an aggregate someone else already owns.
 - **`PowerTerm`** (§4.3) — the mechanism by which an offensive ability changes damage **without ever
   emitting a damage number**, preserving COMB_001 §4's 4-step chain as the sole damage authority.
 - **Closed `TargetRule` set — 6 V1** (§5), resolved by the engine under COMB_002's Chebyshev range +
   corner-line LoS. The LLM never emits a tile or a distance (TG-A1).
 - **Derived acquisition** (§6) — `requires: Vec<ProgressionReq>` against PROG_001, plus item grants.
 - **Cost + cooldown model** (§7) against existing RES_001 vitals.
-- **12 V1 rule_ids** in the `ability.*` namespace + **7 validators** ABL-V1..V7 + **AC-ABL-1..13**.
+- **12 V1 rule_ids** in the `ability.*` namespace + **8 validators** ABL-V1..V8 (V8 added by the
+  2026-07-26 seam review) + **AC-ABL-1..13**.
 
 ### V1 NOT shipping
 
@@ -170,20 +172,31 @@ declares `first_aid`; the engine knows neither and executes both through the sam
 
 ```rust
 pub enum EffectOp {
-    // ── shared with PL_007 §7.1 UseEffectDecl (identical semantics; see §4.2) ──
-    VitalDelta    { vital: VitalKind, amount: i32 },        // → RES_001 §7.5   heal / drain
+    // ── the shared core: ONE vocabulary for abilities and items alike (§4.2, ABL-Q9 RESOLVED) ──
+    VitalRestore  { vital: VitalKind, amount: u32 },        // → RES_001 §7.5. NON-NEGATIVE by type (§4.2.1)
     StatusApply   { flag: StatusFlag, magnitude: u8, duration_rounds: u8 },  // → PL_006
     StatusDispel  { flag: StatusFlag },                     // → PL_006
     ResourceGrant { kind: ResourceKind, amount: u64 },      // → RES_001 resource_inventory
-    Reveal        { canon_ref: CanonRef },                  // → Oracle / knowledge-service
+    Reveal        { canon_ref: CanonRef },                  // → Oracle / knowledge-service (narrative-only V1)
+    Unlock        { key_tag: String },                      // → EnvObject (narrative-only V1; from PL_007 §7.3)
     Inert,                                                  // flavour only; narration, no delta
 
     // ── combat-only, ABL-owned ──
     Damage        { power: PowerTerm },                     // → COMB_001 §4 law-chain  (§4.3)
     ModifyThreat  { delta_pct: i16, scope: ThreatScope },   // → COMB_003 threat_table
     ForceMove     { kind: ForceMoveKind, tiles: u8 },       // → COMB_002 engine pathing (§5.3)
+    SeverBinding  { max_tier: BindTier, outcome: SeverOutcome }, // → COMB_004 §16.5 Binding Contest
 }
 ```
+
+> **`SeverBinding` added 2026-07-26** (10th op) with [COMB_004 §16](../18_combat/COMB_004_loot_and_spoils.md)
+> and [COMB_006](../18_combat/COMB_006_pvp_and_stakes.md). It is the *"enemy have special ability"* path by
+> which a soul-bound item can be stripped from a defeated holder. **It is the one op that does not resolve
+> during the encounter** — it fires at **defeat finalisation**, against an actor who has already lost, so
+> it is a coup-de-grâce rather than a combat move. (A mid-fight disarm is PL_005b's `StrikeIntent::Disarm`,
+> still V1+ and a different mechanic.) Its legality, tier cap and mutual exclusion with the COMB_001 Q4
+> disparity cap are **entirely COMB_004 §16's** — ABL owns only the declaration, exactly as it owns
+> `ModifyThreat`'s declaration while COMB_003 owns the table. Seeded under `role = bind`.
 
 - **Ops execute in declared order**, each fully resolved before the next. Order is author-visible and
   matters (`StatusApply{Wounded}` then `Damage` is not the same as the reverse) — but the **COMB_001
@@ -205,27 +218,91 @@ answer that a reasonable implementer would pick):
 - **`amount` / `magnitude` come from the declaration, never from a payload** — inherited verbatim from
   ITM-A4. An `AbilityId` plus an optional target is the *entire* LLM-emittable surface.
 
-### §4.2 Relationship to PL_007 `UseEffectDecl` (coordination — needs PL_007 sign-off)
+### §4.2 The merge with PL_007 `UseEffectDecl` (ABL-Q9 — RESOLVED 2026-07-26)
 
-PL_007 §7.1 defines `UseEffectDecl`, a closed 7-variant dispatch enum for item `Use`. Six of its variants
-are **semantically identical** to `EffectOp` variants above; the seventh (`Unlock { key_tag }`) is
-item-specific and stays PL_007's.
+The first draft called this *"redundant but not incorrect"* and parked it as a coordination item. **That
+was wrong on both counts.** Examining the two enums side by side one day after both were written found
+divergence already underway and a live correctness hole.
 
-Two closed enums covering overlapping ground is precisely the drift `_boundaries/` exists to catch, so the
-resolution is recorded rather than left implicit:
+#### §4.2.1 Two defects, not a preference
 
-- **V1 (this DRAFT):** the two coexist. `EffectOp` is a strict superset for the six shared variants; both
-  dispatch to the same owner aggregates, so a heal is a heal regardless of entry point. `Unlock` remains
-  PL_007-only; `Damage` / `ModifyThreat` / `ForceMove` remain ABL-only.
-- **Proposed (needs PL_007 owner agreement, ABL-Q9):** PL_007 §7.1 re-expresses `UseEffectDecl` as
-  `pub type UseEffectDecl = EffectOp;` restricted by an item-context validator, plus `Unlock` folded in as
-  a tenth `EffectOp`. One substrate, one validator set, `Use potion` and `Skill heal` provably identical.
-- **Not proposed:** ABL absorbing PL_007's item semantics, or PL_007 absorbing combat ops. Each keeps its
-  entry-point legality rules; only the *effect vocabulary* merges.
+**Defect 1 — the signatures had already drifted, in under 24 hours.** Two variants documented as
+"semantically identical" were not even structurally identical:
 
-This is flagged as a **coordination item, not a unilateral change** — §10 closure item 5. Until it is
-agreed, an author declaring a heal twice (once as an item use-effect, once as an ability) gets two
-declarations with identical runtime behaviour, which is redundant but not incorrect.
+| Variant | ABL_001 | PL_007 §7.1 |
+|---|---|---|
+| status | `StatusApply { flag, magnitude, duration_rounds }` | `StatusApply { flag, magnitude }` — **no duration** |
+| vitals | `VitalDelta { vital: VitalKind, amount }` | `VitalDelta { kind: VitalKind, amount }` — **different field name** |
+
+Neither doc was wrong in isolation; ABL needed a duration because combat has rounds. That is exactly how
+two closed enums covering one concept diverge — not by anyone deciding to, but by each owner meeting a
+need the other did not have. It is the drift `_boundaries/` exists to catch, caught at the cheapest
+possible moment: **both docs are DRAFT and neither has shipped.**
+
+**Defect 2 — `VitalDelta` was a damage-law-chain bypass, and it was in *both* docs.** Both declared
+`amount: i32` — **signed**. ABL-Q7 correctly states that `VitalDelta` bypasses the 4-step chain, which is
+right for *healing*; the unexamined consequence is that a **negative** amount is damage that also bypasses
+it. Concretely, `UseItem { poison_vial, target: other_actor } → VitalDelta { Hp, -30 }` writes 30 damage
+that:
+
+- skips the COMB_001 §4 law-chain — **ignores `Armor`**, `elem_mult`, `resist` and the variance roll;
+- takes **no hit roll** — it cannot miss, at any `Dodge`;
+- accrues **no COMB_003 threat**, since accrual reads `damage_applied` *from the chain* (§3 there);
+- ignores **COMB_001 Q4's disparity cap** — the anti-grief measure;
+- ignores **COMB_006's PvP eligibility predicate**, which guards `Strike` and `Damage`, not a raw vital write.
+
+The last two compose into the sharp version: **a `VitalDelta { Hp, −n }` item is an unmissable,
+armour-ignoring PvP weapon usable inside a sanctuary.** COMB_001's *"the 4-step chain is the sole damage
+authority"* would have been silently false for any author who declared one — and **this was my defect as
+much as PL_007's**, since ABL_001 shipped the identical signed field.
+
+#### §4.2.2 The resolution
+
+> **ABL-Q9 RESOLVED — one vocabulary. `EffectOp` is it; `UseEffectDecl` retires.**
+> `pub type UseEffectDecl = EffectOp;` — a deprecated alias PL_007 may keep for one revision, or drop.
+> **`Unlock` folds in as the 11th op** (it was PL_007's only non-shared variant).
+
+1. **Harm is unrepresentable outside the chain.** `VitalDelta` becomes
+   **`VitalRestore { vital, amount: u32 }`** — non-negative *by type*, not by validator. Every path that
+   reduces another actor's vitals is `Damage { power: PowerTerm }` and therefore passes the law-chain,
+   the hit roll, the disparity cap and the PvP predicate. This follows the family's standing discipline
+   (ITM-A7, THR-Q7, §5.3 here): make the bad state **unrepresentable**, not merely invalid.
+   *Nothing legitimate is lost* — self-cost is `AbilityCost` (§7.1), damage-over-time is `StatusApply`
+   with a PL_006 DoT flag (COMB_001 AC-9), and harm is `Damage`. Non-HP *offensive* drain has no V1
+   consumer and is deliberately not invented (**ABL-D12**), per DF07 §3's rule against speculative slots.
+2. **No item/ability restriction.** Items may declare **every** op, and should: a fire talisman is
+   `Damage`, a noisemaker is `ModifyThreat`, a shove-scroll is `ForceMove`, a binding-breaker is
+   `SeverBinding`. The first draft proposed an "item-context validator" to fence items out of combat ops —
+   that was backwards, and it would have made the explosive talisman (a xianxia staple, 符) inexpressible
+   while leaving the *actual* hole open. **Context gating already exists on both sides**
+   (`usable_in_combat` / `usable_out_of_combat` here, the same pair on PL_007's `UseDecl`), and that is
+   the correct axis: *when* an effect may fire, not *which* effects an item may name.
+3. **ABL_001 owns the vocabulary**, PL_007 references it. Not seniority — three reasons: `EffectOp` is the
+   superset; ABL owns **`PowerTerm`**, which is the only correct way to express item damage at all; and
+   ABL owns the replay/determinism discipline these ops resolve under. This is the **DF07 precedent**
+   exactly — DF07 owns `StatModifier` as *"the single shape equipment (PL_007), status (PL_006), Lex and
+   Forge all use"*, while its producers live elsewhere.
+
+#### §4.2.3 What PL_007 must change (closure item 5 — for that doc's owner)
+
+Small, additive, and **not applied here** — PL_007 is authored in a parallel track and was being edited as
+this was written:
+
+```rust
+// PL_007 §7.1 — replace the local enum with a reference:
+pub type UseEffectDecl = EffectOp;   // ABL_001 §4.1 owns the vocabulary (ABL-Q9)
+```
+- `ItemDef.use_effect: Option<UseEffectDecl>` — **unchanged in shape**; only the type it names moves.
+- PL_007's `Unlock` / `Reveal` **narrative-only V1** treatment (its §7.1 correction, and the
+  `item.use_effect_narrative_only` warning-on-accept) is **preserved verbatim** and should be adopted by
+  ABL too — an ability that unlocks a door has the same empty-sink problem and deserves the same honest
+  warning rather than a silent success.
+- **ITM-A4 is strengthened, not weakened:** an item still never emits a number. A damaging talisman
+  declares a `PowerTerm` — a *multiplier on a stat slot* — so the engine still computes the damage.
+
+**Until PL_007 adopts this, the defect stands in the item path.** It is recorded as a defect rather than a
+divergence, because a signed `VitalDelta` reachable from `UseItem` is a real bypass of four separate
+protections regardless of which doc declares it.
 
 ### §4.3 `PowerTerm` — damage without a damage number (ABL-A3)
 
@@ -375,9 +452,16 @@ fn known_abilities(actor, reality) -> BTreeSet<AbilityId>:      // BTreeSet ⇒ 
   avoids in V1.
 - **Losing a requirement loses the ability.** If progression can decrease (PROG-D5 atrophy, V1+30d) or the
   granting item is unequipped, the ability leaves the set. Nothing to clean up, because nothing was stored.
-- **Untracked NPCs** have no `actor_progression` row (DF7 §9), so their derived set is empty; their
-  abilities come from the archetype's `grant_only` list. A 12-bandit mob resolves one archetype's ability
-  set, not twelve.
+- **Untracked NPCs** have no `actor_progression` row (DF7 §9), so their derived set is empty — **enforced by
+  the short-circuit above, not implied by the requirement list**; their abilities come from the archetype's
+  `grant_only` list. A 12-bandit mob resolves one archetype's ability set, not twelve.
+- **An archetype-granted ability must be cost-free** (added 2026-07-26, DF07_002 §1.5 MED-5). `costs`
+  deducts from RES_001 `vital_pool` (§7.1) and Untracked actors hold no such row — they have a pooled body
+  (`combat_session.group_pools`, COMB_001 §2), not vitals. A costed ability on an archetype list is
+  therefore unfireable, so **ABL-V8 warns at schema stage** rather than letting it fail silently at
+  selection: the author sees the problem at declaration time, which is the same discipline ABL-V2 applies to
+  the cooldown/out-of-combat combination. Giving Untracked groups a pooled stamina bar was the alternative
+  and is deliberately not taken — it would put a second resource on the one tier that exists to have none.
 
 ---
 
@@ -503,7 +587,8 @@ COMB_001 §8 AC-10 requires for basic strikes.
 | **ABL-Q6** | Where does cooldown state live? | **`combat_session.cooldowns`, encounter-ephemeral** (ABL-A7, §7.2). A durable cooldown table needs a TDIL clock binding and an answer for time-dilated chambers — a real problem V1 need not solve. Out-of-combat gating is cost-only, and ABL-V2 warns authors who declare a cooldown they will not get. |
 | **ABL-Q7** | Is healing a negative `Damage`? | **No** — `VitalDelta` bypasses the chain entirely (§4.3). Routing a heal through the damage chain would let `Armor` reduce it and the hit roll miss it. Recorded because it is the obvious and wrong shortcut. |
 | **ABL-Q8** | A reality that declares no abilities? | **Fully valid.** `Skill` never enters `allowed_tools`; combat runs on `Strike` / `Defend` / `UseItem` / `Flee`. Mirrors DF7-A6, PL_007's item-free reality, and PROG_001 §11.3 composability. |
-| **ABL-Q9** | `EffectOp` vs PL_007 `UseEffectDecl` — merge now? | **Coexist in V1; merge proposed, not imposed** (§4.2). PL_007 is authored in a parallel track; unilaterally rewriting its closed enum would be exactly the boundary violation `_boundaries/` forbids. The V1 overlap is redundant, not incorrect — both dispatch to the same owners. Merge is closure item 5, gated on PL_007 owner agreement. |
+| **ABL-Q9** | `EffectOp` vs PL_007 `UseEffectDecl` — merge now? | **RESOLVED 2026-07-26: merge. One vocabulary, ABL-owned; `UseEffectDecl` retires; `Unlock` folds in as the 11th op** (§4.2). The first draft's *"redundant but not incorrect"* was wrong twice over: the two signatures had **already diverged in under 24 hours** (`StatusApply` arity, `VitalDelta` field name), and `VitalDelta { amount: i32 }` was a **law-chain bypass in both docs** — a signed vital write reachable from `UseItem` ignores armour, the hit roll, the disparity cap and the PvP predicate at once. Fixed by making harm unrepresentable: `VitalRestore { amount: u32 }`, with all damage routed through `Damage { PowerTerm }`. **No item/ability op restriction** — the proposed "item-context validator" was backwards; it would have banned the explosive talisman while leaving the real hole open. Context gating (`usable_in_combat`) is the correct axis. |
+| **ABL-Q10** | Who owns the merged vocabulary — ABL or PL_007? | **ABL_001**, on the **DF07 precedent** (DF07 owns `StatModifier`; its producers live in PL_007/PL_006/Lex/Forge). Three reasons, none of them seniority: `EffectOp` is the superset; ABL owns `PowerTerm`, without which item damage cannot be expressed correctly at all; and ABL owns the replay/determinism discipline these ops resolve under. PL_007 keeps every entry-point rule it already has — only the *vocabulary* moves. |
 
 ---
 
@@ -520,6 +605,7 @@ cycle; 2–6 are declared and land when each feature is next opened.
 | 4 | **PROG_001 §3** | `ProgressionReq` reads `actor_progression.values[kind_id].raw_value`; **no PROG_001 schema change** — a read-only consumer, plus the §2 disambiguation note | declared |
 | 5 | **PL_007 §7.1** | `UseEffectDecl` ⊂ `EffectOp` merge proposal (§4.2, ABL-Q9) — **requires PL_007 owner agreement**, not applied unilaterally | proposed |
 | 6 | **AIT_001** | Untracked actors' abilities come from the archetype `grant_only` list, resolved once per group (§6) | declared |
+| 7 | **DF07_001 §8** | the combat snapshot carries `prog` — the progression values referenced by any declared `PowerTerm.scale` — captured at Born and refreshed on the same `progression_turn` epoch as the block, so ability scaling cannot drift while slots stay frozen (§4.3 correction, DF07_002 §1.5 HIGH-2) | **applied in DF07 this cycle** |
 
 ---
 
@@ -564,6 +650,7 @@ abilities — a leaked `mult_milli` is a leaked damage formula).
 | **ABL-V5** | 0 schema | every `AbilityId` referenced by an AIT_001 `combat_reaction_table` entry or an archetype grant list resolves, **and** is reachable by that actor (a ScriptDriver cannot name an ability its actor can never know). Extends to item grants if ABL-Q9 is agreed — no rule change needed |
 | **ABL-V6** | commit | costs deducted **exactly once** per successful resolution, and **not at all** on any rejected path (§7.1 ordering) |
 | **ABL-V7** | replay | `known_abilities` iteration is order-stable (`BTreeSet`) ⇒ EngineDriver selection and effect ordering are byte-identical on replay; feeds DF7-V4 |
+| **ABL-V8** | 0 schema (warn) | an ability on an AIT_001 archetype `grant_only` list declares no `costs` — Untracked actors have a pooled body, not a `vital_pool`, so a costed archetype ability is unfireable (§6, DF07_002 §1.5 MED-5). Warn, not reject: the declaration is legal for a *Tracked* holder of the same archetype |
 
 > **ABL-V6 and ABL-V7 are the non-vacuous pair.** ABL-V6 can fail: moving the deduction before step 5
 > (the natural implementation) charges stamina on an out-of-range skill, and the check catches it. Its

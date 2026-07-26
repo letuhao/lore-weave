@@ -4,8 +4,9 @@
 > the five consumers that landed the same day (COMB_001 CANDIDATE-LOCK, COMB_003/004/005, ABL_001) plus
 > PL_007/PL_007b. **4 defects found in the law** (one inverts a security property), **11 unhandled edge
 > cases closed**, **3 open questions decided**, **1 left open with an owner**. A second pass across the
-> **seams** (`/review-impl`, same day) raised **7 more defects owned by the family, not by DF7** — §1.5;
-> two of them invalidated DF07 text written against them, corrected here.
+> **seams** (`/review-impl`, same day) raised **7 more defects owned by the family, not by DF7** — §1.5,
+> **all applied** in their owning docs (COMB_001 ×3, COMB_004 ×2, ABL_001 ×3, DF07 ×2); two of them
+> invalidated DF07 text written against them, corrected here.
 > **Stable IDs:** `EC-1..EC-15` edge cases · new axioms `DF7-A12..A14` · new decisions `DF7-Q12..Q14` ·
 > new deferrals `DF7-D14..D15` · new rejects `stat.tuning_invalid` · new AC `AC-DF7-16..21`.
 > **Applies to:** DF07_001 (fixes landed there in the same commit — this doc is the *why*, DF07_001 is the
@@ -72,39 +73,57 @@ release, a wrap — i.e. a stat that becomes huge or negative at a threshold no 
 **Fix:** all intermediate arithmetic is **saturating** (`saturating_mul_div`), and the slot clamp — whose
 `max` is bounded by construction — brings the value back into range. Stated in DF07_001 §4.
 
-### §1.5 — Raised to the family (not DF7's to fix)
+### §1.5 — Found at the seams, in other docs (**all seven applied 2026-07-26**)
 
 The same pass, run across the seams, surfaced defects **outside** this feature. Recorded here because they
-were found here and because two of them invalidate DF07 text that was written against them.
+were found here and because two of them invalidated DF07 text written against them. Each fix landed in the
+owning doc with a dated note pointing back at this section; nothing was resolved by amending DF07 alone.
 
-- **HIGH-1 — the Untracked group HP pool has no declaring owner.** COMB_001 AC-COMB-7 requires it,
+- **HIGH-1 ✅ FIXED — the Untracked group HP pool had no declaring owner.** COMB_001 AC-COMB-7 requires it,
   COMB_004 SPO-A1/A6 fire loot *when it reaches zero*, and DF07 §9 supplies its ceiling
   (`archetype.MaxHp × count`) — but `combat_session` (COMB_001 §2) has **no field for it**, and Untracked
   actors hold no RES_001 `vital_pool` row (AIT-A8). The default tier for every spawn therefore has no place
-  to keep its current HP. Proposed fix: `combat_session.group_pools: BTreeMap<ActorRef, GroupPool { max,
-  current, member_count }>`, COMB_001-owned, ceiling from DF7, zero-trigger read by COMB_004. **DF07 §9
-  reworded** to supply the ceiling and explicitly disclaim the storage.
-- **HIGH-2 — ABL_001 `ScaleTerm` reads progression live, breaking the snapshot invariant.** ABL §4.3
+  to keep its current HP. **Fix landed:** `combat_session.group_pools: BTreeMap<ActorRef, GroupPool { max,
+  current, member_count }>` added in **COMB_001 §2** (COMB_001 owns the structure and its decrement; DF07
+  supplies `max`; COMB_004 reads `current == 0`; COMB_005 supplies `member_count` at formation), with
+  COMB_001 §4's win/lose rule and **COMB_004 SPO-A1/A6** repointed at it. **DF07 §9** reworded to supply the
+  ceiling and explicitly disclaim the storage. While in COMB_001 §2, the four sibling maps were also
+  switched to `BTreeMap` — the same EC-3 reasoning applies to every container the round checkpoint
+  serialises, not just to `StatBlock`.
+- **HIGH-2 ✅ FIXED 2026-07-26 — ABL_001 `ScaleTerm` read progression live, breaking the snapshot invariant.** ABL §4.3
   resolves `prog[s.kind_id].raw_value` at cast time while every other law-chain input comes from the DF07
   snapshot. PROG_001 Action-triggered training fires *during* combat (striking trains swordsmanship), so an
   ability's damage drifts mid-encounter while a basic `Strike`'s does not — contradicting AC-COMB-15 and
   breaking AC-COMB-16's byte-identical replay. **DF7-V4 cannot catch it**: the epoch guards the block, not a
-  direct progression read that bypasses it. Fix: resolve `ScaleTerm` against a snapshotted progression view
-  keyed by the same `progression_turn`, or fold scaling into the slot terms.
-- **MED-3 — innate abilities leak to Untracked actors.** ABL §6's derived-set predicate is
+  direct progression read that bypasses it. **Fix landed:** the DF07 snapshot became
+  `StatSnapshot { stats, prog, epoch }` (**DF07_001 §8.1**), where `prog` carries exactly the kinds any
+  declared `PowerTerm.scale` references — a set already known at schema stage via ABL-V3, so the capture is
+  bounded. **ABL_001 §4.3** now reads `snapshot.prog` (and saturating-multiplies, LOW-7), and **COMB_001 §2**
+  types the field accordingly. Scaling and slots now move together or not at all.
+- **MED-3 ✅ FIXED — innate abilities leaked to Untracked actors.** ABL §6's derived-set predicate is
   `∀ req ∈ a.requires : …`; with `requires` empty the quantifier is **vacuously true**, so an innate ability
-  enters the set with no `actor_progression` row — contradicting the prose two paragraphs later ("their
-  derived set is empty"). The missing-row case is also undefined for non-empty `requires`.
-- **MED-4 — round-scoped status expiry is asserted by three docs and owned by none.** ABL's
+  entered the set with no `actor_progression` row — contradicting the prose two paragraphs later ("their
+  derived set is empty"). The missing-row case was also undefined for non-empty `requires`. **Fix landed:**
+  **ABL_001 §6** short-circuits on an absent row (∅, innate included) and reads a missing `kind_id` as 0 —
+  absent competence, not an error.
+- **MED-4 ✅ FIXED — round-scoped status expiry was asserted by three docs and owned by none.** ABL's
   `StatusApply { duration_rounds }`, COMB_001's `knocked_out` 5-round lifecycle and the `defending` /
   `slowed` / `hasted` / `stunned` set all require expiry, while PL_006 V1 ships **no auto-expire** (manual
-  dispel only; scheduler V1+30d).
-- **MED-5 — Untracked ability costs have no store.** ABL §7.1 deducts from `vital_pool`; archetype-granted
-  abilities are precisely the Untracked case, which has none. Same root as HIGH-1.
-- **LOW-6 — COMB_004 writes `actor_progression` with no declared `TrainingSource`.** PROG_001's enum is
-  closed (Action / Time; Mentor / Quest / CrossActor V1+); a victory award is none of them.
-- **LOW-7 — ABL's `PowerTerm` arithmetic is not saturating**, though it claims to inherit DF7-A4. Same
-  overflow class as EC-4, against the same `Unbounded` cultivation values.
+  dispel only; scheduler V1+30d) — so in V1 a 3-round debuff was permanent. **Fix landed:** **COMB_001 §4**
+  now owns in-combat expiry, decrementing round-scoped statuses at the round boundary and emitting them in
+  `CombatRoundDelta`; PL_006's V1+30d scheduler keeps out-of-combat fiction-time expiry. Consistent with
+  DF7-A8, which already put these flags on the resolution-time side.
+- **MED-5 ✅ FIXED — Untracked ability costs had no store.** ABL §7.1 deducts from `vital_pool`;
+  archetype-granted abilities are precisely the Untracked case, which has none. **Fix landed:** **ABL-V8**
+  warns at schema stage when an archetype list grants a costed ability (warn, not reject — the same
+  declaration is legal for a Tracked holder of that archetype). Giving Untracked groups a pooled stamina bar
+  was the alternative and was declined: it puts a second resource on the one tier that exists to have none.
+- **LOW-6 ✅ FIXED — COMB_004 wrote `actor_progression` with no declared `TrainingSource`.** PROG_001's enum
+  is closed (Action / Time; Mentor / Quest / CrossActor V1+). **Fix landed:** `TrainingSource::CombatVictory`
+  declared in **COMB_004**'s event mapping as a schema-additive PROG_001 variant. Reusing `Action` would
+  have double-counted, since `Action` training already fires per blow during the fight.
+- **LOW-7 ✅ FIXED — ABL's `PowerTerm` arithmetic was not saturating**, though it claimed to inherit DF7-A4.
+  Same overflow class as EC-4, against the same `Unbounded` cultivation values. Folded into the HIGH-2 edit.
 
 ---
 
@@ -167,6 +186,8 @@ Each is a **bite test** — it must be able to fail, and the listed mutation is 
 | **AC-DF7-19** | `raw_value = u64::MAX` on a `StrikePower` term ⇒ saturates to the slot `clamp.max`, **no panic, no wrap**. | Use plain `*` → debug panic / release wrap to a negative. |
 | **AC-DF7-20** | An Untracked bandit with a `Wounded` status resolves the **archetype block unchanged**; promoting it to Tracked mid-encounter changes its block only at the **next round boundary**, and its current HP is unchanged by the `MaxHp` rise. | Apply status modifiers to Untracked actors → the group pool desyncs from the per-actor block. |
 | **AC-DF7-21** | `stat_tuning.speed_per_tile = 0` is rejected at canonical seed with `stat.tuning_invalid`. | Remove the validator → division-by-zero panic on the first `MoveRange` resolve. |
+| **AC-DF7-22** | A 12-bandit Untracked group takes 30 damage: `group_pools[g].current` drops by 30, no per-member HP exists anywhere, and COMB_004 fires exactly once when it reaches 0 (§1.5 HIGH-1). | Delete the `group_pools` field → the loot trigger has nothing to read and the fight cannot end. |
+| **AC-DF7-23** | An ability with `PowerTerm.scale` deals **identical** damage on round 1 and round 5 of an encounter in which the caster's scaling kind trained by `Action` every round; the value changes only across a `progression_turn` epoch refresh at a round boundary (§1.5 HIGH-2). | Restore the live `prog[...]` read → damage climbs mid-encounter while `Strike` stays flat, and AC-COMB-16's replay equality fails. |
 
 ---
 
