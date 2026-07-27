@@ -210,18 +210,44 @@ async def test_glossary_write_failure_fails_the_run_loudly():
 # ── M3: the KG phase ─────────────────────────────────────────────────────────
 
 class FakeKnowledge:
-    def __init__(self, *, project=True, relation=True):
+    """Models the REAL knowledge shapes the M4 maiden run exposed: the graph node
+    `id` is a HASH distinct from the glossary entity_id, and the project's entity
+    list also carries entities from EARLIER builds."""
+
+    def __init__(self, *, project=True, relation=True, preexisting=(), projects=True):
         self._project = project
         self._relation = relation
+        self._projects = projects            # False ⇒ the graph accepts nothing
         self.projected = None
         self.relations = []
+        # name → graph node id, for lore that existed before this run
+        self._graph = {name: f"hash-{i}" for i, name in enumerate(preexisting)}
+        self._anchor: dict[str, str] = {}
 
     async def create_project(self, book_id, name, bearer, **kw):
         return {"project_id": str(uuid.uuid4())} if self._project else None
 
     async def project_entities_from_glossary(self, bearer, *, project_id, entity_ids=None):
         self.projected = entity_ids
+        if not self._projects:
+            return {"created": 0, "existing": 0, "seen": 0}
+        for gid in entity_ids or []:
+            self._anchor[str(gid)] = f"hash-g-{gid[:8]}"
         return {"created": len(entity_ids or []), "existing": 0}
+
+    async def list_project_entities(self, bearer, *, project_id, limit=200):
+        # the run's own items (resolved via their glossary anchor) + pre-existing lore
+        out = [{"id": nid, "name": n, "glossary_entity_id": None}
+               for n, nid in self._graph.items()]
+        out += [{"id": nid, "name": None, "glossary_entity_id": gid}
+                for gid, nid in self._anchor.items()]
+        return out
+
+    def name_the_projected(self, mapping: dict[str, str]) -> None:
+        """Give the just-projected nodes their names (what the real list returns)."""
+        for gid, name in mapping.items():
+            if gid in self._anchor:
+                self._graph[name] = self._anchor[gid]
 
     async def create_relation(self, bearer, *, subject_id, predicate, object_id):
         if not self._relation:
@@ -252,7 +278,7 @@ async def test_project_kg_resolves_relation_NAMES_to_entity_ids():
     HERE, once, by the platform — the model never sees a UUID."""
     wl = [{"name": "Tô Thanh Dao", "kind": "character"},
           {"name": "Tô gia", "kind": "character"}]
-    kg = FakeKnowledge()
+    kg = FakeKnowledge(preexisting=["Tô Thanh Dao", "Tô gia"])
     s, run_id = await _run_to_proposed(
         [json.dumps(wl), _built_rel("Tô Thanh Dao", "Tô gia"), _built_rel("Tô gia", "Tô Thanh Dao")],
         knowledge=kg)
@@ -268,7 +294,7 @@ async def test_project_kg_resolves_relation_NAMES_to_entity_ids():
 async def test_unresolvable_relation_name_is_kept_and_flagged_not_dropped():
     """A name that matches nothing must be VISIBLE to the human, not silently lost."""
     wl = [{"name": "A", "kind": "character"}]
-    kg = FakeKnowledge()
+    kg = FakeKnowledge(preexisting=["A"])
     s, run_id = await _run_to_proposed(
         [json.dumps(wl), _built_rel("A", "Someone Never Built")], knowledge=kg)
     out = await s.project_kg(run_id, OWNER, "bearer")
@@ -280,7 +306,7 @@ async def test_unresolvable_relation_name_is_kept_and_flagged_not_dropped():
 @pytest.mark.asyncio
 async def test_approve_edges_writes_only_resolved_and_reports_the_failures():
     wl = [{"name": "A", "kind": "character"}, {"name": "B", "kind": "character"}]
-    kg = FakeKnowledge()
+    kg = FakeKnowledge(preexisting=["A", "B"])
     s, run_id = await _run_to_proposed(
         [json.dumps(wl), _built_rel("A", "B"), _built_rel("B", "Ghost")], knowledge=kg)
     await s.project_kg(run_id, OWNER, "bearer")
@@ -294,7 +320,7 @@ async def test_approve_edges_writes_only_resolved_and_reports_the_failures():
 @pytest.mark.asyncio
 async def test_a_failed_relation_write_is_counted_not_rounded_up():
     wl = [{"name": "A", "kind": "character"}, {"name": "B", "kind": "character"}]
-    kg = FakeKnowledge(relation=False)   # every write fails
+    kg = FakeKnowledge(relation=False, preexisting=["A", "B"])   # every write fails
     s, run_id = await _run_to_proposed(
         [json.dumps(wl), _built_rel("A", "B"), _built("B")], knowledge=kg)
     await s.project_kg(run_id, OWNER, "bearer")
@@ -314,7 +340,7 @@ async def test_project_kg_without_a_knowledge_client_is_explicit_not_silent():
 @pytest.mark.asyncio
 async def test_project_kg_from_the_wrong_state_is_a_409():
     wl = [{"name": "A", "kind": "character"}]
-    kg = FakeKnowledge()
+    kg = FakeKnowledge(preexisting=["A"])
     repo, gl = FakeRepo(), FakeGlossary()
     s = GlossaryBuildService(repo, FakeLLMClient([json.dumps(wl)]), gl, knowledge=kg)
     run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)

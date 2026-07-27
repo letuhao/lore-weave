@@ -39,8 +39,30 @@ class GlossaryBuildError(Exception):
         self.status, self.code, self.message = status, code, message
 
 
+# jsonb columns asyncpg hands back as TEXT (no codec registered on this pool) —
+# decoded ONCE at the repo boundary so nothing downstream has to guess whether a
+# field is a str or a dict. Live-caught by the M4 maiden run: the fake repo in the
+# unit tests stored real dicts, so `params.items()` blew up only against Postgres
+# (the mock-only-coverage lesson, again).
+_JSONB_FIELDS = ("params", "worklist", "edges", "built", "sections", "relations")
+
+
+def _row(record) -> dict:
+    out = dict(record)
+    for k in _JSONB_FIELDS:
+        v = out.get(k)
+        if isinstance(v, str):
+            try:
+                out[k] = json.loads(v)
+            except ValueError:
+                pass
+    return out
+
+
 class Repo:
-    """Thin asyncpg repo — every query filters by owner_user_id (+ book scope)."""
+    """Thin asyncpg repo — every query filters by owner_user_id (+ book scope).
+
+    Returns plain dicts with the jsonb columns already decoded (see `_row`)."""
 
     def __init__(self, pool) -> None:
         self._pool = pool
@@ -51,14 +73,14 @@ class Repo:
                VALUES ($1, $2, $3::jsonb) RETURNING *""",
             owner, book_id, json.dumps(params),
         )
-        return dict(row)
+        return _row(row)
 
     async def get_run(self, run_id: UUID, owner: UUID) -> dict | None:
         row = await self._pool.fetchrow(
             "SELECT * FROM glossary_build_runs WHERE run_id=$1 AND owner_user_id=$2",
             run_id, owner,
         )
-        return dict(row) if row else None
+        return _row(row) if row else None
 
     async def transition(self, run_id: UUID, owner: UUID, from_status: list[str],
                          to_status: str, **fields: Any) -> dict | None:
@@ -74,7 +96,7 @@ class Repo:
                 RETURNING *""",
             *args, from_status,
         )
-        return dict(row) if row else None
+        return _row(row) if row else None
 
     async def insert_items(self, run: dict, worklist: list[dict]) -> None:
         await self._pool.executemany(
@@ -93,7 +115,7 @@ class Repo:
                ORDER BY created_at DESC LIMIT $3""",
             owner, book_id, limit,
         )
-        return [dict(r) for r in rows]
+        return [_row(r) for r in rows]
 
     async def list_items(self, run_id: UUID, owner: UUID) -> list[dict]:
         rows = await self._pool.fetch(
@@ -101,7 +123,7 @@ class Repo:
                WHERE run_id=$1 AND owner_user_id=$2 ORDER BY ordinal""",
             run_id, owner,
         )
-        return [dict(r) for r in rows]
+        return [_row(r) for r in rows]
 
     async def update_item(self, item_id: UUID, owner: UUID, **fields: Any) -> None:
         sets, args = ["updated_at=now()"], [item_id, owner]
@@ -235,21 +257,50 @@ class GlossaryBuildService:
                 bearer, project_id=UUID(str(project_id)),
                 entity_ids=[str(i["proposed_entity_id"]) for i in proposed],
             )
-            # NAME → entity_id, over EVERY item this run proposed (the executor
-            # only ever emitted names — this is the one resolution point).
-            by_name = {i["name"].casefold(): str(i["proposed_entity_id"]) for i in proposed}
+            # No-silent-seam: if we had entities to project and the graph took
+            # NONE of them, say so with the counts rather than producing edges
+            # that would each fail at write time.
+            if proposed and projection is not None and not (
+                projection.get("created", 0) or projection.get("existing", 0)
+            ):
+                raise GlossaryBuildError(
+                    502, "NOTHING_PROJECTED",
+                    f"the graph accepted none of the {len(proposed)} proposed entities "
+                    f"({projection}) — approve them in the review inbox first",
+                )
+            # NAME → GRAPH NODE ID. The one resolution point (the executor only
+            # ever emitted names, so the model never touches an id).
+            #
+            # Two things live-caught in the M4 maiden run:
+            #  1. a relation must carry the KG node id (a content hash), NOT the
+            #     glossary entity_id — the glossary id 409s "entity not found";
+            #  2. the index must cover the WHOLE project graph, not just this
+            #     run's items, or every relation pointing at previously-built
+            #     lore (Lâm Uyên, Lâm gia…) reads as unresolved. That is the
+            #     normal incremental case, not the exception.
+            graph = await self._knowledge.list_project_entities(
+                bearer, project_id=UUID(str(project_id)))
+            by_name = {
+                str(g.get("name") or "").casefold(): g.get("id")
+                for g in graph if g.get("name") and g.get("id")
+            }
+            # A just-projected entity may lag the list read; fall back to its
+            # glossary anchor so this run's own items always resolve.
+            by_gid = {
+                str(g.get("glossary_entity_id")): g.get("id")
+                for g in graph if g.get("glossary_entity_id") and g.get("id")
+            }
             edges: list[dict] = []
             for i in proposed:
-                rels = i.get("relations") or []
-                rels = json.loads(rels) if isinstance(rels, str) else rels
-                for r in rels:
+                src = by_name.get(i["name"].casefold()) or by_gid.get(str(i["proposed_entity_id"]))
+                for r in (i.get("relations") or []):
                     target = str(r.get("target_name") or "").strip()
                     tid = by_name.get(target.casefold())
                     edges.append({
-                        "source_name": i["name"], "source_id": str(i["proposed_entity_id"]),
+                        "source_name": i["name"], "source_id": src,
                         "target_name": target, "target_id": tid,
                         "type": r.get("type"), "note": r.get("note") or "",
-                        "unresolved": tid is None,
+                        "unresolved": tid is None or src is None,
                     })
             out = await self._repo.transition(
                 run_id, owner, ["kg_projecting"], "edges_ready",

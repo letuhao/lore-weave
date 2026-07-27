@@ -520,6 +520,34 @@ class KnowledgeClient:
             logger.warning("knowledge from-glossary unavailable: %s", exc)
             return None
 
+    async def list_project_entities(
+        self, bearer: str, *, project_id: UUID, limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """The project's graph entities — each carries the GRAPH node `id`, its
+        `name`, and the `glossary_entity_id` anchor.
+
+        Load-bearing for glossary-build's edge resolution (live-caught in the M4
+        maiden run): a relation must be written with the KG node id, which is a
+        content hash, NOT the glossary entity_id — passing the glossary id 409s
+        ("entity not found"). Listing here ALSO returns entities from earlier
+        builds, so a relation pointing at previously-created lore resolves too.
+        [] on any failure (the caller reports unresolved edges rather than
+        writing wrong ones)."""
+        url = f"{self._base_url}/v1/knowledge/entities"
+        try:
+            resp = await self._http.get(
+                url, params={"project_id": str(project_id), "limit": limit},
+                headers=self._bearer_headers(bearer),
+            )
+            if resp.status_code != 200:
+                logger.warning("knowledge list entities → %d", resp.status_code)
+                return []
+            body = resp.json()
+            return body.get("entities") or body.get("items") or []
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge list entities unavailable: %s", exc)
+            return []
+
     async def create_relation(
         self, bearer: str, *, subject_id: str, predicate: str, object_id: str,
     ) -> dict[str, Any] | None:
