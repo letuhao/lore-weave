@@ -427,6 +427,35 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > ceiling (one commit → M clients, via `scripts/perf/k6-game-server.sh`) is the next *measurement*.
 > ⚠️ **Superseded by doc 22 below:** the ingress work now precedes the island manager.
 
+> 🚧 **ISLAND MANAGER (CNC-Q3) — DESIGNED + LEASE PROTOCOL BUILT (2026-07-27):**
+> [`24_island_manager.md`](24_island_manager.md), `IMG-A1..A7` / `IMG-D1..D8` / `IMG-Q1..Q3`.
+> **The load-bearing call is IMG-D1: do NOT build the control plane to close this gap.** The full
+> CP is designed (`06_data_plane/05_control_plane_spec.md`, 25 gRPC methods) and unbuilt, and it is a
+> platform track. Liveness goes in the **same row the fence already uses**, for the same reason the
+> fence itself was good — no new service to keep available, no split-brain beyond what the CAS
+> already resolves, and no new failure mode when "the coordinator" is down, because there is none.
+> When the CP lands it takes over *issuance policy* over the same table with the same fence, so this
+> is a subset of the CP contract rather than a competitor.
+> **IMG-A4 — expiry decides who may TRY; the CAS decides who WINS.** Neither alone suffices: expiry
+> without the fence permits two writers during clock skew, and the fence without expiry is exactly
+> today's state (takeover unconditional, failover indistinguishable from a misconfiguration).
+> **DONE:** migration `0015_writer_lease_liveness` (`holder_id` + `lease_expires_at`, both NULLABLE
+> so pre-migration rows stay claimable rather than permanently unownable) · `claim` / `renew` /
+> `release` in `dp-kernel::channel`, each ONE atomic statement, each scoped to holder **and** epoch ·
+> **6 PG-gated tests, every one asserting a NEGATIVE** (a healthy lease cannot be stolen · a fenced
+> holder cannot renew · a stale holder cannot release someone else's lease · 8 concurrent claimants
+> on one expired lease resolve to **exactly one**, with no coordinator). Positives alone would pass
+> against an implementation that said yes to everything — which is the pre-fix behaviour.
+> **IMG-D2** TTL 30 s / renew 10 s, every comparison from **Postgres `now()`**, never a node clock.
+> **NEXT (doc 24 §10 items 3-4):** the **supervisor** in commit-service (owns N islands, claim →
+> **recover (CNC-D2)** → step, dissolve releases the lease) — note **IMG-D6: that order is not
+> negotiable**, stepping before recovering re-opens CNC-F6 — then the **failover test**: two
+> managers, one channel, kill A, assert B claims only after the TTL, recovers, and **no intent
+> applies twice**. That test is what the whole design exists for.
+> ⚠️ **Dev-DB setup note:** `integration_channel_writer.rs` pins 2026-05 timestamps, so a fresh
+> foundation-dev needs `CREATE TABLE events_p_2026_05 PARTITION OF events FOR VALUES FROM
+> ('2026-05-01') TO ('2026-06-01');` — its header documents this; it is not a regression.
+
 > ✅ **CONCURRENCY & CACHE AUDIT — [`23_concurrency_and_cache_audit.md`](23_concurrency_and_cache_audit.md) (2026-07-27):**
 > the PO asked for this BEFORE the island manager — *"foundation bugs are harder to patch later"* —
 > which turned out to be exactly right: three findings are cheap now and expensive once there is

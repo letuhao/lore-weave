@@ -222,3 +222,136 @@ impl ChannelWriter {
         Ok(ChannelAppended { channel_event_id })
     }
 }
+
+// ─────────────────────── IMG-A2..A4 — lease liveness ────────────────────────
+
+/// A lease held by a specific process, with an expiry.
+///
+/// [`WriterLease`] answers *"may I write?"*; this answers *"and for how much
+/// longer, and as whom?"* — the two halves the audit (CNC-F9) found split:
+/// safety was unconditional at the DB, liveness did not exist at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeldLease {
+    pub lease: WriterLease,
+    pub holder: Uuid,
+}
+
+/// Default lease TTL (IMG-D2). Longer than the slowest thing a writer
+/// legitimately does between renewals — one LLM-gated turn at 1–5 s — so a
+/// live-but-busy writer is never evicted, and short enough that failover is
+/// bounded by half a minute rather than by a human noticing.
+pub const LEASE_TTL_SECS: i64 = 30;
+/// Renew interval: three attempts inside one TTL, so two may fail transiently
+/// without losing the lease.
+pub const LEASE_RENEW_SECS: i64 = 10;
+
+/// Claim a channel whose lease is **unheld or expired** (IMG-A3).
+///
+/// Returns `Ok(None)` when a healthy holder still has it — that is a normal
+/// outcome, not an error: it is how a manager discovers a channel is already
+/// covered.
+///
+/// The epoch bump is kept (IMG-A4). Expiry decides who may *try*; the CAS
+/// decides who *wins*. Neither alone suffices — expiry without the fence
+/// permits two writers during a clock skew, and the fence without expiry is
+/// exactly today's state, where a dead node's channel is claimable by anyone
+/// at any time with no way to tell failover from a misconfiguration.
+///
+/// Every time comparison uses Postgres `now()`, never a node clock (IMG-D2):
+/// the only skew that can matter is between Postgres and itself.
+pub async fn claim_writer_lease(
+    pool: &PgPool,
+    reality_id: Uuid,
+    channel_id: ChannelId,
+    holder: Uuid,
+    ttl_secs: i64,
+) -> Result<Option<HeldLease>, ChannelError> {
+    let row: Option<(i64,)> = sqlx::query_as(
+        r#"
+        INSERT INTO channel_writer_state
+            (reality_id, channel_id, current_epoch, last_event_id, holder_id, lease_expires_at)
+        VALUES ($1, $2, 1, 0, $3, NOW() + make_interval(secs => $4))
+        ON CONFLICT (reality_id, channel_id) DO UPDATE
+            SET current_epoch    = channel_writer_state.current_epoch + 1,
+                holder_id        = $3,
+                lease_expires_at = NOW() + make_interval(secs => $4),
+                updated_at       = NOW()
+            WHERE channel_writer_state.lease_expires_at IS NULL
+               OR channel_writer_state.lease_expires_at < NOW()
+        RETURNING current_epoch
+        "#,
+    )
+    .bind(reality_id)
+    .bind(channel_id.0)
+    .bind(holder)
+    .bind(ttl_secs as f64)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|(epoch,)| HeldLease { lease: WriterLease { channel_id, epoch }, holder }))
+}
+
+/// Extend a lease this process still holds (IMG-A3).
+///
+/// Scoped to `holder` **and** `epoch`: a process that was fenced out — because
+/// someone claimed its expired lease while it was paused — cannot extend a
+/// lease it no longer has.
+///
+/// `Ok(false)` is the signal that matters, and callers must treat it as
+/// "stop stepping now" rather than waiting to be told at the next append
+/// (IMG-D7). Discovering it at the append is *safe*, because the fence rejects
+/// the write, but it is wasteful: an island can burn a whole LLM decision on a
+/// turn it will never be allowed to commit.
+pub async fn renew_writer_lease(
+    pool: &PgPool,
+    reality_id: Uuid,
+    held: HeldLease,
+    ttl_secs: i64,
+) -> Result<bool, ChannelError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE channel_writer_state
+           SET lease_expires_at = NOW() + make_interval(secs => $4),
+               updated_at       = NOW()
+         WHERE reality_id = $1 AND channel_id = $2
+           AND holder_id = $3 AND current_epoch = $5
+        "#,
+    )
+    .bind(reality_id)
+    .bind(held.lease.channel_id.0)
+    .bind(held.holder)
+    .bind(ttl_secs as f64)
+    .bind(held.lease.epoch)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() == 1)
+}
+
+/// Give the lease up immediately (IMG-D5).
+///
+/// Without this, a clean shutdown leaves the channel unclaimable for a full
+/// TTL — turning every deploy into a ~30 s outage per channel, which is the
+/// kind of self-inflicted downtime that gets failover disabled entirely.
+/// Scoped to holder+epoch like renew, so a fenced process cannot release
+/// someone else's lease.
+pub async fn release_writer_lease(
+    pool: &PgPool,
+    reality_id: Uuid,
+    held: HeldLease,
+) -> Result<bool, ChannelError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE channel_writer_state
+           SET lease_expires_at = NOW(), updated_at = NOW()
+         WHERE reality_id = $1 AND channel_id = $2
+           AND holder_id = $3 AND current_epoch = $4
+        "#,
+    )
+    .bind(reality_id)
+    .bind(held.lease.channel_id.0)
+    .bind(held.holder)
+    .bind(held.lease.epoch)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() == 1)
+}
