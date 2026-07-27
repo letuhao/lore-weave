@@ -112,6 +112,60 @@ export function selectionToSpan(editor: Editor): SelectionSpan | null {
   return { start, end: start + quote.length, quote, fingerprint: fingerprintText(flat) };
 }
 
+/** Minimal shape of the bits of a ProseMirror node this module reads — avoids importing
+ *  `@tiptap/pm/model` types into a file the API layer also uses. */
+interface PMNodeLike {
+  childCount: number;
+  child(i: number): { textContent: string; nodeSize: number };
+  textBetween(from: number, to: number, sep?: string): string;
+}
+
+export interface PMRange { from: number; to: number }
+
+/**
+ * The INVERSE of `selectionToSpan`: a stored flat span → a ProseMirror range to decorate.
+ *
+ * Walks top-level blocks accumulating BOTH coordinates at once (flat characters and PM
+ * positions), so the mapping never has to search the text for the quote — which is what keeps a
+ * repeated line unambiguous in this direction too.
+ *
+ * Returns null when the span cannot be placed. The caller must then NOT decorate: a highlight
+ * drawn over the wrong words is worse than no highlight, because it tells the author their
+ * complaint is attached to prose it is not attached to.
+ */
+export function flatSpanToPM(doc: PMNodeLike, start: number, end: number): PMRange | null {
+  if (end <= start || start < 0) return null;
+  let flat = 0;
+  let pmPos = 0;
+  for (let i = 0; i < doc.childCount; i++) {
+    const node = doc.child(i);
+    const len = node.textContent.length;
+    if (start >= flat && start < flat + len) {
+      const contentStart = pmPos + 1;          // +1 steps inside the block's open token
+      const from = contentStart + (start - flat);
+      // Clamp to this block: a span that ran past a block boundary is not decorable as one
+      // contiguous range, and silently truncating it would highlight less than was marked.
+      if (end - flat > len) return null;
+      return { from, to: contentStart + (end - flat) };
+    }
+    flat += len + 2;                            // the "\n\n" the flattening joins blocks with
+    pmPos += node.nodeSize;
+  }
+  return null;
+}
+
+/** Map a block to a decorable range, VERIFYING the text still matches before trusting it.
+ *
+ *  The offsets and the document can disagree (an edit above the mark, a doc whose `_text`
+ *  snapshots were rebuilt). Rather than decorate blind, confirm the range really contains the
+ *  quote and otherwise report it as drifted, so the UI can say "this mark lost its place"
+ *  instead of pointing at the wrong sentence. */
+export function resolveBlockRange(doc: PMNodeLike, block: ErrorBlock): PMRange | null {
+  const range = flatSpanToPM(doc, block.start_offset, block.end_offset);
+  if (!range) return null;
+  return doc.textBetween(range.from, range.to, '\n\n') === block.quote ? range : null;
+}
+
 // ── API ────────────────────────────────────────────────────────────────
 
 export const errorBlocksApi = {

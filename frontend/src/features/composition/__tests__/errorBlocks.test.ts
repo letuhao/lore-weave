@@ -7,7 +7,9 @@
 // only these assertions can.
 import { describe, expect, it } from 'vitest';
 
-import { flattenDoc, fingerprintText, selectionToSpan } from '../errorBlocks';
+import {
+  flatSpanToPM, flattenDoc, fingerprintText, resolveBlockRange, selectionToSpan,
+} from '../errorBlocks';
 
 /** The exact flattening the backend performs: each top-level block's `_text`, blank-line joined.
  *  Written out independently here rather than importing the helper, so the test would still catch
@@ -138,5 +140,85 @@ describe('selectionToSpan', () => {
   it('carries the fingerprint of the doc the offsets were computed against', () => {
     const ed = fakeEditor(REPEATED, { blockIndex: 2, offset: 0, length: 20 });
     expect(selectionToSpan(ed)!.fingerprint).toBe(fingerprintText(flat));
+  });
+});
+
+// ── the INVERSE mapping: stored offsets → a ProseMirror range to decorate ──
+
+/** A stand-in for a PM doc. Block i occupies 1 (open) + len + 1 (close) positions, so its
+ *  content starts at sum(len_j + 2 for j<i) + 1 — the real ProseMirror arithmetic. */
+function fakeDoc(texts: string[]) {
+  const starts: number[] = [];
+  let pos = 0;
+  for (const t of texts) { starts.push(pos + 1); pos += t.length + 2; }
+  return {
+    childCount: texts.length,
+    child: (i: number) => ({ textContent: texts[i], nodeSize: texts[i].length + 2 }),
+    textBetween: (from: number, to: number) => {
+      for (let i = 0; i < texts.length; i++) {
+        const s = starts[i];
+        if (from >= s && from <= s + texts[i].length) {
+          return texts[i].slice(from - s, from - s + (to - from));
+        }
+      }
+      return '';
+    },
+  };
+}
+
+function blockRow(over: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'b1', project_id: 'p', chapter_id: 'c', job_id: null,
+    start_offset: 0, end_offset: 5, quote: 'Elara', source_fingerprint: 'f',
+    source: 'human', kind: 'continuity', note: 'n', desired: null,
+    status: 'open', version: 1, ...over,
+  } as never;
+}
+
+describe('flatSpanToPM (the inverse of selectionToSpan)', () => {
+  it('round-trips: a span produced from a selection maps back to text that slices the same', () => {
+    const doc = fakeDoc(REPEATED);
+    const flat = backendFlatten(REPEATED);
+    const start = flat.lastIndexOf('She nodded.');           // the SECOND occurrence
+    const range = flatSpanToPM(doc, start, start + 'She nodded.'.length)!;
+    expect(doc.textBetween(range.from, range.to)).toBe('She nodded.');
+  });
+
+  it('maps the FIRST and SECOND occurrence of a repeated line to DIFFERENT positions', () => {
+    const doc = fakeDoc(REPEATED);
+    const flat = backendFlatten(REPEATED);
+    const a = flatSpanToPM(doc, flat.indexOf('She nodded.'), flat.indexOf('She nodded.') + 11)!;
+    const b = flatSpanToPM(doc, flat.lastIndexOf('She nodded.'), flat.lastIndexOf('She nodded.') + 11)!;
+    expect(a.from).not.toBe(b.from);
+    expect(doc.textBetween(a.from, a.to)).toBe('She nodded.');
+    expect(doc.textBetween(b.from, b.to)).toBe('She nodded.');
+  });
+
+  it('refuses a span that runs past a block boundary rather than truncating it', () => {
+    // Truncating would highlight LESS than the author marked, silently.
+    const doc = fakeDoc(REPEATED);
+    expect(flatSpanToPM(doc, 0, 40)).toBeNull();
+  });
+
+  it('refuses an out-of-range or inverted span', () => {
+    const doc = fakeDoc(REPEATED);
+    expect(flatSpanToPM(doc, 99999, 100000)).toBeNull();
+    expect(flatSpanToPM(doc, 10, 5)).toBeNull();
+  });
+});
+
+describe('resolveBlockRange', () => {
+  it('resolves a block whose quote still matches', () => {
+    const doc = fakeDoc(REPEATED);
+    const r = resolveBlockRange(doc, blockRow({ start_offset: 0, end_offset: 5, quote: 'Elara' }));
+    expect(r).not.toBeNull();
+    expect(doc.textBetween(r!.from, r!.to)).toBe('Elara');
+  });
+
+  it('returns null when the offsets no longer hold the quote — never decorates blind', () => {
+    // A highlight over the WRONG words is worse than none: it tells the author their complaint
+    // is attached to prose it is not attached to.
+    const doc = fakeDoc(REPEATED);
+    expect(resolveBlockRange(doc, blockRow({ start_offset: 0, end_offset: 5, quote: 'Wrong' }))).toBeNull();
   });
 });

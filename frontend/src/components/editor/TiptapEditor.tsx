@@ -23,6 +23,8 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
+import { ErrorBlockExtension, setErrorBlockDecorations } from './ErrorBlockPlugin';
+import { resolveBlockRange, type ErrorBlock as ErrorBlockRow } from '@/features/composition/errorBlocks';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
 import { HeatmapExtension, setHeatmapTerms, setHeatmapEnabled, type HeatTerm } from './HeatmapPlugin';
 import {
@@ -55,6 +57,11 @@ export interface TiptapEditorHandle {
   setHeatmapTerms: (terms: HeatTerm[]) => void;
   /** T5.2 — toggle the in-prose mention heatmap tinting */
   setHeatmapEnabled: (enabled: boolean) => void;
+  /** Phase D — render the author's marked error blocks. Takes the RAW blocks (flat-text offsets
+   *  as stored) and resolves them to ProseMirror ranges HERE, where the live doc is, verifying
+   *  each against its quote first. Returns the ids that could not be placed, so the caller can
+   *  surface "this mark lost its place" instead of a highlight silently not appearing. */
+  setErrorBlocks: (blocks: ErrorBlockRow[]) => string[];
   /** ARCH-1 C6 — current selection (ProseMirror positions + selected text),
    *  or null if the editor isn't ready. `empty` = a caret with no selection. */
   getSelection: () => { from: number; to: number; empty: boolean; text: string } | null;
@@ -158,6 +165,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         Typography,
         CalloutExtension,
         GrammarExtension,
+        // Phase D — renders the author's marked error blocks. Always registered:
+        // it draws nothing until a controller pushes decorations, so an editor with
+        // no marks pays only an empty DecorationSet.
+        ErrorBlockExtension,
         GlossaryExtension,
         SlashMenuExtension,
         FocusLineExtension, // T5.1 — marks the caret's block `.focusline` (PM decoration)
@@ -271,6 +282,20 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       getGlossaryCount: () => {
         if (editor) return getGlossaryCount(editor);
         return 0;
+      },
+      setErrorBlocks: (blocks: ErrorBlockRow[]) => {
+        if (!editor || editor.isDestroyed) return blocks.map((b) => b.id);
+        const doc = editor.state.doc as unknown as Parameters<typeof resolveBlockRange>[0];
+        const drifted: string[] = [];
+        const decos = [];
+        for (const b of blocks) {
+          const range = resolveBlockRange(doc, b);
+          if (!range) { drifted.push(b.id); continue; }
+          decos.push({ id: b.id, from: range.from, to: range.to,
+                       kind: b.kind, note: b.note, status: b.status });
+        }
+        setErrorBlockDecorations(editor.view as never, decos);
+        return drifted;
       },
       setHeatmapTerms: (terms: HeatTerm[]) => {
         if (editor) setHeatmapTerms(editor, terms);

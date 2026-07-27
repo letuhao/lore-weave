@@ -434,3 +434,32 @@
   pointer-events: none;
   height: 0;
 }
+
+
+/* ── Error blocks (atom-edit Phase D) ─────────────────────────────────────
+   The author's marked-as-wrong passages, drawn as ProseMirror decorations (never stored marks —
+   the block lives in Postgres, not in the document).
+
+   A soft underline rather than a fill: the author is still READING their prose, and a block of
+   highlighted background makes a marked paragraph harder to judge, which defeats the point. */
+.lw-error-block {
+  border-bottom: 2px dotted rgb(225 29 72 / 0.75);   /* rose-600 */
+  background-color: rgb(225 29 72 / 0.06);
+  border-radius: 2px;
+  cursor: help;
+}
+.lw-error-block:hover {
+  background-color: rgb(225 29 72 / 0.12);
+}
+/* Already sent to the co-writer and awaiting a proposal — amber says "in flight", not "wrong". */
+.lw-error-block--proposed {
+  border-bottom-color: rgb(217 119 6 / 0.75);        /* amber-600 */
+  background-color: rgb(217 119 6 / 0.06);
+}
+.lw-error-block--proposed:hover {
+  background-color: rgb(217 119 6 / 0.12);
+}
+@media (prefers-color-scheme: dark) {
+  .lw-error-block { background-color: rgb(251 113 133 / 0.10); border-bottom-color: rgb(251 113 133 / 0.8); }
+  .lw-error-block--proposed { background-color: rgb(251 191 36 / 0.10); border-bottom-color: rgb(251 191 36 / 0.8); }
+}

@@ -15,6 +15,7 @@ import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
 import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
 import { useProvenance } from '@/features/composition/hooks/useProvenance';
+import { useErrorBlockMarks } from '@/features/composition/hooks/useErrorBlockMarks';
 import { ProvenanceToolbar } from '@/features/composition/components/ProvenanceToolbar';
 import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
@@ -202,6 +203,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // "Switch to" a dị bản instead of always loading canon.
   const composeWork = resolveActiveWork(workResolution.data, activeWorkId);
   const composeProjectId = composeWork?.project_id ?? null;
+
+  // Phase D — load the author's marked passages and render them in the prose. Without this
+  // the co-writer can read the marks and the author cannot see them.
+  useErrorBlockMarks(editorRef, composeProjectId, chapterId, accessToken);
   // D-S5-DERIVATIVE-MANUSCRIPT-FORK — promote THIS forked chapter into canon. Two-step confirm
   // (the first click arms it). The branch keeps its own version; only canon is overwritten.
   const handleMergeToCanon = async () => {
