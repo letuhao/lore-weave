@@ -72,6 +72,41 @@ entity_id; name resolution must cover the whole project graph, not just the curr
 
 - **Decisions**: sections above. | **Parked**: rail delegation swap (after M5); wiki flywheel
   extraction of deep-profile inventions (tracked, not in this cycle).
+## 🔴 M6 — SCHEMA-AWARE EXECUTOR (next; diagnosed 2026-07-27, not yet built)
+
+**The finding (quality audit of the wizard's own output).** The executor emits a FIXED,
+character-shaped attribute set (`name/description/role/personality/…`) for EVERY kind. It
+never reads the kind's real schema. Measured on the live Mị Đế build:
+
+| Kind | Schema offers | Executor filled | Result |
+|---|---|---|---|
+| `terminology` | `term, definition, category, usage_note` | none of them | **5 EMPTY SHELLS** — `entity_snapshot IS NULL`, no name, reported "proposed" |
+| `power_system` | `name, description, type, effects, rank, user, aliases` | `name, description` | 2/7 — silent loss |
+| `item` | `name, description, type, owner, symbolic_meaning, aliases` | `name, description` | 2/6 |
+| `organization` | `name, description, type, leader, headquarters, members, aliases` | `name, description` | 2/7 (the hand-authored Lâm gia has 6) |
+
+Worst casualty: **Chân Linh** — the story's ten-thousand-year callback anchor — is an empty row.
+Root cause is one line of design: the prompt hardcodes attributes instead of consuming the
+ontology the platform already authored (`book_attributes` even carries `auto_fill_prompt`, a
+per-attribute hint written FOR an AI to use — stored but unread, the SET-standard bug shape).
+
+**The fix (designed, ready to build):**
+1. `glossary_client.read_book_ontology(bearer, book_id)` → `GET /v1/books/{id}/ontology`
+   (the public route DOES carry attribute defs; the internal `/internal/…/ontology` is
+   contract-bound to knowledge-service's `OntologyKinds` and returns kinds only — do NOT
+   widen it). The background driver has no user bearer, so mint one with the existing
+   `mint_service_bearer(owner, settings.jwt_secret)` — the same pattern the MCP path uses
+   for book-service draft routes.
+2. Fetch the ontology ONCE per run; pass the target kind's real attribute codes + their
+   `auto_fill_prompt`/description into the executor and distill prompts, and require output
+   keyed by those codes.
+3. **No-empty-shell invariant at the write boundary**: intersect the built attribute codes
+   with the kind's defs — zero intersection ⇒ `skipped` with a reason, never a hollow row.
+4. Re-run for the 5 shells (delete them first) and re-verify attribute fill per kind.
+
+Expected gain: entity richness roughly triples for non-character kinds, and the empty-shell
+class becomes impossible.
+
 - **Debt/Drift**:
   - *Durability*: the v1 driver is an in-process asyncio task — a restart mid-build leaves a
     run in `building` (no heartbeat/sweep like authoring-runs). Cancel + re-run works today.
