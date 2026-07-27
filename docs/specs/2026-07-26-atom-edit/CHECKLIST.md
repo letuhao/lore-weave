@@ -432,6 +432,23 @@ observation. A claim that a check passed, without its output, does **not** tick 
       `package.json` was briefly bumped to `^5.9.3` as an npm side effect and **reverted** — the
       repo was never wrong, and changing a shared manifest for a local problem is scope creep.
       **Net repo change: none.**
+- [x] **D3h** 🎯 **BROWSER-PROVEN — the marks actually render.** `vite dev :5199` with the new
+      code, real studio, real chapter (*The Wet Ink*), offsets computed from the **real** flattened
+      prose (`position('Her vision blurred')` → 64) so a miss could not be faked by convenient data.
+      | check | result |
+      |---|---|
+      | decorated text | **`"Her vision blurred"`** — the exact quote, not shifted |
+      | class | `lw-error-block lw-error-block--open` |
+      | hover title | `"too clinical for her panic here"` — the author's own note |
+      | `data-error-block-kind` / `-id` | `voice` / the real row id |
+      | computed style | `dotted 2px rgba(225,29,72,.75)` + `rgba(225,29,72,.06)`, `cursor: help` |
+      | 🔒 **view-layer only** | the mark appears in the rendered HTML and **NOT** in the document JSON — a Decoration, never a stored mark |
+      | resolved ⇒ stops drawing | re-opened the chapter after `status='resolved'` → **0 marks** |
+      Visual confirmed by screenshot of the span itself.
+      ⚠️ **A near-miss worth recording:** the first post-resolve check returned `errorBlockCount: 0`
+      with `editorMounted: false` — the studio does not re-open the editor on reload, so that zero
+      meant *"no editor"*, not *"no marks"*. Re-opened the chapter before concluding. Accepting the
+      first 0 would have "proven" the status filter with a test that never ran.
 - [x] **D3f** 🎯 **THE GATE — LIVE ROUND TRIP PROVEN.** New code deployed into
       `infra-composition-service-1` (files copied + restart; composition-service's tree was fully
       committed, and the other session's in-flight work is in glossary/knowledge, so nothing of
