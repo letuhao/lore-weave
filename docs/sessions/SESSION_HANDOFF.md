@@ -116,6 +116,24 @@ Before: that query returned nothing for this project.
 **Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
 **2583** · FE world-setup **8**.
 
+**▶ Deferred / still open from this cycle:**
+- **`D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND`** *(gate 1: out of scope — extraction hot path)*.
+  `known-entities` resolves the display name ONLY from the attribute coded `name`, so a kind
+  that identifies itself otherwise (`terminology` → `term`) yields an empty name and drops
+  out entirely. That endpoint is the EXTRACTION ANCHOR list, so **the extractor currently
+  cannot anchor on any terminology entity**. The startup short-description backfill already
+  knows kinds differ (`ad.code IN ('name','term')`), so the shape of the fix exists; it needs
+  its own cycle because it changes what the extractor sees. Worked around here by adding
+  `GET /internal/books/{id}/entity-ids` rather than widening the anchor list.
+- **FE not browser-verified.** The wizard's "not searchable" warning is unit-proven only —
+  the frontend image was not rebuilt. Verify in a browser before trusting it in the panel.
+- **CP2 author review, not yet acted on:** 7 drafts carry `- goals:` / `- role:` bullets
+  flattened into `description` by the older chat-agent path (glossary's deliberate
+  `D-GLOSSARY-UNMATCHED-ATTR-FALLBACK`, not a defect — but it IS rubbish to clean);
+  `character` has no `goals`/`secrets` field for Mị Đế (wants per-BOOK attributes, System
+  kinds stay read-only); `Tô gia`'s description is generic xianxia boilerplate and needs a
+  rewrite; the 13 drafts still need promoting to `active`.
+
 ## ✅ GLOSSARY-BUILD PIPELINE — M1–M6 SHIPPED, live-proven end to end (2026-07-27)
 
 **M6 — the executor now reads the book's REAL per-kind schema.** It used to emit a fixed
