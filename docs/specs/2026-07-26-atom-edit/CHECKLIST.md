@@ -406,12 +406,42 @@ observation. A claim that a check passed, without its output, does **not** tick 
       *in order to say it does not exist* ("**There is no `jobs_retry` tool**") get a documented
       `_DELIBERATELY_ABSENT_TOOL_NAMES` entry — legitimate only when the prompt actually negates.
       chat-service: **1928 passed**.
-- [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
-      author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
-      co-writer round trip) is the gate** — this track already proved a green suite can vouch for
-      four editors nobody could open.
-      ⚠️ **Coordination required before D3d/D3e** — they land on the compose/editor surfaces the
-      concurrent chapter-quality session owns.
+- [x] **D3d** ✅ **The editor surface — and the FE half of the E1 bug avoided by construction.**
+      `errorBlocks.ts` carries the **offset bridge**: the editor works in ProseMirror positions,
+      the server in flattened-text offsets, and a mark computed in the wrong space points at the
+      wrong prose while every layer reports success. `flattenDoc` routes through
+      `addTextSnapshots` — the same helper that writes the `_text` the server reads back — so it
+      **is** `tiptap_doc_to_text` byte-for-byte. `selectionToSpan` derives `start` from the **block
+      index**, deliberately NOT by searching the flat text: a search would collapse all three
+      *"She nodded."*s onto the first. Proven — marking the 2nd yields `lastIndexOf`, not
+      `indexOf`. Empty/whitespace selections are refused (an anchorless mark can never re-locate).
+      Residual drift (inline atoms) degrades to a **re-anchor, never a corrupted splice**.
+      `MarkErrorBlockAction` in the selection bubble: re-reads the selection at **submit** time
+      (the author can adjust it while typing the note), refuses an empty note (a mark with no note
+      is just a highlight), and reports a 409 **as a duplicate** rather than a generic failure.
+      `SelectionToolbar.chapterId` is optional so a surface that omits it hides the action instead
+      of breaking the AI ops. **19 FE tests**; composition + studio **2447 passed / 308 files**.
+      ⚠️ `tsc --noEmit` **could not run** — this host's `node_modules` has drifted to TypeScript
+      7.0.2 against the `^5.5.4` manifest and dies on TS5102 before typechecking. Pre-existing,
+      unrelated; the Docker build installs from package.json and is unaffected.
+- [x] **D3f** 🎯 **THE GATE — LIVE ROUND TRIP PROVEN.** New code deployed into
+      `infra-composition-service-1` (files copied + restart; composition-service's tree was fully
+      committed, and the other session's in-flight work is in glossary/knowledge, so nothing of
+      theirs was built or disturbed). Real book `019f9d2b`, real chapter `019f9d72-7045`:
+
+      | step | result |
+      |---|---|
+      | author marks a passage | block `019fa3e0-d7ad` created |
+      | **MCP `op=list`** | returns `quote`, `note` (*"Mina is dead as of chapter 3…"*), `desired`, offsets, `open_count: 1` |
+      | **MCP `op=resolve`** | `status=resolved`, `proposal_id=eb0`, `resolution` stored, `resolved_at` stamped, `version` 1→2 |
+      | **MCP `op=list` again** | `open_count: 0` — resolved still visible, no longer counted |
+      | 🔒 **cross-project guard** | same block id under a DIFFERENT project → **refused**: *"not found in this project"* |
+      | REST route | `GET …/error-blocks` → **401** (route wired, auth gate live) |
+
+      The co-writer can read what the author marked and close it, on the real stack. Smoke row
+      cleaned up with a **scoped** delete (by id + `created_by`).
+- [ ] **D3e** *(optional, deferred by design)* Draft Review arm + accept migration. D3f proved the
+      loop on the editor surface alone, which is exactly why the design made this last.
 
 ## Phase E — 🔴 PROMOTED TO FIRST (human decision Q1): planning quality
 
