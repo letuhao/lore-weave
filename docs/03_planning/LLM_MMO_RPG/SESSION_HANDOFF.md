@@ -207,9 +207,30 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > `ce10 resolved turn 1 detail:["1 strikes 2 for 10 (30 left)"]` · `ce11 rejected turn **1**
 > [idempotency]`; W1 folded from the log = `{actor 2: hp 30}`. 51/51 game-server, 26/26
 > commit-service.
-> **NEXT:** browser client (the code path is proven; this is UI) → movement lane (Class A / RTM
-> frames) → S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO
-> registration → `publisher/go.mod` re-pin decision (still open).
+> ✅ **BROWSER SIDE BOUND TO THE CONTRACT (16:16–16:3x).** ⚠ **`frontend-game/` (MMORPG client,
+> :5176) — NOT `frontend/` (:5174, the novel-workflow SPA).** They are separate apps and share
+> none of this protocol; the PO called this out explicitly and the new files say so in their
+> headers. `frontend-game` already had V0 (React + Phaser + colyseus.js + zustand), so this
+> EXTENDS it rather than rebuilding: `src/net/channel-protocol.ts` (the doc-20 message shapes) +
+> `src/store/channel-store.ts` (session projection only — CWC-A7). **This is the THIRD
+> conformance side** of `contracts/game-wire/`: Rust producer ↔ game-server room ↔ browser, each
+> asserting against the SCHEMA, never against each other. **10 new tests (165/165 suite green),
+> incl. a security bite: planting an `actor` field into `TurnSubmit` reds the browser test** —
+> that field would reopen the confused-deputy hole (a client naming its own actor acts as another
+> player). Store rules pinned by test: `turn_number` is COPIED from the commit (never
+> incremented locally — it would drift on the first rejection), and the in-flight marker clears
+> on ANY outcome (clearing only on `resolved` wedges the UI forever on the first rejection).
+> `protocol.ts`'s V0 shapes (`enter-zone`/`player-action`) are marked superseded, not deleted.
+> ⚠ **NEW FINDING — colyseus version skew:** client `colyseus.js@0.16.22` vs server
+> `colyseus@0.17.10`. 0.17 changed the room/auth API (`Room<State,Auth>` → options bag), and the
+> spec's dep table still says `^0.16`. Not exercised yet (the loop was proven at the
+> stream/protocol layer, below Colyseus), so this is **latent, not broken** — but it must be
+> settled before the first real browser↔room connection, or it becomes exactly the kind of
+> "worked in tests, dead live" bug the mock-deletion just cleared.
+> **NEXT:** resolve the colyseus skew → wire `ChannelRoom` to the browser for a real
+> click-to-turn (the first true browser↔server loop) → movement lane (Class A / RTM frames) →
+> S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO registration →
+> `publisher/go.mod` re-pin decision (still open).
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**
