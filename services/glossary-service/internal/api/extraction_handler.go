@@ -875,6 +875,38 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// 3a. Derive short_description from the description attribute just written.
+		//
+		// D-GLOSSARY-BULK-NO-SHORTDESC: short_description is a COLUMN on
+		// glossary_entities, not an attr_def, so the EAV writes above can never set it
+		// (see canon_content_handler.go). Every other caller of regenerateAutoShortDescription
+		// is an EDIT path — the bulk create path had none, so a machine-authored entity
+		// stayed EMPTY until the next process restart, when the K3 startup backfill
+		// (cmd/glossary-service/main.go) finally swept it. That backfill hides the gap in
+		// dev, where restarts are frequent; in production a container can run for weeks.
+		//
+		// It matters because short_description is the ONE field the composition packer
+		// reads for a cast bio (packer/lenses.py gather_present → "summary"), so a
+		// freshly-built glossary renders into the drafting prompt as bare NAMES until
+		// something restarts this service — measured 12 of 13 entities empty on the live
+		// Mị Đế book. Deriving it at WRITE time closes the window entirely; the startup
+		// backfill stays as the repair path for rows written before this existed.
+		//
+		// Runs inside the SAME tx as the attribute writes so the value is captured by the
+		// entity_updated before/after snapshot (identical reasoning to patchAttributeValue).
+		// The helper self-guards on short_description_auto, so a human-authored summary is
+		// never clobbered by a later machine writeback.
+		if result.EntityID != "" && (result.Status == "created" || result.Status == "updated") {
+			if entID, perr := uuid.Parse(result.EntityID); perr == nil {
+				if sderr := s.regenerateAutoShortDescription(ctx, tx, entID); sderr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
+						"failed to derive short description: "+sderr.Error())
+					return
+				}
+			}
+		}
+
 		// 3b. Temporal-knowledge Path A: emit one append-only fact per WRITTEN attribute,
 		// valid-from this chapter ordinal, citing the episode. Additive — the EAV write above
 		// stays the live "current" projection; entity_facts accumulates as the SSOT (§12).

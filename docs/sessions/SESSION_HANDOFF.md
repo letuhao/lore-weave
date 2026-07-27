@@ -67,6 +67,55 @@ requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
 only `package.json` and runs `npm install`, so it resolves 5.x and is unaffected. Fix locally with
 `npm install` in `frontend/` (its `package-lock.json` is gitignored).
 
+## 🔗 LORE→PROMPT CHAIN REPAIRED — the built glossary now actually reaches the writer (2026-07-27)
+
+**The finding (CP2 author review of the M6 output).** The pipeline built rich lore that the
+drafting prompt never saw. Root-caused end to end, evidence at every link:
+
+| # | Link | Evidence |
+|---|---|---|
+| 1 | Pipeline writes via bulk `extract-entities` | `glossary_client.py:153` |
+| 2 | That path **cannot** set `short_description` — it is a COLUMN, not an EAV attr | `canon_content_handler.go:17-19`, repo's own note |
+| 3 | `regenerateAutoShortDescription` exists but **all 7 call sites are EDIT paths**; the create path had none, so the value stayed NULL until a process restart ran the K3 startup backfill (masked in dev, weeks in prod) | grep, + `main.go` startup log |
+| 4 | ⇒ `select-for-context` returns `short_description: ''` | **live: 14 entities, 12 empty** |
+| 5 | `gather_present` maps it to `summary` | `packer/lenses.py:155` |
+| 6 | Assembler renders a **bare name**, marked `protected` (never trimmed) | `packer/assemble.py:79-83` |
+| 7 | The second lore path was dead too: `glossary` is in `KNOWN_SOURCE_TYPES` but **no producer ever wrote a glossary `:Passage`** — every `upsert_passage` is `chapter`/`benchmark_entity` | Neo4j: 0 passages for the project, 0 glossary passages repo-wide |
+
+So a book whose glossary was built **before chapter 1** drafted from names only.
+
+**Fixed (A/B/C/D):**
+- **A** — derive `short_description` at WRITE time in the bulk create/merge path. Test reds
+  without the fix. Live: a new entity has its summary with no restart.
+- **A2** — `D-GLOSSARY-SHORTDESC-KIND-BLIND`: the derivation hardcoded `code='description'`,
+  which `terminology` does not have (its prose is `definition`), so it fell back to the stub
+  *"Terminology: Ngự Khí Thuật"* — a bare name wearing a label. Now prefers `description`,
+  else the kind's richest PROSE field. Fixed in **both** the runtime path and the startup
+  backfill, which had the same hardcode (the two must agree or a repair run re-creates what
+  the write path stopped producing).
+- **B** — the missing producer: one embedded `:Passage` per glossary entity
+  (`extraction/glossary_passage.py`), hooked on `glossary.entity_updated` + a
+  `backfill-glossary-passages` route, content-hashed so re-delivery/backfill doesn't re-embed.
+  Enumeration uses a NEW `GET /internal/books/{id}/entity-ids` — `known-entities` is the
+  extraction ANCHOR list (frequency-filtered, resolves the name from the attribute literally
+  coded `name`) and silently missed the 2 `terminology` entities while the count looked
+  complete. Glossary's `entities/by-ids` gained opt-in `include_attributes`.
+- **C** — the executor's out-of-schema keys are now reported as `extra` instead of dropped
+  silently: glossary's own policy is preserve-into-fallback, so an invisible drop made
+  composition strictly more lossy than the service it writes to.
+- **D** — the wizard warns *"N entries saved but not searchable"* from a **server-side outcome
+  tally** on the run (`params.lore_index`), not an FE guess. The Mị Đế project had **no
+  embedding model at all**, which is why nothing could ever have been indexed.
+
+**LIVE (Mị Đế, local bge-m3, $0):** project embed model set → backfill `entities_seen: 16`,
+`indexed`/`unchanged` split correct → **16 glossary passages in Neo4j** → the lore lens answers
+a natural-language question whose answer exists ONLY inside an attribute value
+(*"điều gì xảy ra khi dùng linh năng quá mức"* → `Linh năng học`, `raw_score` 0.68–0.81).
+Before: that query returned nothing for this project.
+
+**Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
+**2583** · FE world-setup **8**.
+
 ## ✅ GLOSSARY-BUILD PIPELINE — M1–M6 SHIPPED, live-proven end to end (2026-07-27)
 
 **M6 — the executor now reads the book's REAL per-kind schema.** It used to emit a fixed

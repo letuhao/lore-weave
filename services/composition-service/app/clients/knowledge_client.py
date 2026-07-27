@@ -520,6 +520,31 @@ class KnowledgeClient:
             logger.warning("knowledge from-glossary unavailable: %s", exc)
             return None
 
+    async def index_glossary_passages(self, *, project_id: UUID) -> dict[str, Any] | None:
+        """Index the project's glossary entities as retrievable `:Passage` nodes.
+
+        Projecting entities into the graph (above) makes them EXIST; this makes them
+        FINDABLE. The packer's lore lens searches passages, and `source_type='glossary'`
+        had no producer at all — so a book whose glossary was built before chapter 1
+        retrieved nothing from its own canon.
+
+        Returns the per-outcome tally (e.g. `{"indexed": 12}` or
+        `{"no_embedding_model": 12}`) so the caller can TELL THE AUTHOR rather than
+        reporting a build that quietly indexed nothing. None on transport failure."""
+        url = f"{self._base_url}/internal/projects/{project_id}/backfill-glossary-passages"
+        try:
+            # An /internal route — service token, not the user's bearer. (The bearer
+            # form 401s; caught live, where it degraded to `{"error": "unavailable"}`
+            # and the wizard would have warned about lore that was actually fine.)
+            resp = await self._http.post(url, json={}, headers=self._internal_headers())
+            if resp.status_code != 200:
+                logger.warning("knowledge backfill-glossary-passages → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge backfill-glossary-passages unavailable: %s", exc)
+            return None
+
     async def list_project_entities(
         self, bearer: str, *, project_id: UUID, limit: int = 200,
     ) -> list[dict[str, Any]]:

@@ -1403,11 +1403,23 @@ func BackfillShortDescription(
 			         ORDER BY CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END
 			         LIMIT 1
 			       ), '') AS name,
+			       -- D-GLOSSARY-SHORTDESC-KIND-BLIND: mirrors regenerateAutoShortDescription.
+			       -- Hardcoding 'description' finds nothing on a kind that names its prose
+			       -- field otherwise (terminology uses 'definition'), so the summary fell
+			       -- back to kind+name and produced the stub "Terminology: <name>". The name
+			       -- lookup above already knew kinds differ; the description one did not.
+			       -- The two paths must agree, or a repair run re-creates what the write
+			       -- path just stopped producing.
 			       COALESCE((
 			         SELECT av.original_value
 			         FROM entity_attribute_values av
 			         JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
-			         WHERE av.entity_id = e.entity_id AND ad.code = 'description'
+			         WHERE av.entity_id = e.entity_id
+			           AND COALESCE(av.original_value, '') <> ''
+			           AND ad.code NOT IN ('name', 'aliases')
+			         ORDER BY (ad.code = 'description') DESC,
+			                  (ad.field_type IN ('textarea', 'richtext')) DESC,
+			                  ad.sort_order
 			         LIMIT 1
 			       ), '') AS description,
 			       ek.name AS kind_name

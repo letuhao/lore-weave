@@ -86,6 +86,21 @@ func (s *Server) composePerLanguageAliases(ctx context.Context, bookID uuid.UUID
 	}
 }
 
+// contextAttribute is ONE authored attribute, flattened for a consumer that wants
+// the entity's actual content rather than just its identity. `field_type` rides along
+// because a `tags` value is stored as a JSON-encoded array string — the consumer needs
+// to know that to render it as prose instead of literal brackets.
+type contextAttribute struct {
+	Code      string `json:"code"`
+	Label     string `json:"label"`
+	FieldType string `json:"field_type"`
+	Value     string `json:"value"`
+	// Lang is the value's authored language. A consumer that indexes this text for
+	// retrieval needs it: a passage stamped "unknown" never gets the reader-language
+	// ordering boost, so a vi author's own lore would rank below off-language hits.
+	Lang string `json:"lang,omitempty"`
+}
+
 type glossaryEntityForContext struct {
 	EntityID         string   `json:"entity_id"`
 	CachedName       *string  `json:"cached_name"`
@@ -95,6 +110,66 @@ type glossaryEntityForContext struct {
 	IsPinned         bool     `json:"is_pinned"`
 	Tier             string   `json:"tier"`
 	RankScore        float64  `json:"rank_score"`
+	// Attributes is populated ONLY when the caller asks for it (entities/by-ids with
+	// include_attributes). `omitempty` keeps select-for-context's payload byte-identical
+	// — that endpoint sits on the drafting hot path and must not grow by default.
+	Attributes []contextAttribute `json:"attributes,omitempty"`
+}
+
+// attachEntityAttributes fills each item's `Attributes` from the maintained
+// `entity_snapshot` projection (one query, no N+1).
+//
+// Why this exists: knowledge-service can build a searchable `:Passage` per glossary
+// entity so the composition lore lens can retrieve authored canon semantically — but no
+// internal route carried the entity's CONTENT, only its identity. Reading the snapshot
+// keeps this consistent with the SSOT projection every other reader sees.
+//
+// Best-effort by design (same posture as composePerLanguageAliases): a query error
+// leaves items without attributes rather than failing the fetch — a consumer that
+// enriches context must never break the turn it is enriching.
+func (s *Server) attachEntityAttributes(ctx context.Context, bookID uuid.UUID, items []glossaryEntityForContext) {
+	if len(items) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(items))
+	idx := make(map[string]int, len(items))
+	for i, it := range items {
+		if id, err := uuid.Parse(it.EntityID); err == nil {
+			ids = append(ids, id)
+			idx[it.EntityID] = i
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT e.entity_id,
+		       a->>'code', COALESCE(a->>'name', ''),
+		       COALESCE(a->>'field_type', 'text'), a->>'original_value',
+		       COALESCE(a->>'original_language', '')
+		FROM glossary_entities e
+		CROSS JOIN LATERAL jsonb_array_elements(e.entity_snapshot->'attributes') AS a
+		WHERE e.book_id = $1
+		  AND e.entity_id = ANY($2::uuid[])
+		  AND jsonb_typeof(e.entity_snapshot->'attributes') = 'array'
+		  AND COALESCE(a->>'original_value', '') <> ''
+		ORDER BY e.entity_id, COALESCE(NULLIF(a->>'sort_order', '')::int, 9999)`,
+		bookID, ids)
+	if err != nil {
+		return // best-effort
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var eid, code, label, fieldType, value, lang string
+		if rows.Scan(&eid, &code, &label, &fieldType, &value, &lang) != nil {
+			continue
+		}
+		if i, ok := idx[eid]; ok {
+			items[i].Attributes = append(items[i].Attributes, contextAttribute{
+				Code: code, Label: label, FieldType: fieldType, Value: value, Lang: lang,
+			})
+		}
+	}
 }
 
 type selectForContextResponse struct {

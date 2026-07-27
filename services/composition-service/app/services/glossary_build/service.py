@@ -336,11 +336,21 @@ class GlossaryBuildService:
                         "type": r.get("type"), "note": r.get("note") or "",
                         "unresolved": tid is None or src is None,
                     })
+            # Make the built lore RETRIEVABLE, not just present. Projecting entities
+            # above puts them in the graph; the packer's lore lens searches PASSAGES,
+            # and `source_type='glossary'` had no producer — so a glossary built before
+            # chapter 1 could never be retrieved from its own canon. Best-effort, and
+            # the outcome tally rides on the run: a project with no embedding model
+            # gets `{"no_embedding_model": N}` and the wizard TELLS the author, instead
+            # of a build that silently indexed nothing.
+            lore_index = await self._knowledge.index_glossary_passages(
+                project_id=UUID(str(project_id)))
             await self._repo.transition(
                 run_id, owner, ["kg_projecting"], "edges_ready",
                 edges=edges,
                 params={**self._params(run), "project_id": str(project_id),
-                        "kg_projection": projection or {}},
+                        "kg_projection": projection or {},
+                        "lore_index": lore_index or {"error": "unavailable"}},
             )
             # Return the FULL run (with items): project_kg used to answer the bare
             # transition row, so the wizard's "N entries filed" counter read 0 after

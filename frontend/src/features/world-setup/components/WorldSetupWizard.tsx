@@ -50,6 +50,15 @@ export function WorldSetupWizard({ bookId, token, modelRef, lang = 'vi' }: Props
     [run?.edges, droppedEdges],
   );
   const unresolved = (run?.edges ?? []).filter((e) => e.unresolved);
+  // Entities that were SAVED but could not be indexed for retrieval. Counted from the
+  // server's outcome tally — every non-indexing outcome, so a new degrade reason added
+  // later still surfaces instead of silently reading as "all good".
+  const notIndexed = useMemo(() => {
+    const outcomes = run?.params?.lore_index?.outcomes ?? {};
+    return Object.entries(outcomes)
+      .filter(([outcome]) => outcome !== 'indexed' && outcome !== 'unchanged')
+      .reduce((sum, [, n]) => sum + (n ?? 0), 0);
+  }, [run?.params?.lore_index]);
 
   const toggle = (set: Set<string>, key: string) => {
     const next = new Set(set);
@@ -197,6 +206,21 @@ export function WorldSetupWizard({ bookId, token, modelRef, lang = 'vi' }: Props
             >
               {busy ? 'Finding relationships…' : 'Find their relationships'}
             </button>
+          )}
+
+          {/* The lore exists but nothing can RETRIEVE it without an embedding model.
+              Reported by the server as a real outcome tally rather than guessed here —
+              an un-surfaced degrade is how "I built my world" becomes a draft written
+              from bare names. */}
+          {notIndexed > 0 && (
+            <p
+              data-testid="world-setup-lore-not-indexed"
+              className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400"
+            >
+              ⚠ {notIndexed} entr{notIndexed === 1 ? 'y' : 'ies'} saved but <strong>not searchable</strong>:
+              this book has no embedding model, so the writer cannot look your world up while drafting.
+              Set one in the book’s knowledge settings, then run this step again.
+            </p>
           )}
 
           {(run?.status === 'edges_ready' || run?.status === 'done') && (

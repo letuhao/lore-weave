@@ -324,14 +324,28 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQu
 		kindName string
 		auto     bool
 	)
+	// D-GLOSSARY-SHORTDESC-KIND-BLIND: the description lookup used to require
+	// ad.code = 'description', but that field only exists on SOME kinds. A
+	// `terminology` entity carries its prose in `definition`, so the summary fell
+	// through to shortdesc.Generate's kind+name fallback and produced the useless stub
+	// "Terminology: Ngự Khí Thuật" — a bare name in disguise, sitting in the ONE field
+	// the composition packer reads for a cast bio. Same schema-blindness as hardcoding
+	// character fields onto every kind. Now: prefer `description`, else the richest
+	// PROSE attribute the kind actually has (identity/alias fields excluded).
 	err := q.QueryRow(ctx, `
 		SELECT
 		  COALESCE(e.cached_name, ''),
+		  -- D-GLOSSARY-SHORTDESC-KIND-BLIND (see the Go comment above)
 		  COALESCE((
 		    SELECT av.original_value
 		    FROM entity_attribute_values av
 		    JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
-		    WHERE av.entity_id = e.entity_id AND ad.code = 'description'
+		    WHERE av.entity_id = e.entity_id
+		      AND COALESCE(av.original_value, '') <> ''
+		      AND ad.code NOT IN ('name', 'aliases')
+		    ORDER BY (ad.code = 'description') DESC,
+		             (ad.field_type IN ('textarea', 'richtext')) DESC,
+		             ad.sort_order
 		    LIMIT 1
 		  ), ''),
 		  ek.name,

@@ -242,10 +242,17 @@ class FakeKnowledge:
     `id` is a HASH distinct from the glossary entity_id, and the project's entity
     list also carries entities from EARLIER builds."""
 
-    def __init__(self, *, project=True, relation=True, preexisting=(), projects=True):
+    def __init__(self, *, project=True, relation=True, preexisting=(), projects=True,
+                 lore_index=None):
         self._project = project
         self._relation = relation
         self._projects = projects            # False ⇒ the graph accepts nothing
+        # The per-outcome tally from indexing the built lore as retrievable passages.
+        # Default models the CURRENT dev reality that made this whole gap invisible:
+        # a project with no embedding model indexes NOTHING.
+        self._lore_index = lore_index if lore_index is not None else {
+            "entities_seen": 0, "outcomes": {},
+        }
         self.projected = None
         self.relations = []
         # name → graph node id, for lore that existed before this run
@@ -262,6 +269,9 @@ class FakeKnowledge:
         for gid in entity_ids or []:
             self._anchor[str(gid)] = f"hash-g-{gid[:8]}"
         return {"created": len(entity_ids or []), "existing": 0}
+
+    async def index_glossary_passages(self, *, project_id):
+        return self._lore_index
 
     async def list_project_entities(self, bearer, *, project_id, limit=200):
         # the run's own items (resolved via their glossary anchor) + pre-existing lore
@@ -354,6 +364,38 @@ async def test_a_failed_relation_write_is_counted_not_rounded_up():
     await s.project_kg(run_id, OWNER, "bearer")
     out = await s.approve_edges(run_id, OWNER, "bearer")
     assert out["params"]["edges_applied"] == 0 and out["params"]["edges_failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_project_kg_records_whether_the_built_lore_is_RETRIEVABLE():
+    """Projecting entities makes them EXIST; indexing makes them FINDABLE. The packer's
+    lore lens searches passages, and a project with no embedding model indexes nothing —
+    so the tally must reach the run, or the wizard reports a world the writer cannot
+    actually look up."""
+    wl = [{"name": "A", "kind": "character"}]
+    kg = FakeKnowledge(lore_index={"entities_seen": 12,
+                                   "outcomes": {"no_embedding_model": 12}})
+    s, run_id = await _run_to_proposed([json.dumps(wl), _built("A")], knowledge=kg)
+    out = await s.project_kg(run_id, OWNER, "bearer")
+    assert out["params"]["lore_index"]["outcomes"] == {"no_embedding_model": 12}
+
+
+@pytest.mark.asyncio
+async def test_a_lore_index_outage_degrades_the_report_not_the_phase():
+    """Indexing is additive — a knowledge outage must not fail a KG phase whose real
+    work (entities + edges) already succeeded, but it must NOT read as indexed either."""
+    wl = [{"name": "A", "kind": "character"}]
+    kg = FakeKnowledge()
+    kg.index_glossary_passages = _raise_unavailable
+    s, run_id = await _run_to_proposed([json.dumps(wl), _built("A")], knowledge=kg)
+    out = await s.project_kg(run_id, OWNER, "bearer")
+    assert out["status"] == "edges_ready"
+    assert out["params"]["lore_index"] == {"error": "unavailable"}
+
+
+async def _raise_unavailable(*, project_id):
+    """The real client swallows transport errors and returns None (degrade-safe)."""
+    return None
 
 
 @pytest.mark.asyncio

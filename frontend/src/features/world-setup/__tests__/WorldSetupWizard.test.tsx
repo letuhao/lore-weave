@@ -139,4 +139,44 @@ describe('WorldSetupWizard', () => {
     render(<WorldSetupWizard bookId="b1" token="t" modelRef={null} />);
     expect(screen.getByTestId('world-setup-start')).toBeDisabled();
   });
+
+  // The lore exists but nothing can RETRIEVE it. This degrade used to be invisible:
+  // the packer's lore lens searched passages, `source_type='glossary'` had no producer,
+  // and a book with no embedding model quietly drafted from bare names.
+  it('warns when built lore was saved but could NOT be indexed for retrieval', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
+    api.projectKg.mockResolvedValue({
+      ...planReady, status: 'edges_ready', edges: [],
+      params: { lore_index: { entities_seen: 12, outcomes: { no_embedding_model: 12 } } },
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+    await user.click(screen.getByTestId('world-setup-project-kg'));
+
+    const warn = await screen.findByTestId('world-setup-lore-not-indexed');
+    expect(warn).toHaveTextContent('12');
+    expect(warn).toHaveTextContent('not searchable');
+  });
+
+  it('stays quiet when everything indexed', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
+    api.projectKg.mockResolvedValue({
+      ...planReady, status: 'edges_ready', edges: [],
+      params: { lore_index: { entities_seen: 12, outcomes: { indexed: 9, unchanged: 3 } } },
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+    await user.click(screen.getByTestId('world-setup-project-kg'));
+    await screen.findByTestId('world-setup-edges');
+
+    expect(screen.queryByTestId('world-setup-lore-not-indexed')).toBeNull();
+  });
 });

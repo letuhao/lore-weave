@@ -66,13 +66,20 @@ class EdgeApprove(BaseModel):
 
 
 def _gaps(item: dict) -> dict[str, list]:
-    """The CP2 authoring signal. `absent` = the model said the story establishes
-    nothing there (a prompt for the human, NOT a defect); `missing` = fields it never
-    answered at all (an attention drop). The review UI must be able to tell them
-    apart — auto-filling either one would put an invention into the SSOT."""
+    """The CP2 authoring signal — three DIFFERENT things a naive "empty field" hides:
+
+    - `absent`  — the model said the story establishes nothing there. A prompt for the
+                  human, NOT a defect; auto-filling it would put an invention in the SSOT.
+    - `missing` — a field it never answered at all: an attention drop, the only one of
+                  the three that a repair call could legitimately recover.
+    - `extra`   — content it produced under a code this kind has no home for. Dropped at
+                  the write boundary (the glossary has no attr_def for it) but surfaced
+                  here, because a drop nobody can see is how observations vanish.
+    """
     built = item.get("built")
     built = built if isinstance(built, dict) else {}
-    return {"absent": built.get("absent") or [], "missing": built.get("missing") or []}
+    return {"absent": built.get("absent") or [], "missing": built.get("missing") or [],
+            "extra": built.get("extra") or []}
 
 
 def _serialize(run: dict) -> dict[str, Any]:

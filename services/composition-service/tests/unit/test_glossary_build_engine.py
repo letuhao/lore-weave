@@ -194,6 +194,21 @@ async def test_an_all_empty_tag_list_counts_as_absent_not_an_empty_list():
     assert "aliases" not in out["attributes"] and out["absent"] == ["aliases"]
 
 
+@pytest.mark.asyncio
+async def test_an_out_of_schema_key_is_REPORTED_not_silently_dropped():
+    """The glossary's own policy for an unknown code is preserve-into-fallback
+    (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK). Dropping it here with no record would make
+    this path strictly more lossy than the service it writes to."""
+    built = {"attributes": {"name": "X", "description": "d",
+                            "secrets": "nàng phản bội gia tộc",   # no such field on `item`
+                            "goals": "   "}}                      # blank → not worth reporting
+    llm = fake_llm([json.dumps(built)])
+    out = await engine.build_standard(
+        llm, source_text="s", name="X", kind="item", fields=["name", "description"], lang="vi")
+    assert out["attributes"] == {"name": "X", "description": "d"}
+    assert out["extra"] == ["secrets"]
+
+
 def test_the_prompt_OFFERS_null_with_a_high_bar():
     """A retry/nudge that can only succeed by producing text is a hallucination
     pump — so the escape hatch must exist, but must not read as a free pass."""

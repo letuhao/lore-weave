@@ -880,8 +880,12 @@ async def test_glossary_updated_triggers_sync(monkeypatch):
     """Happy path: event with full payload + project found + NEO4J_URI set
     → calls sync_glossary_entity_to_neo4j with resolved user/project."""
     pool, _conn = _mock_pool()
+    # The project resolution now also carries the embedding config: the passage
+    # indexer needs it, and re-reading the row already in hand would cost a second
+    # round-trip per event. Mirrors the handler's real SELECT.
     pool.fetchrow = AsyncMock(
-        return_value={"project_id": _PROJECT, "user_id": _USER}
+        return_value={"project_id": _PROJECT, "user_id": _USER,
+                      "embedding_model": None, "embedding_dimension": None}
     )
 
     sync_mock = AsyncMock(
@@ -915,8 +919,12 @@ async def test_glossary_updated_idempotent_on_replay(monkeypatch):
     We assert the handler invokes sync once per delivery with a stable
     MERGE key, which is the idempotency contract."""
     pool, _conn = _mock_pool()
+    # The project resolution now also carries the embedding config: the passage
+    # indexer needs it, and re-reading the row already in hand would cost a second
+    # round-trip per event. Mirrors the handler's real SELECT.
     pool.fetchrow = AsyncMock(
-        return_value={"project_id": _PROJECT, "user_id": _USER}
+        return_value={"project_id": _PROJECT, "user_id": _USER,
+                      "embedding_model": None, "embedding_dimension": None}
     )
     sync_mock = AsyncMock(
         return_value={"glossary_entity_id": str(_ENTITY), "action": "updated",

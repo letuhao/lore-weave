@@ -121,9 +121,19 @@ def _clean_entity(built: Any, *, name: str, kind: str,
     allow = {c.casefold() for c in (allowed or [])}
     attrs: dict[str, Any] = {}
     absent: list[str] = []
+    extra: list[str] = []
     for k, v in (attrs_in.items() if isinstance(attrs_in, dict) else []):
         code = str(k)
         if allow and code.casefold() not in allow:
+            # Out of schema. It is still DROPPED (writing it would be a silent no-op —
+            # the glossary has no attr_def to hold it), but never silently: glossary's
+            # own policy for an unknown code is preserve-into-fallback
+            # (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK, "losing the observation is worse than
+            # filing it under a generic heading"), so a drop here that nobody can see
+            # would make this path strictly more lossy than the platform it writes to.
+            # Reported instead, so CP2 can show what the model saw and the schema can't hold.
+            if str(v).strip():
+                extra.append(code)
             continue
         if isinstance(v, list):
             # A `tags`-typed field comes back as a JSON array — KEEP it one. The
@@ -153,7 +163,7 @@ def _clean_entity(built: Any, *, name: str, kind: str,
             relations.append({"target_name": target, "type": rtype,
                               "note": str(r.get("note") or "")[:300]})
     return {"name": name, "kind": kind, "attributes": attrs, "relations": relations,
-            "absent": absent, "missing": missing}
+            "absent": absent, "missing": missing, "extra": extra}
 
 
 async def build_standard(
@@ -239,6 +249,6 @@ async def build_deep(
         _fallback = "description" if "description" in fields else (fields[0] if fields else "")
         entity = ({"name": name, "kind": kind,
                    "attributes": {_fallback: sections[0]["text"][:1500]}, "relations": [],
-                   "absent": [], "missing": [f for f in fields if f != _fallback]}
+                   "absent": [], "missing": [f for f in fields if f != _fallback], "extra": []}
                   if _fallback else None)
     return entity, sections

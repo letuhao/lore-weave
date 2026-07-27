@@ -29,6 +29,26 @@ export interface BuildItem {
   proposed_entity_id: string | null;
   relations: { target_name?: string; type?: string; note?: string }[];
   section_count: number;
+  /** Fields the model said the story establishes NOTHING for — an authoring prompt,
+   *  not a defect. Auto-filling these would write an invention into the SSOT. */
+  absent?: string[];
+  /** Fields it never answered at all — an attention drop, not a story gap. */
+  missing?: string[];
+  /** Content it produced under a code this kind has no home for. Dropped at the
+   *  write boundary, surfaced here so the observation is not lost silently. */
+  extra?: string[];
+}
+
+/** Per-outcome tally from indexing the built lore as retrievable passages.
+ *  `no_embedding_model` is the one the author must act on: the lore exists but
+ *  nothing can retrieve it until this book's knowledge project has an embed model. */
+export interface LoreIndexReport {
+  indexed?: number;
+  unchanged?: number;
+  no_embedding_model?: number;
+  unsupported_dim?: number;
+  embed_failed?: number;
+  [outcome: string]: number | undefined;
 }
 
 /** A relationship the executor emitted BY NAME, resolved server-side to graph
@@ -47,7 +67,9 @@ export interface BuildRun {
   run_id: string;
   book_id: string;
   status: BuildStatus;
-  params: Record<string, unknown>;
+  params: Record<string, unknown> & {
+    lore_index?: { outcomes?: LoreIndexReport; entities_seen?: number; skipped?: string };
+  };
   worklist: WorklistItem[];
   edges: BuildEdge[];
   items?: BuildItem[];
