@@ -393,6 +393,75 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > exists anywhere. Left as a VISIBLE dated note so the AIT owner can revert; the handoff's
 > narration of the finding carries a scoped pragma. **design-lint is now 0 findings on the whole
 > corpus** — from 17,120 this morning.
+> ✅ **ARCHITECTURE CEILINGS MEASURED — [`21_architecture_ceilings.md`](21_architecture_ceilings.md) (2026-07-27, `/loom` M):**
+> the PO asked whether to run MMO load-simulations now; the answer taken was **build first, with one
+> narrow exception** — measure the ceilings that are set by the ARCHITECTURE rather than the domain,
+> because 10 `NotRun` validator stages, a four-tool toy domain and a missing island manager make any
+> *"how many players"* number optimistic by an unknown factor, while these three can only be pushed
+> **down** by the work still to come. An upper bound measured today is still an upper bound later.
+> **New:** harness `services/commit-service/src/bin/ceilings.rs` (drives the REAL
+> `ChannelWriter::append`, not a re-implementation) + gate `scripts/perf/game-commit-ceilings.sh`.
+> Measured on i9-13900K / PG 16.14 / **fsync=on, synchronous_commit=on**:
+> **CEI-2** one channel ≈ **170 durable commits/s**, p50 **5.4 ms** · **CEI-5** one Postgres ≈ **4 892
+> commits/s across 64 islands** · **CEI-6** the knee is **K≈16–24** (per-channel p95 flat at 8 ms to
+> K=16, then 12.9 → 16.9 ms) · **CEI-9** Redis fan-out (**55 799/s** consume) has **11× the commit
+> path's headroom** — Redis is not the constraint at any scale this architecture can commit at.
+> **The result is a NEGATIVE one and that is the point:** a Class B turn is LLM-gated at 1–5 s, so 64
+> encounters demand ≈ 21 commits/s — **0.4 % of the measured ceiling**. The commit path is not the
+> risk; **CEI-7 `max_connections=100` (≈98 concurrent island writers) is the limit that gets hit
+> first**, and it is a provisioning fix (`infra/docker-compose.pgbouncer.yml` already exists).
+> **CEI-3** decomposes the 5.4 ms as **53 % WAL fsync · 40 % transport · 7 % actual DB work**, which
+> is what makes the number portable rather than a fact about this workstation.
+> **CEI-4** `append` costs **6 round trips**; a single-CTE fold would cut 33 % — **deliberately not
+> spent**, recorded so the lever is known rather than rediscovered under pressure.
+> **Non-vacuity:** all three bites fire (sync-off 2.05× · pool=1 13× worse · 100× payload 8.1× worse)
+> and the gate asserts **ratios, not absolute values**, so it stays honest on other hardware. A
+> **throwaway-DB guard** was added in review and bite-proven (pointing at `loreweave_book` exits 3
+> before any write) — the harness is append-only, but synthetic events in an event-sourced store are
+> permanent, which is unrecoverable in a quieter way than a `DELETE`. Prefix `CEI` registered in
+> `06_id_catalog.md`; `_boundaries/` claim still rides the pending batch with `CWC`.
+> **NEXT (in this order):** **island manager** (spawn/dissolve/route — without it there is no
+> multi-cell world to simulate) → **Class A movement lane (RTM)**, a completely separate ~20 Hz load
+> profile that never touches the commit path (SL-D11) → enough of the **validator pipeline** to make
+> admission cost realistic → **then** the full MMO load simulation. Open: **CEI-Q2** WS broadcast
+> ceiling (one commit → M clients, via `scripts/perf/k6-game-server.sh`) is the next *measurement*.
+> ⚠️ **Superseded by doc 22 below:** the ingress work now precedes the island manager.
+
+> ✅ **INGRESS & ADMISSION STANDARD — [`22_ingress_and_admission.md`](22_ingress_and_admission.md) (2026-07-27):**
+> the PO asked three questions — *where does every actor's request converge* · *how is action spam
+> stopped* · *does validation belong inside or outside the loop*. They are **one** question: the
+> front door has no enforceable contract. `IAS-A1..A9` / `IAS-D1..D7` / `IAS-Q1..Q5`.
+> **The inside-vs-outside answer inverts its own premise.** The measured costs (doc 21) are: one
+> precondition check **≈ 4 ns**, one island step ≈ 200 ns, one durable commit **≈ 5.4 ms** — so
+> in-loop validation is **six orders of magnitude** below the dominant term. Moving a state-dependent
+> check out of the loop to "save loop time" optimises a cost that does not exist and buys a **TOCTOU
+> race** with the savings. **IAS-A2:** the split is by *what state a check reads*, never by cost —
+> outside iff it is a pure function of the message or of state the loop does not mutate.
+> **IAS-A3 — the seam is ALREADY BUILT and unused.** `Precondition<D>` carries a `generation` stamp
+> and the island discharges it (gen gate → dedup → deadline → `check_all` → recorded
+> `PreconditionFailed`): that is **optimistic concurrency control**, with the outside pipeline's real
+> job being to emit **proof obligations**, not verdicts. But **`admission.rs:277` sends
+> `preconditions: vec![]`** — the production rail hands the island an EMPTY obligation list, and
+> `ActorEligible` (which *is* the turn-slot check) has never run outside `crates/sim/tests/*`. The
+> POC runner `main.rs:167` is *more* careful than production.
+> **IAS-A6 — the finding doc 21 made visible:** CS-A4 makes rejections durable, so at 170 commits/s
+> **100 rejected spam requests still cost ≈ 0.57 s of a channel's commit budget** — being refused
+> loudly enough IS the attack. ⇒ transport-level refusal must be **drop/close with no event**;
+> only admission-level rejection stays durable.
+> **IAS-A5** — `Island::submit` must take an `Admitted<D>` token (private field) so bypass is a
+> **compile error**; `main.rs` already bypasses today, and `submit` takes a publicly-constructible
+> struct. Precedent: `dissolve(self)` making "Gone" unrepresentable.
+> **Conformance §7: 3 ✅ / 5 🔴** — no structural enforcement · empty obligation list · no turn slot
+> or cooldown · **`ChannelRoom` has NO rate limiter** (the limiter is wired to `EchoRoom`, the V0
+> demo, only) · no behavioural detection.
+> **NEXT — and this precedes the island manager** (building a manager on an unenforced front door
+> replicates the hole N times): **IAS-Q1 bite-test first** (the 100-request exploit is read from
+> code, NOT yet executed — patching before proving makes the patch unfalsifiable) → **IAS-D5**
+> limiter into `ChannelRoom` → **IAS-D3** `Admitted<D>` → **IAS-D2/D6** obligations + turn economy.
+> Also open: **IAS-Q2** is `producer_service` on the bus authenticated? · **IAS-Q3** is EVT-T4
+> "trusted by construction" verified or assumed? · **IAS-Q4** ordering/fairness · **IAS-Q5** edge
+> backpressure.
+
 > **NEXT:** **`sim-core` S1** (skeleton — unblocked; islands *and the panic boundary* in the type signatures from commit one) · `B3-D1` amendment row when `locked_decisions.md` is quiet · **`SL-Q11`** (does EVT-L5 backpressure fight SL-A13 dilation? plausible feedback loop — settle **before** both are built) · put `language-rule-lint.sh` + a *"`_boundaries/*` diff requires `Owner:` ≠ None"* check into pre-commit — **both are rules that exist with no enforcement point**, which is how `jobs-service` sat red for 6 weeks and how three lock cycles got recorded that never happened.
 
 > ✅ **MERGED `origin/main` + GREENED THE BUILD (2026-07-26 late):** the branch was **3090 commits behind**; because the game tier is spec-only it produced **exactly one conflict** — `.githooks/pre-commit`, resolved as a **union** (main had grown knowledge-access / http-surface / context-budget / db-safety / no-absolute-paths / i18n / tier-tag / inspector / design-token / gitleaks gates; this session had added two). `origin/main` is now **fully contained** in the branch.

@@ -117,6 +117,8 @@
 | `REC-01..` | Reconciliation register rows (typed EDIT / LOCK / DECISION / AMEND) | [`19_reconciliation_register.md`](../19_reconciliation_register.md) | next free | REC-28 = writer-role gap |
 | `POC-1..2` | Build-phase PoC findings (reconciliation register §15a) | [`19_reconciliation_register.md`](../19_reconciliation_register.md) | POC-3+ | POC-2 = validity 50% → 83% on fix |
 | `CWC-*` | Client wire contract (DRAFT) | [`20_client_wire_contract.md`](../20_client_wire_contract.md) | next free per family | CWC-A1 |
+| `CEI-*` | Measured architecture ceilings (commit + fan-out budget) | [`21_architecture_ceilings.md`](../21_architecture_ceilings.md) | next free per family | CEI-9 = fan-out has 11× the commit path's headroom |
+| `IAS-*` | Ingress & action admission standard (DRAFT) | [`22_ingress_and_admission.md`](../22_ingress_and_admission.md) | next free per family | IAS-A2 = validation splits by state-readership, not cost |
 
 ---
 
