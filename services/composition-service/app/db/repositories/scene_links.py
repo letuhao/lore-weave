@@ -22,7 +22,7 @@ from app.db.models import SceneLink
 from app.db.repositories import ReferenceViolationError, rows_changed
 
 _SELECT_COLS = """
-  id, created_by, project_id, from_node_id, to_node_id, kind, label, created_at
+  id, created_by, project_id, from_node_id, to_node_id, kind, label, is_archived, created_at
 """
 
 # The same columns, table-qualified — `list_by_book` joins outline_node (which also has
@@ -30,7 +30,7 @@ _SELECT_COLS = """
 # ambiguous-column error.
 _SELECT_COLS_SL = """
   sl.id, sl.created_by, sl.project_id, sl.from_node_id, sl.to_node_id,
-  sl.kind, sl.label, sl.created_at
+  sl.kind, sl.label, sl.is_archived, sl.created_at
 """
 
 
@@ -97,7 +97,7 @@ class SceneLinksRepo:
     async def list_by_project(self, project_id: UUID) -> list[SceneLink]:
         query = f"""
         SELECT {_SELECT_COLS} FROM scene_link
-        WHERE project_id = $1
+        WHERE project_id = $1 AND NOT is_archived
         ORDER BY created_at, id
         """
         async with self._pool.acquire() as c:
@@ -140,7 +140,7 @@ class SceneLinksRepo:
         LEFT JOIN outline_node fc ON fc.id = f.parent_id
         LEFT JOIN outline_node t  ON t.id = sl.to_node_id
         LEFT JOIN outline_node tc ON tc.id = t.parent_id
-        WHERE sl.book_id = $1
+        WHERE sl.book_id = $1 AND NOT sl.is_archived
         ORDER BY sl.created_at, sl.id
         """
         async with self._pool.acquire() as c:
@@ -148,13 +148,37 @@ class SceneLinksRepo:
         return [dict(r) for r in rows]
 
     async def delete(self, project_id: UUID, link_id: UUID) -> bool:
-        """Hard-delete an edge. Returns False on a missing id or an edge outside
-        this project. The project bind is mandatory (kinds-bug scope rule): an
-        edge from another Work — gated on a different book — cannot be deleted
-        under the resolved Work's book gate."""
+        """SOFT-delete an edge. Returns False on a missing id or an edge outside this project.
+
+        The project bind is mandatory (kinds-bug scope rule): an edge from another Work — gated on
+        a different book — cannot be deleted under the resolved Work's book gate.
+
+        Was a hard DELETE with no undo, unlike its sibling atoms (F3, 2026-07-27). A scene link is
+        the author's DECLARED setup/payoff connection and carries an authored `label`; losing it
+        irreversibly loses structural work that only the author can reconstruct."""
         async with self._pool.acquire() as c:
             status = await c.execute(
-                "DELETE FROM scene_link WHERE project_id = $1 AND id = $2",
+                "UPDATE scene_link SET is_archived = true "
+                "WHERE project_id = $1 AND id = $2 AND NOT is_archived",
                 project_id, link_id,
             )
+        return rows_changed(status) > 0
+
+    async def restore(self, project_id: UUID, link_id: UUID) -> bool:
+        """The UNDO the delete now promises. False when nothing matched or it was never archived —
+        including when the author has since re-declared that same edge (the partial unique), which
+        is honest: resurrecting the old one would collide with the newer."""
+        try:
+            async with self._pool.acquire() as c:
+                status = await c.execute(
+                    "UPDATE scene_link SET is_archived = false "
+                    "WHERE project_id = $1 AND id = $2 AND is_archived",
+                    project_id, link_id,
+                )
+        except asyncpg.UniqueViolationError:
+            # The partial unique is doing its job: that same edge has been re-declared since, so
+            # un-archiving this one would collide. Found by a LIVE probe — the docstring promised
+            # False and the code actually RAISED, which the MCP handler would have surfaced as a
+            # 500 instead of the honest "could not be restored" it was written to return.
+            return False
         return rows_changed(status) > 0

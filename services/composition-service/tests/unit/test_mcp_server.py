@@ -75,6 +75,10 @@ EXPECTED_TOOLS = {
     # without a read the agent could never discover a block_id, and reading the marks IS the
     # feature). Creating a block is the author's act, deliberately not exposed to the agent.
     "composition_error_block_edit",
+    # F3 — the UNDO the soft delete promises. scene_link's delete previously returned
+    # `undo_hint: None` over a HARD delete; entity_override's was recoverable only while the
+    # activity strip held the payload. Both are now durably restorable.
+    "composition_scene_link_restore", "composition_entity_override_restore",
     "composition_write_prose",
     # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface. ──
     "composition_list_derivatives",   # Tier R

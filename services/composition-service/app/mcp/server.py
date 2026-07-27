@@ -1334,7 +1334,42 @@ async def composition_scene_link_delete(
     if not deleted:
         raise uniform_not_accessible()
     # A hard delete has no verified reverse op (the row is gone) → undo unavailable.
-    return {"deleted": True, "link_id": link_id, "_meta": {"undo_hint": None}}
+    # F3: was `undo_hint: None` — an explicit "no undo" over a HARD delete that destroyed the
+    # author's declared connection and its authored label. The delete is now soft, so the hint can
+    # name a real reverse op.
+    return {"deleted": True, "link_id": link_id, "_meta": {"undo_hint": _undo(
+        "composition_scene_link_edit", op="restore", project_id=project_id, link_id=link_id)}}
+
+
+@mcp_server.tool(
+    name="composition_scene_link_restore",
+    description=(
+        "Restore a soft-deleted scene-link edge — the UNDO the delete promises. Pass the Work's "
+        "project_id + the link_id. Fails if that same edge has since been re-declared (restoring "
+        "would collide with the newer one). EDIT required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["restore scene link", "undo scene link delete", "bring back scene link"],
+        visibility="legacy", superseded_by="composition_scene_link_edit",
+        tool_name="composition_scene_link_restore",
+    ),
+)
+async def composition_scene_link_restore(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    link_id: Annotated[str, "The scene-link edge id."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    scene_links = SceneLinksRepo(get_pool())
+    if not await scene_links.restore(pid, UUID(link_id)):
+        return {"success": False, "error": (
+            "that scene link could not be restored — it was never deleted, or the same edge has "
+            "since been re-declared")}
+    return {"restored": True, "link_id": link_id}
 
 
 class _CanonRuleCreateArgs(ForbidExtra):
@@ -1772,6 +1807,32 @@ async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverr
         target_entity_id=str(prior.target_entity_id), overridden_fields=prior.overridden_fields,
     )}
     return out
+
+
+@mcp_server.tool(
+    name="composition_entity_override_restore",
+    description=(
+        "Restore a soft-deleted entity override on a what-if derivative (dị bản) — the UNDO the "
+        "delete promises. Pass the derivative's project_id + the override_id. Fails if a newer "
+        "override for that same entity now exists. EDIT required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["restore entity override", "undo entity override delete"],
+        visibility="legacy", superseded_by="composition_entity_override_edit",
+        tool_name="composition_entity_override_restore",
+    ),
+)
+async def composition_entity_override_restore(ctx: MCPContext, args: _EntityOverrideDeleteArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    work = await _require_derivative(works, tc, UUID(args.project_id))
+    derivatives = DerivativesRepo(get_pool())
+    if not await derivatives.restore_override(work.id, work.book_id, UUID(args.override_id)):
+        return {"success": False, "error": (
+            "that override could not be restored — it was never deleted, or a newer override for "
+            "the same entity now exists")}
+    return {"restored": True, "override_id": args.override_id}
 
 
 def _override_out(ov) -> dict:
@@ -7082,7 +7143,7 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
 
 
 class _EntityOverrideEditArgs(ForbidExtra):
-    op: Literal["add", "update", "delete"]
+    op: Literal["add", "update", "delete", "restore"]
     project_id: str | None = None        # all
     target_entity_id: str | None = None  # add
     override_id: str | None = None       # update, delete
@@ -7095,10 +7156,11 @@ class _EntityOverrideEditArgs(ForbidExtra):
         "Add, update, or delete a per-Work entity override (book-local field changes on a glossary "
         "entity) — the unified entity-override-CRUD entry point. op=add (needs project_id + "
         "target_entity_id; overridden_fields). op=update (needs project_id + override_id; "
-        "overridden_fields). op=delete (needs project_id + override_id). EDIT required."
+        "overridden_fields). op=delete (needs project_id + override_id) SOFT-deletes — the override stops applying immediately but is recoverable. op=restore (needs project_id + override_id) brings it back; it FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one. EDIT required."
     ),
     meta=require_meta("A", "book",
                       synonyms=["add entity override", "edit entity override", "delete entity override",
+                                "restore entity override", "undo entity override delete",
                                 "override entity field", "manage entity override"],
                       tool_name="composition_entity_override_edit"),
 )
@@ -7115,15 +7177,20 @@ async def composition_entity_override_edit(ctx: MCPContext, args: _EntityOverrid
         return await composition_entity_override_update(ctx, _EntityOverrideUpdateArgs(
             project_id=args.project_id, override_id=args.override_id,
             **_present(overridden_fields=args.overridden_fields)))
-    # op == "delete"
+    if args.op == "delete":
+        if not args.project_id or not args.override_id:
+            raise ValueError("op=delete requires project_id and override_id")
+        return await composition_entity_override_delete(ctx, _EntityOverrideDeleteArgs(
+            project_id=args.project_id, override_id=args.override_id))
+    # op == "restore" — the UNDO the soft delete now promises (F3).
     if not args.project_id or not args.override_id:
-        raise ValueError("op=delete requires project_id and override_id")
-    return await composition_entity_override_delete(ctx, _EntityOverrideDeleteArgs(
+        raise ValueError("op=restore requires project_id and override_id")
+    return await composition_entity_override_restore(ctx, _EntityOverrideDeleteArgs(
         project_id=args.project_id, override_id=args.override_id))
 
 
 class _SceneLinkEditArgs(ForbidExtra):
-    op: Literal["create", "delete"]
+    op: Literal["create", "delete", "restore"]
     project_id: str | None = None       # both
     from_node_id: str | None = None     # create
     to_node_id: str | None = None       # create
@@ -7137,10 +7204,11 @@ class _SceneLinkEditArgs(ForbidExtra):
     description=(
         "Create or delete a scene-link edge (setup_payoff / foreshadow / callback between outline "
         "nodes) — the unified scene-link entry point. op=create (needs project_id + from_node_id + "
-        "to_node_id; optional kind, label). op=delete (needs project_id + link_id). EDIT required."
+        "to_node_id; optional kind, label). op=delete (needs project_id + link_id) SOFT-deletes — the edge stops applying immediately but is recoverable. op=restore (needs project_id + link_id) brings it back; it FAILS if that same edge has since been re-declared. EDIT required."
     ),
     meta=require_meta("A", "book",
                       synonyms=["link scenes", "connect scenes", "add scene link", "delete scene link",
+                                "restore scene link", "undo scene link delete",
                                 "set setup payoff", "manage scene link"],
                       tool_name="composition_scene_link_edit"),
 )
@@ -7151,10 +7219,16 @@ async def composition_scene_link_edit(ctx: MCPContext, args: _SceneLinkEditArgs)
         return await composition_scene_link_create(ctx, _SceneLinkCreateArgs(
             project_id=args.project_id, from_node_id=args.from_node_id, to_node_id=args.to_node_id,
             **_present(kind=args.kind, label=args.label)))
-    # op == "delete"
+    if args.op == "delete":
+        if not args.project_id or not args.link_id:
+            raise ValueError("op=delete requires project_id and link_id")
+        return await composition_scene_link_delete(
+            ctx, project_id=args.project_id, link_id=args.link_id)
+    # op == "restore" — the UNDO the soft delete now promises (F3).
     if not args.project_id or not args.link_id:
-        raise ValueError("op=delete requires project_id and link_id")
-    return await composition_scene_link_delete(ctx, project_id=args.project_id, link_id=args.link_id)
+        raise ValueError("op=restore requires project_id and link_id")
+    return await composition_scene_link_restore(
+        ctx, project_id=args.project_id, link_id=args.link_id)
 
 
 # ── S3 catalog-unification (2026-07-25): the derivative CRUD pair. Surfaced by the deep-dive

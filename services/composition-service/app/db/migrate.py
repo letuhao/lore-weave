@@ -172,8 +172,16 @@ CREATE TABLE IF NOT EXISTS entity_override (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_entity_override_work ON entity_override(work_id);
+-- F3 (2026-07-27): `overridden_fields` is AUTHORED content — the author's declaration of how an
+-- entity differs in this dị bản — and delete was a hard DELETE with no undo, while every sibling
+-- atom (canon_rule, outline_node, the derivative Work itself) soft-archives and offers restore.
+-- Losing a divergence irreversibly is a data-loss class, not a style inconsistency.
+ALTER TABLE entity_override ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+-- The unique must become PARTIAL, or an archived override would block the author from ever
+-- writing a new one for that same entity — turning a "soft" delete into a permanent block.
+DROP INDEX IF EXISTS uq_entity_override_work_target;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_entity_override_work_target
-  ON entity_override(work_id, target_entity_id);
+  ON entity_override(work_id, target_entity_id) WHERE NOT is_archived;
 
 -- ── structure_template: pluggable story-structure library (global built-ins + user-custom)
 CREATE TABLE IF NOT EXISTS structure_template (
@@ -255,9 +263,16 @@ CREATE TABLE IF NOT EXISTS scene_link (
   kind         TEXT NOT NULL DEFAULT 'setup_payoff' CHECK (kind IN ('setup_payoff','custom')),
   label        TEXT NOT NULL DEFAULT '',
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT scene_link_distinct CHECK (from_node_id <> to_node_id),
-  UNIQUE (from_node_id, to_node_id, kind)
+  CONSTRAINT scene_link_distinct CHECK (from_node_id <> to_node_id)
 );
+-- F3 (2026-07-27): same treatment as entity_override — a scene link is the author's declared
+-- setup/payoff connection (with an authored `label`), and delete was hard with no undo.
+ALTER TABLE scene_link ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+-- Was an inline UNIQUE(from,to,kind); re-expressed as a PARTIAL index so an archived link does
+-- not permanently block re-declaring the same connection.
+ALTER TABLE scene_link DROP CONSTRAINT IF EXISTS scene_link_from_node_id_to_node_id_kind_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scene_link_edge
+  ON scene_link(from_node_id, to_node_id, kind) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_scene_link_project ON scene_link(project_id);
 CREATE INDEX IF NOT EXISTS idx_scene_link_from    ON scene_link(from_node_id);
 

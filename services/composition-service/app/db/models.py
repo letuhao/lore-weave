@@ -124,6 +124,7 @@ class EntityOverride(BaseModel):
     work_id: UUID
     target_entity_id: UUID
     overridden_fields: dict[str, Any] = Field(default_factory=dict)
+    is_archived: bool = False   # F3 — soft delete + restore
     created_at: datetime | None = None
 
 
@@ -297,6 +298,7 @@ class SceneLink(BaseModel):
     to_node_id: UUID
     kind: LinkKind = "setup_payoff"
     label: _Title = ""
+    is_archived: bool = False   # F3 — soft delete + restore
     created_at: datetime | None = None
 
 

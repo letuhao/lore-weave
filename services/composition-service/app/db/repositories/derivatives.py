@@ -26,7 +26,8 @@ from app.db.repositories import ReferenceViolationError, rows_changed
 
 _SPEC_COLS = "id, created_by, project_id, work_id, taxonomy, pov_anchor, canon_rule, created_at"
 _OVERRIDE_COLS = (
-    "id, created_by, project_id, work_id, target_entity_id, overridden_fields, created_at"
+    "id, created_by, project_id, work_id, target_entity_id, overridden_fields, "
+    "is_archived, created_at"
 )
 
 # taxonomy CHECK set (migrate.py:152) — validate in-repo so a bad value is a domain
@@ -124,7 +125,7 @@ class DerivativesRepo:
     ) -> list[EntityOverride]:
         query = f"""
         SELECT {_OVERRIDE_COLS} FROM entity_override
-        WHERE work_id = $1
+        WHERE work_id = $1 AND NOT is_archived
         ORDER BY created_at
         """
         async with self._pool.acquire() as c:
@@ -201,7 +202,7 @@ class DerivativesRepo:
         query = f"""
         SELECT {_OVERRIDE_COLS} FROM entity_override
         WHERE id = $1 AND work_id = $2 AND book_id = $3
-        """
+        """  # archived rows ARE returned here — restore must be able to read one back
         row = await self._fetchrow(query, override_id, work_id, book_id, conn=conn)
         return _row_to_override(row) if row else None
 
@@ -267,17 +268,58 @@ class DerivativesRepo:
         *,
         conn: asyncpg.Connection | None = None,
     ) -> bool:
-        """Hard-delete an override (a pure delta — no history to preserve; removing
-        it reverts that entity to canon). Returns False when nothing matched (404)."""
+        """SOFT-delete an override. Returns False when nothing matched (404).
+
+        This was a hard DELETE, justified as "a pure delta — no history to preserve; removing it
+        reverts that entity to canon". That reasoning is right about the delta's EFFECT and wrong
+        about the authored LABOUR: `overridden_fields` is a JSONB blob the author wrote (how this
+        dị bản's entity differs), and destroying it means re-authoring it from memory. Every
+        sibling atom — canon_rule, outline_node, the derivative Work itself — soft-archives and
+        offers restore; this one silently did not (F3, 2026-07-27).
+
+        The read paths filter `NOT is_archived`, so the delta stops grounding generation the
+        moment it is archived — the revert-to-canon semantics the old docstring described are
+        preserved exactly. Only the irreversibility is gone.
+        """
         query = (
-            "DELETE FROM entity_override "
-            "WHERE id = $1 AND work_id = $2 AND book_id = $3"
+            "UPDATE entity_override SET is_archived = true "
+            "WHERE id = $1 AND work_id = $2 AND book_id = $3 AND NOT is_archived"
         )
         if conn is not None:
             status = await conn.execute(query, override_id, work_id, book_id)
         else:
             async with self._pool.acquire() as c:
                 status = await c.execute(query, override_id, work_id, book_id)
+        return rows_changed(status) > 0
+
+    async def restore_override(
+        self,
+        work_id: UUID,
+        book_id: UUID,
+        override_id: UUID,
+        *,
+        conn: asyncpg.Connection | None = None,
+    ) -> bool:
+        """The UNDO the delete now promises. False when nothing matched or it was never archived.
+
+        A restore can legitimately FAIL: the partial unique means the author may have written a
+        new override for that same entity since. Surfacing that as False (-> 409) is honest —
+        silently resurrecting the old delta would clobber the newer one."""
+        query = (
+            "UPDATE entity_override SET is_archived = false "
+            "WHERE id = $1 AND work_id = $2 AND book_id = $3 AND is_archived"
+        )
+        try:
+            if conn is not None:
+                status = await conn.execute(query, override_id, work_id, book_id)
+            else:
+                async with self._pool.acquire() as c:
+                    status = await c.execute(query, override_id, work_id, book_id)
+        except asyncpg.UniqueViolationError:
+            # A newer override for the same entity exists — un-archiving would collide. Return
+            # False so the caller reports it honestly rather than 500-ing. (Same live-probe find
+            # as SceneLinksRepo.restore.)
+            return False
         return rows_changed(status) > 0
 
     async def _fetchrow(
