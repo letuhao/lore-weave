@@ -13,17 +13,21 @@ import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSet
 import { trackRange, type RangeHandle } from '../../../components/editor/TrackedPositions';
 import { useCompositionStream } from '../hooks/useCompositionStream';
 import type { SelectionOperation } from '../types';
+import { MarkErrorBlockAction } from './MarkErrorBlockAction';
 
 export const SELECTION_MAX_CHARS = 8000;
 const OPS: SelectionOperation[] = ['rewrite', 'expand', 'describe'];
 
 export function SelectionToolbar({
-  editor, projectId, sceneContext, token,
+  editor, projectId, sceneContext, token, chapterId = null,
 }: {
   editor: Editor;
   projectId: string;
   sceneContext: string | null;
   token: string | null;
+  /** Phase D — the open chapter, so a selection can be MARKED as wrong. Null (or a surface
+   *  that doesn't pass it) simply hides the Mark action; it never breaks the AI ops. */
+  chapterId?: string | null;
 }) {
   const { t } = useTranslation('composition');
   const stream = useCompositionStream(token);
@@ -167,6 +171,15 @@ export function SelectionToolbar({
                   ✦ {t(`sel.${op}`, { defaultValue: op })}
                 </button>
               ))}
+              {/* Phase D — record that this passage is WRONG, with a note the co-writer acts
+                  on later. Not an AI op: it needs no model, so it stays enabled when none is
+                  picked (the ops above are disabled without one). */}
+              <MarkErrorBlockAction
+                editor={editor}
+                projectId={projectId}
+                chapterId={chapterId}
+                token={token}
+              />
             </div>
           </>
         )}

@@ -478,7 +478,7 @@ export function EditorPanel(props: IDockviewPanelProps) {
             grammarEnabled={grammarEnabled}
             focusMode={focusMode}
             selectionMenu={composeProjectId
-              ? (ed) => <SelectionToolbar editor={ed} projectId={composeProjectId} sceneContext={effectiveSceneId} token={accessToken} />
+              ? (ed) => <SelectionToolbar editor={ed} projectId={composeProjectId} sceneContext={effectiveSceneId} token={accessToken} chapterId={chapterId} />
               : undefined}
             aiLayer={composeProjectId
               ? (ed) => (
