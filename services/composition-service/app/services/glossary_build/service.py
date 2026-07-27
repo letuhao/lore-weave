@@ -86,6 +86,15 @@ class Repo:
              for i, w in enumerate(worklist)],
         )
 
+    async def list_runs(self, *, owner: UUID, book_id: UUID, limit: int = 20) -> list[dict]:
+        rows = await self._pool.fetch(
+            """SELECT * FROM glossary_build_runs
+               WHERE owner_user_id=$1 AND book_id=$2
+               ORDER BY created_at DESC LIMIT $3""",
+            owner, book_id, limit,
+        )
+        return [dict(r) for r in rows]
+
     async def list_items(self, run_id: UUID, owner: UUID) -> list[dict]:
         rows = await self._pool.fetch(
             """SELECT * FROM glossary_build_items
@@ -108,10 +117,11 @@ class Repo:
 
 
 class GlossaryBuildService:
-    def __init__(self, repo: Repo, llm: LLMClient, glossary) -> None:
+    def __init__(self, repo: Repo, llm: LLMClient, glossary, knowledge=None) -> None:
         self._repo = repo
         self._llm = llm
         self._glossary = glossary
+        self._knowledge = knowledge          # M3 KG phase (None ⇒ KG phase unavailable)
         self._tasks: dict[str, asyncio.Task] = {}
 
     # ── LLM binding: engine's injected callable → the platform job seam ──────
@@ -195,6 +205,99 @@ class GlossaryBuildService:
             raise GlossaryBuildError(404, "NOT_FOUND", "run not found")
         run["items"] = await self._repo.list_items(run_id, owner)
         return run
+
+    async def list_runs(self, *, owner: UUID, book_id: UUID, limit: int = 20) -> list[dict]:
+        return await self._repo.list_runs(owner=owner, book_id=book_id, limit=limit)
+
+    # ── KG phase (M3) ────────────────────────────────────────────────────────
+    async def project_kg(self, run_id: UUID, owner: UUID, bearer: str = "") -> dict:
+        """proposed → kg_projecting → edges_ready.
+
+        Deterministic, no LLM: ensure the book's knowledge project, project the
+        proposed entities into the graph as nodes, then resolve every NAME-based
+        relation the executor produced into a concrete {source_id, target_id}
+        edge proposal. Unresolvable names are KEPT with `unresolved: true` so the
+        human sees what was dropped rather than silently losing it."""
+        if self._knowledge is None:
+            raise GlossaryBuildError(503, "KG_UNAVAILABLE", "knowledge client not configured")
+        run = await self._repo.transition(run_id, owner, ["proposed"], "kg_projecting")
+        if run is None:
+            raise GlossaryBuildError(409, "BAD_STATE", "run is not in proposed")
+        try:
+            items = await self._repo.list_items(run_id, owner)
+            proposed = [i for i in items if i["status"] == "proposed" and i.get("proposed_entity_id")]
+            project = await self._knowledge.create_project(
+                run["book_id"], f"{run['book_id']} — glossary build", bearer)
+            project_id = (project or {}).get("project_id")
+            if not project_id:
+                raise GlossaryBuildError(502, "PROJECT_FAILED", "could not resolve a knowledge project")
+            projection = await self._knowledge.project_entities_from_glossary(
+                bearer, project_id=UUID(str(project_id)),
+                entity_ids=[str(i["proposed_entity_id"]) for i in proposed],
+            )
+            # NAME → entity_id, over EVERY item this run proposed (the executor
+            # only ever emitted names — this is the one resolution point).
+            by_name = {i["name"].casefold(): str(i["proposed_entity_id"]) for i in proposed}
+            edges: list[dict] = []
+            for i in proposed:
+                rels = i.get("relations") or []
+                rels = json.loads(rels) if isinstance(rels, str) else rels
+                for r in rels:
+                    target = str(r.get("target_name") or "").strip()
+                    tid = by_name.get(target.casefold())
+                    edges.append({
+                        "source_name": i["name"], "source_id": str(i["proposed_entity_id"]),
+                        "target_name": target, "target_id": tid,
+                        "type": r.get("type"), "note": r.get("note") or "",
+                        "unresolved": tid is None,
+                    })
+            out = await self._repo.transition(
+                run_id, owner, ["kg_projecting"], "edges_ready",
+                edges=edges,
+                params={**self._params(run), "project_id": str(project_id),
+                        "kg_projection": projection or {}},
+            )
+            return out or run
+        except GlossaryBuildError:
+            await self._repo.transition(run_id, owner, ["kg_projecting"], "failed",
+                                        error_message="kg projection failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 — fail LOUD on the row
+            await self._repo.transition(run_id, owner, ["kg_projecting"], "failed",
+                                        error_message=str(exc))
+            raise GlossaryBuildError(502, "KG_FAILED", str(exc)) from exc
+
+    async def approve_edges(self, run_id: UUID, owner: UUID, bearer: str = "",
+                            edges: list[dict] | None = None) -> dict:
+        """[human checkpoint #3] edges_ready → done. Writes the approved,
+        RESOLVED edges as user-authored relations. A partial apply is REPORTED
+        (applied/failed counts on the run) — never rounded up to success."""
+        if self._knowledge is None:
+            raise GlossaryBuildError(503, "KG_UNAVAILABLE", "knowledge client not configured")
+        run = await self._repo.get_run(run_id, owner)
+        if run is None:
+            raise GlossaryBuildError(404, "NOT_FOUND", "run not found")
+        stored = run.get("edges") or []
+        stored = json.loads(stored) if isinstance(stored, str) else stored
+        approved = edges if edges is not None else stored
+        applied, failed = 0, 0
+        for e in approved:
+            if e.get("unresolved") or not e.get("source_id") or not e.get("target_id"):
+                failed += 1
+                continue
+            rel = await self._knowledge.create_relation(
+                bearer, subject_id=e["source_id"], predicate=str(e.get("type") or "related_to"),
+                object_id=e["target_id"])
+            if rel is None:
+                failed += 1
+            else:
+                applied += 1
+        out = await self._repo.transition(
+            run_id, owner, ["edges_ready"], "done",
+            params={**self._params(run), "edges_applied": applied, "edges_failed": failed})
+        if out is None:
+            raise GlossaryBuildError(409, "BAD_STATE", "run is not in edges_ready")
+        return out
 
     async def cancel(self, run_id: UUID, owner: UUID) -> dict:
         task = self._tasks.pop(str(run_id), None)

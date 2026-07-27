@@ -149,6 +149,10 @@ EXPECTED_TOOLS = {
     "plan_bootstrap_propose", "plan_bootstrap_apply",
     # 28 AN-2/AN-3/AN-4 — the agent's three read surfaces (the gap layer AN-1 enumerates).
     "composition_package_tree", "composition_find_references", "composition_diagnostics",
+    # ── glossary-build pipeline (spec 2026-07-27) — the DELEGATION surface. One
+    # Tier-A tool with a closed-set `op`; the FSM makes every downstream call, so
+    # the agent never picks a per-entity tool (the Mị Đế dogfood failure).
+    "composition_glossary_build",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",

@@ -207,6 +207,122 @@ async def test_glossary_write_failure_fails_the_run_loudly():
     assert "glossary down" in final["error_message"]
 
 
+# ── M3: the KG phase ─────────────────────────────────────────────────────────
+
+class FakeKnowledge:
+    def __init__(self, *, project=True, relation=True):
+        self._project = project
+        self._relation = relation
+        self.projected = None
+        self.relations = []
+
+    async def create_project(self, book_id, name, bearer, **kw):
+        return {"project_id": str(uuid.uuid4())} if self._project else None
+
+    async def project_entities_from_glossary(self, bearer, *, project_id, entity_ids=None):
+        self.projected = entity_ids
+        return {"created": len(entity_ids or []), "existing": 0}
+
+    async def create_relation(self, bearer, *, subject_id, predicate, object_id):
+        if not self._relation:
+            return None
+        self.relations.append((subject_id, predicate, object_id))
+        return {"id": str(uuid.uuid4())}
+
+
+def _built_rel(name, target, rtype="member_of"):
+    return json.dumps({"name": name, "kind": "character",
+                       "attributes": {"role": "r"},
+                       "relations": [{"target_name": target, "type": rtype, "note": ""}]})
+
+
+async def _run_to_proposed(llm_contents, knowledge=None):
+    repo, gl = FakeRepo(), FakeGlossary()
+    s = GlossaryBuildService(repo, FakeLLMClient(llm_contents), gl, knowledge=knowledge)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s.plan(run["run_id"], OWNER)
+    await s.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+    return s, run["run_id"]
+
+
+@pytest.mark.asyncio
+async def test_project_kg_resolves_relation_NAMES_to_entity_ids():
+    """THE design point: the executor only ever emits NAMES; ids are resolved
+    HERE, once, by the platform — the model never sees a UUID."""
+    wl = [{"name": "Tô Thanh Dao", "kind": "character"},
+          {"name": "Tô gia", "kind": "character"}]
+    kg = FakeKnowledge()
+    s, run_id = await _run_to_proposed(
+        [json.dumps(wl), _built_rel("Tô Thanh Dao", "Tô gia"), _built_rel("Tô gia", "Tô Thanh Dao")],
+        knowledge=kg)
+    out = await s.project_kg(run_id, OWNER, "bearer")
+    assert out["status"] == "edges_ready"
+    edges = out["edges"]
+    assert len(edges) == 2 and all(not e["unresolved"] for e in edges)
+    assert all(e["source_id"] and e["target_id"] for e in edges)
+    assert len(kg.projected) == 2  # both proposed entities projected as nodes
+
+
+@pytest.mark.asyncio
+async def test_unresolvable_relation_name_is_kept_and_flagged_not_dropped():
+    """A name that matches nothing must be VISIBLE to the human, not silently lost."""
+    wl = [{"name": "A", "kind": "character"}]
+    kg = FakeKnowledge()
+    s, run_id = await _run_to_proposed(
+        [json.dumps(wl), _built_rel("A", "Someone Never Built")], knowledge=kg)
+    out = await s.project_kg(run_id, OWNER, "bearer")
+    (edge,) = out["edges"]
+    assert edge["unresolved"] is True and edge["target_id"] is None
+    assert edge["target_name"] == "Someone Never Built"
+
+
+@pytest.mark.asyncio
+async def test_approve_edges_writes_only_resolved_and_reports_the_failures():
+    wl = [{"name": "A", "kind": "character"}, {"name": "B", "kind": "character"}]
+    kg = FakeKnowledge()
+    s, run_id = await _run_to_proposed(
+        [json.dumps(wl), _built_rel("A", "B"), _built_rel("B", "Ghost")], knowledge=kg)
+    await s.project_kg(run_id, OWNER, "bearer")
+    out = await s.approve_edges(run_id, OWNER, "bearer")
+    assert out["status"] == "done"
+    assert out["params"]["edges_applied"] == 1     # A→B
+    assert out["params"]["edges_failed"] == 1      # B→Ghost (unresolved)
+    assert len(kg.relations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_relation_write_is_counted_not_rounded_up():
+    wl = [{"name": "A", "kind": "character"}, {"name": "B", "kind": "character"}]
+    kg = FakeKnowledge(relation=False)   # every write fails
+    s, run_id = await _run_to_proposed(
+        [json.dumps(wl), _built_rel("A", "B"), _built("B")], knowledge=kg)
+    await s.project_kg(run_id, OWNER, "bearer")
+    out = await s.approve_edges(run_id, OWNER, "bearer")
+    assert out["params"]["edges_applied"] == 0 and out["params"]["edges_failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_project_kg_without_a_knowledge_client_is_explicit_not_silent():
+    wl = [{"name": "A", "kind": "character"}]
+    s, run_id = await _run_to_proposed([json.dumps(wl), _built("A")], knowledge=None)
+    with pytest.raises(GlossaryBuildError) as exc:
+        await s.project_kg(run_id, OWNER, "bearer")
+    assert exc.value.code == "KG_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_project_kg_from_the_wrong_state_is_a_409():
+    wl = [{"name": "A", "kind": "character"}]
+    kg = FakeKnowledge()
+    repo, gl = FakeRepo(), FakeGlossary()
+    s = GlossaryBuildService(repo, FakeLLMClient([json.dumps(wl)]), gl, knowledge=kg)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    with pytest.raises(GlossaryBuildError) as exc:
+        await s.project_kg(run["run_id"], OWNER, "bearer")   # still draft
+    assert exc.value.code == "BAD_STATE"
+
+
 @pytest.mark.asyncio
 async def test_cancel_stops_a_building_run():
     wl = [{"name": "A", "kind": "character"}]

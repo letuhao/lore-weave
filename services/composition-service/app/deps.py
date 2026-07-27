@@ -293,3 +293,15 @@ async def get_kal_client_dep() -> KalClient:
 async def get_llm_client_dep() -> LLMClient:
     """Wired for the M6 engine + critic (built in M3)."""
     return get_llm_client()
+
+
+async def get_glossary_build_service():
+    """The deterministic glossary-build pipeline (spec 2026-07-27) — the
+    planner/executor FSM that replaced the chat agent's tool-choice for world
+    building. Real repo + LLM + glossary/knowledge clients; tests inject fakes."""
+    from app.services.glossary_build.service import GlossaryBuildService, Repo
+
+    return GlossaryBuildService(
+        Repo(get_pool()), get_llm_client(), get_glossary_client(),
+        knowledge=get_knowledge_client(),
+    )

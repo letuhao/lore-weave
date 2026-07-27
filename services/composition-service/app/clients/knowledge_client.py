@@ -496,6 +496,55 @@ class KnowledgeClient:
             logger.warning("knowledge entity unavailable: %s", exc)
             return None
 
+    # ── glossary-build KG phase (spec 2026-07-27) ───────────────────────────
+
+    async def project_entities_from_glossary(
+        self, bearer: str, *, project_id: UUID, entity_ids: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Project glossary entities into the graph as canonical :Entity nodes —
+        the REST twin of `kg_project_entities_to_nodes` (idempotent: re-seeding
+        upserts, never duplicates). `entity_ids=None` ⇒ the whole active glossary.
+        Returns the {created, existing, seen, skipped, ...} counts, or None on any
+        failure (the caller records a degraded KG phase rather than claiming one)."""
+        url = f"{self._base_url}/v1/knowledge/projects/{project_id}/entities/from-glossary"
+        try:
+            resp = await self._http.post(
+                url, json={"entity_ids": entity_ids},
+                headers=self._bearer_headers(bearer),
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("knowledge from-glossary → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge from-glossary unavailable: %s", exc)
+            return None
+
+    async def create_relation(
+        self, bearer: str, *, subject_id: str, predicate: str, object_id: str,
+    ) -> dict[str, Any] | None:
+        """Write ONE user-authored relation (the World-Map "link places" path:
+        user-asserted, confidence 1.0). Used by the glossary-build CP3 apply —
+        every edge here has been reviewed by a human. Idempotent on
+        (user, subject, predicate, object). None on any failure so a partial
+        apply is REPORTED (the caller counts applied vs failed) — never silently
+        counted as written."""
+        url = f"{self._base_url}/v1/knowledge/relations"
+        try:
+            resp = await self._http.post(
+                url,
+                json={"subject_id": subject_id, "predicate": predicate,
+                      "object_id": object_id},
+                headers=self._bearer_headers(bearer),
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("knowledge create_relation → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge create_relation unavailable: %s", exc)
+            return None
+
     async def search_drawers(
         self, bearer: str, *, project_id: UUID, query: str, limit: int = 40,
         source_type: str | None = None, language: str | None = None,

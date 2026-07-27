@@ -7123,6 +7123,130 @@ async def composition_derivative_edit(ctx: MCPContext, args: _DerivativeEditArgs
         **_passed(args, "taxonomy", "pov_anchor", "canon_rule")))
 
 
+# ── glossary-build pipeline (spec 2026-07-27) ─────────────────────────────────
+#
+# The DELEGATION surface. The Mị Đế dogfood proved a weak model cannot reliably
+# CHOOSE tools for world building (it kept picking the entity-EDIT tool to
+# CREATE); the fix is not a better prompt, it is removing the choice: one tool,
+# a closed-set `op`, and the FSM makes every downstream call itself.
+# Frontend-Tool-Contract discipline: `op` is a Literal (closed set) — a typo'd
+# op is a clean 422 at the schema, never a silent no-op.
+
+
+class _GlossaryBuildArgs(ForbidExtra):
+    op: Literal["start", "approve_plan", "status", "project_kg", "approve_edges", "cancel"]
+    # book_id OPTIONAL (ambient_book) — omitted inside a studio, resolves from X-Book-Id.
+    book_id: str | None = None
+    run_id: str | None = None                       # every op except `start`
+    source_text: str | None = None                  # op=start (required)
+    model_ref: str | None = None                    # op=start (required — a user-model UUID)
+    model_source: str = "user_model"
+    lang: str = "vi"
+    max_items: int = 30
+    # op=approve_plan / approve_edges — the HUMAN-trimmed list. Omitted ⇒ take
+    # the stored one as-is (the agent must NOT invent entries here; the planner
+    # produced them and the human reviews them).
+    worklist: list[dict[str, Any]] | None = None
+    edges: list[dict[str, Any]] | None = None
+
+
+@mcp_server.tool(
+    name="composition_glossary_build",
+    description=(
+        "[World building] Build a book's glossary + knowledge graph from a story description, "
+        "deterministically. You do NOT pick per-entity tools: this ONE tool runs the whole "
+        "pipeline — it plans WHAT to build (a worklist), builds each entity in its own focused "
+        "step (rich attributes; major entities get a deep multi-section profile), files them as "
+        "review drafts, then projects them into the graph and proposes their relationships. "
+        "Ops: 'start' (needs source_text + model_ref — returns the proposed worklist for the "
+        "user to approve), 'approve_plan' (the user approved — begins building; pass a trimmed "
+        "worklist if they cut items), 'status' (poll progress: per-item built/skipped), "
+        "'project_kg' (after the user reviews the drafts), 'approve_edges' (the user approved "
+        "the relationships — writes them), 'cancel'. Always show the user the worklist before "
+        "approving it, and report per-item results honestly (some items may be skipped)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=[
+            "build my world", "set up the glossary", "create the cast",
+            "build the knowledge graph", "world building", "glossary build",
+            "add all the characters", "extract the cast from my story",
+        ],
+        ambient_book=True,
+        tool_name="composition_glossary_build",
+    ),
+)
+async def composition_glossary_build(ctx: MCPContext, args: _GlossaryBuildArgs) -> dict:
+    tc = _ctx(ctx)
+    from app.deps import get_glossary_build_service
+    from app.services.glossary_build.service import GlossaryBuildError
+
+    svc = await get_glossary_build_service()
+    owner = UUID(str(tc.user_id))
+
+    def _need(field: str, value: Any) -> Any:
+        if not value:
+            raise ValueError(f"{field} is required for op={args.op}")
+        return value
+
+    try:
+        if args.op == "start":
+            bid = _resolve_bid(tc, args.book_id)
+            await _gate(tc, bid, GrantLevel.EDIT)
+            run = await svc.create_run(owner=owner, book_id=bid, params={
+                "model_source": args.model_source,
+                "model_ref": _need("model_ref", args.model_ref),
+                "source_text": _need("source_text", args.source_text),
+                "lang": args.lang, "max_items": args.max_items,
+            })
+            planned = await svc.plan(run["run_id"], owner)
+            return {
+                "run_id": str(planned["run_id"]), "status": planned["status"],
+                "worklist": planned.get("worklist") or [],
+                "next": "Show the user this worklist; call op=approve_plan when they agree.",
+            }
+
+        run_id = UUID(str(_need("run_id", args.run_id)))
+        current = await svc.get(run_id, owner)
+        await _gate(tc, current["book_id"],
+                   GrantLevel.VIEW if args.op == "status" else GrantLevel.EDIT)
+
+        if args.op == "status":
+            return {
+                "run_id": str(run_id), "status": current["status"],
+                "items": [{"name": i["name"], "kind": i["kind"], "depth": i["depth"],
+                           "status": i["status"], "skip_reason": i.get("skip_reason")}
+                          for i in current.get("items", [])],
+                "edges": current.get("edges") or [],
+                "error_message": current.get("error_message"),
+            }
+        if args.op == "approve_plan":
+            out = await svc.approve_plan(run_id, owner, worklist=args.worklist)
+            return {"run_id": str(run_id), "status": out["status"],
+                    "next": "Building has started — poll op=status."}
+        if args.op == "cancel":
+            out = await svc.cancel(run_id, owner)
+            return {"run_id": str(run_id), "status": out["status"]}
+
+        # KG ops need a user bearer for the knowledge-service JWT routes; mint the
+        # short-lived service bearer for the ENVELOPE user (same pattern the draft
+        # routes use from the MCP path).
+        bearer = mint_service_bearer(owner, settings.jwt_secret)
+        if args.op == "project_kg":
+            out = await svc.project_kg(run_id, owner, bearer)
+            return {"run_id": str(run_id), "status": out["status"],
+                    "edges": out.get("edges") or [],
+                    "next": "Show the user these relationships; call op=approve_edges to write them."}
+        out = await svc.approve_edges(run_id, owner, bearer, edges=args.edges)
+        return {"run_id": str(run_id), "status": out["status"],
+                "edges_applied": (out.get("params") or {}).get("edges_applied"),
+                "edges_failed": (out.get("params") or {}).get("edges_failed")}
+    except GlossaryBuildError as exc:
+        # Honest failure surface: the FSM's code+message reach the model (never a
+        # silent success) so it can tell the user exactly what is blocked.
+        raise ValueError(f"{exc.code}: {exc.message}") from exc
+
+
 # ── ASGI factory ──────────────────────────────────────────────────────────────
 
 
