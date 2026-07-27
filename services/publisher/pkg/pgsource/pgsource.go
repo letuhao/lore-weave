@@ -56,7 +56,8 @@ func New(pools map[string]*pgxpool.Pool, policy retry.Policy) (*Source, error) {
 const selectPendingSQL = `
 SELECT o.event_id::text, o.reality_id::text, o.attempts,
        e.event_type, e.event_version, e.aggregate_type, e.aggregate_id,
-       e.aggregate_version, e.occurred_at, e.recorded_at, e.payload, e.metadata
+       e.aggregate_version, e.occurred_at, e.recorded_at, e.payload, e.metadata,
+       e.channel_id, e.channel_event_id, e.writer_epoch
 FROM events_outbox o
 JOIN events e ON e.event_id = o.event_id
 WHERE o.published = FALSE
@@ -112,6 +113,7 @@ func scanRows(rows pgx.Rows) ([]types.OutboxRow, error) {
 			&eventIDStr, &realityIDStr, &attempts,
 			&eventType, &eventVersion, &aggType, &aggID,
 			&aggVersion, &r.OccurredAt, &r.RecordedAt, &payloadRaw, &metadataRaw,
+			&r.ChannelID, &r.ChannelEventID, &r.WriterEpoch,
 		); err != nil {
 			return nil, err
 		}

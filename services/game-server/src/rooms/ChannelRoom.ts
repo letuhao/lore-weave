@@ -17,12 +17,44 @@ import { log } from '../log.js';
 // this proves the committed-event → client-DTO path end to end.
 
 export interface ChannelRoomOptions {
-  /** Per-reality committed-event stream, e.g. `reality:<uuid>:events`. */
-  stream: string;
+  /** The reality whose committed-event stream this room projects. */
+  realityId: string;
   redisUrl: string;
   /** Start cursor: '$' = only new, '0' = replay everything retained. */
   from?: string;
   pollBlockMs?: number;
+}
+
+/**
+ * The per-reality stream the platform publisher XADDs to
+ * (`services/publisher/pkg/redisemit`: `lw.events.<reality_id>`). Kept as a
+ * function, not a caller-supplied string, so a consumer cannot quietly point
+ * at a stream nobody writes — that exact drift is how a room would sit silent
+ * forever with no error to show for it.
+ */
+export function streamFor(realityId: string): string {
+  return `lw.events.${realityId}`;
+}
+
+/**
+ * Parse the publisher's envelope: FLAT Redis stream fields, with `payload` and
+ * `metadata` carried as JSON strings and the channel-ordering ids as decimal
+ * strings (CWC-A2). This mirrors `redisemit.envelopeFields` — the two are
+ * joined only by the wire, so the shape lives in one named function rather
+ * than inline, and its test feeds it a byte-for-byte real entry.
+ */
+export function parseEnvelope(fields: string[]): CommittedEvent {
+  const bag: Record<string, string> = {};
+  for (let i = 0; i + 1 < fields.length; i += 2) bag[fields[i]] = fields[i + 1];
+  if (!bag.event_type) throw new Error('envelope has no event_type');
+  const json = (raw: string | undefined): Record<string, unknown> | undefined =>
+    raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+  return {
+    event_type: bag.event_type,
+    channel_event_id: bag.channel_event_id,
+    payload: json(bag.payload),
+    metadata: json(bag.metadata),
+  };
 }
 
 /**
@@ -52,14 +84,9 @@ export async function consumeOnce(
   for (const [, entries] of res) {
     for (const [id, fields] of entries) {
       last = id;
-      // Flat field list → object (the platform publisher's XADD shape).
-      const bag: Record<string, string> = {};
-      for (let i = 0; i + 1 < fields.length; i += 2) bag[fields[i]] = fields[i + 1];
-      const raw = bag.event ?? bag.payload;
-      if (!raw) continue;
       let ev: CommittedEvent;
       try {
-        ev = JSON.parse(raw) as CommittedEvent;
+        ev = parseEnvelope(fields);
       } catch (err) {
         // A malformed entry is recorded and SKIPPED, never fatal: one bad
         // entry must not stall a channel's whole projection (EVT-L5 forbids
@@ -83,8 +110,9 @@ export class ChannelRoom extends Room {
     this.cursor = options.from ?? '$';
     this.redis = new Redis(options.redisUrl);
     this.running = true;
-    void this.pump(options.stream, options.pollBlockMs ?? 2000);
-    log.info('channel-room: consuming', { stream: options.stream, from: this.cursor });
+    const stream = streamFor(options.realityId);
+    void this.pump(stream, options.pollBlockMs ?? 2000);
+    log.info('channel-room: consuming', { stream, from: this.cursor });
   }
 
   private async pump(stream: string, blockMs: number): Promise<void> {

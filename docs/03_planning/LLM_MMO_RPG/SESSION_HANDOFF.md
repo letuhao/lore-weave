@@ -156,10 +156,35 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > (same tx) → drain → Redis stream → TS consumer → DTO. Frames came out
 > `ce3 resolved turn 1` · `ce4 rejected turn **1**` · `ce5 resolved turn 2` — **EVT-V4's turn
 > law survives all six layers to the client frame.**
-> **NEXT:** minimal browser client against W0/W1 (the last unbuilt layer) → real `publisher`
-> wiring for a game reality (ops: registry row + DSN) → turn SUBMISSION path (client →
-> `TurnSubmit` → bus, closing the loop) → S4b real-IPC → CP lease issuance → boundary batch
-> incl. CWC + game-wire DTO registration.
+> ✅ **REAL PUB/SUB — the mock is DELETED (15:3x–16:0x, PO: "làm pub/sub thật bây giờ luôn,
+> tránh mockup sau quên lại thành bug"). The instinct was right and it paid immediately: doing
+> it for real surfaced THREE live drifts the stand-in was hiding.**
+> **(1) Stream key.** The dev drain invented `reality:<uuid>:events`; the platform publisher
+> writes `lw.events.<reality_id>` (`redisemit.StreamFor`). A consumer on the wrong key receives
+> nothing, forever, with **no error to show for it** — the worst failure shape there is.
+> **(2) Envelope shape.** The publisher emits **FLAT** stream fields (payload/metadata as JSON
+> strings), not the single `event` blob the drain emitted. **(3) `turn_number` was a JSON
+> NUMBER** in the spine's metadata — a CWC-A2 violation *by the producer of the rule*, latent
+> until a turn count passes 2^53 or a stricter consumer refuses it.
+> **Fixes:** `services/publisher` made channel-aware — `types.OutboxRow` +
+> `Channel{ID,EventID}`/`WriterEpoch`, `pgsource` selects+scans them, `redisemit` emits them as
+> **decimal strings**; spine emits `turn_number` as a string; `ChannelRoom` binds via
+> `streamFor()` (a function, not a caller-supplied string, so a room cannot silently point at a
+> stream nobody writes) + `parseEnvelope()` pinned by tests using a **byte-for-byte captured**
+> Redis entry. **`outbox-drain` deleted.** 51/51 game-server, 26/26 commit-service.
+> **FULL REAL PATH LIVE:** LLM decision → admission → island → epoch-fenced commit → outbox
+> (same tx) → **real Go publisher** → `lw.events.*` → TS consumer → DTO. Frames:
+> `ce7 resolved turn 1` · `ce8 rejected turn **1**` · `ce9 resolved turn 2`.
+> Ops setup used (reproducible): meta DB + `001_reality_registry`/`003_publisher_heartbeats`,
+> one `reality_registry` row (`db_host` must match the `pg-shard-N.(internal|prod|staging)`
+> CHECK; map it with `PUBLISHER_SHARD_HOST_OVERRIDE=pg-shard-1.internal=localhost:5555`).
+> ⚠ **Pre-existing, NOT touched:** `services/publisher/go.mod` fails `-mod=readonly` builds
+> locally (two indirect deps — `x/sync`, `x/text` — resolve newer than pinned). Identical on
+> HEAD without any of this work; deliberately not bumped inside a feature commit. Needs its own
+> decision: re-pin or tidy.
+> **NEXT:** minimal browser client against W0/W1 (the last unbuilt layer) → turn SUBMISSION path
+> (client → `TurnSubmit` → bus, closing the loop) → S4b real-IPC → CP lease issuance → boundary
+> batch incl. CWC + game-wire DTO registration.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

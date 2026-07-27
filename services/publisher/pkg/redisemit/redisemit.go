@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -81,6 +82,20 @@ func envelopeFields(row types.OutboxRow) map[string]any {
 	}
 	if row.Metadata != nil {
 		f["metadata"] = row.Metadata
+	}
+	// Channel ordering (DP-Ch11). Emitted as DECIMAL STRINGS, deliberately:
+	// these are BIGINT server-side, and the browser client consuming this
+	// stream loses precision past 2^53 on a JSON number (CWC-A2, doc 20 §2).
+	// Absent (not empty) when the event is reality-scoped rather than
+	// channel-scoped, so a consumer can tell "no channel" from "channel 0".
+	if row.ChannelID != nil {
+		f["channel_id"] = strconv.FormatInt(*row.ChannelID, 10)
+	}
+	if row.ChannelEventID != nil {
+		f["channel_event_id"] = strconv.FormatInt(*row.ChannelEventID, 10)
+	}
+	if row.WriterEpoch != nil {
+		f["writer_epoch"] = strconv.FormatInt(*row.WriterEpoch, 10)
 	}
 	return f
 }

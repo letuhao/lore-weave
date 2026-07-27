@@ -192,7 +192,10 @@ async fn main() -> anyhow::Result<()> {
                         }),
                         metadata: Some(serde_json::json!({
                             "event_category": "T6",
-                            "turn_number": turn_number, // NOT advanced
+                            // CWC-A2 — u64 leaves as a decimal STRING (the
+                            // browser consuming this via the publisher loses
+                            // precision on a JSON number past 2^53).
+                            "turn_number": turn_number.to_string(), // NOT advanced
                         })),
                     };
                     let appended = writer.append(&env, &serde_json::json!([])).await?;
@@ -246,7 +249,8 @@ async fn main() -> anyhow::Result<()> {
                             "event_category": "T6",
                             "input_id": input_id.0.to_string(),
                             "admission_notrun_stages": notrun,
-                            "turn_number": turn_number,
+                            // CWC-A2 — decimal string, never a number.
+                            "turn_number": turn_number.to_string(),
                         })),
                     };
                     let appended = writer.append(&env, &serde_json::json!([])).await?;

@@ -13,12 +13,12 @@ import (
 // needed to assemble the wire message. Populated by the poll loop's
 // SELECT-with-join against the per-reality DB.
 type OutboxRow struct {
-	EventID          uuid.UUID
-	RealityID        uuid.UUID
-	Attempts         int
-	EnqueuedAt       time.Time
-	LastAttemptAt    time.Time
-	DeadLetteredAt   time.Time
+	EventID        uuid.UUID
+	RealityID      uuid.UUID
+	Attempts       int
+	EnqueuedAt     time.Time
+	LastAttemptAt  time.Time
+	DeadLetteredAt time.Time
 	// Envelope fields (populated by JOIN events for the wire push).
 	EventType        string
 	EventVersion     int
@@ -29,6 +29,14 @@ type OutboxRow struct {
 	RecordedAt       time.Time
 	Payload          map[string]any
 	Metadata         map[string]any
+	// Channel ordering (DP-Ch11, migration 0014 — added 2026-07-27 with the
+	// commit-service spine). NULL for reality-scoped events; set for every
+	// channel-scoped one. `channel_event_id` is the client's ordering key and
+	// the DP-Ch18 resume cursor, so it MUST reach the wire — without it a room
+	// projection has no way to order or resume a channel.
+	ChannelID      *int64
+	ChannelEventID *int64
+	WriterEpoch    *int64
 }
 
 // CrossReality reports whether the event's metadata carries the

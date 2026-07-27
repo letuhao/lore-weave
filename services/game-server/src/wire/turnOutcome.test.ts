@@ -128,3 +128,46 @@ test('the consumer never recomputes turn_number — it reads the commit', () => 
   const b = projectTurnOutcome(committed('proposal.rejected', '4', '1', {}))!;
   assert.deepEqual(a, b);
 });
+
+// ── the REAL publisher envelope (regression for a drift that was live) ──
+//
+// A dev stand-in drain briefly emitted a single `event` JSON blob on a
+// hand-invented stream key. The platform publisher
+// (services/publisher/pkg/redisemit) emits FLAT fields on
+// `lw.events.<reality_id>`. Both differences were silent: a consumer reading
+// the wrong shape on the wrong key simply receives nothing, forever, with no
+// error. These two tests pin the real shape using a byte-for-byte entry
+// captured from Redis on 2026-07-27.
+
+test('parseEnvelope reads the platform publisher shape', async () => {
+  const { parseEnvelope, streamFor } = await import('../rooms/ChannelRoom.js');
+  assert.equal(
+    streamFor('7e57ab1e-0000-4000-8000-c0a7501d0001'),
+    'lw.events.7e57ab1e-0000-4000-8000-c0a7501d0001',
+    'stream key must match redisemit.StreamFor — a mismatch is silent starvation',
+  );
+  // Captured verbatim from XRANGE (flat field list, payload/metadata as JSON
+  // strings, channel ids as DECIMAL STRINGS per CWC-A2).
+  const fields = [
+    'metadata', '{"event_category":"T6","turn_number":"1"}',
+    'reality_id', '7e57ab1e-0000-4000-8000-c0a7501d0001',
+    'channel_event_id', '6',
+    'writer_epoch', '4',
+    'payload', '{"island_seq":0,"outcome":"Applied"}',
+    'channel_id', '1',
+    'event_type', 'turn.resolved',
+    'aggregate_version', '1',
+  ];
+  const ev = parseEnvelope(fields);
+  assert.equal(ev.event_type, 'turn.resolved');
+  assert.equal(ev.channel_event_id, '6');
+  const outcome = projectTurnOutcome(ev)!;
+  assert.equal(outcome.kind, 'resolved');
+  assert.equal(outcome.channel_event_id, '6');
+  assert.equal(outcome.turn_number, '1');
+});
+
+test('an envelope with no event_type is rejected, not silently projected', async () => {
+  const { parseEnvelope } = await import('../rooms/ChannelRoom.js');
+  assert.throws(() => parseEnvelope(['reality_id', 'x']), /no event_type/);
+});
