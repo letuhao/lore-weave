@@ -227,7 +227,26 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > stream/protocol layer, below Colyseus), so this is **latent, not broken** — but it must be
 > settled before the first real browser↔room connection, or it becomes exactly the kind of
 > "worked in tests, dead live" bug the mock-deletion just cleared.
-> **NEXT:** resolve the colyseus skew → wire `ChannelRoom` to the browser for a real
+> 🔴 **COLYSEUS SKEW — DIAGNOSED LIVE, FIX BLOCKED ON A PO DECISION (16:28).** The skew is REAL
+> and worse than "client behind server": **there is no 0.17 browser client.** `colyseus.js`
+> latest = **0.16.22**; server `colyseus` latest = 0.17.10. They are on different tracks and the
+> ecosystem's aligned pair is **server 0.16.5 + client 0.16.22** — this repo jumped the server to
+> 0.17 ahead of any client. Root cause: server 0.17 requires `@colyseus/schema ^4`, the client
+> ships `^3` — a serializer MAJOR break. **Proven live, both sides:** a 0.16.22 client
+> `joinOrCreate` against the running 0.17.10 server fails client-side
+> (`Cannot read properties of undefined (reading 'name')`) while the SERVER log shows no error at
+> all — it created the room; the client could not parse the response. So the browser cannot
+> connect today, at all. Downgrading is not a one-liner: npm refuses it on peer conflicts
+> (`@colyseus/ws-transport@^0.17.13`), and **24 call sites across 5 files** use 0.17-only APIs
+> (`AuthContext`, `CloseCode`, `Room<{state,client}>`) — concentrated in the **WS auth / PRR-20
+> edge-control** path and its tests. Options: **(a)** downgrade server → 0.16.5 (+ws-transport),
+> partially reverting a documented deliberate migration, ~24 mechanical sites, 49 tests as the
+> net; **(b)** stay on 0.17 and wait for an upstream client — browser blocked indefinitely;
+> **(c)** carry the channel lane on a RAW WS endpoint (our protocol is plain JSON `send`/
+> `broadcast`; **no Colyseus Schema state is used anywhere**), which sidesteps the coupling but
+> touches REC-71's "Colyseus carries the game". Recommendation: **(a)**. Working tree left clean
+> (package.json restored, probe server stopped).
+> **NEXT:** decide (a)/(b)/(c) → wire `ChannelRoom` to the browser for a real
 > click-to-turn (the first true browser↔server loop) → movement lane (Class A / RTM frames) →
 > S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO registration →
 > `publisher/go.mod` re-pin decision (still open).
