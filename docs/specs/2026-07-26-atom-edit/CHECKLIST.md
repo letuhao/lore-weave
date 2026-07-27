@@ -249,6 +249,32 @@ observation. A claim that a check passed, without its output, does **not** tick 
       ⚠️ **NOT FIXED HERE** — `QualityHealPanel.tsx` is the concurrent session's quality surface.
       Logged with evidence; coordinate before touching. Error blocks don't depend on the fix, only
       on not repeating it.
+- [x] **D2d** ✅ **DESIGN REVIEW (phase 3) — 12 edge cases swept and resolved, one section reversed.**
+      🔴 **Reversal: §9's `propose_from_findings` refactor is WITHDRAWN.** Two independent reasons:
+      (a) `self_heal.py` is the concurrent session's **most active file** (6 recent commits, one
+      literally `fix(compose-quality)`) — refactoring it is the highest-conflict edit available, and
+      **this corrects the "D3a–D3c are safe backend work" claim** made when the design was presented;
+      (b) reading `self_heal.py:440-513`, the human path must SKIP nearly all of it — judge,
+      `locate_span` (pre-located), **`_snap_to_sentence` (would silently widen the author's
+      deliberate span!)**, verify-vote, re-ranker, dup-word merge, re-judge. What remains is ~25
+      lines. ⇒ new `engine/error_block_heal.py` **composing** public primitives; **no existing engine
+      file is touched.** Cheaper, lower-risk, and honest that the two paths differ.
+      **Edge cases resolved (E1-E12):** 🔴 **E1 ambiguous re-anchor** — `locate_span` returns the
+      FIRST match, so a drifted mark on the 3rd "Nàng gật đầu." lands the fix on the 1st (silently
+      wrong prose) ⇒ nearest-to-stored-offset wrapper, tie ⇒ orphan, never guess · **E2** overlapping
+      marks MERGE (self-heal's silent drop is unacceptable for human input) · 🔴 **E3** a missing
+      `_text` changes the whole flattened string ⇒ **every offset shifts at once** (F11 creates
+      exactly this) ⇒ new `source_fingerprint` column; mismatch ⇒ distrust offsets, re-anchor by
+      quote · **E4** cap at the existing `SELECTION_MAX_CHARS` · **E5** partial-unique dedup index ·
+      **E6** hand-fixed prose ⇒ orphan + ask, never auto-resolve · **E7** unanchorable quote ⇒
+      reject, no silent no-op · **E8** capped list + true `open_count` · **E9** cross-DB orphan rows
+      = tracked debt, not a blocker · **E10** marking needs **EDIT** grant · **E11** degraded
+      grounding must be SAID ("fixed without canon grounding") · **E12** every skip reported.
+      **Scope cuts:** `op="create"` (agent self-marking) cut as speculative; `op="list"` ships first.
+      **Slices re-ordered so D3a/D3b/D3c touch ZERO contested files**, and **D3f (the live gate) now
+      precedes D3e** — the feature is provable end-to-end on the editor surface alone, so the
+      draft-arm accept-migration (the hardest piece, serving the less-used surface) is explicitly
+      **optional and last**.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
       author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
       co-writer round trip) is the gate** — this track already proved a green suite can vouch for
@@ -436,6 +462,8 @@ into its commit — 1757 insertions filed under the message
 | 2026-07-26 | `plan_compile` MCP arg was written before `op=list` existed, i.e. an argument the agent had no way to populate. Caught only by asking "how would the co-writer actually get this id?" — the affordance question, not the code question. |
 | 2026-07-26 | Reached for `force=true` to shortcut the C4 chain. It was silently ignored and the pass refused — which is the design (the bypass is withheld from agents *by absence*). Had it been exposed, I would have skipped the two human checkpoints to save ~8 minutes and called the result an end-to-end proof, when it would have proven nothing about the gate. The honest chain took 4 passes and a seed apply. |
 | 2026-07-26 | **The big one.** I reported "5 of 6 atoms GUI-editable" on the strength of 1596 green unit tests. The first real browser pass showed FOUR of those editors had no door to open them — advisory passes never render the review CTA. The claim was true of the components and false of the product. I had even written the `scene_plan` editor and its 9 tests without ever checking that a user could reach it. Every editor test renders `CheckpointReview` directly, so the gate was never in the test path. Lesson, again: "the tests pass" is not "the feature works" — and I was one turn away from calling atom edit DONE. |
+| 2026-07-27 | **Told the human that D3a–D3c were safe backend work, then found `self_heal.py` is the concurrent session's single most active file** — six recent commits, one named `fix(compose-quality)`. I had checked file ownership for the *FE* surfaces (D3d/D3e) and simply assumed the backend was uncontested, because "backend" felt like my territory. The coordination hazard is documented at the bottom of the design and I still reasoned past it. The fix turned out to be strictly better anyway (a composing module beats the refactor), which is the uncomfortable part: the right answer was reachable without the near-miss, and I only looked because REVIEW forced a second pass. |
+| 2026-07-27 | **Nearly shipped a design whose re-anchor silently corrupts prose (E1).** `locate_span` returns the FIRST match. I had already read that function, quoted it in the design as the re-anchoring solution, and never asked what happens when the quoted sentence appears twice — which, in fiction, short lines constantly do. A drifted mark on the third "She nodded." would have sent the co-writer's fix to the first one, and *nothing* would have reported an error: the block resolves, the prose changes, the wrong paragraph is edited. Reusing a primitive means inheriting its preconditions, not just its behaviour. |
 | 2026-07-27 | **Wrote a whole data model on an assumed scope key.** The Phase D design specified `owner_user_id` as the tenancy column — reasonable-sounding, and wrong: composition scopes by `book_id`, and `created_by` is an actor stamp *explicitly never filtered on*. Three sibling tables say so identically. Had I gone to BUILD on the design as written, the migration would have shipped a column that no query could correctly use, and the tenancy filter would have been silently wrong — the exact defect class the User Boundaries rule exists to prevent. Caught only because "clear the gaps" meant *reading the sibling tables* instead of trusting the design I had just written. **A design is a hypothesis; the schema is the fact.** |
 | 2026-07-27 | Nearly reported F11 (Polish drops `_text`) after reading only the FE converter. Two more checks were needed before it was a claim rather than a guess: that book-service stores a `json` body verbatim (it does — `normalizeBodyToTiptap` passes through), and that the *normal* editor save doesn't have the same hole (it doesn't — `addTextSnapshots`). Had either gone the other way the finding would have been noise. Negative-result rigour, again. |
 | 2026-07-26 | Sweeping for more `auto`-sentinel filters, I found `arc_template_repo`'s language clause and nearly reported it as a second instance. It takes an explicit query param defaulting to `None` (which skips the clause), not the book profile's `"auto"` — verified the callers before claiming. Negative results need the same rigour as positive ones. |

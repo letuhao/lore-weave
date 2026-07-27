@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS chapter_error_block (
   start_offset   INT  NOT NULL,     -- Unicode CODE POINTS over tiptap_doc_to_text(), see R5
   end_offset     INT  NOT NULL,
   quote          TEXT NOT NULL,     -- verbatim marked text: drift guard + re-locate key
+  source_fingerprint TEXT NOT NULL, -- hash of the flattened text the offsets were computed over.
+                                    -- Mismatch ⇒ distrust offsets, re-anchor by quote (E3).
   -- the finding --
   source         TEXT NOT NULL DEFAULT 'human'
                  CHECK (source IN ('human','judge','critic','canon')),      -- §11c
@@ -102,6 +104,10 @@ CREATE TABLE IF NOT EXISTS chapter_error_block (
 CREATE INDEX IF NOT EXISTS idx_ceb_chapter ON chapter_error_block(project_id, chapter_id, status)
   WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_ceb_book ON chapter_error_block(book_id);
+-- E5: kill accidental duplicate marks without forbidding two DISTINCT notes on one span.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ceb_dedup
+  ON chapter_error_block(project_id, chapter_id, start_offset, end_offset, md5(note))
+  WHERE status = 'open' AND NOT is_archived;
 ```
 
 ⚠️ `book_id` is the scope key — **not** `owner_user_id`, which an earlier draft of this design
@@ -188,10 +194,12 @@ four tools, per the standing "don't make a new tool if the current tool can work
 ```
 composition_error_block_edit(op=…)
   op="list"     → the author's open blocks for a chapter   ← READ; the affordance gate
-  op="create"   → the agent marks a block it noticed        ← confirm-gated
   op="resolve"  → close, with the proposal that fixed it    ← confirm-gated
   op="dismiss"  → close as won't-fix                        ← confirm-gated
 ```
+
+*(`op="create"` — the agent marking its own blocks — was **cut at REVIEW** as speculative scope;
+§11d. The `source` column already admits it later without a migration.)*
 
 **`op="list"` is not optional.** A write-only tool family is the exact bug E3 found in
 `composition_structure_template_edit`: five write ops and no read, so the agent could never
@@ -205,22 +213,32 @@ discover an id to write to. Ship the read in the same commit as the writes.
 Gap 3 (no MCP self-heal at all) is closed as a side effect: the human-findings entry point is
 reachable by the agent, and exposing the judge path through the same tool is then a one-line op.
 
-## 9 · Engine seam (the only engine change)
+## 9 · Engine change — ~~a shared seam~~ **a new composing module**
 
-Factor steps 2–4 out of the self-heal orchestrator so both entry points share them:
+> ⚠️ **SUPERSEDED at REVIEW (§11d).** The original plan — factor `propose_from_findings` out of
+> the self-heal orchestrator so both paths share it — is **withdrawn**. `self_heal.py` is the
+> concurrent session's most active file, and the human path wants almost none of that pipeline
+> (notably it must *not* run `_snap_to_sentence`, which would silently widen the author's
+> deliberate span). Kept here rather than deleted, so the reversal is visible.
+
+**New module `engine/error_block_heal.py`. No existing engine file is modified.** It composes
+public primitives already exported by `cowrite.py` / `self_heal.py`:
 
 ```python
-async def propose_from_findings(
-    findings: list[Finding], text: str, profile: BookProfile, llm: LLMClient,
-    *, grounding: str = "", **kw,
-) -> list[EditProposal]: ...
+async def propose_for_blocks(
+    blocks: list[ErrorBlock], text: str, profile: BookProfile, llm: LLMClient,
+    *, grounding: str = "", grounded: bool = True,
+) -> tuple[list[EditProposal], list[SkippedBlock]]:
+    # per block: re-anchor (E1/E3) → build_selection_messages(guide=note, grounding=…)
+    #            → LLM → length guard → EditProposal ; every skip is REPORTED (E12)
 ```
 
-- judge path becomes `judge(...) → propose_from_findings(...)` — **no behavior change**, so the
-  existing self-heal tests remain the regression net for the refactor.
-- human path is `blocks → [Finding(span=quote, issue=note, fix=desired)] → propose_from_findings(...)`,
-  and `located` is pre-filled from the stored offsets, so the fuzzy step is skipped when they still
-  validate.
+Reused as-is: `build_selection_messages` (the `guide=` / `grounding=` slots), `EditProposal`,
+`locate_span` (wrapped, never edited), and the rightmost-first `applySelfHealEdits` splice.
+
+Deliberately **not** reused: the judge, `_snap_to_sentence`, verify-vote, the re-ranker, the
+mechanical dup-word merge, the re-judge. A human finding is already located, already deliberate,
+and already verified — by the author.
 
 ## 10 · Invariants this design must not break
 
@@ -317,18 +335,81 @@ Adding the column later would mean a migration plus a backfill plus an MCP contr
 it now is one word. **Do not, however, populate the machine sources in Phase D** — that is a
 separate effort with its own dedup and volume questions.
 
+## 11d · DESIGN REVIEW (phase 3, 2026-07-27) — self-review + edge-case sweep
+
+### 🔴 Reversal: do NOT refactor `self_heal.py` (§9 is withdrawn)
+
+§9 proposed factoring `propose_from_findings` out of the self-heal orchestrator. **Withdrawn**, for
+two independent reasons that both point the same way:
+
+1. **`self_heal.py` is the concurrent session's most active file** — `04cb0840d fix(compose-quality)`,
+   `b4aecf402`, `572379b1c`, `a39a58a31`, `b3565c851`, `40545a7f2`, all self-heal. Refactoring it is
+   the highest-conflict edit available. *(This also corrects a claim made when the design was
+   presented: D3b was described as safe backend work. It was not.)*
+2. **The human path genuinely doesn't want most of the pipeline.** Reading the orchestrator
+   (`self_heal.py:440-513`), a human finding must skip: the judge, `locate_span` (already located),
+   **`_snap_to_sentence`** (it would silently widen the author's deliberate span!), the verify-vote,
+   the re-ranker, the mechanical dup-word merge, and the re-judge. What remains is: per block →
+   `build_selection_messages` → LLM → length guard → `EditProposal`. **~25 lines.**
+
+**Decision:** new module `engine/error_block_heal.py` that *composes* the existing public
+primitives (`build_selection_messages`, `EditProposal`, `locate_span`) and **touches no existing
+engine file.** Cheaper than the refactor, lower risk, and honest about the two paths being
+different rather than forcing a shared abstraction over them.
+
+### Edge cases — swept and RESOLVED
+
+| # | Edge case | Resolution |
+|---|---|---|
+| **E1** | 🔴 **Ambiguous re-anchor.** `locate_span` returns the **first** match (`text.index`). Author marks the 3rd "Nàng gật đầu."; prose drifts; the fix lands on the **1st**. Silently wrong prose — the worst failure mode here. | Re-anchor with a **nearest-to-hint** wrapper in the new module: enumerate all candidates, pick `min(abs(start − stored_offset))`. If two candidates are within a tie threshold ⇒ **orphan, don't guess.** Never modify `locate_span` (contested file). |
+| **E2** | Two open blocks **overlap**. Self-heal silently drops the later one (`skip_reason="overlap"`). | For human marks, silently dropping is unacceptable. **Merge** overlapping open blocks into ONE finding over the span union with both notes concatenated — that is what an author marking a passage twice actually means. |
+| **E3** | 🔴 **Offsets drift wholesale when `_text` is missing.** `tiptap_doc_to_text` reads `_text` per block and *falls back* to concatenating runs — a different string ⇒ **every stored offset shifts at once.** F11 (§11b) creates exactly this state. | Store `source_fingerprint` (hash of the flattened text the offsets were computed over). On read, fingerprint mismatch ⇒ **distrust offsets, re-anchor by `quote`** (via E1's wrapper). Catches the whole class, including F11 fallout, for one column. |
+| **E4** | Author marks a huge span (or the whole chapter) — the satellite edit's surgical premise collapses. | Cap `quote` at the existing `SELECTION_MAX_CHARS` (8000, `cowrite.py:166`); FE disables **Mark** above it; server 422s a bypass. Reuse the constant, don't invent a second limit. |
+| **E5** | Double-click / two devices ⇒ duplicate identical marks. | `UNIQUE` partial index on `(project_id, chapter_id, start_offset, end_offset, md5(note)) WHERE status='open' AND NOT is_archived`. Kills accidental twins; still allows two *distinct* notes on one span. |
+| **E6** | Author fixes the prose **by hand**; the block's quote no longer exists. | ⇒ `orphaned`, surfaced as *"the text you marked is gone — did you fix it?"* with one-click Resolve/Dismiss. **Never auto-resolve** — we cannot know whether it was fixed or deleted. |
+| **E7** | Agent calls `op="create"` with a quote absent from the chapter. | **Reject** with `result.error` naming the reason. An unanchored block is a silent no-op — forbidden. |
+| **E8** | `op="list"` on a chapter with hundreds of blocks. | Cap the list and return a true `open_count` alongside it — the `listNarrativeThreads` precedent (capped list + uncapped count). |
+| **E9** | Chapter or book deleted. `chapter_id` has **no cross-DB FK** (house convention: validated in app code). | Reads are chapter-scoped, so orphan rows are invisible — no correctness bug. Physical cleanup on a `chapter.deleted` event is **tracked debt**, not a D3 blocker. |
+| **E10** | A VIEW-grant collaborator marks a block. | Marking is authoring input that drives prose changes ⇒ requires **EDIT** tier, matching `pack()`'s `authorize_book` (read-pack=VIEW, prose-gen=EDIT). Reading blocks = VIEW. |
+| **E11** | knowledge-service down ⇒ `pack()` degrades to empty grounding (the C16 path) and the fix is produced **ungrounded but looks identical**. | Proposal carries `grounded: bool` + reason; the card says *"fixed without canon grounding"*. A degrade-safe guard must surface "unverified". |
+| **E12** | The satellite edit fails or runs away in length. | `skip_reason` (`edit_failed`/`edit_expanded`) already exists — **surface it per block**. Returning fewer proposals with no explanation is a silent no-op. |
+
+Two new columns fall out: `source_fingerprint TEXT NOT NULL` (E3) and the E5 unique index.
+
+### Scope cuts (YAGNI)
+
+- **Cut `op="create"` from D3.** The sealed need is *human marks → agent fixes*. An agent that
+  marks its own blocks is a second feature with its own dedup questions, and it shrinks the
+  confirm-gating surface to `resolve`/`dismiss`. Add later if wanted — `source` already allows it.
+- **`op="list"` ships first and alone if needed.** It is the affordance gate (E3 lesson) and is
+  independently useful.
+
+### Honest weaknesses left standing
+
+- **The `draft_job` arm carries most of the complexity for the least-proven half.** The accept-migration
+  path (re-anchor every block onto the chapter) is the single hardest piece of the design and serves
+  the surface the author uses *less*. **D3e is therefore explicitly optional to prove the feature** —
+  D3d alone closes the loop end to end. Build it second, and only after D3d's live proof.
+- **CJK re-anchoring stays degraded** (§5). E1's nearest-hint wrapper helps ordering but not
+  matching; a CJK block whose surroundings changed still orphans. Accepted, recorded, not hidden.
+- **The code-point ↔ UTF-16 offset mismatch is inherited**, not fixed. The `quote` guard makes it
+  fail safe rather than corrupt.
+
 ## 12 · Build slices (D3)
 
-| slice | content | proof required |
-|---|---|---|
-| **D3a** | migration + repo + closed-set enums | live DB row, scoped query |
-| **D3b** | `propose_from_findings` seam | self-heal suite still green (unchanged behavior) |
-| **D3c** | `composition_error_block_edit` (list first, then writes) | live MCP call, real book |
-| **D3d** | editor surface: SelectionToolbar → mark → Decoration render | **browser** — mark, reload, still there |
-| **D3e** | Draft Review surface + accept migration | **browser** — mark on draft, accept, block re-anchors |
-| **D3f** | co-writer round trip | **live**: mark → agent lists → proposes grounded fix → apply → DB shows new prose |
+Revised at REVIEW: no slice touches a file the concurrent session owns.
 
-**D3f is the gate.** Per this track's own drift log, four editors passed 1596 unit tests with no
+| slice | content | conflict risk | proof required |
+|---|---|---|---|
+| **D3a** | migration + repo + closed-set enums + `source_fingerprint` + E5 unique index | **none** (new table) | live DB row; scoped query proves `book_id` filtering |
+| **D3b** | `engine/error_block_heal.py` — re-anchor wrapper (E1) + `propose_for_blocks` | **none** (new file) | unit: nearest-hint beats first-match; overlap merge (E2); fingerprint mismatch re-anchors (E3) |
+| **D3c** | `composition_error_block_edit` — **`op="list"` first**, then `resolve`/`dismiss` | **none** (new tool) | live MCP call on the real book |
+| **D3d** | editor surface: SelectionToolbar → Mark → `Decoration` render | ⚠️ `EditorPanel` — **coordinate** | **browser** — mark, reload, still there |
+| **D3f** | co-writer round trip | — | **live**: mark → agent lists → grounded proposal → apply → **DB shows the new prose** |
+| **D3e** | *(optional, last)* Draft Review arm + accept migration | ⚠️ compose panels — **coordinate** | **browser** — mark on draft, accept, block re-anchors |
+
+**D3f is the gate**, and note it now sits *before* D3e: the feature is provable end-to-end on the
+editor surface alone. Per this track's own drift log, four editors passed 1596 unit tests with no
 door to open them. A green suite is not a working feature — the browser and the DB are.
 
 ---
