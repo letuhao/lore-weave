@@ -322,6 +322,46 @@ async def propose_for_blocks(
     )
 
 
+@dataclass
+class MigrationPlan:
+    """What an accept would do to a preview's marks: which survive, and which are lost.
+
+    Both halves are returned. A caller that only got the survivors could not tell the author
+    "two of your five marks could not be found in the accepted text" — and a mark that silently
+    disappears is indistinguishable from one that was addressed.
+    """
+    located: dict[UUID, tuple[int, int]] = field(default_factory=dict)
+    orphaned: list[SkippedBlock] = field(default_factory=list)
+    fingerprint: str = ""
+
+
+def plan_accept_migration(blocks: list[ErrorBlock], chapter_text: str) -> MigrationPlan:
+    """Re-anchor a compose preview's blocks onto the chapter text they were accepted into.
+
+    The preview and the chapter are DIFFERENT STRINGS — accepting inserts the draft into an
+    existing manuscript, so every offset shifts by however much prose precedes it, and the
+    surrounding text may differ entirely. Only `quote` survives that transition, which is why it
+    is the anchor and the offsets are a hint.
+
+    The stored offsets are still passed as the hint, and `hint_trusted=False` reflects the truth:
+    they were computed against the preview, not this chapter. So a quote that appears once
+    anchors, and an ambiguous one ORPHANS rather than guessing — the same rule as E1, applied at
+    the moment the coordinate space provably changed.
+    """
+    plan = MigrationPlan(fingerprint=fingerprint(chapter_text))
+    for b in blocks:
+        found = locate_nearest(b.quote, chapter_text, b.start_offset, hint_trusted=False)
+        if found is None:
+            plan.orphaned.append(SkippedBlock(
+                b.id,
+                "ambiguous" if len(_all_exact(b.quote, chapter_text)) > 1 else "not_located",
+                "the marked text could not be located in the accepted chapter",
+            ))
+            continue
+        plan.located[b.id] = found
+    return plan
+
+
 def apply_block_edits(
     text: str, proposals: list[EditProposal], accepted_ids: list[str] | None = None,
 ) -> str:

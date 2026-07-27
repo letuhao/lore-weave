@@ -421,9 +421,17 @@ observation. A claim that a check passed, without its output, does **not** tick 
       is just a highlight), and reports a 409 **as a duplicate** rather than a generic failure.
       `SelectionToolbar.chapterId` is optional so a surface that omits it hides the action instead
       of breaking the AI ops. **19 FE tests**; composition + studio **2447 passed / 308 files**.
-      ⚠️ `tsc --noEmit` **could not run** — this host's `node_modules` has drifted to TypeScript
-      7.0.2 against the `^5.5.4` manifest and dies on TS5102 before typechecking. Pre-existing,
-      unrelated; the Docker build installs from package.json and is unaffected.
+      ✅ **TS drift RESOLVED (2026-07-27).** `tsc --noEmit` now runs: **exit 0, zero errors**, and
+      `npm run build` (`tsc --noEmit && vite build`) completes — which matters because the FE Docker
+      build runs tsc and can otherwise serve a **stale bundle** on a tsc failure.
+      **Root cause, and it exonerates the repo:** `frontend/package-lock.json` is deliberately
+      **gitignored** (`.gitignore:218`, with a note that api-gateway-bff's IS kept for its Docker
+      build). The 7.0.2 pin lived only in this machine's lockfile; `package.json`'s `^5.5.4` already
+      excludes 7.x, and Docker installs from the manifest — which is exactly why the image was
+      never affected. So the fix was **local only**: reinstall TypeScript 5.x (now 5.9.3).
+      `package.json` was briefly bumped to `^5.9.3` as an npm side effect and **reverted** — the
+      repo was never wrong, and changing a shared manifest for a local problem is scope creep.
+      **Net repo change: none.**
 - [x] **D3f** 🎯 **THE GATE — LIVE ROUND TRIP PROVEN.** New code deployed into
       `infra-composition-service-1` (files copied + restart; composition-service's tree was fully
       committed, and the other session's in-flight work is in glossary/knowledge, so nothing of
@@ -440,8 +448,29 @@ observation. A claim that a check passed, without its output, does **not** tick 
 
       The co-writer can read what the author marked and close it, on the real stack. Smoke row
       cleaned up with a **scoped** delete (by id + `created_by`).
-- [ ] **D3e** *(optional, deferred by design)* Draft Review arm + accept migration. D3f proved the
-      loop on the editor surface alone, which is exactly why the design made this last.
+- [x] **D3e** ✅ **Draft Review arm + accept migration — LIVE-PROVEN. Phase D is COMPLETE.**
+      This is what makes *"one block-marking primitive across both surfaces"* true rather than
+      aspirational: a mark made on a compose preview keeps meaning the same passage after accept.
+      `plan_accept_migration` re-anchors by **quote only**, with `hint_trusted=False` — an honest
+      statement, since the stored offsets were computed against the *preview*, and accepting
+      inserts the draft into an existing manuscript so every offset shifts. Ambiguous ⇒ **orphan,
+      never guess** (E1's rule applied at the exact moment the coordinate space provably changed).
+      Both halves are returned, so a caller can tell the author *which* marks were lost — returning
+      only survivors would make a lost mark indistinguishable from an addressed one.
+      2 new routes (`GET …/draft-jobs/{job_id}/error-blocks`, `POST …/error-blocks/migrate-accept`);
+      **9 routes total**, all verified registered.
+      **Live evidence** (real project/job, chapter with prose *above* the accepted draft):
+
+      | mark | outcome |
+      |---|---|
+      | quote survives the accept | migrated: `draft_job`→`chapter_draft`, `job_id` **NULL**, offsets `0`→`65`, and `chapter[65:85]` is **still its own words** |
+      | quote gone from the chapter | `status=orphaned`, **not** moved — its stale offsets slice `' prose.\n\nElara opened '`, i.e. garbage, which is exactly why they were refused |
+
+      That second row is the point: the stale offsets really do slice nonsense, and the migration
+      declined to trust them instead of pointing the author's complaint at the wrong prose.
+      6 new tests (survives-the-shift · ambiguous-orphans · lost-is-reported · partial reports BOTH
+      halves · empty is a no-op). Composition suite **2563 passed / 336 skipped**. Smoke rows
+      removed with a **scoped** delete.
 
 ## Phase E — 🔴 PROMOTED TO FIRST (human decision Q1): planning quality
 

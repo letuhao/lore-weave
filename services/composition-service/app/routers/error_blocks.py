@@ -29,6 +29,7 @@ from app.db.repositories.error_blocks import (
 from app.db.repositories.works import WorksRepo
 from app.deps import get_error_blocks_repo, get_grant_client_dep, get_works_repo
 from app.engine.cowrite import SELECTION_MAX_CHARS
+from app.engine.error_block_heal import plan_accept_migration
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
@@ -167,6 +168,81 @@ async def create_error_block(
             "message": "an identical open mark already exists on this span",
         })
     return block.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/draft-jobs/{job_id}/error-blocks")
+async def list_job_error_blocks(
+    project_id: UUID,
+    job_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    blocks: ErrorBlocksRepo = Depends(get_error_blocks_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Marks made on a pre-accept compose preview.
+
+    The preview has no chapter identity — the compose panels clear their draft unconditionally on
+    accept — so these anchor to the generation job instead.
+    """
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    items = await blocks.list_for_job(project_id, job_id)
+    return {"blocks": [b.model_dump(mode="json") for b in items]}
+
+
+class AcceptMigrationRequest(BaseModel):
+    """`chapter_text` is the FLATTENED prose of the chapter the draft was accepted into — the
+    same coordinate space every stored offset lives in (see the FE `flattenDoc`)."""
+    job_id: UUID
+    chapter_id: UUID
+    chapter_text: str = Field(min_length=1)
+    draft_version: int | None = None
+
+
+@router.post("/works/{project_id}/error-blocks/migrate-accept", status_code=200)
+async def migrate_accept(
+    project_id: UUID,
+    body: AcceptMigrationRequest,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    blocks: ErrorBlocksRepo = Depends(get_error_blocks_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Re-target a preview's marks onto the chapter the draft was just accepted into.
+
+    This is what makes "one block-marking primitive across both surfaces" true rather than
+    aspirational: a mark made before accept keeps meaning the same passage after it.
+
+    Only `quote` survives the transition — accepting inserts the draft into an existing
+    manuscript, so every offset shifts and the surrounding prose may differ. A quote that can no
+    longer be placed unambiguously is marked `orphaned` and REPORTED, never dropped: a mark that
+    silently vanishes reads exactly like one that was addressed.
+    """
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    pending = [
+        b for b in await blocks.list_for_job(project_id, body.job_id)
+        if b.status not in ("resolved", "dismissed")
+    ]
+    if not pending:
+        return {"migrated": 0, "orphaned": [], "note": "no open marks on that draft"}
+
+    plan = plan_accept_migration(pending, body.chapter_text)
+    migrated = await blocks.migrate_job_blocks_to_chapter(
+        project_id, body.job_id,
+        chapter_id=body.chapter_id, draft_version=body.draft_version,
+        located=plan.located, fingerprint=plan.fingerprint,
+    )
+    return {
+        "migrated": migrated,
+        "orphaned": [
+            {"block_id": str(s.block_id), "reason": s.reason, "detail": s.detail}
+            for s in plan.orphaned
+        ],
+        "note": (
+            f"{migrated} mark(s) moved onto the chapter"
+            + (f"; {len(plan.orphaned)} could not be located and are flagged for you to re-check"
+               if plan.orphaned else "")
+        ),
+    }
 
 
 @router.patch("/error-blocks/{block_id}")

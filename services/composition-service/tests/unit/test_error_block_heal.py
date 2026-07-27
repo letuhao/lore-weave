@@ -21,6 +21,7 @@ from app.engine.error_block_heal import (
     fingerprint,
     locate_nearest,
     merge_overlapping,
+    plan_accept_migration,
     propose_for_blocks,
 )
 from app.engine.self_heal import EditProposal, locate_span
@@ -350,6 +351,13 @@ class TestProposeForBlocks:
         assert llm.calls == []
         assert [s.reason for s in res.skipped] == ["too_long"]
 
+    async def test_the_proposal_round_trips_through_the_guarded_splice_(self):
+        """(kept next to the migration tests below — same loop, different half)"""
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.", source_fingerprint=fp)
+        res = await _propose(FakeEditLLM(), [b])
+        assert apply_block_edits(REPEATED, res.proposals).count("The hall fell silent.") == 1
+
     async def test_the_proposal_round_trips_through_the_guarded_splice(self):
         """The loop that matters: propose → accept → splice → the prose actually changed."""
         fp = fingerprint(REPEATED)
@@ -358,3 +366,89 @@ class TestProposeForBlocks:
         out = apply_block_edits(REPEATED, res.proposals)
         assert "The hall fell silent." in out
         assert "The hall went quiet." not in out
+
+
+# ── accept migration (D3e) ────────────────────────────────────────────
+
+class TestPlanAcceptMigration:
+    """Marks made on a compose PREVIEW, re-anchored onto the chapter the draft landed in.
+
+    The preview and the chapter are different strings: accepting inserts the draft into an
+    existing manuscript, so every stored offset shifts by however much prose precedes it. Only
+    `quote` survives, which is exactly why it is the anchor.
+    """
+
+    def _accepted(self, preview_body: str) -> str:
+        return "Chapter so far.\n\nMore existing prose.\n\n" + preview_body
+
+    def test_a_mark_survives_the_offset_shift_and_still_points_at_its_own_words(self):
+        preview = "Elara opened the ledger.\n\nThe hall went quiet."
+        chapter = self._accepted(preview)
+        b = _block(start_offset=26, end_offset=46, quote="The hall went quiet.",
+                   source_fingerprint=fingerprint(preview), target_kind="draft_job",
+                   chapter_id=None, job_id=uuid.uuid4())
+
+        plan = plan_accept_migration([b], chapter)
+
+        assert not plan.orphaned
+        s, e = plan.located[b.id]
+        assert chapter[s:e] == "The hall went quiet."
+        assert s != b.start_offset          # it really did move
+        assert plan.fingerprint == fingerprint(chapter)
+
+    def test_an_AMBIGUOUS_quote_orphans_rather_than_guessing(self):
+        """The stored offset was computed against the PREVIEW, so it carries no information about
+        where the line sits in the chapter. With several candidates and no usable hint, guessing
+        would send a fix to a paragraph the author never marked."""
+        chapter = "She nodded.\n\nA long time passed.\n\nShe nodded.\n\nAnd again: She nodded."
+        b = _block(start_offset=0, end_offset=11, quote="She nodded.",
+                   source_fingerprint="sha256:preview", target_kind="draft_job",
+                   chapter_id=None, job_id=uuid.uuid4())
+
+        plan = plan_accept_migration([b], chapter)
+
+        assert not plan.located
+        assert [s.reason for s in plan.orphaned] == ["ambiguous"]
+
+    def test_a_quote_that_did_not_survive_the_accept_is_REPORTED_not_dropped(self):
+        chapter = self._accepted("Something else entirely.")
+        b = _block(start_offset=0, end_offset=20, quote="The hall went quiet.",
+                   source_fingerprint="sha256:preview", target_kind="draft_job",
+                   chapter_id=None, job_id=uuid.uuid4())
+
+        plan = plan_accept_migration([b], chapter)
+
+        assert not plan.located
+        assert [s.reason for s in plan.orphaned] == ["not_located"]
+        assert plan.orphaned[0].block_id == b.id   # the author can be told WHICH mark was lost
+
+    def test_a_partial_migration_reports_BOTH_halves(self):
+        """5 marks in, 2 locatable: a caller that only saw the survivors could not tell the author
+        that three of their marks are unaccounted for."""
+        preview = "Alpha line.\n\nBeta line.\n\nGamma line."
+        chapter = self._accepted(preview)
+        keep = [
+            _block(start_offset=0, end_offset=11, quote="Alpha line.",
+                   source_fingerprint=fingerprint(preview), target_kind="draft_job",
+                   chapter_id=None, job_id=uuid.uuid4()),
+            _block(start_offset=13, end_offset=23, quote="Beta line.",
+                   source_fingerprint=fingerprint(preview), target_kind="draft_job",
+                   chapter_id=None, job_id=uuid.uuid4()),
+        ]
+        lost = [
+            _block(quote=f"Deleted sentence {i}.", source_fingerprint="sha256:preview",
+                   target_kind="draft_job", chapter_id=None, job_id=uuid.uuid4())
+            for i in range(3)
+        ]
+
+        plan = plan_accept_migration(keep + lost, chapter)
+
+        assert len(plan.located) == 2
+        assert len(plan.orphaned) == 3
+        for b in keep:
+            s, e = plan.located[b.id]
+            assert chapter[s:e] == b.quote
+
+    def test_an_empty_mark_set_is_a_no_op_not_an_error(self):
+        plan = plan_accept_migration([], "any chapter text")
+        assert not plan.located and not plan.orphaned
