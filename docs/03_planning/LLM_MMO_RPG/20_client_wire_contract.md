@@ -171,7 +171,7 @@ interface RejectDetail { stage: string; user_message: string; }   // pre-localiz
 |---|---|
 | CWC-D1 | Colyseus room = the ONLY game transport to the browser (REC-71 restated as contract). |
 | CWC-D2 | All 64-bit ints wire as decimal strings (CWC-A2). |
-| CWC-D3 | DTO schemas live in `contracts/game-wire/` (JSON Schema, machine-checked both sides); scaffolding rides the first client build slice. |
+| CWC-D3 | DTO schemas live in `contracts/game-wire/` (JSON Schema, machine-checked both sides). ✅ **SCAFFOLDED 2026-07-27** — `common`/`session`/`movement`/`turn` schemas + README + lint; `TurnSubmit.action` `$ref`s `contracts/agent/decision.schema.json` rather than copying it (CWC-D6 made structural). |
 | CWC-D4 | Reconnect = W0 + per-channel catch-up (GDA-D7 restated); W1 only on cursor-expiry. |
 | CWC-D5 | IndexedDB digest cache — content-addressed only, never user data (satisfies GDA-D6 within platform rules). |
 | CWC-D6 | `TurnSubmit.action` = the `contracts/agent/` Decision envelope verbatim (AGT-A3 four-drivers-one-shape). |
@@ -183,7 +183,7 @@ interface RejectDetail { stage: string; user_message: string; }   // pre-localiz
 | CWC-Q1 | AOI patch batching cadence + budget (RTM-A6..A8 gives the model; the Hz/size numbers need a measured client). |
 | CWC-Q2 | W1 composition budget under Cold-cell wakeup (GDA-Q1 rescoped) — needs R1-ladder measurement with the real tilemap slice. |
 | CWC-Q3 | Spectator/privacy slice of the event stream (Q32 bubble-up) — which committed events a non-participant's room projection may fan out. |
-| CWC-Q4 | `contracts/game-wire/` drift gate shape — mirror `TestOpenAPIRouteConformance` or the frontend-tools contract test? Decide at scaffolding. |
+| ~~CWC-Q4~~ | ✅ **RESOLVED 2026-07-27 at scaffolding — NEITHER.** `TestOpenAPIRouteConformance` walks a live router (game-wire has no HTTP routes); the frontend-tools test regenerates a snapshot *from code* (game-wire is contract-FIRST — the schema exists because producer and consumer don't yet). The gate is a **schema-integrity lint** over the hand-authored SoT (`scripts/game-wire-lint.py`, pre-commit: refs resolve incl. cross-contract · CWC-A2 id-strings · closed objects; bite-proven on 3 planted defects), **plus producer-conformance tests per language as producers appear**. First producer shipped: `commit-service::wire` (committed event → `TurnOutcome`), whose tests red if the Rust enum drifts from the schema's closed set. |
 
 ## 10. Cross-references
 

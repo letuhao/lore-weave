@@ -100,6 +100,16 @@ if git diff --cached --name-only | grep -qE '^docs/03_planning/LLM_MMO_RPG/.*\.m
   "$PY" "$ROOT/scripts/design-lint.py" --staged --warn-check symbol
 fi
 
+# game-wire contract integrity (added 2026-07-27, CWC-Q4). The client wire DTOs
+# (contracts/game-wire/) are contract-FIRST — hand-authored SoT, no code to generate
+# from — so the gate is a schema-integrity lint of the doc-20 invariants: every $ref
+# resolves (incl. the cross-contract Decision ref), every 64-bit id is a STRING
+# (CWC-A2 — JS number corrupts past 2^53, invisibly in dev), every object is closed.
+# Producer-side conformance lives with each producer (Rust: commit-service::wire tests).
+if git diff --cached --name-only | grep -qE '^contracts/(game-wire|agent)/.*\.json$'; then
+  "$PY" "$ROOT/scripts/game-wire-lint.py"
+fi
+
 # SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans
 # only the staged diff (`protect --staged`) so this stays fast. gitleaks is an
 # optional local tool — if it isn't installed we warn and continue (CI's

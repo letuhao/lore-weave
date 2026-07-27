@@ -19,10 +19,12 @@ pub mod bus;
 pub mod domain;
 pub mod llm_driver;
 pub mod vocabulary;
+pub mod wire;
 
 pub use domain::{Actor, CombatDomain, CombatEvent, CombatPayload, CombatRules, CombatState, Stance};
 pub use llm_driver::{decide, hp_band, Candidate, DecisionContext, Dispatch};
 pub use vocabulary::{Reject, Vocabulary};
+pub use wire::{OutcomeDetail, OutcomeKind, TurnOutcome};
 
 /// The combat_v1 vocabulary, embedded from `contracts/agent/` at COMPILE time
 /// so the binary cannot drift from the contract it was built against (the

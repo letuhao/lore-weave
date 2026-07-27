@@ -124,10 +124,27 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > (`cat_16` AIT-6) — genuinely dangling, no declaring doc; owner = AIT track. Harvest lesson:
 > worktree agents branch from `main` — for feature-branch-divergent files, export
 > script+mapping and re-run in the real tree (that's what happened here).
-> **NEXT:** wire `design-lint.py` into pre-commit/CI as a gate (baseline is clean now; decide
-> soft-warn vs hard-fail) → `contracts/game-wire/` scaffolding + first client slice (CWC-D3/Q4)
-> → publisher wiring (ops) + committed-events room-consumer PoC → S4b real-IPC → CP lease
-> issuance (fence unchanged) → boundary batch incl. CWC registration.
+> ✅ **GATES + game-wire SCAFFOLDED (14:5x–15:1x):** (1) **design-lint is now a pre-commit
+> gate** — `--staged` + `--warn-check`; `broken-link` + `phantom-registration` **hard-fail**,
+> `unregistered-prefix` **warns** (a new namespace appears mid-design — `CWC` did — and must not
+> block the doc introducing it). **Bite-proven through the real `git commit` path**, 4 cases
+> incl. phantom blocking *while* symbol only warned. Registered in `docs/standards/README.md`.
+> Landed the moment the baseline hit 1 finding, deliberately: a clean baseline is perishable.
+> (2) **`contracts/game-wire/` scaffolded (CWC-D3 done)** — `common`/`session`/`movement`/`turn`
+> schemas + README; `TurnSubmit.action` **`$ref`s `contracts/agent/decision.schema.json`** instead
+> of copying it (CWC-D6 made structural — no mirror drift possible). **CWC-Q4 RESOLVED: neither
+> existing gate shape fits** (no routes to walk; nothing to generate FROM — it is contract-first)
+> → **schema-integrity lint** (`scripts/game-wire-lint.py`: refs-resolve incl. cross-contract ·
+> **CWC-A2 id-as-string** · closed objects; bite-proven on 3 planted defects; in pre-commit)
+> **+ producer-conformance per language as producers appear**. First producer shipped:
+> **`commit-service::wire`** — committed event → `TurnOutcome`, 4 tests binding Rust to the
+> schema (2^53 id-string bite · rejected≠discarded and both turn-neutral · `kind` enum arity ·
+> the 5-variant discard set). **26/26 commit-service tests green.** This is what keeps the
+> contract CONSUMED, not stored.
+> **NEXT:** publisher wiring (ops) + **committed-events room-consumer PoC in `game-server`**
+> (the first real consumer of `TurnOutcome` — needs the publisher fanning the outbox) → minimal
+> browser client against W0/W1 → S4b real-IPC → CP lease issuance (fence unchanged) → boundary
+> batch incl. CWC + game-wire DTO registration.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

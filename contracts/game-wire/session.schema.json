@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "loreweave://contracts/game-wire/session.schema.json",
+  "title": "Session bind + first frame (W0 / W1 / W2)",
+  "description": "Doc 20 §2-§4. W0 ≤100 ms, W1 ≤500 ms, W2 best-effort. W1 ships CLIENT DTOs, never server aggregates (REC-73).",
+  "$defs": {
+    "W0BindAck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "capability_token", "reality_id", "channel_id", "ruleset_digest", "from_tokens", "client_protocol"],
+      "properties": {
+        "session_id": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "capability_token": { "type": "string", "description": "DP-K9 capability — opaque to the client." },
+        "reality_id": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "channel_id": { "$ref": "common.schema.json#/$defs/Uint64String" },
+        "ruleset_digest": { "$ref": "common.schema.json#/$defs/Digest" },
+        "from_tokens": {
+          "type": "object",
+          "description": "DP-Ch18 per-channel resume cursors: channel_id → last channel_event_id delivered (REC-72 — the singular resume_token was wrong). Reconnect = W0 + catch-up, never W1 (GDA-D7).",
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/Uint64String" }
+        },
+        "client_protocol": {
+          "type": "integer",
+          "enum": [1],
+          "description": "CWC-A8 — the protocol this contract defines IS v1. Closed ladder: the server upcasts every event to latest before fanout; it never downcasts."
+        },
+        "server_time_hint_ms": {
+          "type": "integer",
+          "description": "UI only. NEVER simulation-relevant (TDIL-A9: the kernel has no ambient clock)."
+        }
+      }
+    },
+    "W0Reject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "enum": ["client_upgrade_required", "unauthorized", "reality_unavailable"] },
+        "min_protocol": { "type": "integer", "description": "Present iff code = client_upgrade_required — the force-upgrade signal (CWC-A8)." },
+        "user_message": { "type": "string" }
+      }
+    },
+    "W1FirstFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["self", "cell"],
+      "properties": {
+        "self": { "$ref": "#/$defs/PcSelf" },
+        "cell": { "$ref": "#/$defs/CellFrame" },
+        "combat": { "$ref": "#/$defs/CombatFrame", "description": "Present iff an encounter is active." }
+      }
+    },
+    "PcSelf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_id", "display_name", "vitals", "inventory"],
+      "properties": {
+        "entity_id": { "$ref": "common.schema.json#/$defs/EntityId" },
+        "display_name": { "type": "string" },
+        "vitals": {
+          "type": "object",
+          "description": "Own PC only — the one place numeric hp is legitimate (it is the player's own state).",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["current", "max"],
+            "properties": { "current": { "type": "integer" }, "max": { "type": "integer" } }
+          }
+        },
+        "stats": { "type": "object", "description": "DF7 client-visible subset.", "additionalProperties": { "type": "integer" } },
+        "statuses": { "type": "array", "items": { "type": "string" }, "description": "PL_006 client-visible entries, pre-localized." },
+        "inventory": { "$ref": "#/$defs/InventorySummary" }
+      }
+    },
+    "InventorySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["equipped", "carried_count"],
+      "description": "REC-73 — a RENDERABLE client DTO. NOT ITM-A9's ≤29-line prompt digest, which keeps its LLM job.",
+      "properties": {
+        "equipped": { "type": "object", "additionalProperties": { "$ref": "#/$defs/ItemCard" } },
+        "carried_count": { "type": "integer" },
+        "encumbrance": { "type": "string", "enum": ["light", "normal", "heavy", "overloaded"] }
+      }
+    },
+    "ItemCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "display_name", "kind"],
+      "properties": {
+        "item_id": { "$ref": "common.schema.json#/$defs/Uint64String" },
+        "display_name": { "type": "string" },
+        "kind": { "type": "string" },
+        "rarity": { "type": "string", "enum": ["common", "uncommon", "rare", "epic", "legendary"] },
+        "effect_line": { "type": "string", "description": "One line, pre-localized (CWC-D7)." }
+      }
+    },
+    "RosterEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_id", "display_name", "disposition", "condition"],
+      "description": "REC-79 — identity and state are SEPARATE fields. A combined label ('hostile-2 (healthy)') made an LLM strip the state half and every strike reject; the same conflation would make a client's target picker equally wrong.",
+      "properties": {
+        "entity_id": { "$ref": "common.schema.json#/$defs/EntityId" },
+        "display_name": { "type": "string" },
+        "disposition": { "$ref": "common.schema.json#/$defs/Disposition" },
+        "condition": { "$ref": "common.schema.json#/$defs/HpBand" },
+        "position": { "$ref": "common.schema.json#/$defs/CellCoord" }
+      }
+    },
+    "CellFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["place_name", "roster"],
+      "properties": {
+        "place_name": { "type": "string" },
+        "scene_layout": { "type": "object", "description": "CSC_001 client slice." },
+        "tilemap_digest": { "$ref": "common.schema.json#/$defs/Digest", "description": "Content key — the client fetches/caches the tilemap view by digest (W2), never inline in W1." },
+        "roster": { "type": "array", "items": { "$ref": "#/$defs/RosterEntry" } }
+      }
+    },
+    "CombatFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encounter_channel_id", "turn_number", "initiative"],
+      "properties": {
+        "encounter_channel_id": { "$ref": "common.schema.json#/$defs/Uint64String", "description": "CS-A6 — an encounter is its own ephemeral child channel." },
+        "turn_number": { "$ref": "common.schema.json#/$defs/Uint64String" },
+        "initiative": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/EntityId" } },
+        "own_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "TG-A3 — separate move + action budgets, either order.",
+          "properties": { "move": { "type": "integer" }, "action": { "type": "integer" } }
+        }
+      }
+    }
+  }
+}

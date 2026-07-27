@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "loreweave://contracts/game-wire/turn.schema.json",
+  "title": "Turn submission + outcome (Class B — the spine lane)",
+  "description": "Doc 20 §6. TurnSubmit carries the SAME Decision envelope an LlmDriver emits (AGT-A3: four drivers, one wire shape); TurnOutcome is projected from committed events emitted by commit-service.",
+  "$defs": {
+    "TurnSubmit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_request_id", "action"],
+      "properties": {
+        "client_request_id": {
+          "$ref": "common.schema.json#/$defs/Uuid",
+          "description": "Client-minted; the EVT-L3 idempotency triple's middle member. A retry MUST reuse it — that is what makes double-submit safe."
+        },
+        "action": {
+          "$ref": "../agent/decision.schema.json",
+          "description": "CWC-D6 — the contracts/agent Decision envelope by REFERENCE, not by copy: a player's UI gesture and an NPC LlmDriver's proposal are the same object, validated at the same admission gate against the same closed vocabulary (AGT-A2/A3). Duplicating the shape here would be the polyglot mirror-drift bug class."
+        }
+      }
+    },
+    "TurnOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel_event_id", "kind", "turn_number", "detail"],
+      "properties": {
+        "channel_event_id": { "$ref": "common.schema.json#/$defs/Uint64String" },
+        "kind": {
+          "type": "string",
+          "enum": ["resolved", "discarded", "rejected"],
+          "description": "CWC-A6 truth-in-labeling — three DIFFERENT things the UI must not collapse: rejected = the validator said no (no turn consumed, retry free); discarded = the world moved under a valid intent (SC-A1 precondition, no turn consumed); resolved = it happened (turn consumed)."
+        },
+        "turn_number": {
+          "$ref": "common.schema.json#/$defs/Uint64String",
+          "description": "DP-A17 / EVT-V4, LIVE-PROVEN in the committed log 2026-07-27: advances on `resolved` ONLY. A rejection leaves it unchanged — the client must not burn a turn slot in its UI either."
+        },
+        "detail": {
+          "oneOf": [
+            { "$ref": "#/$defs/ResolvedDetail" },
+            { "$ref": "#/$defs/DiscardDetail" },
+            { "$ref": "#/$defs/RejectDetail" }
+          ]
+        }
+      }
+    },
+    "ResolvedDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "description": "Renderable narration/effect lines derived from the committed domain events. Pre-localized (CWC-D7).",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "DiscardDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "user_message"],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": ["duplicate", "precondition_failed", "superseded", "expired", "quarantined"],
+          "description": "sim-core DiscardReason — the 5-variant closed set (REC-63 as amended by REC-78)."
+        },
+        "user_message": { "type": "string" }
+      }
+    },
+    "RejectDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "user_message"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "description": "The admission stage that rejected (schema | idempotency | decision-vocabulary | …). Named, never generic — CS-A4: neither rejection kind is silent."
+        },
+        "user_message": { "type": "string", "description": "Pre-localized (CWC-D7)." }
+      }
+    }
+  }
+}
