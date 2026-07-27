@@ -189,7 +189,7 @@ AND (
 
 ### 12U.8 Governance — ADMIN_ACTION_POLICY amendment
 
-New section R7 added to [docs/02_governance/ADMIN_ACTION_POLICY.md](../../02_governance/ADMIN_ACTION_POLICY.md):
+New section R7 added to [docs/02_governance/ADMIN_ACTION_POLICY.md](../../../02_governance/ADMIN_ACTION_POLICY.md):
 
 > **R7 — Command Impact Classification**
 >

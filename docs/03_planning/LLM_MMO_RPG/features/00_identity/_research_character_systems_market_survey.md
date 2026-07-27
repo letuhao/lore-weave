@@ -643,10 +643,10 @@ REP_001 Reputation Foundation (depends on FAC_001) ~5 commits
 
 **This survey informs:**
 - [`_index.md`](_index.md) — folder-level Q1-Q7 validated by §9.6
-- [`IDF_001_race_concept.md`](IDF_001_race_concept.md) — RAC-D11 added per §9.1
-- [`IDF_003_personality_concept.md`](IDF_003_personality_concept.md) — Q1 deferred to DRAFT per §9.3
-- [`IDF_004_origin_concept.md`](IDF_004_origin_concept.md) — ORG-D11 added per §9.4 + FF_001 priority signal
-- [`IDF_005_ideology_concept.md`](IDF_005_ideology_concept.md) — IDL-D11 added per §9.5
+- [`IDF_001_race_concept.md`](IDF_001_race.md) — RAC-D11 added per §9.1
+- [`IDF_003_personality_concept.md`](IDF_003_personality.md) — Q1 deferred to DRAFT per §9.3
+- [`IDF_004_origin_concept.md`](IDF_004_origin.md) — ORG-D11 added per §9.4 + FF_001 priority signal
+- [`IDF_005_ideology_concept.md`](IDF_005_ideology.md) — IDL-D11 added per §9.5
 
 **Cross-cutting (post-IDF closure):**
 - Future FF_001 Family Foundation feature spec (wuxia priority)

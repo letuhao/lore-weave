@@ -398,7 +398,7 @@ DRAFT promotion registers:
 
 **Sibling IDF:**
 - [`IDF_001 Race`](IDF_001_race.md) — race may have native language hint (LNG-D9 V1+)
-- [`IDF_004 Origin`](IDF_004_origin_concept.md) — origin pack default_native_language ref
+- [`IDF_004 Origin`](IDF_004_origin.md) — origin pack default_native_language ref
 
 **Consumers:**
 - 05_llm_safety A6 (V1+) — canon-drift detector at the canon-drift stage (7 per current lock; REC-33)

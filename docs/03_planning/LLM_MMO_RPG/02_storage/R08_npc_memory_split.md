@@ -259,7 +259,7 @@ lw_npc_memory_compaction_triggered_count              counter
 
 ### 12H.9 Connection to A1 (NPC memory at scale)
 
-[01_OPEN_PROBLEMS A1](01_OPEN_PROBLEMS.md#a1-npc-memory-at-scale--open) was critical-path `OPEN`. With R8 resolution (this section), A1 moves to `PARTIAL`:
+[01_OPEN_PROBLEMS A1](../01_problems/A_llm_reasoning.md#a1-npc-memory-at-scale--partial) was critical-path `OPEN`. With R8 resolution (this section), A1 moves to `PARTIAL`:
 
 **What R8 provides (infrastructure):**
 - Bounded state per (NPC, PC) pair

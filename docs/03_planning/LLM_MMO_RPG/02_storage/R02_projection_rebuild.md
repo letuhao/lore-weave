@@ -145,7 +145,7 @@ Operations around rebuild need admin surface area:
 - Schema migration planner (stage blue-green across N realities, throttle, rollback)
 - Audit trail of rebuild history
 
-This is substantial UI + orchestration work. Deferred to **DF9 — Rebuild & Integrity Ops** (see [OPEN_DECISIONS.md](OPEN_DECISIONS.md) deferred features). Algorithms/mechanisms locked here in §12B; admin UX + orchestration is DF9's scope.
+This is substantial UI + orchestration work. Deferred to **DF9 — Rebuild & Integrity Ops** (see [OPEN_DECISIONS.md](../decisions/_index.md) deferred features). Algorithms/mechanisms locked here in §12B; admin UX + orchestration is DF9's scope.
 
 ### 12B.8 Implementation ordering
 

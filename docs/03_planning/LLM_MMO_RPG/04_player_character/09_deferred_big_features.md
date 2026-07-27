@@ -18,7 +18,7 @@ Items that surfaced during PC design but need their own design docs. Each listed
 - NPC daily routines (sleep, work, travel, socialize)
 - NPC memory decay / summarization when not interacting
 - User's reclaim UX (how to bring PC back from NPC mode)
-- Ties to [01_OPEN_PROBLEMS §B3](01_OPEN_PROBLEMS.md#b3-world-simulation-tick--open)
+- Ties to [01_OPEN_PROBLEMS §B3](../01_problems/B_distributed_systems.md#b3-world-simulation-tick--partial)
 
 ### DF2. Monetization / PC slot purchase
 **Covers:** C-PC1 (slots > 5)
@@ -26,7 +26,7 @@ Items that surfaced during PC design but need their own design docs. Each listed
 - Purchase additional PC slots
 - Tier-based slot allocation (platform mode: Free=5, Pro=15, Enterprise=unlimited)
 - Cross-slot operations (merge, transfer, archive)
-- Ties to [103_PLATFORM_MODE_PLAN.md](../103_PLATFORM_MODE_PLAN.md)
+- Ties to [103_PLATFORM_MODE_PLAN.md](../../103_PLATFORM_MODE_PLAN.md)
 
 ### DF3. Canonization / Author Review Flow
 **Covers:** E-PC1, E-PC2, MV2 (locked but flow undefined)
@@ -35,7 +35,7 @@ Items that surfaced during PC design but need their own design docs. Each listed
 - Author notification + review UI with diff
 - L3 → L2 promotion mechanics (what happens to other realities with conflicting state)
 - IP attribution (player who created the L3 events)
-- Ties to [01_OPEN_PROBLEMS §E3](01_OPEN_PROBLEMS.md#e3-ip-ownership--open) and §M3
+- Ties to [01_OPEN_PROBLEMS §E3](../01_problems/E_moderation_safety_legal.md#e3-ip-ownership--open) and §M3
 
 ### DF4. World Rule feature
 **Covers:** E-PC3, A-PC3 runtime enforcement, B-PC1 death rules
@@ -54,7 +54,7 @@ Items that surfaced during PC design but need their own design docs. Each listed
 - Message routing: public-to-session, whisper, aside
 - Session persistence (how events are logged)
 - PvP consent model inside session
-- Ties to existing [98_CHAT_SERVICE_DESIGN.md](../98_CHAT_SERVICE_DESIGN.md) but for multi-character scene, not Cursor-style Q&A
+- Ties to existing [98_CHAT_SERVICE_DESIGN.md](../../98_CHAT_SERVICE_DESIGN.md) but for multi-character scene, not Cursor-style Q&A
 
 ### DF6. World Travel feature
 **Covers:** MV5 (locked as deferred), A-PC3 (paradox traveler carryover)
@@ -63,7 +63,7 @@ Items that surfaced during PC design but need their own design docs. Each listed
 - State transfer policy (what travels, what doesn't)
 - Reality locale/language bridging
 - Entity identity across realities
-- Already mentioned in [OPEN_DECISIONS.md §"MV5 primitives"](OPEN_DECISIONS.md#mv5-primitives--what-must-be-locked-now-to-avoid-painful-retrofit)
+- Already mentioned in [OPEN_DECISIONS.md §"MV5 primitives"](../decisions/mv5_primitives.md#mv5-primitives--what-must-be-locked-now-to-avoid-painful-retrofit)
 
 ### DF7. PC Stats & Capabilities (small)
 **Covers:** C-PC3

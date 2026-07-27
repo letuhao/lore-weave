@@ -8,7 +8,7 @@ generated_by: scripts/chunk_doc.py
 
 # 03 — Multiverse Model
 
-> **Status:** Exploratory — conceptual foundation for the world-persistence layer. Companion to [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) (engineering) and [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) (risks).
+> **Status:** Exploratory — conceptual foundation for the world-persistence layer. Companion to [02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md) (engineering) and [01_OPEN_PROBLEMS.md](../01_problems/_index.md) (risks).
 > **Created:** 2026-04-23
 > **Supersedes:** The "root reality" framing in early drafts of 02. Each reality is a peer; none is privileged.
 

@@ -115,7 +115,7 @@ Rollback via compensating events: emit opposite-effect event through same pipeli
 
 ### 12L.7 Governance policy
 
-Policy formalized at [`docs/02_governance/ADMIN_ACTION_POLICY.md`](../../02_governance/ADMIN_ACTION_POLICY.md):
+Policy formalized at [`docs/02_governance/ADMIN_ACTION_POLICY.md`](../../../02_governance/ADMIN_ACTION_POLICY.md):
 - L1–L6 are requirements, not suggestions
 - No ad-hoc SQL in production (code review rejects)
 - New commands require PR review + dry-run test

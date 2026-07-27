@@ -8,7 +8,7 @@ generated_by: scripts/chunk_doc.py
 
 ## 8. Schema additions vs 02
 
-[02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) described the engineering baseline. Multiverse model requires these schema adjustments:
+[02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md) described the engineering baseline. Multiverse model requires these schema adjustments:
 
 ### 8.1 Events: add `reality_id` + reserve travel origin fields
 
@@ -25,7 +25,7 @@ CREATE INDEX events_reality_aggregate_idx
   ON events (reality_id, aggregate_type, aggregate_id, aggregate_version);
 ```
 
-**Event metadata reserves P4 travel-origin fields** (MV5 primitive). The `metadata` JSONB in [02 §4.3](02_STORAGE_ARCHITECTURE.md) is extended with optional keys, ignored in V1 but reserved for future world-travel:
+**Event metadata reserves P4 travel-origin fields** (MV5 primitive). The `metadata` JSONB in [02 §4.3](../02_storage/00_overview_and_schema.md) is extended with optional keys, ignored in V1 but reserved for future world-travel:
 
 ```json
 {

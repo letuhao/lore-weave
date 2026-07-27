@@ -35,7 +35,7 @@ generated_by: scripts/chunk_doc.py
 - **D2-D5** V1 measurement protocol: solo-RP prototype instruments cost per session / hour by G2-D4 script mix; output feeds D1 → break-even math.
 - **D2-D6** Exact pricing + monthly budget caps **deferred to post-V1 data**. D2 locks framework; numbers require D1 + market research.
 
-Decisions D2-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Decisions D2-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN`:**
 - Exact monthly prices per tier (depends D1)

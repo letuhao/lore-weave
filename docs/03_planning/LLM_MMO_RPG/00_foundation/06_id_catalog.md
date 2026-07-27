@@ -58,6 +58,66 @@
 | `PVP-A1..A8` · `PVP-Q1..Q10` · `PVP-D1..D8` · `PVP-V1..V7` · `AC-PVP-1..14` | PvP & Stakes — consent channels, stakes, disparity-cap waiver, notoriety | [`features/18_combat/COMB_006_pvp_and_stakes.md`](../features/18_combat/COMB_006_pvp_and_stakes.md) | closes `COMB-Q3`; discharges `PC-D2` (2026-04-23) |
 | `ABL-A1..A7` · `ABL-Q1..Q10` · `ABL-D1..D12` · `ABL-V1..V9` · `AC-ABL-1..15` | Ability Foundation — the activatable-effect catalogue; owns the `EffectOp` shared vocabulary | [`features/19_ability/ABL_001_ability_foundation.md`](../features/19_ability/ABL_001_ability_foundation.md) | AUD-F10; **new namespace `19_ability/`** |
 
+### Backfill (2026-07-27 — design-lint findings)
+
+> Every namespace below was already in live use across the corpus but never declared here —
+> `scripts/design-lint.py --check symbol` reported them all as `unregistered-prefix`. Owners follow the
+> registrations in [`_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md)
+> where a row exists there; otherwise the declaring doc found by search. Same table shape and rules as above.
+
+| Prefix | Scope | Owner subfolder / file | Open slots | Example |
+|---|---|---|---|---|
+| `DP-A*` · `DP-T*` · `DP-R*` · `DP-S*` · `DP-K*` · `DP-C*` · `DP-X*` · `DP-F*` · `DP-Ch*` | Data-plane axioms / tiers / rules / snapshots / kernel API / coherency / prohibitions / flows / chapters (LOCKED) | [`06_data_plane/`](../06_data_plane/_index.md) | per DP change control | DP-A16 = epoch fence · DP-Ch18 |
+| `EVT-A*` · `EVT-T*` · `EVT-P*` · `EVT-V*` · `EVT-L*` · `EVT-S*` · `EVT-G*` · `EVT-Q*` | Event-model axioms / taxonomy / payloads / validation / lifecycle / schema / generation framework / questions (Phase 1-6 LOCKED + Option C redesign) | [`07_event_model/`](../07_event_model/_index.md) | per event-model track | EVT-A4 = producer roles · EVT-T5 = Generated |
+| `OOS-1..2` | Data-plane out-of-scope pointers | [`06_data_plane/99_open_questions.md`](../06_data_plane/99_open_questions.md) | OOS-3+ | OOS-1 = NPC ↔ SessionContext mapping |
+| `REAL-1..6` | Realtime review findings, reframed into DP Phase 4 Q15..Q20 | [`06_data_plane/99_open_questions.md`](../06_data_plane/99_open_questions.md) | closed set | REAL-6 = LLM turn latency |
+| `EF-*` | Entity Foundation (`EF-A*` axioms · `EF-D*` deferrals · `EF-Q*` questions · `AC-EF-*` acceptance) | [`features/00_entity/EF_001_entity_foundation.md`](../features/00_entity/EF_001_entity_foundation.md) + [`catalog/cat_00_EF_entity_foundation.md`](../catalog/cat_00_EF_entity_foundation.md) | next free per family | EF-Q2 |
+| `PF-*` | Place Foundation | [`features/00_place/PF_001_place_foundation.md`](../features/00_place/PF_001_place_foundation.md) + [`catalog/cat_00_PF_place_foundation.md`](../catalog/cat_00_PF_place_foundation.md) | next free per family | AC-PF-7 |
+| `MAP-*` | Map Foundation | [`features/00_map/MAP_001_map_foundation.md`](../features/00_map/MAP_001_map_foundation.md) + [`catalog/cat_00_MAP_map_foundation.md`](../catalog/cat_00_MAP_map_foundation.md) | next free per family | MAP-Q3 |
+| `TMP-*` | Tilemap Foundation (TMP_001..TMP_009) | [`features/00_tilemap/TMP_001_tilemap_foundation.md`](../features/00_tilemap/TMP_001_tilemap_foundation.md) + [`catalog/cat_00_TMP_tilemap_foundation.md`](../catalog/cat_00_TMP_tilemap_foundation.md) | next free per family | TMP-A4 = deterministic seed |
+| `PLACE-Q*` · `PIPE-Q*` · `TPL-Q*` · `BIOME-Q*` · `TR-Q*` · `CONN-Q*` · `LLM-Q*` · `ASSET-Q*` | Per-chunk question namespaces of the TMP_00N tilemap sub-docs (zone placement / pipeline modificators / template authoring / biome+obstacles / treasure+objects / connections+guards / LLM integration / isometric asset pipeline) | [`features/00_tilemap/`](../features/00_tilemap/_index.md) (TMP_002..TMP_009, one namespace per chunk) | next free per chunk | ASSET-Q10 · LLM-Q4 |
+| `CSC-*` | Cell Scene Composition | [`features/00_cell_scene/CSC_001_cell_scene_composition.md`](../features/00_cell_scene/CSC_001_cell_scene_composition.md) + [`catalog/cat_00_CSC_cell_scene_composition.md`](../catalog/cat_00_CSC_cell_scene_composition.md) | next free per family | CSC-A1 = LLM categorical-only |
+| `RES-*` | Resource Foundation | [`features/00_resource/RES_001_resource_foundation.md`](../features/00_resource/RES_001_resource_foundation.md) + [`catalog/cat_00_RES_resource.md`](../catalog/cat_00_RES_resource.md) | next free per family | RES-Q1 |
+| `ACT-*` | Actor Foundation (unification refactor) | [`features/00_actor/ACT_001_actor_foundation.md`](../features/00_actor/ACT_001_actor_foundation.md) + [`catalog/cat_00_ACT_actor_foundation.md`](../catalog/cat_00_ACT_actor_foundation.md) | next free per family | ACT-A7 = Synthetic excluded V1 |
+| `PROG-*` | Progression Foundation | [`features/00_progression/PROG_001_progression_foundation.md`](../features/00_progression/PROG_001_progression_foundation.md) + [`catalog/cat_00_PROG_progression.md`](../catalog/cat_00_PROG_progression.md) | next free per family | PROG-A1 |
+| `RAC-*` · `LNG-*` · `PRS-*` · `ORG-*` · `IDL-*` | Identity Foundation quintet — race / language / personality / origin / ideology (Tier 5 Actor Substrate) | [`features/00_identity/`](../features/00_identity/_index.md) (IDF_001..IDF_005) | next free per feature | PRS-Q9 = 12×12 opinion matrix |
+| `IDF-1..5` | Identity Foundation feature-row shorthand (IDF-n ↔ IDF_00n) used in catalog cross-refs | [`features/00_identity/`](../features/00_identity/_index.md) | IDF-6+ if a new identity feature | IDF-2 = LanguageId |
+| `FF-*` | Family Foundation | [`features/00_family/FF_001_family_foundation.md`](../features/00_family/FF_001_family_foundation.md) | next free per family | FF-A1 |
+| `FAC-*` | Faction Foundation | [`features/00_faction/FAC_001_faction_foundation.md`](../features/00_faction/FAC_001_faction_foundation.md) | next free per family | FAC-1 |
+| `REP-*` | Reputation Foundation | [`features/00_reputation/REP_001_reputation_foundation.md`](../features/00_reputation/REP_001_reputation_foundation.md) + [`catalog/cat_00_REP_reputation_foundation.md`](../catalog/cat_00_REP_reputation_foundation.md) | next free per family | REP-A1 |
+| `TIT-*` | Title Foundation (political-rank triangle) | [`features/00_titles/TIT_001_title_foundation.md`](../features/00_titles/TIT_001_title_foundation.md) + [`catalog/cat_00_TIT_title_foundation.md`](../catalog/cat_00_TIT_title_foundation.md) | next free per family | TIT-C1 |
+| `AIT-*` | AI Tier (3-tier NPC architecture) | [`features/16_ai_tier/AIT_001_ai_tier_foundation.md`](../features/16_ai_tier/AIT_001_ai_tier_foundation.md) + [`catalog/cat_16_AIT_ai_tier.md`](../catalog/cat_16_AIT_ai_tier.md) | next free per family | AIT-A1 |
+| `TDIL-*` | Time Dilation (4-clock relativity) | [`features/17_time_dilation/TDIL_001_time_dilation_foundation.md`](../features/17_time_dilation/TDIL_001_time_dilation_foundation.md) + [`catalog/cat_17_TDIL_time_dilation.md`](../catalog/cat_17_TDIL_time_dilation.md) | next free per family | TDIL-A9 = replay determinism |
+| `COMB-*` | Combat Foundation (the COMB_002..006 sub-docs own their own `TG-*`/`THR-*`/`SPO-*`/`SPN-*`/`PVP-*` rows above) | [`features/18_combat/COMB_001_combat_foundation.md`](../features/18_combat/COMB_001_combat_foundation.md) | next free per family | COMB-Q3 |
+| `TVL-*` | Travel Foundation | [`features/00_travel/TVL_001_travel.md`](../features/00_travel/TVL_001_travel.md) + [`catalog/cat_00_TVL_travel_foundation.md`](../catalog/cat_00_TVL_travel_foundation.md) | next free per family | TVL-16 |
+| `CTV-*` | Composite Travel (TVL_002) | [`features/00_travel/TVL_002_composite_travel.md`](../features/00_travel/TVL_002_composite_travel.md) | next free per family | CTV-D1 |
+| `TVM-*` | Mount & Vehicle Travel (TVL_003) | [`features/00_travel/TVL_003_mount_vehicle_travel.md`](../features/00_travel/TVL_003_mount_vehicle_travel.md) | next free per family | TVM-Q1 |
+| `CTE-*` | Travel Encounters (TVL_004) | [`features/00_travel/TVL_004_travel_encounters.md`](../features/00_travel/TVL_004_travel_encounters.md) | next free per family | CTE-Q1 |
+| `TVP-*` | Group / Party Travel (TVL_005) | [`features/00_travel/TVL_005_group_party_travel.md`](../features/00_travel/TVL_005_group_party_travel.md) | next free per family | TVP-Q1 |
+| `GEO-*` | Geography Foundation (world geometry) | [`features/00_geography/GEO_001_world_geometry.md`](../features/00_geography/GEO_001_world_geometry.md) + [`catalog/cat_00_GEO_geography_foundation.md`](../catalog/cat_00_GEO_geography_foundation.md) | next free per family | GEO-D10 |
+| `POL-*` | Political Layer (GEO_002) | [`features/00_geography/GEO_002_political_layer.md`](../features/00_geography/GEO_002_political_layer.md) | next free per family | POL-Q1 |
+| `SET-*` | Settlement Generator (GEO_003) — settlements, **not** the platform settings standard | [`features/00_geography/GEO_003_settlement_generator.md`](../features/00_geography/GEO_003_settlement_generator.md) | next free per family | SET-Q1 |
+| `ROUTE-*` | Route Network Generator (GEO_004) | [`features/00_geography/GEO_004_route_network_generator.md`](../features/00_geography/GEO_004_route_network_generator.md) | next free per family | ROUTE-V8 |
+| `INT-*` | PL_005 Interaction (incl. compound `INT-CON-D*` deferrals and `AC-INT-*` acceptance ids) | [`features/04_play_loop/PL_005_interaction.md`](../features/04_play_loop/PL_005_interaction.md) (+ PL_005b / PL_005c) | next free per family | INT-D9 |
+| `STA-*` | PL_006 Status Effects | [`features/04_play_loop/PL_006_status_effects.md`](../features/04_play_loop/PL_006_status_effects.md) | next free per family | STA-D4 |
+| `GR-*` | PL_002 Grammar per-feature deferral / question IDs | [`features/04_play_loop/PL_002_command_grammar.md`](../features/04_play_loop/PL_002_command_grammar.md) | next free | GR-D1 |
+| `LX-*` · `HER-*` · `FRG-*` · `MOR-*` | World-Authoring per-feature deferral / question IDs (WA_001 Lex · WA_002 Heresy · WA_003 Forge · WA_006 Mortality) | [`features/02_world_authoring/`](../features/02_world_authoring/_index.md) | next free per feature | HER-D2 |
+| `CHR-*` · `SUC-*` | Platform per-feature deferral / question IDs (PLT_001 Charter · PLT_002 Succession) | [`features/10_platform_business/`](../features/10_platform_business/_index.md) | next free per feature | CHR-D9 |
+| `CST-*` · `CHO-*` · `DSR-*` | NPC per-feature deferral / question IDs (NPC_001 Cast · NPC_002 Chorus · NPC_003 Desires) | [`features/05_npc_systems/`](../features/05_npc_systems/_index.md) | next free per feature | CST-D1 |
+| `GAP-S*` | SPIKE_04 geo-procgen validation gap findings (GAP-S⟨step⟩.⟨letter⟩) | [`features/_spikes/SPIKE_04_geo_procgen_validation.md`](../features/_spikes/SPIKE_04_geo_procgen_validation.md) | per spike section | GAP-S3.E |
+| `SPIKE-04-Q1..Q5` | Spike-scoped open questions | [`features/_spikes/SPIKE_04_geo_procgen_validation.md`](../features/_spikes/SPIKE_04_geo_procgen_validation.md) | per spike | SPIKE-04-Q2 |
+| `AUD-F*` · `AUD-D*` | Medium-correction blast-radius audit findings + decisions | [`10_medium_blast_radius_audit.md`](../10_medium_blast_radius_audit.md) | next free | AUD-F9 |
+| `SL-A*` · `SL-D*` · `SL-Q*` | Simulation loop & scheduler standard | [`13_simulation_loop.md`](../13_simulation_loop.md) | next free per family | SL-A2 = slower class never blocks faster |
+| `SC-A*` · `SC-D*` | `sim-core` crate implementation spec | [`14_sim_core_spec.md`](../14_sim_core_spec.md) | next free per family | SC-A1 = order-independent safety |
+| `CS-A*` · `CS-D*` | commit-service standard (admission + durability around `sim-core`) | [`15_commit_service.md`](../15_commit_service.md) | next free per family | CS-A6 = encounter is an ephemeral child channel |
+| `RLS-A*` · `RLS-I*` · `RLS-D*` · `RLS-Q*` | Ruleset loader & registry standard | [`16_ruleset_loader_and_registry.md`](../16_ruleset_loader_and_registry.md) (+ annex 16a) | next free per family | RLS-A13 = `ruleset_digest` envelope pin |
+| `CLS-1..3` | Ruleset field-classification findings | [`16a_ruleset_field_classification.md`](../16a_ruleset_field_classification.md) | CLS-4+ | CLS-2 = 144-entry archetype matrix completion |
+| `GDA-A*` · `GDA-D*` · `GDA-F*` · `GDA-Q*` | Game data architecture flows + audit findings | [`17_game_data_architecture.md`](../17_game_data_architecture.md) | next free per family | GDA-F11 = island model vs T3 tiers |
+| `RBS-A*` · `RBS-D*` · `RBS-F*` · `RBS-Q*` | Reality bootstrap spec | [`18_reality_bootstrap.md`](../18_reality_bootstrap.md) | next free per family | RBS-A3 = role hosted by the seeding worker |
+| `REC-01..` | Reconciliation register rows (typed EDIT / LOCK / DECISION / AMEND) | [`19_reconciliation_register.md`](../19_reconciliation_register.md) | next free | REC-28 = writer-role gap |
+| `POC-1..2` | Build-phase PoC findings (reconciliation register §15a) | [`19_reconciliation_register.md`](../19_reconciliation_register.md) | POC-3+ | POC-2 = validity 50% → 83% on fix |
+| `CWC-*` | Client wire contract (DRAFT) | [`20_client_wire_contract.md`](../20_client_wire_contract.md) | next free per family | CWC-A1 |
+
 ---
 
 ## Retired / withdrawn IDs (never reuse)

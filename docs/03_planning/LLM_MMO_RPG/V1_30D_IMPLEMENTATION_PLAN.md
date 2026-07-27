@@ -49,7 +49,7 @@ Each cycle is one `/amaw` workflow (12 phases, cold-start Adversary at REVIEW, S
 ### Cycle 1 — GEO_001 world geometry foundation · XL
 - **Goal:** a continent's geometry can be generated, stored, queried, and edited via deltas.
 - **Builds:** procedural pipeline stages 1–4 (Voronoi dual-mesh · heightmap · ClimateZone 8-variant · BiomeKind 14-variant + rivers); the `world_geometry` aggregate (T2/Channel); deterministic-base + delta-overlay; GEO_001b CreativeSeed authoring flow + `authoring.*` namespace; the 13 V1 `geography.*` rule_ids.
-- **Design refs:** [GEO_001](features/00_geography/GEO_001_world_geometry.md), [GEO_001b](features/00_geography/GEO_001b_creativeseed_authoring.md).
+- **Design refs:** [GEO_001](features/00_geography/GEO_001_world_geometry.md), [GEO_001b](features/00_geography/GEO_001b_authoring_flow.md).
 - **Adversary focus:** replay-determinism — same `(seed, creative_seed, pipeline_version)` → byte-identical geometry; the delta-overlay replay (base + ordered deltas).
 - **Exit:** AC-GEO-1..11 + AC-AUTHOR-1..10 pass as integration tests; replay-determinism CI gate green; GEO_001 + GEO_001b → CANDIDATE-LOCK.
 

@@ -10,7 +10,7 @@ generated_by: scripts/chunk_doc.py
 
 ### 9.1 Reality discovery
 
-Users pick which reality to play in. This section resolves **M1 (Reality discovery problem)** — see [01 §M1](01_OPEN_PROBLEMS.md#m1-reality-discovery-problem--partial). Decisions M1-D1..D7 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Users pick which reality to play in. This section resolves **M1 (Reality discovery problem)** — see [01 §M1](../01_problems/M_multiverse_specific.md#m1-reality-discovery-problem--partial). Decisions M1-D1..D7 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 #### Structure overview
 
@@ -109,7 +109,7 @@ Framework locked; these sub-items need prototype measurement before claiming SOL
 
 - Actual weight values (all weights in 9.1.2 are starting guesses)
 - Notable-event preview format — raw L3 headline vs AI 1-line summary (measure engagement)
-- First-week cold-start interaction with [01 C3](01_OPEN_PROBLEMS.md#c3-cold-start-empty-world-problem--open)
+- First-week cold-start interaction with [01 C3](../01_problems/C_product_ux.md#c3-cold-start-empty-world-problem--partial)
 - Preview-content caching freshness policy
 
 ### 9.2 Fork as gameplay mechanic

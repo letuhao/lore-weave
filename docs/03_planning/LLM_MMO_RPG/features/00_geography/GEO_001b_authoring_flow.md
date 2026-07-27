@@ -5,7 +5,7 @@
 > **Category:** GEO — Geography Foundation (same as GEO_001; this is the write-side sibling per two-file split precedent PL_001 + PL_001b / WA_002 + WA_002b)
 > **Status:** **DRAFT 2026-05-13** (single-cycle write-side discussion → design)
 > **Catalog refs:** [`cat_00_GEO_geography_foundation.md`](../../catalog/cat_00_GEO_geography_foundation.md) — owns `GEO-*` namespace (this file: `GEO-AUTHOR-*` sub-prefix)
-> **Builds on:** [GEO_001](GEO_001_world_geometry.md) (consumer of CreativeSeed) · [02_storage S6](../../02_storage/S06_llm_cost_controls.md) (cost cap pattern; `user_cost_ledger` table) · [02_storage S9](../../02_storage/S09_prompt_assembly.md) (prompt-assembly template registry + governance) · [02_storage S8](../../02_storage/S08_audit_pii_retention.md) (PII scrubbing in author intent prompts) · [05_llm_safety](../../05_llm_safety/) (intent classifier + injection defense for author intent text) · [CLAUDE.md two-layer pattern](../../../../CLAUDE.md) (knowledge-service planned per `101_DATA_RE_ENGINEERING_PLAN.md`)
+> **Builds on:** [GEO_001](GEO_001_world_geometry.md) (consumer of CreativeSeed) · [02_storage S6](../../02_storage/S06_llm_cost_controls.md) (cost cap pattern; `user_cost_ledger` table) · [02_storage S9](../../02_storage/S09_prompt_assembly.md) (prompt-assembly template registry + governance) · [02_storage S8](../../02_storage/S08_audit_pii_retention.md) (PII scrubbing in author intent prompts) · [05_llm_safety](../../05_llm_safety/) (intent classifier + injection defense for author intent text) · [CLAUDE.md two-layer pattern](../../../../../CLAUDE.md) (knowledge-service planned per `101_DATA_RE_ENGINEERING_PLAN.md`)
 > **Resolves:** Write-side contract gap surfaced 2026-05-13 deep-discussion (GEO_001 defined only the post-pipeline READ contract for prompt-assembly grounding; the LLM-produces-CreativeSeed write path was hand-waved with several gaps) · LLM-vs-procgen role split clarification (geometry stays in procgen; semantic creative direction stays in LLM; SpatialPreference enum replaces raw coordinates) · Producer abstraction (LLM is one producer; manual form / import / knowledge-extracted are also first-class V1 producers — no LLM dependency for V1 single-cell SPIKE_01 realities)
 > **Defers to:** future **GEO_002 V1+30d** Political Layer Generator (consumes locked CreativeSeed; not part of write-side) · future **knowledge-service V1+** activation (planned per CLAUDE.md; V1 schema-reserves `KnowledgeServiceExtracted` producer; activates when knowledge-service ships) · future **MAP_002 V2+** asset pipeline (LlmGenerated image rendering of materialized world; orthogonal to authoring write-side)
 
@@ -529,7 +529,7 @@ Author selects AuthoringProducer::KnowledgeServiceExtracted{book_id: "than_dieu_
 - [`features/03_player_onboarding/PO_001_player_onboarding.md`](../03_player_onboarding/PO_001_player_onboarding.md) — sibling pattern (PO-A4 AI Character Assistant) for LLM-assisted authoring UX
 - [`_boundaries/02_extension_contracts.md` §1.4](../../_boundaries/02_extension_contracts.md) — `authoring.*` reject namespace
 - [`_boundaries/02_extension_contracts.md` §2](../../_boundaries/02_extension_contracts.md) — RealityManifest `authoring_metadata: Option<AuthoringMetadata>` extension
-- [`CLAUDE.md`](../../../../CLAUDE.md) — knowledge-service planned per `101_DATA_RE_ENGINEERING_PLAN.md`; provider-gateway invariant for chat-service
+- [`CLAUDE.md`](../../../../../CLAUDE.md) — knowledge-service planned per `101_DATA_RE_ENGINEERING_PLAN.md`; provider-gateway invariant for chat-service
 
 ---
 

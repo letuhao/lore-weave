@@ -634,7 +634,7 @@ Player creates fork at event E → child reality R_beta.
 - [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) — EVT-T3 / T8 sub-shapes unchanged (ROUTE_001 reuses GEO_001 + POL_001 + SET_001 registrations)
 - [`features/00_map/MAP_001_map_foundation.md`](../00_map/MAP_001_map_foundation.md) — visual overlay layer reads ROUTE-populated data for line rendering (Road solid / Trail dashed / SeaLane dotted / MountainPass triangle markers)
 - [`features/00_place/PF_001_place_foundation.md`](../00_place/PF_001_place_foundation.md) — V1+30d cross-ref: PF-D7 procedural place generation V1+30d may consume route-cell context (Caravanserai / Toll / Harbor PlaceType bias); no V1+30d schema integration
-- [`features/03_actor_substrate/TIT_001_title_foundation.md`](../03_actor_substrate/TIT_001_title_foundation.md) — V1+30d cross-ref: titles can reference Route geometry post-ROUTE ship
+- [`features/03_actor_substrate/TIT_001_title_foundation.md`](../00_titles/TIT_001_title_foundation.md) — V1+30d cross-ref: titles can reference Route geometry post-ROUTE ship
 - *future* TVL_001 — primary consumer; depends on ROUTE_001 V1+30d shipping for inter-settlement travel modeling
 
 ---

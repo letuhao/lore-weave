@@ -14,7 +14,7 @@ generated_by: scripts/chunk_doc.py
 
 **Why hard:** This is a multi-dimensional retrieval problem — must filter memory by (this PC's history, recent world events, canon facts, NPC's core beliefs) under a hard context budget. Existing "chat memory" solutions (Letta/MemGPT, mem0, Zep) are single-user and don't handle multi-PC identity isolation.
 
-**Infrastructure resolved by R8** ([02 §12H](02_STORAGE_ARCHITECTURE.md#12h-npc-memory-aggregate-split-r8-mitigation-a1-foundation)):
+**Infrastructure resolved by R8** ([02 §12H](../02_storage/R08_npc_memory_split.md#12h-npc-memory-aggregate-split-r8-mitigation-a1-foundation--historical-context)):
 - NPC split into core aggregate + per-pair `npc_pc_memory` aggregates
 - Bounded growth (max 100 facts per pair, rolling summary every 50 events, LRU eviction)
 - Lazy loading scoped by session (R7-L6: NPC in 1 session at a time)
@@ -40,7 +40,7 @@ These require V1 prototype measurement before locking. A1 design deferred pendin
 
 **Problem (original):** NPC Elena talks to Player A on Monday and to Player B on Tuesday. If A tells Elena about a murder, does B's Elena know? If yes, conversations get tangled. If no, it's not the same world.
 
-**Resolved by multiverse model** (see [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md)): A and B being in **different realities** see different Elenas — and this is **correct by construction**, not a bug. Each reality is a peer universe with its own NPC state. Cross-reality consistency is no longer a contradiction to resolve.
+**Resolved by multiverse model** (see [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md)): A and B being in **different realities** see different Elenas — and this is **correct by construction**, not a bug. Each reality is a peer universe with its own NPC state. Cross-reality consistency is no longer a contradiction to resolve.
 
 **What remains `OPEN`:** the sub-problem of **A and B in the *same* reality** interacting with the same NPC. This reduces to:
 - Per-PC memory slot on NPC (A1's storage problem)
@@ -57,7 +57,7 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Why hard:** LLMs are non-deterministic by default. Temperature=0 helps but doesn't eliminate drift across model versions/providers.
 
-**Resolved by:** **World Oracle pattern** in [05 §4](05_LLM_SAFETY_LAYER.md) — `world-service` exposes deterministic `oracle.query(reality_id, pc_id, key, context_cutoff)` API; pre-computed fact categories (entity_location, entity_relation, L1_axiom, book_content, world_state_kv); cache invalidated on L3 events touching key; fact-question classifier routes to Oracle, miss → LLM fallback with audit flag; `context_cutoff` filters visibility per PC to prevent spoilers AND cross-PC leaks structurally. Decisions A3-D1..D4 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+**Resolved by:** **World Oracle pattern** in [05 §4](../05_llm_safety/03_world_oracle.md) — `world-service` exposes deterministic `oracle.query(reality_id, pc_id, key, context_cutoff)` API; pre-computed fact categories (entity_location, entity_relation, L1_axiom, book_content, world_state_kv); cache invalidated on L3 events touching key; fact-question classifier routes to Oracle, miss → LLM fallback with audit flag; `context_cutoff` filters visibility per PC to prevent spoilers AND cross-PC leaks structurally. Decisions A3-D1..D4 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN` (blocks SOLVED):**
 - Classifier accuracy (V1 prototype data on real sessions)
@@ -84,7 +84,7 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Why hard:** Tool-call reliability varies by model. Claude and GPT-4 are good; local/small models are not. Partial tool-call failures (half-updated state) corrupt world state.
 
-**Resolved by:** **Structured-command dispatch** in [05 §3](05_LLM_SAFETY_LAYER.md) — 3-intent classifier (command / fact question / free narrative); `/verb target [args]` syntax handled deterministically by `world-service` (validates, writes L3 event, updates projection) BEFORE LLM narrates; LLM tool-calls restricted to non-mutating flavor actions (whisper, gesture, reveal emotion) — state-changing actions (take/drop/attack/heal/move) architecturally forbidden from LLM output; tool-call failure policy (revert + audit + narrator acknowledges distraction, no partial state). Decisions A5-D1..D4 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+**Resolved by:** **Structured-command dispatch** in [05 §3](../05_llm_safety/02_command_dispatch.md) — 3-intent classifier (command / fact question / free narrative); `/verb target [args]` syntax handled deterministically by `world-service` (validates, writes L3 event, updates projection) BEFORE LLM narrates; LLM tool-calls restricted to non-mutating flavor actions (whisper, gesture, reveal emotion) — state-changing actions (take/drop/attack/heal/move) architecturally forbidden from LLM output; tool-call failure policy (revert + audit + narrator acknowledges distraction, no partial state). Decisions A5-D1..D4 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN` (blocks SOLVED):**
 - Tool-call reliability per LLM provider (Claude, GPT-4, Qwen, Ollama) — V1 per-model benchmark
@@ -97,7 +97,7 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Why hard:** No robust defense against prompt injection exists. Mitigations are layered and leaky.
 
-**Resolved by:** **5-layer defense** in [05 §5](05_LLM_SAFETY_LAYER.md) — L1 input sanitization (normalize + pattern flagging + audit), L2 hard server-side delimiters never user-controlled, **L3 canon-scoped retrieval at DB layer** (the critical layer — forbidden facts structurally absent from LLM context; jailbreak cannot leak what isn't there), L4 output filter (persona-break / cross-PC leak / spoiler / NSFW checks with soft retry + hard block), L5 per-PC retrieval isolation enforced at DB layer (RLS or service-layer filter, not prompt discipline). Decisions A6-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+**Resolved by:** **5-layer defense** in [05 §5](../05_llm_safety/04_injection_defense.md) — L1 input sanitization (normalize + pattern flagging + audit), L2 hard server-side delimiters never user-controlled, **L3 canon-scoped retrieval at DB layer** (the critical layer — forbidden facts structurally absent from LLM context; jailbreak cannot leak what isn't there), L4 output filter (persona-break / cross-PC leak / spoiler / NSFW checks with soft retry + hard block), L5 per-PC retrieval isolation enforced at DB layer (RLS or service-layer filter, not prompt discipline). Decisions A6-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN` (blocks SOLVED + ongoing):**
 - Output filter calibration (false positive vs miss rate) — V1 adversarial red-team

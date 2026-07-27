@@ -8,7 +8,7 @@ generated_by: scripts/chunk_doc.py
 
 ### 9.6 Progressive disclosure — M7 resolution
 
-This section resolves **M7 (Concept complexity for users)** — see [01 §M7](01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial). The multiverse model is sophisticated; casual users don't need to learn it. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+This section resolves **M7 (Concept complexity for users)** — see [01 §M7](../01_problems/M_multiverse_specific.md#m7-concept-complexity-for-users--partial). The multiverse model is sophisticated; casual users don't need to learn it. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 #### 9.6.1 User-facing terminology map (M7-D1)
 
@@ -62,7 +62,7 @@ Tutorial is skippable (X top-right) and re-runnable (help menu → "Show me arou
 
 #### 9.6.4 Copy style guide (M7-D4)
 
-See [`docs/02_governance/UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md) — new governance doc codifying the M7-D1 terminology map + phrasing patterns + PR review gate ("copy reviewed against styleguide" checkbox on user-facing UI PRs).
+See [`docs/02_governance/UI_COPY_STYLEGUIDE.md`](../../../02_governance/UI_COPY_STYLEGUIDE.md) — new governance doc codifying the M7-D1 terminology map + phrasing patterns + PR review gate ("copy reviewed against styleguide" checkbox on user-facing UI PRs).
 
 #### 9.6.5 Contextual helpers (M7-D5)
 
@@ -89,7 +89,7 @@ All tooltips i18n (reuse `i18next`), short (<100 chars default).
 
 ### 9.7 Canonization safeguards — M3 resolution
 
-This section resolves **M3 (Canonization contamination)** — see [01 §M3](01_OPEN_PROBLEMS.md#m3-canonization-contamination--partial). Framework-level **TECHNICAL + UX safeguards** that DF3 (Canonization / Author Review Flow implementation) MUST honor. Does NOT close **E3 (IP ownership — legal review)**, which remains an independent launch gate for platform mode. Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+This section resolves **M3 (Canonization contamination)** — see [01 §M3](../01_problems/M_multiverse_specific.md#m3-canonization-contamination--partial). Framework-level **TECHNICAL + UX safeguards** that DF3 (Canonization / Author Review Flow implementation) MUST honor. Does NOT close **E3 (IP ownership — legal review)**, which remains an independent launch gate for platform mode. Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 #### 9.7.1 Author-only trigger (M3-D1)
 
@@ -190,7 +190,7 @@ Canonized content is visually distinguishable from author-original:
 
 ### 9.8 Canon update propagation — M4 resolution
 
-This section resolves **M4 (Inconsistent L1/L2 updates across reality lifetimes)** — see [01 §M4](01_OPEN_PROBLEMS.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--partial). Infrastructure (xreality.* event channels + meta-worker service) is **already locked via R5-L2**; this section adds the **author-safety UX layer**. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+This section resolves **M4 (Inconsistent L1/L2 updates across reality lifetimes)** — see [01 §M4](../01_problems/M_multiverse_specific.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--partial). Infrastructure (xreality.* event channels + meta-worker service) is **already locked via R5-L2**; this section adds the **author-safety UX layer**. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 #### 9.8.1 Preview before L1/L2 edit (M4-D1)
 
@@ -260,7 +260,7 @@ Author-facing history on any glossary entity attribute:
 
 **Philosophical alignment:** §1 already states "Alice being alive in one reality and dead in another is normal." Orphan worlds extend this: "History can fade. Knowledge of events before the forgetting is lost, but the present endures."
 
-Full engineering design is in [02 §12M](02_STORAGE_ARCHITECTURE.md#12m-reality-ancestry-severance--orphan-worlds-c1-resolution). Conceptual summary here:
+Full engineering design is in [02 §12M](../02_storage/C01_severance_orphan_worlds.md#12m-reality-ancestry-severance--orphan-worlds-c1-resolution). Conceptual summary here:
 
 #### 9.9.1 What severance means in the multiverse
 

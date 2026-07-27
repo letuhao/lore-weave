@@ -41,8 +41,8 @@ generated_by: scripts/chunk_doc.py
 Features marked `V1` (33 items) + required `INFRA` (17 items) = 50 total features to build for a working solo RP prototype.
 
 Critical-path `❓ Open` blocking V1:
-- **NPC-3** (per-PC memory) — needs [01 A1](01_OPEN_PROBLEMS.md#a1-npc-memory-at-scale--open) solution
-- **NPC-4** (retrieval quality) — needs [01 A4](01_OPEN_PROBLEMS.md#a4-retrieval-quality-from-knowledge-service--partial) measurement
+- **NPC-3** (per-PC memory) — needs [01 A1](../01_problems/A_llm_reasoning.md#a1-npc-memory-at-scale--partial) solution
+- **NPC-4** (retrieval quality) — needs [01 A4](../01_problems/A_llm_reasoning.md#a4-retrieval-quality-from-knowledge-service--partial) measurement
 
 Non-blocking but must address:
 - **PL-4** (prompt assembly) — concrete recipe needed
@@ -96,10 +96,10 @@ Add `V4` items (4 items): world travel (DF6), echo visit, dimensional rifts, ric
 
 ## References
 
-- [00_VISION.md](00_VISION.md) — why this exists
-- [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) — risks indexed by category
-- [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) — IF-* detail
-- [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md) — WA-3, EM-1 to EM-6 detail
-- [04_PLAYER_CHARACTER_DESIGN.md](04_PLAYER_CHARACTER_DESIGN.md) — PO, PCS, SOC detail; DF1–DF8 registry
-- [OPEN_DECISIONS.md](OPEN_DECISIONS.md) — all locked + pending decisions
-- [../References/SillyTavern_Feature_Comparison.md](../References/SillyTavern_Feature_Comparison.md) — inspirations for PL-*, NPC-*, CC-8
+- [00_VISION.md](../00_VISION.md) — why this exists
+- [01_OPEN_PROBLEMS.md](../01_problems/_index.md) — risks indexed by category
+- [02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md) — IF-* detail
+- [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md) — WA-3, EM-1 to EM-6 detail
+- [04_PLAYER_CHARACTER_DESIGN.md](../04_player_character/_index.md) — PO, PCS, SOC detail; DF1–DF8 registry
+- [OPEN_DECISIONS.md](../decisions/_index.md) — all locked + pending decisions
+- [../References/SillyTavern_Feature_Comparison.md](../../References/SillyTavern_Feature_Comparison.md) — inspirations for PL-*, NPC-*, CC-8

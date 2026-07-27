@@ -11,7 +11,7 @@ generated_by: scripts/chunk_doc.py
 > **Status:** Exploratory design — locks two decisions, leaves others open. Risks listed for separate discussion.
 > **Scope:** Physical persistence of world state for the LLM MMO RPG. Does not cover canonical data (book / glossary / knowledge — those are owned by existing services).
 > **Created:** 2026-04-23
-> **Superseded in framing by:** [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md) — the conceptual model that sits above this engineering baseline. The word "instance" used throughout this document corresponds to **"reality"** in the multiverse model. There is no privileged "root reality"; every reality is a peer universe. See [03 §1–3](03_MULTIVERSE_MODEL.md) for the conceptual framing and [03 §8](03_MULTIVERSE_MODEL.md) for schema adjustments (notably: every events/projection row gains a `reality_id` column).
+> **Superseded in framing by:** [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md) — the conceptual model that sits above this engineering baseline. The word "instance" used throughout this document corresponds to **"reality"** in the multiverse model. There is no privileged "root reality"; every reality is a peer universe. See [03 §1–3](../03_multiverse/00_overview_philosophy.md) for the conceptual framing and [03 §8](../03_multiverse/04_schema_additions.md) for schema adjustments (notably: every events/projection row gains a `reality_id` column).
 
 ---
 
@@ -24,7 +24,7 @@ generated_by: scripts/chunk_doc.py
 | — | Fork semantics | **Snapshot fork** (locked separately in 03) — peer realities, no live inheritance between them |
 | — | Model name | **Multiverse** (peer realities, no root) |
 
-The remaining decisions (#2 embedding storage, #3 Redis durability, #5 event log partitioning, #6 hot state durability) are parked as `TBC`. All pending items live in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+The remaining decisions (#2 embedding storage, #3 Redis durability, #5 event log partitioning, #6 hot state durability) are parked as `TBC`. All pending items live in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 ## 2. Why these two together
 
@@ -154,7 +154,7 @@ CREATE INDEX events_reality_event_idx ON events (reality_id, event_id);
 - Enforces monotonic versioning per (reality, aggregate) (duplicate version = constraint violation = concurrency conflict)
 - Natural ordering for replay of one aggregate in one reality
 - Reality scoping ensures snapshot-fork isolation — events from sibling realities never collide
-- Cascading reads filter by `reality_id IN (ancestor chain)` + `event_id <= fork_point` per ancestor (see [03 §7](03_MULTIVERSE_MODEL.md))
+- Cascading reads filter by `reality_id IN (ancestor chain)` + `event_id <= fork_point` per ancestor (see [03 §7](../03_multiverse/03_fork_and_cascading.md))
 
 **`event_version`:** schema version of the event *type*, not the aggregate. Allows evolving `pc.say` v1 → v2 without rewriting history. Upcasters convert old events to latest schema on read.
 
@@ -740,7 +740,7 @@ Baseline per active instance, assuming 500 concurrent players in one instance (a
 | Postgres write TPS | ~200 (events + projection updates) |
 | Postgres headroom | Commodity Postgres handles 5K–10K TPS; using 2–4% |
 
-Bottleneck is **not DB**. It is LLM cost and latency. See [01_OPEN_PROBLEMS.md D1](01_OPEN_PROBLEMS.md#d1-llm-cost-per-user-hour--open).
+Bottleneck is **not DB**. It is LLM cost and latency. See [01_OPEN_PROBLEMS.md D1](../01_problems/D_economics.md#d1-llm-cost-per-user-hour--open).
 
 Scale by replicating instance DBs across Postgres servers (§7.6). Any single instance bounded by one DB's throughput, which tolerates ~100× the projected V1 load.
 

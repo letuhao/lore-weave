@@ -8,7 +8,7 @@ generated_by: scripts/chunk_doc.py
 
 ## 8. Data model adjustments
 
-Extends [02 §5.1](02_STORAGE_ARCHITECTURE.md) PC projection:
+Extends [02 §5.1](../02_storage/00_overview_and_schema.md) PC projection:
 
 ```sql
 ALTER TABLE pc_projection

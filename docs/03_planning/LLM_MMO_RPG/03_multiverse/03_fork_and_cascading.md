@@ -8,7 +8,7 @@ generated_by: scripts/chunk_doc.py
 
 ## 6. Snapshot fork semantics (locked decision)
 
-Fork is always snapshot. Repeated from [02 §4](02_STORAGE_ARCHITECTURE.md) for self-containment:
+Fork is always snapshot. Repeated from [02 §4](../02_storage/00_overview_and_schema.md) for self-containment:
 
 - Child reality inherits events from parent's chain **up to and including `fork_point_event_id`**
 - Events in parent after fork point are **not visible** to child
@@ -62,5 +62,5 @@ def load_aggregate_state(aggregate_id, reality_id):
     return fold(base, events)
 ```
 
-Optimization: projections collapse this cascade into per-reality flat rows (see [02 §5](02_STORAGE_ARCHITECTURE.md)). The cascade above is the semantic model; the physical read hits a projection row.
+Optimization: projections collapse this cascade into per-reality flat rows (see [02 §5](../02_storage/00_overview_and_schema.md)). The cascade above is the semantic model; the physical read hits a projection row.
 

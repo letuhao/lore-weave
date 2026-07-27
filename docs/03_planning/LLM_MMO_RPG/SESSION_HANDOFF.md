@@ -188,7 +188,7 @@ Started 2026-04-23 from a SillyTavern prior-art survey. Evolved through systemat
 - PC design (identity, lifecycle, social)
 - Full storage engineering (R1–R13 resolution)
 
-See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) for why it is hard.
+See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_problems/_index.md) for why it is hard.
 
 ## 2. Current state summary (2026-04-24 EOD — session ended)
 
@@ -197,12 +197,12 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 |---|---|
 | [README.md](README.md) | Folder index, reading order |
 | [00_VISION.md](00_VISION.md) | Vision: shape D, staged V1→V2→V3 path |
-| [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) | 30+ problems categorized; current counts below |
-| [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) | Storage engineering — §12A–§12AH cover R1-R13 + C1-C5 + H/M/P review + S1-S13 Security + SR1-SR5 SRE |
-| [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md) | Peer realities + 4-layer canon + snapshot fork |
-| [04_PLAYER_CHARACTER_DESIGN.md](04_PLAYER_CHARACTER_DESIGN.md) | PC semantics, creation/lifecycle/social |
-| [FEATURE_CATALOG.md](FEATURE_CATALOG.md) | Bird's-eye of 397 features across 12 categories |
-| [OPEN_DECISIONS.md](OPEN_DECISIONS.md) | Every decision locked or pending |
+| [01_OPEN_PROBLEMS.md](01_problems/_index.md) | 30+ problems categorized; current counts below |
+| [02_STORAGE_ARCHITECTURE.md](02_storage/_index.md) | Storage engineering — §12A–§12AH cover R1-R13 + C1-C5 + H/M/P review + S1-S13 Security + SR1-SR5 SRE |
+| [03_MULTIVERSE_MODEL.md](03_multiverse/_index.md) | Peer realities + 4-layer canon + snapshot fork |
+| [04_PLAYER_CHARACTER_DESIGN.md](04_player_character/_index.md) | PC semantics, creation/lifecycle/social |
+| [FEATURE_CATALOG.md](catalog/_index.md) | Bird's-eye of 397 features across 12 categories |
+| [OPEN_DECISIONS.md](decisions/_index.md) | Every decision locked or pending |
 
 ### Governance (created outside folder, referenced from here)
 - [`docs/02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md`](../../02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md) — R5 anti-pattern policy
@@ -216,24 +216,24 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - **❓ Open:** 3 — A4 retrieval quality · D1 LLM cost · E3 IP ownership (all external-data-dependent)
 - **🚫 Out of scope:** 2 — SOC-6 (parties), SOC-7 (global chat)
 
-### Storage risk resolution (R1–R13 in [02 §13](02_STORAGE_ARCHITECTURE.md))
+### Storage risk resolution (R1–R13 in [02 §13](02_storage/99_known_risks_and_close.md))
 **ALL 13 RESOLVED:**
 
 | Risk | Status | Section |
 |---|---|---|
-| R1 Event volume explosion | MITIGATED | [§12A](02_STORAGE_ARCHITECTURE.md) — 6-layer: audit split, discipline, retention, archive, truncate, lz4 |
-| R2 Projection rebuild | MITIGATED | [§12B](02_STORAGE_ARCHITECTURE.md) — 5-layer: snapshot, parallel, blue-green, integrity, catastrophic |
-| R3 Schema evolution | MITIGATED | [§12C](02_STORAGE_ARCHITECTURE.md) — 6-layer: additive, schema-as-code, upcasters, validation, new-type for breaking |
-| R4 Fleet ops | MITIGATED | [§12D](02_STORAGE_ARCHITECTURE.md) — 7-layer: provisioning, orchestrator, tiered backup, pgbouncer, metrics, sharding, orphan detection |
-| R5 Cross-instance queries | MITIGATED (reframed) | [§12E](02_STORAGE_ARCHITECTURE.md) — 3-layer + anti-pattern policy. No product feature requires live cross-instance query. |
-| R6 Publisher failure | MITIGATED | [§12F](02_STORAGE_ARCHITECTURE.md) — 7-layer incl. client catchup, DLQ, Redis-cache+DB-SSOT |
-| R7 Multi-aggregate deadlocks | MITIGATED (reframed) | [§12G](02_STORAGE_ARCHITECTURE.md) — session is concurrency unit, cross-session event handler (DF13) |
-| R8 Snapshot size drift | MITIGATED | [§12H](02_STORAGE_ARCHITECTURE.md) — NPC split into core + per-pair memory aggregates (foundation for A1) |
-| R9 Instance close destructive | MITIGATED | [§12I](02_STORAGE_ARCHITECTURE.md) — 8-layer 6-state machine, 120-day floor, soft-delete rename, double-approval |
-| R10 Global event ordering | **ACCEPTED** | [§12J](02_STORAGE_ARCHITECTURE.md) — no product feature needs it |
-| R11 pgvector footprint | MITIGATED | [§12K](02_STORAGE_ARCHITECTURE.md) — fits <1% RAM at V3; tuning + monitoring |
+| R1 Event volume explosion | MITIGATED | [§12A](02_storage/R01_event_volume.md) — 6-layer: audit split, discipline, retention, archive, truncate, lz4 |
+| R2 Projection rebuild | MITIGATED | [§12B](02_storage/R02_projection_rebuild.md) — 5-layer: snapshot, parallel, blue-green, integrity, catastrophic |
+| R3 Schema evolution | MITIGATED | [§12C](02_storage/R03_schema_evolution.md) — 6-layer: additive, schema-as-code, upcasters, validation, new-type for breaking |
+| R4 Fleet ops | MITIGATED | [§12D](02_storage/R04_fleet_ops.md) — 7-layer: provisioning, orchestrator, tiered backup, pgbouncer, metrics, sharding, orphan detection |
+| R5 Cross-instance queries | MITIGATED (reframed) | [§12E](02_storage/R05_cross_instance.md) — 3-layer + anti-pattern policy. No product feature requires live cross-instance query. |
+| R6 Publisher failure | MITIGATED | [§12F](02_storage/R06_R12_publisher_reliability.md) — 7-layer incl. client catchup, DLQ, Redis-cache+DB-SSOT |
+| R7 Multi-aggregate deadlocks | MITIGATED (reframed) | [§12G](02_storage/R07_concurrency_cross_session.md) — session is concurrency unit, cross-session event handler (DF13) |
+| R8 Snapshot size drift | MITIGATED | [§12H](02_storage/R08_npc_memory_split.md) — NPC split into core + per-pair memory aggregates (foundation for A1) |
+| R9 Instance close destructive | MITIGATED | [§12I](02_storage/R09_safe_reality_closure.md) — 8-layer 6-state machine, 120-day floor, soft-delete rename, double-approval |
+| R10 Global event ordering | **ACCEPTED** | [§12J](02_storage/R10_global_ordering_accepted.md) — no product feature needs it |
+| R11 pgvector footprint | MITIGATED | [§12K](02_storage/R11_pgvector_footprint.md) — fits <1% RAM at V3; tuning + monitoring |
 | R12 Redis stream ephemerality | MITIGATED | Subsumed by R6-L6 (Redis is cache, DB is SSOT) |
-| R13 Admin tooling complexity | MITIGATED | [§12L](02_STORAGE_ARCHITECTURE.md) — 6-layer discipline + governance policy |
+| R13 Admin tooling complexity | MITIGATED | [§12L](02_storage/R13_admin_discipline.md) — 6-layer discipline + governance policy |
 
 ### A1 progression
 - **A1 NPC memory at scale:** `OPEN` → `PARTIAL` after R8 resolution
@@ -4673,7 +4673,7 @@ BUILD phase: 1 new file (21_llm_turn_slot.md, 351 lines, DP-Ch51..Ch53) + target
 | File | Change | Lines |
 |---|---|---:|
 | **NEW** [`21_llm_turn_slot.md`](06_data_plane/21_llm_turn_slot.md) | LOCKED, DP-Ch51..Ch53 | 351 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`claim_turn_slot`/`release_turn_slot`/`get_turn_slot` primitives + `TurnSlotAck`/`TurnSlot` types + 2 new DpError (`TurnSlotHeldBy`, `ExpectedDurationTooLong`); surface 39 → 42; channel API 8 → 11; error variants 19 → 21 | 842 → 891 (still over 800 threshold; split task more urgent now — approaches 900) |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | +`claim_turn_slot`/`release_turn_slot`/`get_turn_slot` primitives + `TurnSlotAck`/`TurnSlot` types + 2 new DpError (`TurnSlotHeldBy`, `ExpectedDurationTooLong`); surface 39 → 42; channel API 8 → 11; error variants 19 → 21 | 842 → 891 (still over 800 threshold; split task more urgent now — approaches 900) |
 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | Lifecycle scheduler responsibility extended with 30-s turn-slot auto-timeout cadence + emits TurnSlotTimedOut events | 343 → 343 (single line edit) |
 | [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | `channel_writer_state` table extension note for Phase 4 columns (last_turn_number from DP-Ch22 + turn-slot fields from DP-Ch51) | 382 → 387 |
 | [`17_channel_lifecycle.md`](06_data_plane/17_channel_lifecycle.md) | DP-Ch36 composition note for pause + LLM turn slot orthogonality | 496 → 504 |
@@ -4811,7 +4811,7 @@ BUILD phase: 1 new file (19_privacy_redaction_policies.md, 275 lines, DP-Ch43..C
 | File | Change | Lines |
 |---|---|---:|
 | **NEW** [`19_privacy_redaction_policies.md`](06_data_plane/19_privacy_redaction_policies.md) | LOCKED, DP-Ch43..Ch45 | 275 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `register_bubble_up_aggregator` extended with `redaction_policy: RedactionPolicy` parameter | 838 → 842 |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | `register_bubble_up_aggregator` extended with `redaction_policy: RedactionPolicy` parameter | 838 → 842 |
 | [`16_bubble_up_aggregator.md`](06_data_plane/16_bubble_up_aggregator.md) | DP-Ch30 cross-ref to file 19; "leaves to other items" table updated to mark Q32 resolved | 561 → 568 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q32 ✅ resolved with cross-refs; Phase 4 severity summary updated (14 of 20 resolved) | 475 → 482 |
 | [`_index.md`](06_data_plane/_index.md) | File 19 row + DP-Ch eighth range; Phase 4 progress entry; status row reflects 14 Qs resolved | 125 → 128 |
@@ -4865,7 +4865,7 @@ BUILD phase: 1 new axiom (DP-A19) + 1 new file (18_causality_and_routing.md, 434
 |---|---|---:|
 | **NEW** [`18_causality_and_routing.md`](06_data_plane/18_causality_and_routing.md) | LOCKED, DP-Ch38..Ch42 | 434 |
 | [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A19 causality preservation; summary table | 361 → 388 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`CausalityToken` core type; T2/T3/MultiAck extended with `causality_token` field; read primitives extended with `wait_for: Option<&CausalityToken>` + `causality_timeout: Option<Duration>` params; +2 DpError variants (`CausalityWaitTimeout`, `SessionNotFound`); surface count 39 → 39 (read primitives kept at 4, added params, not new methods); error variants 17 → 19 | 791 → **838** (over 800 threshold — split queued for after Q32 + nits cleanup per user approval) |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | +`CausalityToken` core type; T2/T3/MultiAck extended with `causality_token` field; read primitives extended with `wait_for: Option<&CausalityToken>` + `causality_timeout: Option<Duration>` params; +2 DpError variants (`CausalityWaitTimeout`, `SessionNotFound`); surface count 39 → 39 (read primitives kept at 4, added params, not new methods); error variants 17 → 19 | 791 → **838** (over 800 threshold — split queued for after Q32 + nits cleanup per user approval) |
 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | +session→node binding lookup responsibility note (existing GetSessionNode RPC now consumed by routing path) | 342 → 343 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q21/Q22 ✅ resolved with cross-refs; Phase 4 severity summary updated (13 of 20 resolved; 3 🟡 + 4 🟢 remain) | 463 → 475 |
 | [`_index.md`](06_data_plane/_index.md) | File 18 row + DP-Ch seventh range; DP-A range → A19; Phase 4 progress entry; status row reflects 13 Qs resolved | 122 → 125 |
@@ -4970,7 +4970,7 @@ BUILD phase: 1 new axiom (DP-A18) + 1 new file (17_channel_lifecycle.md, DP-Ch31
 |---|---|---:|
 | **NEW** [`17_channel_lifecycle.md`](06_data_plane/17_channel_lifecycle.md) | LOCKED, DP-Ch31..Ch37 | 496 |
 | [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A18 lifecycle + canonical events; summary table row; stable-IDs header → A18 | 338 → 361 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`channel_pause`/`channel_resume` + `PauseAck` + 4 new `DpError` variants (`ChannelPaused`, `ChannelDissolved`, `ChannelHasDescendants`, `ChannelAlreadyInState`); surface count 37 → 39; error-variants 13 → 17 | 748 → 791 (close to 800-line monolith threshold flagged earlier; split candidate after next 🟡 cluster) |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | +`channel_pause`/`channel_resume` + `PauseAck` + 4 new `DpError` variants (`ChannelPaused`, `ChannelDissolved`, `ChannelHasDescendants`, `ChannelAlreadyInState`); surface count 37 → 39; error-variants 13 → 17 | 748 → 791 (close to 800-line monolith threshold flagged earlier; split candidate after next 🟡 cluster) |
 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | +lifecycle scheduler responsibility (auto-dormant 5-min cadence + auto-resume 60-s cadence); 3 new gRPC methods (TransitionChannelLifecycle, PauseChannel, ResumeChannel); count 22 → 25 | 336 → 342 |
 | [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | DP-Ch1 lifecycle field comment cross-refs file 17; "leaves to other items" table updated to mark Q31 resolved | 447 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q19/Q28/Q31 ✅ resolved with cross-refs; Phase 4 severity summary updated (10 resolved) | 444 → 459 |
@@ -5027,7 +5027,7 @@ BUILD phase: 1 new file (16_bubble_up_aggregator.md, DP-Ch25..Ch30) — the larg
 | File | Change | Lines |
 |---|---|---:|
 | **NEW** [`16_bubble_up_aggregator.md`](06_data_plane/16_bubble_up_aggregator.md) | LOCKED, DP-Ch25..Ch30 | 561 (over soft cap; intentional — cohesive aggregator design) |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`register_bubble_up_aggregator` + `unregister` + `deterministic_rng`; surface count 34 → 37 | 723 → 748 |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | +`register_bubble_up_aggregator` + `unregister` + `deterministic_rng`; surface count 34 → 37 | 723 → 748 |
 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | +aggregator registry responsibility in DP-C1; +3 RPC methods (Register / Unregister / List); count 19 → 22 | 330 → 336 |
 | [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | DP-Ch15 cross-ref to file 16 (preview → full) | 382 → 382 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q27 ✅ resolved; **Phase 4 design phase complete** announcement; severity summary updated (7 resolved, 0 blockers remaining) | 434 → 444 |
@@ -5105,7 +5105,7 @@ BUILD phase: 1 new axiom (DP-A17) + 1 new file (15_turn_boundary.md, DP-Ch21..Ch
 |---|---|---:|
 | **NEW** [`15_turn_boundary.md`](06_data_plane/15_turn_boundary.md) | LOCKED, DP-Ch21..Ch24 | 347 |
 | [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A17 per-channel turn numbering invariant; summary table row | 312 → 338 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`advance_turn` primitive on `DpClient` + `TurnAck`; surface count 33 → 34 | 706 → 723 |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | +`advance_turn` primitive on `DpClient` + `TurnAck`; surface count 33 → 34 | 706 → 723 |
 | [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | DP-Ch11 schema extension cite `turn_number BIGINT` column added in DP-Ch22 | 381 → 382 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q15 ✅ resolved with cross-refs; severity summary updated (6 resolved) | 428 → 434 |
 | [`_index.md`](06_data_plane/_index.md) | File 15 row + DP-Ch fourth range; DP-A range → A17; Phase 4 progress entry; status row reflects Q15/Q16/Q17/Q26/Q30/Q34 resolved | 113 → 116 |
@@ -5168,7 +5168,7 @@ BUILD phase: 1 new file (14_durable_subscribe.md, 5 mechanism specs DP-Ch16..Ch2
 |---|---|---:|
 | **NEW** [`14_durable_subscribe.md`](06_data_plane/14_durable_subscribe.md) | LOCKED, DP-Ch16..Ch20 | 381 |
 | [`02_invariants.md`](06_data_plane/02_invariants.md) | DP-A4 extended (Redis cache + pub/sub + **Streams**); summary table row updated | 306 → 312 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | DP-K6 + `subscribe_channel_events_durable<S>` + `subscribe_session_channels<S>`; surface count 31 → 33 | 685 → 706 (still over soft cap; user-approved API-reference exception) |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | DP-K6 + `subscribe_channel_events_durable<S>` + `subscribe_session_channels<S>`; surface count 31 → 33 | 685 → 706 (still over soft cap; user-approved API-reference exception) |
 | [`06_cache_coherency.md`](06_data_plane/06_cache_coherency.md) | DP-X2 explicit 5-keyspace table separating cache invalidation pub/sub from durable Streams from audit streams (Phase 4 clarification) | 271 → 285 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q16 ✅ resolved with full cross-refs; Phase 4 severity summary updated (5 resolved) | 423 → 428 |
 | [`_index.md`](06_data_plane/_index.md) | File 14 row + DP-Ch third range; Phase 4 progress entry | 110 → 113 |
@@ -5229,7 +5229,7 @@ BUILD phase: 2 new axioms (DP-A15 ordering invariant + DP-A16 writer binding) + 
 |---|---|---:|
 | **NEW** [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | LOCKED, DP-Ch11..Ch15 | 381 |
 | [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A15 + DP-A16, summary table rows | 252 → 306 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `WrongChannelWriter` `DpError` variant + transparent-routing note in DP-K5 + surface count update | 677 → 685 (still over soft cap; user-approved API-reference exception) |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | `WrongChannelWriter` `DpError` variant + transparent-routing note in DP-K5 + surface count update | 677 → 685 (still over soft cap; user-approved API-reference exception) |
 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | Writer-binding responsibility added to DP-C1; 3 new gRPC methods (`GetChannelWriter`, `RequestWriterHandoff`, `HeartbeatWriterLease`) in DP-C3; count 16 → 19 | 324 → 330 |
 | [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | Cross-refs in "leaves to other items" table marking Q17/Q30/Q34 resolved with pointers to file 13 | 447 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q17/Q30/Q34 ✅ resolved with full cross-refs; Phase 4 severity summary updated | 420 → 423 |
@@ -5292,7 +5292,7 @@ BUILD phase: 2 new axioms + 1 new file + updates to 4 existing files. No re-desi
 |---|---|---:|
 | **NEW** [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | LOCKED, DP-Ch1..Ch10 | 447 |
 | [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A13 + DP-A14, summary table rows, header stable-IDs range | 209 → 252 |
-| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `ChannelId` type, scope marker traits, SessionContext extension, scope-typed read primitives, scope-dispatched `cache_key!` macro, channel CRUD primitives, updated surface summary | 570 → **677** (over soft cap; API-reference monolith intentional) |
+| [`04_kernel_api_contract.md`](06_data_plane/_index.md) | `ChannelId` type, scope marker traits, SessionContext extension, scope-typed read primitives, scope-dispatched `cache_key!` macro, channel CRUD primitives, updated surface summary | 570 → **677** (over soft cap; API-reference monolith intentional) |
 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | CP channel-tree cache responsibility + 3 new gRPC methods (`GetChannelTree`, `StreamChannelTreeUpdates`, `ResolveAncestorChain`) | 318 → 324 |
 | [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q26 ✅ marked resolved with full cross-ref; Phase 4 severity summary updated (3/4 blockers remaining) | 417 → 420 |
 | [`_index.md`](06_data_plane/_index.md) | File 12 row + DP-Ch registry, DP-A range → A14, Phase 4 section updated with "in progress" + file 12 | 101 → 107 |
@@ -5458,7 +5458,7 @@ Phase 2 resolves 4 open questions fully (Q1, Q4, Q9, Q14) and 4 partially (Q5, Q
 
 | # | File | Status | Owned IDs | Lines |
 |---:|---|---|---|---:|
-| 04 | [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 570 (over soft cap; API reference intentionally kept whole) |
+| 04 | [`04_kernel_api_contract.md`](06_data_plane/_index.md) | LOCKED | DP-K1..K12 | 570 (over soft cap; API reference intentionally kept whole) |
 | 05 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 318 |
 | 06 | [`06_cache_coherency.md`](06_data_plane/06_cache_coherency.md) | LOCKED | DP-X1..X10 | 271 |
 | _index.md | updated | — | — | 97 (status table + ID registry) |
@@ -5634,7 +5634,7 @@ The following items are V1-required and must be designed before V1 implementatio
 
 | # | Item | Scope | Effort |
 |---|---|---|---|
-| ~~4~~ | ~~**WA-4 L1 auto-assignment heuristics**~~ | ✅ **DONE 2026-04-24** — 5 decisions locked (WA4-D1..D5). Strong L1/L2 category lists + ambiguous recommendation UX + asymmetric override policy. See [03 §3 "Category heuristics"](03_MULTIVERSE_MODEL.md) and OPEN_DECISIONS tail. | Closed |
+| ~~4~~ | ~~**WA-4 L1 auto-assignment heuristics**~~ | ✅ **DONE 2026-04-24** — 5 decisions locked (WA4-D1..D5). Strong L1/L2 category lists + ambiguous recommendation UX + asymmetric override policy. See [03 §3 "Category heuristics"](03_multiverse/01_four_layer_canon.md) and OPEN_DECISIONS tail. | Closed |
 | 5 | **Session invite / share-link framework** | Link shape + visibility inheritance from `sharing-service`; can fold into DF5 or lock framework first | ~3 decisions, inline or within DF5 |
 
 **🟢 Synthesis doc (no new design — aggregation only)**
@@ -5690,7 +5690,7 @@ Plus **A4 retrieval quality** — status PARTIAL in 01 but still a critical-path
 5. Feed A4 retrieval scores back → tune G1-D3 judge rubric weights
 
 **When legal review begins (for E3 / platform-mode launch):**
-1. Brief counsel on canonization flow mechanics ([03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution) + M3-D1..D8)
+1. Brief counsel on canonization flow mechanics ([03 §9.7](03_multiverse/06_M_C_resolutions.md#97-canonization-safeguards--m3-resolution) + M3-D1..D8)
 2. Scope questions: ownership of canonized content, player consent (M3-D3), author veto, jurisdiction
 3. Precedent review: AO3, Wattpad, fanfic platform ToS patterns
 4. Output: ToS language + canonization attribution policy (feeds M3-D6 export UI)
@@ -5716,23 +5716,23 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 
 ### Handoff checklist for next session
 - [ ] **Read "Next session agenda" above** — it is the top priority: V1-blocking DF docs + inline gaps + synthesis doc, in priority order
-- [ ] Read [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) status summary — confirm 2 OPEN / 26 PARTIAL / 5 KNOWN / 4 ACCEPTED still accurate
-- [ ] Read [OPEN_DECISIONS.md](OPEN_DECISIONS.md) tail ~25 rows for most recent locks (M/A/B/C/D/F/G batches + V-1/V-2/V-3/MV5-pri + CC-6)
-- [ ] Read [05_LLM_SAFETY_LAYER.md](05_LLM_SAFETY_LAYER.md) + [`../../05_qa/LLM_MMO_TESTING_STRATEGY.md`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md) + [`../../02_governance/A11Y_POLICY.md`](../../02_governance/A11Y_POLICY.md) + [`../../02_governance/UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md) for cross-cutting constraints on DF4/DF5/DF7 design
+- [ ] Read [01_OPEN_PROBLEMS.md](01_problems/_index.md) status summary — confirm 2 OPEN / 26 PARTIAL / 5 KNOWN / 4 ACCEPTED still accurate
+- [ ] Read [OPEN_DECISIONS.md](decisions/_index.md) tail ~25 rows for most recent locks (M/A/B/C/D/F/G batches + V-1/V-2/V-3/MV5-pri + CC-6)
+- [ ] Read [05_LLM_SAFETY_LAYER.md](05_llm_safety/_index.md) + [`../../05_qa/LLM_MMO_TESTING_STRATEGY.md`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md) + [`../../02_governance/A11Y_POLICY.md`](../../02_governance/A11Y_POLICY.md) + [`../../02_governance/UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md) for cross-cutting constraints on DF4/DF5/DF7 design
 - [ ] Pick from "Next session agenda" priority order (WA-4 → DF5 → DF4 → DF7 → session-invite → V1 MVP scope) or user can reorder. Each DF gets its own design doc (`docs/03_planning/LLM_MMO_RPG/DF_X_<NAME>.md` or similar, pattern TBD)
 - [ ] For external triggers (V1 prototype data, legal brief, research progress): still the primary reopen condition for the remaining 2 OPEN (D1, E3) — see "When to reopen design session" below
 - [ ] When starting a DF design, scan OPEN_DECISIONS for all `D...` references pointing to that DF (they list scope requirements from prior locked decisions)
 
 ---
 
-### Multiverse-specific risks (M1–M7 in [01 §M](01_OPEN_PROBLEMS.md)) — NOT yet batch-addressed
-- M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data
+### Multiverse-specific risks (M1–M7 in [01 §M](01_problems/_index.md)) — NOT yet batch-addressed
+- M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_multiverse/05_product_ux_basics.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data
 - M2 Storage cost inactive realities (**PARTIAL — confirmed MITIGATED in 03 §11 on 2026-04-23**) — all layers locked (MV10/MV11/R9-L6/MV4-b/M1-D5); residual platform-mode tier quota deferred to `103_PLATFORM_MODE_PLAN.md`
-- M3 Canonization contamination (**PARTIAL — resolved 2026-04-23**) — 8-layer safeguards in [03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution), M3-D1..D8 locked; DF3 implementation + E3 legal remain independent (platform-mode launch gate; self-hosted exempt)
-- M4 L1/L2 update propagation (**PARTIAL — resolved 2026-04-23**) — 6-layer author-safety UX in [03 §9.8](03_MULTIVERSE_MODEL.md#98-canon-update-propagation--m4-resolution) reusing R5-L2 xreality infrastructure; M4-D1..D6 locked
+- M3 Canonization contamination (**PARTIAL — resolved 2026-04-23**) — 8-layer safeguards in [03 §9.7](03_multiverse/06_M_C_resolutions.md#97-canonization-safeguards--m3-resolution), M3-D1..D8 locked; DF3 implementation + E3 legal remain independent (platform-mode launch gate; self-hosted exempt)
+- M4 L1/L2 update propagation (**PARTIAL — resolved 2026-04-23**) — 6-layer author-safety UX in [03 §9.8](03_multiverse/06_M_C_resolutions.md#98-canon-update-propagation--m4-resolution) reusing R5-L2 xreality infrastructure; M4-D1..D6 locked
 - M5 Fork depth explosion (**PARTIAL — confirmed MITIGATED in 03 §11 on 2026-04-23**) — MV9 auto-rebase at N=5 + projection flattening + R4-L5 ops metrics; threshold tuning pending V1 data
 - M6 Cross-reality analytics (KNOWN pattern)
-- M7 Concept complexity for users (**PARTIAL — resolved 2026-04-23**) — 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution), M7-D1..D5 locked + new governance doc [`UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md); tutorial A/B + tier thresholds pending V1 data
+- M7 Concept complexity for users (**PARTIAL — resolved 2026-04-23**) — 5-layer progressive disclosure in [03 §9.6](03_multiverse/06_M_C_resolutions.md#96-progressive-disclosure--m7-resolution), M7-D1..D5 locked + new governance doc [`UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md); tutorial A/B + tier thresholds pending V1 data
 
 ### Deferred big features (DF1–DF13)
 12 active, 1 withdrawn (DF12). Each gets its own design doc when implementation commits.
@@ -5868,16 +5868,16 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 ### Quick bootstrap (5 min)
 1. Read [README.md](README.md)
 2. Read this file (SESSION_HANDOFF.md)
-3. Skim [FEATURE_CATALOG.md](FEATURE_CATALOG.md) § "Status summary"
-4. Check [OPEN_DECISIONS.md](OPEN_DECISIONS.md) tail for most-recent locks
+3. Skim [FEATURE_CATALOG.md](catalog/_index.md) § "Status summary"
+4. Check [OPEN_DECISIONS.md](decisions/_index.md) tail for most-recent locks
 
 ### Deep bootstrap (30 min)
 1. Above, plus:
 2. Read [00_VISION.md](00_VISION.md) fully
-3. Skim [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md) §1–§3 (framing + 4-layer canon)
-4. Skim [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) §12A–§12L (all R1–R13)
-5. Skim [04_PLAYER_CHARACTER_DESIGN.md](04_PLAYER_CHARACTER_DESIGN.md)
-6. Read [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) status table
+3. Skim [03_MULTIVERSE_MODEL.md](03_multiverse/_index.md) §1–§3 (framing + 4-layer canon)
+4. Skim [02_STORAGE_ARCHITECTURE.md](02_storage/_index.md) §12A–§12L (all R1–R13)
+5. Skim [04_PLAYER_CHARACTER_DESIGN.md](04_player_character/_index.md)
+6. Read [01_OPEN_PROBLEMS.md](01_problems/_index.md) status table
 
 ## 5. Natural next steps
 

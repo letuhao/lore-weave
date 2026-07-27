@@ -721,7 +721,7 @@ RealityManifest declares canonical_states[0] = { name: "X", capital_province_dec
 - [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) — EVT-T3 / T8 sub-shapes unchanged (POL_001 reuses GEO_001 registrations)
 - [`features/00_map/MAP_001_map_foundation.md`](../00_map/MAP_001_map_foundation.md) — V1+ position auto-derivation row gains "state-level via Province centroid" entry at MAP_001 LOCK (parallel to GEO-D5 settlement row)
 - [`features/00_place/PF_001_place_foundation.md`](../00_place/PF_001_place_foundation.md) — PF-D7 procedural place generation gains culture_tag context input
-- [`features/03_actor_substrate/TIT_001_title_foundation.md`](../03_actor_substrate/TIT_001_title_foundation.md) — V1+30d cross-ref: titles can reference State.capital_province name post-POL ship
+- [`features/03_actor_substrate/TIT_001_title_foundation.md`](../00_titles/TIT_001_title_foundation.md) — V1+30d cross-ref: titles can reference State.capital_province name post-POL ship
 
 ---
 
