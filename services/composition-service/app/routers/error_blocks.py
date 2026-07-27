@@ -326,6 +326,29 @@ async def _close(
     return block.model_dump(mode="json")
 
 
+@router.post("/error-blocks/{block_id}/reopen", status_code=200)
+async def reopen_error_block(
+    block_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    blocks: ErrorBlocksRepo = Depends(get_error_blocks_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Re-open a block closed by mistake — the reverse of resolve/dismiss.
+
+    Without this there was no way back: `set_status` supported it, but nothing exposed it, so a
+    wrongly-resolved mark was permanently closed and the MCP undo hint pointed at a read that
+    reverted nothing. `resolved_at` clears on the way back so "when was this closed" stays
+    answerable rather than reporting a close that was undone.
+    """
+    project_id = await _block_project_id(block_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    block = await blocks.set_status(project_id, block_id, "open")
+    if block is None:
+        raise HTTPException(status_code=404, detail="error block not found")
+    return block.model_dump(mode="json")
+
+
 @router.delete("/error-blocks/{block_id}", status_code=200)
 async def delete_error_block(
     block_id: UUID,

@@ -160,6 +160,12 @@ export const errorBlocksApi = {
     });
   },
 
+  /** The reverse of resolve/dismiss — a block closed by mistake. Without this the close was
+   *  one-way, and the agent's undo hint pointed at a read that reverted nothing. */
+  reopen(blockId: string, token: string): Promise<ErrorBlock> {
+    return apiJson(`${BASE}/error-blocks/${blockId}/reopen`, { method: 'POST', token });
+  },
+
   remove(blockId: string, token: string): Promise<ErrorBlock> {
     return apiJson(`${BASE}/error-blocks/${blockId}`, { method: 'DELETE', token });
   },

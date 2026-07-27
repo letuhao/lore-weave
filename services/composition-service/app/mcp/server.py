@@ -6970,7 +6970,7 @@ async def composition_canon_rule_edit(ctx: MCPContext, args: _CanonRuleEditArgs)
 
 
 class _ErrorBlockEditArgs(ForbidExtra):
-    op: Literal["list", "resolve", "dismiss"]
+    op: Literal["list", "resolve", "dismiss", "reopen"]
     project_id: str | None = None    # all
     chapter_id: str | None = None    # list
     block_id: str | None = None      # resolve, dismiss
@@ -6991,7 +6991,8 @@ class _ErrorBlockEditArgs(ForbidExtra):
         "author telling you exactly what to fix. To fix one, propose the replacement for its "
         "quoted span with propose_edit; then op=resolve (needs project_id + block_id; optional "
         "resolution, proposal_id) once the author applies it, or op=dismiss if it should not be "
-        "changed after all. A block with status=orphaned means the prose it pointed at has since "
+        "changed after all. op=reopen re-opens a block you closed by mistake — it is the reverse "
+        "of resolve/dismiss. A block with status=orphaned means the prose it pointed at has since "
         "changed — ask the author rather than guessing. EDIT required to close a block."
     ),
     meta=require_meta("A", "book",
@@ -7044,7 +7045,7 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
             ),
         }
 
-    # resolve / dismiss
+    # resolve / dismiss / reopen
     if not args.block_id:
         raise ValueError(f"op={args.op} requires block_id")
     await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
@@ -7054,16 +7055,21 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
     # from another Work can never be closed under THIS book's gate (the node_update precedent).
     if prior is None or prior.project_id != pid:
         return {"success": False, "error": f"error block {args.block_id} not found in this project"}
+    target = {"resolve": "resolved", "dismiss": "dismissed", "reopen": "open"}[args.op]
     updated = await blocks.set_status(
-        pid, bid, "resolved" if args.op == "resolve" else "dismissed",
-        proposal_id=args.proposal_id, resolution=args.resolution,
+        pid, bid, target, proposal_id=args.proposal_id, resolution=args.resolution,
     )
     if updated is None:
         return {"success": False, "error": f"error block {args.block_id} could not be updated"}
     out = updated.model_dump(mode="json")
+    # The undo hint must name a REAL REVERSE op. It previously pointed at op="list", which reads
+    # and reverts nothing — the FE activity strip would have offered an Undo button that appeared
+    # to work and left the block closed. Worse than offering no undo at all, and the exact
+    # silent-no-op class the tool contract forbids. `reopen` exists so this hint can be honest.
     out["_meta"] = {"undo_hint": _undo(
-        "composition_error_block_edit", op="list",
-        project_id=args.project_id, chapter_id=str(prior.chapter_id or ""),
+        "composition_error_block_edit",
+        op="reopen" if args.op in ("resolve", "dismiss") else "resolve",
+        project_id=args.project_id, block_id=args.block_id,
     )}
     return out
 
