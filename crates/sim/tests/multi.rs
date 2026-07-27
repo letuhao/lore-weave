@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use sim::{input, Realm, TestDomain, TestPayload, TestPortable, TestRules, TestState};
-use sim_core::{
+use sim_core::{Admitted, 
     DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, Island, IslandId,
     IslandMessage, Lane, Outcome, Precondition, PreconditionKind, RulesetDigest, SeenWindow, Seq,
     StepStatus, Tick, Violation,
@@ -96,7 +96,7 @@ fn handoff_moves_entity_exactly_once() {
     let mut b = island(2, 8);
     let e = EntityId(1);
     a.spawn_entity(e);
-    a.submit(Lane::Live, input(1, TestPayload::Inc { id: e, by: 42 }, vec![], Fallback::Drop));
+    a.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Inc { id: e, by: 42 }, vec![], Fallback::Drop)));
     while a.step() != StepStatus::Idle {}
 
     let (gen_at_depart, portable) = a.depart(e).expect("owned → departs");
@@ -106,12 +106,12 @@ fn handoff_moves_entity_exactly_once() {
     assert!(!a.state().counters.contains_key(&e), "state extracted, not copied");
 
     // An in-flight input on the SOURCE now fails structurally (S1a machinery).
-    a.submit(Lane::Live, input(
+    a.submit(Lane::Live, Admitted::unchecked(input(
         2,
         TestPayload::Inc { id: e, by: 1 },
         vec![Precondition::IslandOwns { id: e }],
         Fallback::Drop,
-    ));
+    )));
     while a.step() != StepStatus::Idle {}
     assert!(matches!(
         a.outcomes().last().unwrap().1,
@@ -125,12 +125,12 @@ fn handoff_moves_entity_exactly_once() {
 
     b.arrive(e, portable);
     assert_eq!(b.state().counters[&e], 42, "state survived the handoff intact");
-    b.submit(Lane::Live, input(
+    b.submit(Lane::Live, Admitted::unchecked(input(
         3,
         TestPayload::Inc { id: e, by: 8 },
         vec![Precondition::IslandOwns { id: e }],
         Fallback::Drop,
-    ));
+    )));
     while b.step() != StepStatus::Idle {}
     assert_eq!(b.state().counters[&e], 50, "target owns and applies");
 }
@@ -148,12 +148,12 @@ fn arrive_over_existing_entity_bumps_generation() {
     assert!(g1 > g0, "re-arrival is a new epoch");
 
     // A ref pinned to the OLD generation now fails EntityAlive.
-    isle.submit(Lane::Live, input(
+    isle.submit(Lane::Live, Admitted::unchecked(input(
         1,
         TestPayload::Inc { id: e, by: 1 },
         vec![Precondition::EntityAlive { id: e, generation: g0 }],
         Fallback::Drop,
-    ));
+    )));
     while isle.step() != StepStatus::Idle {}
     assert!(matches!(
         isle.outcomes().last().unwrap().1,
@@ -176,18 +176,18 @@ fn dissolve_migrating_transfers_all_pending_work() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
     // A buffered item (ineligible until tick 40).
-    isle.submit(Lane::Live, input(
+    isle.submit(Lane::Live, Admitted::unchecked(input(
         4,
         TestPayload::Inc { id: e, by: 8 },
         vec![Precondition::ActorEligible { id: e, turn: Tick(40) }],
         Fallback::Buffer,
-    ));
+    )));
     while isle.step() != StepStatus::Idle {} // applies #1, parks #4
     assert_eq!(isle.buffered_len(), 1);
     // Still-pending work at dissolve time: one queued, one scheduled, one buffered.
-    isle.submit(Lane::Background, input(2, TestPayload::Inc { id: e, by: 2 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Background, Admitted::unchecked(input(2, TestPayload::Inc { id: e, by: 2 }, vec![], Fallback::Drop)));
     isle.schedule_at(Tick(50), Lane::Live, input(3, TestPayload::Inc { id: e, by: 4 }, vec![], Fallback::Drop));
     assert!(!isle.is_quiescent());
 
@@ -199,7 +199,7 @@ fn dissolve_migrating_transfers_all_pending_work() {
     // Successor: rebuild from the dissolution checkpoint, re-admit the work.
     let mut succ = Island::restore(d.checkpoint, Arc::new(TestRules { max_counter: 1_000_000 }));
     for (lane, item) in d.transferable {
-        succ.submit(lane, item);
+        succ.submit(lane, Admitted::unchecked(item));
     }
     succ.tick(50); // makes the ActorEligible item eligible
     while succ.step() != StepStatus::Idle {}
@@ -214,7 +214,7 @@ fn dissolve_resolved_discards_pending() {
     let e = EntityId(1);
     isle.spawn_entity(e);
     for i in 0..5u128 {
-        isle.submit(Lane::Live, input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
     }
 
     let d = isle.dissolve(DissolutionReason::Resolved);
@@ -233,9 +233,9 @@ fn dissolve_migrating_drops_stale_generation_items() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
     isle.bump_island_gen(); // cancels #1
-    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: e, by: 2 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Inc { id: e, by: 2 }, vec![], Fallback::Drop)));
 
     let d = isle.dissolve(DissolutionReason::Migrating);
     assert_eq!(d.transferable.len(), 1, "only the current-gen item travels");
@@ -252,8 +252,8 @@ fn dissolve_returns_quarantine_separately_never_transferable() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
-    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: e, by: 3 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Panic, vec![], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Inc { id: e, by: 3 }, vec![], Fallback::Drop)));
     while !matches!(isle.step(), StepStatus::Poisoned | StepStatus::Idle) {}
     assert!(isle.is_poisoned());
 
@@ -276,18 +276,18 @@ fn checkpoint_restore_is_stepping_identical() {
     let stream1 = |isle: &mut Island<TestDomain>| {
         let e = EntityId(1);
         for i in 0..10u128 {
-            isle.submit(Lane::Live, input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop)));
         }
         while isle.step() != StepStatus::Idle {}
     };
     let stream2 = |isle: &mut Island<TestDomain>| {
         let e = EntityId(1);
         // A pre-checkpoint duplicate (redelivery) + fresh rolls + an inc.
-        isle.submit(Lane::Live, input(3, TestPayload::Roll { id: e }, vec![], Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(3, TestPayload::Roll { id: e }, vec![], Fallback::Drop)));
         for i in 20..30u128 {
-            isle.submit(Lane::Live, input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop)));
         }
-        isle.submit(Lane::Live, input(30, TestPayload::Inc { id: e, by: 7 }, vec![], Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(30, TestPayload::Inc { id: e, by: 7 }, vec![], Fallback::Drop)));
         while isle.step() != StepStatus::Idle {}
     };
 
@@ -324,13 +324,13 @@ fn restore_continues_seq_stamps() {
     let e = EntityId(1);
     isle.spawn_entity(e);
     for i in 0..5u128 {
-        isle.submit(Lane::Live, input(i, TestPayload::Noop, vec![], Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Noop, vec![], Fallback::Drop)));
     }
     while isle.step() != StepStatus::Idle {}
 
     let cp = isle.checkpoint().expect("healthy island checkpoints");
     let mut restored = Island::restore(cp, Arc::new(TestRules { max_counter: 1_000_000 }));
-    let seq = restored.submit(Lane::Live, input(9, TestPayload::Noop, vec![], Fallback::Drop));
+    let seq = restored.submit(Lane::Live, Admitted::unchecked(input(9, TestPayload::Noop, vec![], Fallback::Drop)));
     assert_eq!(seq, Seq(5), "continues after the 5 pre-checkpoint stamps");
 }
 
@@ -425,12 +425,12 @@ fn respawn_bumps_generation_no_resurrection() {
     let g1 = isle.spawn_entity(e); // host double-spawn
     assert!(g1 > g0, "re-spawn is a new epoch, not a reset");
 
-    isle.submit(Lane::Live, input(
+    isle.submit(Lane::Live, Admitted::unchecked(input(
         1,
         TestPayload::Inc { id: e, by: 1 },
         vec![Precondition::EntityAlive { id: e, generation: g0 }],
         Fallback::Drop,
-    ));
+    )));
     while isle.step() != StepStatus::Idle {}
     assert!(matches!(
         isle.outcomes().last().unwrap().1,
@@ -453,8 +453,8 @@ fn poisoned_dissolve_migrating_transfers_nothing() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
-    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: e, by: 3 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Panic, vec![], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Inc { id: e, by: 3 }, vec![], Fallback::Drop)));
     while !matches!(isle.step(), StepStatus::Poisoned | StepStatus::Idle) {}
     assert!(isle.is_poisoned());
 
@@ -473,7 +473,7 @@ fn realm_dead_letters_message_to_poisoned_island() {
     let mut realm: Realm<TestDomain> = Realm::new();
     let mut a = island(1, 7);
     a.spawn_entity(EntityId(1));
-    a.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    a.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Panic, vec![], Fallback::Drop)));
     while !matches!(a.step(), StepStatus::Poisoned | StepStatus::Idle) {}
     realm.insert(a);
 
@@ -493,7 +493,7 @@ fn poisoned_island_refuses_checkpoint() {
     isle.spawn_entity(EntityId(1));
     assert!(isle.checkpoint().is_some(), "healthy → Some");
 
-    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Panic, vec![], Fallback::Drop)));
     while !matches!(isle.step(), StepStatus::Poisoned | StepStatus::Idle) {}
     assert!(isle.is_poisoned());
     assert!(isle.checkpoint().is_none(), "poisoned → never a checkpoint");

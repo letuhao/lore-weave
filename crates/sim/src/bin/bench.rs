@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use sim::{input, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{EntityId, Fallback, Island, IslandId, Lane, RulesetDigest, SeenWindow, StepStatus};
+use sim_core::{Admitted, EntityId, Fallback, Island, IslandId, Lane, RulesetDigest, SeenWindow, StepStatus};
 
 fn main() {
     const N: u128 = 200_000;
@@ -26,8 +26,8 @@ fn main() {
     for i in 0..N {
         isle.submit(
             Lane::Live,
-            input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop),
-        );
+            Admitted::unchecked(input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop),
+        ));
     }
     let admit = t_admit.elapsed();
 

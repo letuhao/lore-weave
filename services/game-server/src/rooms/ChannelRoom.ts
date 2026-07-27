@@ -16,6 +16,7 @@ import {
   type CommittedEvent,
   type TurnOutcome,
 } from '../wire/turnOutcome.js';
+import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
 import { log } from '../log.js';
 
 // ChannelRoom — the GDA-A7 projection: one Colyseus room per DP-A16 channel
@@ -168,6 +169,24 @@ export class ChannelRoom extends Room {
   /** sessionId → the entity this connection may act as (D3). */
   private actorOf = new Map<string, string>();
 
+  /**
+   * IAS-D5 — per-connection submit rate limit, layer 1 of the doc-22 defence
+   * stack. Until this existed, `ChannelRoom` had none at all: the limiter was
+   * wired only into `EchoRoom`, the V0 demo, so the room that actually
+   * carries the game was the unprotected one.
+   *
+   * IAS-A6 — this sits ABOVE the durable boundary and that placement is the
+   * whole point. CS-A4 makes admission rejections durable events, so a
+   * refusal that reached admission would still cost a commit; at CEI-2's
+   * ~170 commits/sec, 100 refused requests would burn ~0.57 s of the
+   * channel's entire budget. Being refused loudly enough would BE the attack.
+   * A transport refusal therefore closes the socket and emits nothing: no
+   * event, no bus write, no proposal. It is not a verdict about an intent —
+   * it is a decision not to hear one.
+   */
+  private submitLimiters = new Map<string, MessageRateLimiter>();
+  private rateConfig = rateLimitsFromEnv();
+
   async onCreate(joinOptions: Partial<ChannelRoomOptions> = {}): Promise<void> {
     // Config from ENV; anything a client passed is ignored except in dev,
     // where an explicit override is convenient and harmless because the dev
@@ -242,6 +261,20 @@ export class ChannelRoom extends Room {
     client: Client,
     msg: { client_request_id?: string; action?: unknown },
   ): Promise<void> {
+    // IAS-D5/A6 — layer 1, and it runs FIRST: before the actor lookup, before
+    // any validation, and above all before anything that could reach the bus.
+    // Over the cap the socket is closed (4006) and NOTHING is emitted — no
+    // event, no proposal. See the `submitLimiters` note for why a durable
+    // refusal here would be the attack rather than the defence.
+    const limiter = this.submitLimiters.get(client.sessionId);
+    if (limiter && !limiter.allow(Date.now())) {
+      log.warn('channel-room: submit rate limit exceeded, closing', {
+        sessionId: client.sessionId,
+      });
+      client.leave(4006);
+      return;
+    }
+
     const actor = this.actorOf.get(client.sessionId);
     if (!actor) {
       client.send('turn.error', { code: 'no_actor_bound', message: 'session has no actor' });
@@ -358,6 +391,12 @@ export class ChannelRoom extends Room {
     }
     const actor = this.actorForUser(userId);
     this.actorOf.set(client.sessionId, actor);
+    // IAS-D5 — one limiter per connection, created here so a reconnect gets a
+    // fresh window rather than inheriting a stranger's.
+    this.submitLimiters.set(
+      client.sessionId,
+      new MessageRateLimiter(this.rateConfig.messagesPerWindow, this.rateConfig.windowMs),
+    );
 
     // W0 — bind ack (doc 20 §2). from_tokens is the DP-Ch18 per-channel map.
     client.send('w0.bind', {
@@ -383,6 +422,9 @@ export class ChannelRoom extends Room {
 
   onLeave(client: Client): void {
     this.actorOf.delete(client.sessionId);
+    // Both maps are keyed by sessionId; leaving one behind leaks per
+    // connection for the lifetime of the room.
+    this.submitLimiters.delete(client.sessionId);
   }
 
   async onDispose(): Promise<void> {

@@ -9,7 +9,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-sim-core = { path = "../sim-core" }
+sim-core = { path = "../sim-core", features = ["test-util"] }
 
 [[bin]]
 name = "sim-bench"

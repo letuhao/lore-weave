@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
-use sim_core::{Class, EntityId, Fallback, Gen, InputId, Producer, QueuedInput, Seq};
+use sim_core::{Admitted, Class, EntityId, Fallback, Gen, InputId, Producer, QueuedInput, Seq};
 
 use crate::domain::CombatDomain;
 use crate::vocabulary::Vocabulary;
@@ -93,9 +93,15 @@ pub struct AdmissionRecord {
 
 #[derive(Debug)]
 pub enum AdmissionOutcome {
-    /// Validated → a stamped ingress item for the island (CS-A3: from here
-    /// it is an ordinary input under SC-A1 re-validation).
-    Admitted(Box<QueuedInput<CombatDomain>>),
+    /// Validated → an [`Admitted`] ingress token for the island (CS-A3: from
+    /// here it is an ordinary input under SC-A1 re-validation).
+    ///
+    /// IAS-D3 — carrying the TOKEN rather than a bare `QueuedInput` makes
+    /// this module the sole minter in the service: `Island::submit` accepts
+    /// nothing else, and `Admitted`'s field is private, so a caller cannot
+    /// assemble one. Feeding the island now requires having called admission,
+    /// which is a property of the type rather than of reviewer attention.
+    Admitted(Box<Admitted<CombatDomain>>),
     /// EVT-V4-class rejection at a named stage. Ack-on-reject (EVT-L2) —
     /// the proposal is resolved, never retried.
     Rejected { stage: &'static str, reason: String },
@@ -265,7 +271,7 @@ pub fn admit_t6(
 
     AdmissionRecord {
         stages,
-        outcome: AdmissionOutcome::Admitted(Box::new(QueuedInput {
+        outcome: AdmissionOutcome::Admitted(Box::new(Admitted::admit(QueuedInput {
             seq: Seq(u64::MAX), // stamped at island admission
             input_id: input_id_for(&triple),
             class: Class::B,
@@ -274,10 +280,65 @@ pub fn admit_t6(
                 Category::T6 => Producer::LlmDecision,
             },
             payload,
-            preconditions: vec![],
-            on_invalid: Fallback::Substitute(vocab.fallback_payload(EntityId(proposal.actor))),
+            // IAS-D2/A3 — admission emits OBLIGATIONS, not just a verdict.
+            // Both are checkable entirely from island state at step time, so
+            // they carry no outside-observed snapshot that could go stale
+            // between here and there (the generation-stamped variants need a
+            // caller that holds the island; these deliberately do not).
+            preconditions: vec![
+                sim_core::Precondition::IslandOwns { id: EntityId(proposal.actor) },
+                sim_core::Precondition::ResourceAtLeast {
+                    id: EntityId(proposal.actor),
+                    kind: crate::domain::CombatResource::TurnSlot,
+                    amount: 1,
+                },
+            ],
+            // IAS-D6 — DROP, not Substitute, and the distinction is
+            // load-bearing. AGT-A2's substitute exists for an *unusable LLM
+            // decision*: the model said something nonsensical, so play a safe
+            // default. A turn-economy violation is a different failure — the
+            // actor is not confused, it is out of budget — and substituting
+            // there MINTS the very action the gate just refused. (Measured:
+            // with Substitute, 99 refused spam strikes came back as 99 free
+            // Defends. The gate held and the exploit survived it.)
+            //
+            // Nothing is lost: a vocabulary-invalid decision is rejected at
+            // admission and never reaches the island, so the only
+            // preconditions that can fail in-loop are IslandOwns and the turn
+            // slot — both of which must drop. The AGT-A2 fallback is issued
+            // by the HOST on an admission rejection instead.
+            on_invalid: Fallback::Drop,
             admitted_gen: Gen(0), // re-stamped by Island::submit
             deadline: None,
-        })),
+        }))),
     }
+}
+
+/// IAS-D6 — the HOST's turn boundary, minted here so that `admission` remains
+/// the single place in the service that can produce an [`Admitted`] token.
+///
+/// This is engine authority, not a driver action: `CombatPayload::EndTurn` has
+/// no tool in the vocabulary, so no player, LLM or script can request one. It
+/// carries no preconditions because refilling is unconditional — a turn ends
+/// whether or not anyone used theirs.
+/// `turn_seq` MUST advance per boundary. A constant `input_id` here made the
+/// island's I2 dedup discard every turn-end after the first as a `Duplicate`,
+/// so slots refilled once and then never again — the turn economy silently
+/// became "one action per encounter". Caught by the refill test, which is the
+/// reason that test exists: asserting only that spam is blocked would have
+/// passed with the game frozen.
+pub fn admit_engine_turn_end(turn_seq: u64) -> Admitted<CombatDomain> {
+    Admitted::admit(QueuedInput {
+        seq: Seq(u64::MAX),
+        // High namespace: proposal ids are 128-bit blake3 hashes of the
+        // EVT-L3 triple, so a collision with one is not a practical concern.
+        input_id: InputId(u128::MAX - turn_seq as u128),
+        class: Class::B,
+        source: Producer::WorldEvent,
+        payload: crate::domain::CombatPayload::EndTurn,
+        preconditions: vec![],
+        on_invalid: Fallback::Drop,
+        admitted_gen: Gen(0),
+        deadline: None,
+    })
 }

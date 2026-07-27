@@ -336,3 +336,61 @@ pub enum DiscardReason {
     /// four-variant note (flagged in the reconciliation register).
     Quarantined,
 }
+
+/// IAS-D3 — a [`QueuedInput`] that has passed the ingress pipeline.
+///
+/// ## Why a newtype and not a bool on the input
+///
+/// A `bool admitted` field is set by whoever constructs the struct, so it
+/// records an *assertion* by the caller. A newtype with a **private** field
+/// records that a specific function ran. `Island::submit` takes this, so the
+/// only way to reach the island is through a mint below — the provenance
+/// question stops being answerable only by reading every call site.
+///
+/// ## The two mints, and why one of them is feature-gated
+///
+/// * [`Admitted::admit`] — the production funnel. Public, because admission
+///   lives in `commit-service`, a different crate, so Rust visibility alone
+///   cannot restrict it. Its *name* is the audit surface:
+///   `scripts/ingress-admission-gate.py` fails CI on a call outside the
+///   sanctioned admission module.
+/// * [`Admitted::unchecked`] — kernel tests and benches, which legitimately
+///   drive the scheduler without a rules pipeline. It exists **only** under
+///   `feature = "test-util"`, so a production binary that tried to bypass
+///   admission this way does not compile. That is the compile-time half of
+///   the guarantee; the gate is the call-site half.
+pub struct Admitted<D: Domain>(QueuedInput<D>);
+
+// Manual, not derived: `#[derive(Debug)]` would add an implicit `D: Debug`
+// bound, and `D` is the DOMAIN marker type (`CombatDomain`), which has no
+// reason to be Debug. Delegate to the inner input, which already handles its
+// own associated-type bounds.
+impl<D: Domain> core::fmt::Debug for Admitted<D> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("Admitted").field(&self.0).finish()
+    }
+}
+
+impl<D: Domain> Admitted<D> {
+    /// Mint from the ingress pipeline. Call sites are gate-enforced.
+    pub fn admit(input: QueuedInput<D>) -> Self {
+        Self(input)
+    }
+
+    /// Test/bench mint — absent from any build without `test-util`.
+    #[cfg(feature = "test-util")]
+    pub fn unchecked(input: QueuedInput<D>) -> Self {
+        Self(input)
+    }
+
+    /// Read-only view of the sealed input. Reading metadata (for logging,
+    /// dedup bookkeeping, outcome correlation) does not weaken the seal —
+    /// only *constructing* one does, which is what stays restricted.
+    pub fn input(&self) -> &QueuedInput<D> {
+        &self.0
+    }
+
+    pub(crate) fn into_inner(self) -> QueuedInput<D> {
+        self.0
+    }
+}

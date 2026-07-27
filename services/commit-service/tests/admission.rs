@@ -37,7 +37,7 @@ fn valid_proposal_admits_with_notrun_stages_recorded() {
         panic!("expected admit, got {:?}", rec.outcome);
     };
     assert_eq!(
-        input.payload,
+        input.input().payload,
         CombatPayload::Strike { attacker: EntityId(1), target: EntityId(3) }
     );
     let notrun = rec.stages.iter().filter(|(_, v)| matches!(v, Verdict::NotRun)).count();

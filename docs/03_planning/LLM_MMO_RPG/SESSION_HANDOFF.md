@@ -427,6 +427,40 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > ceiling (one commit → M clients, via `scripts/perf/k6-game-server.sh`) is the next *measurement*.
 > ⚠️ **Superseded by doc 22 below:** the ingress work now precedes the island manager.
 
+> ✅ **INGRESS HARDENED — doc 22 §9 BUILT AND BITE-PROVEN (2026-07-27, same day as the spec):**
+> the PO said *"clear the questions above before the next one"*, so all four items shipped.
+> **IAS-Q1 first, deliberately: prove the exploit before patching it.** Result on the first run —
+> **100 of 100 spam strikes resolved.** Hypothesis → fact, and the patch now has something to flip.
+> **IAS-D5** `MessageRateLimiter` into `ChannelRoom` (it had NONE; the limiter was wired only to
+> `EchoRoom`, the V0 demo). Runs FIRST in `submit`, before the actor lookup, closes 4006, and emits
+> **nothing** — test asserts the refusal reaches neither bus nor event (IAS-A6). Bite-proven by
+> deleting the enforcement block and watching it go red.
+> **IAS-D3** `Island::submit` now takes **`Admitted<D>`** (private field, minted only by admission).
+> **`main.rs` stopped compiling** — which was the entire point — and was rerouted through `admit_t6`,
+> making it *more* faithful than before (raw LLM output is now re-validated at the boundary instead
+> of trusted from `decide()`). `Admitted::unchecked` is `feature = "test-util"`, so a release build
+> physically cannot mint a bypass. New **`scripts/ingress-admission-gate.py`** (pre-commit,
+> repo-wide) covers the call-site half; bite-proven with a planted second minter.
+> **IAS-D2/D6** admission emits `IslandOwns` + `ResourceAtLeast{TurnSlot}`; the turn economy lives in
+> `Domain::check`/`apply`, where the single writer makes check-then-consume atomic.
+> **⚠ THREE THINGS THE BUILD PROVED THE SPEC HAD WRONG (doc 22 §7a — read this):**
+> **(1)** `Fallback::Substitute` turned the gate into a *different* exploit — the 99 refused strikes
+> came back as **99 free `Defend` actions**. The precondition fired correctly and the attacker still
+> got 99 actions. A turn-economy violation must **Drop**: AGT-A2's substitute is for an *unusable
+> decision*, not an actor *out of budget* (**IAS-D8**).
+> **(2)** The engine turn boundary carried a constant `input_id`, so I2 dedup discarded every one
+> after the first — slots refilled once, then never, silently making the economy "one action per
+> *encounter*". **The spam test passed throughout, because a frozen game blocks spam perfectly**
+> (**IAS-D9**). Caught only by the paired refill test ⇒ **IAS-D10**: a test that a gate blocks abuse
+> must be paired with one that legitimate use still works.
+> **(3)** Two pre-existing domain tests fired multiple actions per actor with no turn boundary —
+> the tests were catching up with a correct new rule, not working around it.
+> **Verified:** commit-service 30/30 · sim kernel 46/46 · sim-core 6/6 · dp-kernel 313/313 ·
+> game-server 56/56 · clippy clean on every changed file · design-lint 0 · new gate green + bitten.
+> **NEXT:** **IAS-Q2** (is `producer_service` on the bus AUTHENTICATED?) and **IAS-Q3** (is EVT-T4
+> "trusted by construction" verified or merely assumed?) — either one, unanswered, bypasses
+> everything built above. Then **IAS-Q6** layer-4 behavioural detection, then the island manager.
+
 > ✅ **INGRESS & ADMISSION STANDARD — [`22_ingress_and_admission.md`](22_ingress_and_admission.md) (2026-07-27):**
 > the PO asked three questions — *where does every actor's request converge* · *how is action spam
 > stopped* · *does validation belong inside or outside the loop*. They are **one** question: the

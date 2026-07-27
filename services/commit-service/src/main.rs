@@ -12,14 +12,14 @@
 
 use std::sync::Arc;
 
+use commit_service::admission::{admit_t6, AdmissionOutcome, DedupCache};
 use commit_service::{
-    decide, Actor, CombatDomain, CombatPayload, CombatRules, CombatState, DecisionContext,
+    decide, Actor, CombatDomain, CombatRules, CombatState, DecisionContext,
     Vocabulary, COMBAT_V1_JSON,
 };
 use loreweave_llm::{GatewayClient, ModelSource, ReasoningEffort};
 use sim_core::{
-    Class, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane, Producer, QueuedInput,
-    RulesetDigest, SeenWindow, Seq, StepStatus, Tick,
+    EntityId, Island, IslandId, Lane, RulesetDigest, SeenWindow, StepStatus,
 };
 use uuid::Uuid;
 
@@ -117,6 +117,8 @@ async fn main() -> anyhow::Result<()> {
     let mut dispatches = Vec::new();
     let mut fallbacks = 0u32;
     let mut input_seq = 0u128;
+    // EVT-L3 dedup, same cache the bus path uses.
+    let mut dedup = DedupCache::new(std::time::Duration::from_secs(60));
 
     println!("== POC-2 LLM decision vertical — {} turns ==", args.turns);
     for turn in 0..args.turns {
@@ -146,32 +148,63 @@ async fn main() -> anyhow::Result<()> {
             },
         };
 
-        // Valid proposal or the vocabulary fallback (AGT-A2) — via the
-        // kernel's Substitute machinery either way, so an island-side
-        // precondition failure ALSO lands on Defend.
-        let (payload, used_fallback) = match &dispatch.payload {
-            Some(p) => (p.clone(), false),
-            None => {
-                fallbacks += 1;
-                (vocab.fallback_payload(npc), true)
-            }
-        };
+        // Whether the DRIVER produced a usable tool call. Distinct from
+        // whether admission accepted it — both are now reported, because a
+        // driver that answers and an answer that survives validation are two
+        // different success rates and conflating them hid the gap.
+        let used_fallback = dispatch.payload.is_none();
+        if used_fallback {
+            fallbacks += 1;
+        }
 
+        // IAS-D3 — the runner used to build a `QueuedInput` and hand it to the
+        // island directly, which made this the one path in the service that
+        // skipped admission entirely. `Island::submit` now takes an
+        // `Admitted<D>` token that only `admission` mints, so the bypass no
+        // longer compiles; the decision goes through the same gate the bus
+        // path uses. That is also strictly MORE faithful than before, since
+        // the raw LLM output is now re-validated at the admission boundary
+        // rather than trusted from `decide()`'s in-process check.
         input_seq += 1;
-        isle.submit(Lane::Live, QueuedInput {
-            seq: Seq(u64::MAX),
-            input_id: InputId(input_seq),
-            class: Class::B,
-            source: Producer::LlmDecision,
-            payload,
-            preconditions: vec![sim_core::Precondition::EntityAlive {
-                id: npc,
-                generation: isle.entity_gen(npc).unwrap_or(Gen(0)),
-            }],
-            on_invalid: Fallback::Substitute(vocab.fallback_payload(npc)),
-            admitted_gen: Gen(0),
-            deadline: Some(Tick(u64::MAX)),
+        let proposal = serde_json::json!({
+            "producer_service": "poc2-turn-runner",
+            "proposal_id": format!("poc2-{input_seq}"),
+            "target_channel": 1,
+            "actor": npc.0,
+            "candidates": ctx.candidates.iter().map(|c| (c.id.0, c.token.clone())).collect::<Vec<_>>(),
+            "decision": {
+                "vocabulary": "combat_v1",
+                "tool": dispatch.raw_tool.clone().unwrap_or_default(),
+                "params": serde_json::from_str::<serde_json::Value>(&dispatch.raw_arguments)
+                    .unwrap_or(serde_json::json!({})),
+            },
         });
+        match admit_t6(&proposal.to_string(), &vocab, &mut dedup).outcome {
+            AdmissionOutcome::Admitted(a) => {
+                isle.submit(Lane::Live, *a);
+            }
+            AdmissionOutcome::Rejected { stage, reason } => {
+                // AGT-A2 fallback, now reached through the SAME rejection path
+                // production uses rather than a parallel in-process branch.
+                if !used_fallback {
+                    fallbacks += 1; // rejected a driver answer that looked fine
+                }
+                println!("turn {turn}: admission rejected at {stage}: {reason} — fallback");
+                let fb = serde_json::json!({
+                    "producer_service": "poc2-turn-runner",
+                    "proposal_id": format!("poc2-fb-{input_seq}"),
+                    "target_channel": 1,
+                    "actor": npc.0,
+                    "candidates": Vec::<(u64, String)>::new(),
+                    "decision": {"vocabulary": "combat_v1", "tool": "defend", "params": {}},
+                });
+                if let AdmissionOutcome::Admitted(a) =
+                    admit_t6(&fb.to_string(), &vocab, &mut dedup).outcome
+                {
+                    isle.submit(Lane::Live, *a);
+                }
+            }
+        }
         while isle.step() != StepStatus::Idle {}
 
         // Scripted hostile retaliation (same Decision SHAPE, ScriptDriver
@@ -179,17 +212,22 @@ async fn main() -> anyhow::Result<()> {
         for h in hostiles {
             if isle.state().actors.get(&h).map(|a| a.alive()).unwrap_or(false) {
                 input_seq += 1;
-                isle.submit(Lane::Live, QueuedInput {
-                    seq: Seq(u64::MAX),
-                    input_id: InputId(input_seq),
-                    class: Class::B,
-                    source: Producer::ScriptDecision,
-                    payload: CombatPayload::Strike { attacker: h, target: npc },
-                    preconditions: vec![],
-                    on_invalid: Fallback::Drop,
-                    admitted_gen: Gen(0),
-                    deadline: None,
+                let hp = serde_json::json!({
+                    "producer_service": "poc2-script-driver",
+                    "proposal_id": format!("poc2-h-{input_seq}"),
+                    "target_channel": 1,
+                    "actor": h.0,
+                    "candidates": [[npc.0, format!("hostile-{}", npc.0)]],
+                    "decision": {
+                        "vocabulary": "combat_v1", "tool": "strike",
+                        "params": {"target": format!("hostile-{}", npc.0)},
+                    },
                 });
+                if let AdmissionOutcome::Admitted(a) =
+                    admit_t6(&hp.to_string(), &vocab, &mut dedup).outcome
+                {
+                    isle.submit(Lane::Live, *a);
+                }
             }
         }
         while isle.step() != StepStatus::Idle {}

@@ -222,7 +222,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 AdmissionOutcome::Admitted(input) => {
                     admitted += 1;
-                    let input_id = input.input_id;
+                    let input_id = input.input().input_id;
                     isle.submit(Lane::Live, *input);
                     while isle.step() != StepStatus::Idle {}
                     isle.tick(1);

@@ -37,6 +37,7 @@ pub use island::{Island, StepStatus};
 pub use rng::DetRng;
 pub use seen::{SeenSet, SeenWindow};
 pub use types::{
+    Admitted,
     Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
     IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest,
     Seq, Tick, Violation,

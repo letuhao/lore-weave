@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use sim_core::{DetRng, Domain, EntityId, Precondition, QueuedInput, Violation};
+use sim_core::{PreconditionKind, DetRng, Domain, EntityId, Precondition, QueuedInput, Violation};
 
 pub struct CombatDomain;
 
@@ -30,6 +30,15 @@ pub enum CombatPayload {
     Defend { actor: EntityId },
     Move { actor: EntityId, stance: Stance },
     Flee { actor: EntityId },
+    /// IAS-D6 — engine-only turn boundary: refills every actor's turn slot.
+    ///
+    /// Submitted by the HOST, never reachable from the tool vocabulary, so no
+    /// driver (player, LLM or script) can mint itself another action by
+    /// asking for one. It is a payload rather than a host-side mutation
+    /// because the domain is deliberately time-blind (`apply` sees no clock),
+    /// and refilling through the normal input path keeps the refill inside
+    /// the replayable, deterministic stream instead of beside it.
+    EndTurn,
 }
 
 /// A domain fact. **Serialized into the committed payload as STRUCTURED JSON**
@@ -97,11 +106,23 @@ pub struct Actor {
     pub defending: bool,
     pub stance: Option<Stance>,
     pub fled: bool,
+    /// IAS-D6 — the turn economy, as a RESOURCE rather than a timestamp.
+    ///
+    /// One slot per actor per turn; an action consumes it and `EndTurn`
+    /// refills it. A resource works where a cooldown timestamp cannot: the
+    /// domain never sees the clock, so "has it been long enough?" is not a
+    /// question it can answer, while "do you still have your action?" is.
+    ///
+    /// This is the layer-3 defence of doc 22 §5 and the one that actually
+    /// stops action spam. Layers 1-2 (transport rate limit, in-flight cap)
+    /// shape traffic; only this one enforces the RULES of play, which is why
+    /// it binds NPCs exactly as it binds players (IAS-A9).
+    pub turn_slots: i64,
 }
 
 impl Actor {
     pub fn new(max_hp: i64) -> Self {
-        Self { hp: max_hp, max_hp, defending: false, stance: None, fled: false }
+        Self { hp: max_hp, max_hp, defending: false, stance: None, fled: false, turn_slots: 1 }
     }
 
     pub fn alive(&self) -> bool {
@@ -123,24 +144,68 @@ pub struct CombatRules {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoResource;
 
+/// IAS-D6 — the domain's semantic resources. A closed set, like every other
+/// vocabulary here: an open-ended resource name would let a caller invent a
+/// budget the rules never granted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombatResource {
+    /// The right to act this turn. Consumed by any action, refilled by
+    /// `CombatPayload::EndTurn`.
+    TurnSlot,
+}
+
+
+impl CombatDomain {
+    /// IAS-D6 — the acting entity of a payload, or `None` for engine payloads.
+    /// Separated out so slot accounting cannot drift per-arm as actions are
+    /// added: a new action that forgot to spend the turn would be a free one.
+    pub(crate) fn actor_of(p: &CombatPayload) -> Option<EntityId> {
+        match p {
+            CombatPayload::Strike { attacker, .. } => Some(*attacker),
+            CombatPayload::Defend { actor }
+            | CombatPayload::Move { actor, .. }
+            | CombatPayload::Flee { actor } => Some(*actor),
+            CombatPayload::EndTurn => None,
+        }
+    }
+
+}
+
 impl Domain for CombatDomain {
     type Payload = CombatPayload;
     type State = CombatState;
     type Event = CombatEvent;
-    type ResKind = NoResource;
+    type ResKind = CombatResource;
     type Rules = CombatRules;
     /// `Fled` leaves the encounter island (the SL-A12 handoff seam).
     type External = CombatEvent;
     type Portable = Actor;
 
+    /// IAS-D2/A3 — the in-loop half of validation. The island routes semantic
+    /// preconditions here at STEP time, which is the only moment "does this
+    /// actor still have its turn?" has a definite answer: checking it at
+    /// admission would be a TOCTOU race, since the loop mutates exactly the
+    /// state the check reads.
     fn check(
-        _state: &Self::State,
+        state: &Self::State,
         _rules: &Self::Rules,
-        _p: &Precondition<Self>,
+        p: &Precondition<Self>,
     ) -> Result<(), Violation> {
-        // POC domain has no semantic resources; structural preconditions
-        // (EntityAlive/IslandOwns/...) are the island's job.
-        Ok(())
+        match p {
+            Precondition::ResourceAtLeast { id, kind: CombatResource::TurnSlot, amount } => {
+                let have = state.actors.get(id).map(|a| a.turn_slots).unwrap_or(0);
+                if have < *amount {
+                    return Err(Violation {
+                        kind: PreconditionKind::ResourceAtLeast,
+                        entity: Some(*id),
+                    });
+                }
+                Ok(())
+            }
+            // Structural variants (EntityAlive / IslandOwns / ...) are the
+            // island's own registries; it never routes them here.
+            _ => Ok(()),
+        }
     }
 
     fn apply(
@@ -149,6 +214,24 @@ impl Domain for CombatDomain {
         input: &QueuedInput<Self>,
         _rng: &mut DetRng,
     ) -> Vec<Self::Event> {
+        // IAS-D6 — spend the turn slot BEFORE resolving. `apply` is only
+        // reached once the island's `check_all` has already confirmed the
+        // slot is there, so this is the consumption half of a check/consume
+        // pair that both run inside the loop, under the single writer. There
+        // is no window between them for a second action to slip through —
+        // which is exactly what an admission-time check could not promise.
+        if let Some(actor) = Self::actor_of(&input.payload) {
+            match state.actors.get_mut(&actor) {
+                // Defence in depth: the kernel applies a `Substitute` with NO
+                // preconditions (they "must be TOTAL/defensive in apply"), so
+                // `apply` cannot assume `check_all` ran for this payload. An
+                // out-of-budget actor therefore does nothing here, whatever
+                // route the payload arrived by.
+                Some(a) if a.turn_slots < 1 => return Vec::new(),
+                Some(a) => a.turn_slots -= 1,
+                None => return Vec::new(),
+            }
+        }
         match &input.payload {
             CombatPayload::Strike { attacker, target } => {
                 let Some(t) = state.actors.get_mut(target) else {
@@ -193,6 +276,16 @@ impl Domain for CombatDomain {
                 }
                 _ => vec![],
             },
+            // Engine-only turn boundary — refills every actor's slot. Emits no
+            // event: it is bookkeeping, not a thing that happened in the
+            // fiction, and narrating it would put "the turn ended" into a
+            // player's combat log once per round forever.
+            CombatPayload::EndTurn => {
+                for a in state.actors.values_mut() {
+                    a.turn_slots = 1;
+                }
+                vec![]
+            }
         }
     }
 

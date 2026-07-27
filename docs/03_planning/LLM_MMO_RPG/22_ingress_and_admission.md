@@ -3,7 +3,9 @@
 > **Status:** DRAFT — 2026-07-27. Settles three questions asked together, because they are one
 > question: *where does every actor's request converge*, *how is spam/abuse stopped*, and *does
 > validation belong inside or outside the simulation loop*.
-> Axioms `IAS-A1..A9`, decisions `IAS-D1..D7`, open `IAS-Q1..Q5`.
+> **BUILT the same day** — all four §9 items are implemented and bite-proven; §7a records the three
+> things the build proved this document had wrong.
+> Axioms `IAS-A1..A9`, decisions `IAS-D1..D10`, open `IAS-Q1..Q7`.
 > **Prefix `IAS` registered** in [`00_foundation/06_id_catalog.md`](00_foundation/06_id_catalog.md).
 > `_boundaries/` ownership claim rides the pending batch with `CWC` / `CEI`.
 >
@@ -104,18 +106,21 @@ discarded with a reason, not applied against stale assumptions.
 predicate.** An admission stage that reads mutable state and returns only pass/fail has thrown away
 the information the loop needs to be correct.
 
-### 3.1 What is actually wired today
+### 3.1 What was wired — and what it cost to find out
 
-| Path | Preconditions attached | |
-|---|---|---|
-| `admission.rs:277` (the **production** T1/T6 rail) | **`preconditions: vec![]`** | 🔴 empty obligation list |
-| `main.rs:167` (the POC-2 turn runner) | `vec![Precondition::EntityAlive { … }]` | 🟡 more careful than production |
-| `crates/sim/tests/*` | `ActorEligible`, `EntityAlive`, … | ✅ exercised only in kernel tests |
+**As written (2026-07-27 morning):** the seam was built, the kernel honoured it, and the production
+ingress sent nothing through it. `admission.rs` emitted `preconditions: vec![]`, so the loop had no
+obligation to discharge; `ActorEligible` had never run outside `crates/sim/tests/*`. That single
+line was the whole explanation for §5 — with an empty obligation list, 100 distinct requests are
+100 valid actions.
 
-**The seam is built, the kernel honours it, and the production ingress sends nothing through it.**
-`ActorEligible` — which *is* the turn-slot check — has never run outside a unit test. This single
-line is also the whole explanation for the spam finding in §5: with an empty obligation list, there
-is nothing for the loop to re-check, so 100 distinct requests are 100 valid actions.
+**Now:** admission emits `IslandOwns` + `ResourceAtLeast{TurnSlot, 1}` on every proposal, and the
+turn economy lives in `Domain::check` / `apply` where the single writer makes check-then-consume
+atomic by construction. The obligations chosen are deliberately **self-contained** — both are
+answerable purely from island state at step time. The generation-stamped variants
+(`EntityAlive{generation}`) need a caller that *holds* the island to observe a version, which
+admission does not; attaching one from outside would be the very snapshot-staleness IAS-A2 warns
+about.
 
 ---
 
@@ -261,19 +266,44 @@ an encounter from the inside.
 | **IAS-D5** | `MessageRateLimiter` is wired into **`ChannelRoom`**, above the durable boundary | the room that carries the game currently has none |
 | **IAS-D6** | Turn economy (`ActorEligible` + cooldown) applies to **every world-acting actor**, NPCs included | IAS-A9 |
 | **IAS-D7** | The four lanes (L1–L4) are **declared**, and any new producer must name its lane | IAS-A4; a lane that is not named is a bypass nobody reviewed |
+| **IAS-D8** | A turn-economy violation **drops**; it never substitutes | Substituting mints the refused action (measured: 99 free Defends) |
+| **IAS-D9** | Every engine turn boundary carries a **unique** `input_id` | A constant one is deduped away, freezing the economy at one action per encounter |
+| **IAS-D10** | Any test asserting a gate blocks abuse is paired with one asserting **legitimate use still works** | "1 of 100 landed" is also satisfied by a game that blocks everything |
 
 ## 7. Conformance — current state against this standard
 
 | Requirement | State | Evidence |
 |---|---|---|
-| Single logical front door (EVT-A8) | ✅ designed, ✅ used by the spine | `spine.rs` → `admit_t6` |
-| …enforced structurally | 🔴 **no** | `main.rs` bypasses; `submit` takes a public struct |
+| Single logical front door (EVT-A8) | ✅ | `spine.rs` → `admit_t6` |
+| …enforced structurally | ✅ | `Island::submit` takes `Admitted<D>` (private field); `main.rs` stopped compiling and was routed through admission |
+| …enforced at the call site | ✅ | `scripts/ingress-admission-gate.py` (pre-commit, repo-wide); bite-proven |
 | Stateless validation outside | ✅ | schema · idempotency · vocabulary |
-| State-dependent validation inside | 🔴 **not wired** | `admission.rs:277` → `preconditions: vec![]` |
-| Turn slot / cooldown | 🔴 **absent** | `ActorEligible` used only in `crates/sim/tests/*` |
-| Transport rate limit on the game room | 🔴 **absent** | limiter wired to `EchoRoom` only |
-| Rate limit above the durable boundary | ⚪ n/a — no limiter to place yet | — |
-| Behavioural / loop-signature detection | 🔴 absent | — |
+| State-dependent validation inside | ✅ | admission emits `IslandOwns` + `ResourceAtLeast{TurnSlot}`; discharged by `check_all` / `Domain::check` |
+| Turn slot / cooldown | ✅ | `Actor.turn_slots`, consumed in `apply`, refilled by engine-only `EndTurn` |
+| Transport rate limit on the game room | ✅ | `ChannelRoom` submit limiter, closes 4006 |
+| Rate limit above the durable boundary | ✅ | test asserts a refusal reaches neither bus nor event |
+| Behavioural / loop-signature detection | 🔴 still absent | IAS-Q6 |
+
+### 7a. What building it changed about this document
+
+Three claims above were written from code reading and did not survive contact
+with a running test. Recording them because a spec that only keeps the
+predictions it got right is not a record, it is a highlight reel.
+
+1. **The spam hypothesis was right, and worth proving anyway.** `IAS-Q1`'s
+   test came out at **100 of 100 spam strikes resolved** on the first run.
+2. **`Fallback::Substitute` turned the gate into a different exploit.** With
+   admission's original fallback, the 99 refused strikes came back as **99 free
+   `Defend` actions** — the precondition fired correctly and the attacker still
+   got 99 actions. A turn-economy violation must **Drop**: AGT-A2's substitute
+   is for an *unusable decision*, not for an actor who is *out of budget*, and
+   substituting there mints exactly what the gate refused. → **IAS-D8**.
+3. **The turn boundary deduped itself into a one-shot.** `EndTurn` first
+   carried a constant `input_id`, so the island's I2 dedup discarded every
+   boundary after the first: slots refilled once, then never. The turn economy
+   silently became "one action per *encounter*". Caught only by the refill
+   test — the spam test passed throughout, because a frozen game blocks spam
+   perfectly. → **IAS-D9**.
 
 ## 8. Open
 
@@ -284,15 +314,19 @@ an encounter from the inside.
 | **IAS-Q3** | Is EVT-T4 "trusted by construction" verified, or assumed? | Audit L2; a trusted lane nobody checks is a bypass |
 | **IAS-Q4** | Ordering & fairness when N actors submit simultaneously | Doc 13 §4 flags arrival order as wall-clock; anti-starvation undecided |
 | **IAS-Q5** | Edge backpressure — what does the front door return when the island saturates? | EVT-L5 forbids silent drop; SL-A14 dilation is the *internal* actuator only |
+| **IAS-Q6** | Layer-4 behavioural detection (repeated identical tool call) — unbuilt | Matters most for LLM actors, where a loop is a *financial* DoS (AGT-D5) |
+| **IAS-Q7** | The turn slot is currently a flat 1/turn. Real cooldowns (per-ability, multi-turn) need `ABL_001` cooldown fields | Fold in when abilities land; the `ResourceAtLeast` seam already carries it |
 
 ---
 
-## 9. Build order
+## 9. Build order — DONE (2026-07-27)
 
-1. **IAS-Q1 bite-test** — prove the exploit. Nothing else is falsifiable until it exists.
-2. **IAS-D5** — wire the limiter into `ChannelRoom` (smallest change, stops floods immediately).
-3. **IAS-D3** — the `Admitted<D>` token; `main.rs` stops compiling, which is the point.
-4. **IAS-D2 + IAS-D6** — admission emits obligations; `ActorEligible` + cooldown go live in-loop.
+1. ~~**IAS-Q1 bite-test**~~ ✅ proved the exploit: 100 of 100 resolved.
+2. ~~**IAS-D5**~~ ✅ limiter in `ChannelRoom`, above the durable boundary.
+3. ~~**IAS-D3**~~ ✅ `Admitted<D>` + gate; `main.rs` rerouted through admission.
+4. ~~**IAS-D2 + IAS-D6**~~ ✅ obligations emitted; turn economy live in-loop.
 
-This sequence precedes the island manager. Building a manager on an unenforced front door
-replicates the hole N times.
+Remaining: **IAS-Q2** (bus `producer_service` authentication) and **IAS-Q3**
+(is EVT-T4 "trusted by construction" verified?) are the two that could still
+undo the rest — an unauthenticated producer or an unaudited trusted lane
+bypasses everything above. Then the island manager.

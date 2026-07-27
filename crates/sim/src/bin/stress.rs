@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use sim::{input, Qi, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{
+use sim_core::{Admitted, 
     EntityId, Fallback, Island, IslandId, Lane, Precondition, RulesetDigest, SeenWindow,
     StepStatus,
 };
@@ -64,7 +64,7 @@ fn timed_uniform(name: &str, entities: u64, n: u128, mut mk: impl FnMut(u128) ->
     // Preload everything, then time one pure drain — isolates step cost.
     for i in 0..n {
         let (pre, payload) = mk(i);
-        isle.submit(Lane::Live, input(i, payload, pre, Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(i, payload, pre, Fallback::Drop)));
     }
     let t = Instant::now();
     let mut steps = 0u64;
@@ -115,7 +115,7 @@ fn main() {
         let mut isle = fresh(1);
         for i in 0..N {
             let dup_id = if i % 2 == 1 { i - 1 } else { i };
-            isle.submit(Lane::Live, input(dup_id, TestPayload::Inc { id: e1, by: 1 }, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(dup_id, TestPayload::Inc { id: e1, by: 1 }, vec![], Fallback::Drop)));
         }
         let t = Instant::now();
         let mut steps = 0u64;
@@ -142,17 +142,17 @@ fn main() {
         let e = EntityId((i % 8 + 1) as u64);
         match i % 10 {
             0..=5 => {
-                isle.submit(Lane::Live, input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+                isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
             }
             6 | 7 => {
-                isle.submit(Lane::Live, input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop));
+                isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop)));
             }
             8 => {
-                isle.submit(Lane::Background, input(i, TestPayload::Spend { id: e, amount: 1 },
-                    vec![Precondition::ResourceAtLeast { id: e, kind: Qi, amount: 1 }], Fallback::Drop));
+                isle.submit(Lane::Background, Admitted::unchecked(input(i, TestPayload::Spend { id: e, amount: 1 },
+                    vec![Precondition::ResourceAtLeast { id: e, kind: Qi, amount: 1 }], Fallback::Drop)));
             }
             _ => {
-                isle.submit(Lane::Live, input(i / 2, TestPayload::Noop, vec![], Fallback::Drop)); // dup
+                isle.submit(Lane::Live, Admitted::unchecked(input(i / 2, TestPayload::Noop, vec![], Fallback::Drop))); // dup
             }
         }
     });

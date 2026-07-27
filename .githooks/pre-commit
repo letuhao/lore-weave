@@ -20,6 +20,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY=python
 command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/ai-provider-gate.py" --staged
+
+# IAS-D3 — admission must stay the sole minter of the island's `Admitted`
+# token. Repo-wide, not staged-scoped: "only one mint point exists" is a
+# property of the TREE, so a staged-only check would pass while a second
+# minter sat un-staged one commit away.
+"$PY" "$ROOT/scripts/ingress-admission-gate.py"
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
 

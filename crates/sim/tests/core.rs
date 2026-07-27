@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use sim::{input, Qi, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{
+use sim_core::{Admitted, 
     DiscardReason, EntityId, Fallback, Island, IslandId, Lane, Outcome, Precondition,
     RulesetDigest, SeenWindow, StepStatus, Tick,
 };
@@ -31,8 +31,8 @@ fn duplicate_is_discarded_not_reapplied() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(42, TestPayload::Inc { id: e, by: 5 }, vec![], Fallback::Drop));
-    isle.submit(Lane::Live, input(42, TestPayload::Inc { id: e, by: 5 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(42, TestPayload::Inc { id: e, by: 5 }, vec![], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(42, TestPayload::Inc { id: e, by: 5 }, vec![], Fallback::Drop)));
     drain(&mut isle);
 
     assert_eq!(isle.state().counters[&e], 5, "applied exactly once");
@@ -52,13 +52,13 @@ fn precondition_revalidated_at_step_not_admission() {
     // Valid at admission…
     isle.submit(
         Lane::Live,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Inc { id: e, by: 5 },
             vec![Precondition::EntityAlive { id: e, generation: g }],
             Fallback::Drop,
         ),
-    );
+    ));
     // …but the world moves before the step (gen bump = lifecycle change).
     isle.bump_entity_gen(e);
     drain(&mut isle);
@@ -80,13 +80,13 @@ fn substitute_applies_declared_alternative() {
 
     isle.submit(
         Lane::Live,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Inc { id: e, by: 50 },
             vec![Precondition::EntityAlive { id: e, generation: g }],
             Fallback::Substitute(TestPayload::Inc { id: e, by: 1 }),
         ),
-    );
+    ));
     drain(&mut isle);
 
     assert_eq!(isle.state().counters[&e], 1, "substitute, not original, applied");
@@ -103,13 +103,13 @@ fn buffer_reparks_and_succeeds_after_world_catches_up() {
     // Eligible only at tick 5; buffered until then.
     isle.submit(
         Lane::Live,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Inc { id: e, by: 3 },
             vec![Precondition::ActorEligible { id: e, turn: Tick(5) }],
             Fallback::Buffer,
         ),
-    );
+    ));
     drain(&mut isle);
     assert!(matches!(isle.outcomes()[0].1, Outcome::Buffered));
     assert!(!isle.state().counters.contains_key(&e));
@@ -127,8 +127,8 @@ fn live_lane_drains_strictly_first() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Background, input(1, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
-    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: e, by: 10 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Background, Admitted::unchecked(input(1, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Inc { id: e, by: 10 }, vec![], Fallback::Drop)));
 
     isle.step(); // must be the Live item
     assert_eq!(isle.state().counters[&e], 10);
@@ -162,13 +162,13 @@ fn resource_precondition_delegates_to_domain() {
     // qi starts at 0 — spend must be rejected.
     isle.submit(
         Lane::Live,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Spend { id: e, amount: 10 },
             vec![Precondition::ResourceAtLeast { id: e, kind: Qi, amount: 10 }],
             Fallback::Drop,
         ),
-    );
+    ));
     drain(&mut isle);
     assert!(matches!(
         isle.outcomes()[0].1,
@@ -190,7 +190,7 @@ fn identical_ingress_replays_byte_identical() {
                 1 => TestPayload::Roll { id: e },
                 _ => TestPayload::Noop,
             };
-            isle.submit(Lane::Live, input(i, payload, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(i, payload, vec![], Fallback::Drop)));
         }
         drain(&mut isle);
         (format!("{:?}", isle.outcomes()), format!("{:?}", isle.state()))
@@ -236,7 +236,7 @@ fn permutation_property_all_orders_valid() {
         let mut isle = island(7, SeenWindow::Unbounded);
         isle.spawn_entity(e);
         for inp in inputs {
-            isle.submit(Lane::Live, inp);
+            isle.submit(Lane::Live, Admitted::unchecked(inp));
         }
         drain(&mut isle);
 
@@ -272,20 +272,20 @@ fn buffered_background_item_does_not_preempt_live() {
     // Background item that buffers (eligible only at tick 5).
     isle.submit(
         Lane::Background,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Inc { id: e, by: 100 },
             vec![Precondition::ActorEligible { id: e, turn: Tick(5) }],
             Fallback::Buffer,
         ),
-    );
+    ));
     drain(&mut isle);
     assert!(matches!(isle.outcomes()[0].1, Outcome::Buffered));
 
     // Clock catches up; buffered item re-offers on BACKGROUND. A Live item
     // submitted now must still drain first.
     isle.tick(5);
-    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
 
     isle.step(); // must be the LIVE item, not the re-offered Background one
     assert_eq!(
@@ -306,13 +306,13 @@ fn rebuffering_records_once_not_per_tick() {
 
     isle.submit(
         Lane::Live,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Inc { id: e, by: 3 },
             vec![Precondition::ActorEligible { id: e, turn: Tick(100) }],
             Fallback::Buffer,
         ),
-    );
+    ));
     drain(&mut isle);
     // 10 ticks of still-ineligible re-offers…
     for _ in 0..10 {
@@ -343,14 +343,14 @@ fn notify_records_actual_violation_not_declared_reason() {
 
     isle.submit(
         Lane::Live,
-        input(
+        Admitted::unchecked(input(
             1,
             TestPayload::Inc { id: e, by: 5 },
             vec![Precondition::EntityAlive { id: e, generation: g }],
             // Client DECLARES a misleading reason:
             Fallback::Notify(e, DiscardReason::Expired),
         ),
-    );
+    ));
     drain(&mut isle);
 
     match &isle.outcomes()[0].1 {

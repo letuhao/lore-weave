@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use sim::{input, Qi, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{
+use sim_core::{Admitted, 
     DetRng, DiscardReason, EntityId, Fallback, Island, IslandId, Lane, Outcome, Precondition,
     RulesetDigest, SeenWindow, StepStatus, Tick,
 };
@@ -71,13 +71,13 @@ fn scenario_tavern_cell_mixed_workload() {
                     vec![]
                 };
                 next_id += 1;
-                isle.submit(Lane::Live, input(next_id, payload, pre, Fallback::Drop));
+                isle.submit(Lane::Live, Admitted::unchecked(input(next_id, payload, pre, Fallback::Drop)));
                 // Inject a duplicate of every 7th input.
                 if next_id % 7 == 0 {
                     isle.submit(
                         Lane::Background,
-                        input(next_id, TestPayload::Noop, vec![], Fallback::Drop),
-                    );
+                        Admitted::unchecked(input(next_id, TestPayload::Noop, vec![], Fallback::Drop),
+                    ));
                 }
             }
             drain(&mut isle);
@@ -116,13 +116,13 @@ fn scenario_encounter_ends_mid_stream() {
     for i in 0..10u128 {
         isle.submit(
             Lane::Live,
-            input(
+            Admitted::unchecked(input(
                 i,
                 TestPayload::Inc { id: e, by: 1 },
                 vec![Precondition::EncounterActive { id: enc, generation: g }],
                 Fallback::Drop,
             ),
-        );
+        ));
     }
     // Process half, then the encounter resolves.
     for _ in 0..5 {
@@ -150,18 +150,18 @@ fn scenario_entity_churn() {
     let ga = isle.spawn_entity(a);
     let _gb = isle.spawn_entity(b);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Inc { id: a, by: 1 },
-        vec![Precondition::EntityAlive { id: a, generation: ga }], Fallback::Drop));
-    isle.submit(Lane::Live, input(2, TestPayload::Inc { id: b, by: 1 },
-        vec![Precondition::IslandOwns { id: b }], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Inc { id: a, by: 1 },
+        vec![Precondition::EntityAlive { id: a, generation: ga }], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Inc { id: b, by: 1 },
+        vec![Precondition::IslandOwns { id: b }], Fallback::Drop)));
     isle.step(); // a applies at gen ga
 
     let _ga2 = isle.bump_entity_gen(a).unwrap();
     isle.despawn_entity(b);
 
     // b's IslandOwns is now stale; a's OLD-gen guard is stale too.
-    isle.submit(Lane::Live, input(3, TestPayload::Inc { id: a, by: 10 },
-        vec![Precondition::EntityAlive { id: a, generation: ga }], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(3, TestPayload::Inc { id: a, by: 10 },
+        vec![Precondition::EntityAlive { id: a, generation: ga }], Fallback::Drop)));
     drain(&mut isle);
 
     assert_eq!(isle.state().counters[&a], 1, "only the fresh-gen apply landed");
@@ -183,12 +183,12 @@ fn scenario_adversarial_storms() {
 
     // Duplicate storm.
     for _ in 0..100 {
-        isle.submit(Lane::Live, input(42, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(42, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
     }
     // Buffer thrash: 20 items eligible only at tick 1000.
     for i in 0..20u128 {
-        isle.submit(Lane::Background, input(1000 + i, TestPayload::Inc { id: e, by: 1 },
-            vec![Precondition::ActorEligible { id: e, turn: Tick(1000) }], Fallback::Buffer));
+        isle.submit(Lane::Background, Admitted::unchecked(input(1000 + i, TestPayload::Inc { id: e, by: 1 },
+            vec![Precondition::ActorEligible { id: e, turn: Tick(1000) }], Fallback::Buffer)));
     }
     // Schedule flood: 200 due at tick 10.
     for i in 0..200u128 {
@@ -226,8 +226,8 @@ fn scenario_soak_bounded_memory() {
     let mut submitted = 0u64;
     for batch in 0..100u128 {
         for i in 0..1000u128 {
-            isle.submit(Lane::Live, input(batch * 1000 + i,
-                TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(batch * 1000 + i,
+                TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
             submitted += 1;
         }
         processed += drain(&mut isle);
@@ -258,22 +258,22 @@ fn metrics_cross_check_outcome_log() {
             id += 1;
             match id % 5 {
                 0 => { // duplicate of previous
-                    isle.submit(Lane::Live, input(id - 1, TestPayload::Noop, vec![], Fallback::Drop));
+                    isle.submit(Lane::Live, Admitted::unchecked(input(id - 1, TestPayload::Noop, vec![], Fallback::Drop)));
                 }
                 1 => { // plain apply
-                    isle.submit(Lane::Live, input(id, TestPayload::Inc { id: e, by: 2 }, vec![], Fallback::Drop));
+                    isle.submit(Lane::Live, Admitted::unchecked(input(id, TestPayload::Inc { id: e, by: 2 }, vec![], Fallback::Drop)));
                 }
                 2 => { // stale gen -> precondition discard
-                    isle.submit(Lane::Live, input(id, TestPayload::Inc { id: EntityId(2), by: 1 },
-                        vec![Precondition::EntityAlive { id: EntityId(2), generation: stale_g }], Fallback::Drop));
+                    isle.submit(Lane::Live, Admitted::unchecked(input(id, TestPayload::Inc { id: EntityId(2), by: 1 },
+                        vec![Precondition::EntityAlive { id: EntityId(2), generation: stale_g }], Fallback::Drop)));
                 }
                 3 => { // guarded spend (some succeed until qi runs out)
-                    isle.submit(Lane::Live, input(id, TestPayload::Spend { id: e, amount: 3 },
-                        vec![Precondition::ResourceAtLeast { id: e, kind: Qi, amount: 3 }], Fallback::Drop));
+                    isle.submit(Lane::Live, Admitted::unchecked(input(id, TestPayload::Spend { id: e, amount: 3 },
+                        vec![Precondition::ResourceAtLeast { id: e, kind: Qi, amount: 3 }], Fallback::Drop)));
                 }
                 _ => { // buffer episode (eligible at tick 500, never reached)
-                    isle.submit(Lane::Background, input(id, TestPayload::Inc { id: e, by: 1 },
-                        vec![Precondition::ActorEligible { id: e, turn: Tick(500) }], Fallback::Buffer));
+                    isle.submit(Lane::Background, Admitted::unchecked(input(id, TestPayload::Inc { id: e, by: 1 },
+                        vec![Precondition::ActorEligible { id: e, turn: Tick(500) }], Fallback::Buffer)));
                 }
             }
         }

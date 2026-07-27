@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use sim::{input, input_deadline, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{
+use sim_core::{Admitted, 
     DiscardReason, EntityId, Fallback, Island, IslandId, Lane, Outcome, Precondition,
     RulesetDigest, SeenWindow, StepStatus, Tick,
 };
@@ -36,9 +36,9 @@ fn panic_is_contained_quarantined_and_poisons() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Inc { id: e, by: 5 }, vec![], Fallback::Drop));
-    isle.submit(Lane::Live, input(2, TestPayload::Panic, vec![], Fallback::Drop));
-    isle.submit(Lane::Live, input(3, TestPayload::Inc { id: e, by: 100 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Inc { id: e, by: 5 }, vec![], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(2, TestPayload::Panic, vec![], Fallback::Drop)));
+    isle.submit(Lane::Live, Admitted::unchecked(input(3, TestPayload::Inc { id: e, by: 100 }, vec![], Fallback::Drop)));
 
     assert!(matches!(isle.step(), StepStatus::Processed(_))); // Inc applies
     assert!(matches!(isle.step(), StepStatus::Processed(_))); // Panic contained
@@ -65,7 +65,7 @@ fn panic_is_contained_quarantined_and_poisons() {
 fn containment_off_propagates_panic() {
     let mut isle = island(7);
     isle.set_containment(false);
-    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Panic, vec![], Fallback::Drop)));
     let boom = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         isle.step();
     }));
@@ -81,7 +81,7 @@ fn island_gen_bump_supersedes_all_pending_o1() {
     isle.spawn_entity(e);
 
     for i in 0..1000u128 {
-        isle.submit(Lane::Live, input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
     }
     isle.bump_island_gen(); // dissolution-class event: everything pending dies
 
@@ -90,7 +90,7 @@ fn island_gen_bump_supersedes_all_pending_o1() {
     assert_eq!(isle.metrics().discarded_superseded, 1000, "all superseded");
 
     // The ids were NOT burned: a re-submission processes normally.
-    isle.submit(Lane::Live, input(500, TestPayload::Inc { id: e, by: 7 }, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(500, TestPayload::Inc { id: e, by: 7 }, vec![], Fallback::Drop)));
     while isle.step() != StepStatus::Idle {}
     assert_eq!(isle.state().counters[&e], 7, "re-submit after cascade applies");
 }
@@ -103,8 +103,8 @@ fn buffered_item_superseded_by_bump() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input(1, TestPayload::Inc { id: e, by: 3 },
-        vec![Precondition::ActorEligible { id: e, turn: Tick(50) }], Fallback::Buffer));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Inc { id: e, by: 3 },
+        vec![Precondition::ActorEligible { id: e, turn: Tick(50) }], Fallback::Buffer)));
     while isle.step() != StepStatus::Idle {}
     assert_eq!(isle.buffered_len(), 1);
 
@@ -123,7 +123,7 @@ fn deadline_expiry_records_expired() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(3), Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(3), Fallback::Drop)));
     isle.tick(10); // deadline passes while queued
     while isle.step() != StepStatus::Idle {}
 
@@ -143,12 +143,12 @@ fn deadline_expiry_substitute_commits_fallback() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input_deadline(
+    isle.submit(Lane::Live, Admitted::unchecked(input_deadline(
         1,
         TestPayload::Inc { id: e, by: 100 },
         Tick(3),
         Fallback::Substitute(TestPayload::Inc { id: e, by: 1 }), // "Defend"
-    ));
+    )));
     isle.tick(10);
     while isle.step() != StepStatus::Idle {}
 
@@ -173,8 +173,8 @@ fn expired_substitute_redelivery_commits_fallback_once() {
         Fallback::Substitute(TestPayload::Inc { id: e, by: 1 }),
     );
     isle.tick(10); // deadline already passed at first delivery
-    isle.submit(Lane::Live, expired_sub());
-    isle.submit(Lane::Live, expired_sub()); // router/bus redelivery
+    isle.submit(Lane::Live, Admitted::unchecked(expired_sub()));
+    isle.submit(Lane::Live, Admitted::unchecked(expired_sub())); // router/bus redelivery
     while isle.step() != StepStatus::Idle {}
 
     assert_eq!(isle.state().counters[&e], 1, "fallback committed EXACTLY once");
@@ -192,12 +192,12 @@ fn duplicate_of_applied_input_reports_duplicate_not_expired() {
     let e = EntityId(1);
     isle.spawn_entity(e);
 
-    isle.submit(Lane::Live, input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(30), Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(30), Fallback::Drop)));
     while isle.step() != StepStatus::Idle {}
     assert_eq!(isle.state().counters[&e], 5, "applied in time");
 
     isle.tick(50); // deadline passes AFTER the apply
-    isle.submit(Lane::Live, input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(30), Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input_deadline(1, TestPayload::Inc { id: e, by: 5 }, Tick(30), Fallback::Drop)));
     while isle.step() != StepStatus::Idle {}
 
     assert!(matches!(
@@ -217,7 +217,7 @@ fn poisoned_island_tick_does_no_work() {
     isle.spawn_entity(e);
     isle.schedule_at(Tick(5), Lane::Live, input(2, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
 
-    isle.submit(Lane::Live, input(1, TestPayload::Panic, vec![], Fallback::Drop));
+    isle.submit(Lane::Live, Admitted::unchecked(input(1, TestPayload::Panic, vec![], Fallback::Drop)));
     while !matches!(isle.step(), StepStatus::Poisoned | StepStatus::Idle) {}
     assert!(isle.is_poisoned());
 
@@ -236,13 +236,13 @@ fn chaos_replay_still_deterministic() {
         let e = EntityId(1);
         isle.spawn_entity(e);
         for i in 0..20u128 {
-            isle.submit(Lane::Live, input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Inc { id: e, by: 1 }, vec![], Fallback::Drop)));
         }
         isle.bump_island_gen();
         for i in 20..40u128 {
-            isle.submit(Lane::Live, input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop));
+            isle.submit(Lane::Live, Admitted::unchecked(input(i, TestPayload::Roll { id: e }, vec![], Fallback::Drop)));
         }
-        isle.submit(Lane::Live, input_deadline(99, TestPayload::Inc { id: e, by: 9 }, Tick(0), Fallback::Drop));
+        isle.submit(Lane::Live, Admitted::unchecked(input_deadline(99, TestPayload::Inc { id: e, by: 9 }, Tick(0), Fallback::Drop)));
         isle.tick(5);
         while isle.step() != StepStatus::Idle {}
         (format!("{:?}", isle.outcomes()), format!("{:?}", isle.state()), isle.metrics().clone())

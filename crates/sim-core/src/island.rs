@@ -11,6 +11,7 @@ use crate::metrics::IslandMetrics;
 use crate::rng::DetRng;
 use crate::seen::{SeenSet, SeenWindow};
 use crate::types::{
+    Admitted,
     Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
     IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest,
     Seq, Tick, Violation,
@@ -175,7 +176,31 @@ impl<D: Domain> Island<D> {
 
     // ─── admission (stamps Seq + island_gen, validates NOTHING — spec §5) ───
 
-    pub fn submit(&mut self, lane: Lane, mut input: QueuedInput<D>) -> Seq {
+    /// Admit an input that has passed the ingress pipeline.
+    ///
+    /// IAS-D3 — the parameter is [`Admitted<D>`], not a bare [`QueuedInput`],
+    /// and that is the entire point: a `QueuedInput` is publicly
+    /// constructible, so while this took one, *any* caller could feed the
+    /// island directly. That was not hypothetical — `commit-service`'s POC
+    /// turn runner did exactly that, routing LLM decisions into the island
+    /// with no admission call at all, and nothing in the type system noticed.
+    ///
+    /// The island still validates NOTHING here (spec §5 — scheduling is not
+    /// rules). The token does not make the input *good*; it makes the input's
+    /// *provenance* unforgeable, so "did this go through admission?" stops
+    /// being a question you answer by reading call sites.
+    ///
+    /// Same technique as `dissolve(self, …)` making "Gone" unrepresentable by
+    /// move semantics: push the invariant into the type, not the review.
+    pub fn submit(&mut self, lane: Lane, admitted: Admitted<D>) -> Seq {
+        self.submit_inner(lane, admitted.into_inner())
+    }
+
+    /// The kernel's own admission path. Private: `deliver()` and the
+    /// scheduler admit items the island itself produced or already accepted,
+    /// which need no external proof — but neither may they become a public
+    /// side door, so this is not exposed.
+    fn submit_inner(&mut self, lane: Lane, mut input: QueuedInput<D>) -> Seq {
         input.admitted_gen = self.island_gen;
         let seq = self.ingress.push(lane, input);
         IslandMetrics::gauge_peak(&mut self.metrics.peak_ingress_depth, self.ingress.len());
@@ -200,7 +225,7 @@ impl<D: Domain> Island<D> {
     /// (same bar as a `Substitute` fallback).
     pub fn deliver(&mut self, lane: Lane, msg: IslandMessage<D>) -> Seq {
         self.metrics.cross_island_delivered += 1;
-        self.submit(lane, QueuedInput {
+        self.submit_inner(lane, QueuedInput {
             seq: Seq(u64::MAX), // overwritten at admission
             input_id: msg.delivery_id,
             class: Class::B,

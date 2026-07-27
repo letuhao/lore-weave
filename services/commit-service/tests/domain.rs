@@ -25,8 +25,14 @@ fn island() -> Island<CombatDomain> {
     isle
 }
 
+/// Each `submit` here models ONE turn: the IAS-D6 turn economy allows an
+/// actor a single action per turn, so a test exercising a multi-turn exchange
+/// must end the turn between actions. Before the turn economy existed these
+/// tests fired freely from one actor, which is exactly the behaviour the
+/// economy removed — the tests are catching up with the rule, not working
+/// around it.
 fn submit(isle: &mut Island<CombatDomain>, id: u128, payload: CombatPayload) {
-    isle.submit(Lane::Live, QueuedInput {
+    isle.submit(Lane::Live, sim_core::Admitted::unchecked(QueuedInput {
         seq: Seq(u64::MAX),
         input_id: InputId(id),
         class: Class::B,
@@ -36,7 +42,10 @@ fn submit(isle: &mut Island<CombatDomain>, id: u128, payload: CombatPayload) {
         on_invalid: Fallback::Drop,
         admitted_gen: Gen(0),
         deadline: None,
-    });
+    }));
+    while isle.step() != StepStatus::Idle {}
+    // Turn boundary — refills every actor's slot (engine-only payload).
+    isle.submit(Lane::Live, commit_service::admission::admit_engine_turn_end(id as u64));
     while isle.step() != StepStatus::Idle {}
 }
 
@@ -57,10 +66,16 @@ fn defend_halves_exactly_one_strike() {
 fn strike_on_absent_or_fled_target_is_a_recorded_miss() {
     let mut isle = island();
     submit(&mut isle, 1, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(99) });
-    assert!(matches!(
-        isle.outcomes().last().unwrap().1,
-        Outcome::Applied { ref events } if matches!(events[0], CombatEvent::Missed { .. })
-    ));
+    // Search for the Miss rather than reading `last()`: the turn boundary now
+    // appends its own (eventless) outcome, and an assertion pinned to the tail
+    // of the log breaks whenever anything is appended after the action.
+    assert!(
+        isle.outcomes().iter().any(|(_, o)| matches!(
+            o,
+            Outcome::Applied { events } if events.iter().any(|e| matches!(e, CombatEvent::Missed { .. }))
+        )),
+        "an absent target is a recorded Miss"
+    );
 
     submit(&mut isle, 2, CombatPayload::Flee { actor: EntityId(2) });
     submit(&mut isle, 3, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });

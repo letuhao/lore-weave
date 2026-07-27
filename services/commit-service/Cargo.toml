@@ -38,3 +38,8 @@ blake3 = { workspace = true }
 
 [dev-dependencies]
 wiremock = { workspace = true }
+# IAS-D3 — `test-util` exposes `Admitted::unchecked` for tests that drive the
+# island directly (domain/kernel behaviour, no rules pipeline involved). It is
+# a DEV dependency on purpose: `cargo build --profile release-commit` does not
+# enable it, so the shipped binary still cannot mint a bypass token.
+sim-core = { path = "../../crates/sim-core", features = ["test-util"] }

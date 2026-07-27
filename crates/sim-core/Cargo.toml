@@ -10,3 +10,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
+
+[features]
+# IAS-D3 — exposes `Admitted::unchecked` for kernel tests/benches that drive
+# the scheduler with no rules pipeline. NEVER enable for a service binary:
+# its absence is what makes an admission bypass a compile error.
+test-util = []
