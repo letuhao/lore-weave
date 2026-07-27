@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     # C12c-a: glossary list is cheap pagination (no LLM) — shorter
     # timeout than the book client's chapter fetch.
     glossary_client_timeout_s: float = 10.0
+    # How many of the book's glossary names may ride in an extraction prompt's
+    # KNOWN_ENTITIES block. A deploy-time CEILING on prompt size, not a per-user
+    # choice: a small glossary is sent whole, a 3,000-entity one is truncated here.
+    # ~150 names costs roughly 1-2k tokens against a ~1.7k-token base prompt.
+    # Measured worth: with the block EMPTY the extractor scored 4/7 on the live
+    # Mị Đế passage; populated, 7/7.
+    known_entities_prompt_cap: int = 150
     # FD-27: provider-registry model-info fetch for the reasoning-model
     # advisory — a tiny metadata read, runs once per job. Best-effort.
     provider_registry_client_timeout_s: float = 5.0

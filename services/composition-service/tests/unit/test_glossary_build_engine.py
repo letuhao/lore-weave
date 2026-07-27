@@ -237,3 +237,20 @@ def test_slicing_keeps_PROSE_fields_and_drops_tag_lists():
     assert "description" in kept and "symbolic_meaning" in kept   # the prose survives
     assert "aliases" not in kept                                   # the tag list is cut first
     assert kept[0] == "name"                                       # required still first
+
+
+def test_the_prompt_NAMES_related_to_as_the_fallback_verb():
+    """Adding `related_to` to the closed set was not enough — live-caught on run
+    019fa2f7, the executor emitted `Chân Linh enemy_of Thanh Tâm Ấn` while its own note
+    said "khác biệt hoàn toàn với" ("completely different from"). It meant *is distinct
+    from* and reached for the nearest specific verb instead of the catch-all sitting
+    right there. A closed set does not produce silence when nothing fits; it produces
+    the closest wrong answer. The escape has to be named, and saying nothing has to be
+    a legal outcome."""
+    from app.services.glossary_build.prompts import batch_messages, executor_messages
+    for msgs in (executor_messages("s", "X", "item", ["name"], "vi"),
+                 batch_messages("s", ["X", "Y"], "item", ["name"], "vi")):
+        sysmsg = msgs[0]["content"]
+        assert "MOST SPECIFIC type that is literally true" in sysmsg
+        assert "use `related_to`" in sysmsg
+        assert "emit no relation for them at all" in sysmsg

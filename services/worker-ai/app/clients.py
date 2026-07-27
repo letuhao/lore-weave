@@ -1188,6 +1188,49 @@ class GlossaryClient:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
 
+    async def list_canon_names(self, book_id: UUID, *, limit: int) -> list[str]:
+        """The book's glossary entity NAMES — the canon vocabulary for a prompt's
+        KNOWN_ENTITIES block.
+
+        Why this exists: the extraction prompt tells the model "KNOWN_ENTITIES win ties"
+        and "prefer exact matches over new names", but the block was fed ONLY from the
+        entities a user had manually PINNED — and the code's own comment conceded that
+        nothing-pinned is "the common case". So in the common case the extractor was told
+        the book had no canon at all. Measured on the live Mị Đế passage: 4 of 7 authored
+        terms extracted with the block empty, 7 of 7 with it populated — the model was
+        never the limit.
+
+        `min_frequency=0` deliberately: the default 2 gates on CHAPTER-MENTION count, so
+        every entity of a book being written from scratch has zero and the list comes back
+        empty (D-ANCHOR-PRELOAD-FREQUENCY-GATE). The endpoint orders by mention count
+        descending, so a `limit` truncation keeps the most-referenced names.
+
+        Best-effort: any failure returns [] and extraction proceeds un-grounded rather
+        than blocking — same posture as the pinned fetch above."""
+        if limit <= 0:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        try:
+            resp = await self._http.get(
+                url, params={"min_frequency": "0", "limit": str(limit)},
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary known-entities %d for %s", resp.status_code, book_id,
+                )
+                return []
+            rows = resp.json()
+            if not isinstance(rows, list):
+                return []
+            return [
+                str(r["name"]).strip()
+                for r in rows
+                if isinstance(r, dict) and str(r.get("name") or "").strip()
+            ]
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("glossary known-entities failed: %s", exc)
+            return []
+
 
 class UsageBillingClient:
     """WS-2.8 — reads a user's spend guardrail so the distiller can degrade the BACKGROUND memory path

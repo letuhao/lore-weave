@@ -32,6 +32,11 @@ import asyncpg
 from opentelemetry import trace as _ot_trace
 from loreweave_jobs import JobStatus, emit_job_event_safe
 
+# This module otherwise reads os.environ directly (see `_decouple_enabled`), but the
+# KNOWN_ENTITIES prompt cap is a declared, typed setting — it belongs with the rest of
+# the deploy-time ceilings rather than as another bare env read.
+from app.config import settings
+
 from loreweave_extraction import (
     ContextBudget,
     EntityRecoveryConfig,
@@ -1593,6 +1598,39 @@ async def _extract_and_persist(
     return persist_result, candidates
 
 
+def merge_known_entities(
+    pinned: list[str], canon: list[str], *, cap: int,
+) -> tuple[list[str], int]:
+    """Build a chunk's KNOWN_ENTITIES list: pinned names first, then the book's canon.
+
+    Module-level and pure ON PURPOSE. The previous version of this wiring lived inline
+    inside the job loop, and its own test file admitted the runner half was "asserted by
+    the live-smoke" — so when it silently degraded to an empty list for every un-pinned
+    book (the common case), nothing went red. Untestable wiring is how this bug class
+    survives; this is the smallest shape that can be pinned down by a unit test.
+
+    Pinned wins a truncation: a user pinned those precisely so they survive one. `canon`
+    arrives ordered by mention count descending, so the cut takes the least-referenced.
+    Returns (names, dropped_count) — the caller LOGS the drop rather than truncating in
+    silence.
+    """
+    if cap <= 0:
+        return [], len(pinned) + len(canon)
+    out = list(pinned[:cap])
+    seen = {n.casefold() for n in out}
+    dropped = max(0, len(pinned) - cap)
+    for name in canon:
+        key = name.casefold()
+        if key in seen:
+            continue
+        if len(out) >= cap:
+            dropped += 1
+            continue
+        seen.add(key)
+        out.append(name)
+    return out, dropped
+
+
 def _decouple_enabled() -> bool:
     """WX-T3b flag, read from the env (runner.py uses os.environ, not the pydantic
     settings object — matches the same EXTRACTION_DECOUPLE_ENABLED that app.main's
@@ -1932,6 +1970,40 @@ async def process_job(
             logger.info(
                 "Job %s: C13 pinning — %d pinned id(s) resolved to %d name(s)",
                 job.job_id, len(job.pinned_entity_ids), len(pinned_names),
+            )
+
+        # D-EXTRACT-KNOWN-ENTITIES-PINNED-ONLY — top the pinned set up with the book's
+        # OWN glossary vocabulary.
+        #
+        # C13 above replaced a hardcoded `[]` with the pinned names, which was the right
+        # direction and stopped one step short: pinning is a manual, per-entity user
+        # action, and the comment two paragraphs up concedes that nothing-pinned is "the
+        # common case". So in the common case the extraction prompt still declared
+        # KNOWN_ENTITIES = [] — telling the model this book has no canon — while its own
+        # rules lean on that list ("Known entities win ties", "prefer exact matches over
+        # new names") and Rule 8 biases toward OMITTING anything that looks like
+        # backstory. Authored lore is exactly what gets mentioned in recall.
+        #
+        # Measured directly against the model (gemma-4-26b, live Mị Đế passage, 1.7k-token
+        # prompt so nothing was lost in the middle): 4 of 7 authored terms extracted with
+        # the block empty, 7 of 7 with it populated, and a rules-free control prompt
+        # scored 5 — i.e. our own rules were WORSE than no rules until the canon list
+        # arrived. The model was never the limit; the missing wire was.
+        #
+        # Pinned names keep priority (a user pinned them precisely so they survive a
+        # truncation), then the glossary's own order (mention count desc). Capped —
+        # see settings.known_entities_prompt_cap.
+        if book_id is not None and len(pinned_names) < settings.known_entities_prompt_cap:
+            canon = await glossary_client.list_canon_names(
+                book_id, limit=settings.known_entities_prompt_cap,
+            )
+            pinned_names, dropped = merge_known_entities(
+                pinned_names, canon, cap=settings.known_entities_prompt_cap,
+            )
+            logger.info(
+                "Job %s: KNOWN_ENTITIES <- %d name(s) (%d pinned + glossary canon)%s",
+                job.job_id, len(pinned_names), len(job.pinned_entity_ids or []),
+                f"; {dropped} dropped at the cap" if dropped else "",
             )
 
         # B2-A — pin the effective config snapshot ONCE per job (a mid-job

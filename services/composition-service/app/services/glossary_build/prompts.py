@@ -25,6 +25,21 @@ RELATION_TYPES = [
     # with no fitting member does not produce silence; it produces a wrong answer.
     "part_of", "property_of", "created_by", "related_to",
 ]
+
+# Adding `related_to` to the SET was not enough — the model has to be TOLD it is the
+# fallback. Live-caught on the second pass (run 019fa2f7): the executor emitted
+# `Chân Linh enemy_of Thanh Tâm Ấn` while its own note read "khác biệt hoàn toàn với
+# bản sao tần số tạm thời" — it meant "is DISTINCT FROM" and reached for the nearest
+# specific verb instead of the catch-all that was sitting right there. Same failure as
+# the `mentor_of` one above, one level down: a closed set does not produce silence when
+# nothing fits, it produces the closest wrong answer. So name the escape explicitly and
+# make "no relation at all" a legal outcome.
+_RELATION_RULE = (
+    "Pick the MOST SPECIFIC type that is literally true. If none of them fits the "
+    "actual relationship, use `related_to` — never bend a different verb to fit "
+    "(`enemy_of` is hostility, not mere difference). If two entities have no real "
+    "relationship, emit no relation for them at all. "
+)
 DEPTHS = ["standard", "deep"]
 
 _LANG_LINE = {
@@ -153,7 +168,7 @@ def _entity_schema_hint(fields: list[str], lang: str,
         "shape shown (an array stays an array). Values are SPECIFIC, with concrete "
         "detail. " + _ABSENT_RULE +
         "relations.target_name is the OTHER entity's NAME (never an id). "
-        + _lang_line(lang)
+        + _RELATION_RULE + _lang_line(lang)
     )
 
 
@@ -239,7 +254,8 @@ def batch_messages(source_text: str, names: list[str], item_kind: str,
         '"note":"..."}]} '
         "Use EXACTLY those attribute keys, keeping each value in the shape shown. "
         "Values are SPECIFIC, with concrete detail. " + _ABSENT_RULE +
-        "relations.target_name is the OTHER entity's NAME (never an id). " + _lang_line(lang)
+        "relations.target_name is the OTHER entity's NAME (never an id). "
+        + _RELATION_RULE + _lang_line(lang)
     )
     user = (f"STORY CONTEXT:\n{source_text}\n\n"
             f"Build a profile for EACH of these {len(names)} entities (all of kind "

@@ -116,6 +116,53 @@ Before: that query returned nothing for this project.
 **Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
 **2583** · FE world-setup **8**.
 
+## 🔬 THE EXTRACTOR WAS TOLD THE BOOK HAS NO CANON — measured, not inferred (2026-07-27)
+
+**The question:** is the extractor's poor recall on authored lore a MODEL limit, lost
+attention, or our own prompt? Answered by dumping the real prompt out of `llm_jobs` and
+replaying it against gemma directly.
+
+| POC arm (gemma-4-26b via LM Studio, $0) | prompt tok | authored terms found |
+|---|---|---|
+| **A** — exact production replay | 1,768 | **4 / 7** |
+| **B** — A + the 16 anchors put in `KNOWN_ENTITIES` | 1,866 | **7 / 7** |
+| **C** — B + an extra "canon overrides Rule 8" clause | 1,971 | 7 / 7 *(no gain over B)* |
+| **D** — bare prompt, no rules at all | 171 | 5 / 7 |
+
+**Not the model. Not lost attention** (1.7k tokens). **Not context poisoning** (one clean
+call reproduces production exactly). Our own rules scored WORSE than no rules until the
+canon list arrived — Rule 8 ("bias toward omission" for backstory) and Rule 2 ("fold
+duplicates") are only safe when the model knows what is canon. `Luyện khí` sits inside
+*"anh **nhớ lại** buổi Luyện khí đầu tiên"*; the model obeyed Rule 8 correctly.
+
+**Root cause — `D-EXTRACT-KNOWN-ENTITIES-PINNED-ONLY`.** Two mechanisms that never meet:
+`load_glossary_anchors` feeds Neo4j + a recovery-tier dict, while the prompt's
+`KNOWN_ENTITIES` block is fed ONLY from manually **pinned** entities. Mị Đế: **0 of 16
+pinned**, so production sent `KNOWN_ENTITIES: []`. C13 had replaced a hardcoded `[]` with
+the pinned names — right direction, one step short — and its own comment conceded that
+nothing-pinned is *"the common case"* without anyone reading that as "the feature is off
+by default".
+
+**Worse, found while fixing:** the live path is worker-ai's **decoupled** extractor
+(`EXTRACTION_DECOUPLE_ENABLED=true`), which loads **no glossary anchors at all**. The
+anchor machinery — including the `min_frequency` fix above — lives in knowledge-service's
+`extract-item`, which the runner's own comment calls *"the legacy path"*. Said plainly:
+that earlier fix repaired a path that is switched off.
+
+**Fixed:** `GlossaryClient.list_canon_names` (known-entities, `min_frequency=0`) + a pure,
+unit-tested `merge_known_entities(pinned, canon, cap)` — pinned survive a truncation, the
+drop count is logged, never silent. Cap = `known_entities_prompt_cap` (default **150**, a
+deploy-time ceiling). The merge was deliberately pulled OUT of the job loop: the old
+inline version's own test file admitted the runner half was "asserted by the live-smoke",
+which is exactly how it degraded to `[]` for every un-pinned book without going red.
+
+**Proven:** worker-ai suite **482** · the deployed client returns all **16** canon names
+from the live glossary (run inside the container) · the POC above proves 16 names ⇒ 7/7.
+**NOT proven end-to-end:** a real extraction job — `POST /extraction/start` is blocked by
+a separate, legitimate gate (`benchmark_missing`: the embedding model has no passing
+golden-set run). Chapter 1 of Mị Đế now exists (`019fa40f…`) and is KG-indexed, so the run
+is one benchmark away.
+
 ## 🔴→✅ THE ANCHOR LIST WAS EMPTY — grounding was built and then never used (2026-07-27)
 
 Deep-dive on `D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND`. It turned out to be the SMALLER of two
