@@ -1,6 +1,6 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## 🔴 ATOM EDIT + THE FLAT-ARC BUG — investigation + fixes (2026-07-26, XL, in flight)
+## ✅ ATOM EDIT — flat-arc bug fixed + PHASE D (error blocks) SHIPPED (2026-07-26/27, XL)
 **Track docs: [`docs/specs/2026-07-26-atom-edit/`](../specs/2026-07-26-atom-edit/) —
 `INVESTIGATION.md` (findings + evidence) · `CHECKLIST.md` (the RUN-STATE board; re-read it first).**
 
@@ -43,29 +43,58 @@ requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
 **VERIFY:** composition unit **2398 passed / 1 skipped**; FE `plan-forge`+`studio` **1577 passed /
 175 files**; `tsc --noEmit` **exit 0**; live cross-service MCP smoke (compile, pass re-run, 2 edits).
 
-**▶ NEXT (see CHECKLIST.md for the full board):**
-- **C1/C2** browser pass on the repaired checkpoint editor (FE is unit-proven only so far).
-- ~~**C4**~~ **DONE — the shaped curve reaches the scenes.** Full legitimate chain driven live (cast →
-  seed apply → accept → beats → accept → character_arcs → scenes): **25 scenes / 10 chapters**, every
-  `beat_role` propagated, and **9 of 10 chapters' scene peak hits its tension target exactly**
-  (65/65 · 35/35 · 58/58 · 55/55 · 68/68 · 82→60⚠ · 66/66 · 90/90 · **100/100 climax** · 52→48).
-  Before this track: 10 NULL roles and a flat 50→72 ramp.
-- **STALE DEFERRAL CLEARED:** the note below claiming "no MCP tool for the cast/beats seed apply, so
-  the co-writer cannot drive the compiler past cast/beats" is **no longer true** —
-  `plan_bootstrap_apply` (confirm-gated) applies a cast SEED proposal by id (`proposal_status:
-  applied`), and `plan_review_checkpoint` then clears the PF-7 gate. Proven live.
-- **E7** re-run `scenes`/`self_heal` against the real curve; **E8** FE structure picker
-  (`StructureTemplatesPanel` is 462 lines of CRUD with **zero** links to a plan run — authored beat
-  sheets still cannot reach a plan from the GUI).
+### ✅ PHASE D (ERROR BLOCKS) — SHIPPED + PROVEN AT EVERY LAYER (2026-07-27, HEAD `e23701da4`)
+
+The author marks a wrong passage with a note; the co-writer reads it, proposes a grounded fix,
+the author applies it and the block closes (or is re-opened). **The reframe that shrank it: an
+error block is a human-authored self-heal `Finding`**, so the existing locate → satellite-edit →
+splice → review machinery was reused, not rebuilt.
+
+Slices D3a–D3h all done: `chapter_error_block` + repo · `engine/error_block_heal.py` (touches **no**
+existing engine file) · 10 REST routes · `composition_error_block_edit(op=list|resolve|dismiss|reopen)`
+· co-writer skill + a new tool-existence guard · FE offset bridge + **Mark problem** + decoration
+rendering · accept-migration for preview marks.
+
+**Proven at every layer, not just unit:** Postgres constraint probes · REST through
+`api-gateway-bff` with a real JWT · MCP wire calls · **the real co-writer (Gemma-4 26B, local, $0)
+choosing the tool unprompted** · browser (the highlight renders on the exact quoted words, and is a
+**Decoration — present in the rendered HTML, absent from the document JSON**).
+
+**7 bugs found and fixed this run.** The three worst were invisible to 2563 green tests:
+- 🔴 **dedup NULL hole** — the partial index keyed on `chapter_id`, NULL on the draft arm, and
+  Postgres treats NULLs as distinct. Duplicates were creatable, and the accept migration then
+  collided **inside one transaction, losing every mark on that draft**. Fixed with
+  `COALESCE(chapter_id, job_id)` + a per-row SAVEPOINT.
+- 🔴 **the undo hint pointed at a READ** (`op=list`) — the activity strip would have offered an
+  Undo that reverted nothing. Root cause was a *missing capability*: nothing exposed a reopen.
+- 🔴 **`project_id` was an arg the agent could not know** — the editor surface gives only
+  book_id + chapter_id, so Gemma passed the **chapter_id as the project_id**. Fixed by opting into
+  the existing `ambient_project` binding (the primitive already existed, unwired).
+- Also: F11 (Polish apply made chapters invisible to search — a port regression), a free-string
+  `status` filter, an unvalidated span/quote length, and a scanner blind to a whole service.
+
+**▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
+- 🎯 **F3 — the proof sweep. This is the track's original question**: all 11 composition `*_edit`
+  atom families have both an FE path and an MCP tool (F2 swept), but the *real-run proven?* column
+  is **empty for all of them**. Presence is not proof — the 6 PlanForge atoms also "had both sides"
+  and 8 were broken. Sweep by observed failure mode, not by count: **delete/archive first** (silently
+  no-op'd on 4 of 6), then **the FE door** (four editors had none), then **round-trip field
+  preservation**. Add-a-row ops are least likely to be silently wrong — sample those.
 - **E6** F7/F8 — the passes are still blind to canon rules + existing cast (`run_cast` re-invents
   the book's characters from `premise` alone); `package["canon"]` is compiled and read by nobody.
-- **Phase D** error-block reporting (human chose BOTH surfaces: Draft Review + chapter editor).
-- **Phase F** finish the atom inventory matrix (atom × MCP × FE × wired × proven).
+- **E7** re-run `scenes`/`self_heal` against the real curve.
+- **Deferred, with reasons in the CHECKLIST:** the batch `/error-blocks/propose` route (needs the
+  *which scene does `pack()` ground against* decision — `propose_for_blocks` is built + tested but
+  deliberately unwired, stated rather than left to be discovered) · F11's structural residual
+  (a flat-text rebuild cannot restore headings/`sceneId`/marks — the real fix is converging Polish
+  onto the same surgical apply; **other session's surface, coordinate first**) · wiring
+  `deprecated-tool-scan.py` as a pre-commit hook behind a `--live-only` flag (live findings are 0;
+  43 dead-to-dead would otherwise block every commit).
 
-⚠️ **Host drift (not a repo defect):** `frontend/node_modules` has TypeScript **7.0.2** against a
-`^5.5.4` manifest, so a local `npm run build`/`tsc` dies on `TS5102 baseUrl`. The Docker build copies
-only `package.json` and runs `npm install`, so it resolves 5.x and is unaffected. Fix locally with
-`npm install` in `frontend/` (its `package-lock.json` is gitignored).
+✅ **Host TS drift RESOLVED** — `tsc --noEmit` exits 0 and `npm run build` completes. The repo was
+never wrong: `frontend/package-lock.json` is **gitignored**, so the TypeScript 7.0.2 pin existed only
+on one machine, and `package.json`'s `^5.5.4` already excluded 7.x (which is why Docker was
+unaffected). Fix is local: `npm install` in `frontend/`. **Net repo change: none.**
 
 ## 🔗 LORE→PROMPT CHAIN REPAIRED — the built glossary now actually reaches the writer (2026-07-27)
 
