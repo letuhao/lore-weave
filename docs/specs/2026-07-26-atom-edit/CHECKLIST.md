@@ -275,6 +275,23 @@ observation. A claim that a check passed, without its output, does **not** tick 
       precedes D3e** — the feature is provable end-to-end on the editor surface alone, so the
       draft-arm accept-migration (the hardest piece, serving the less-used surface) is explicitly
       **optional and last**.
+- [x] **D2e** 🔒 **DESIGN SEALED 2026-07-27.** Last pre-BUILD sweep closed three real gaps:
+      (1) 🔴 **the FE↔BE REST surface had never been specified** — §8 detailed the *agent's* path
+      thoroughly and left the browser's implicit, but the FE cannot call MCP. Routes now named
+      (§8b). **Gateway work: none** — verified `gateway-setup.ts:354` proxies `/v1/composition` by
+      prefix. `PATCH` carries `If-Match: version` (canon_rule precedent); the propose route reuses
+      the existing `202+poll`/inline `_resolveJob` shape.
+      (2) 🔴 **no slice taught the co-writer the tool exists** → new **D3g**. This track proved both
+      failure directions: a skill naming a RETIRED tool causes discovery loops (19 refs fixed), and
+      a tool **no skill names** is never reached for. Its proof is behavioural — the model calls it
+      unprompted in a live chat — not textual.
+      (3) **corrected a second over-confident claim**: D3a is *not* zero-conflict. Its DDL lands in
+      `migrate.py`, which the concurrent session appended to hours ago (`9f9296c00`) and which was
+      in the `439d9037a` sweep. Low severity, textual — but not "none".
+      **Sealed:** 9 decisions, each verified against code (see the SEAL block in the design).
+      **Left open deliberately:** F11 (the other session's bug — logged, coordination required),
+      D3d/D3e file ownership, and the two recorded fail-safe limitations (CJK, offset units).
+      **BUILD may begin at D3a.** D3a–D3c + D3g need no coordination; D3d/D3e do.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
       author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
       co-writer round trip) is the gate** — this track already proved a green suite can vouch for
@@ -462,6 +479,8 @@ into its commit — 1757 insertions filed under the message
 | 2026-07-26 | `plan_compile` MCP arg was written before `op=list` existed, i.e. an argument the agent had no way to populate. Caught only by asking "how would the co-writer actually get this id?" — the affordance question, not the code question. |
 | 2026-07-26 | Reached for `force=true` to shortcut the C4 chain. It was silently ignored and the pass refused — which is the design (the bypass is withheld from agents *by absence*). Had it been exposed, I would have skipped the two human checkpoints to save ~8 minutes and called the result an end-to-end proof, when it would have proven nothing about the gate. The honest chain took 4 passes and a seed apply. |
 | 2026-07-26 | **The big one.** I reported "5 of 6 atoms GUI-editable" on the strength of 1596 green unit tests. The first real browser pass showed FOUR of those editors had no door to open them — advisory passes never render the review CTA. The claim was true of the components and false of the product. I had even written the `scene_plan` editor and its 9 tests without ever checking that a user could reach it. Every editor test renders `CheckpointReview` directly, so the gate was never in the test path. Lesson, again: "the tests pass" is not "the feature works" — and I was one turn away from calling atom edit DONE. |
+| 2026-07-27 | **Designed the agent's path in detail and forgot the human's.** The spec specified the MCP tool, its ops, its affordance gate and its confirm-gating — and never named a single REST route, even though the whole point of the feature is that *the author* marks the block and the FE cannot call MCP. Caught only by asking "what else before build?" one more time instead of accepting my own "BUILD-ready". The MCP-first invariant makes the agent path the one you think hardest about; it does not make it the only one. |
+| 2026-07-27 | **Claimed "zero contested files" a second time, and was wrong again.** After being corrected once on `self_heal.py`, I wrote "D3a — none (new table)" — but the DDL lands in `migrate.py`, which the other session appended to hours earlier and which was already swept once. The table is new; the *file* is not. Same error shape as the first: reasoning about the artifact I'm adding instead of the file I'm editing. |
 | 2026-07-27 | **Told the human that D3a–D3c were safe backend work, then found `self_heal.py` is the concurrent session's single most active file** — six recent commits, one named `fix(compose-quality)`. I had checked file ownership for the *FE* surfaces (D3d/D3e) and simply assumed the backend was uncontested, because "backend" felt like my territory. The coordination hazard is documented at the bottom of the design and I still reasoned past it. The fix turned out to be strictly better anyway (a composing module beats the refactor), which is the uncomfortable part: the right answer was reachable without the near-miss, and I only looked because REVIEW forced a second pass. |
 | 2026-07-27 | **Nearly shipped a design whose re-anchor silently corrupts prose (E1).** `locate_span` returns the FIRST match. I had already read that function, quoted it in the design as the re-anchoring solution, and never asked what happens when the quoted sentence appears twice — which, in fiction, short lines constantly do. A drifted mark on the third "She nodded." would have sent the co-writer's fix to the first one, and *nothing* would have reported an error: the block resolves, the prose changes, the wrong paragraph is edited. Reusing a primitive means inheriting its preconditions, not just its behaviour. |
 | 2026-07-27 | **Wrote a whole data model on an assumed scope key.** The Phase D design specified `owner_user_id` as the tenancy column — reasonable-sounding, and wrong: composition scopes by `book_id`, and `created_by` is an actor stamp *explicitly never filtered on*. Three sibling tables say so identically. Had I gone to BUILD on the design as written, the migration would have shipped a column that no query could correctly use, and the tenancy filter would have been silently wrong — the exact defect class the User Boundaries rule exists to prevent. Caught only because "clear the gaps" meant *reading the sibling tables* instead of trusting the design I had just written. **A design is a hypothesis; the schema is the fact.** |

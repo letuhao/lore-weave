@@ -1,8 +1,41 @@
 # DESIGN — Error Blocks (Phase D)
 
-**Status:** DESIGN (phase 2 of 12) · **Track:** atom-edit · **Board:** [`CHECKLIST.md`](./CHECKLIST.md)
+**Status:** 🔒 **SEALED 2026-07-27** — DESIGN + REVIEW complete, BUILD may begin at D3a.
+**Track:** atom-edit · **Board:** [`CHECKLIST.md`](./CHECKLIST.md)
 **Sealed input (Q3, CLARIFY 2026-07-26):** *both* surfaces — Draft Review (pre-accept) **and** the
 chapter editor (persisted prose) — **sharing one block-marking primitive.**
+
+> ## 🔒 SEAL
+>
+> This design is **sealed**: its decisions are not to be re-litigated from memory during BUILD.
+> If BUILD contradicts something here, **re-read this file**, then amend it explicitly with a dated
+> note — never drift silently.
+>
+> **Sealed decisions** (each was verified against code, not assumed):
+> 1. An error block is a **human-authored self-heal `Finding`**; the located→edit→splice→review
+>    machinery is reused, not rebuilt.
+> 2. Tenancy scope key is **`book_id`**; `created_by` is an actor stamp, never filtered. (R1)
+> 3. `quote` is the anchor, offsets are a hint, `source_fingerprint` decides which to trust; an
+>    unlocatable block **orphans visibly**. (§5, E1, E3)
+> 4. Re-anchoring picks the candidate **nearest the stored offset**, never the first match; a tie
+>    orphans rather than guesses. (E1)
+> 5. **No existing engine file is modified** — `engine/error_block_heal.py` composes public
+>    primitives. `self_heal.py`'s `_snap_to_sentence` must never touch a human span. (§9, §11d)
+> 6. The fix is applied as a **surgical span replacement in the live document** — never a whole-doc
+>    text round-trip. This is a correctness requirement, not an optimization. (§11b/F11)
+> 7. **One** unified `composition_error_block_edit(op=…)`; `op="list"` ships with or before the
+>    writes; `op="create"` is cut. (§8, §11d)
+> 8. Grounding comes from **`pack()`**, and a degraded pack must be **stated on the card**. (§7, E11)
+> 9. **D3f (live co-writer round trip) is the completion gate**, and it precedes D3e. A green test
+>    suite does not close this feature.
+>
+> **Explicitly NOT sealed — open, and fine to stay open:**
+> - **F11** (§11b) — a real shipped bug in the *other* session's Polish path. Logged, not fixed,
+>   **coordination required.** Error blocks do not depend on it.
+> - **D3d / D3e file ownership** — needs the coordination conversation before those slices start.
+>   D3a–D3c and D3g do not.
+> - CJK re-anchoring stays degraded; the code-point↔UTF-16 offset mismatch stays inherited. Both
+>   fail safe, both recorded.
 
 > **The author marks a span of wrong prose and says what's wrong with it. The co-writer proposes a
 > fix grounded in that instruction plus the book's canon/KG/glossary. The author accepts or rejects.**
@@ -213,6 +246,32 @@ discover an id to write to. Ship the read in the same commit as the writes.
 Gap 3 (no MCP self-heal at all) is closed as a side effect: the human-findings entry point is
 reachable by the agent, and exposing the judge path through the same tool is then a one-line op.
 
+## 8b · The FE↔BE surface (added at SEAL — the design had only specified the agent's path)
+
+The MCP path (§8) was specified in detail; the **browser's** path was left implicit. It is not the
+same path — the FE cannot call MCP. Routes on composition-service, under the existing prefix:
+
+```
+GET    /v1/composition/works/{project_id}/chapters/{chapter_id}/error-blocks?status=open
+POST   /v1/composition/works/{project_id}/chapters/{chapter_id}/error-blocks     → mark
+PATCH  /v1/composition/error-blocks/{id}     (If-Match: version)                 → resolve/dismiss/edit note
+DELETE /v1/composition/error-blocks/{id}                                         → soft-archive
+POST   /v1/composition/works/{project_id}/error-blocks/propose                   → the grounded fix pass
+```
+
+**Gateway work required: none.** Verified — `gateway-setup.ts:354` proxies by prefix
+(`pathname.startsWith('/v1/composition')`), so a new route under it is reachable the moment it
+exists. *(Do keep the passthrough honest about optional fields — a gateway that drops one is a
+known past defect.)*
+
+`PATCH` carries `If-Match: version` (the `canon_rule` precedent, `patchCanonRule`) → 412 on drift.
+The propose route follows the existing `202 + poll` / inline shape of `proposeSelfHeal` and
+`qualityReport` — same `_resolveJob` helper on the FE, no new async idiom.
+
+**Contract-first** is ENFORCED only for glossary-service, so no route-conformance test will red
+here — which makes it easier to forget. Document these in `contracts/api/composition-service/`
+in the same commit anyway.
+
 ## 9 · Engine change — ~~a shared seam~~ **a new composing module**
 
 > ⚠️ **SUPERSEDED at REVIEW (§11d).** The original plan — factor `propose_from_findings` out of
@@ -401,12 +460,29 @@ Revised at REVIEW: no slice touches a file the concurrent session owns.
 
 | slice | content | conflict risk | proof required |
 |---|---|---|---|
-| **D3a** | migration + repo + closed-set enums + `source_fingerprint` + E5 unique index | **none** (new table) | live DB row; scoped query proves `book_id` filtering |
+| **D3a** | migration + repo + closed-set enums + `source_fingerprint` + E5 unique index | ⚠️ **LOW, not zero** — the table is new, but the DDL block lands in `migrate.py`, which the other session appended to hours ago (`9f9296c00`). Textual, easily resolved; append in one place. | live DB row; scoped query proves `book_id` filtering |
 | **D3b** | `engine/error_block_heal.py` — re-anchor wrapper (E1) + `propose_for_blocks` | **none** (new file) | unit: nearest-hint beats first-match; overlap merge (E2); fingerprint mismatch re-anchors (E3) |
-| **D3c** | `composition_error_block_edit` — **`op="list"` first**, then `resolve`/`dismiss` | **none** (new tool) | live MCP call on the real book |
+| **D3c** | REST routes (§8b) + `composition_error_block_edit` — **`op="list"` first**, then `resolve`/`dismiss` | **none** (new routes/tool) | live MCP call **and** a live HTTP call on the real book |
 | **D3d** | editor surface: SelectionToolbar → Mark → `Decoration` render | ⚠️ `EditorPanel` — **coordinate** | **browser** — mark, reload, still there |
+| **D3g** | **teach the co-writer** — skill prompt + tool surfacing | ⚠️ chat-service skills — low | the model **actually calls** the tool unprompted in a live chat |
 | **D3f** | co-writer round trip | — | **live**: mark → agent lists → grounded proposal → apply → **DB shows the new prose** |
 | **D3e** | *(optional, last)* Draft Review arm + accept migration | ⚠️ compose panels — **coordinate** | **browser** — mark on draft, accept, block re-anchors |
+
+### D3g is not optional — it is the difference between shipped and invisible
+
+This track spent an entire phase proving the point in both directions: a skill naming a **retired**
+tool sends the model into a discovery loop (19 references across 6 skills, fixed), and a tool **no
+skill names** is a tool the model never reaches for. `composition_error_block_edit` inherits both
+risks. D3g covers:
+
+- the co-writer skill learns the tool, its `op` set, and **when** to reach for it ("the author
+  marked passages — read them before rewriting anything");
+- surfacing: the tool must be reachable via the hot-set / `tool_list`→`tool_load` tail, not merely
+  registered;
+- the skill lint (`_KNOWN_LEGACY_TOOL_NAMES` / `_NONEXISTENT_TOOL_NAMES`) still passes.
+
+**Proof is behavioural, not textual:** the gate is a live chat where the model calls the tool
+without being told its name — the same standard applied to every other tool in this track.
 
 **D3f is the gate**, and note it now sits *before* D3e: the feature is provable end-to-end on the
 editor surface alone. Per this track's own drift log, four editors passed 1596 unit tests with no
