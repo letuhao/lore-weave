@@ -260,6 +260,20 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > turn.resolved`**. The browser→bus→commit half is proven end to end; the return leg
 > (publisher→room→client) was proven separately at the stream layer — **running all three daemons
 > at once for a single unbroken click→render is the one remaining stitch.**
+> 🔒 **SECURITY FIXES (18:38) — both holes found during the live run, both closed and
+> bite-proven.** **(1) `ChannelRoom` had NO `onAuth` at all** and took `actorEntityId` from join
+> options with a `'1'` fallback — so any client could claim any actor and act as another player.
+> The room re-stamping identity on submit was NOT enough, because what it stamped *was* the
+> attacker's claim. Now: PRR-20 ticket auth (same path as EchoRoom — one-shot, origin+fingerprint
+> bound), identity taken from the AUTHENTICATED user, and actor resolved server-side via
+> `actorForUser()` (V1 will read the PC-substrate binding). **Live bite: a client joining with
+> `actorEntityId:'99'` gets `self = 1` — claim ignored.** **(2) Fails CLOSED**: with no ticket
+> store configured and no explicit `LW_WS_DEV_ALLOW_STATIC=1`, `onAuth` now throws rather than
+> falling back to the static token — a production deploy that forgets Redis rejects everyone
+> instead of accepting anyone. **(3)** The dev config override can no longer carry
+> INFRASTRUCTURE: `redisUrl` is env-only even with the debug flag on (an SSRF hole with a flag in
+> front of it is still an SSRF hole); only `realityId`/`channelId` may vary. 4 security
+> regression tests added, **55/55 game-server green**.
 > **NEXT:** wire `ChannelRoom` to the browser for a real
 > click-to-turn (the first true browser↔server loop) → movement lane (Class A / RTM frames) →
 > S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO registration →
@@ -333,6 +347,20 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > turn.resolved`**. The browser→bus→commit half is proven end to end; the return leg
 > (publisher→room→client) was proven separately at the stream layer — **running all three daemons
 > at once for a single unbroken click→render is the one remaining stitch.**
+> 🔒 **SECURITY FIXES (18:38) — both holes found during the live run, both closed and
+> bite-proven.** **(1) `ChannelRoom` had NO `onAuth` at all** and took `actorEntityId` from join
+> options with a `'1'` fallback — so any client could claim any actor and act as another player.
+> The room re-stamping identity on submit was NOT enough, because what it stamped *was* the
+> attacker's claim. Now: PRR-20 ticket auth (same path as EchoRoom — one-shot, origin+fingerprint
+> bound), identity taken from the AUTHENTICATED user, and actor resolved server-side via
+> `actorForUser()` (V1 will read the PC-substrate binding). **Live bite: a client joining with
+> `actorEntityId:'99'` gets `self = 1` — claim ignored.** **(2) Fails CLOSED**: with no ticket
+> store configured and no explicit `LW_WS_DEV_ALLOW_STATIC=1`, `onAuth` now throws rather than
+> falling back to the static token — a production deploy that forgets Redis rejects everyone
+> instead of accepting anyone. **(3)** The dev config override can no longer carry
+> INFRASTRUCTURE: `redisUrl` is env-only even with the debug flag on (an SSRF hole with a flag in
+> front of it is still an SSRF hole); only `realityId`/`channelId` may vary. 4 security
+> regression tests added, **55/55 game-server green**.
 > **NEXT:** **`sim-core` S1** (skeleton — unblocked; islands *and the panic boundary* in the type signatures from commit one) · `B3-D1` amendment row when `locked_decisions.md` is quiet · **`SL-Q11`** (does EVT-L5 backpressure fight SL-A13 dilation? plausible feedback loop — settle **before** both are built) · put `language-rule-lint.sh` + a *"`_boundaries/*` diff requires `Owner:` ≠ None"* check into pre-commit — **both are rules that exist with no enforcement point**, which is how `jobs-service` sat red for 6 weeks and how three lock cycles got recorded that never happened.
 
 > ✅ **MERGED `origin/main` + GREENED THE BUILD (2026-07-26 late):** the branch was **3090 commits behind**; because the game tier is spec-only it produced **exactly one conflict** — `.githooks/pre-commit`, resolved as a **union** (main had grown knowledge-access / http-surface / context-budget / db-safety / no-absolute-paths / i18n / tier-tag / inspector / design-token / gitleaks gates; this session had added two). `origin/main` is now **fully contained** in the branch.

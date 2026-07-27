@@ -1,4 +1,11 @@
-import { Room, type Client } from 'colyseus';
+import { Room, ServerError, type AuthContext, type Client } from 'colyseus';
+
+import {
+  authCloseCode,
+  authenticateTicket,
+  ticketRedeemerFromEnv,
+  wsTrustedProxy,
+} from '../ws/auth.js';
 import Redis from 'ioredis';
 
 import {
@@ -171,8 +178,18 @@ export class ChannelRoom extends Room {
       redisUrl: process.env.LW_CHANNEL_REDIS_URL ?? 'redis://127.0.0.1:6399/0',
       rulesetDigest: process.env.LW_CHANNEL_RULESET_DIGEST,
     };
+    // Even in dev, a client may never supply INFRASTRUCTURE (`redisUrl`) —
+    // that would be an SSRF/exfiltration hole with a debug flag in front of
+    // it. The override covers only the two identifiers that are safe to vary
+    // per room.
     const devOverride = process.env.LW_CHANNEL_ALLOW_CLIENT_CONFIG === '1';
-    this.opts = devOverride ? { ...fromEnv, ...joinOptions } : fromEnv;
+    this.opts = devOverride
+      ? {
+          ...fromEnv,
+          realityId: joinOptions.realityId ?? fromEnv.realityId,
+          channelId: joinOptions.channelId ?? fromEnv.channelId,
+        }
+      : fromEnv;
     if (!this.opts.realityId) {
       throw new Error('ChannelRoom: LW_CHANNEL_REALITY_ID is required (server config)');
     }
@@ -267,6 +284,21 @@ export class ChannelRoom extends Room {
   }
 
   /**
+   * Map an authenticated user to the entity they control on this channel.
+   * V1 resolves this from the PC-substrate binding (a user's character in
+   * this reality); the dev map keeps the PoC runnable without that service
+   * while never letting the CLIENT choose. Env form: `user:entity,user:entity`.
+   */
+  private actorForUser(userId: string): string {
+    const raw = process.env.LW_CHANNEL_ACTOR_MAP ?? '';
+    for (const pair of raw.split(',')) {
+      const [u, e] = pair.split(':').map((x) => x.trim());
+      if (u && e && u === userId) return e;
+    }
+    return process.env.LW_CHANNEL_DEFAULT_ACTOR ?? '1';
+  }
+
+  /**
    * THR-A4 — the engine offers the targets; the client picks from them and can
    * name nobody else. Derived from the replayed view, so it reflects committed
    * truth rather than anything a client asserted.
@@ -277,12 +309,54 @@ export class ChannelRoom extends Room {
       .map(([id]) => [Number(id), `hostile-${id}`] as [number, string]);
   }
 
-  onJoin(client: Client, options?: { actorEntityId?: string }): void {
-    // PoC identity binding. Production takes this from the redeemed WS ticket
-    // (the EchoRoom path), never from join options — the TODO is the auth
-    // source, NOT the guard: the guard (stamp server-side, ignore any actor a
-    // client puts in a message) is already in place above.
-    const actor = options?.actorEntityId ?? '1';
+  /**
+   * PRR-20 edge auth, same path as EchoRoom: redeem the gateway-issued WS
+   * ticket (one-shot, origin- + fingerprint-bound) and take the userId from
+   * IT. Without a ticket store configured, the dev static-token fallback
+   * applies — and ONLY when `LW_WS_DEV_ALLOW_STATIC=1`, so a production
+   * deployment that forgets to configure Redis fails closed instead of
+   * accepting anyone.
+   */
+  async onAuth(_client: Client, options: { jwt?: string }, context: AuthContext) {
+    try {
+      const redeemer = ticketRedeemerFromEnv();
+      if (redeemer) {
+        const authed = await authenticateTicket(
+          redeemer,
+          Object.fromEntries(context.headers),
+          context.ip,
+          Date.now(),
+          { trustedProxy: wsTrustedProxy() },
+        );
+        return { userId: authed.userId };
+      }
+      if (process.env.LW_WS_DEV_ALLOW_STATIC !== '1') {
+        throw new ServerError(4001, 'no ticket store configured (fail closed)');
+      }
+      const expected = process.env.LOREWEAVE_INTERNAL_TOKEN ?? 'dev_token';
+      if (!options?.jwt || options.jwt !== expected) {
+        throw new ServerError(4001, 'invalid token');
+      }
+      return { userId: `dev:${String(options.jwt).slice(0, 4)}` };
+    } catch (err) {
+      const code = err instanceof ServerError ? (err.code as number) : authCloseCode(err);
+      throw err instanceof ServerError ? err : new ServerError(code, (err as Error).message);
+    }
+  }
+
+  onJoin(client: Client): void {
+    // D3 — identity comes from the AUTHENTICATED session, never from join
+    // options. Taking `actorEntityId` off the wire (as this did while it was
+    // a PoC) lets any client claim any actor and act as another player; the
+    // fact that the room re-stamps it on submit is not enough, because what
+    // it stamps would BE the attacker's claim.
+    const userId = (client.auth as { userId?: string } | undefined)?.userId;
+    if (!userId) {
+      // Unreachable if onAuth ran; loud rather than defaulting to entity 1.
+      client.leave(4001);
+      return;
+    }
+    const actor = this.actorForUser(userId);
     this.actorOf.set(client.sessionId, actor);
 
     // W0 — bind ack (doc 20 §2). from_tokens is the DP-Ch18 per-channel map.
