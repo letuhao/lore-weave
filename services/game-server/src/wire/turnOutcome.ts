@@ -110,7 +110,9 @@ export function projectTurnOutcome(ev: CommittedEvent): TurnOutcome | null {
         channel_event_id,
         kind: 'resolved',
         turn_number,
-        detail: { events: (payload.narration as string[]) ?? [] },
+        // D1 — structured domain facts, rendered to lines here (rendering is
+        // the CLIENT's job; the wire carries facts, not prose).
+        detail: { events: (asDomainEvents(payload.events)).map(renderEvent) },
       };
     case 'turn.discarded':
       return {
@@ -118,7 +120,7 @@ export function projectTurnOutcome(ev: CommittedEvent): TurnOutcome | null {
         kind: 'discarded',
         turn_number,
         detail: {
-          reason: (payload.reason as DiscardReason) ?? 'precondition_failed',
+          reason: (payload.discard_reason as DiscardReason) ?? 'precondition_failed',
           user_message: (payload.user_message as string) ?? 'The world moved on.',
         },
       };
@@ -135,4 +137,86 @@ export function projectTurnOutcome(ev: CommittedEvent): TurnOutcome | null {
     default:
       return null;
   }
+}
+
+
+// ── D1/D2: structured domain facts ──────────────────────────────────────────
+
+/** A committed combat fact. Mirrors `commit-service::domain::CombatEvent`; the
+ *  two are joined only by this shape, so the closed `type` set is asserted in
+ *  the tests rather than trusted. */
+export type DomainEvent =
+  | { type: 'struck'; attacker: string; target: string; damage: number; hp_left: number }
+  | { type: 'missed'; attacker: string; target: string }
+  | { type: 'defended'; actor: string }
+  | { type: 'moved'; actor: string; stance: string }
+  | { type: 'fled'; actor: string }
+  | { type: 'downed'; target: string };
+
+export function asDomainEvents(raw: unknown): DomainEvent[] {
+  return Array.isArray(raw) ? (raw as DomainEvent[]) : [];
+}
+
+/** Render one fact as a line. Deliberately trivial and client-side: the SERVER
+ *  ships facts, the client decides words (and, later, locale — CWC-D7). */
+export function renderEvent(e: DomainEvent): string {
+  switch (e.type) {
+    case 'struck':
+      return `${e.attacker} strikes ${e.target} for ${e.damage} (${e.hp_left} left)`;
+    case 'missed':
+      return `${e.attacker} finds no target`;
+    case 'defended':
+      return `${e.actor} braces`;
+    case 'moved':
+      return `${e.actor} repositions (${e.stance})`;
+    case 'fled':
+      return `${e.actor} flees`;
+    case 'downed':
+      return `${e.target} goes down`;
+  }
+}
+
+/** The replayed view of a channel (D2): W1 is a FOLD of the committed stream,
+ *  not a second read API that could disagree with the log. */
+export interface ChannelView {
+  actors: Record<string, { hp?: number; down: boolean; fled: boolean; stance?: string }>;
+  turn_number: string;
+  last_event_id: string;
+}
+
+export function emptyView(): ChannelView {
+  return { actors: {}, turn_number: '0', last_event_id: '0' };
+}
+
+function actor(v: ChannelView, id: string) {
+  return (v.actors[id] ??= { down: false, fled: false });
+}
+
+/** Fold one committed event into the view. Pure + idempotent per event id, so
+ *  a replay from `0` and a live tail produce the same state (GDA-A7). */
+export function foldEvent(view: ChannelView, ev: CommittedEvent): ChannelView {
+  const outcome = projectTurnOutcome(ev);
+  if (outcome) view.turn_number = outcome.turn_number;
+  if (ev.channel_event_id !== undefined) {
+    view.last_event_id = toU64String(ev.channel_event_id, 'channel_event_id');
+  }
+  for (const e of asDomainEvents(ev.payload?.events)) {
+    switch (e.type) {
+      case 'struck':
+        actor(view, e.target).hp = e.hp_left;
+        break;
+      case 'downed':
+        actor(view, e.target).down = true;
+        break;
+      case 'fled':
+        actor(view, e.actor).fled = true;
+        break;
+      case 'moved':
+        actor(view, e.actor).stance = e.stance;
+        break;
+      default:
+        break;
+    }
+  }
+  return view;
 }

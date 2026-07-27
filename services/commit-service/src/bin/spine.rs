@@ -65,6 +65,21 @@ fn parse_args() -> anyhow::Result<Args> {
     })
 }
 
+/// Map the kernel's `DiscardReason` onto the game-wire closed set
+/// (`turn.schema.json#/$defs/DiscardDetail`). Exhaustive by construction: a
+/// 6th kernel variant fails to compile here rather than reaching a client as
+/// an unknown string.
+fn discard_reason_wire(r: &sim_core::DiscardReason) -> &'static str {
+    use sim_core::DiscardReason as D;
+    match r {
+        D::Duplicate => "duplicate",
+        D::PreconditionFailed(_) => "precondition_failed",
+        D::Superseded => "superseded",
+        D::Expired => "expired",
+        D::Quarantined => "quarantined",
+    }
+}
+
 fn now_rfc3339() -> String {
     // Host-side wall clock (the kernel never sees it) — commit timestamps
     // are commit-service's job. Seconds precision suffices for the spine.
@@ -240,9 +255,22 @@ async fn main() -> anyhow::Result<()> {
                         reality_id: args.reality,
                         occurred_at: now_rfc3339(),
                         recorded_at: now_rfc3339(),
+                        // D1 — STRUCTURED domain facts, never a Debug string.
+                        // A `{:?}` rendering has no stability guarantee, so a
+                        // consumer parsing one is parsing a bug; this payload
+                        // is read directly by the browser.
                         payload: serde_json::json!({
-                            "island_seq": seq.0,
-                            "outcome": format!("{outcome:?}"),
+                            "island_seq": seq.0.to_string(), // CWC-A2
+                            "events": match &outcome {
+                                Outcome::Applied { events } => serde_json::to_value(events)?,
+                                _ => serde_json::json!([]),
+                            },
+                            "discard_reason": match &outcome {
+                                Outcome::Discarded { reason } => {
+                                    serde_json::json!(discard_reason_wire(reason))
+                                }
+                                _ => serde_json::Value::Null,
+                            },
                         }),
                         // D4: EVT envelope fields ride metadata until v2.
                         metadata: Some(serde_json::json!({

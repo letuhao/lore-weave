@@ -106,7 +106,9 @@ test('the live spine log shape projects correctly: ce3 turn1 / ce4 rejected turn
 test('discarded is NOT rejected — distinct kind, distinct detail shape', () => {
   const d = projectTurnOutcome(
     committed('turn.discarded', '7', '2', {
-      reason: 'superseded',
+      // field name matches the spine's payload (D1): `discard_reason`, mapped
+      // exhaustively from the kernel's 5-variant DiscardReason.
+      discard_reason: 'superseded',
       user_message: 'The encounter ended.',
     }),
   )!;

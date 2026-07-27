@@ -116,6 +116,66 @@ pub fn input_id_for(triple: &(String, String, i64)) -> InputId {
     InputId(u128::from_le_bytes(b16))
 }
 
+/// The EVT category a proposal declares. `15` §7b.2's three origin classes:
+/// the LLM's proposal runs the FULL pipeline; the player's runs the reduced
+/// player subset (the player is NOT an EVT-A7 trusted producer —
+/// commit-service validates on their behalf).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    /// EVT-T6 Proposal — LLM output.
+    T6,
+    /// EVT-T1 Submitted — player input via the gateway/room.
+    T1,
+}
+
+impl Category {
+    fn parse(s: &str) -> Self {
+        match s {
+            "T1" => Self::T1,
+            _ => Self::T6,
+        }
+    }
+
+    /// The per-category stage table (plan D4). The distinction is the point:
+    /// **`Skip` = this category declares the stage inapplicable; `NotRun` =
+    /// the stage is owed and unbuilt.** Collapsing them would hide real debt
+    /// behind a legitimate-looking absence — the whole reason D6 records
+    /// stages at all.
+    fn stage_verdicts(self) -> &'static [(&'static str, bool)] {
+        match self {
+            // (stage, applicable?) — applicable ⇒ NotRun (owed), else Skip.
+            Self::T6 => &[
+                ("capability", true),
+                ("a5-intent", true),
+                ("a6-sanitize", true),
+                ("structural-validators", true),
+                ("lex", true),
+                ("heresy", true),
+                ("a6-output", true),
+                ("canon-drift", true),
+                ("causal-ref-integrity", true),
+                ("world-rule", true),
+            ],
+            // The player's tool-call is not LLM OUTPUT, so the A5/A6 and
+            // canon-drift stages do not apply to it; world-rule, capability
+            // and free-text sanitisation do.
+            Self::T1 => &[
+                ("capability", true),
+                ("a5-intent", false),
+                ("a6-sanitize", false),
+                ("structural-validators", true),
+                ("lex", true),
+                ("heresy", true),
+                ("a6-output", false),
+                ("canon-drift", false),
+                ("causal-ref-integrity", true),
+                ("world-rule", true),
+                ("free-text-sanitisation", true),
+            ],
+        }
+    }
+}
+
 /// Run the T6 (LLM-proposal) admission subset over one bus message body.
 pub fn admit_t6(
     raw_json: &str,
@@ -197,20 +257,10 @@ pub fn admit_t6(
         }
     };
 
-    // ── registered-but-unbuilt stages: recorded NotRun, in pipeline order ──
-    for stage in [
-        "capability",
-        "a5-intent",
-        "a6-sanitize",
-        "structural-validators",
-        "lex",
-        "heresy",
-        "a6-output",
-        "canon-drift",
-        "causal-ref-integrity",
-        "world-rule",
-    ] {
-        stages.push((stage, Verdict::NotRun));
+    // ── the category's declared stage table: NotRun (owed) vs Skip
+    //    (declared inapplicable). Never silent, either way (D6/D4).
+    for (stage, applicable) in Category::parse(&proposal.event_category).stage_verdicts() {
+        stages.push((stage, if *applicable { Verdict::NotRun } else { Verdict::Skip }));
     }
 
     AdmissionRecord {
@@ -219,7 +269,10 @@ pub fn admit_t6(
             seq: Seq(u64::MAX), // stamped at island admission
             input_id: input_id_for(&triple),
             class: Class::B,
-            source: Producer::LlmDecision,
+            source: match Category::parse(&proposal.event_category) {
+                Category::T1 => Producer::PlayerInput,
+                Category::T6 => Producer::LlmDecision,
+            },
             payload,
             preconditions: vec![],
             on_invalid: Fallback::Substitute(vocab.fallback_payload(EntityId(proposal.actor))),

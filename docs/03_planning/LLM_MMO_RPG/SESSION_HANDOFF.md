@@ -182,9 +182,34 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > locally (two indirect deps — `x/sync`, `x/text` — resolve newer than pinned). Identical on
 > HEAD without any of this work; deliberately not bumped inside a feature commit. Needs its own
 > decision: re-pin or tidy.
-> **NEXT:** minimal browser client against W0/W1 (the last unbuilt layer) → turn SUBMISSION path
-> (client → `TurnSubmit` → bus, closing the loop) → S4b real-IPC → CP lease issuance → boundary
-> batch incl. CWC + game-wire DTO registration.
+> ✅ **FULL DATA FLOW — THE LOOP IS CLOSED (15:49–16:2x, PO: "design rồi implement đầy đủ data
+> flow").** Design: [`docs/plans/2026-07-27-full-data-flow.md`](../../plans/2026-07-27-full-data-flow.md)
+> (D1–D5). Three gaps found and closed:
+> **G1 — committed payloads carried a Rust `Debug` STRING** (`format!("{outcome:?}")`). A client
+> cannot parse that, and must never try: `{:?}` has no stability guarantee, so a consumer parsing
+> one is parsing a bug. `CombatEvent` now serializes as **structured JSON with decimal-string
+> entity ids** (CWC-A2 applies to event BODIES, not just envelopes); `discard_reason` maps
+> exhaustively from the kernel's 5-variant set (a 6th variant fails to compile rather than
+> reaching a client as an unknown string).
+> **G2 — no W0/W1.** W1 is now a **REPLAY of the channel** (`replayView` folds the committed
+> stream), not a new read API — the room is already the projection (GDA-A7), so a second source
+> of truth could only disagree with the log. Makes GDA-D7 concrete: fresh join and reconnect are
+> the same code path, differing only in the cursor.
+> **G3 — no inbound path.** `ChannelRoom.turn.submit` → **identity stamped from the session**
+> (D3 confused-deputy guard: the client sends an ACTION and never names its actor) → EVT-**T1**
+> proposal on the cell bus. `admit_t1` added with the D4 stage table, where **`Skip` ≠ `NotRun`**:
+> Skip = this category declares the stage inapplicable (a player's tool-call is not LLM output,
+> so A5/A6/canon-drift do not apply); NotRun = owed and unbuilt. Collapsing them would hide real
+> debt behind a legitimate-looking absence.
+> **FULL-LOOP LIVE:** client submits **twice with one `client_request_id`** → room → bus → spine
+> admits the first and **records the retry as an idempotency rejection** → commit → outbox → real
+> publisher → `lw.events.*` → consumer. Frames back:
+> `ce10 resolved turn 1 detail:["1 strikes 2 for 10 (30 left)"]` · `ce11 rejected turn **1**
+> [idempotency]`; W1 folded from the log = `{actor 2: hp 30}`. 51/51 game-server, 26/26
+> commit-service.
+> **NEXT:** browser client (the code path is proven; this is UI) → movement lane (Class A / RTM
+> frames) → S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO
+> registration → `publisher/go.mod` re-pin decision (still open).
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**

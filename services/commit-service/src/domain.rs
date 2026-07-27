@@ -32,15 +32,62 @@ pub enum CombatPayload {
     Flee { actor: EntityId },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A domain fact. **Serialized into the committed payload as STRUCTURED JSON**
+/// — never `format!("{:?}")`. A `Debug` rendering is not a contract: it has no
+/// stability guarantee and changes the moment a field is added, so a consumer
+/// parsing one is parsing a bug. Entity ids serialize as DECIMAL STRINGS
+/// (CWC-A2) because the browser reads this payload directly.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum CombatEvent {
-    Struck { attacker: EntityId, target: EntityId, damage: i64, hp_left: i64 },
+    Struck {
+        #[serde(with = "entity_str")]
+        attacker: EntityId,
+        #[serde(with = "entity_str")]
+        target: EntityId,
+        damage: i64,
+        hp_left: i64,
+    },
     /// Total-apply discipline: target absent/fled/down — recorded, not applied.
-    Missed { attacker: EntityId, target: EntityId },
-    Defended { actor: EntityId },
-    Moved { actor: EntityId, stance: Stance },
-    Fled { actor: EntityId },
-    Downed { target: EntityId },
+    Missed {
+        #[serde(with = "entity_str")]
+        attacker: EntityId,
+        #[serde(with = "entity_str")]
+        target: EntityId,
+    },
+    Defended {
+        #[serde(with = "entity_str")]
+        actor: EntityId,
+    },
+    Moved {
+        #[serde(with = "entity_str")]
+        actor: EntityId,
+        stance: Stance,
+    },
+    Fled {
+        #[serde(with = "entity_str")]
+        actor: EntityId,
+    },
+    Downed {
+        #[serde(with = "entity_str")]
+        target: EntityId,
+    },
+}
+
+/// CWC-A2 at the event-body boundary: `EntityId` is a u64 server-side and must
+/// cross the wire as a decimal string, exactly like the envelope ids.
+mod entity_str {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use sim_core::EntityId;
+
+    pub fn serialize<S: Serializer>(id: &EntityId, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&id.0.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<EntityId, D::Error> {
+        let s = String::deserialize(d)?;
+        s.parse::<u64>().map(EntityId).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
