@@ -57,6 +57,12 @@ CATALOG_REL = os.path.join("00_foundation", "06_id_catalog.md")
 MATRIX_REL = os.path.join("_boundaries", "01_feature_ownership_matrix.md")
 DEFAULT_ALLOWLIST = os.path.join(SCRIPT_DIR, "design-lint.allow.json")
 ALL_CHECKS = ("symbol", "link", "registration", "count")
+# check → the finding kind it emits (count emits none; INFO only)
+KIND_OF_CHECK = {
+    "symbol": "unregistered-prefix",
+    "link": "broken-link",
+    "registration": "phantom-registration",
+}
 
 # ── patterns ──────────────────────────────────────────────────────────────
 # Stable-ID reference. Letter slot is any single capital or "Ch" — a superset
@@ -135,6 +141,28 @@ def iter_md_files(root: str):
                 yield os.path.join(dirpath, fn)
 
 
+def iter_staged_md_files(root: str):
+    """Staged `.md` files under `root` — the pre-commit scope.
+
+    Deleted/renamed-away paths are filtered by the isfile check, so a commit
+    that removes a doc doesn't fail on its own absence.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+            capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        die(f"--staged needs a working `git diff --cached`: {e}")
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    for rel in out.splitlines():
+        if not rel.strip().endswith(".md"):
+            continue
+        path = os.path.abspath(os.path.join(repo_root, rel.strip()))
+        if os.path.isfile(path) and (path + os.sep).startswith(root + os.sep):
+            yield path
+
+
 # ── per-file scanning ─────────────────────────────────────────────────────
 
 def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings, counters):
@@ -206,6 +234,11 @@ def main() -> int:
                     help="prefix allowlist JSON (default: scripts/design-lint.allow.json)")
     ap.add_argument("--max-print", type=int, default=200,
                     help="max findings to print (0 = unlimited; default 200)")
+    ap.add_argument("--staged", action="store_true",
+                    help="scan only STAGED .md files under the corpus (pre-commit scope)")
+    ap.add_argument("--warn-check", default="",
+                    help="comma-separated checks whose findings WARN instead of "
+                         "failing (still printed; exit stays 0 if only these fire)")
     args = ap.parse_args()
 
     checks = tuple(c.strip() for c in args.check.split(",") if c.strip())
@@ -213,6 +246,13 @@ def main() -> int:
     if bad or not checks:
         die(f"unknown --check value(s): {','.join(bad) or '(none)'} "
             f"(valid: {','.join(ALL_CHECKS)})")
+
+    warn_checks = tuple(c.strip() for c in args.warn_check.split(",") if c.strip())
+    bad_warn = [c for c in warn_checks if c not in ALL_CHECKS]
+    if bad_warn:
+        die(f"unknown --warn-check value(s): {','.join(bad_warn)} "
+            f"(valid: {','.join(ALL_CHECKS)})")
+    warn_kinds = {KIND_OF_CHECK[c] for c in warn_checks if c in KIND_OF_CHECK}
 
     corpus = os.path.abspath(args.path)
     if not os.path.isdir(corpus):
@@ -238,7 +278,8 @@ def main() -> int:
     findings: list[tuple[str, int, str, str]] = []
     counters = {"symbol_prefixes": Counter(), "count_assertions": 0}
     n_files = 0
-    for path in iter_md_files(corpus):
+    source = iter_staged_md_files(corpus) if args.staged else iter_md_files(corpus)
+    for path in source:
         n_files += 1
         rel = os.path.relpath(path, corpus).replace(os.sep, "/")
         lines = read_text(path).splitlines()
@@ -246,8 +287,10 @@ def main() -> int:
                   findings, counters)
 
     # ── report ────────────────────────────────────────────────────────────
-    print(f"design-lint: scanned {n_files} .md files under {corpus}")
-    print(f"  checks: {', '.join(checks)}")
+    scope = "STAGED" if args.staged else "all"
+    print(f"design-lint: scanned {n_files} {scope} .md files under {corpus}")
+    print(f"  checks: {', '.join(checks)}"
+          + (f" (warn-only: {', '.join(warn_checks)})" if warn_checks else ""))
     if "symbol" in checks:
         print(f"  registered prefixes (id catalog): {len(registered)}"
               f" · allowlisted: {len(allow)}")
@@ -274,10 +317,16 @@ def main() -> int:
     if "count" in checks:
         print(f"count-assertions (INFO, not parsed in v1): {counters['count_assertions']}")
 
-    if findings:
-        print(f"\ndesign-lint: FAIL — {len(findings)} finding(s)")
+    hard = [f for f in findings if f[2] not in warn_kinds]
+    soft = [f for f in findings if f[2] in warn_kinds]
+    if soft:
+        print(f"\ndesign-lint: WARN — {len(soft)} finding(s) in warn-only "
+              f"check(s): {', '.join(warn_checks)}")
+    if hard:
+        print(f"design-lint: FAIL — {len(hard)} finding(s)")
         return 1
-    print("\ndesign-lint: OK — no findings")
+    print("design-lint: OK — no blocking findings" if soft
+          else "\ndesign-lint: OK — no findings")
     return 0
 
 

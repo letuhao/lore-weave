@@ -85,6 +85,21 @@ if git diff --cached --name-only | grep -qE 'design-drafts/screens/studio/.*\.ht
   "$PY" "$ROOT/scripts/design-draft-token-lint.py"
 fi
 
+# Layer-1 design-doc lint (added 2026-07-27, right after the corpus went from 17,120
+# findings to 1 — a clean baseline is a PERISHABLE asset; without an enforcement point
+# the drift returns and the gate becomes unaddable, exactly how jobs-service sat red for
+# six weeks). Staged-scoped for speed. Split by check on purpose:
+#   • broken-link + phantom-registration = HARD FAIL — mechanical, currently 0 findings,
+#     effectively no false positives. A dead link or a fabricated "(registered …)" claim
+#     is never intentional.
+#   • unregistered-prefix = WARN ONLY — a genuinely new namespace appears mid-design
+#     (CWC did, this very session) and must not block writing the doc that introduces it.
+#     The warning is the reminder to add the catalog row.
+# Runs only when a corpus .md is staged. Bypass: `git commit --no-verify`.
+if git diff --cached --name-only | grep -qE '^docs/03_planning/LLM_MMO_RPG/.*\.md$'; then
+  "$PY" "$ROOT/scripts/design-lint.py" --staged --warn-check symbol
+fi
+
 # SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans
 # only the staged diff (`protect --staged`) so this stays fast. gitleaks is an
 # optional local tool — if it isn't installed we warn and continue (CI's

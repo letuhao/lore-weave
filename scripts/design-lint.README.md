@@ -72,3 +72,33 @@ not allowlisting it here. The allowlist is for tokens that are not IDs at all.
 - No count-vs-list parsing (INFO metric only).
 - No per-ID existence check (prefix-level only) and no dependency lint
   (V1-item-depends-on-V1+-item) — those are the next layers per §14.
+
+## Pre-commit gate (wired 2026-07-27)
+
+`.githooks/pre-commit` runs the lint on **staged** corpus docs, split by check:
+
+```sh
+python scripts/design-lint.py --staged --warn-check symbol
+```
+
+| Check | Gate | Why |
+|---|---|---|
+| `broken-link` | **HARD FAIL** | Mechanical, 0 findings at baseline, effectively no false positives. A dead link is never intentional. |
+| `phantom-registration` | **HARD FAIL** | Same, and this exact defect shipped four times — a fabricated "(registered …)" claim is precisely what the gate exists to stop. |
+| `unregistered-prefix` | **WARN only** | A genuinely new namespace appears mid-design (`CWC` did, the day this gate landed) and must not block the doc that introduces it. The warning is the reminder to add the catalog row. |
+
+Flags: `--staged` (only staged `.md` under the corpus; deleted paths skipped),
+`--warn-check <checks>` (findings print and are counted, but do not fail).
+The hook only runs when a corpus `.md` is staged. Emergency bypass:
+`git commit --no-verify`.
+
+**Bite-proven at the hook level (2026-07-27)** — four cases, each run through
+the real `git commit` path: clean doc → pass · broken link → blocked ·
+new prefix `ZZQ-A1` → warned, commit proceeds · phantom
+`ZZR-A1 (registered …)` → blocked *while* symbol only warned (proving the
+split, and that hard beats soft in the same run).
+
+**The gate was added the moment the baseline hit 1 finding**, deliberately: a
+clean baseline is perishable. Without an enforcement point the drift returns
+and the gate becomes unaddable — the `jobs-service` pattern (red for six weeks
+behind a lint that sat on no commit path).
