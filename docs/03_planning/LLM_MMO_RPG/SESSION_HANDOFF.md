@@ -427,7 +427,28 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > ceiling (one commit → M clients, via `scripts/perf/k6-game-server.sh`) is the next *measurement*.
 > ⚠️ **Superseded by doc 22 below:** the ingress work now precedes the island manager.
 
-> 🚧 **ISLAND MANAGER (CNC-Q3) — DESIGNED + LEASE PROTOCOL BUILT (2026-07-27):**
+> ✅ **ISLAND MANAGER COMPLETE (CNC-Q3) — all four doc-24 §10 items, 2026-07-27.**
+> `commit-service::manager` (adopt = **claim → recover → step**, renew_all, drain, relinquish) +
+> `tests/failover.rs` (5). **The failover property is proven end to end:** A commits and dies · B
+> **cannot** steal a healthy lease · once the TTL lapses B claims, recovers A's dedup state + turn
+> counter, and the redelivered intent is a **recorded Duplicate, not a second attack** · a NEW
+> intent still resolves afterwards (else "nothing applied twice" would be satisfied by a successor
+> that applies nothing) · `relinquish` hands over with **no TTL wait** · losing ONE lease drops that
+> island and keeps the rest (IMG-D7).
+> **Building it settled three things (doc 24 §10.1):** a dead writer **cannot** be modelled by
+> re-claiming with a negative TTL — a healthy lease correctly refuses the claim, so the first test
+> proved nothing; death is the ABSENCE of renewal, so the faithful model pushes the deadline into
+> the past. `adopt` takes a BUILDER so a channel already covered costs nothing. `HeldByAnother` is a
+> normal outcome, not an error.
+> **Verified:** commit-service 40/40 · dp-kernel 323/323 · sim 50/50 · sim-core 6/6 · clippy clean ·
+> design-lint 0.
+> **NEXT:** IMG-Q1 (how a manager learns which channels to claim — CP placement) · IMG-Q3 (does an
+> encounter channel inherit its cell's lease?) · **CNC-Q2** room singleton, with the Class A
+> movement lane · wire the manager into `spine.rs` (still single-channel via `--channel`).
+>
+> <details><summary>Design + lease protocol (earlier the same day)</summary>
+>
+> **ISLAND MANAGER (CNC-Q3) — DESIGNED + LEASE PROTOCOL BUILT:**
 > [`24_island_manager.md`](24_island_manager.md), `IMG-A1..A7` / `IMG-D1..D8` / `IMG-Q1..Q3`.
 > **The load-bearing call is IMG-D1: do NOT build the control plane to close this gap.** The full
 > CP is designed (`06_data_plane/05_control_plane_spec.md`, 25 gRPC methods) and unbuilt, and it is a
@@ -455,6 +476,7 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > ⚠️ **Dev-DB setup note:** `integration_channel_writer.rs` pins 2026-05 timestamps, so a fresh
 > foundation-dev needs `CREATE TABLE events_p_2026_05 PARTITION OF events FOR VALUES FROM
 > ('2026-05-01') TO ('2026-06-01');` — its header documents this; it is not a regression.
+> </details>
 
 > ✅ **CONCURRENCY & CACHE AUDIT — [`23_concurrency_and_cache_audit.md`](23_concurrency_and_cache_audit.md) (2026-07-27):**
 > the PO asked for this BEFORE the island manager — *"foundation bugs are harder to patch later"* —

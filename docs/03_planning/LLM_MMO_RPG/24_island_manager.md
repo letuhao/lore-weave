@@ -1,6 +1,6 @@
 # 24 — Island manager (writer liveness + island lifecycle)
 
-> **Status:** DESIGN — 2026-07-27. Closes **CNC-Q3 / CNC-F9**, the last of the audit's multi-node
+> **Status:** BUILT — 2026-07-27 (design + all four §10 items, same day). Closes **CNC-Q3 / CNC-F9**, the last of the audit's multi-node
 > gaps. Axioms `IMG-A1..A7`, decisions `IMG-D1..D8`, open `IMG-Q1..Q3`.
 > **Prefix `IMG` registered** in [`00_foundation/06_id_catalog.md`](00_foundation/06_id_catalog.md).
 >
@@ -189,12 +189,29 @@ spawn/dissolve, claim→recover→step ordering, and the failure behaviours abov
 | **IMG-Q2** | Should a lease renewal piggyback on the commit CAS? | It touches the same row; folding it in would make an active writer self-renewing and cut idle renewals. Measure first (CEI-4 says the commit is already 6 round trips) |
 | **IMG-Q3** | Encounter channels are children of a cell (CS-D8) — does the child inherit the parent's lease or hold its own? | Affects blast radius: one lease per cell fails over encounters together |
 
-## 10. Build order
+## 10. Build order — DONE
 
-1. **Migration** — `holder_id` + `lease_expires_at`, nullable.
-2. **Lease protocol** in `dp-kernel::channel` — claim / renew / release, each one statement, each
-   with a bite-test proving the negative case (a healthy lease cannot be stolen; a fenced holder
-   cannot renew).
-3. **Manager** in `commit-service` — the supervisor, claim→recover→step, dissolve.
-4. **Failover test** — two managers, one channel: kill A, assert B claims only after the TTL,
-   recovers, and no intent applies twice. This is the test the whole design exists for.
+1. ~~Migration~~ ✅ `0015_writer_lease_liveness` — `holder_id` + `lease_expires_at`, nullable.
+2. ~~Lease protocol~~ ✅ `claim`/`renew`/`release`, one statement each, **6 PG-gated tests all
+   asserting negatives** (a healthy lease cannot be stolen · a fenced holder cannot renew · a stale
+   holder cannot release another's lease · 8 racing claimants resolve to exactly one).
+3. ~~Manager~~ ✅ `commit-service::manager` — `adopt` (claim → recover → step), `renew_all`,
+   `drain`, `relinquish`.
+4. ~~Failover test~~ ✅ `tests/failover.rs`, 5 tests.
+
+### 10.1 What building it settled
+
+**A dead writer cannot be modelled by re-claiming with a negative TTL.** The first version of the
+failover test did that, and it failed — correctly. A healthy lease *refuses* the claim, so the lease
+stayed healthy and the test proved nothing. Death is the **absence of renewal**, so the faithful
+model is to push the deadline into the past (`expire_lease`) — which is also what makes the test
+run in milliseconds instead of sleeping out a 30 s TTL. The distinction matters beyond the test:
+"stop renewing" and "hand it over" are different operations, and only the second is `relinquish`.
+
+**`adopt` takes a builder, not an island.** A channel already held by a healthy writer should cost
+nothing; constructing an encounter's state for a channel this node will not be allowed to write is
+work thrown away, and on a fleet it is work thrown away on *every* manager that does not win.
+
+**`HeldByAnother` is a normal outcome, not an error.** It is how a manager discovers a channel is
+already covered. Modelling it as an error would make the healthy path noisy and push callers toward
+ignoring it.
