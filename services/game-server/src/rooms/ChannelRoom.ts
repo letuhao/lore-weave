@@ -23,6 +23,14 @@ import { log } from '../log.js';
 // A / RTM lane) and turn submission back onto the bus ride the next slices;
 // this proves the committed-event → client-DTO path end to end.
 
+/**
+ * Room configuration. **Sourced from the SERVER's environment, never from the
+ * joining client** — `redisUrl` in particular is infrastructure: a
+ * client-supplied value would point the room at an attacker's broker (an SSRF
+ * / data-exfiltration hole dressed up as a join option). The only thing a
+ * client contributes is its identity claim, and even that is a claim the room
+ * re-derives (see `onJoin`).
+ */
 export interface ChannelRoomOptions {
   /** The reality whose committed-event stream this room projects. */
   realityId: string;
@@ -153,8 +161,22 @@ export class ChannelRoom extends Room {
   /** sessionId → the entity this connection may act as (D3). */
   private actorOf = new Map<string, string>();
 
-  async onCreate(options: ChannelRoomOptions): Promise<void> {
-    this.opts = options;
+  async onCreate(joinOptions: Partial<ChannelRoomOptions> = {}): Promise<void> {
+    // Config from ENV; anything a client passed is ignored except in dev,
+    // where an explicit override is convenient and harmless because the dev
+    // broker is local. Production has no client-controlled path here.
+    const fromEnv: ChannelRoomOptions = {
+      realityId: process.env.LW_CHANNEL_REALITY_ID ?? '',
+      channelId: process.env.LW_CHANNEL_ID ?? '1',
+      redisUrl: process.env.LW_CHANNEL_REDIS_URL ?? 'redis://127.0.0.1:6399/0',
+      rulesetDigest: process.env.LW_CHANNEL_RULESET_DIGEST,
+    };
+    const devOverride = process.env.LW_CHANNEL_ALLOW_CLIENT_CONFIG === '1';
+    this.opts = devOverride ? { ...fromEnv, ...joinOptions } : fromEnv;
+    if (!this.opts.realityId) {
+      throw new Error('ChannelRoom: LW_CHANNEL_REALITY_ID is required (server config)');
+    }
+    const options = this.opts;
     this.redis = new Redis(options.redisUrl);
     const stream = streamFor(options.realityId);
 

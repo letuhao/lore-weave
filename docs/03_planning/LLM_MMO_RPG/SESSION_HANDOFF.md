@@ -243,6 +243,23 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > Using npm in `frontend-game` fails with `EUNSUPPORTEDPROTOCOL workspace:` — that error is about
 > the WRONG PACKAGE MANAGER, not about Colyseus. (2) I nearly deleted game-server's
 > `package-lock.json` as a "stray npm artifact"; it is tracked. Check before deleting.
+> ✅ **BROWSER↔ROOM CONNECTED (18:28).** `channel-client.ts` (joins room `channel`, drives the
+> store from `w0.bind`/`w1.frame`/`turn.outcome`) + `ChannelPanel.tsx` (roster + Strike/Defend/Flee,
+> disabled while a turn resolves). 6 new tests, **171/171 green**. Rules pinned by test:
+> a RETRY reuses the `client_request_id` (minting a new one = the server sees a second distinct
+> intent and executes twice); **`turn.accepted` does NOT clear the in-flight marker** — accepted
+> means "reached the bus", not "applied", and clearing there would claim success for an action
+> the validator may still reject; an edge `turn.error` DOES clear it (no outcome is coming).
+> **Security fix found while wiring:** `ChannelRoom.onCreate` took its config — including
+> `redisUrl` — from the JOINING CLIENT. A client-supplied broker URL is an SSRF/exfiltration hole
+> dressed as a join option. Config now comes from **server env** (`LW_CHANNEL_*`); only
+> `actorEntityId` may come from the client, and the room re-derives identity anyway.
+> **LIVE (real server, real client):** `JOINED` → `W0` (reality/channel/digest/from_tokens) →
+> `W1` folded from the real committed log (`self entity 1, turn 1, roster: entity-2 hostile
+> healthy`) → `SUBMITTED` → `ACCEPTED` → spine admitted it → **`channel_event_id 12
+> turn.resolved`**. The browser→bus→commit half is proven end to end; the return leg
+> (publisher→room→client) was proven separately at the stream layer — **running all three daemons
+> at once for a single unbroken click→render is the one remaining stitch.**
 > **NEXT:** wire `ChannelRoom` to the browser for a real
 > click-to-turn (the first true browser↔server loop) → movement lane (Class A / RTM frames) →
 > S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO registration →
@@ -299,6 +316,23 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > **Failure containment ([14](14_sim_core_spec.md) §10.4/§10.5, `SC-A8..A10`)** — made urgent *by* CS-A5, since a native host no longer sandboxes a panic. `step()` runs in a panic boundary and a panicking island is **poisoned, never resumed**; the in-flight input is **quarantined** (EVT-V2 already defines that mode) or rebuild replays it and **crash-loops forever**. Recovery: **DP-A16's epoch token is already a fencing token**, rebuild is `dp-kernel::load_aggregate` over snapshots+deltas, and **in-flight LLM decisions self-heal** via the AGT-A2 deadline fallback. `SC-A10`: Class B needs **no separate checkpoint** — the event log *is* the recovery source. **`panic = "abort"` must not be set** for the commit-service profile (the neighbouring Veloren workspace sets it in dev — easy to copy by accident).
 > ✅ **DAILY LIFE — [`DL_001`](features/12_daily_life/DL_001_daily_life_foundation.md) DRAFT (2026-07-26):** closes **DF1**, absorbs **DF8**, resolves **AUD-F13** (PO: full daily life in V1), and re-scopes `12_daily_life` **V2 → V1**. **Amends locked `B3-D1` narrowly:** its *"no between-session **activity**"* is preserved **literally**, because `DL-D1` evaluates routines **on read** rather than ticking them — V1 doesn't simulate between sessions, it **computes what the world looks like now**; only *"NPCs resume where last session ended"* is superseded. That also disposes of **MV12-D4** (*"reality paused at 0 players"*): paused and running realities return the same answer when the answer is `f(fiction_time)`. B3-D1's stale premise is *"solo RP"* — pre-medium-correction; **audit `10` never swept B3** because its auditors covered *feature* docs and B3 lives in `01_problems/`. **The AI tier IS the cost gradient** (`DL-A2`): Untracked needs **nothing** (AIT_001's ID already seeds on `fiction_day`), Minor gets `ScheduledActionDecl` routines (V1), Major gets drift/beats (V2+/V3+ under B3-D2/D3, **B3-D5 untouched**). V1 is **mostly composition** (`DL-A3`). Owns two new things: the **offline PC** (`PC-B2` — an actor with *no driver*; AGT-A2 fallback covers it) and **PC↔NPC conversion** (`PC-B3` — `DL-A8` a **driver swap, not a migration**; same `EntityId`, reclaim is the swap reversed). `DL-Q1..Q3` resolved: **DL-D13** offline bodies accrue vitals and **can die**, on a **coarse sweep** (1 fiction-hour) that is **numerically lossless** because TDIL-A3 is O(1) in elapsed time · **DL-D14** converted drivers get a risk-averse tool set (cannot *initiate* combat) · **DL-D15** per-class routines + deterministic per-NPC jitter (variation without state). Holds the **AUD-F11** line: ambient production in V1, player-facing trade still deferred. `DL-A1..A8` / `DL-D1..D15` / `AC-DL-1..18`.
 > ✅ **`_boundaries/` REGISTRATION DONE (2026-07-26):** `[boundaries-lock-claim+release]`, `Owner:` set **before** the first edit. **4 prefixes** — `SL-*` / `SC-*` / `CS-*` / `DL-*`. **NO new aggregate** — *an island **is** a DP-A16 channel*, which is why DP-A16 supplies the epoch-token guard, CP writer handoff, `route_channel_write` routing and DB-level total order for free. **NEW channel level `"encounter"`**. **2 drift watchpoints**: `SL-D7→CS-A5` (host revision) · `DL-A1 vs B3-D1` (locked-decision amendment). **Still outstanding:** the **`B3-D1` amendment row in `decisions/locked_decisions.md`** — left alone because that file was in a peer session's active area; tracked on the watchpoint.
+> ✅ **BROWSER↔ROOM CONNECTED (18:28).** `channel-client.ts` (joins room `channel`, drives the
+> store from `w0.bind`/`w1.frame`/`turn.outcome`) + `ChannelPanel.tsx` (roster + Strike/Defend/Flee,
+> disabled while a turn resolves). 6 new tests, **171/171 green**. Rules pinned by test:
+> a RETRY reuses the `client_request_id` (minting a new one = the server sees a second distinct
+> intent and executes twice); **`turn.accepted` does NOT clear the in-flight marker** — accepted
+> means "reached the bus", not "applied", and clearing there would claim success for an action
+> the validator may still reject; an edge `turn.error` DOES clear it (no outcome is coming).
+> **Security fix found while wiring:** `ChannelRoom.onCreate` took its config — including
+> `redisUrl` — from the JOINING CLIENT. A client-supplied broker URL is an SSRF/exfiltration hole
+> dressed as a join option. Config now comes from **server env** (`LW_CHANNEL_*`); only
+> `actorEntityId` may come from the client, and the room re-derives identity anyway.
+> **LIVE (real server, real client):** `JOINED` → `W0` (reality/channel/digest/from_tokens) →
+> `W1` folded from the real committed log (`self entity 1, turn 1, roster: entity-2 hostile
+> healthy`) → `SUBMITTED` → `ACCEPTED` → spine admitted it → **`channel_event_id 12
+> turn.resolved`**. The browser→bus→commit half is proven end to end; the return leg
+> (publisher→room→client) was proven separately at the stream layer — **running all three daemons
+> at once for a single unbroken click→render is the one remaining stitch.**
 > **NEXT:** **`sim-core` S1** (skeleton — unblocked; islands *and the panic boundary* in the type signatures from commit one) · `B3-D1` amendment row when `locked_decisions.md` is quiet · **`SL-Q11`** (does EVT-L5 backpressure fight SL-A13 dilation? plausible feedback loop — settle **before** both are built) · put `language-rule-lint.sh` + a *"`_boundaries/*` diff requires `Owner:` ≠ None"* check into pre-commit — **both are rules that exist with no enforcement point**, which is how `jobs-service` sat red for 6 weeks and how three lock cycles got recorded that never happened.
 
 > ✅ **MERGED `origin/main` + GREENED THE BUILD (2026-07-26 late):** the branch was **3090 commits behind**; because the game tier is spec-only it produced **exactly one conflict** — `.githooks/pre-commit`, resolved as a **union** (main had grown knowledge-access / http-surface / context-budget / db-safety / no-absolute-paths / i18n / tier-tag / inspector / design-token / gitleaks gates; this session had added two). `origin/main` is now **fully contained** in the branch.
