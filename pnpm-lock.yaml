@@ -10,6 +10,9 @@ importers:
 
   frontend-game:
     dependencies:
+      '@colyseus/sdk':
+        specifier: ^0.17.43
+        version: 0.17.43(typescript@7.0.2)(zod@4.4.3)
       '@loreweave/api-types':
         specifier: workspace:^
         version: link:../packages/api-types
@@ -31,9 +34,6 @@ importers:
       '@tanstack/react-query':
         specifier: ^5
         version: 5.101.3(react@19.2.7)
-      colyseus.js:
-        specifier: ^0.16
-        version: 0.16.22
       phaser:
         specifier: ^4.2.1
         version: 4.2.1
@@ -230,20 +230,48 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
+  '@better-auth/utils@0.3.1':
+    resolution: {integrity: sha512-+CGp4UmZSUrHHnpHhLPYu6cV+wSUSvVbZbNykxhUDocpVNTo9uFFxw/NqJlh1iC4wQ9HKKWGCKuZ5wUgS0v6Kg==}
+
+  '@better-fetch/fetch@1.3.1':
+    resolution: {integrity: sha512-ABkD1WhyfPZprKRQI3bhATjeiFuNWC9PXhfGWqL+sg/gKrM977oFrYkdb4msM3hgUGonr7KlOsOFT5TU2rht9g==}
+
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@colyseus/httpie@2.0.1':
-    resolution: {integrity: sha512-JvABMZzPLiyrUsVj3ElXGORRDTu+NKzXHWd1uV1R1SThAKMm06cVW6bOyADARD65bs8JJoHNNbUkW8KoRvRDzA==}
-    engines: {node: '>=10'}
+  '@colyseus/better-call@1.3.3':
+    resolution: {integrity: sha512-ISJtvMx6fV0ABPQt/ljzPc4O2+mFvyVKeHKX02qBSWKR0VXOXzniAC64POea4pp8DxZTbgHoSPpXjdnNpUkeLw==}
+    peerDependencies:
+      zod: ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
   '@colyseus/msgpackr@1.11.3':
     resolution: {integrity: sha512-P86w/FrZWUaV7StxI7WuNg3wFlUrROSiBOrF378wyOgxS5+etcxUQMPe0OJZDEx+QUdu7QOPzsqE0Ziqwpjnug==}
 
-  '@colyseus/schema@3.0.76':
-    resolution: {integrity: sha512-i+ceBZyhB7lTn5+BoG/xxYfzW4dKKyLOywsGKVgXHe9fD905AS/Lk180jd1bICEJhebGeiRXEQ2YUPl/xwFg2g==}
+  '@colyseus/schema@4.0.30':
+    resolution: {integrity: sha512-5XupVTuaz2vMY7fKz9aZ7FW1NaZ8MEAUtKrRTunybhIiQkN4aGHvF48w+nzJb5AGbpOr6ZbEyFrbyw9XMW+8DA==}
     hasBin: true
+    peerDependencies:
+      typescript: '>=5.0.0'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@colyseus/sdk@0.17.43':
+    resolution: {integrity: sha512-aXefQuh7esEZbtd11TzKMqoLmUjKIfWVDr7ytPR7atV2QgnVyOHof3WIX7B8MDfr9ShyFFVEy2BseCGIfzzvBA==}
+    engines: {node: '>= 12.x'}
+    peerDependencies:
+      '@colyseus/core': 0.17.x
+    peerDependenciesMeta:
+      '@colyseus/core':
+        optional: true
+
+  '@colyseus/shared-types@0.17.6':
+    resolution: {integrity: sha512-GeBB9uNrjG+BWa4/LAVyAHj65ll0WKLNjWDieKiphhmbfGXgQOcmvWVxKQc8KKu+n7f5Hmrwr6IEk9Dm2Y0Qgw==}
+    engines: {node: '>= 22.x'}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -1094,10 +1122,6 @@ packages:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
 
-  colyseus.js@0.16.22:
-    resolution: {integrity: sha512-xyiajukHvlwOtcziVbXZWmz7yBH3EImovYrGPAe2kVkdubLVYmOjskJuXh2VLlO8XGjyhmNwig9ELz18sTUo9g==}
-    engines: {node: '>= 12.x'}
-
   compare-versions@6.1.1:
     resolution: {integrity: sha512-4hm4VPpIecmlg59CHXnRDnqGplJFrbLG4aFEl5vl6cK1u76ws3LLvX7ikFnTDl5vo39sjWD6AaDPYodJp/NNHg==}
 
@@ -1727,6 +1751,9 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
+  rou3@0.7.12:
+    resolution: {integrity: sha512-iFE4hLDuloSWcD7mjdCDhx2bKcIsYbtOTpfH5MHHLSKMOUyjqQXTeZVa289uuwEGEKFoE/BAPbhaU4B774nceg==}
+
   saxes@6.0.0:
     resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
     engines: {node: '>=v12.22.7'}
@@ -1745,6 +1772,9 @@ packages:
 
   set-cookie-parser@2.7.2:
     resolution: {integrity: sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw==}
+
+  set-cookie-parser@3.1.2:
+    resolution: {integrity: sha512-5/r/lTwbJ3zQ+qwdUFZYeRNqda7P5HD8zQKqlSjdGt1/S0cjLAphHusj4Y58ahDtWn/g32xrIS58/ikOvwl0Lw==}
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -2228,17 +2258,48 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
+  '@better-auth/utils@0.3.1': {}
+
+  '@better-fetch/fetch@1.3.1': {}
+
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
 
-  '@colyseus/httpie@2.0.1': {}
+  '@colyseus/better-call@1.3.3(zod@4.4.3)':
+    dependencies:
+      '@better-auth/utils': 0.3.1
+      '@better-fetch/fetch': 1.3.1
+      rou3: 0.7.12
+      set-cookie-parser: 3.1.2
+    optionalDependencies:
+      zod: 4.4.3
 
   '@colyseus/msgpackr@1.11.3':
     optionalDependencies:
       msgpackr-extract: 3.0.3
 
-  '@colyseus/schema@3.0.76': {}
+  '@colyseus/schema@4.0.30(typescript@7.0.2)':
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@colyseus/sdk@0.17.43(typescript@7.0.2)(zod@4.4.3)':
+    dependencies:
+      '@colyseus/better-call': 1.3.3(zod@4.4.3)
+      '@colyseus/msgpackr': 1.11.3
+      '@colyseus/schema': 4.0.30(typescript@7.0.2)
+      '@colyseus/shared-types': 0.17.6
+      tslib: 2.8.1
+      ws: 8.21.0
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+      - zod
+
+  '@colyseus/shared-types@0.17.6':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
 
   '@csstools/color-helpers@6.0.2': {}
 
@@ -3019,17 +3080,6 @@ snapshots:
 
   chai@6.2.2: {}
 
-  colyseus.js@0.16.22:
-    dependencies:
-      '@colyseus/httpie': 2.0.1
-      '@colyseus/msgpackr': 1.11.3
-      '@colyseus/schema': 3.0.76
-      tslib: 2.8.1
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   compare-versions@6.1.1: {}
 
   convert-source-map@2.0.0: {}
@@ -3664,6 +3714,8 @@ snapshots:
       '@rolldown/binding-win32-arm64-msvc': 1.1.5
       '@rolldown/binding-win32-x64-msvc': 1.1.5
 
+  rou3@0.7.12: {}
+
   saxes@6.0.0:
     dependencies:
       xmlchars: 2.2.0
@@ -3675,6 +3727,8 @@ snapshots:
   semver@7.8.5: {}
 
   set-cookie-parser@2.7.2: {}
+
+  set-cookie-parser@3.1.2: {}
 
   shebang-command@2.0.0:
     dependencies:

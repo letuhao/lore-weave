@@ -42,7 +42,7 @@ Eleven load-bearing choices locked through PO Q&A this session:
 | `react-router-dom` | `^6` | MIT | Client-side routing (login → world-select → play) |
 | `zustand` | `^5` | MIT | Reactive game state store |
 | `@tanstack/react-query` | `^5` | MIT | HTTP server-state cache, retry, dedup |
-| `colyseus.js` | `^0.16` | MIT | Game server SDK (V1+; not in V0 deps yet) |
+| `@colyseus/sdk` | `^0.17.43` | MIT | Game server SDK. **Renamed 2026-07-27**: `colyseus.js` (last 0.16.22) is the pre-0.17 package and CANNOT talk to a 0.17 server — `@colyseus/schema` went 3→4, a serializer major break (proven live: the server creates the room, the old client cannot parse the response). Must track the server's major. |
 | `tailwindcss` | `^3` | MIT | Styling (matches existing `frontend/`) |
 | `shadcn` components | — | MIT (vendored copies) | Button/Dialog/Tooltip baseline |
 | `typescript` | `^5` | Apache-2.0 | Type-safety |
@@ -861,7 +861,7 @@ if any of these fire:
 
 Mitigation: keep `net/` module abstract enough that Colyseus details don't
 leak into game code. Specifically, `net/protocol.ts` defines typed message
-shapes; `net/ws-client.ts` is the only file importing `colyseus.js`.
+shapes; `net/ws-client.ts` is the only file importing `@colyseus/sdk` (the 0.17+ package; `colyseus.js` was its pre-0.17 name).
 Migrating means rewriting `ws-client.ts` + protocol serialization, not
 the entire net/ tree.
 

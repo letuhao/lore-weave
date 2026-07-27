@@ -1,4 +1,9 @@
-import { Client, Room, type ServerError } from 'colyseus.js';
+// Colyseus 0.17 renamed the browser client package: `colyseus.js` (latest
+// 0.16.22, @colyseus/schema ^3) → `@colyseus/sdk` (0.17.x, @colyseus/schema
+// ^4). The server is on colyseus@0.17.10, which needs schema ^4 — so the OLD
+// package can never talk to it (proven live 2026-07-27: the server creates the
+// room, the client cannot parse the response). Same major, same serializer.
+import { Client, Room, type ServerError } from '@colyseus/sdk';
 import type { ClientToServer, ServerToClient } from './protocol';
 
 // Real Colyseus client implementation. Per spec §17.1, this is the
