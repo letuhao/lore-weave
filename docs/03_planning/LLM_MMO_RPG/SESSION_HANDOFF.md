@@ -427,6 +427,49 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > ceiling (one commit → M clients, via `scripts/perf/k6-game-server.sh`) is the next *measurement*.
 > ⚠️ **Superseded by doc 22 below:** the ingress work now precedes the island manager.
 
+> ✅ **CONCURRENCY & CACHE AUDIT — [`23_concurrency_and_cache_audit.md`](23_concurrency_and_cache_audit.md) (2026-07-27):**
+> the PO asked for this BEFORE the island manager — *"foundation bugs are harder to patch later"* —
+> which turned out to be exactly right: three findings are cheap now and expensive once there is
+> data. `CNC-F1..F13` / `CNC-D1..D5` / `CNC-Q1..Q3`. **Every finding cites `file:line`, read from
+> code, not from design docs.**
+> **Verdict: rungs 1-3 unusually strong, rung 4 has SAFETY but no LIVENESS.**
+> **CNC-F1 ✅** a repo-wide grep for `static mut`/`lazy_static`/`OnceCell`/`Mutex<`/`RwLock<`/
+> `Atomic*`/`thread::spawn`/`rayon` across sim-core + dp-kernel channel/outbox + all of
+> commit-service returns **nothing** — shared-nothing by CONSTRUCTION, no lock to acquire in the
+> wrong order. **CNC-F2 ✅** measured 27× at K=64. **CNC-F4 ✅** single-writer enforced at the DB
+> (epoch fence), not by a lock service. **CNC-F5 ✅** publisher is multi-replica safe
+> (`FOR UPDATE … SKIP LOCKED`).
+> **🔴 CNC-F6 (HIGH) — durable idempotency is WRITTEN but NEVER READ.** Seven verified links:
+> `input_id` IS persisted (`spine.rs:278` → `metadata.input_id`) · nothing ever reads it back (grep:
+> zero) · no index on it · `DedupCache` is a process-local `BTreeMap` w/ 60 s TTL
+> (`admission.rs:54`) · the island `seen` set is RAM-only · `IslandCheckpoint` *carries* `seen`
+> (`checkpoint.rs:37`) · **but is never persisted anywhere** (grep outside kernel+tests: zero).
+> ⇒ writer node A commits, dies before ACK; node B reclaims the PEL and takes the lease with an
+> empty cache and a fresh island ⇒ **the same intent applies TWICE**. The fence does not help — B
+> legitimately holds the lease. Player-visible: *one attack, applied twice, on a restart.* Cheap to
+> fix NOW (empty partitions; `events` is RANGE-partitioned so the index gets expensive later) and
+> the key is already being written — only the read side is missing.
+> **🔴 CNC-F7 (HIGH) — rate limiting is PER-REPLICA, including what shipped today.**
+> `ws/rate-limit.ts:6-9` says so itself. N game-server replicas ⇒ **N× budget**. The instructive
+> contrast: the turn economy (IAS-D6, same session) is multi-node-correct **for free** because it
+> lives in island state behind the fence ⇒ **CNC-D3: a defence inside the island is correct at every
+> scale; a defence at the edge is per-replica and must buy distributed state explicitly.**
+> **🟡 CNC-F8** no Colyseus presence driver — rooms are per-process. Tolerable for the read-only
+> turn projection; **blocks the Class A movement lane**. **🟡 CNC-F9** CP lease issuance stubbed:
+> safety unconditional, liveness absent — that IS the island manager. **🟡 CNC-F3** one `Mutex` in
+> the tree (`canon_cache.rs:42`), off the turn path, recorded so F1 is not overstated.
+> **Caching — the framing needed correcting:** **CNC-F10 ✅** the game tier is **replay-derived, not
+> cache-invalidated** (room folds the stream; browser store rebuilt per connect) — there is no
+> invalidation protocol to get wrong. **CNC-F11 ✅** the platform layer already has a designed model
+> (`06_cache_coherency.md`: SWR 20 s, TTL, jittered repopulation, staleness alarm). **CNC-F12 ℹ️
+> there is NO MongoDB in this stack** — tiers are in-process → Redis → Postgres. **CNC-F13/D4** the
+> island's memory is AUTHORITATIVE, not a cache ⇒ **never cache what an island owns.**
+> **FIX ORDER (doc 23 §8):** **(1) CNC-D2 durable idempotency** — first, because it is cheapest now
+> and because writer reassignment is precisely what triggers it → **(2) CNC-D5** the 1-vs-N-thread
+> conformance test (the kernel's determinism makes mechanical proof possible; most systems cannot
+> write this test) → **(3) CNC-Q1** cross-replica rate limit, before a 2nd game-server replica →
+> **(4) CNC-Q3** the island manager. CNC-Q2 rides with the movement lane.
+
 > ✅ **INGRESS HARDENED — doc 22 §9 BUILT AND BITE-PROVEN (2026-07-27, same day as the spec):**
 > the PO said *"clear the questions above before the next one"*, so all four items shipped.
 > **IAS-Q1 first, deliberately: prove the exploit before patching it.** Result on the first run —
