@@ -437,42 +437,35 @@ def test_start_job_paused_job_blocks_new_start():
 # ── K17.9 benchmark gate ─────────────────────────────────────────────
 
 
-def test_start_job_no_benchmark_returns_409():
-    """K17.9 gate: no benchmark row for the chosen embedding_model →
-    reject with 409 and a structured error_code the FE can dispatch on."""
+def test_start_job_WITHOUT_a_benchmark_now_proceeds():
+    """The K17.9 benchmark is ADVISORY since 2026-07-27 — it used to 409 here.
+
+    Measured on the dev instance before demoting it: `project_embedding_benchmark_runs`
+    held zero rows and `extraction_jobs` held zero rows, i.e. the gate shipped
+    2026-04-19 and KG extraction had never run once in the three months since. Both
+    doors (REST + the MCP confirm effect) call this same core, so both were closed.
+    A quality signal nobody can satisfy is not a quality signal; it is an outage with a
+    good excuse."""
     client = _make_client(benchmark=_NO_BENCHMARK)
     resp = _post_start(client)
-    assert resp.status_code == 409
-    detail = resp.json()["detail"]
-    assert detail["error_code"] == "benchmark_missing"
-    assert detail["embedding_model"] == "bge-m3"
-    assert "no passing benchmark" in detail["message"].lower()
-    # User-facing message must NOT leak the internal CLI command
-    # (review-impl MED fix).
-    assert "python -m eval" not in detail["message"]
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "running"
 
 
-def test_start_job_failing_benchmark_returns_409():
-    """K17.9 gate: latest benchmark run has passed=False → reject
-    with error_code + run_id + metrics so the FE can render a link
-    to the failing report."""
-    failing = _benchmark_run_stub(passed=False)
-    client = _make_client(benchmark=failing)
+def test_start_job_with_a_FAILING_benchmark_now_proceeds():
+    """Also advisory. The golden set is 20 ENGLISH queries over a synthetic fixture and
+    was deciding whether a Vietnamese novel may be extracted — and golden_set.yaml
+    itself records a CLEAN bge-m3 run (recall@3=1.0, mrr=1.0) failing the flat
+    negative-control ceiling, which had to be overridden per dimension. The signal is
+    worth logging, not worth refusing the user's work over."""
+    client = _make_client(benchmark=_benchmark_run_stub(passed=False))
     resp = _post_start(client)
-    assert resp.status_code == 409
-    detail = resp.json()["detail"]
-    assert detail["error_code"] == "benchmark_failed"
-    assert detail["run_id"] == "existing-passing-run"  # run_id from the stub
-    assert detail["recall_at_3"] == pytest.approx(0.10)
-    assert "low-quality" in detail["message"]
+    assert resp.status_code == 201
 
 
 def test_start_job_passing_benchmark_succeeds():
-    """K17.9 gate: a passing benchmark lets the request through —
-    same shape as the existing happy-path test, just making the
-    benchmark-row path explicit."""
-    passing = _benchmark_run_stub(passed=True)
-    client = _make_client(benchmark=passing)
+    """Unchanged: a passing benchmark still lets the request through."""
+    client = _make_client(benchmark=_benchmark_run_stub(passed=True))
     resp = _post_start(client)
     assert resp.status_code == 201
     assert resp.json()["status"] == "running"
@@ -576,9 +569,15 @@ def test_start_job_wake_failure_does_not_fail_201():
 
 
 def test_start_job_no_wake_when_gate_rejects():
-    """FD-22: a rejected start (e.g. missing benchmark) must NOT emit a
-    wake — there is no running job to pick up."""
-    client = _make_client(benchmark=_NO_BENCHMARK)
+    """FD-22: a rejected start must NOT emit a wake — there is no running job to pick
+    up. Re-pointed at the BUDGET gate: this used to borrow the missing-benchmark 409 as
+    its example of a rejection, and that gate is advisory since 2026-07-27."""
+    from app.jobs.budget import BudgetCheck
+
+    client = _make_client(project_budget_check=BudgetCheck(
+        allowed=False, reason="over cap",
+        monthly_spent=Decimal("47"), monthly_budget=Decimal("50"),
+    ))
     wake = client._wake_fn
     resp = _post_start(client)
     assert resp.status_code == 409
