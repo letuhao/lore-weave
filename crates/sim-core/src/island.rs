@@ -174,6 +174,25 @@ impl<D: Domain> Island<D> {
         &self.quarantine
     }
 
+    /// CNC-D2 — seed the I2 set from the committed log during writer
+    /// recovery. Returns false if the id was already present.
+    ///
+    /// The island's dedup state is RAM-only and dies with the process, while
+    /// the bus is at-least-once: without this, a writer that takes over a
+    /// channel starts blind and re-applies whatever was still in flight. This
+    /// is deliberately narrow — it inserts into `seen` and touches nothing
+    /// else, so it cannot be used to fabricate history, only to remember it.
+    pub fn seed_seen(&mut self, id: InputId, at: Tick) -> bool {
+        self.seen.insert(id, at)
+    }
+
+    /// The island's logical clock — needed by recovery to stamp seeded ids at
+    /// the CURRENT tick rather than in the past (a past stamp expires
+    /// immediately under a TTL window).
+    pub fn tick_now(&self) -> Tick {
+        self.tick
+    }
+
     // ─── admission (stamps Seq + island_gen, validates NOTHING — spec §5) ───
 
     /// Admit an input that has passed the ingress pipeline.

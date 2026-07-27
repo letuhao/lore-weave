@@ -38,6 +38,7 @@ blake3 = { workspace = true }
 
 [dev-dependencies]
 wiremock = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # IAS-D3 — `test-util` exposes `Admitted::unchecked` for tests that drive the
 # island directly (domain/kernel behaviour, no rules pipeline involved). It is
 # a DEV dependency on purpose: `cargo build --profile release-commit` does not

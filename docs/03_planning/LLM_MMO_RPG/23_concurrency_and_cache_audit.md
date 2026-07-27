@@ -1,6 +1,9 @@
 # 23 — Concurrency & cache audit (single-thread → multi-node)
 
-> **Status:** AUDIT — 2026-07-27. Findings `CNC-F1..F13`, decisions `CNC-D1..D5`, open `CNC-Q1..Q3`.
+> **Status:** AUDIT — 2026-07-27. Findings `CNC-F1..F16`, decisions `CNC-D1..D5`, open `CNC-Q2..Q3`.
+> **§8 items 1–3 were BUILT the same day**; §9 records the three things building them found that the
+> audit could not have known without executing. Remaining: **CNC-Q3** (the island manager) and
+> **CNC-Q2** (rides the Class A movement lane).
 > **Prefix `CNC` registered** in [`00_foundation/06_id_catalog.md`](00_foundation/06_id_catalog.md).
 >
 > **Every finding cites `file:line` and was read from code, not from design docs.** Where a design
@@ -28,7 +31,7 @@ there is data (F6 needs an index on a range-partitioned table; F7 changes a ship
 | Multi CPU | Same; **measured 27× at K=64** (CEI-5) | ✅ measured |
 | Multi node — *safety* | DP-A16 epoch fence: one CAS at the DB is allocator **and** fence | ✅ built + tested |
 | Multi node — *liveness* | Who assigns an island? Who detects a dead node? Who reassigns? | 🔴 **absent** |
-| Multi node — *idempotency* | Survives a node death? | 🔴 **no** (F6) |
+| Multi node — *idempotency* | Survives a node death? | ✅ **fixed** — recovery replay (CNC-D2) |
 
 ---
 
@@ -37,11 +40,11 @@ there is data (F6 needs an index on a range-partitioned table; F7 changes a ship
 | Module | Concurrency unit | Shared mutable state | Multi-node correct? |
 |---|---|---|---|
 | `crates/sim-core` | one island, single-threaded | **none** (F1) | n/a — no I/O |
-| `commit-service` spine | one island per channel | `DedupCache` (process-local, F6) | ⚠️ safety yes, dedup no |
+| `commit-service` spine | one island per channel | `DedupCache` (process-local, F6) | ✅ safety + dedup (recovery replay) |
 | `dp-kernel::channel` | per-`(reality, channel)` writer | none | ✅ CAS fence (F4) |
 | `dp-kernel::canon_cache` | per-process | `Mutex<HashMap>` (F3) | in-proc cache, TTL-bounded |
 | `publisher` (Go) | N replicas | none | ✅ `FOR UPDATE … SKIP LOCKED` (F5) |
-| `game-server` WS edge | per-connection | `ConnectionCap`, `MessageRateLimiter` (F7) | 🔴 per-replica |
+| `game-server` WS edge | per-connection + per-user | `ConnectionCap`, `MessageRateLimiter` (F7) | ✅ **fixed** — Redis token bucket (CNC-Q1) |
 | `game-server` rooms | per-room, per-process | room view (projection) | ⚠️ no presence driver (F8) |
 | `frontend-game` store | per-browser-tab | zustand store | ✅ session projection, rebuilt on connect |
 
@@ -214,12 +217,46 @@ avoids, on the one piece of state where being wrong is a rules violation rather 
 
 ## 8. Fix order
 
-1. **CNC-D2 (F6)** — durable idempotency. First, because it is cheapest now (empty partitions), and
-   because it is the bug that the *next* piece of work (writer reassignment) triggers.
-2. **CNC-D5** — the 1-vs-N-thread conformance test. Mechanical proof beats a document, and it makes
-   every later change in this area self-checking.
-3. **CNC-Q1 (F7)** — cross-replica rate limit, before a second game-server replica exists.
-4. **CNC-Q3 (F9)** — the island manager, now standing on a front door that is enforced (doc 22) and
-   an idempotency guarantee that survives it.
+1. ~~**CNC-D2 (F6)** — durable idempotency~~ ✅ **BUILT.** `commit-service::recovery` replays the
+   channel tail on lease acquisition and seeds the island's I2 set from `metadata.input_id`; the
+   DP-A17 turn counter and version high-water are recovered in the same query (both were also
+   RAM-only, and `turn_number` silently rewound to 0 on every restart). 5 PG-gated tests.
+2. ~~**CNC-D5** — the 1-vs-N-thread conformance test~~ ✅ **BUILT.** `crates/sim/tests/concurrency.rs`.
+3. ~~**CNC-Q1 (F7)** — cross-replica rate limit~~ ✅ **BUILT.** Redis token bucket, Lua-atomic,
+   keyed by authenticated user; degrades to the per-replica cap on a Redis outage rather than
+   failing open or closed.
+4. **CNC-Q3 (F9)** — the island manager. Now standing on an enforced front door (doc 22), an
+   idempotency guarantee that survives writer handover (1), and a mechanical concurrency check (2).
 
 `CNC-Q2` rides with the Class A movement lane, which is where it starts to matter.
+
+---
+
+## 9. What building the fixes found
+
+Three things the audit could not have known without executing, recorded because a finding list that
+only keeps its correct predictions is not a record.
+
+**CNC-F14 — the turn counter had the same disease as the dedup set, one line away.**
+`spine.rs` seeded `turn_number = 0` on every start with the comment *"Seeded 0 = never advanced"*.
+So a restart rewound the DP-A17 counter and every client's `turn_number` went **backwards** — the
+one thing [20](20_client_wire_contract.md) tells the browser it may rely on. Same root cause as
+CNC-F6 (recovery state living only in RAM), same query to fix, so it was fixed with it rather than
+left as a known-broken sibling. Finding one instance of a class and not looking for the others is
+how the second one ships.
+
+**CNC-F15 — the conformance test was bite-proven, and it needed to be.** A test asserting "these
+two runs agree" passes trivially if both runs are empty or if nothing shared exists to break. A
+process-global counter was planted in `Island::submit_inner` and **all three** conformance
+assertions went red independently (sequential-vs-concurrent, run-to-run, and neighbour-independence)
+before it was reverted. The fourth test asserts the fleet produces a non-trivial outcome mix, so the
+comparison cannot succeed by comparing nothing to nothing.
+
+**CNC-F16 — the new rate limiter silently disabled itself on a valid config.** `refillPerSec = 0`
+(a legitimate "hard budget, no refill", reachable from env) made the TTL divide to `Infinity`;
+`String(Infinity)` reached Redis as a non-integer `EXPIRE`, the script errored, and the
+degrade-on-error path returned **allowed** — the global cap turned itself off with nothing but a
+log line. Caught by the shared-budget test, which allowed 10 of a budget of 5. The general lesson
+is about the *degrade path*, not the arithmetic: **a fail-degraded branch will absorb any bug
+upstream of it and report success.** It needs a test that asserts the cap actually caps, not only
+that the outage path returns something sensible.

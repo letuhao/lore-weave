@@ -133,6 +133,29 @@ async fn main() -> anyhow::Result<()> {
     isle.spawn_entity(EntityId(2));
     isle.spawn_entity(EntityId(3));
 
+    // ── CNC-D2: recover what the last writer knew, from the log ──
+    //
+    // This runs at LEASE ACQUISITION because that is precisely the moment the
+    // bug fires: taking over a channel is the one event after which a
+    // redelivered PEL entry meets a writer with no memory of it. Before this,
+    // the seen-set started empty on every start and the same intent could
+    // apply twice (audit CNC-F6).
+    let recovered = commit_service::recovery::recover_writer_state(
+        &pool,
+        args.reality,
+        args.channel,
+        commit_service::recovery::RECOVERY_TAIL,
+    )
+    .await?;
+    let at = isle.tick_now();
+    commit_service::recovery::seed_seen(&mut isle, &recovered.seen_input_ids, at);
+    println!(
+        "recovered: {} seen ids · turn_number {} · aggregate_version {}",
+        recovered.seen_input_ids.len(),
+        recovered.turn_number,
+        recovered.aggregate_version
+    );
+
     // ── bus side: the EVT-L rail ──
     let cfg = BusConfig {
         stream: format!("reality:{}:cell:{}:proposals", args.reality, args.channel),
@@ -147,8 +170,9 @@ async fn main() -> anyhow::Result<()> {
     let mut bus = ProposalBus::connect(&args.redis_url, cfg).await?;
     let mut dedup = DedupCache::new(Duration::from_secs(60));
 
-    let (mut consumed, mut admitted, mut rejected, mut committed, mut aggregate_version) =
-        (0u64, 0u64, 0u64, 0u64, 0u64);
+    let (mut consumed, mut admitted, mut rejected, mut committed) = (0u64, 0u64, 0u64, 0u64);
+    // Continues the channel's existing version line rather than colliding at 1.
+    let mut aggregate_version: u64 = recovered.aggregate_version;
     // DP-A17 turn counter for this channel: an APPLIED resolution advances
     // it; a validator rejection NEVER does (EVT-V4 — "turn_number /
     // fiction_clock do NOT advance"; the player retries without burning a

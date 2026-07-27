@@ -17,6 +17,7 @@ import {
   type TurnOutcome,
 } from '../wire/turnOutcome.js';
 import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
+import { GlobalRateLimiter, globalRateLimitFromEnv } from '../ws/global-rate-limit.js';
 import { log } from '../log.js';
 
 // ChannelRoom — the GDA-A7 projection: one Colyseus room per DP-A16 channel
@@ -168,6 +169,8 @@ export class ChannelRoom extends Room {
   private view: ChannelView = emptyView();
   /** sessionId → the entity this connection may act as (D3). */
   private actorOf = new Map<string, string>();
+  /** sessionId → authenticated user, for the CNC-Q1 user-keyed global cap. */
+  private userOf = new Map<string, string>();
 
   /**
    * IAS-D5 — per-connection submit rate limit, layer 1 of the doc-22 defence
@@ -186,6 +189,18 @@ export class ChannelRoom extends Room {
    */
   private submitLimiters = new Map<string, MessageRateLimiter>();
   private rateConfig = rateLimitsFromEnv();
+
+  /**
+   * CNC-Q1 — the CROSS-REPLICA cap, keyed by user. The limiter above is
+   * per-connection and per-process; on a fleet of N replicas a client that
+   * opens a connection to each would otherwise get N× the budget (audit
+   * CNC-F7). Keyed by the authenticated user, so opening more connections
+   * buys nothing.
+   *
+   * Null when no Redis is configured: a single-node dev run keeps the
+   * per-replica cap and nothing else, which is what it had before.
+   */
+  private globalLimiter: GlobalRateLimiter | null = null;
 
   async onCreate(joinOptions: Partial<ChannelRoomOptions> = {}): Promise<void> {
     // Config from ENV; anything a client passed is ignored except in dev,
@@ -214,6 +229,9 @@ export class ChannelRoom extends Room {
     }
     const options = this.opts;
     this.redis = new Redis(options.redisUrl);
+    // Reuses the room's Redis connection: the bucket is a couple of hash
+    // fields per user, not a second infrastructure dependency.
+    this.globalLimiter = new GlobalRateLimiter(this.redis, globalRateLimitFromEnv());
     const stream = streamFor(options.realityId);
 
     // W1 source: replay the channel to "now", then tail from there. The
@@ -266,6 +284,19 @@ export class ChannelRoom extends Room {
     // Over the cap the socket is closed (4006) and NOTHING is emitted — no
     // event, no proposal. See the `submitLimiters` note for why a durable
     // refusal here would be the attack rather than the defence.
+    // Cross-replica cap first (CNC-Q1) — it is the one an attacker with N
+    // connections cannot dodge. Degrades to `allowed` if Redis is down, in
+    // which case the per-connection limiter below is still enforcing.
+    const userId = this.userOf.get(client.sessionId);
+    if (this.globalLimiter && userId) {
+      const decision = await this.globalLimiter.take(userId, Date.now());
+      if (!decision.allowed) {
+        log.warn('channel-room: global rate limit exceeded, closing', { userId });
+        client.leave(4006);
+        return;
+      }
+    }
+
     const limiter = this.submitLimiters.get(client.sessionId);
     if (limiter && !limiter.allow(Date.now())) {
       log.warn('channel-room: submit rate limit exceeded, closing', {
@@ -391,6 +422,7 @@ export class ChannelRoom extends Room {
     }
     const actor = this.actorForUser(userId);
     this.actorOf.set(client.sessionId, actor);
+    this.userOf.set(client.sessionId, userId);
     // IAS-D5 — one limiter per connection, created here so a reconnect gets a
     // fresh window rather than inheriting a stranger's.
     this.submitLimiters.set(
@@ -425,6 +457,7 @@ export class ChannelRoom extends Room {
     // Both maps are keyed by sessionId; leaving one behind leaks per
     // connection for the lifetime of the room.
     this.submitLimiters.delete(client.sessionId);
+    this.userOf.delete(client.sessionId);
   }
 
   async onDispose(): Promise<void> {
