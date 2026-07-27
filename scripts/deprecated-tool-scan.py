@@ -72,6 +72,19 @@ def _scan_go(src: str) -> tuple[dict[str, str | None], set[str]]:
              re.finditer(r'addTool\w*\(\s*srv,\s*"([a-z_][a-z0-9_]*)"', src)]
     marks += [(m.start(), m.group(1)) for m in
               re.finditer(r'lwmcp\.RegisterTool\([^)]*?Name:\s*"([a-z_][a-z0-9_]*)"', src, re.S)]
+    # A third shape, found 2026-07-27: provider-registry (and any service using a LOCAL
+    # helper) registers as `registerTool(srv, &mcp.Tool{Name: "...", ...}, handler)`. Neither
+    # pattern above matches a struct literal, so the scanner was SILENTLY BLIND to that whole
+    # service — it reported its live tools as nonexistent and never scanned its descriptions
+    # for retired names during the migration sweep. Under-reporting is the dangerous failure
+    # for this tool: a missed finding looks exactly like a clean scan.
+    marks += [(m.start(), m.group(1)) for m in
+              re.finditer(r'[Rr]egisterTool\w*\(\s*\w+,\s*&mcp\.Tool\{[^}]*?Name:\s*"([a-z_][a-z0-9_]*)"',
+                          src, re.S)]
+    # A tool can match more than one pattern; keep the FIRST occurrence of each name so the
+    # block bounds below stay correct.
+    seen: set[str] = set()
+    marks = [m for m in sorted(marks) if not (m[1] in seen or seen.add(m[1]))]
     marks.sort()
     for i, (pos, name) in enumerate(marks):
         end = marks[i + 1][0] if i + 1 < len(marks) else min(len(src), pos + 2500)

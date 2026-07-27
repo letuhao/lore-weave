@@ -375,6 +375,37 @@ observation. A claim that a check passed, without its output, does **not** tick 
       composes the fix itself and uses `propose_edit`). So `propose_for_blocks` is **built + tested
       but not yet wired**, stated in the design rather than left to be discovered.
       Suite: **2556 passed / 336 skipped**.
+- [x] **D3g** ✅ **The co-writer is taught — and building the guard found 2 bugs in my own tooling.**
+      `co_write_skill` (the WRITE-mode surface, where error blocks live) gains a section teaching:
+      the marks ARE the author's instructions · **list them before rewriting anything** · fix via
+      `propose_edit(replace_selection)` on the exact quoted span, changing only what the note
+      complains about · close with resolve/dismiss · `orphaned` = **ask, never guess** · you cannot
+      create a block. Surfacing verified mechanically: `_skill_prompt_named_tokens` extracts
+      backticked tokens, so both `composition_error_block_edit` and `propose_edit` ride the surface
+      **budget-exempt** (D-SKILL-NAMED-TOOLS-RIDE).
+      🔴 **New guard — `test_every_tool_a_skill_names_ACTUALLY_EXISTS`.** The existing lint is
+      **denylist-only** (`_NONEXISTENT_TOOL_NAMES` is hand-maintained), so a typo would pass green
+      and send the model hunting an undiscoverable tool — the exact class the July sweep cleared.
+      The new check derives the real catalog from the **services themselves** via
+      `scripts/deprecated-tool-scan.py` and asserts every named token exists. Skips loudly (never
+      silently passes) if the scanner is unreachable or returns an implausibly small catalog.
+      🔴 **Bug 1 — in `scripts/deprecated-tool-scan.py` (mine).** provider-registry registers as
+      `registerTool(srv, &mcp.Tool{Name: …})`; neither existing regex matched a struct literal, so
+      **the scanner was silently blind to that entire service** — reporting its live tools as
+      nonexistent and never catalog-matching its names during the migration sweep. **184 → 198
+      advertised.** Under-reporting is the dangerous failure here: a missed finding looks exactly
+      like a clean scan. Re-ran after the fix — still **0 findings reach the model**, so the sweep's
+      result holds.
+      🔴 **Bug 2 — in the new guard itself.** It inherited `_EXEMPT_SKILL_CODES`, which exempts
+      `admin`/`co_write` from the **hot-domain** check because they reach tools lazily. Hot-vs-lazy
+      says nothing about whether a tool EXISTS — and a wrong lazily-reached name is *worse* (the
+      model burns discovery turns). So `co_write`, the skill carrying the newest tool, was the one
+      skill the check skipped. **Caught only by injecting a typo to prove the guard could fail** —
+      it passed. Fixed, then re-proven: the injected `composition_error_blocks_edit` now reds.
+      Two false-positive classes handled honestly rather than by loosening: skills that name a tool
+      *in order to say it does not exist* ("**There is no `jobs_retry` tool**") get a documented
+      `_DELIBERATELY_ABSENT_TOOL_NAMES` entry — legitimate only when the prompt actually negates.
+      chat-service: **1928 passed**.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
       author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
       co-writer round trip) is the gate** — this track already proved a green suite can vouch for
