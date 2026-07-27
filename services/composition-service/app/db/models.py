@@ -449,6 +449,52 @@ class CorrectionStats(BaseModel):
     by_mode: list[ModeCorrectionStats]
 
 
+# ── Error blocks (atom-edit Phase D) ────────────────────────────────────────
+# The author marks a span of wrong prose and says what is wrong with it. Conceptually this row IS
+# a human-authored self-heal `Finding` (the same span/issue/fix triple the LLM judge emits), which
+# is why the existing locate → satellite-edit → splice → review machinery is reused rather than
+# rebuilt. Design: docs/specs/2026-07-26-atom-edit/DESIGN-error-blocks.md
+
+ErrorBlockTargetKind = Literal["chapter_draft", "draft_job"]
+ErrorBlockSource = Literal["human", "judge", "critic", "canon"]
+ErrorBlockKind = Literal["continuity", "voice", "pacing", "fact", "logic", "style", "other"]
+ErrorBlockStatus = Literal["open", "proposed", "resolved", "dismissed", "orphaned"]
+
+
+class ErrorBlock(BaseModel):
+    """One author-marked defect in a chapter's prose.
+
+    `quote` is the ANCHOR; `start_offset`/`end_offset` are a hint. Prose drifts, so a reader
+    re-validates `text[start:end] == quote` and otherwise re-locates by quote.
+    `source_fingerprint` hashes the flattened text the offsets were computed over — when it
+    differs the whole coordinate space moved at once, so no offset may be trusted.
+    """
+    id: UUID
+    created_by: UUID          # actor stamp — stored, never filtered on (PM-5)
+    project_id: UUID
+    book_id: UUID             # tenancy scope key (25 M1/M2)
+    target_kind: ErrorBlockTargetKind
+    chapter_id: UUID | None = None
+    draft_version: int | None = None
+    job_id: UUID | None = None
+    start_offset: int
+    end_offset: int
+    quote: str
+    source_fingerprint: str
+    source: ErrorBlockSource = "human"
+    kind: ErrorBlockKind
+    note: str
+    desired: str | None = None
+    status: ErrorBlockStatus = "open"
+    proposal_id: str | None = None
+    resolution: str | None = None
+    version: int = 1
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    resolved_at: datetime | None = None
+
+
 class OutboxEvent(BaseModel):
     id: UUID
     aggregate_type: str = "composition"

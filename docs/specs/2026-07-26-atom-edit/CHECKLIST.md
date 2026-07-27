@@ -292,6 +292,44 @@ observation. A claim that a check passed, without its output, does **not** tick 
       **Left open deliberately:** F11 (the other session's bug — logged, coordination required),
       D3d/D3e file ownership, and the two recorded fail-safe limitations (CJK, offset units).
       **BUILD may begin at D3a.** D3a–D3c + D3g need no coordination; D3d/D3e do.
+- [x] **F11 FIXED** (`b7f160397`) — human authorised clearing it during BUILD. `healedTextToDoc`
+      now routes through `addTextSnapshots`. **Upgraded from inference to PROVEN port regression:**
+      the legacy `ChapterEditorPage.handleApplyPolish` emits `_text` per block *deliberately*
+      (its comment: *"Builds the same Tiptap paragraph shape book-service writes (a `_text`
+      snapshot per block)"*) — the Studio port said it mirrored that conversion and dropped the
+      field. Regression guard added to the existing apply-seam test and **proven to red against
+      the pre-fix code** (`expected undefined to be defined`), green after. The `legacyParityContract`
+      test could not have caught it: it proves a capability is PRESENT in the port, not that the
+      port is behaviourally faithful. Residual documented in code — a flat-text rebuild can never
+      restore headings/`sceneId`/marks, which is precisely why error blocks apply surgically.
+      Verify: studio panels + PolishPanel **796 passed / 100 files**.
+- [x] **D3a** ✅ **Migration + repo — LIVE-PROVEN on `infra-postgres-1`.**
+      `chapter_error_block` (`_ERROR_BLOCK_SQL` in migrate.py) + `ErrorBlock` model +
+      `ErrorBlocksRepo`. Scoping follows the canon_rule/narrative_thread house pattern, **not** the
+      newer glossary_build_* one: `book_id` is the tenancy scope key, `created_by` is a
+      never-filtered actor stamp, and `book_id` is **derived from `composition_work` inside the
+      INSERT** so a row cannot land with a NULL book scope.
+      **Live evidence — every constraint exercised against real Postgres, not asserted:**
+      | # | probe | result |
+      |---|---|---|
+      | 1 | `chapter_draft` with no `chapter_id` | ❌ `chapter_error_block_target` |
+      | 2 | `end_offset == start_offset` | ❌ `chapter_error_block_span` |
+      | 3 | `kind='totally-made-up'` | ❌ `chapter_error_block_kind_check` |
+      | 4 | well-formed row | ✅ `INSERT 0 1` |
+      | 5 | **same span + same note again** | ❌ `uq_chapter_error_block_open` |
+      | 6 | **same span, different note** | ✅ `INSERT 0 1` |
+      | A | real project | ✅ derived `book_id=019f63d6-51f0-7acb-b03d-33cffd8f342e` |
+      | B | unknown project | ✅ `INSERT 0 0` ⇒ repo raises; **NULL book scope is impossible** |
+      (5)+(6) are exactly E5: the accidental twin dies, two *distinct* reasons on one passage live.
+      **Repo shape:** `update` is a FINDING editor only — span, fingerprint, scope and status are
+      **not** patchable (a PATCH that moved `start_offset` without `quote` would split the anchor
+      triple and leave the block silently describing different prose); status moves only through
+      the lifecycle helpers; `reanchor` rewrites offsets but **never** `quote`; delete is a
+      soft-archive so the correction history survives. `migrate_job_blocks_to_chapter` carries an
+      explicit ORDER-MATTERS comment — the re-targeted rows clear `job_id`, so the orphan sweep
+      keys on it and by construction touches only the ones that did not locate.
+      Tests: **17 new** (closed sets reject; span/status not patchable; `orphaned` counts as still
+      wanting attention). Full composition suite **2547 passed / 336 skipped**.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
       author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
       co-writer round trip) is the gate** — this track already proved a green suite can vouch for

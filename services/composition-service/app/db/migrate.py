@@ -1982,6 +1982,82 @@ CREATE INDEX IF NOT EXISTS idx_glossary_build_items_run
 """
 
 
+# Error blocks (atom-edit Phase D) — the author marks a span of wrong prose and says what is
+# wrong with it; the co-writer proposes a grounded fix. Design + the sealed decisions:
+# docs/specs/2026-07-26-atom-edit/DESIGN-error-blocks.md
+#
+# Conceptually this row IS a human-authored self-heal `Finding` — same span/issue/fix triple the
+# LLM judge produces — so the existing locate -> satellite-edit -> splice -> review machinery is
+# reused rather than rebuilt.
+#
+# Scoping follows the house pattern (canon_rule / narrative_thread / generation_correction, NOT
+# the newer glossary_build_*): `book_id` is the tenancy scope key every query filters by, and
+# `created_by` is an actor stamp that is stored and NEVER filtered on (PM-5).
+_ERROR_BLOCK_SQL = """
+CREATE TABLE IF NOT EXISTS chapter_error_block (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  created_by     UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
+  project_id     UUID NOT NULL,
+  book_id        UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
+  -- TARGET (discriminated). The chapter editor anchors to a persisted chapter draft; the compose
+  -- preview has no chapter identity yet (it is cleared unconditionally on accept), so it anchors
+  -- to its generation_job instead. A regenerate mints a NEW job, so old blocks orphan rather than
+  -- silently re-attaching to prose they were never about.
+  target_kind    TEXT NOT NULL CHECK (target_kind IN ('chapter_draft','draft_job')),
+  chapter_id     UUID,            -- cross-DB id (no FK — house convention, validated in app code)
+  draft_version  INT,             -- the OI-2 OCC token the offsets were computed against
+  job_id         UUID REFERENCES generation_job(id) ON DELETE CASCADE,
+  -- SPAN ANCHOR. `quote` is the anchor and the offsets are a HINT: prose drifts, so on read we
+  -- re-validate text[start:end] == quote and otherwise re-locate by quote. `source_fingerprint`
+  -- hashes the flattened text the offsets were computed over — a mismatch means the whole
+  -- coordinate space moved (e.g. a doc whose `_text` snapshots went missing flattens differently),
+  -- so every offset is suspect at once and only `quote` may be trusted.
+  start_offset   INT NOT NULL,    -- Unicode code points over tiptap_doc_to_text()
+  end_offset     INT NOT NULL,
+  quote          TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL,
+  -- THE FINDING. `source` is 'human' for everything Phase D writes; the other values exist so the
+  -- currently-EPHEMERAL machine findings (self-heal judge, critic, canon) can become durable in
+  -- this same ledger later without a migration + backfill + MCP contract change.
+  source         TEXT NOT NULL DEFAULT 'human'
+                 CHECK (source IN ('human','judge','critic','canon')),
+  kind           TEXT NOT NULL CHECK (
+    kind IN ('continuity','voice','pacing','fact','logic','style','other')
+  ),
+  note           TEXT NOT NULL,   -- the author's instruction ("she died in ch3")
+  desired        TEXT,            -- optional: what they want instead
+  -- LIFECYCLE. 'orphaned' is load-bearing: a mark whose text can no longer be found is SURFACED,
+  -- never dropped — a silently dropped mark is indistinguishable from a fixed one.
+  status         TEXT NOT NULL DEFAULT 'open' CHECK (
+    status IN ('open','proposed','resolved','dismissed','orphaned')
+  ),
+  proposal_id    TEXT,
+  resolution     TEXT,
+  version        INT NOT NULL DEFAULT 1,
+  is_archived    BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at    TIMESTAMPTZ,
+  CONSTRAINT chapter_error_block_target CHECK (
+       (target_kind = 'chapter_draft' AND chapter_id IS NOT NULL)
+    OR (target_kind = 'draft_job'     AND job_id     IS NOT NULL)
+  ),
+  CONSTRAINT chapter_error_block_span CHECK (end_offset > start_offset AND start_offset >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_error_block_chapter
+  ON chapter_error_block(project_id, chapter_id, status) WHERE NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_chapter_error_block_book
+  ON chapter_error_block(book_id);
+CREATE INDEX IF NOT EXISTS idx_chapter_error_block_job
+  ON chapter_error_block(job_id) WHERE job_id IS NOT NULL;
+-- Kill accidental duplicate marks (double-click, two devices) WITHOUT forbidding two genuinely
+-- different notes on the same span — an author may well mark one passage for two reasons.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chapter_error_block_open
+  ON chapter_error_block(project_id, chapter_id, start_offset, end_offset, md5(note))
+  WHERE status = 'open' AND NOT is_archived;
+"""
+
+
 async def _apply_base_schema(conn: asyncpg.Connection) -> None:
     """The base idempotent DDL — injected into the package re-key so its M0
     pre-flight runs BEFORE any DDL (25 PM-7) and its M2/M3 after (one unit)."""
@@ -2004,6 +2080,7 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
         await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
         await conn.execute(_GLOSSARY_BUILD_SQL)        # glossary-build pipeline FSM (spec 2026-07-27)
+        await conn.execute(_ERROR_BLOCK_SQL)           # atom-edit Phase D: author-marked error blocks
         # B3 (BA2): a CLEAN DB (fresh, or already drained of legacy arc rows) is auto-lifted here —
         # a safe CHECK-tighten with NOTHING to migrate — so fresh + throwaway-test DBs are born
         # consistent and never trip the guard below. Placed AFTER _MOTIF_SCHEMA_SQL because that is
