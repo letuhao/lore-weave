@@ -120,7 +120,8 @@
 | `CEI-*` | Measured architecture ceilings (commit + fan-out budget) | [`21_architecture_ceilings.md`](../21_architecture_ceilings.md) | next free per family | CEI-9 = fan-out has 11× the commit path's headroom |
 | `IAS-*` | Ingress & action admission standard (DRAFT) | [`22_ingress_and_admission.md`](../22_ingress_and_admission.md) | next free per family | IAS-A2 = validation splits by state-readership, not cost |
 | `CNC-*` | Concurrency & cache audit (thread → CPU → node) | [`23_concurrency_and_cache_audit.md`](../23_concurrency_and_cache_audit.md) | next free per family | CNC-F6 = durable idempotency written but never read |
-| `IMG-*` | Island manager — writer liveness + island lifecycle (DESIGN) | [`24_island_manager.md`](../24_island_manager.md) | next free per family | IMG-A1 = put liveness where safety already is |
+| `IMG-*` | Island manager — writer liveness + island lifecycle | [`24_island_manager.md`](../24_island_manager.md) | next free per family | IMG-A1 = put liveness where safety already is |
+| `PID-*` | Producer identity & trust derivation (bus auth) | [`25_producer_identity.md`](../25_producer_identity.md) | next free per family | PID-A1 = a trust attribute is derived, never read from the message |
 
 ---
 

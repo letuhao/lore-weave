@@ -35,6 +35,8 @@ dp-kernel = { path = "../../crates/dp-kernel" }
 redis = { workspace = true }
 sqlx = { workspace = true }
 blake3 = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 wiremock = { workspace = true }

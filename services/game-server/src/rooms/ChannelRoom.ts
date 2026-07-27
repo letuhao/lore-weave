@@ -18,6 +18,7 @@ import {
 } from '../wire/turnOutcome.js';
 import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
 import { GlobalRateLimiter, globalRateLimitFromEnv } from '../ws/global-rate-limit.js';
+import { PRODUCER_NAME, producerKeyFromEnv, signProposal } from '../ws/producer-sign.js';
 import { log } from '../log.js';
 
 // ChannelRoom — the GDA-A7 projection: one Colyseus room per DP-A16 channel
@@ -202,6 +203,9 @@ export class ChannelRoom extends Room {
    */
   private globalLimiter: GlobalRateLimiter | null = null;
 
+  /** PID-A2 — this service's producer key; `undefined` means unsigned. */
+  private producerKey = producerKeyFromEnv();
+
   async onCreate(joinOptions: Partial<ChannelRoomOptions> = {}): Promise<void> {
     // Config from ENV; anything a client passed is ignored except in dev,
     // where an explicit override is convenient and harmless because the dev
@@ -324,21 +328,30 @@ export class ChannelRoom extends Room {
     // is (producer_service, client_request_id, target_channel): the id is
     // CLIENT-minted, so a retry over a flaky link is idempotent by
     // construction rather than by luck.
+    // PID-D5 — `event_category` is NOT sent. It used to ride here and select
+    // the validator subset on the far side, which let any producer elect its
+    // own trust tier. commit-service now derives the tier from whichever
+    // producer key verifies the signature below; `producer_service` survives
+    // only as a lookup hint that the MAC has to prove.
     const proposal = {
-      producer_service: 'game-server',
+      producer_service: PRODUCER_NAME,
       proposal_id: msg.client_request_id,
       target_channel: Number(this.opts.channelId),
-      event_category: 'T1',
       actor: Number(actor),
       candidates: this.candidates(actor),
       decision: msg.action,
     };
     try {
+      // PID-D2 — sign the EXACT bytes that go on the stream and send the
+      // signature beside them. Re-stringifying `proposal` for the XADD would
+      // risk producing different bytes from the ones that were signed.
+      const { raw, sig } = signProposal(proposal, this.producerKey);
+      const fields: string[] = ['proposal', raw];
+      if (sig) fields.push('producer_sig', sig);
       await this.redis!.xadd(
         proposalStreamFor(this.opts.realityId, this.opts.channelId),
         '*',
-        'proposal',
-        JSON.stringify(proposal),
+        ...fields,
       );
       client.send('turn.accepted', { client_request_id: msg.client_request_id });
     } catch (err) {

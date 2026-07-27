@@ -144,6 +144,11 @@ toml = "1.1"
 
 # TMP-A4 deterministic seed
 blake3 = "1.5"
+# PID-D1 — HMAC-SHA256 for producer identity on the proposal bus. Chosen over
+# blake3 (already here) because the signature is a POLYGLOT contract: Node has
+# HMAC-SHA256 built in, blake3 would need a native/WASM binding in game-server.
+hmac = "0.12"
+sha2 = "0.10"
 
 # Deterministic procedural RNG — ChaCha8 streams sub-seeded from the blake3
 # TilemapSeed (TMP_002 §8). rand provides the SeedableRng/Rng traits.

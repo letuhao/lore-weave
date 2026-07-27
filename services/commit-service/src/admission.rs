@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use sim_core::{Admitted, Class, EntityId, Fallback, Gen, InputId, Producer, QueuedInput, Seq};
 
 use crate::domain::CombatDomain;
+use crate::producer::ProducerRegistry;
 use crate::vocabulary::Vocabulary;
 
 /// Per-stage verdict — {pass|fail|notrun|skip}, the S1-runner contract.
@@ -41,13 +42,15 @@ pub struct Proposal {
     /// Offered candidates at decision time — (entity id, token) pairs; the
     /// validation set for `strike.target` (THR-A4 / REC-79).
     pub candidates: Vec<(u64, String)>,
-    #[serde(default = "default_category")]
-    pub event_category: String,
 }
 
-fn default_category() -> String {
-    "T6".into()
-}
+// `event_category` is deliberately ABSENT (PID-D5). It used to ride the wire
+// and SELECT THE VALIDATOR SUBSET, so a proposal could elect its own trust
+// tier — an LLM-originated message writing "T1" skipped the entire LLM-safety
+// stage set. The category is now derived from the verified producer
+// (`producer::ProducerRegistry::verify_and_derive`). A field that is not on
+// the wire cannot be forged; the same reason `TurnSubmit` carries no `actor`
+// (CWC-D3).
 
 /// EVT-L3 dedup cache — commit-service-owned, 60 s TTL (bus layer; the
 /// kernel seen-set stays the second, step-time layer).
@@ -135,12 +138,10 @@ pub enum Category {
 }
 
 impl Category {
-    fn parse(s: &str) -> Self {
-        match s {
-            "T1" => Self::T1,
-            _ => Self::T6,
-        }
-    }
+    // `parse(&str) -> Category` USED to live here and is deliberately gone.
+    // Its only caller read `event_category` off the wire, and a string→tier
+    // mapping sitting available is an invitation to re-add the field. The
+    // category now has exactly one source: `verify_and_derive` (PID-D3).
 
     /// The per-category stage table (plan D4). The distinction is the point:
     /// **`Skip` = this category declares the stage inapplicable; `NotRun` =
@@ -188,6 +189,24 @@ pub fn admit_t6(
     vocab: &Vocabulary,
     dedup: &mut DedupCache,
 ) -> AdmissionRecord {
+    // Back-compat entry point for callers that do not sign (tests, the POC
+    // runner). Trusts the caller to have established identity out-of-band.
+    admit_signed(raw_json, None, &ProducerRegistry::new(), vocab, dedup)
+}
+
+/// Admit a proposal whose producer identity is PROVEN (PID-A2..A4).
+///
+/// `sig_hex` is the sibling stream field; `registry` maps a producer to its
+/// key and its category. An empty registry means "identity not enforced" —
+/// the pre-PID behaviour, kept only so unsigned in-process callers still work
+/// while producers are migrated. A NON-empty registry is default-DENY.
+pub fn admit_signed(
+    raw_json: &str,
+    sig_hex: Option<&str>,
+    registry: &ProducerRegistry,
+    vocab: &Vocabulary,
+    dedup: &mut DedupCache,
+) -> AdmissionRecord {
     let mut stages: Vec<(&'static str, Verdict)> = Vec::new();
 
     // ── stage 0: schema ──
@@ -202,6 +221,34 @@ pub fn admit_t6(
                 stages,
                 outcome: AdmissionOutcome::Rejected { stage: "schema", reason: e.to_string() },
             };
+        }
+    };
+
+    // ── PID-A4: producer identity, BEFORE dedup ──
+    //
+    // First because everything after it is work done for a caller whose
+    // identity is unestablished — and, more sharply, because the dedup triple
+    // CONTAINS `producer_service`: deduping on an unverified identity lets a
+    // forger evict a real proposal from the window by claiming its name.
+    let category = if registry.is_empty() {
+        stages.push(("producer-identity", Verdict::Skip));
+        Category::T6
+    } else {
+        match registry.verify_and_derive(&proposal.producer_service, raw_json.as_bytes(), sig_hex) {
+            Ok(cat) => {
+                stages.push(("producer-identity", Verdict::Pass));
+                cat
+            }
+            Err(e) => {
+                stages.push(("producer-identity", Verdict::Fail(e.to_string())));
+                return AdmissionRecord {
+                    stages,
+                    outcome: AdmissionOutcome::Rejected {
+                        stage: "producer-identity",
+                        reason: e.to_string(),
+                    },
+                };
+            }
         }
     };
 
@@ -265,7 +312,7 @@ pub fn admit_t6(
 
     // ── the category's declared stage table: NotRun (owed) vs Skip
     //    (declared inapplicable). Never silent, either way (D6/D4).
-    for (stage, applicable) in Category::parse(&proposal.event_category).stage_verdicts() {
+    for (stage, applicable) in category.stage_verdicts() {
         stages.push((stage, if *applicable { Verdict::NotRun } else { Verdict::Skip }));
     }
 
@@ -275,7 +322,7 @@ pub fn admit_t6(
             seq: Seq(u64::MAX), // stamped at island admission
             input_id: input_id_for(&triple),
             class: Class::B,
-            source: match Category::parse(&proposal.event_category) {
+            source: match category {
                 Category::T1 => Producer::PlayerInput,
                 Category::T6 => Producer::LlmDecision,
             },

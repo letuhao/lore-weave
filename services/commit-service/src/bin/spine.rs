@@ -21,7 +21,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use commit_service::admission::{admit_t6, AdmissionOutcome, DedupCache, Verdict};
+use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verdict};
+use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
 use commit_service::{Actor, CombatDomain, CombatRules, CombatState, Vocabulary, COMBAT_V1_JSON};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
@@ -169,6 +170,18 @@ async fn main() -> anyhow::Result<()> {
     println!("consuming {} as {}/{}", cfg.stream, cfg.group, cfg.consumer);
     let mut bus = ProposalBus::connect(&args.redis_url, cfg).await?;
     let mut dedup = DedupCache::new(Duration::from_secs(60));
+    // PID-A4 — producer identity. An EMPTY registry means identity is not
+    // enforced (the pre-PID behaviour), which is why the state is announced
+    // rather than assumed: an operator who forgot the keys would otherwise
+    // run a bus that accepts anything, and see nothing unusual in the logs.
+    let producers = ProducerRegistry::from_env();
+    if producers.is_empty() {
+        println!(
+            "WARNING: no LW_PRODUCER_KEY_* configured — producer identity is NOT enforced;              any writer that can reach Redis may claim any tier"
+        );
+    } else {
+        println!("producer identity: ENFORCED (default-DENY)");
+    }
 
     let (mut consumed, mut admitted, mut rejected, mut committed) = (0u64, 0u64, 0u64, 0u64);
     // Continues the channel's existing version line rather than colliding at 1.
@@ -206,7 +219,10 @@ async fn main() -> anyhow::Result<()> {
                 continue;
             };
 
-            let record = admit_t6(body, &vocab, &mut dedup);
+            // The signature is a SIBLING stream field, so the verifier hashes
+            // the exact bytes the producer sent (PID-D2).
+            let sig = msg.field("producer_sig");
+            let record = admit_signed(body, sig, &producers, &vocab, &mut dedup);
             match record.outcome {
                 AdmissionOutcome::Rejected { stage, ref reason } => {
                     rejected += 1;

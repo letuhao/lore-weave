@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "PID polyglot conformance fixture (doc 25). The producer is TypeScript",
+    "(game-server) and the verifier is Rust (commit-service); they are joined",
+    "ONLY by these bytes, so a change to either side's MAC input must red the",
+    "other. Same discipline as contracts/game-wire/.",
+    "",
+    "`raw` is the EXACT proposal payload as XADDed. It is signed as BYTES and",
+    "never re-serialised (PID-D2), which is why there is no canonical-JSON",
+    "rule here to get wrong: serde_json and JSON.stringify never have to agree",
+    "on key order, spacing or number formatting.",
+    "",
+    "`sig` = HMAC-SHA256(utf8(key), utf8(raw)), lowercase hex.",
+    "",
+    "If this ever needs regenerating, regenerate from ONE side and let the",
+    "other side's test fail first. A fixture rewritten from both at once",
+    "proves only that both were changed."
+  ],
+  "key": "pid-test-key-do-not-use-in-production",
+  "raw": "{\"producer_service\":\"game-server\",\"proposal_id\":\"req-1\",\"target_channel\":1,\"actor\":1,\"candidates\":[[2,\"hostile-2\"]],\"decision\":{\"vocabulary\":\"combat_v1\",\"tool\":\"strike\",\"params\":{\"target\":\"hostile-2\"}}}",
+  "sig": "96b3d54e49e912822d260668025d1f5dfc60bf7d6f2dbe48b88223ba575d34cc"
+}
