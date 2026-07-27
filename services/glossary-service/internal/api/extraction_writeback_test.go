@@ -1974,3 +1974,64 @@ func TestBulkExtract_ShortDescriptionUsesTheKindsOwnProseField(t *testing.T) {
 		t.Errorf("summary should come from the kind's own prose field, got %q", short)
 	}
 }
+
+// TestKnownEntities_ResolvesNameForAKindWithoutANameAttribute proves
+// D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND. entity_name read the attribute coded 'name'
+// only, so `terminology` (which identifies itself with `term`) produced an empty string
+// and was dropped by the "skip entities without a name" guard — while the UI, the
+// snapshot and cached_name all showed a perfectly good name. This endpoint is the
+// EXTRACTION ANCHOR list, so those entities could never anchor: every chapter mentioning
+// them let the extractor mint a duplicate instead of linking to canon.
+func TestKnownEntities_ResolvesNameForAKindWithoutANameAttribute(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1053"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "vi",
+		"entities": []map[string]any{
+			{"kind_code": "terminology", "name": "Luyện khí", "attributes": map[string]any{
+				"term": "Luyện khí", "definition": "Rèn giũa pháp khí từ vật liệu có chỉ số.",
+			}},
+			{"kind_code": "character", "name": "Lâm Uyên",
+				"attributes": map[string]any{"name": "Lâm Uyên"}},
+		},
+	})
+
+	// min_frequency=0 — these entities have no chapter links yet, which is the normal
+	// state for a book being written from scratch (see the anchor-preload gate).
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/"+bookID+"/known-entities?min_frequency=0&limit=100", nil)
+	req.Header.Set("X-Internal-Token", token)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("known-entities: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var rows []struct {
+		Name     string `json:"name"`
+		KindCode string `json:"kind_code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range rows {
+		got[r.Name] = r.KindCode
+	}
+	if got["Lâm Uyên"] != "character" {
+		t.Errorf("the name-attribute kind regressed: %v", got)
+	}
+	if got["Luyện khí"] != "terminology" {
+		t.Errorf("a terminology entity must be anchorable by its `term`; got %v", got)
+	}
+	_ = ctx
+}

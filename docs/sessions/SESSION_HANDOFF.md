@@ -116,15 +116,61 @@ Before: that query returned nothing for this project.
 **Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
 **2583** · FE world-setup **8**.
 
-**▶ Deferred / still open from this cycle:**
-- **`D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND`** *(gate 1: out of scope — extraction hot path)*.
-  `known-entities` resolves the display name ONLY from the attribute coded `name`, so a kind
-  that identifies itself otherwise (`terminology` → `term`) yields an empty name and drops
-  out entirely. That endpoint is the EXTRACTION ANCHOR list, so **the extractor currently
-  cannot anchor on any terminology entity**. The startup short-description backfill already
-  knows kinds differ (`ad.code IN ('name','term')`), so the shape of the fix exists; it needs
-  its own cycle because it changes what the extractor sees. Worked around here by adding
-  `GET /internal/books/{id}/entity-ids` rather than widening the anchor list.
+## 🔴→✅ THE ANCHOR LIST WAS EMPTY — grounding was built and then never used (2026-07-27)
+
+Deep-dive on `D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND`. It turned out to be the SMALLER of two
+stacked defects, and the bigger one silenced the authored glossary completely.
+
+**Layer 1 — `D-ANCHOR-PRELOAD-FREQUENCY-GATE` (dominant).** `load_glossary_anchors` called
+`list_all_entities(book_id, status_filter=...)` and inherited the client's
+`min_frequency=2`, mirroring the handler's `HAVING COUNT(chapter_links) >= 2`. So an entity
+had to be **mentioned in two chapters** before it could anchor — and every curated entity of
+an unwritten book has zero links. **Live: 0 anchors at the default, 16 at `min_frequency=0`.**
+Frequency answers "what matters in this book so far" (the chat intent gate's question); an
+anchor asks "does this already exist", for which existence is the signal and a human curating
+the entry is the strongest endorsement there is. Anchors become an in-memory name→kind index,
+not prompt text, so the bigger set costs no token budget.
+
+The docstring said an empty result was *"normal state for a fresh book with no curated
+entries"* — the degrade was **indistinguishable from the normal state**, which is why nobody
+saw it. The same author had carefully protected `status_filter` from exactly this class one
+line above.
+
+**Layer 2 — name blindness.** `known-entities` read the attribute coded `name` only, so a
+kind that identifies itself otherwise (`terminology` → `term`) produced `""` and hit the
+`if name == "" { continue }` skip. Measured **14 named entities across 12 books**; on Mị Đế
+it hid the entire cultivation vocabulary (`Thần hồn`, `Đạo tâm`, `Trận pháp`, `Luyện khí`…).
+Now resolves via `cached_name`, which is trigger-maintained and already kind-aware
+(`recalculate_entity_snapshot` reads `code IN ('name','term')`).
+
+**Layer 3 — the same class, one caller over.** `build_wiki_effect` used `min_frequency=1` on
+the reasoning that "each extracted entity has ≥1 chapter link" — true for entities the
+EXTRACTOR made, false for the ones the AUTHOR wrote. **Live: the wiki build resolved 0
+entities for Mị Đế, 16 at `min_frequency=0`.** An author could build a whole world and open
+an empty wiki.
+
+**Two claims of mine that the data REFUTED** (recorded so they are not repeated):
+- *"the extractor mints duplicate terminology entities"* — **false**. Zero duplicate names
+  repo-wide. `findEntityByNameOrAlias` is name-blind, but the caller falls through to
+  `findEntityCrossKind`, which matches on `normalized_name` (kind-aware). The real harm is
+  **recall**, not duplication — and it is self-reinforcing: un-anchored lore is not
+  recognised in prose → no chapter links accrue → frequency stays 0 → still no anchor.
+- *"417 entities are invisible"* — **misleading**. 403 of them are genuinely nameless test
+  fixtures (`019e0000-…-cccc-…` books) that SHOULD be skipped. The real figure is 14.
+
+Also fixed, same class, same one-line shape: `canon_at_chapter_handler` and
+`enrichment_handler` both rendered a blank name for such kinds. `findEntityByNameOrAlias`
+gained a comment recording that its safety depends on the cross-kind fallback — remove that
+and terminology dedup breaks silently.
+
+**Not changed:** `reader_tools` passes `min_frequency=1` deliberately — a reader's "who have
+I met" genuinely means "mentioned in prose I have read". Correct as-is.
+
+**Tests:** each fix proven RED without it (Go `TestKnownEntities_ResolvesNameForAKind…`,
+Python `test_the_anchor_preload_is_NOT_gated…`, `test_the_wiki_build_includes_entities_the_
+AUTHOR_wrote`). glossary Go api ok (146s) · knowledge **3976**.
+
+**▶ Still open from the earlier cycle:**
 - **FE not browser-verified.** The wizard's "not searchable" warning is unit-proven only —
   the frontend image was not rebuilt. Verify in a browser before trusting it in the panel.
 - **CP2 author review, not yet acted on:** 7 drafts carry `- goals:` / `- role:` bullets

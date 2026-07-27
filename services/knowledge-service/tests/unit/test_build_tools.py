@@ -210,10 +210,15 @@ async def test_build_wiki_explicit_entity_subset_embedded():
 
 
 @pytest.mark.asyncio
-async def test_resolve_entity_ids_passes_min_frequency_1():
-    """The 'all entities' path must call known-entities with min_frequency=1 so a
-    single-chapter book (every entity freq 1) still yields its entities — the freq
-    default 2 silently dropped them all → spurious BuildWikiNoEntities → 422.
+async def test_resolve_entity_ids_passes_min_frequency_0():
+    """The 'all entities' path must call known-entities with min_frequency=0.
+
+    This asserted 1 for a long time, on the reasoning that every entity has at least one
+    chapter link. That holds only for entities the EXTRACTOR created. An entity the
+    AUTHOR wrote by hand — the whole point of building a glossary before chapter 1 — has
+    ZERO links, so a floor of 1 still dropped it and produced exactly the spurious
+    BuildWikiNoEntities → 422 this test was written to prevent. Live-measured on the Mị
+    Đế book: 0 entities at min_frequency=1, 16 at 0.
 
     It must also PAGE (D-ANCHOR-PRELOAD-50-CAP — the un-limited call inherited the
     handler's silent default of 50, so a bigger book only ever got 50 wiki stubs)
@@ -231,7 +236,7 @@ async def test_resolve_entity_ids_passes_min_frequency_1():
     out = await _resolve_entity_ids(params, book_id, glossary)
     assert out == ["e1", "e2"]
     glossary.list_all_entities.assert_awaited_once_with(
-        book_id, status_filter=None, min_frequency=1
+        book_id, status_filter=None, min_frequency=0
     )
 
 

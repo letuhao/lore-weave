@@ -318,11 +318,24 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	args = append(args, offset)
 	offsetParam := "$" + strconv.Itoa(argIdx)
 
+	// D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND: entity_name read the attribute coded
+	// 'name' ONLY, so a kind that identifies itself otherwise (terminology uses 'term')
+	// produced an empty string and was dropped by the `if name == ""` skip below —
+	// invisible to EVERY consumer of this endpoint: extraction anchoring, KG projection,
+	// wiki build, reader tools and the chat intent gate. Measured 14 named entities
+	// across 12 books; on the Mị Đế book it hid the entire cultivation vocabulary
+	// (Thần hồn, Đạo tâm, Trận pháp, Luyện khí…).
+	//
+	// cached_name is the trigger-maintained display name and is already kind-aware —
+	// recalculate_entity_snapshot resolves it from code IN ('name','term') with a
+	// preference order — so it is strictly the better source. A row with no name at all
+	// still has an empty cached_name and is still skipped.
 	query := `
 		SELECT
 			e.entity_id,
 			k.code AS kind_code,
-			COALESCE(name_av.original_value, '') AS entity_name,
+			-- D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND (see the Go comment above the query)
+			COALESCE(NULLIF(name_av.original_value, ''), e.cached_name, '') AS entity_name,
 			COALESCE(alias_av.original_value, '') AS aliases_raw,
 			COUNT(cl.link_id) AS frequency
 		FROM glossary_entities e
@@ -1330,6 +1343,16 @@ func strategyToAction(strategy string) string {
 
 // findEntityByNameOrAlias looks up an existing LIVE entity by normalized name match,
 // then by alias match if not found. Returns uuid.Nil if no match.
+//
+// LOAD-BEARING DEPENDENCY (D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND, verified 2026-07-27):
+// the name step below reads the attribute coded 'name' ONLY, so it CANNOT match a kind
+// that identifies itself otherwise — `terminology` uses `term`. That does not currently
+// mint duplicates, but only because the caller falls through to `findEntityCrossKind`,
+// which matches on `normalized_name` (kind-aware: derived from cached_name, which
+// resolves 'name'/'term'). That fallback exists for a DIFFERENT reason (#38/#39
+// cross-kind dedup). Measured: zero duplicate names repo-wide, so the protection holds
+// today — but if the cross-kind step is ever removed or reordered, terminology dedup
+// breaks silently. Widen this query before touching that fallback.
 //
 // All steps exclude soft-deleted entities (`deleted_at IS NULL`): a deleted row must
 // never be an extraction resolution target. This is the anti-resurrection contract — a
