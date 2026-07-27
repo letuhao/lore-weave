@@ -6985,11 +6985,11 @@ class _ErrorBlockEditArgs(ForbidExtra):
     description=(
         "Read and close the AUTHOR'S MARKED ERROR BLOCKS — passages of a chapter the author "
         "flagged as wrong, each with a note saying what is wrong with it. "
-        "op=list (needs project_id + chapter_id; optional status ∈ open|proposed|resolved|"
+        "op=list (needs chapter_id; project_id is optional inside a book/editor session — omit it and it resolves from the open book; optional status ∈ open|proposed|resolved|"
         "dismissed|orphaned, default = everything still open) returns each block's quoted text, "
         "its note, and where it sits. READ THE BLOCKS BEFORE REWRITING ANYTHING — they are the "
         "author telling you exactly what to fix. To fix one, propose the replacement for its "
-        "quoted span with propose_edit; then op=resolve (needs project_id + block_id; optional "
+        "quoted span with propose_edit; then op=resolve (needs block_id; optional "
         "resolution, proposal_id) once the author applies it, or op=dismiss if it should not be "
         "changed after all. op=reopen re-opens a block you closed by mistake — it is the reverse "
         "of resolve/dismiss. A block with status=orphaned means the prose it pointed at has since "
@@ -6998,7 +6998,15 @@ class _ErrorBlockEditArgs(ForbidExtra):
     meta=require_meta("A", "book",
                       synonyms=["list error blocks", "author marked problems", "marked passages",
                                 "what did the author flag", "resolve error block",
-                                "dismiss error block", "reported prose errors"],
+                                "dismiss error block", "reopen error block",
+                                "reported prose errors"],
+                      # LIVE-RUN FIX. The editor surface hands the model book_id + chapter_id and
+                      # nothing else, so a REQUIRED project_id was an argument it had no way to
+                      # populate — and Gemma-4 26B duly passed the chapter_id AS the project_id.
+                      # The ambient binding (X-Project-Id, which chat-service derives
+                      # book -> Work -> project and forwards) is precisely the primitive for this;
+                      # the tool only had to opt in. Same affordance-gap class as E3.
+                      ambient_project=True,
                       tool_name="composition_error_block_edit"),
 )
 async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArgs) -> dict:
@@ -7015,9 +7023,8 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
     """
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    if not args.project_id:
-        raise ValueError(f"op={args.op} requires project_id")
-    pid = UUID(args.project_id)
+    # Ambient-resolved: omitted inside a studio turn, it comes from X-Project-Id.
+    pid = _resolve_pid(tc, args.project_id)
     blocks = ErrorBlocksRepo(get_pool())
 
     if args.op == "list":
