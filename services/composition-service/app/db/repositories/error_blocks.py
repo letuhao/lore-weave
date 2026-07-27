@@ -215,9 +215,11 @@ class ErrorBlocksRepo:
         exists = await self.get(project_id, block_id)
         if exists is None:
             return None
-        raise VersionMismatchError(
-            f"error block {block_id} version is {exists.version}, expected {expected_version}"
-        )
+        # VersionMismatchError carries the CURRENT ROW (not a message) — the router returns it in
+        # the 412 body so the caller can re-base without a second round-trip. Passing a string
+        # here would still construct, then blow up as an AttributeError at `exc.current
+        # .model_dump()` and surface as a 500 instead of a 412.
+        raise VersionMismatchError(exists)
 
     async def set_status(
         self,

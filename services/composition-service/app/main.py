@@ -36,7 +36,8 @@ from app.logging_config import setup_logging, trace_id_var
 from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    actions, approve, arc, authoring_runs, canon, conformance, engine, glossary_build,
+    actions, approve, arc, authoring_runs, canon, conformance, engine, error_blocks,
+    glossary_build,
     grounding, health,
     import_source, internal_eval, internal_job_control, internal_model_settings,
     internal_plan_state, internal_structure_state, metrics,
@@ -243,6 +244,7 @@ app.include_router(internal_model_settings.router)  # D-CHATAI-M1B — Book tier
 app.include_router(internal_plan_state.router)  # per-turn "does this book have an arc plan?" probe
 app.include_router(internal_structure_state.router)  # Phase G · G0 — per-turn "did a compile write linked structure?" probe
 app.include_router(canon.router)
+app.include_router(error_blocks.router)  # atom-edit Phase D — author-marked error blocks
 app.include_router(narrative_threads.router)
 app.include_router(conformance.router)  # W5 — motif-conformance trace read (advisory)
 app.include_router(actions.router)  # MCP fan-out S-COMPOSE Tier-W confirm/preview

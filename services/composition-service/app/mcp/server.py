@@ -90,6 +90,7 @@ from app.db.repositories import (
 )
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.error_blocks import ErrorBlocksRepo
 from app.db.repositories.structure_templates import (
     DuplicateStructureTemplateName,
     StructureTemplatesRepo,
@@ -6966,6 +6967,105 @@ async def composition_canon_rule_edit(ctx: MCPContext, args: _CanonRuleEditArgs)
     if not args.project_id or not args.rule_id:
         raise ValueError("op=restore requires project_id and rule_id")
     return await composition_canon_rule_restore(ctx, project_id=args.project_id, rule_id=args.rule_id)
+
+
+class _ErrorBlockEditArgs(ForbidExtra):
+    op: Literal["list", "resolve", "dismiss"]
+    project_id: str | None = None    # all
+    chapter_id: str | None = None    # list
+    block_id: str | None = None      # resolve, dismiss
+    status: Literal["open", "proposed", "resolved", "dismissed", "orphaned"] | None = None  # list
+    resolution: str | None = None    # resolve, dismiss
+    proposal_id: str | None = None   # resolve
+    limit: int | None = None         # list
+
+
+@mcp_server.tool(
+    name="composition_error_block_edit",
+    description=(
+        "Read and close the AUTHOR'S MARKED ERROR BLOCKS — passages of a chapter the author "
+        "flagged as wrong, each with a note saying what is wrong with it. "
+        "op=list (needs project_id + chapter_id; optional status ∈ open|proposed|resolved|"
+        "dismissed|orphaned, default = everything still open) returns each block's quoted text, "
+        "its note, and where it sits. READ THE BLOCKS BEFORE REWRITING ANYTHING — they are the "
+        "author telling you exactly what to fix. To fix one, propose the replacement for its "
+        "quoted span with propose_edit; then op=resolve (needs project_id + block_id; optional "
+        "resolution, proposal_id) once the author applies it, or op=dismiss if it should not be "
+        "changed after all. A block with status=orphaned means the prose it pointed at has since "
+        "changed — ask the author rather than guessing. EDIT required to close a block."
+    ),
+    meta=require_meta("A", "book",
+                      synonyms=["list error blocks", "author marked problems", "marked passages",
+                                "what did the author flag", "resolve error block",
+                                "dismiss error block", "reported prose errors"],
+                      tool_name="composition_error_block_edit"),
+)
+async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArgs) -> dict:
+    """The author's marks, for the co-writer.
+
+    `op=list` is the affordance gate: without a read the agent could never discover a block_id to
+    close, which is exactly the defect `composition_structure_template_edit` shipped with (five
+    write ops, no read). It is also the point of the whole feature — the agent has to be able to
+    SEE what the author flagged.
+
+    Creating a block is deliberately NOT here. A mark is the author's statement about their own
+    prose; an agent minting its own would need its own dedup and volume rules, and the sealed
+    scope is human-marks → agent-fixes. The `source` column already admits it later.
+    """
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    if not args.project_id:
+        raise ValueError(f"op={args.op} requires project_id")
+    pid = UUID(args.project_id)
+    blocks = ErrorBlocksRepo(get_pool())
+
+    if args.op == "list":
+        if not args.chapter_id:
+            raise ValueError("op=list requires chapter_id")
+        await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+        items, open_count = await blocks.list_for_chapter(
+            pid, UUID(args.chapter_id), status=args.status,
+            limit=max(1, min(args.limit or 50, 200)),
+        )
+        return {
+            "blocks": [
+                {
+                    "block_id": str(b.id), "status": b.status, "kind": b.kind,
+                    "quote": b.quote, "note": b.note, "desired": b.desired,
+                    "start_offset": b.start_offset, "end_offset": b.end_offset,
+                }
+                for b in items
+            ],
+            "open_count": open_count,
+            "note": (
+                "Fix a block by proposing a replacement for its `quote` via propose_edit, then "
+                "op=resolve it." if items else
+                "The author has not marked anything on this chapter."
+            ),
+        }
+
+    # resolve / dismiss
+    if not args.block_id:
+        raise ValueError(f"op={args.op} requires block_id")
+    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    bid = UUID(args.block_id)
+    prior = await blocks.get(pid, bid)
+    # Project-scope the target: `get` is already project-keyed, but check explicitly so a block
+    # from another Work can never be closed under THIS book's gate (the node_update precedent).
+    if prior is None or prior.project_id != pid:
+        return {"success": False, "error": f"error block {args.block_id} not found in this project"}
+    updated = await blocks.set_status(
+        pid, bid, "resolved" if args.op == "resolve" else "dismissed",
+        proposal_id=args.proposal_id, resolution=args.resolution,
+    )
+    if updated is None:
+        return {"success": False, "error": f"error block {args.block_id} could not be updated"}
+    out = updated.model_dump(mode="json")
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_error_block_edit", op="list",
+        project_id=args.project_id, chapter_id=str(prior.chapter_id or ""),
+    )}
+    return out
 
 
 class _EntityOverrideEditArgs(ForbidExtra):

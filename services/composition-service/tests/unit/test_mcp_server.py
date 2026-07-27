@@ -71,6 +71,10 @@ EXPECTED_TOOLS = {
     "composition_structure_template_edit", "composition_outline_node_edit",
     "composition_canon_rule_edit", "composition_entity_override_edit",
     "composition_scene_link_edit",
+    # atom-edit Phase D — the author's marked error blocks (op=list is the affordance gate:
+    # without a read the agent could never discover a block_id, and reading the marks IS the
+    # feature). Creating a block is the author's act, deliberately not exposed to the agent.
+    "composition_error_block_edit",
     "composition_write_prose",
     # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface. ──
     "composition_list_derivatives",   # Tier R

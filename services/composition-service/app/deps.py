@@ -22,6 +22,7 @@ from app.db.pool import get_pool
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.error_blocks import ErrorBlocksRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
@@ -149,6 +150,11 @@ async def get_narrative_thread_repo() -> NarrativeThreadRepo:
 
 async def get_canon_rules_repo() -> CanonRulesRepo:
     return CanonRulesRepo(get_pool())
+
+
+async def get_error_blocks_repo() -> ErrorBlocksRepo:
+    """Atom-edit Phase D — the author's marked defects in a chapter's prose."""
+    return ErrorBlocksRepo(get_pool())
 
 
 async def get_grounding_pins_repo() -> GroundingPinsRepo:

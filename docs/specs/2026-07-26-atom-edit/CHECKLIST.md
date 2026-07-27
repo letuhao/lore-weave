@@ -330,6 +330,51 @@ observation. A claim that a check passed, without its output, does **not** tick 
       keys on it and by construction touches only the ones that did not locate.
       Tests: **17 new** (closed sets reject; span/status not patchable; `orphaned` counts as still
       wanting attention). Full composition suite **2547 passed / 336 skipped**.
+- [x] **D3b** ✅ **`engine/error_block_heal.py` — and 🔴 the E1 bug fixed before it could ship.**
+      Composes self-heal's public primitives; **modifies no existing engine file.** Skips judge/
+      vote/verify/rerank (the author already decided — re-adjudicating would be the tool
+      second-guessing its user) and critically skips **`_snap_to_sentence`**, which would have
+      silently WIDENED a deliberate human selection.
+      🔴 **E1:** `locate_span` returns the FIRST match. A mark on the 3rd *"She nodded."* would
+      re-anchor to the 1st and the fix would edit a paragraph the author never complained about —
+      **reporting success, undetectable downstream.** `locate_nearest` picks the occurrence nearest
+      the stored offset; ambiguity tolerance is tied to `hint_trusted` (the fingerprint check), so a
+      moved coordinate space + an ambiguous quote **orphans instead of guessing**, while a single
+      candidate still anchors (one candidate is not a guess) and fuzz never outvotes an exact match.
+      A test **pins `locate_span`'s first-match behaviour** — reusing a primitive means owning it.
+      **Second find (latent, not live):** the Python `apply_self_heal_edits` has **no `before`
+      guard**, though its JS "mirror" does and explains why. Checked the caller — `self_heal.py:796`
+      splices against the same in-memory chapter, so **it is not exploitable there**. It *is*
+      exploitable for any caller whose text can drift, which is exactly the error-block path (a
+      human reviews between propose and apply), so `apply_block_edits` carries its own guard.
+      Own `_chat` (not self-heal's private one): author-driven spend must not be stamped
+      `extractor="self_heal"`. Every skip REPORTED with a reason; `grounded` reports a degraded pack.
+      **33 tests**, incl. a stub model that captures the built prompt (a `guide=` that failed to
+      thread would still produce a plausible edit — invisible in the output).
+- [x] **D3c** ✅ **REST routes + the MCP tool — the feature is now reachable from both sides.**
+      **7 REST routes** (`error_blocks.py`), gate mirrored from `canon.py`: E0 grant resolved
+      BEFORE any repo call, **VIEW to read / EDIT to mark** (a mark is authoring input that drives
+      a prose change), by-id routes resolve the block's own project and gate on ITS book, anti-oracle
+      id-only bootstrap, `If-Match` → 412, duplicate → **409 not a silent success**, soft-archive +
+      restore. Verified registered: all 7 paths listed off the live app.
+      **`composition_error_block_edit(op=list|resolve|dismiss)`** — `op="list"` ships first as the
+      affordance gate (the `composition_structure_template_edit` lesson: five writes, no read, so
+      the agent could never discover an id). Its description tells the model the blocks ARE the
+      author's instructions and to read them before rewriting; `orphaned` is called out as
+      ask-don't-guess. `op="create"` stays cut.
+      🔴 **Found + fixed a bug in my own D3a code:** `VersionMismatchError.__init__` takes the
+      **current row**, not a message — I passed a string. It constructs fine (one positional arg
+      either way) and only fails later at `exc.current.model_dump()`, turning a legitimate **412
+      into a 500**. Same shape as E1: reusing a shared primitive without reading its contract.
+      Pinned by a test.
+      The frozen MCP tool-catalog contract caught the new tool and required explicit registration —
+      the guard working as designed.
+      ⚠️ **Amendment recorded (not silent drift):** the batch `/error-blocks/propose` route is NOT
+      built. `pack()` needs a **scene** node and a block is chapter-scoped — picking the wrong scene
+      would silently ground the fix on the wrong context. The agent path doesn't need it (it
+      composes the fix itself and uses `propose_edit`). So `propose_for_blocks` is **built + tested
+      but not yet wired**, stated in the design rather than left to be discovered.
+      Suite: **2556 passed / 336 skipped**.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
       author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
       co-writer round trip) is the gate** — this track already proved a green suite can vouch for

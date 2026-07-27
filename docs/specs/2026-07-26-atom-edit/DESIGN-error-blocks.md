@@ -259,6 +259,20 @@ DELETE /v1/composition/error-blocks/{id}                                        
 POST   /v1/composition/works/{project_id}/error-blocks/propose                   → the grounded fix pass
 ```
 
+> **AMENDMENT 2026-07-27 (D3c) — the batch `/propose` route is NOT built yet.** The other six
+> routes shipped. Two findings deferred this one rather than rushing it:
+> 1. **`pack()` needs a SCENE node** (`PackRequest.node`), and an error block is chapter-scoped.
+>    Choosing which scene to pack against — the one containing the span? the chapter's first? —
+>    is a real design question, and guessing it would silently ground the fix on the wrong scene.
+> 2. **The agent does not need it.** Per §8 the co-writer lists blocks, composes the fix itself
+>    using the glossary/KG tools it already has, and proposes via `propose_edit`. The batch route
+>    serves the FE's future "fix all my marks" button — a convenience, not the loop.
+>
+> `engine/error_block_heal.propose_for_blocks` (D3b) is therefore built and tested but **not yet
+> wired to a route** — stated here rather than left to be discovered, because "built but never
+> wired" is the exact defect class this whole track exists to find. Its caller lands with the
+> scene-selection decision, not before.
+
 **Gateway work required: none.** Verified — `gateway-setup.ts:354` proxies by prefix
 (`pathname.startsWith('/v1/composition')`), so a new route under it is reachable the moment it
 exists. *(Do keep the passthrough honest about optional fields — a gateway that drops one is a

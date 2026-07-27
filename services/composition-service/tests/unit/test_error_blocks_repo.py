@@ -19,6 +19,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.db.models import ErrorBlock
+from app.db.repositories import VersionMismatchError
 from app.db.repositories.error_blocks import OPEN_STATUSES, ErrorBlocksRepo
 
 
@@ -102,6 +103,21 @@ class TestUpdateSurface:
         is the signal, and it proves the field was accepted rather than rejected."""
         with pytest.raises((AttributeError, TypeError)):
             await repo.update(uuid.uuid4(), uuid.uuid4(), {field: "x"})
+
+
+def test_version_mismatch_carries_the_ROW_not_a_message():
+    """The shared `VersionMismatchError` takes the CURRENT ROW, which the router returns in the
+    412 body so a caller can re-base without another round-trip.
+
+    Written after shipping exactly this bug in the first draft of the repo: a message string was
+    passed instead. It constructs fine — one positional arg either way — and only fails later, at
+    `exc.current.model_dump()`, turning a legitimate 412 into a 500. Same shape as the E1 bug in
+    the engine: reusing a shared primitive without reading its contract.
+    """
+    block = ErrorBlock.model_validate(_payload(version=4))
+    exc = VersionMismatchError(block)
+    assert exc.current is block
+    assert exc.current.model_dump(mode="json")["version"] == 4   # what the router actually calls
 
 
 def test_orphaned_counts_as_still_wanting_attention():
