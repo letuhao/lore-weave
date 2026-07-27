@@ -141,10 +141,25 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > schema (2^53 id-string bite · rejected≠discarded and both turn-neutral · `kind` enum arity ·
 > the 5-variant discard set). **26/26 commit-service tests green.** This is what keeps the
 > contract CONSUMED, not stored.
-> **NEXT:** publisher wiring (ops) + **committed-events room-consumer PoC in `game-server`**
-> (the first real consumer of `TurnOutcome` — needs the publisher fanning the outbox) → minimal
-> browser client against W0/W1 → S4b real-IPC → CP lease issuance (fence unchanged) → boundary
-> batch incl. CWC + game-wire DTO registration.
+> ✅ **ROOM CONSUMER LIVE — the wire contract now has BOTH sides (15:0x–15:3x).**
+> `game-server`: `src/wire/turnOutcome.ts` (consumer projection, the TS mirror of
+> `commit-service::wire`) + `src/rooms/ChannelRoom.ts` (GDA-A7 room = one DP-A16 channel;
+> consumes the per-reality stream, broadcasts `turn.outcome`, hands each client its DP-Ch18
+> `from_token` on join; **holds no authority — CWC-A1**) + registered as room `channel`.
+> **9 new tests, 49/49 game-server green.** **MIRROR BITE PROVEN:** adding one word to the
+> schema's `kind` enum turned **both** the TS test and the Rust test red — that is the
+> "machine-checked both sides" claim, demonstrated rather than asserted.
+> `outbox-drain` bin added as an explicit **DEV stand-in** for `services/publisher` (production
+> fan-out needs a `reality_registry` row + shard DSN = deployment work; the loop mirrors
+> `poll_loop.go`: SELECT FOR UPDATE SKIP LOCKED → XADD → mark, one tx, at-least-once).
+> **FULL-PATH LIVE SMOKE:** LLM decision → admission → island → epoch-fenced commit → outbox
+> (same tx) → drain → Redis stream → TS consumer → DTO. Frames came out
+> `ce3 resolved turn 1` · `ce4 rejected turn **1**` · `ce5 resolved turn 2` — **EVT-V4's turn
+> law survives all six layers to the client frame.**
+> **NEXT:** minimal browser client against W0/W1 (the last unbuilt layer) → real `publisher`
+> wiring for a game reality (ops: registry row + DSN) → turn SUBMISSION path (client →
+> `TurnSubmit` → bus, closing the loop) → S4b real-IPC → CP lease issuance → boundary batch
+> incl. CWC + game-wire DTO registration.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**
