@@ -1,0 +1,142 @@
+// World Setup wizard — the three human checkpoints must actually gate the pipeline,
+// and honest reporting (skips, unresolved edges) must reach the screen.
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { WorldSetupWizard } from '../components/WorldSetupWizard';
+import type { BuildRun } from '../types';
+
+const api = vi.hoisted(() => ({
+  createRun: vi.fn(),
+  plan: vi.fn(),
+  approvePlan: vi.fn(),
+  get: vi.fn(),
+  projectKg: vi.fn(),
+  approveEdges: vi.fn(),
+  cancel: vi.fn(),
+  list: vi.fn(),
+}));
+vi.mock('../api', () => ({ worldSetupApi: api }));
+
+const RUN: BuildRun = {
+  run_id: 'r1', book_id: 'b1', status: 'draft', params: {},
+  worklist: [], edges: [], error_message: null,
+};
+const planReady: BuildRun = {
+  ...RUN, status: 'plan_ready',
+  worklist: [
+    { name: 'Tô Thanh Dao', kind: 'character', depth: 'deep', why: 'the fiancée' },
+    { name: 'Lòng tốt', kind: 'terminology', depth: 'standard' },
+  ],
+};
+
+function setup() {
+  return render(<WorldSetupWizard bookId="b1" token="t" modelRef="m1" />);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  api.createRun.mockResolvedValue(RUN);
+  api.plan.mockResolvedValue(planReady);
+});
+
+describe('WorldSetupWizard', () => {
+  it('plans from a description and shows the worklist BEFORE anything is built', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+
+    await screen.findByTestId('world-setup-worklist');
+    expect(screen.getByText('Tô Thanh Dao')).toBeInTheDocument();
+    expect(screen.getByText('deep profile')).toBeInTheDocument();
+    // checkpoint 1: nothing is built until the human approves
+    expect(api.approvePlan).not.toHaveBeenCalled();
+  });
+
+  it('[checkpoint 1] sends only the items the human KEPT', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'building', items: [] });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+
+    await user.click(screen.getByLabelText('Include Lòng tốt'));   // untick one
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+
+    expect(api.approvePlan).toHaveBeenCalledWith(
+      'r1', [expect.objectContaining({ name: 'Tô Thanh Dao' })], 't',
+    );
+  });
+
+  it('reports SKIPPED items honestly instead of only counting successes', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({
+      ...planReady, status: 'proposed',
+      items: [
+        { item_id: 'i1', ordinal: 0, name: 'Tô Thanh Dao', kind: 'character', depth: 'deep',
+          status: 'proposed', skip_reason: null, proposed_entity_id: 'e1', relations: [], section_count: 6 },
+        { item_id: 'i2', ordinal: 1, name: 'Lòng tốt', kind: 'terminology', depth: 'standard',
+          status: 'skipped', skip_reason: 'invalid model output after retry',
+          proposed_entity_id: null, relations: [], section_count: 0 },
+      ],
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+
+    const skipped = await screen.findByTestId('world-setup-skipped');
+    expect(skipped).toHaveTextContent('Lòng tốt');
+    expect(skipped).toHaveTextContent('invalid model output after retry');
+  });
+
+  it('[checkpoint 3] writes only RESOLVED edges and surfaces the unresolved ones', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
+    api.projectKg.mockResolvedValue({
+      ...planReady, status: 'edges_ready', items: [],
+      edges: [
+        { source_name: 'A', source_id: 's1', target_name: 'B', target_id: 't1',
+          type: 'loves', unresolved: false },
+        { source_name: 'A', source_id: 's1', target_name: 'Ghost', target_id: null,
+          type: 'ally_of', unresolved: true },
+      ],
+    });
+    api.approveEdges.mockResolvedValue({ ...planReady, status: 'done', items: [] });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+
+    await user.click(await screen.findByTestId('world-setup-project-kg'));
+    await screen.findByTestId('world-setup-edges');
+    // the unresolved one is VISIBLE (never silently dropped)…
+    expect(screen.getByTestId('world-setup-unresolved')).toHaveTextContent('Ghost');
+    // …but only the resolved one is offered for saving
+    await user.click(screen.getByTestId('world-setup-approve-edges'));
+    expect(api.approveEdges).toHaveBeenCalledWith(
+      'r1', [expect.objectContaining({ target_name: 'B' })], 't',
+    );
+  });
+
+  it('surfaces a server error code+message instead of failing silently', async () => {
+    const user = userEvent.setup();
+    api.plan.mockRejectedValue({ body: { detail: { code: 'EMPTY_PLAN', message: 'planner produced no items' } } });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+
+    await waitFor(() => expect(screen.getByTestId('world-setup-error'))
+      .toHaveTextContent('EMPTY_PLAN: planner produced no items'));
+  });
+
+  it('cannot start without a model (BYOK ref is required)', () => {
+    render(<WorldSetupWizard bookId="b1" token="t" modelRef={null} />);
+    expect(screen.getByTestId('world-setup-start')).toBeDisabled();
+  });
+});

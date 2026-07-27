@@ -74,6 +74,7 @@ features/<name>/
 | **knowledge-temporal** (17) | (embedded) knowledge `EntityDetailPanel` → "Temporal" tab | Time-travel reads (`as_of`) over the KAL surface. Degrades on sparse reads. | **knowledge-gateway** (KAL) |
 | **glossary** (78) | `/books/:bookId/glossary` | Glossary entities, kinds, attributes, evidence, confirm-cards. | glossary-service |
 | **glossary-translate** (14) | (embedded) `GlossaryEntityList` | Glossary term translation. ⚠️ Routes to **translation-service**, not glossary. | **translation-service** |
+| **world-setup** (4) | studio panel `world-setup` (palette / `ui_open_studio_panel`) | The deterministic glossary-build wizard: describe → review the plan (CP1) → per-entity build → review drafts (CP2, the glossary inbox) → approve relationships (CP3). ⚠️ The FSM lives in **composition-service** (`/v1/composition/glossary-build`), which then writes to glossary + knowledge. | **composition-service** |
 | **extraction** (12) | (embedded) glossary / enrichment / pdf-import | Extraction profile + batch wizard. ⚠️ `/v1/extraction` routes to **translation-service**. | translation-service, glossary-service |
 | **enrichment** (77) | `/books/:bookId/enrichment` | Lore enrichment — gap detection, proposal review, promote-to-glossary. | lore-enrichment-service |
 | **wiki** (30) | `/books/:bookId/wiki`, `/books/:bookId/wiki/:articleId/edit` | Auto-generated wiki articles + revisions. The wiki lives in **glossary-service**, not a separate service. | glossary-service |

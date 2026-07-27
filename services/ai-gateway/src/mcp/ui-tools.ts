@@ -26,7 +26,7 @@ export const STUDIO_PANEL_IDS = [
   'compose', 'scene-compose', 'chapter-assemble', 'editor', 'planner', 'agent-mode',
   'usage', 'notifications', 'settings', 'trash', 'steering', 'style-voice', 'extensions',
   'proposals', 'workflows', 'workflow-proposals', 'glossary', 'glossary-ontology',
-  'glossary-unknown', 'glossary-ai-suggestions', 'glossary-merge-candidates', 'wiki',
+  'glossary-unknown', 'glossary-ai-suggestions', 'glossary-merge-candidates', 'world-setup', 'wiki',
   'knowledge', 'kg-overview', 'kg-entities', 'kg-timeline', 'kg-evidence', 'kg-gap',
   'kg-proposals', 'kg-schema', 'kg-graph', 'kg-insights', 'kg-jobs', 'kg-bio', 'kg-privacy',
   'kg-triage', 'search', 'jobs-list', 'books', 'leaderboard-books', 'leaderboard-authors',
@@ -55,6 +55,7 @@ const PANEL_ID_DESCRIPTION =
   "skills; 'workflows'/'workflow-proposals' = saved workflow recipes and their proposals; " +
   "'glossary'/'glossary-ontology'/'glossary-unknown'/'glossary-ai-suggestions'/" +
   "'glossary-merge-candidates' = the book's entities, kinds, and review queues; 'wiki' = the " +
+  "'world-setup' = build the cast/world and their relationships from a description; " +
   "book's generated wiki; 'knowledge'/'kg-*' = the knowledge-graph projects, entities, timeline, " +
   "evidence, gaps, proposals, schema, graph, insights, jobs, bio, privacy, triage; 'search' = " +
   "search the book's prose or lore; 'jobs-list' = background jobs; 'books' = the user's other " +
