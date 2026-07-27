@@ -1,5 +1,7 @@
 # Session Handoff — LLM MMO RPG Design Track
 
+<!-- design-lint: ok prefix RNG — this file NARRATES the RNG-A9 finding (a dangling ref corrected in cat_16 on 2026-07-27); the mentions are history, not live references. -->
+
 > **Scope:** This handoff is scoped to the `LLM_MMO_RPG` exploratory design track ONLY.
 > **Does NOT conflict with** `docs/sessions/SESSION_PATCH.md` (main project session). This folder is a self-contained design exploration that can resume independently.
 > **Next session bootstrap:** Start with [README.md](README.md) → this file → follow reading order.
@@ -274,6 +276,21 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > INFRASTRUCTURE: `redisUrl` is env-only even with the debug flag on (an SSRF hole with a flag in
 > front of it is still an SSRF hole); only `realityId`/`channelId` may vary. 4 security
 > regression tests added, **55/55 game-server green**.
+> ✅ **ALL THREE LOOSE ENDS CLEARED (18:44).**
+> **(1) THE UNBROKEN LOOP RAN.** All three daemons up at once — game-server (:2605) + the REAL Go
+> publisher + the spine in continuous mode — and one client click went the whole way and came
+> back: `W1 roster [entity-2 hostile healthy]` → `CLICK Strike hostile-2` → `accepted (reached the
+> bus)` → **`RENDERED {channel_event_id:"13", kind:"resolved", turn_number:"1", detail:{events:
+> ["1 strikes 2 for 10 (30 left)"]}}`**. browser → room → bus → spine → island → epoch-fenced
+> commit → outbox → publisher → `lw.events.*` → room → browser. No mock anywhere in that path.
+> **(2) `publisher/go.mod` re-pinned** — `go mod tidy` (the drift was two indirect deps,
+> `x/sync`/`x/text`, resolving newer than pinned); module builds and `pkg/redisemit` tests pass.
+> Deliberately its OWN commit, never riding a feature change.
+> **(3) The dangling `RNG-A9` corrected to `EVT-A9`** in `cat_16` — AIT-4 one row up cites EVT-A9
+> for exactly that property (replay determinism), the number matched, and no `RNG`-prefixed doc
+> exists anywhere. Left as a VISIBLE dated note so the AIT owner can revert; the handoff's
+> narration of the finding carries a scoped pragma. **design-lint is now 0 findings on the whole
+> corpus** — from 17,120 this morning.
 > **NEXT:** wire `ChannelRoom` to the browser for a real
 > click-to-turn (the first true browser↔server loop) → movement lane (Class A / RTM frames) →
 > S4b real-IPC → CP lease issuance → boundary batch incl. CWC + game-wire DTO registration →
@@ -361,6 +378,21 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > INFRASTRUCTURE: `redisUrl` is env-only even with the debug flag on (an SSRF hole with a flag in
 > front of it is still an SSRF hole); only `realityId`/`channelId` may vary. 4 security
 > regression tests added, **55/55 game-server green**.
+> ✅ **ALL THREE LOOSE ENDS CLEARED (18:44).**
+> **(1) THE UNBROKEN LOOP RAN.** All three daemons up at once — game-server (:2605) + the REAL Go
+> publisher + the spine in continuous mode — and one client click went the whole way and came
+> back: `W1 roster [entity-2 hostile healthy]` → `CLICK Strike hostile-2` → `accepted (reached the
+> bus)` → **`RENDERED {channel_event_id:"13", kind:"resolved", turn_number:"1", detail:{events:
+> ["1 strikes 2 for 10 (30 left)"]}}`**. browser → room → bus → spine → island → epoch-fenced
+> commit → outbox → publisher → `lw.events.*` → room → browser. No mock anywhere in that path.
+> **(2) `publisher/go.mod` re-pinned** — `go mod tidy` (the drift was two indirect deps,
+> `x/sync`/`x/text`, resolving newer than pinned); module builds and `pkg/redisemit` tests pass.
+> Deliberately its OWN commit, never riding a feature change.
+> **(3) The dangling `RNG-A9` corrected to `EVT-A9`** in `cat_16` — AIT-4 one row up cites EVT-A9
+> for exactly that property (replay determinism), the number matched, and no `RNG`-prefixed doc
+> exists anywhere. Left as a VISIBLE dated note so the AIT owner can revert; the handoff's
+> narration of the finding carries a scoped pragma. **design-lint is now 0 findings on the whole
+> corpus** — from 17,120 this morning.
 > **NEXT:** **`sim-core` S1** (skeleton — unblocked; islands *and the panic boundary* in the type signatures from commit one) · `B3-D1` amendment row when `locked_decisions.md` is quiet · **`SL-Q11`** (does EVT-L5 backpressure fight SL-A13 dilation? plausible feedback loop — settle **before** both are built) · put `language-rule-lint.sh` + a *"`_boundaries/*` diff requires `Owner:` ≠ None"* check into pre-commit — **both are rules that exist with no enforcement point**, which is how `jobs-service` sat red for 6 weeks and how three lock cycles got recorded that never happened.
 
 > ✅ **MERGED `origin/main` + GREENED THE BUILD (2026-07-26 late):** the branch was **3090 commits behind**; because the game tier is spec-only it produced **exactly one conflict** — `.githooks/pre-commit`, resolved as a **union** (main had grown knowledge-access / http-surface / context-budget / db-safety / no-absolute-paths / i18n / tier-tag / inspector / design-token / gitleaks gates; this session had added two). `origin/main` is now **fully contained** in the branch.
