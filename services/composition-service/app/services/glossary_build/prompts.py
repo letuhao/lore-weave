@@ -15,8 +15,15 @@ from __future__ import annotations
 # Closed sets — Frontend-Tool-Contract discipline applies wherever these cross a
 # schema boundary later (M2 exposes them as enums).
 RELATION_TYPES = [
+    # character ↔ character
     "ally_of", "enemy_of", "member_of", "betrothed_to", "loves",
     "killed", "spared", "betrayed", "parent_of", "sibling_of", "mentor_of",
+    # concept ↔ concept / concept ↔ character. Added after the live wizard run
+    # (2026-07-27): with only the character verbs available, the model was FORCED
+    # into false edges for lore terms — "Chân Linh mentor_of Lâm Uyên" (it is his
+    # soul layer, not a mentor) and "Chữ ký tần số enemy_of Lâm Uyên". A closed set
+    # with no fitting member does not produce silence; it produces a wrong answer.
+    "part_of", "property_of", "created_by", "related_to",
 ]
 DEPTHS = ["standard", "deep"]
 

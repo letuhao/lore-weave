@@ -212,9 +212,9 @@ class GlossaryBuildService:
             run = await self._repo.transition(run_id, owner, ["planning"], "failed",
                                               error_message="planner produced no items")
             raise GlossaryBuildError(422, "EMPTY_PLAN", "planner produced no items")
-        out = await self._repo.transition(run_id, owner, ["planning"], "plan_ready",
-                                          worklist=worklist)
-        return out or run
+        await self._repo.transition(run_id, owner, ["planning"], "plan_ready",
+                                    worklist=worklist)
+        return await self.get(run_id, owner)
 
     async def approve_plan(self, run_id: UUID, owner: UUID,
                            worklist: list[dict] | None = None) -> dict:
@@ -234,7 +234,7 @@ class GlossaryBuildService:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not in plan_ready")
         await self._repo.insert_items(run, wl)
         _DRIVER_TASKS[str(run_id)] = asyncio.create_task(self._drive(run_id, owner))
-        return run
+        return await self.get(run_id, owner)
 
     async def get(self, run_id: UUID, owner: UUID) -> dict:
         run = await self._repo.get_run(run_id, owner)
@@ -317,13 +317,16 @@ class GlossaryBuildService:
                         "type": r.get("type"), "note": r.get("note") or "",
                         "unresolved": tid is None or src is None,
                     })
-            out = await self._repo.transition(
+            await self._repo.transition(
                 run_id, owner, ["kg_projecting"], "edges_ready",
                 edges=edges,
                 params={**self._params(run), "project_id": str(project_id),
                         "kg_projection": projection or {}},
             )
-            return out or run
+            # Return the FULL run (with items): project_kg used to answer the bare
+            # transition row, so the wizard's "N entries filed" counter read 0 after
+            # this step — a real regression caught by driving the panel as an author.
+            return await self.get(run_id, owner)
         except GlossaryBuildError:
             await self._repo.transition(run_id, owner, ["kg_projecting"], "failed",
                                         error_message="kg projection failed")
@@ -363,7 +366,7 @@ class GlossaryBuildService:
             params={**self._params(run), "edges_applied": applied, "edges_failed": failed})
         if out is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not in edges_ready")
-        return out
+        return await self.get(run_id, owner)
 
     async def cancel(self, run_id: UUID, owner: UUID) -> dict:
         task = _DRIVER_TASKS.pop(str(run_id), None)
@@ -374,7 +377,7 @@ class GlossaryBuildService:
             ["draft", "planning", "plan_ready", "building", "proposing"], "cancelled")
         if run is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not cancellable")
-        return run
+        return await self.get(run_id, owner)
 
     # ── the driver ───────────────────────────────────────────────────────────
     async def _drive(self, run_id: UUID, owner: UUID) -> None:

@@ -437,6 +437,28 @@ async def test_a_second_concurrent_run_is_a_clean_409_not_a_raw_constraint_500()
 
 
 @pytest.mark.asyncio
+async def test_every_mutating_op_returns_the_run_WITH_its_items():
+    """Live-caught driving the wizard (2026-07-27): project_kg answered the bare
+    transition row, so the panel's "N entries filed" counter dropped to 0 after the
+    KG step. Every mutating op must return the FULL run view."""
+    wl = [{"name": "A", "kind": "character"}]
+    kg = FakeKnowledge(preexisting=["A"])
+    s, run_id = await _run_to_proposed([json.dumps(wl), _built("A")], knowledge=kg)
+
+    after_kg = await s.project_kg(run_id, OWNER, "bearer")
+    assert [i["name"] for i in after_kg["items"]] == ["A"]
+    after_edges = await s.approve_edges(run_id, OWNER, "bearer")
+    assert [i["name"] for i in after_edges["items"]] == ["A"]
+
+
+def test_relation_types_cover_concepts_not_only_characters():
+    """The closed set must have a member that FITS a lore term, or the model is forced
+    into a false character-verb edge (live: "Chân Linh mentor_of Lâm Uyên")."""
+    from app.services.glossary_build.prompts import RELATION_TYPES
+    assert {"part_of", "property_of", "related_to"} <= set(RELATION_TYPES)
+
+
+@pytest.mark.asyncio
 async def test_cancel_stops_a_building_run():
     wl = [{"name": "A", "kind": "character"}]
     s, repo, _ = make_svc([json.dumps(wl)])
