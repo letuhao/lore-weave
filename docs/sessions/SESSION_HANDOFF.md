@@ -67,6 +67,33 @@ requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
 only `package.json` and runs `npm install`, so it resolves 5.x and is unaffected. Fix locally with
 `npm install` in `frontend/` (its `package-lock.json` is gitignored).
 
+## ✅ GLOSSARY-BUILD PIPELINE — M1–M5 SHIPPED, live-proven end to end (2026-07-27)
+**Spec:** [`docs/specs/2026-07-27-glossary-kg-build-workflows.md`](../specs/2026-07-27-glossary-kg-build-workflows.md) ·
+**RUN-STATE plan (re-read first):** [`docs/plans/2026-07-27-glossary-build-pipeline.md`](../plans/2026-07-27-glossary-build-pipeline.md)
+
+The answer to the dogfood pivot: **the state machine moved out of the agent.** A weak model no
+longer chooses per-entity tools — it delegates one MCP call and the FSM makes every write.
+
+**POC first (4 experiments, gemma direct, $0):** all-in-one detail collapses (9 entities, 3.2
+attrs, monotonic decay); planner→executor wins on BOTH axes (13 entities, 5.7 attrs); and the
+E4 steer loop is a **10× depth multiplier** (6.9K chars, canon-consistent, cross-section payoff).
+Hence the per-item `depth` dial: `standard` (one focused call) vs `deep` (outline → steered
+sections with a VARIED craft instruction → distill).
+
+**Shipped:** `9f9296c00` `06420fa2e` (engine+FSM) · `265069111` (REST + `composition_glossary_build`
+MCP delegation tool + KG phase) · `713221569` (M4 fixes) · `fe1fdfc84` (World Setup wizard panel).
+
+**MAIDEN LIVE RUN (the evidence gate):** on Mị Đế the planner found 6 entities and correctly
+skipped the 2 already in the glossary; a human-trimmed worklist built the 3 characters the chat
+agent could never create (2 deep, 6 and 5 steered sections) → 3 draft entities with 5–6 attributes;
+a second run's relation to **Lâm gia** (hand-made in the UI hours earlier) resolved, and Neo4j
+holds both written relations. **Three real bugs surfaced only here** (jsonb-as-str, KG node-id vs
+glossary-id, run-scoped name resolution) — the unit fakes hid all three; they now model the real shapes.
+
+**Next natural steps:** swap the `vision-to-book` rail's 9 hand-driven steps for one delegation to
+this pipeline (parked); AI-suggestions card still shows name+kind only (dogfood #17); the driver
+has no heartbeat/sweep yet (see the plan's Debt register).
+
 ## 🎭 Mị ĐẾ AUTHOR-DOGFOOD → 10 platform fixes + PIVOT DECISION (2026-07-26/27, in flight)
 **Run doc (findings 1–23 + evidence): [`docs/sessions/2026-07-26-mide-author-dogfood.md`](2026-07-26-mide-author-dogfood.md).**
 Played a real Vietnamese author using the studio E2E (book "Mị Đế" 019f9f2d…, gemma local). The run

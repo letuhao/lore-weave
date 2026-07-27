@@ -54,8 +54,36 @@ Scope: `owner_user_id` + `book_id` on every row (tenancy). Params carry `model_r
   (item i/N, section j/M) → inbox link (CP2) → edges review (CP3). Update FEATURE_INDEX.md.
   AI-suggestions card upgraded to show full attributes + new-canon claims (dogfood #17).
 
+## Status — M1–M5 COMPLETE (2026-07-27)
+
+| M | State | Evidence |
+|---|---|---|
+| M1 | ✅ `9f9296c00` + `06420fa2e` | engine + FSM service, 22 unit tests (bounds, retry-then-skip, degrade paths) |
+| M2 | ✅ `265069111` | REST 7 routes + `composition_glossary_build` MCP tool (closed-set op) + contract yaml |
+| M3 | ✅ same commit | KG phase: project nodes → NAME→graph-id resolution → CP3 apply w/ applied/failed counts |
+| M4 | ✅ `713221569` | **MAIDEN LIVE RUN**: 3 chars built (2 deep w/ 6+5 sections) → 3 draft entities w/ 5-6 attrs; 2nd run resolved an edge to hand-made lore → Neo4j holds both relations. 3 real bugs found+fixed |
+| M5 | ✅ `fe1fdfc84` | World Setup wizard panel, 6 tests; panel_id enum synced across 3 sides; live-smoked the advertised schema |
+
+**M4's three live-caught bugs (all invisible to the unit suite):** jsonb decoded as
+`str` by asyncpg; a KG relation needs the GRAPH node id (content hash), not the glossary
+entity_id; name resolution must cover the whole project graph, not just the current run.
+
 ## Registers
 
 - **Decisions**: sections above. | **Parked**: rail delegation swap (after M5); wiki flywheel
   extraction of deep-profile inventions (tracked, not in this cycle).
-- **Debt/Drift**: (append as found)
+- **Debt/Drift**:
+  - *Durability*: the v1 driver is an in-process asyncio task — a restart mid-build leaves a
+    run in `building` (no heartbeat/sweep like authoring-runs). Cancel + re-run works today.
+  - *CP2 ordering*: `project_kg` is only meaningful after the human approves the drafts in the
+    review inbox. Drafts DO project today, so the pipeline doesn't hard-block on it; a
+    `NOTHING_PROJECTED` guard reports the empty case honestly.
+  - *Planner dedup*: `_existing_names` uses the semantic `select_for_context` (bounded to 50).
+    A full name-list route would make dedup exact.
+  - *Not done from the M5 scope note*: the AI-suggestions card still shows name+kind only
+    (dogfood finding #17 — full attributes + new-canon claims). The wizard shows the built
+    items, so the gap is now cosmetic rather than blinding.
+  - *Host drift (not a repo defect)*: `services/ai-gateway/node_modules` has TypeScript 7.0.2
+    against a `^5.5.3` manifest, so ts-jest cannot read tsconfig and the ai-gateway jest suite
+    is unrunnable locally (reproduces on a pristine checkout). Same class as the frontend note
+    in SESSION_HANDOFF; fix with a clean `npm install` in that service.
