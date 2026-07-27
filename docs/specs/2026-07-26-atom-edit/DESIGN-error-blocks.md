@@ -60,34 +60,52 @@ verbatim and adds only: one table, one engine seam, one MCP tool, two marking af
 New table `chapter_error_block` (composition-service). **Tenancy tier: Per-book/per-resource** —
 owner + E0 grantees; every query filters by the scope key; no System-tier row exists.
 
-```
-id             uuid pk
-project_id     uuid not null          -- the Work; scope key
-owner_user_id  uuid not null          -- tenancy scope key
--- target (discriminated union) --
-target_kind    text not null          -- 'chapter_draft' | 'draft_job'
-chapter_id     uuid null              -- chapter_draft
-draft_version  int  null              -- the version the offsets were computed against
-job_id         uuid null              -- draft_job (pre-accept preview)
--- span anchor --
-start_offset   int  not null          -- Unicode CODE POINTS (matches self-heal) — see §5
-end_offset     int  not null
-quote          text not null          -- the verbatim marked text: drift guard + re-locate key
--- the finding --
-kind           text not null          -- CLOSED SET, see below
-note           text not null          -- the author's instruction ("she died in ch3")
-desired        text null              -- optional: what they want instead
--- lifecycle --
-status         text not null          -- CLOSED SET, see below
-proposal_id    text null              -- the EditProposal that resolved it
-resolution     text null
-created_by     uuid not null
-created_at / updated_at / resolved_at
+**Column shape verified against the house pattern** (`canon_rule` migrate.py:265,
+`narrative_thread` :334, `generation_correction` :384 — all three agree):
 
-CHECK (target_kind='chapter_draft' AND chapter_id IS NOT NULL
-    OR target_kind='draft_job'     AND job_id     IS NOT NULL)
-INDEX (project_id, chapter_id, status) · INDEX (owner_user_id)
+```sql
+CREATE TABLE IF NOT EXISTS chapter_error_block (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  created_by     UUID NOT NULL,     -- actor stamp (25 M3) — stored, NEVER filtered on (PM-5)
+  project_id     UUID NOT NULL,     -- the Work / partition
+  book_id        UUID NOT NULL,     -- tenancy scope key (25 M1/M2) — the E0 gate
+  -- target (discriminated union) --
+  target_kind    TEXT NOT NULL CHECK (target_kind IN ('chapter_draft','draft_job')),
+  chapter_id     UUID,              -- chapter_draft arm
+  draft_version  INT,               -- the OI-2 OCC token the offsets were computed against
+  job_id         UUID REFERENCES generation_job(id) ON DELETE CASCADE,  -- draft_job arm
+  -- span anchor (§5) --
+  start_offset   INT  NOT NULL,     -- Unicode CODE POINTS over tiptap_doc_to_text(), see R5
+  end_offset     INT  NOT NULL,
+  quote          TEXT NOT NULL,     -- verbatim marked text: drift guard + re-locate key
+  -- the finding --
+  source         TEXT NOT NULL DEFAULT 'human'
+                 CHECK (source IN ('human','judge','critic','canon')),      -- §11c
+  kind           TEXT NOT NULL
+                 CHECK (kind IN ('continuity','voice','pacing','fact','logic','style','other')),
+  note           TEXT NOT NULL,     -- the author's instruction ("she died in ch3")
+  desired        TEXT,              -- optional: what they want instead
+  -- lifecycle --
+  status         TEXT NOT NULL DEFAULT 'open'
+                 CHECK (status IN ('open','proposed','resolved','dismissed','orphaned')),
+  proposal_id    TEXT,              -- the EditProposal that resolved it
+  resolution     TEXT,
+  version        INT NOT NULL DEFAULT 1,          -- OCC, If-Match (canon_rule precedent)
+  is_archived    BOOLEAN NOT NULL DEFAULT false,  -- soft delete + restore, house convention
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at    TIMESTAMPTZ,
+  CONSTRAINT chapter_error_block_target CHECK (
+       (target_kind = 'chapter_draft' AND chapter_id IS NOT NULL)
+    OR (target_kind = 'draft_job'     AND job_id     IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_ceb_chapter ON chapter_error_block(project_id, chapter_id, status)
+  WHERE NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_ceb_book ON chapter_error_block(book_id);
 ```
+
+⚠️ `book_id` is the scope key — **not** `owner_user_id`, which an earlier draft of this design
+wrongly specified. `created_by` records *who* marked it and is never a filter.
 
 **Closed sets** (enum-validated on write, per the Frontend-Tool-Contract discipline — a free string
 here is the `panel_id` silent-no-op bug all over again):
@@ -212,19 +230,92 @@ async def propose_from_findings(
   human-gated and stays that way.
 - **Server is SSOT** — blocks are Postgres rows. A mark made on a phone is visible on the desktop.
   No localStorage.
-- **Tenancy** — per-book tier, scope key on every query, grant-gated cross-tenant access.
+- **Tenancy** — per-book tier, `book_id` on every query, grant-gated cross-tenant access.
+- **Non-lossy apply** — never rebuild the chapter document from flat text (§11b F11).
 - **Closed-set args** — `kind`/`status`/`op` are enums, registered in `CLOSED_SET_ARGS`.
 - **No silent no-op** — an unresolvable block orphans *visibly*; a resolver failure returns
   `result.error`.
 
-## 11 · Risks / open questions (resolve at BUILD)
+## 11 · Open questions — CLEARED against code (2026-07-27)
 
-| # | Question | Lean |
+| # | Question | **Resolved** |
 |---|---|---|
-| R1 | Does composition scope rows by `owner_user_id` directly or via `project_id`→Work→owner? | Verify against a sibling table before writing the migration; do not assume. |
-| R2 | Is `draft_version` monotonic and available at mark time in the editor? | `SelfHealProposalResponse.draft_version` is nullable — handle null. |
-| R3 | Should a block on an *unaccepted* draft survive a regenerate? | Lean **no** — regenerate replaces the prose; orphan them and say so. |
-| R4 | Multi-block batch fix ordering/overlap | Reuse self-heal's existing non-overlap + rightmost-first rules. Do not re-derive. |
+| R1 | Tenancy scope key? | 🔴 **§4 above was WRONG.** Composition scopes by **`book_id`** (`-- tenancy scope key (25 M1/M2)`), *not* `owner_user_id`. `created_by` is an **actor stamp, explicitly never filtered on** (PM-5). Verified on `canon_rule` (migrate.py:265), `narrative_thread` (:334), `generation_correction` (:384) — all three identical. Corrected in §4. |
+| R2 | Is `draft_version` usable as the anchor? | **Yes** — it is the **OI-2 OCC token**, monotonic (`draft_version + 1`), mirrored in book-service `chapter_drafts` and composition `work_chapter_draft`. `patchDraft` 409s on `expected_draft_version` mismatch (server.go:2635), so it doubles as the stale guard. Nullable in `SelfHealProposalResponse` — handle null. |
+| R3 | Block on an unaccepted draft, after regenerate? | **Orphan them, visibly.** `generation_correction.job_id REFERENCES generation_job(id) ON DELETE CASCADE` is the house pattern; a `draft_job` block FKs the same way, so a deleted job cascades. A *regenerated* job is a new row ⇒ old blocks orphan rather than silently re-attach to prose they were never about. |
+| R4 | Multi-block overlap/ordering | **Solved upstream — do not re-derive.** `self_heal.py:474-513` already enforces non-overlap (`occupied`), satellite-over-mechanical priority, rightmost-first splice, and a runaway-expansion guard. `propose_from_findings` (§9) inherits all of it. |
+
+### R5 (new, found while clearing R2) — two coordinate systems
+
+The editor's prose is a **ProseMirror/TipTap JSONB doc**; self-heal offsets are **flat-text code
+points** over `tiptap_doc_to_text(doc)` (blocks joined by `\n\n`). These are *different coordinate
+spaces*, and no round-trip exists from a flat offset back to a PM position.
+
+**Consequence for the design:** an error block stores flat-text offsets + `quote` (§5) — consistent
+with self-heal — and the *apply* goes through the editor's own transaction (`replace_selection`),
+never through a rebuilt document. See §11b.
+
+## 11b · 🔴 F11 — the existing Polish apply silently corrupts the chapter
+
+Found while clearing R5. **This is a shipped data-integrity bug, not a hypothetical.**
+
+`QualityHealPanel.healedTextToDoc` (`QualityHealPanel.tsx:30`) rebuilds the whole chapter as flat
+paragraphs and PATCHes it:
+
+```ts
+text.split(/\n\n+/).map(para => ({ type: 'paragraph', content: [{ type: 'text', text: tx }] }))
+```
+
+Book-service **stores a `json` body verbatim** — `normalizeBodyToTiptap` passes it through
+(server.go:2613) and the UPDATE writes it as-is (:2639). Nothing re-stamps the doc. So applying a
+Polish drops, for that chapter:
+
+- **`_text` block snapshots** — read by full-text search (`search.go:117`), chapter/block extraction
+  (`server.go:2968/3030/3560`), and `migrate.go:1283`, all via `x.elem->>'_text'`. Without it those
+  reads return NULL: **the chapter goes invisible to search and extraction.**
+- **heading nodes + `attrs.sceneId`** — the Scene Rail / navigator anchors `prose_doc.py`
+  deliberately attaches (`_attach_scene_ids`).
+- **every mark** — provenance, glossary, formatting.
+
+**The correct primitive already exists and is used everywhere else:** `addTextSnapshots`
+(`lib/tiptap-utils.ts:18`), which `ManuscriptUnitProvider.tsx:277` calls with the comment
+*"addTextSnapshots is REQUIRED before persist (chapter_blocks trigger)"*. The normal editor save
+does it (`TiptapEditor.tsx:173`). **Polish is the one path that doesn't.**
+
+This is this track's signature bug class *again* — a correct converter on one path
+(`prose_doc.text_to_tiptap_doc`, which mirrors `tiptap.go` including `_text`, headings and sceneId)
+and a naive twin on another that silently drops fields.
+
+**Design consequence (load-bearing, not incidental):**
+
+> **An error-block fix MUST be applied as a surgical span replacement inside the live document —
+> never as a whole-doc text round-trip.**
+
+That is precisely what the existing `propose_edit(replace_selection)` → `applyProposedEdit` path
+does: a real ProseMirror transaction that leaves every other node untouched, followed by the normal
+save (which stamps `_text`). The design's §8 choice to reuse it is therefore not merely economical —
+**it is the only non-lossy option.**
+
+**Disposition:** F11 is a genuine fix-now-sized defect (`_text` is a one-line wrap; the heading/mark
+loss is inherent to the flat round-trip and argues for converging Polish onto the same surgical
+apply). It lives in `QualityHealPanel.tsx` — the **concurrent session's quality surface**. Logged
+here with evidence; **coordinate before touching it.** Error blocks do not depend on the fix, only
+on not repeating it.
+
+## 11c · Forward-compatibility: one ledger, one source at a time
+
+`chapter_error_block` carries `source TEXT NOT NULL DEFAULT 'human'`
+(closed set: `human · judge · critic · canon`).
+
+Phase D populates **only `human`**. But the column costs nothing now and prevents a parallel track
+later: self-heal findings are currently **ephemeral job results** — run Polish, walk away, they are
+gone — and `getCanonIssues`/`getRuleViolations` are separate read-only lanes. If those are ever to
+become durable and reviewable, they belong in *this* ledger, and `composition_error_block_edit(op="list")`
+becomes the single "what's wrong with this chapter?" read for the co-writer.
+
+Adding the column later would mean a migration plus a backfill plus an MCP contract change. Adding
+it now is one word. **Do not, however, populate the machine sources in Phase D** — that is a
+separate effort with its own dedup and volume questions.
 
 ## 12 · Build slices (D3)
 

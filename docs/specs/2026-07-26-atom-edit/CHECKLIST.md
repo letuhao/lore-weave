@@ -215,6 +215,40 @@ observation. A claim that a check passed, without its output, does **not** tick 
       shipped alongside the writes (the E3 affordance-gate lesson) · the fix path adds no new tool.
       Recorded limitations: `locate_span` degrades on CJK (whitespace tokenizer), and the
       code-point↔UTF-16 offset mismatch is pre-existing — inherit the guard, don't "fix" it here.
+- [x] **D2b** ✅ **All four open questions CLEARED against code — and one was a design error.**
+      **R1:** 🔴 the design's `owner_user_id` scope key was **WRONG**. Composition scopes by
+      **`book_id`** (`-- tenancy scope key (25 M1/M2)`); `created_by` is an actor stamp
+      **explicitly never filtered on** (PM-5). Identical on `canon_rule`/`narrative_thread`/
+      `generation_correction`. Migration DDL rewritten to the house pattern (uuidv7, CHECK-enum
+      closed sets, `version` OCC, `is_archived`, partial index).
+      **R2:** `draft_version` is the OI-2 **OCC token** — monotonic, and `patchDraft` 409s on
+      mismatch, so it doubles as the stale guard.
+      **R3:** orphan on regenerate; `job_id REFERENCES generation_job ON DELETE CASCADE` is the
+      house pattern (`generation_correction` precedent).
+      **R4:** overlap/ordering already solved in `self_heal.py:474-513` — inherited, not re-derived.
+      **R5 (new):** the editor's prose is a **ProseMirror JSONB doc** but self-heal offsets are
+      **flat-text code points** over `tiptap_doc_to_text()` — two coordinate systems with no
+      round-trip. Blocks store flat offsets + `quote`; the *apply* goes through the editor's own
+      transaction.
+- [x] **D2c** 🔴 **F11 — FOUND WHILE CLEARING R5: the shipped Polish apply silently corrupts the
+      chapter.** `QualityHealPanel.healedTextToDoc` (:30) rebuilds the whole chapter as flat
+      paragraphs; book-service stores a `json` body **verbatim** (`normalizeBodyToTiptap` passes it
+      through, server.go:2613/2639). So an applied Polish drops **`_text` block snapshots** — read
+      by full-text search (`search.go:117`), block extraction (`server.go:2968/3030/3560`,
+      `migrate.go:1283`) via `x.elem->>'_text'` ⇒ **the chapter goes invisible to search and
+      extraction** — plus heading nodes + `attrs.sceneId` (Scene Rail anchors) and every mark.
+      The correct primitive **already exists and is used everywhere else**: `addTextSnapshots`
+      (`lib/tiptap-utils.ts:18`), which `ManuscriptUnitProvider:277` calls with the comment
+      *"REQUIRED before persist (chapter_blocks trigger)"*, and which the normal editor save uses
+      (`TiptapEditor:173`). **Polish is the one path that skips it.** This track's signature bug
+      class again — correct converter on one path, naive twin on another.
+      **Design consequence (load-bearing):** an error-block fix MUST be a **surgical span
+      replacement in the live document**, never a whole-doc text round-trip — which is exactly what
+      the reused `propose_edit(replace_selection)` path does. Reusing it isn't just economical, it's
+      **the only non-lossy option.**
+      ⚠️ **NOT FIXED HERE** — `QualityHealPanel.tsx` is the concurrent session's quality surface.
+      Logged with evidence; coordinate before touching. Error blocks don't depend on the fix, only
+      on not repeating it.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
       author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
       co-writer round trip) is the gate** — this track already proved a green suite can vouch for
@@ -402,4 +436,6 @@ into its commit — 1757 insertions filed under the message
 | 2026-07-26 | `plan_compile` MCP arg was written before `op=list` existed, i.e. an argument the agent had no way to populate. Caught only by asking "how would the co-writer actually get this id?" — the affordance question, not the code question. |
 | 2026-07-26 | Reached for `force=true` to shortcut the C4 chain. It was silently ignored and the pass refused — which is the design (the bypass is withheld from agents *by absence*). Had it been exposed, I would have skipped the two human checkpoints to save ~8 minutes and called the result an end-to-end proof, when it would have proven nothing about the gate. The honest chain took 4 passes and a seed apply. |
 | 2026-07-26 | **The big one.** I reported "5 of 6 atoms GUI-editable" on the strength of 1596 green unit tests. The first real browser pass showed FOUR of those editors had no door to open them — advisory passes never render the review CTA. The claim was true of the components and false of the product. I had even written the `scene_plan` editor and its 9 tests without ever checking that a user could reach it. Every editor test renders `CheckpointReview` directly, so the gate was never in the test path. Lesson, again: "the tests pass" is not "the feature works" — and I was one turn away from calling atom edit DONE. |
+| 2026-07-27 | **Wrote a whole data model on an assumed scope key.** The Phase D design specified `owner_user_id` as the tenancy column — reasonable-sounding, and wrong: composition scopes by `book_id`, and `created_by` is an actor stamp *explicitly never filtered on*. Three sibling tables say so identically. Had I gone to BUILD on the design as written, the migration would have shipped a column that no query could correctly use, and the tenancy filter would have been silently wrong — the exact defect class the User Boundaries rule exists to prevent. Caught only because "clear the gaps" meant *reading the sibling tables* instead of trusting the design I had just written. **A design is a hypothesis; the schema is the fact.** |
+| 2026-07-27 | Nearly reported F11 (Polish drops `_text`) after reading only the FE converter. Two more checks were needed before it was a claim rather than a guess: that book-service stores a `json` body verbatim (it does — `normalizeBodyToTiptap` passes through), and that the *normal* editor save doesn't have the same hole (it doesn't — `addTextSnapshots`). Had either gone the other way the finding would have been noise. Negative-result rigour, again. |
 | 2026-07-26 | Sweeping for more `auto`-sentinel filters, I found `arc_template_repo`'s language clause and nearly reported it as a second instance. It takes an explicit query param defaulting to `None` (which skips the clause), not the book profile's `"auto"` — verified the callers before claiming. Negative results need the same rigour as positive ones. |
