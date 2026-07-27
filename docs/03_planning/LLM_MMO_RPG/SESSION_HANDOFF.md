@@ -118,9 +118,16 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > shape) · turn.outcome truth-in-labeling (rejected≠discarded≠resolved), citing the LIVE spine
 > turn law. **`CWC` prefix + DTO rows PENDING `_boundaries` lock** (stated, not claimed).
 > **Catalog-backfill + link-sweep agents dispatched in parallel** (worktrees; harvest next).
-> **NEXT:** harvest cleanup agents + commit → `contracts/game-wire/` scaffolding + first client
-> slice (CWC-D3/Q4) → publisher wiring (ops) + committed-events room-consumer PoC → S4b real-IPC
-> → CP lease issuance (fence unchanged) → boundary batch incl. CWC registration.
+> **CLEANUP HARVESTED (09:0x, `29ad78a22`): design-lint 17,120 → 1** — catalog backfill (66
+> prefixes incl. CWC; +15 reasoned allowlist) + 1,606 link rewrites across 63 files (zero guessed
+> targets, zero deletions; byte-identical rewriter verification). Survivor: `RNG-A9`
+> (`cat_16` AIT-6) — genuinely dangling, no declaring doc; owner = AIT track. Harvest lesson:
+> worktree agents branch from `main` — for feature-branch-divergent files, export
+> script+mapping and re-run in the real tree (that's what happened here).
+> **NEXT:** wire `design-lint.py` into pre-commit/CI as a gate (baseline is clean now; decide
+> soft-warn vs hard-fail) → `contracts/game-wire/` scaffolding + first client slice (CWC-D3/Q4)
+> → publisher wiring (ops) + committed-events room-consumer PoC → S4b real-IPC → CP lease
+> issuance (fence unchanged) → boundary batch incl. CWC registration.
 >
 > ✅ **VERIFICATION SWEEP + FULL RECONCILIATION (2026-07-26 evening, commit `665aebc54`, 75 files):**
 > 7 adversarial agent sweeps over the corpus → **~150 findings → [`19_reconciliation_register.md`](19_reconciliation_register.md)**
