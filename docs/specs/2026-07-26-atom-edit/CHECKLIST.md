@@ -187,13 +187,40 @@ observation. A claim that a check passed, without its output, does **not** tick 
 
 ## Phase D — error-block reporting (the new track)
 
-- [ ] **D1** CLARIFY with human (**Q2**): which surface(s) can mark blocks — Draft Review, chapter
-      editor, or both.
-- [ ] **D2** DESIGN: block identity + provenance (scene/outline node, revision), the payload to the
-      co-writer, and the grounded-suggestion path (KG + glossary + canon rules + scene plan).
-      Must respect: MCP-first, confirm-gated writes, no agent-driven GUI nav.
+- [x] **D1** CLARIFY — sealed at **Q3**: **both** surfaces (Draft Review pre-accept + the chapter
+      editor), sharing one block-marking primitive.
+- [x] **D2** ✅ **DESIGN WRITTEN — [`DESIGN-error-blocks.md`](./DESIGN-error-blocks.md).**
+      **The reframe that shrinks it: an error block is a human-authored self-heal `Finding`.**
+      `engine/self_heal.py` already runs judge → locate → satellite-edit → splice → review; the
+      author replaces the *judge*, and steps 2–5 are reused verbatim. So Phase D is ~70% wiring,
+      not a new feature.
+      Verified reusable: `EditProposal`/`SelfHealProposal` shape · `applySelfHealEdits`
+      drift-guarded splice · `locate_span` fuzzy re-anchor · `build_selection_messages(guide=,
+      grounding=)` — **the author-instruction and grounding slots already exist** and the satellite
+      edit is already grounded (`self_heal.py:485`) · `propose_edit`→ProposeEditCard→
+      `applyProposedEdit` (the whole human-gated apply path) · TipTap + `SelectionToolbar` +
+      decoration layers.
+      **Four real gaps:** (1) nothing persists a human finding — `GenerationCorrection` is the
+      near-miss but is job-scoped, span-less, and H2-guarded, so it must NOT be overloaded;
+      (2) `editorBridge` is write-only, so the co-writer cannot read the author's marks;
+      (3) 🔴 **there is no MCP tool for prose self-heal at all** (`proposeSelfHeal` is REST-only;
+      the `self_heal` in `mcp/server.py` is the unrelated PlanForge pass name) — another instance
+      of this track's recurring "built, never wired for the agent" class; (4) no marking affordance.
+      **Decisions:** one table `chapter_error_block` (per-book tenancy tier, discriminated
+      `chapter_draft`|`draft_job` target because the compose preview is ephemeral and has no chapter
+      identity) · `quote` is the anchor, offsets are a hint, `locate_span` re-anchors, a lost block
+      **orphans visibly rather than vanishing** · accept migration re-anchors draft blocks onto the
+      chapter · ground via **`pack()`** (real KG/glossary/canon), NOT self-heal's cast-only
+      `render_canon` · **one** unified `composition_error_block_edit(op=…)` with `op="list"`
+      shipped alongside the writes (the E3 affordance-gate lesson) · the fix path adds no new tool.
+      Recorded limitations: `locate_span` degrades on CJK (whitespace tokenizer), and the
+      code-point↔UTF-16 offset mismatch is pre-existing — inherit the guard, don't "fix" it here.
 - [ ] **D3** BUILD + real-run proof: mark a wrong block → co-writer proposes a grounded fix →
-      author confirms → prose updated in the DB.
+      author confirms → prose updated in the DB. Sliced D3a–D3f in the design; **D3f (the live
+      co-writer round trip) is the gate** — this track already proved a green suite can vouch for
+      four editors nobody could open.
+      ⚠️ **Coordination required before D3d/D3e** — they land on the compose/editor surfaces the
+      concurrent chapter-quality session owns.
 
 ## Phase E — 🔴 PROMOTED TO FIRST (human decision Q1): planning quality
 
