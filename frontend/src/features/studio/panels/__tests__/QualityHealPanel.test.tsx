@@ -97,6 +97,34 @@ describe('QualityHealPanel', () => {
     expect(toastSuccess).toHaveBeenCalled();
   });
 
+  // F11 (atom-edit track) — the PORT REGRESSION guard. book-service stores a `json` body VERBATIM,
+  // so whatever we PATCH is what every downstream JSON_TABLE consumer sees. Legacy
+  // ChapterEditorPage.handleApplyPolish emitted `_text` per block on purpose ("the same Tiptap
+  // paragraph shape book-service writes"); the Studio port claimed to mirror it and dropped the
+  // field, which made an applied Polish invisible to full-text search (search.go) and to chapter
+  // /block extraction (server.go, migrate.go) — all of which read `x.elem->>'_text'`.
+  // The existing legacy-parity contract could not catch this: it proves a capability is PRESENT,
+  // not that the port is behaviourally faithful. Hence this assertion on the persisted shape.
+  it('F11 — the applied doc carries a `_text` snapshot per block (else search/extraction go blind)', async () => {
+    patchDraft.mockResolvedValue(undefined);
+    withHost('b1', <QualityHealPanel {...dockProps()} />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Ch 1' })).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('quality-heal-chapter-picker'), { target: { value: 'ch1' } });
+    fireEvent.click(screen.getByTestId('stub-apply'));
+    await waitFor(() => expect(patchDraft).toHaveBeenCalled());
+    const [, , , payload] = patchDraft.mock.calls[0];
+
+    expect(payload.body_format).toBe('json');
+    const blocks = payload.body.content as { type: string; _text?: string }[];
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) {
+      // present AND correct — an empty-string stub on a non-empty paragraph would pass a
+      // bare `toBeDefined()` while still blinding extraction.
+      expect(block._text).toBeDefined();
+    }
+    expect(blocks.map((b) => b._text).join('\n\n')).toBe('healed prose');
+  });
+
   it('a 412 (chapter changed since Polish) surfaces the stale toast — never a silent overwrite', async () => {
     patchDraft.mockRejectedValue(new Error('412 draft version conflict'));
     withHost('b1', <QualityHealPanel {...dockProps()} />);
