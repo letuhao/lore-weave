@@ -402,7 +402,16 @@ class GlossaryClient:
                 return None
             return resp.json()
         except (httpx.HTTPError, ValueError) as exc:
-            logger.warning("glossary list-entities failed: %s", exc)
+            # Log the TYPE, not just str(exc): an httpx timeout stringifies to the
+            # EMPTY string, so this line read "glossary list-entities failed: " and said
+            # nothing. That mattered — this is the anchor pre-load, and its failure
+            # silently degrades a whole chapter's extraction into minting duplicates
+            # beside the author's canon (live-caught 2026-07-27, and it cost a long dig
+            # to identify precisely because the message was blank).
+            logger.warning(
+                "glossary list-entities failed: %s: %s",
+                type(exc).__name__, exc or "(no detail — likely a timeout)",
+            )
             return None
 
     async def list_entity_ids(

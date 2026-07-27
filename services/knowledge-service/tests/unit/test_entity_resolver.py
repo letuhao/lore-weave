@@ -594,3 +594,78 @@ async def test_resolver_global_scope_uses_global_string_in_lookup(
 
     # project_scope arg = literal 'global' (not None, not empty).
     assert alias_repo.lookup.await_args.args[1] == "global"
+
+
+# ── D-KG-KIND-VOCAB-FORK ────────────────────────────────────────────────────
+#
+# Entity identity is hash(user, project, name, kind), so a kind MISS does not degrade to
+# "no anchor" — it mints a SECOND node beside the author's. Measured on the live Mị Đế
+# chapter: Chân Linh, Vô Cấu Chân Linh and Thần hồn each forked a duplicate, because the
+# extractor emits from the project's KG schema (general@v1 has no `power_system`) while
+# a glossary kind is whatever the author's book ontology defines.
+
+@pytest.mark.asyncio
+async def test_anchor_matches_when_the_extractor_CANNOT_express_its_kind(monkeypatch):
+    """`power_system` has no extractor counterpart, so `concept` normalising to
+    `terminology` misses — and the miss used to mint a duplicate."""
+    idx = build_anchor_index([_anchor("Chân Linh", kind="power_system")])
+
+    async def boom(*a, **k):  # merge_entity must NOT be reached
+        raise AssertionError("forked a new node instead of matching the anchor")
+
+    monkeypatch.setattr("app.extraction.entity_resolver.merge_entity", boom)
+
+    out = await resolve_or_merge_entity(
+        MagicMock(), idx, user_id="u", project_id="p",
+        name="Chân Linh", kind="concept", source_type="chapter",
+    )
+    assert out.id == _anchor("Chân Linh", kind="power_system").canonical_id
+
+
+@pytest.mark.asyncio
+async def test_a_kind_the_extractor_COULD_have_said_still_forks(monkeypatch):
+    """The guard that keeps this honest: if the extractor can express `character` and
+    chose `place` anyway, that is a real classification decision — a `place` Phoenix is
+    not the `character` Phoenix, and merging them would be a data-loss bug."""
+    idx = build_anchor_index([_anchor("Phoenix", kind="character")])
+    calls = 0
+
+    async def fake_merge(session, **kwargs):
+        nonlocal calls
+        calls += 1
+        return Entity(id="minted", user_id=kwargs["user_id"],
+                      project_id=kwargs["project_id"], name=kwargs["name"],
+                      canonical_name=kwargs["name"].lower(), kind=kwargs["kind"])
+
+    monkeypatch.setattr("app.extraction.entity_resolver.merge_entity", fake_merge)
+    await resolve_or_merge_entity(
+        MagicMock(), idx, user_id="u", project_id="p",
+        name="Phoenix", kind="place", source_type="chapter",
+    )
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_an_AMBIGUOUS_name_never_takes_the_fallback(monkeypatch):
+    """Two anchors sharing a name under different kinds: the kind is the only thing
+    telling them apart, so no fallback key is registered and the strict lookup stands —
+    even though neither kind is expressible."""
+    idx = build_anchor_index([
+        _anchor("Vô Cấu", kind="power_system"),
+        _anchor("Vô Cấu", kind="terminology"),
+    ])
+    calls = 0
+
+    async def fake_merge(session, **kwargs):
+        nonlocal calls
+        calls += 1
+        return Entity(id="minted", user_id=kwargs["user_id"],
+                      project_id=kwargs["project_id"], name=kwargs["name"],
+                      canonical_name=kwargs["name"].lower(), kind=kwargs["kind"])
+
+    monkeypatch.setattr("app.extraction.entity_resolver.merge_entity", fake_merge)
+    await resolve_or_merge_entity(
+        MagicMock(), idx, user_id="u", project_id="p",
+        name="Vô Cấu", kind="person", source_type="chapter",
+    )
+    assert calls == 1

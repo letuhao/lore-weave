@@ -145,6 +145,42 @@ Before: that query returned nothing for this project.
 **Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
 **2583** · FE world-setup **8**.
 
+## ✅ KIND-VOCABULARY FORK CLOSED — `D-KG-KIND-VOCAB-FORK` (2026-07-27)
+
+KG entity identity is `hash(user, project, name, kind)`, so a kind MISS does not degrade
+to "no anchor" — it **mints a second node beside the author's**. The extractor emits from
+the project's KG schema (`general@v1` = artifact|concept|organization|other|person|place)
+while a glossary kind is whatever the author's book ontology defines, and
+`_EXTRACTOR_TO_GLOSSARY_KIND` cannot bridge what it has never seen: `power_system` has no
+extractor counterpart at all, so `concept` normalised to `terminology` and missed.
+
+A perfect mapping is unreachable — both vocabularies are user-extensible — so the fix is
+in identity, not vocabulary. The anchor index gained a name-only fallback that fires under
+**two** conditions, both required:
+1. the folded name belongs to exactly ONE anchor across all kinds (a name shared by
+   anchors of different kinds registers no fallback at all — there the kind is the only
+   thing telling them apart);
+2. the anchor's kind is one the extractor **cannot express**. If it could have said
+   `character` and said `place` instead, that is a real classification decision and the
+   disagreement means something (a `place` Phoenix is not the `character` Phoenix). If the
+   anchor is a `power_system`, the extractor had no word for it and its `concept` is not
+   evidence of anything.
+
+**Live-proven**, log verbatim: `K13.0 resolver: kind-vocabulary fallback matched 'Vô Cấu
+Chân Linh' (extractor kind=concept → terminology, anchor kind=power_system is not
+expressible)`. Node count for that name went **2 → 1**, and the surviving node is the
+author's `power_system` anchor carrying the mention. Each new test reds without the fix.
+
+**▶ Found while verifying — a transient glossary timeout silently forks a whole chapter.**
+The final full-path job minted duplicates for everything, and the cause was NOT the
+resolver: `K13.0: glossary list_all_entities failed … skipping anchor pre-load (extractor
+will mint-on-no-match)`. The anchor pre-load timed out, so the whole chapter extracted
+un-anchored. It cost a long dig because the underlying log line read `glossary
+list-entities failed: ` — an httpx timeout stringifies to the EMPTY string. That line now
+logs the exception TYPE. The deeper question (retry the pre-load, or fail the item rather
+than mint duplicates that need manual merging later?) is untouched and is the next thing
+to decide.
+
 ## ✅ CHAIN CLOSED — the first extraction job this instance has EVER run (2026-07-27)
 
 The benchmark gate was demoted to advisory (below), the job ran, and the grounding chain
