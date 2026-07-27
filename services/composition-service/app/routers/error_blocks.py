@@ -19,7 +19,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from app.db.models import ErrorBlockKind
+from app.db.models import ErrorBlockKind, ErrorBlockStatus
 from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.error_blocks import (
@@ -109,7 +109,10 @@ def _parse_if_match(if_match: str | None) -> int | None:
 async def list_error_blocks(
     project_id: UUID,
     chapter_id: UUID,
-    status: str | None = None,
+    # Enum-locked, NOT a free string. `?status=typo` against a bare `str` returns an empty list
+    # that is indistinguishable from "this chapter has no marks" — the silent-no-op class the
+    # closed-set discipline exists to kill. FastAPI 422s an un-enumerated value instead.
+    status: ErrorBlockStatus | None = None,
     include_archived: bool = False,
     limit: int = 200,
     user_id: UUID = Depends(get_current_user),
@@ -149,6 +152,16 @@ async def create_error_block(
         raise HTTPException(status_code=400, detail={
             "code": "ERROR_BLOCK_SPAN_INVALID",
             "start_offset": body.start_offset, "end_offset": body.end_offset,
+        })
+    # The span and the quote are ONE anchor: a length mismatch means the caller computed them in
+    # different coordinate spaces (or off different documents). Stored as-is it would still
+    # "work" — the server re-anchors by quote — but it would silently re-anchor on EVERY read,
+    # hiding a caller bug behind the safety net. Reject it where it can still be fixed.
+    if body.end_offset - body.start_offset != len(body.quote):
+        raise HTTPException(status_code=400, detail={
+            "code": "ERROR_BLOCK_SPAN_QUOTE_MISMATCH",
+            "span_length": body.end_offset - body.start_offset,
+            "quote_length": len(body.quote),
         })
     try:
         block = await blocks.create(

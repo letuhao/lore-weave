@@ -2052,8 +2052,17 @@ CREATE INDEX IF NOT EXISTS idx_chapter_error_block_job
   ON chapter_error_block(job_id) WHERE job_id IS NOT NULL;
 -- Kill accidental duplicate marks (double-click, two devices) WITHOUT forbidding two genuinely
 -- different notes on the same span — an author may well mark one passage for two reasons.
+--
+-- COALESCE(chapter_id, job_id) closes a NULL HOLE found at /review-impl: on the draft_job arm
+-- `chapter_id` is NULL, and Postgres treats NULLs as DISTINCT in a unique index, so keying on
+-- `chapter_id` alone left the preview arm completely unguarded. Duplicates were creatable there,
+-- and the accept migration then set `chapter_id` and collided — inside a single transaction, so
+-- ONE duplicate lost the migration of EVERY mark on that draft. Keying on the effective target
+-- guards both arms with one index.
+DROP INDEX IF EXISTS uq_chapter_error_block_open;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_chapter_error_block_open
-  ON chapter_error_block(project_id, chapter_id, start_offset, end_offset, md5(note))
+  ON chapter_error_block(
+       project_id, COALESCE(chapter_id, job_id), start_offset, end_offset, md5(note))
   WHERE status = 'open' AND NOT is_archived;
 """
 

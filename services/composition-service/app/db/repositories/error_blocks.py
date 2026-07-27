@@ -290,19 +290,33 @@ class ErrorBlocksRepo:
         indistinguishable from one the author fixed.
         """
         moved = 0
+        collided: list[UUID] = []
         async with self._pool.acquire() as c:
             async with c.transaction():
                 for block_id, (start, end) in located.items():
-                    await c.execute(
-                        """
-                        UPDATE chapter_error_block
-                        SET target_kind = 'chapter_draft', chapter_id = $3, draft_version = $4,
-                            start_offset = $5, end_offset = $6, source_fingerprint = $7,
-                            job_id = NULL, updated_at = now()
-                        WHERE project_id = $1 AND id = $2
-                        """,
-                        project_id, block_id, chapter_id, draft_version, start, end, fingerprint,
-                    )
+                    # Per-row SAVEPOINT. Two marks on one preview can re-anchor onto the SAME
+                    # chapter span (identical quotes at different preview offsets), and with the
+                    # same note that hits `uq_chapter_error_block_open`. Without this nested
+                    # transaction the violation would abort the OUTER one and lose the migration
+                    # of every OTHER mark on the draft — one duplicate costing the whole set.
+                    # A collided block simply falls through to the orphan sweep below, which is
+                    # the honest outcome: its twin already carries that complaint.
+                    try:
+                        async with c.transaction():
+                            await c.execute(
+                                """
+                                UPDATE chapter_error_block
+                                SET target_kind = 'chapter_draft', chapter_id = $3,
+                                    draft_version = $4, start_offset = $5, end_offset = $6,
+                                    source_fingerprint = $7, job_id = NULL, updated_at = now()
+                                WHERE project_id = $1 AND id = $2
+                                """,
+                                project_id, block_id, chapter_id, draft_version,
+                                start, end, fingerprint,
+                            )
+                    except asyncpg.UniqueViolationError:
+                        collided.append(block_id)
+                        continue
                     moved += 1
                 # ORDER MATTERS: the re-targeted rows above cleared their `job_id`, so this
                 # sweep can key on `job_id = $2` and by construction touches only the blocks
