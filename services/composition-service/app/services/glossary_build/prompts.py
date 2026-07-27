@@ -58,24 +58,111 @@ def planner_messages(source_text: str, kinds: list[str], existing_names: list[st
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
-def _entity_schema_hint(kinds: list[str], lang: str) -> str:
+# ── field selection (measured, eval/schema_recall_poc.py) ────────────────────
+#
+# NARROW_THRESHOLD: a schema with at most this many fields is already focused —
+# cutting it gains NOTHING (terminology 4→2 measured identical, 123 ch/field
+# both ways). Wider than this and narrowing pays: power_system 7→3 gained +66%
+# depth (88 → 146 ch/field). So slice by threshold, never mechanically.
+NARROW_THRESHOLD = 4
+# How many fields a WIDE schema is cut down to for a standard build. A `deep`
+# build always gets the full schema — its steered sections have room for breadth.
+WIDE_CORE_FIELDS = 4
+# Kinds this narrow can be built several-at-a-time in ONE call (one schema, no
+# context-switching): measured 3x cheaper with only mild decay across positions
+# (98/89/87 ch/field) — nothing like the 7→1 collapse of mixed-kind batching.
+BATCH_MAX = 3
+
+
+# Information density by field type. `sort_order` is a FORM-LAYOUT signal (short
+# scalars first, prose last, because that is how a form should READ) — using it to
+# decide what MATTERS inverts the priority: measured live, slicing `item` by
+# sort_order kept name/aliases/type/owner and dropped BOTH `description` and
+# `symbolic_meaning`, i.e. every field that carries actual meaning. Prose first.
+_TYPE_RANK = {"textarea": 0, "text": 1, "richtext": 0, "tags": 2, "number": 2}
+
+
+def _rank(d: dict) -> tuple:
+    return (not d.get("is_required"),                       # required always first
+            _TYPE_RANK.get(str(d.get("field_type") or "text"), 1),
+            d.get("sort_order") or 0)
+
+
+def select_fields(defs: list[dict], *, deep: bool) -> list[str]:
+    """The attribute codes to ask for. A deep build takes everything; a standard
+    build narrows a WIDE schema, keeping required + the most INFORMATION-DENSE
+    fields (prose before scalars before tag lists) rather than form order."""
+    codes = [str(d.get("code")) for d in defs if d.get("code")]
+    if deep or len(codes) <= NARROW_THRESHOLD:
+        return codes
+    ranked = sorted((d for d in defs if d.get("code")), key=_rank)
+    required = [str(d["code"]) for d in ranked if d.get("is_required")]
+    return [str(d["code"]) for d in ranked][:max(WIDE_CORE_FIELDS, len(required))]
+
+
+def _field_spec(fields: list[str], types: dict[str, str] | None = None) -> str:
+    """Render the JSON skeleton, carrying each field's SHAPE.
+
+    Distinct from the `auto_fill_prompt` the POC rejected: that was human PROSE
+    guidance (it diluted attention, 123 → 96 chars/field). This is a structural
+    marker — a `tags` field must come back as a JSON array, a `textarea` as a
+    paragraph. Live-caught: with no shape marker the model returned a list for
+    `aliases` and the postprocess stringified it into "['a', 'b']"."""
+    types = types or {}
+    out = []
+    for c in fields:
+        t = types.get(c, "text")
+        if t == "tags":
+            out.append(f'"{c}": ["...", "..."]')
+        elif t in ("textarea", "richtext"):
+            out.append(f'"{c}": "... (2-4 câu)"')
+        else:
+            out.append(f'"{c}": "..."')
+    return ", ".join(out)
+
+
+# Declared absence. Fiction is not a form to be filled: a kind can define an
+# attribute the story has simply not established yet, and FORCING a value there is
+# strictly worse than leaving it empty — the glossary is the SSOT, so an invented
+# `owner` becomes canon and propagates to KG → plan → draft. So the model is given
+# an explicit way to say "nothing here", which lets the platform tell a real
+# authoring gap (declared) apart from an attention drop (silently missing). Worded
+# with a HIGH bar on purpose: an escape hatch that is too easy becomes laziness.
+_ABSENT_RULE = (
+    "If the story establishes NOTHING for a field, return null for that field — "
+    "never invent one. null is ONLY for a field with no basis in the text at all; "
+    "it is not a way to avoid work. "
+)
+
+
+def _entity_schema_hint(fields: list[str], lang: str,
+                        types: dict[str, str] | None = None) -> str:
+    """The output contract for ONE entity.
+
+    POC finding (2026-07-27): injecting each field's authored `auto_fill_prompt`
+    made quality WORSE (123 → 96 chars/field) and cost 20% more tokens — the hints
+    are written for humans and dilute attention. So: field codes + SHAPE only.
+    """
+    spec = _field_spec(fields, types)
     return (
         "Return ONLY one JSON object (no markdown): "
-        '{"name":"...","kind":"<' + "|".join(kinds) + '>",'
-        '"attributes":{"gender":"...","role":"...","social_class":"...","affiliation":"...",'
-        '"personality":"...","description":"...","goals":"...","secrets":"..."},'
+        '{"attributes":{ ' + spec + ' },'
         '"relations":[{"target_name":"...","type":"<' + "|".join(RELATION_TYPES) + '>",'
         '"note":"..."}]} '
-        "Omit attributes that do not apply to this kind; every value is 1-3 SPECIFIC "
-        "sentences with concrete detail. relations.target_name is the OTHER entity's NAME "
-        "(never an id). " + _lang_line(lang)
+        "Use EXACTLY those attribute keys — no others, and keep each value in the "
+        "shape shown (an array stays an array). Values are SPECIFIC, with concrete "
+        "detail. " + _ABSENT_RULE +
+        "relations.target_name is the OTHER entity's NAME (never an id). "
+        + _lang_line(lang)
     )
 
 
 def executor_messages(source_text: str, item_name: str, item_kind: str,
-                      kinds: list[str], lang: str = "vi") -> list[dict]:
-    """DEPTH, one item — the E1/E3 focused single-shot shape."""
-    system = "You are a profile editor for a fiction glossary. " + _entity_schema_hint(kinds, lang)
+                      fields: list[str], lang: str = "vi",
+                      types: dict[str, str] | None = None) -> list[dict]:
+    """DEPTH, one item — the E1/E3 focused single-shot shape, over the kind's REAL fields."""
+    system = ("You are a profile editor for a fiction glossary. "
+              + _entity_schema_hint(fields, lang, types))
     user = (
         f"STORY CONTEXT:\n{source_text}\n\n"
         f"Build a DETAILED profile for exactly ONE entity: {item_name} (kind: {item_kind})."
@@ -123,14 +210,38 @@ def deep_section_messages(section: str, focus: str, index: int) -> dict:
 
 
 def distill_messages(item_name: str, item_kind: str, profile_text: str,
-                     kinds: list[str], lang: str = "vi") -> list[dict]:
+                     fields: list[str], lang: str = "vi",
+                     types: dict[str, str] | None = None) -> list[dict]:
     """Deep profile → the short attribute set (one cheap call; spec weakness #3)."""
-    system = (
-        "You distill a long profile into glossary attributes. " + _entity_schema_hint(kinds, lang)
-    )
+    system = ("You distill a long profile into glossary attributes. "
+              + _entity_schema_hint(fields, lang, types))
     user = (
         f"LONG PROFILE of {item_name} (kind: {item_kind}):\n{profile_text}\n\n"
         "Distill it into the JSON attribute object. Keep every value faithful to the "
         "profile — no new inventions in this step."
     )
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def batch_messages(source_text: str, names: list[str], item_kind: str,
+                   fields: list[str], lang: str = "vi",
+                   types: dict[str, str] | None = None) -> list[dict]:
+    """Several entities of the SAME kind in ONE call, sharing ONE schema.
+
+    Measured 3x cheaper than per-item with only mild positional decay, BECAUSE the
+    schema never changes mid-call. NEVER mix kinds here: the E2 collapse (7 attrs on
+    the first entity, 1 on the last) came from making the model context-switch."""
+    spec = _field_spec(fields, types)
+    system = (
+        "You are a profile editor for a fiction glossary. Return ONLY a JSON ARRAY, "
+        'one element per entity: {"name":"...","attributes":{ ' + spec + ' },'
+        '"relations":[{"target_name":"...","type":"<' + "|".join(RELATION_TYPES) + '>",'
+        '"note":"..."}]} '
+        "Use EXACTLY those attribute keys, keeping each value in the shape shown. "
+        "Values are SPECIFIC, with concrete detail. " + _ABSENT_RULE +
+        "relations.target_name is the OTHER entity's NAME (never an id). " + _lang_line(lang)
+    )
+    user = (f"STORY CONTEXT:\n{source_text}\n\n"
+            f"Build a profile for EACH of these {len(names)} entities (all of kind "
+            f"{item_kind}): " + ", ".join(names) + ".")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]

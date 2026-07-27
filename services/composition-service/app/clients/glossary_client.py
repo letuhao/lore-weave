@@ -99,6 +99,43 @@ class GlossaryClient:
     # entity-list read was removed here so it can't be reintroduced as a bypass.
 
 
+    async def read_book_ontology(
+        self, bearer: str, book_id: UUID,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """The book's REAL attribute schema per kind: ``{kind_code: [attr, ...]}``,
+        each attr ordered required-first then by ``sort_order``.
+
+        Load-bearing for glossary-build (M6): the executor used to emit a fixed
+        character-shaped attribute set for EVERY kind, so `terminology` (whose real
+        fields are term/definition/category/usage_note) produced rows with NOTHING
+        written — 5 empty shells on the live Mị Đế build.
+
+        Uses the PUBLIC ontology route because the internal one is contract-bound to
+        knowledge-service's `OntologyKinds` model and deliberately returns kinds
+        without attributes — widening it would drift that contract. Returns {} on any
+        failure; the caller must then SKIP rather than fall back to a guessed schema
+        (falling back is exactly how the empty shells happened)."""
+        url = f"{self._base_url}/v1/glossary/books/{book_id}/ontology"
+        try:
+            resp = await self._http.get(
+                url, headers={"Authorization": f"Bearer {bearer}"})
+            if resp.status_code != 200:
+                logger.warning("glossary ontology → %d", resp.status_code)
+                return {}
+            body = resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("glossary ontology unavailable: %s", exc)
+            return {}
+        by_kind_id = {k.get("book_kind_id"): k.get("code") for k in (body.get("kinds") or [])}
+        out: dict[str, list[dict[str, Any]]] = {}
+        for a in (body.get("attributes") or []):
+            code = by_kind_id.get(a.get("kind_id"))
+            if code and a.get("code"):
+                out.setdefault(code, []).append(a)
+        for defs in out.values():
+            defs.sort(key=lambda d: (not d.get("is_required"), d.get("sort_order") or 0))
+        return out
+
     async def seed_entities_or_raise(
         self, book_id: UUID, *, source_language: str, entities: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:

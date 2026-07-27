@@ -72,7 +72,61 @@ entity_id; name resolution must cover the whole project graph, not just the curr
 
 - **Decisions**: sections above. | **Parked**: rail delegation swap (after M5); wiki flywheel
   extraction of deep-profile inventions (tracked, not in this cycle).
-## 🔴 M6 — SCHEMA-AWARE EXECUTOR (next; diagnosed 2026-07-27, not yet built)
+## ✅ M6 — SCHEMA-AWARE EXECUTOR (built + live-proven 2026-07-27)
+
+**Outcome — attribute fill, measured on the live Mị Đế book (same source text, same model):**
+
+| Run | Fields asked | Fields filled | Miss |
+|---|---|---|---|
+| `019fa28f` (before) | 38 | 19 | **50%** |
+| `019fa2e5` (after) | 26 | 26 | **0%** |
+| `019fa2f7` (after) | 26 | 26 | **0%** |
+
+Empty shells: **5 → 0**. Suite 2529 passed.
+
+**What was built** — the ontology read (`read_book_ontology`, minted service bearer, fetched
+ONCE per run), the no-empty-shell intersect at the write boundary, and per-kind field selection
+sized by a POC (`eval/schema_recall_poc.py`, 6 arms): narrowing a schema pays only when it is
+WIDE (power_system 7→3 = +66% depth; terminology 4→2 = no change), so `NARROW_THRESHOLD=4`
+gates it; same-kind items batch 3-at-a-time (3× cheaper, mild decay) but **never** mixed kinds.
+The POC also **overturned an assumption**: injecting each field's authored `auto_fill_prompt`
+made quality *worse* (123 → 96 chars/field) and cost 20% more tokens — those hints are written
+for humans and dilute attention. So the prompt carries field codes + SHAPE only.
+
+**Two steering defects found after the first live re-run — both were the SAME mistake, one
+level down: reading the schema but throwing its metadata away.**
+
+1. *Type stripped in, typed value destroyed out.* `aliases` is `field_type=tags`. The prompt
+   sent bare field names plus "1-3 câu" — wrong instruction for a list — and the postprocess ran
+   `str(v)` on everything, turning the model's correct JSON array into a Python repr
+   `"['a','b']"` that the glossary then wrapped again → `["['a','b']"]`. The model was right;
+   the platform mis-instructed it and then corrupted the right answer. Fixed by rendering each
+   field's shape (`"aliases": ["...", "..."]` vs `"description": "... (2-4 câu)"`) and keeping
+   lists intact. Live: `["Lõi năng lượng nguyên thủy","Điểm kỳ dị của thần hồn","Mỏ neo bản thể"]`.
+2. *`sort_order` used as a value signal.* It is FORM LAYOUT (short scalars first, prose last).
+   Slicing `item` by it kept `name/aliases/type/owner` and dropped BOTH `description` and
+   `symbolic_meaning` — every field carrying meaning. Fixed to rank by information density
+   (required → textarea → text → tags). Live: `Pháp khí` now keeps its two prose fields.
+
+**Declared absence (added same cycle).** Fiction is not a form to be filled: a kind can define
+an attribute the story has not established yet. The executor now offers an explicit `null` (with
+a deliberately HIGH bar — "not a way to avoid work"), and the postprocess splits the result into
+`absent` (the model said there is no basis — an authoring prompt for the human at CP2) vs
+`missing` (never answered — an attention drop, the *only* signal that would justify a repair
+call). Both ride on the item in the run API. Word forms count too (`"chưa xác định"` etc.),
+or the placeholder itself lands in the SSOT as canon.
+
+*Why no auto-repair loop:* with fill at 0% miss there is nothing to recover, and a retry that can
+only succeed by producing text is a hallucination pump — it re-asks for what the story has no
+answer to and the model obliges. **Fill-rate is a diagnostic, not a target.** The glossary is the
+SSOT, so an invented `owner` propagates to KG → plan → draft and becomes canon the author never
+chose. The asymmetry says: bias to under-fill, and let the human close the gap.
+Live-proven on `019fa32b` (`Pháp khí`, deep, full 6-field schema):
+`absent=["aliases","owner"]`, `missing=[]` — exactly the two fields the source text is silent on,
+with the other four fully written. Note the deep path DOES invent (it named materials the source
+never gives) — which is precisely why CP2 is a human, not a loop.
+
+<details><summary>Original M6 diagnosis (2026-07-27, before the build)</summary>
 
 **The finding (quality audit of the wizard's own output).** The executor emits a FIXED,
 character-shaped attribute set (`name/description/role/personality/…`) for EVERY kind. It
@@ -106,6 +160,8 @@ per-attribute hint written FOR an AI to use — stored but unread, the SET-stand
 
 Expected gain: entity richness roughly triples for non-character kinds, and the empty-shell
 class becomes impossible.
+
+</details>
 
 - **Debt/Drift**:
   - *Durability*: the v1 driver is an in-process asyncio task — a restart mid-build leaves a

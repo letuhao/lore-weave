@@ -27,6 +27,7 @@ from app.clients.llm_client import LLMClient
 # convention but one source of truth beats a drifting copy.
 from app.engine.compress import _NO_THINK
 from app.services.glossary_build import engine
+from app.services.glossary_build.prompts import BATCH_MAX, NARROW_THRESHOLD, select_fields
 
 logger = logging.getLogger("app.services.glossary_build")
 
@@ -167,6 +168,24 @@ class GlossaryBuildService:
                 raise LLMError(f"glossary_build LLM job status={getattr(job, 'status', None)}")
             return extract_judge_content(job.result)
         return call
+
+    async def _ontology(self, run: dict) -> dict[str, list[dict]]:
+        """The book's REAL per-kind attribute schema, read ONCE per run.
+
+        The background driver holds no user bearer, so mint the short-lived service
+        bearer for the run's owner — the same pattern the MCP path uses for
+        book-service draft routes. {} on failure: the caller must then SKIP every
+        item, never fall back to a guessed schema (that fallback is what produced
+        the empty shells)."""
+        from app.config import settings
+        from app.mcp.service_bearer import mint_service_bearer
+        try:
+            bearer = mint_service_bearer(UUID(str(run["owner_user_id"])), settings.jwt_secret)
+            return await self._glossary.read_book_ontology(bearer, run["book_id"])
+        except Exception:  # noqa: BLE001 — schema read is never allowed to crash the run
+            logger.warning("glossary_build: ontology read failed for run=%s", run["run_id"],
+                           exc_info=True)
+            return {}
 
     def _params(self, run: dict) -> dict:
         p = run.get("params") or {}
@@ -391,7 +410,40 @@ class GlossaryBuildService:
             kinds = p.get("kinds") or DEFAULT_KINDS
             llm = self._llm_fn(user_id=str(run["owner_user_id"]),
                                model_source=p["model_source"], model_ref=p["model_ref"])
-            for item in await self._repo.list_items(run_id, owner):
+            ontology = await self._ontology(run)
+            pending = [i for i in await self._repo.list_items(run_id, owner)
+                       if i["status"] == "pending"]
+            # BATCH pass (measured 3x cheaper): only `standard` items, grouped by
+            # kind, only for kinds whose schema is already narrow — and NEVER mixing
+            # kinds in a call (that is the E2 collapse). Anything the batch does not
+            # return simply falls through to the per-item loop below.
+            batched: dict[str, dict] = {}
+            by_kind: dict[str, list[dict]] = {}
+            for i in pending:
+                if i["depth"] == "standard" and ontology.get(i["kind"]):
+                    by_kind.setdefault(i["kind"], []).append(i)
+            for kind, group in by_kind.items():
+                # Batch eligibility is decided on the kind's FULL schema width, never
+                # on the post-slice width: a wide kind narrowed to 4 core fields is
+                # still a wide kind, and the POC only validated batching for schemas
+                # that are genuinely small (terminology-shaped).
+                if len(ontology[kind]) > NARROW_THRESHOLD or len(group) < 2:
+                    continue
+                fields = select_fields(ontology[kind], deep=False)
+                types = {str(d.get("code")): str(d.get("field_type") or "text")
+                         for d in ontology[kind]}
+                for start in range(0, len(group), BATCH_MAX):
+                    chunk = group[start:start + BATCH_MAX]
+                    try:
+                        got = await engine.build_batch(
+                            llm, source_text=p["source_text"],
+                            names=[c["name"] for c in chunk], kind=kind,
+                            fields=fields, lang=p.get("lang", "vi"), types=types)
+                    except LLMError:
+                        got = {}          # per-item loop retries these individually
+                    batched.update(got)
+
+            for item in pending:
                 if item["status"] != "pending":
                     continue  # resume-safe: already handled
                 # Re-read the RUN before each item: a /cancel from another request
@@ -403,23 +455,39 @@ class GlossaryBuildService:
                                 run_id, (live or {}).get("status"))
                     return
                 await self._repo.update_item(item["item_id"], owner, status="building")
+                defs = ontology.get(item["kind"]) or []
+                if not defs:
+                    # No schema ⇒ SKIP. Guessing the fields is what wrote rows with
+                    # no name and no attributes on the first live run.
+                    await self._repo.update_item(
+                        item["item_id"], owner, status="skipped",
+                        skip_reason=f"no attribute schema for kind '{item['kind']}'")
+                    continue
+                fields = select_fields(defs, deep=item["depth"] == "deep")
+                types = {str(d.get("code")): str(d.get("field_type") or "text") for d in defs}
+                sections: list[dict] = []
+                entity = batched.get(item["name"])
                 try:
-                    if item["depth"] == "deep":
+                    if entity is not None:
+                        pass                      # already built in the batch pass
+                    elif item["depth"] == "deep":
                         entity, sections = await engine.build_deep(
                             llm, source_text=p["source_text"], name=item["name"],
-                            kind=item["kind"], kinds=kinds, lang=p.get("lang", "vi"))
+                            kind=item["kind"], fields=fields, lang=p.get("lang", "vi"),
+                            types=types)
                     else:
                         entity = await engine.build_standard(
                             llm, source_text=p["source_text"], name=item["name"],
-                            kind=item["kind"], kinds=kinds, lang=p.get("lang", "vi"))
-                        sections = []
+                            kind=item["kind"], fields=fields, lang=p.get("lang", "vi"),
+                            types=types)
                 except LLMError as exc:
                     await self._repo.update_item(item["item_id"], owner, status="skipped",
                                                  skip_reason=f"llm: {exc}")
                     continue
                 if entity is None:
-                    await self._repo.update_item(item["item_id"], owner, status="skipped",
-                                                 skip_reason="invalid model output after retry")
+                    await self._repo.update_item(
+                        item["item_id"], owner, status="skipped",
+                        skip_reason="the model returned nothing that fits this kind's schema")
                     continue
                 await self._repo.update_item(
                     item["item_id"], owner, status="built", built=entity,

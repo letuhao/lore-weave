@@ -13,6 +13,8 @@ from app.services.glossary_build import engine
 from app.services.glossary_build.prompts import RELATION_TYPES
 
 KINDS = ["character", "organization", "terminology"]
+# the kind's REAL attribute codes (what the executor is now told to fill)
+FIELDS = ["name", "role", "description"]
 
 
 def fake_llm(responses: list[str]):
@@ -72,7 +74,7 @@ async def test_standard_build_cleans_relations_to_the_closed_set():
              ]}
     llm = fake_llm([json.dumps(built)])
     out = await engine.build_standard(
-        llm, source_text="s", name="X", kind="character", kinds=KINDS, lang="vi")
+        llm, source_text="s", name="X", kind="character", fields=FIELDS, lang="vi")
     assert out["attributes"] == {"role": "hero"}
     assert out["relations"] == [{"target_name": "Lâm gia", "type": "member_of", "note": "n"}]
     assert all(r["type"] in RELATION_TYPES for r in out["relations"])
@@ -82,7 +84,7 @@ async def test_standard_build_cleans_relations_to_the_closed_set():
 async def test_standard_build_empty_attributes_is_a_skip_not_a_fake_entity():
     llm = fake_llm([json.dumps({"name": "X", "kind": "character", "attributes": {}})] * 2)
     out = await engine.build_standard(
-        llm, source_text="s", name="X", kind="character", kinds=KINDS, lang="vi")
+        llm, source_text="s", name="X", kind="character", fields=FIELDS, lang="vi")
     assert out is None
 
 
@@ -99,7 +101,7 @@ async def test_deep_build_outline_steer_distill_happy_path():
     llm = fake_llm([_outline(3), "detail one", "detail two", "detail three",
                     json.dumps(distilled)])
     entity, sections = await engine.build_deep(
-        llm, source_text="s", name="X", kind="character", kinds=KINDS, lang="vi")
+        llm, source_text="s", name="X", kind="character", fields=FIELDS, lang="vi")
     assert entity["attributes"] == {"role": "r"}
     assert [s["section"] for s in sections] == ["S0", "S1", "S2"]
     # 1 outline + 3 sections + 1 distill = 5 calls, no more (bounded by the outline)
@@ -114,7 +116,7 @@ async def test_deep_build_outline_failure_falls_back_to_standard():
     single = {"name": "X", "kind": "character", "attributes": {"role": "r"}, "relations": []}
     llm = fake_llm(["nope", "still nope", json.dumps(single)])
     entity, sections = await engine.build_deep(
-        llm, source_text="s", name="X", kind="character", kinds=KINDS, lang="vi")
+        llm, source_text="s", name="X", kind="character", fields=FIELDS, lang="vi")
     assert entity is not None and sections == []  # fallback recorded via empty sections
 
 
@@ -122,7 +124,7 @@ async def test_deep_build_outline_failure_falls_back_to_standard():
 async def test_deep_build_distill_failure_keeps_the_profile_honestly():
     llm = fake_llm([_outline(2), "long detail A", "long detail B", "bad", "bad again"])
     entity, sections = await engine.build_deep(
-        llm, source_text="s", name="X", kind="character", kinds=KINDS, lang="vi")
+        llm, source_text="s", name="X", kind="character", fields=FIELDS, lang="vi")
     assert len(sections) == 2
     # the long-form work is never silently lost
     assert entity["attributes"]["description"].startswith("long detail A")
@@ -133,6 +135,90 @@ async def test_deep_build_respects_max_sections_cap():
     llm = fake_llm([_outline(12)] + ["d"] * 4 + [json.dumps(
         {"name": "X", "kind": "character", "attributes": {"role": "r"}, "relations": []})])
     entity, sections = await engine.build_deep(
-        llm, source_text="s", name="X", kind="character", kinds=KINDS, lang="vi",
+        llm, source_text="s", name="X", kind="character", fields=FIELDS, lang="vi",
         max_sections=4)
     assert len(sections) == 4  # the loop is bounded by the CAP, not the model's plan
+
+
+# ── M6 steering fixes (live-caught 2026-07-27) ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_list_typed_value_stays_a_LIST_not_a_python_repr():
+    """Live bug: `aliases` (field_type=tags) came back as a JSON array and the
+    postprocess did str(v) → "['a', 'b']", which the glossary then wrapped again
+    into ["['a', 'b']"]. A typed value must survive the boundary intact."""
+    built = {"attributes": {"aliases": ["Hạt nhân nguyên thủy", "Mã nguồn gốc"],
+                            "description": "một hằng số"}}
+    llm = fake_llm([json.dumps(built)])
+    out = await engine.build_standard(
+        llm, source_text="s", name="Chân Linh", kind="power_system",
+        fields=["aliases", "description"], lang="vi",
+        types={"aliases": "tags", "description": "textarea"})
+    assert out["attributes"]["aliases"] == ["Hạt nhân nguyên thủy", "Mã nguồn gốc"]
+    assert isinstance(out["attributes"]["description"], str)
+
+
+def test_the_prompt_shows_a_tags_field_as_an_ARRAY():
+    """The model has to be TOLD the shape — with no marker it guessed, and the
+    guess is what the postprocess then mangled."""
+    from app.services.glossary_build.prompts import executor_messages
+    sysmsg = executor_messages("s", "X", "power_system", ["aliases", "description"],
+                               "vi", {"aliases": "tags", "description": "textarea"})[0]["content"]
+    assert '"aliases": ["...", "..."]' in sysmsg      # array shape, explicitly
+    assert '"description": "... (2-4 câu)"' in sysmsg  # prose shape
+
+
+# ── declared absence (approved 2026-07-27) ───────────────────────────────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", [None, "", "   ", "null", "Không có", "chưa xác định"])
+async def test_an_empty_field_is_DECLARED_absent_not_silently_missing(empty):
+    """Fiction is not a form: a kind may define an attribute the story has not
+    established. The model is allowed to say so — and the word forms count too, or
+    "chưa xác định" would land in the glossary as canon text."""
+    llm = fake_llm([json.dumps({"attributes": {"name": "Pháp khí", "owner": empty}})])
+    out = await engine.build_standard(
+        llm, source_text="s", name="Pháp khí", kind="item",
+        fields=["name", "owner", "description"], lang="vi")
+    assert out["attributes"] == {"name": "Pháp khí"}      # never stored as a value
+    assert out["absent"] == ["owner"]                     # the human's authoring prompt
+    assert out["missing"] == ["description"]              # never mentioned = attention drop
+
+
+@pytest.mark.asyncio
+async def test_an_all_empty_tag_list_counts_as_absent_not_an_empty_list():
+    llm = fake_llm([json.dumps({"attributes": {"name": "X", "aliases": ["", "  "]}})])
+    out = await engine.build_standard(
+        llm, source_text="s", name="X", kind="item", fields=["name", "aliases"],
+        lang="vi", types={"aliases": "tags"})
+    assert "aliases" not in out["attributes"] and out["absent"] == ["aliases"]
+
+
+def test_the_prompt_OFFERS_null_with_a_high_bar():
+    """A retry/nudge that can only succeed by producing text is a hallucination
+    pump — so the escape hatch must exist, but must not read as a free pass."""
+    from app.services.glossary_build.prompts import batch_messages, executor_messages
+    for msgs in (executor_messages("s", "X", "item", ["name"], "vi"),
+                 batch_messages("s", ["X", "Y"], "item", ["name"], "vi")):
+        sysmsg = msgs[0]["content"]
+        assert "return null for that field" in sysmsg
+        assert "not a way to avoid work" in sysmsg
+
+
+def test_slicing_keeps_PROSE_fields_and_drops_tag_lists():
+    """Live bug: slicing `item` by sort_order kept name/aliases/type/owner and
+    dropped BOTH description and symbolic_meaning — every field that carries
+    meaning. sort_order is form layout, not information value."""
+    from app.services.glossary_build.prompts import select_fields
+    item = [
+        {"code": "name", "field_type": "text", "is_required": True, "sort_order": 1},
+        {"code": "aliases", "field_type": "tags", "is_required": False, "sort_order": 2},
+        {"code": "type", "field_type": "text", "is_required": False, "sort_order": 3},
+        {"code": "owner", "field_type": "text", "is_required": False, "sort_order": 4},
+        {"code": "symbolic_meaning", "field_type": "textarea", "is_required": False, "sort_order": 5},
+        {"code": "description", "field_type": "textarea", "is_required": False, "sort_order": 6},
+    ]
+    kept = select_fields(item, deep=False)
+    assert "description" in kept and "symbolic_meaning" in kept   # the prose survives
+    assert "aliases" not in kept                                   # the tag list is cut first
+    assert kept[0] == "name"                                       # required still first

@@ -65,6 +65,16 @@ class EdgeApprove(BaseModel):
     edges: list[dict[str, Any]] | None = None
 
 
+def _gaps(item: dict) -> dict[str, list]:
+    """The CP2 authoring signal. `absent` = the model said the story establishes
+    nothing there (a prompt for the human, NOT a defect); `missing` = fields it never
+    answered at all (an attention drop). The review UI must be able to tell them
+    apart — auto-filling either one would put an invention into the SSOT."""
+    built = item.get("built")
+    built = built if isinstance(built, dict) else {}
+    return {"absent": built.get("absent") or [], "missing": built.get("missing") or []}
+
+
 def _serialize(run: dict) -> dict[str, Any]:
     out = {k: run.get(k) for k in (
         "status", "worklist", "edges", "error_message")}
@@ -82,6 +92,7 @@ def _serialize(run: dict) -> dict[str, Any]:
             "proposed_entity_id": str(i["proposed_entity_id"]) if i.get("proposed_entity_id") else None,
             "relations": i.get("relations") or [],
             "section_count": len(i.get("sections") or []),
+            **_gaps(i),
         } for i in run["items"]]
     return out
 

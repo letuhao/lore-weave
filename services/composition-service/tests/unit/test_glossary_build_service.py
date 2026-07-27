@@ -84,9 +84,37 @@ class FakeLLMClient:
         return "{}"
 
 
+# The REAL shape read from book_attributes: kind_code → ordered attr defs.
+FAKE_ONTOLOGY = {
+    # WIDE, like the real thing (the live `character` kind has 13 attributes) —
+    # so it exercises the slice path and is NEVER batched.
+    "character": [
+        {"code": "name", "is_required": True, "sort_order": 1},
+        {"code": "role", "is_required": False, "sort_order": 2},
+        {"code": "description", "is_required": False, "sort_order": 3},
+        {"code": "gender", "is_required": False, "sort_order": 4},
+        {"code": "affiliation", "is_required": False, "sort_order": 5},
+        {"code": "personality", "is_required": False, "sort_order": 6},
+    ],
+    # a deliberately NARROW kind — the batching + no-slice path
+    "terminology": [
+        {"code": "term", "is_required": True, "sort_order": 1},
+        {"code": "definition", "is_required": False, "sort_order": 2},
+    ],
+    "organization": [
+        {"code": "name", "is_required": True, "sort_order": 1},
+        {"code": "description", "is_required": False, "sort_order": 2},
+    ],
+}
+
+
 class FakeGlossary:
     def __init__(self):
         self.seeded = None
+        self.ontology = FAKE_ONTOLOGY
+
+    async def read_book_ontology(self, bearer, book_id):
+        return self.ontology
 
     async def select_for_context(self, *a, **kw):
         return [{"cached_name": "Lâm Uyên"}]
@@ -171,7 +199,7 @@ async def test_one_bad_item_skips_with_reason_and_the_run_continues():
     assert final["status"] == "proposed"
     by_name = {i["name"]: i for i in final["items"]}
     assert by_name["Bad"]["status"] == "skipped"
-    assert "invalid model output" in by_name["Bad"]["skip_reason"]
+    assert "nothing that fits this kind's schema" in by_name["Bad"]["skip_reason"]
     assert by_name["Good"]["status"] == "proposed"
     assert [e["name"] for e in gl.seeded] == ["Good"]  # only the built item proposed
 
@@ -467,3 +495,106 @@ async def test_cancel_stops_a_building_run():
     await s.approve_plan(run["run_id"], OWNER)
     out = await s.cancel(run["run_id"], OWNER)
     assert out["status"] == "cancelled"
+
+
+# ── M6: schema-aware executor (rules measured in eval/schema_recall_poc.py) ───
+
+def test_select_fields_narrows_only_a_WIDE_schema():
+    """POC: cutting terminology 4→2 gained nothing (123 ch/field both ways), but
+    cutting power_system 7→3 gained +66%. So narrow by THRESHOLD, not mechanically."""
+    from app.services.glossary_build.prompts import select_fields
+    narrow = [{"code": c, "is_required": c == "term", "sort_order": i}
+              for i, c in enumerate(["term", "definition", "category", "usage_note"])]
+    wide = [{"code": c, "is_required": c == "name", "sort_order": i}
+            for i, c in enumerate(["name", "aliases", "type", "rank", "user",
+                                   "effects", "description"])]
+    assert select_fields(narrow, deep=False) == ["term", "definition", "category", "usage_note"]
+    cut = select_fields(wide, deep=False)
+    assert len(cut) == 4 and cut[0] == "name"          # required first, then sort_order
+    assert select_fields(wide, deep=True) == [d["code"] for d in wide]  # deep keeps all
+
+
+def test_prompt_carries_the_kinds_REAL_fields_and_NO_hints():
+    """The bug: a character-shaped field list was sent for every kind. And the POC
+    showed the authored hints make quality WORSE (123→96 ch/field), so codes only."""
+    from app.services.glossary_build.prompts import executor_messages
+    sysmsg = executor_messages("s", "Chân Linh", "terminology",
+                               ["term", "definition"], "vi")[0]["content"]
+    assert '"term"' in sysmsg and '"definition"' in sysmsg
+    assert "gender" not in sysmsg and "personality" not in sysmsg   # the old blind set
+    assert "Định nghĩa ngắn gọn" not in sysmsg                      # no auto_fill_prompt
+
+
+@pytest.mark.asyncio
+async def test_a_kind_with_NO_schema_is_skipped_never_written_blind():
+    """THE empty-shell fix: no attribute schema ⇒ skip with a reason. Guessing the
+    fields is exactly what wrote 5 nameless rows on the first live run."""
+    wl = [{"name": "Ghost", "kind": "character"}]
+    repo, gl = FakeRepo(), FakeGlossary()
+    gl.ontology = {}                                   # ontology unavailable
+    s = GlossaryBuildService(repo, FakeLLMClient([json.dumps(wl), _built("Ghost")]), gl)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s.plan(run["run_id"], OWNER)
+    await s.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+    final = await s.get(run["run_id"], OWNER)
+    item = final["items"][0]
+    assert item["status"] == "skipped"
+    assert "no attribute schema" in item["skip_reason"]
+    assert gl.seeded in (None, [])                     # nothing written to the glossary
+
+
+@pytest.mark.asyncio
+async def test_attributes_outside_the_kinds_schema_are_dropped_not_written():
+    """A character-shaped payload against `terminology` must not reach the glossary."""
+    wl = [{"name": "Chân Linh", "kind": "terminology"}]
+    repo, gl = FakeRepo(), FakeGlossary()
+    bad = json.dumps({"name": "Chân Linh", "attributes": {
+        "gender": "n/a", "personality": "cold", "definition": "tầng bất biến"}})
+    s = GlossaryBuildService(repo, FakeLLMClient([json.dumps(wl), bad]), gl)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s.plan(run["run_id"], OWNER)
+    await s.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+    assert gl.seeded and gl.seeded[0]["attributes"] == {"definition": "tầng bất biến"}
+
+
+@pytest.mark.asyncio
+async def test_narrow_same_kind_items_are_built_in_ONE_batched_call():
+    """POC E: same-kind batching is 3x cheaper with only mild decay — but ONLY for
+    narrow schemas, and never mixing kinds."""
+    wl = [{"name": "Trận pháp", "kind": "terminology"},
+          {"name": "Luyện khí", "kind": "terminology"}]
+    batch = json.dumps([
+        {"name": "Trận pháp", "attributes": {"term": "Trận pháp", "definition": "d1"}},
+        {"name": "Luyện khí", "attributes": {"term": "Luyện khí", "definition": "d2"}},
+    ])
+    repo, gl = FakeRepo(), FakeGlossary()
+    llm = FakeLLMClient([json.dumps(wl), batch])
+    s = GlossaryBuildService(repo, llm, gl)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s.plan(run["run_id"], OWNER)
+    await s.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+    final = await s.get(run["run_id"], OWNER)
+    assert [i["status"] for i in final["items"]] == ["proposed", "proposed"]
+    assert llm.calls == 2, "planner + ONE batch call — not one call per item"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_batch_falls_back_to_per_item_not_lost():
+    """Batching trades failure ISOLATION for tokens — a bad batch must not lose the
+    whole group; each item is retried on its own."""
+    wl = [{"name": "Trận pháp", "kind": "terminology"},
+          {"name": "Luyện khí", "kind": "terminology"}]
+    per_item = json.dumps({"attributes": {"term": "t", "definition": "d"}})
+    repo, gl = FakeRepo(), FakeGlossary()
+    # batch call returns garbage (x2 = the retry), then each item answers alone
+    llm = FakeLLMClient([json.dumps(wl), "garbage", "garbage", per_item, per_item])
+    s = GlossaryBuildService(repo, llm, gl)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s.plan(run["run_id"], OWNER)
+    await s.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+    final = await s.get(run["run_id"], OWNER)
+    assert [i["status"] for i in final["items"]] == ["proposed", "proposed"]

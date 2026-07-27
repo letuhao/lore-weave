@@ -67,7 +67,39 @@ requires a `structure_template_id`). The V2 rewrite just stopped connecting it.
 only `package.json` and runs `npm install`, so it resolves 5.x and is unaffected. Fix locally with
 `npm install` in `frontend/` (its `package-lock.json` is gitignored).
 
-## ✅ GLOSSARY-BUILD PIPELINE — M1–M5 SHIPPED, live-proven end to end (2026-07-27)
+## ✅ GLOSSARY-BUILD PIPELINE — M1–M6 SHIPPED, live-proven end to end (2026-07-27)
+
+**M6 — the executor now reads the book's REAL per-kind schema.** It used to emit a fixed
+character-shaped attribute set for every kind, so `terminology` produced 5 empty shells and
+`power_system` filled 2 of 7. Attribute fill measured live on Mị Đế: **50% miss → 0%**
+(`019fa28f` 19/38 → `019fa2e5` + `019fa2f7` 26/26 each); empty shells **5 → 0**.
+Field selection is POC-sized (`eval/schema_recall_poc.py`, 6 arms): narrowing pays only on a WIDE
+schema (7→3 = +66% depth; 4→2 = no change) so `NARROW_THRESHOLD=4` gates it, same-kind items batch
+3-at-a-time, kinds are NEVER mixed. The POC **overturned an assumption**: injecting each field's
+authored `auto_fill_prompt` made quality *worse* (123 → 96 chars/field, +20% tokens) — those hints
+are written for humans and dilute attention.
+
+Two follow-on steering defects, both the same mistake one level down — *reading the schema then
+throwing its metadata away*: (1) `field_type` stripped on input and destroyed on output, so a
+correct JSON array for `aliases` became the Python repr `"['a','b']"` and got wrapped again; (2)
+`sort_order` (FORM layout) used as a value signal, which sliced `item` down to
+`name/aliases/type/owner` and dropped both prose fields. Fixed by carrying each field's SHAPE into
+the prompt, preserving lists in postprocess, and ranking by information density.
+
+**Declared absence.** Fiction is not a form to be filled — a kind can define an attribute the story
+has not established. The model may now answer `null` (high bar: *"not a way to avoid work"*), and
+the platform splits `absent` (no basis in the text → an authoring prompt for the human at CP2) from
+`missing` (never answered → an attention drop). **No auto-repair loop**: at 0% miss there is nothing
+to recover, and a retry that can only succeed by producing text is a hallucination pump. Fill-rate
+is a diagnostic, not a target — the glossary is the SSOT, so an invented value becomes canon the
+author never chose. Live-proven (`019fa32b`, `Pháp khí` deep/6 fields): `absent=["aliases","owner"]`
+— exactly the two the source is silent on — `missing=[]`, other four fully written.
+
+**Also fixed (pre-existing red, unrelated track):** `test_assembly_mode.py` hardcoded
+`2 scenes × 700`, stale since `288aba7ca` raised `chapter_gen_per_scene_tokens` to 1200. Re-derived
+from `settings` so a deliberate config change can't silently red the suite again.
+
+## ✅ GLOSSARY-BUILD PIPELINE — M1–M5 (2026-07-27)
 **Spec:** [`docs/specs/2026-07-27-glossary-kg-build-workflows.md`](../specs/2026-07-27-glossary-kg-build-workflows.md) ·
 **RUN-STATE plan (re-read first):** [`docs/plans/2026-07-27-glossary-build-pipeline.md`](../plans/2026-07-27-glossary-build-pipeline.md)
 
