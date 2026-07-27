@@ -8,10 +8,12 @@ wrong paragraph and reporting success, which nothing downstream can detect.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
 from app.db.models import ErrorBlock
+from app.engine.cowrite import SELECTION_MAX_CHARS
 from app.engine.error_block_heal import (
     SkippedBlock,
     anchor_blocks,
@@ -19,8 +21,10 @@ from app.engine.error_block_heal import (
     fingerprint,
     locate_nearest,
     merge_overlapping,
+    propose_for_blocks,
 )
 from app.engine.self_heal import EditProposal, locate_span
+from app.packer.profile import BookProfile
 
 # Three identical short lines — the shape fiction produces constantly and the shape that breaks
 # first-match anchoring.
@@ -209,3 +213,148 @@ class TestFingerprint:
 def test_every_repeated_occurrence_is_individually_addressable(quote, hint, trusted):
     got = locate_nearest(quote, REPEATED, hint=hint, hint_trusted=trusted)
     assert got is not None and got[0] == hint
+
+
+# ── propose_for_blocks (the whole flow, with a stub model) ─────────────
+
+class FakeEditLLM:
+    """Returns `reply` for every completion, recording the prompts it was given.
+
+    Deliberately captures the built prompt: the author's note reaching the model is the entire
+    point of an error block, and a `guide=` that silently failed to thread would still produce a
+    plausible-looking edit — the failure would be invisible in the output.
+    """
+
+    def __init__(self, reply: str | None = "The hall fell silent."):
+        self._reply = reply
+        self.calls: list[dict] = []
+
+    async def submit_and_wait(self, **kw):
+        self.calls.append(kw)
+        if self._reply is None:
+            return SimpleNamespace(status="failed", result={})
+        return SimpleNamespace(status="completed", result={"messages": [{"content": self._reply}]})
+
+
+async def _propose(llm, blocks, text=REPEATED, **over):
+    kwargs = dict(
+        profile=BookProfile(source_language="en"), user_id="u1",
+        model_source="user_model", model_ref="m1",
+    )
+    kwargs.update(over)
+    return await propose_for_blocks(llm, blocks, text, **kwargs)
+
+
+class TestProposeForBlocks:
+    async def test_the_authors_note_reaches_the_model_and_becomes_a_proposal(self):
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.",
+                   source_fingerprint=fp, note="too flat, she should react", desired="show fear")
+        res = await _propose(FakeEditLLM(), [b])
+
+        assert len(res.proposals) == 1
+        p = res.proposals[0]
+        assert (p.start, p.end) == (39, 59)
+        assert p.before == "The hall went quiet."
+        assert p.after == "The hall fell silent."
+        assert p.id == "eb0"
+        assert p.recommended is True   # the author asked for it; still never auto-applied
+
+    async def test_the_note_and_the_desired_outcome_are_both_threaded_into_the_prompt(self):
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.",
+                   source_fingerprint=fp, note="too flat, she should react", desired="show fear")
+        llm = FakeEditLLM()
+        await _propose(llm, [b])
+        user = llm.calls[0]["input"]["messages"][1]["content"]
+        assert "too flat, she should react" in user
+        assert "show fear" in user
+        assert "The hall went quiet." in user      # the SELECTED PASSAGE
+
+    async def test_grounding_is_threaded_and_its_absence_is_REPORTED_not_hidden(self):
+        """A fix built on an empty pack is not wrong, but it is less grounded than it looks. The
+        review card has to be able to say so instead of presenting both identically."""
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.", source_fingerprint=fp)
+
+        llm = FakeEditLLM()
+        grounded = await _propose(llm, [b], grounding="CANON: Elara is deaf.")
+        assert grounded.grounded is True
+        assert "Elara is deaf" in llm.calls[0]["input"]["messages"][1]["content"]
+
+        degraded = await _propose(FakeEditLLM(), [b], grounding="")
+        assert degraded.grounded is False
+
+    async def test_spend_is_attributed_to_error_blocks_not_the_autonomous_polish(self):
+        """`operation` is overloaded, so job_meta is where an author-driven fix and the
+        autonomous self-heal sweep are told apart on the usage ledger."""
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.", source_fingerprint=fp)
+        llm = FakeEditLLM()
+        await _propose(llm, [b])
+        meta = llm.calls[0]["job_meta"]
+        assert meta["extractor"] == "error_block"
+        assert meta["usage_purpose"] == "error_block_fix"
+
+    async def test_a_failed_edit_is_reported_never_silently_absent(self):
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.", source_fingerprint=fp)
+        res = await _propose(FakeEditLLM(reply=None), [b])
+        assert res.proposals == []
+        assert [s.reason for s in res.skipped] == ["edit_failed"]
+
+    async def test_a_runaway_edit_is_rejected_as_a_rewrite(self):
+        """The satellite guard: an 'edit' that balloons has stopped fixing the passage."""
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.", source_fingerprint=fp)
+        res = await _propose(FakeEditLLM(reply="x" * 4000), [b])
+        assert res.proposals == []
+        assert [s.reason for s in res.skipped] == ["edit_expanded"]
+
+    async def test_an_unlocatable_block_never_reaches_the_model(self):
+        """No anchor means no edit — spending a call on prose we cannot place would risk
+        splicing the result somewhere arbitrary."""
+        b = _block(quote="A sentence that was deleted.", source_fingerprint=fingerprint(REPEATED))
+        llm = FakeEditLLM()
+        res = await _propose(llm, [b])
+        assert llm.calls == []
+        assert [s.reason for s in res.skipped] == ["not_located"]
+
+    async def test_overlapping_blocks_produce_ONE_edit_carrying_BOTH_complaints(self):
+        fp = fingerprint(REPEATED)
+        a = _block(start_offset=0, end_offset=24, quote="Elara opened the ledger.",
+                   source_fingerprint=fp, note="she cannot read yet")
+        b = _block(start_offset=6, end_offset=24, quote="opened the ledger.",
+                   source_fingerprint=fp, note="too modern a phrasing")
+        llm = FakeEditLLM(reply="Elara traced the ledger's spine.")
+        res = await _propose(llm, [a, b])
+        assert len(llm.calls) == 1          # one edit, not two competing rewrites
+        assert len(res.proposals) == 1
+        user = llm.calls[0]["input"]["messages"][1]["content"]
+        assert "she cannot read yet" in user and "too modern a phrasing" in user
+
+    async def test_a_reanchored_block_is_flagged_so_the_caller_can_persist_it(self):
+        shifted = "A new opening paragraph.\n\n" + REPEATED
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.",
+                   source_fingerprint=fingerprint(REPEATED))
+        res = await _propose(FakeEditLLM(), [b], text=shifted)
+        assert len(res.reanchored) == 1
+        assert res.source_fingerprint == fingerprint(shifted)
+        assert shifted[res.proposals[0].start:res.proposals[0].end] == "The hall went quiet."
+
+    async def test_an_oversized_span_is_refused_before_the_model_is_called(self):
+        big = "z" * (SELECTION_MAX_CHARS + 10)
+        b = _block(start_offset=0, end_offset=len(big), quote=big, source_fingerprint=fingerprint(big))
+        llm = FakeEditLLM()
+        res = await _propose(llm, [b], text=big)
+        assert llm.calls == []
+        assert [s.reason for s in res.skipped] == ["too_long"]
+
+    async def test_the_proposal_round_trips_through_the_guarded_splice(self):
+        """The loop that matters: propose → accept → splice → the prose actually changed."""
+        fp = fingerprint(REPEATED)
+        b = _block(start_offset=39, end_offset=59, quote="The hall went quiet.", source_fingerprint=fp)
+        res = await _propose(FakeEditLLM(), [b])
+        out = apply_block_edits(REPEATED, res.proposals)
+        assert "The hall fell silent." in out
+        assert "The hall went quiet." not in out
