@@ -18,6 +18,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+import asyncpg
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -31,6 +32,13 @@ logger = logging.getLogger("app.services.glossary_build")
 
 DEFAULT_KINDS = ["character", "organization", "event", "terminology",
                  "power_system", "relationship", "location", "item"]
+
+# MODULE-level driver registry — NOT per-instance. `get_glossary_build_service()` is a
+# FastAPI dependency, so every request builds a FRESH service: a `self._tasks` dict could
+# never be seen by the later /cancel request, and cancel() would flip the row to
+# 'cancelled' while the driver kept calling the LLM (spending real money) to the end of
+# the worklist. Same reason authoring-runs keeps its registry module-level.
+_DRIVER_TASKS: dict[str, asyncio.Task] = {}
 
 
 class GlossaryBuildError(Exception):
@@ -144,7 +152,6 @@ class GlossaryBuildService:
         self._llm = llm
         self._glossary = glossary
         self._knowledge = knowledge          # M3 KG phase (None ⇒ KG phase unavailable)
-        self._tasks: dict[str, asyncio.Task] = {}
 
     # ── LLM binding: engine's injected callable → the platform job seam ──────
     def _llm_fn(self, *, user_id: str, model_source: str, model_ref: str):
@@ -175,7 +182,16 @@ class GlossaryBuildService:
 
     async def plan(self, run_id: UUID, owner: UUID) -> dict:
         """draft → planning → plan_ready. Synchronous (the planner is 1-2 calls)."""
-        run = await self._repo.transition(run_id, owner, ["draft"], "planning")
+        try:
+            run = await self._repo.transition(run_id, owner, ["draft"], "planning")
+        except asyncpg.UniqueViolationError as exc:
+            # uq_glossary_build_active_book — one in-flight run per book. `draft` is
+            # deliberately outside that index (creating a draft is free), so the
+            # collision lands HERE, on the first real transition. Map it to a clean
+            # 409 instead of letting the raw constraint 500.
+            raise GlossaryBuildError(
+                409, "ACTIVE_RUN", "this book already has a build run in progress",
+            ) from exc
         if run is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not in draft")
         p = self._params(run)
@@ -217,8 +233,7 @@ class GlossaryBuildService:
         if run is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not in plan_ready")
         await self._repo.insert_items(run, wl)
-        task = asyncio.create_task(self._drive(run_id, owner))
-        self._tasks[str(run_id)] = task
+        _DRIVER_TASKS[str(run_id)] = asyncio.create_task(self._drive(run_id, owner))
         return run
 
     async def get(self, run_id: UUID, owner: UUID) -> dict:
@@ -351,7 +366,7 @@ class GlossaryBuildService:
         return out
 
     async def cancel(self, run_id: UUID, owner: UUID) -> dict:
-        task = self._tasks.pop(str(run_id), None)
+        task = _DRIVER_TASKS.pop(str(run_id), None)
         if task is not None:
             task.cancel()
         run = await self._repo.transition(
@@ -376,6 +391,14 @@ class GlossaryBuildService:
             for item in await self._repo.list_items(run_id, owner):
                 if item["status"] != "pending":
                     continue  # resume-safe: already handled
+                # Re-read the RUN before each item: a /cancel from another request
+                # (a DIFFERENT service instance) can only signal us through the row.
+                # Without this the driver kept building — and paying — after cancel.
+                live = await self._repo.get_run(run_id, owner)
+                if live is None or live["status"] != "building":
+                    logger.info("glossary_build driver: run=%s left 'building' (%s) — stopping",
+                                run_id, (live or {}).get("status"))
+                    return
                 await self._repo.update_item(item["item_id"], owner, status="building")
                 try:
                     if item["depth"] == "deep":
@@ -407,7 +430,7 @@ class GlossaryBuildService:
             await self._repo.transition(
                 run_id, owner, ["building", "proposing"], "failed", error_message=str(exc))
         finally:
-            self._tasks.pop(str(run_id), None)
+            _DRIVER_TASKS.pop(str(run_id), None)
 
     async def _propose(self, run_id: UUID, owner: UUID) -> None:
         """built items → glossary drafts (bulk, ONE platform call), then proposed."""
@@ -431,9 +454,16 @@ class GlossaryBuildService:
         by_name = {str(c.get("name", "")).casefold(): c.get("entity_id") for c in created}
         for i in items:
             eid = by_name.get(i["name"].casefold())
-            await self._repo.update_item(
-                i["item_id"], owner, status="proposed",
-                **({"proposed_entity_id": UUID(eid)} if eid else {}))
+            if eid:
+                await self._repo.update_item(
+                    i["item_id"], owner, status="proposed", proposed_entity_id=UUID(eid))
+            else:
+                # The glossary SKIPS a name that already exists (or was rejected before).
+                # Reporting that as `proposed` was a FALSE SUCCESS: the wizard counted it
+                # as filed and the KG phase silently dropped it (no entity id to project).
+                await self._repo.update_item(
+                    i["item_id"], owner, status="skipped",
+                    skip_reason="the glossary already has an entry with this name")
         await self._repo.transition(run_id, owner, ["proposing"], "proposed")
 
     async def _existing_names(self, run: dict, p: dict) -> list[str]:

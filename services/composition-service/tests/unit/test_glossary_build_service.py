@@ -349,6 +349,93 @@ async def test_project_kg_from_the_wrong_state_is_a_409():
     assert exc.value.code == "BAD_STATE"
 
 
+# ── /review-impl findings (2026-07-27) ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_cancel_actually_STOPS_the_driver_from_spending_more():
+    """HIGH (review): the driver ran to the end of the worklist after /cancel, because
+    the task registry lived on a PER-REQUEST service instance — cancel flipped the row
+    and the LLM kept being called (real money). The driver must re-read the row and
+    stop. Driven through a SECOND service instance, exactly like the real HTTP path."""
+    wl = [{"name": "A", "kind": "character"}, {"name": "B", "kind": "character"},
+          {"name": "C", "kind": "character"}]
+    repo, gl = FakeRepo(), FakeGlossary()
+
+    # Deterministic (no sleep races): the moment the FIRST item's build call lands,
+    # a DIFFERENT service instance cancels — exactly the real /cancel request shape.
+    state: dict = {}
+
+    class CancellingLLM(FakeLLMClient):
+        async def submit_and_wait(self, **kw):
+            job = await super().submit_and_wait(**kw)
+            if self.calls == 2 and "s2" in state:            # 1 = planner, 2 = item A
+                await state["s2"].cancel(state["run_id"], OWNER)
+            return job
+
+    llm = CancellingLLM([json.dumps(wl), _built("A"), _built("B"), _built("C")])
+    s1 = GlossaryBuildService(repo, llm, gl)
+    run = await s1.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s1.plan(run["run_id"], OWNER)
+    state["s2"] = GlossaryBuildService(repo, llm, gl)         # the /cancel request's instance
+    state["run_id"] = run["run_id"]
+
+    await s1.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+
+    final = await state["s2"].get(run["run_id"], OWNER)
+    assert final["status"] == "cancelled"
+    # THE assertion: exactly planner + item A ran. B and C were never paid for.
+    assert llm.calls == 2, f"the driver kept calling the LLM after cancel ({llm.calls} calls)"
+    by_name = {i["name"]: i["status"] for i in final["items"]}
+    assert by_name["B"] == "pending" and by_name["C"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_an_item_the_glossary_SKIPPED_is_not_reported_as_proposed():
+    """MED (review): the glossary skips a name that already exists, returning nothing
+    for it. Marking the item `proposed` anyway was a FALSE SUCCESS — the wizard counted
+    it as filed and the KG phase silently dropped it (no entity id to project)."""
+    class PartialGlossary(FakeGlossary):
+        async def seed_entities_or_raise(self, book_id, *, source_language, entities):
+            kept = [e for e in entities if e["name"] != "Dup"]        # 'Dup' already exists
+            self.seeded = entities
+            return [{"entity_id": str(uuid.uuid4()), "name": e["name"],
+                     "kind_code": e["kind_code"]} for e in kept]
+
+    wl = [{"name": "Dup", "kind": "character"}, {"name": "New", "kind": "character"}]
+    repo = FakeRepo()
+    s = GlossaryBuildService(repo, FakeLLMClient([json.dumps(wl), _built("Dup"), _built("New")]),
+                             PartialGlossary())
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    await s.plan(run["run_id"], OWNER)
+    await s.approve_plan(run["run_id"], OWNER)
+    await asyncio.sleep(0.05)
+
+    by_name = {i["name"]: i for i in (await s.get(run["run_id"], OWNER))["items"]}
+    assert by_name["New"]["status"] == "proposed" and by_name["New"]["proposed_entity_id"]
+    assert by_name["Dup"]["status"] == "skipped"
+    assert "already has an entry" in by_name["Dup"]["skip_reason"]
+
+
+@pytest.mark.asyncio
+async def test_a_second_concurrent_run_is_a_clean_409_not_a_raw_constraint_500():
+    """MED (review): `draft` sits outside uq_glossary_build_active_book on purpose, so a
+    second run collides on its first REAL transition. That must surface as ACTIVE_RUN."""
+    import asyncpg
+
+    class CollidingRepo(FakeRepo):
+        async def transition(self, run_id, owner, from_status, to_status, **fields):
+            if to_status == "planning":
+                raise asyncpg.UniqueViolationError("uq_glossary_build_active_book")
+            return await super().transition(run_id, owner, from_status, to_status, **fields)
+
+    s = GlossaryBuildService(CollidingRepo(), FakeLLMClient([]), FakeGlossary())
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    with pytest.raises(GlossaryBuildError) as exc:
+        await s.plan(run["run_id"], OWNER)
+    assert exc.value.status == 409 and exc.value.code == "ACTIVE_RUN"
+
+
 @pytest.mark.asyncio
 async def test_cancel_stops_a_building_run():
     wl = [{"name": "A", "kind": "character"}]

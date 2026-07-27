@@ -7173,6 +7173,12 @@ class _GlossaryBuildArgs(ForbidExtra):
             "add all the characters", "extract the cast from my story",
         ],
         ambient_book=True,
+        # _meta Completeness Law (Track D CD1): `approve_plan` starts a BACKGROUND
+        # build — the call returning is not the work finishing, so a step-runner must
+        # poll op=status rather than assume completion. And every build phase spends
+        # real money on LLM calls, so the money gate must see it.
+        async_job=True,
+        paid=True,
         tool_name="composition_glossary_build",
     ),
 )
