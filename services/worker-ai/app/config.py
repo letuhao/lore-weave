@@ -46,7 +46,16 @@ class Settings(BaseSettings):
     # ~150 names costs roughly 1-2k tokens against a ~1.7k-token base prompt.
     # Measured worth: with the block EMPTY the extractor scored 4/7 on the live
     # Mị Đế passage; populated, 7/7.
+    #
+    # This is a BACKSTOP, not the normal path: `select_known_entities` ships only the
+    # canon a chunk actually mentions, so a 3,000-entity glossary typically contributes
+    # a couple of dozen names. The cap only bites on a chapter naming a huge cast.
     known_entities_prompt_cap: int = 150
+    # How many canon entries to FETCH per job for that selection to draw from. Distinct
+    # from the prompt cap above: this bounds the READ, and the endpoint orders by mention
+    # count so a truncation here drops the least-referenced lore. A book past this needs
+    # per-chunk retrieval (semantic over glossary passages) rather than a bigger number.
+    canon_fetch_limit: int = 2000
     # FD-27: provider-registry model-info fetch for the reasoning-model
     # advisory — a tiny metadata read, runs once per job. Best-effort.
     provider_registry_client_timeout_s: float = 5.0

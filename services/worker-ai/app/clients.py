@@ -1188,6 +1188,50 @@ class GlossaryClient:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
 
+    async def list_canon_entries(
+        self, book_id: UUID, *, limit: int,
+    ) -> list[tuple[str, list[str]]]:
+        """The book's canon as ``(name, aliases)`` pairs — the vocabulary a chunk's
+        KNOWN_ENTITIES block is SELECTED FROM (see `select_known_entities`).
+
+        Aliases ride along because a chapter rarely uses only canonical names: it says
+        "Thiếu chủ", not "Lâm Uyên". Selecting on the canonical name alone would miss the
+        mention and leave the canon out of the very chunk that needed it.
+
+        `limit` here is a fetch bound, NOT the prompt budget — the per-chunk selection
+        downstream is what decides how many names actually ship."""
+        if limit <= 0:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        try:
+            resp = await self._http.get(
+                url, params={"min_frequency": "0", "limit": str(limit)},
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary known-entities %d for %s", resp.status_code, book_id,
+                )
+                return []
+            rows = resp.json()
+            if not isinstance(rows, list):
+                return []
+            out: list[tuple[str, list[str]]] = []
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                name = str(r.get("name") or "").strip()
+                if not name:
+                    continue
+                raw = r.get("aliases")
+                aliases = [
+                    str(a).strip() for a in raw if str(a).strip()
+                ] if isinstance(raw, list) else []
+                out.append((name, aliases))
+            return out
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("glossary known-entities failed: %s", exc)
+            return []
+
     async def list_canon_names(self, book_id: UUID, *, limit: int) -> list[str]:
         """The book's glossary entity NAMES — the canon vocabulary for a prompt's
         KNOWN_ENTITIES block.

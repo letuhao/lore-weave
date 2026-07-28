@@ -191,43 +191,75 @@ async def test_list_canon_names_skips_blank_rows_and_respects_a_zero_cap():
 # without anything going red. merge_known_entities is that logic pulled out to where a
 # test can reach it.
 
-def test_merge_puts_pinned_first_then_canon_and_dedups():
-    from app.runner import merge_known_entities
+PROSE = ("Lâm Uyên ngồi giữa Trận pháp. Thiếu chủ không nói gì. "
+         "Bên ngoài, Tô Thanh Dao đứng đợi.")
 
-    out, dropped = merge_known_entities(
-        ["Lâm Uyên"], ["chân linh", "Lâm Uyên", "Luyện khí"], cap=10,
+
+def test_selection_ships_only_the_canon_this_chunk_MENTIONS():
+    """The whole point of smart preload: a 3,000-entity glossary must not empty itself
+    into every chunk. An unmentioned name costs prompt budget to say nothing."""
+    from app.runner import select_known_entities
+
+    out, dropped = select_known_entities(
+        [], [("Lâm Uyên", []), ("Trận pháp", []), ("Huyết Vô Thường", []),
+             ("Ngự Khí Thuật", [])],
+        PROSE, cap=150,
     )
-    assert out == ["Lâm Uyên", "chân linh", "Luyện khí"]   # pinned first, no duplicate
+    assert out == ["Lâm Uyên", "Trận pháp"]
     assert dropped == 0
 
 
-def test_merge_keeps_the_PINNED_names_when_the_cap_bites():
-    """A user pinned those precisely so they survive a truncation."""
-    from app.runner import merge_known_entities
+def test_selection_matches_an_ALIAS_but_ships_the_CANONICAL_name():
+    """A chapter says "Thiếu chủ", not "Lâm Uyên". Matching only the canonical name
+    would miss the mention in the very chunk that needed the canon — and the model must
+    still be steered to the canonical spelling."""
+    from app.runner import select_known_entities
 
-    out, dropped = merge_known_entities(["A", "B"], ["C", "D", "E"], cap=3)
-    assert out == ["A", "B", "C"]
-    assert dropped == 2          # reported, never silently cut
-
-
-def test_merge_dedups_case_insensitively():
-    from app.runner import merge_known_entities
-
-    out, _ = merge_known_entities(["Thần Hồn"], ["thần hồn", "Pháp khí"], cap=10)
-    assert out == ["Thần Hồn", "Pháp khí"]
+    out, _ = select_known_entities(
+        [], [("Lâm Trạch", ["Thiếu chủ"])], "Thiếu chủ bước vào.", cap=150,
+    )
+    assert out == ["Lâm Trạch"]
 
 
-def test_merge_with_a_zero_cap_yields_nothing_and_says_how_much_it_dropped():
-    from app.runner import merge_known_entities
+def test_pinned_ship_even_when_the_chunk_never_names_them():
+    """That is exactly what pinning is FOR (C13) — sparse-but-critical entities stay
+    anchored in chapters that never mention them."""
+    from app.runner import select_known_entities
 
-    out, dropped = merge_known_entities(["A"], ["B", "C"], cap=0)
-    assert out == [] and dropped == 3
+    out, _ = select_known_entities(["Huyết Vô Thường"], [], PROSE, cap=150)
+    assert out == ["Huyết Vô Thường"]
 
 
-def test_merge_with_no_pins_still_grounds_the_prompt():
-    """THE regression: nothing pinned is the common case, and it used to mean the
-    extractor was told the book has no canon at all."""
-    from app.runner import merge_known_entities
+def test_surface_match_handles_a_CJK_neighbour():
+    r"""Boundary guard. Python's `\w` is Unicode-aware, so a ``-style lookaround sees
+    the neighbouring CJK letter as a word char and rejects EVERY match. This is the case
+    that breaks first if the rule ever drifts from knowledge-service's entity_detector,
+    which restricts the lookarounds to ASCII word chars for exactly this reason."""
+    from app.runner import select_known_entities
 
-    out, dropped = merge_known_entities([], ["Chân Linh", "Luyện khí"], cap=150)
-    assert out == ["Chân Linh", "Luyện khí"] and dropped == 0
+    out, _ = select_known_entities([], [("凯", [])], "凯笑了", cap=150)
+    assert out == ["凯"]
+
+
+def test_surface_match_still_refuses_a_substring_inside_an_ascii_word():
+    from app.runner import select_known_entities
+
+    out, _ = select_known_entities([], [("Kai", [])], "Kairos arrived", cap=150)
+    assert out == []
+
+
+def test_selection_reports_what_the_cap_cut():
+    from app.runner import select_known_entities
+
+    out, dropped = select_known_entities(
+        [], [("Lâm Uyên", []), ("Trận pháp", []), ("Tô Thanh Dao", [])],
+        PROSE, cap=2,
+    )
+    assert len(out) == 2 and dropped == 1
+
+
+def test_a_zero_cap_ships_nothing_and_says_so():
+    from app.runner import select_known_entities
+
+    out, dropped = select_known_entities(["A"], [("B", [])], PROSE, cap=0)
+    assert out == [] and dropped == 2

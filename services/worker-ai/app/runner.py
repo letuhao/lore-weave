@@ -1442,6 +1442,9 @@ async def _extract_and_persist(
     # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
     # chat_turn / glossary callers leave it unset → no pins).
     pinned_names: list[str] | None = None,
+    # The book's canon, fetched once per job. Selection is PER CHUNK — only the
+    # entries this chunk actually mentions ship in KNOWN_ENTITIES.
+    canon_entries: list[tuple[str, list[str]]] | None = None,
     # D-KG-WORKER-GRADED-EFFORT — the job's graded reasoning effort, threaded
     # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
     # wire fields (chat_turn / glossary callers omit it → unchanged).
@@ -1503,7 +1506,8 @@ async def _extract_and_persist(
             text=text,
             # C13 — force-inject the pinned glossary names. Replaces the legacy
             # hardcoded [] ("worker-ai has no glossary access"). None ⇒ [].
-            known_entities=list(pinned_names or []),
+            known_entities=_known_entities_for_chunk(
+                pinned_names, canon_entries, text),
             user_id=str(user_id),
             project_id=str(project_id) if project_id else None,
             model_source="user_model",
@@ -1598,35 +1602,84 @@ async def _extract_and_persist(
     return persist_result, candidates
 
 
-def merge_known_entities(
-    pinned: list[str], canon: list[str], *, cap: int,
+#: Word-boundary lookarounds restricted to ASCII word chars, NOT `` / `\w`.
+#: Python's `\w` is Unicode-aware, so for a CJK or Vietnamese name the lookbehind sees
+#: the neighbouring letter as a word char and rejects every match. Same rule as
+#: knowledge-service's entity_detector (kept in sync by
+#: `test_surface_match_handles_a_CJK_neighbour`, which is the case that breaks first).
+_BOUNDARY_L = "(?<![A-Za-z0-9_])"
+_BOUNDARY_R = "(?![A-Za-z0-9_])"
+
+
+def _mentions(text: str, surface: str) -> bool:
+    if not surface:
+        return False
+    return re.search(
+        _BOUNDARY_L + re.escape(surface) + _BOUNDARY_R, text, re.IGNORECASE,
+    ) is not None
+
+
+def _known_entities_for_chunk(
+    pinned: list[str] | None,
+    canon: list[tuple[str, list[str]]] | None,
+    chunk_text: str,
+) -> list[str]:
+    """Per-chunk KNOWN_ENTITIES, with the drop reported rather than silently cut."""
+    names, dropped = select_known_entities(
+        list(pinned or []), list(canon or []), chunk_text,
+        cap=settings.known_entities_prompt_cap,
+    )
+    if dropped:
+        logger.info(
+            "KNOWN_ENTITIES truncated at the %d-name cap — %d mentioned name(s) "
+            "did not make this chunk's prompt",
+            settings.known_entities_prompt_cap, dropped,
+        )
+    return names
+
+
+def select_known_entities(
+    pinned: list[str],
+    canon: list[tuple[str, list[str]]],
+    chunk_text: str,
+    *,
+    cap: int,
 ) -> tuple[list[str], int]:
-    """Build a chunk's KNOWN_ENTITIES list: pinned names first, then the book's canon.
+    """Choose the KNOWN_ENTITIES for ONE chunk. Returns (names, dropped_at_cap).
 
-    Module-level and pure ON PURPOSE. The previous version of this wiring lived inline
-    inside the job loop, and its own test file admitted the runner half was "asserted by
-    the live-smoke" — so when it silently degraded to an empty list for every un-pinned
-    book (the common case), nothing went red. Untestable wiring is how this bug class
-    survives; this is the smallest shape that can be pinned down by a unit test.
+    Selection, in priority order:
+      1. **pinned** — always, and they survive a truncation. A user pinned them exactly
+         so they stay anchored in chapters that never mention them.
+      2. **canon actually PRESENT in this chunk** — matched on the canonical name OR any
+         alias, because a chapter says "Thiếu chủ", not "Lâm Uyên". The alias matches but
+         the CANONICAL name is what ships, so the model is steered to the canon spelling
+         (which is what the prompt's "prefer exact matches" rule then acts on).
 
-    Pinned wins a truncation: a user pinned those precisely so they survive one. `canon`
-    arrives ordered by mention count descending, so the cut takes the least-referenced.
-    Returns (names, dropped_count) — the caller LOGS the drop rather than truncating in
-    silence.
+    What it deliberately does NOT do is top the list up with unmentioned canon. The
+    first version of this shipped a flat 150-name cap ordered by mention count, which is
+    the wrong axis twice over: on a 3,000-entity glossary the 150 most-mentioned names
+    are not the ones in THIS chapter, and every name that is not in the text costs
+    prompt budget to say nothing. Presence is the signal; the cap is only a backstop for
+    a chapter that genuinely names a huge cast.
+
+    Scaling note: this is a regex per canon surface form over the chunk. Fine for the
+    low thousands; a book in the tens of thousands wants a trie / Aho-Corasick pass, at
+    which point `_mentions` is the seam to replace.
     """
     if cap <= 0:
         return [], len(pinned) + len(canon)
     out = list(pinned[:cap])
     seen = {n.casefold() for n in out}
     dropped = max(0, len(pinned) - cap)
-    for name in canon:
-        key = name.casefold()
-        if key in seen:
+    for name, aliases in canon:
+        if name.casefold() in seen:
+            continue
+        if not any(_mentions(chunk_text, s) for s in (name, *aliases)):
             continue
         if len(out) >= cap:
             dropped += 1
             continue
-        seen.add(key)
+        seen.add(name.casefold())
         out.append(name)
     return out, dropped
 
@@ -1646,6 +1699,9 @@ async def _start_decoupled_chunk(
     # C13 — pinned glossary names to force-inject into this chunk's
     # known_entities. [] ⇒ no pins (back-compat).
     pinned_names: list[str] | None = None,
+    # The book's canon, fetched once per job. Selection is PER CHUNK — only the
+    # entries this chunk actually mentions ship in KNOWN_ENTITIES.
+    canon_entries: list[tuple[str, list[str]]] | None = None,
     # P5 — the WFQ lease token acquired for this chunk (None when P5 off). Stashed in
     # resume_state so the decoupled consumer can release the exact slot at the chunk
     # terminal; released here on submit-failure (no chunk ends up in flight).
@@ -1689,7 +1745,8 @@ async def _start_decoupled_chunk(
         # C13 — force-inject the pinned glossary names into THIS chunk's
         # known_entities (the decoupled consumer threads it into the entity +
         # R/E/F extractor calls). Replaces the legacy hardcoded []. None ⇒ [].
-        chunk_text=text, known_entities=list(pinned_names or []),
+        chunk_text=text,
+        known_entities=_known_entities_for_chunk(pinned_names, canon_entries, text),
         has_recovery=(eff_recovery is not None) and entities_requested,
         has_filter=(eff_filter is not None) and entities_requested,
         # C12 — the job's pass subset; reduced to the requested trio ops.
@@ -1990,20 +2047,21 @@ async def process_job(
         # scored 5 — i.e. our own rules were WORSE than no rules until the canon list
         # arrived. The model was never the limit; the missing wire was.
         #
-        # Pinned names keep priority (a user pinned them precisely so they survive a
-        # truncation), then the glossary's own order (mention count desc). Capped —
-        # see settings.known_entities_prompt_cap.
-        if book_id is not None and len(pinned_names) < settings.known_entities_prompt_cap:
-            canon = await glossary_client.list_canon_names(
-                book_id, limit=settings.known_entities_prompt_cap,
-            )
-            pinned_names, dropped = merge_known_entities(
-                pinned_names, canon, cap=settings.known_entities_prompt_cap,
+        # Fetched ONCE per job; the PER-CHUNK selection (`select_known_entities`) then
+        # picks only the canon a given chunk actually mentions. The first version of this
+        # shipped a flat cap ordered by mention count and injected the same list into
+        # every chunk — wrong on a big book twice over: the most-mentioned 150 names are
+        # not the ones in THIS chapter, and an unmentioned name costs prompt budget to
+        # say nothing. `canon_fetch_limit` is a FETCH bound, not the prompt budget.
+        canon_entries: list[tuple[str, list[str]]] = []
+        if book_id is not None:
+            canon_entries = await glossary_client.list_canon_entries(
+                book_id, limit=settings.canon_fetch_limit,
             )
             logger.info(
-                "Job %s: KNOWN_ENTITIES <- %d name(s) (%d pinned + glossary canon)%s",
-                job.job_id, len(pinned_names), len(job.pinned_entity_ids or []),
-                f"; {dropped} dropped at the cap" if dropped else "",
+                "Job %s: canon vocabulary loaded — %d entr(y|ies) available for "
+                "per-chunk KNOWN_ENTITIES selection",
+                job.job_id, len(canon_entries),
             )
 
         # B2-A — pin the effective config snapshot ONCE per job (a mid-job
@@ -2267,6 +2325,7 @@ async def process_job(
                         p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
                         # C13 — pinned names resolved once per job above.
                         pinned_names=pinned_names,
+                        canon_entries=canon_entries,
                         # P5 — the WFQ lease for this chunk; stashed in resume_state so the
                         # consumer releases it at the chunk terminal. None when P5 off.
                         p5_token=_p5_token,
@@ -2350,6 +2409,7 @@ async def process_job(
                     # C13 — pinned names resolved once per job above; injected
                     # into this window's known_entities.
                     pinned_names=pinned_names,
+                        canon_entries=canon_entries,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
                     reasoning_effort=job.reasoning_effort,
                     # bug #34 — abort an in-flight LLM call on job cancellation.
@@ -2554,6 +2614,7 @@ async def process_job(
                     # included (the cost estimate's num_windows counts chat turns,
                     # so the injection must too). Resolved once per job above.
                     pinned_names=pinned_names,
+                        canon_entries=canon_entries,
                     # L7 (Milestone B) — advisory project schema (None ⇒ static).
                     schema=extraction_schema,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.

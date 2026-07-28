@@ -145,6 +145,56 @@ Before: that query returned nothing for this project.
 **Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
 **2583** · FE world-setup **8**.
 
+## ✅ SMART PRELOAD — canon is selected per chunk, not stuffed in (2026-07-27)
+
+The first `KNOWN_ENTITIES` fix shipped a flat 150-name cap ordered by mention count and
+injected the SAME list into every chunk. Wrong axis twice over: on a 3,000-entity glossary
+the 150 most-mentioned names are not the ones in THIS chapter, and a name that is not in
+the text costs prompt budget to say nothing. It also does not scale — you cannot pour tens
+of thousands of entries into a chapter extraction.
+
+`select_known_entities(pinned, canon, chunk_text, cap)` now ships:
+1. **pinned** — always, surviving truncation (that is what pinning is FOR: sparse-but-
+   critical entities stay anchored in chapters that never name them);
+2. **canon the chunk actually MENTIONS**, matched on the canonical name **or any alias** —
+   a chapter says "Thiếu chủ", not "Lâm Uyên" — while the CANONICAL name is what ships, so
+   the model is steered to the canon spelling its own "prefer exact matches" rule acts on.
+
+Nothing else. The cap is now a backstop for a huge-cast chapter, not the normal path.
+Boundary rule mirrors knowledge-service's `entity_detector`: ASCII-only lookarounds, never
+`\b`/`\w`, because Python's Unicode `\w` sees a neighbouring CJK letter as a word char and
+rejects every match (`test_surface_match_handles_a_CJK_neighbour` is the canary).
+
+**Live:** `canon vocabulary loaded — 16 entries available for per-chunk selection`, and the
+prompt carried **9** — exactly the names in that chapter. `Lâm Trạch`, `Huyết Vô Thường`,
+`Tô gia`, `Linh năng học`, `Thanh Tâm Ấn`, `Ngự Khí Thuật`, `Cộng Hưởng Tần Số` were
+correctly left out.
+
+**Final KG state for the chapter — 9 nodes, ZERO minted new:**
+
+| entity | kind | mentions |
+|---|---|---|
+| Lâm gia | organization | 6 | 
+| Lâm Uyên · Tô Thanh Dao · Trận pháp | character · character · **terminology** | 5 each |
+| Vô Cấu Chân Linh | **power_system** | 2 |
+| Chân Linh · Thần hồn · Luyện khí · Pháp khí | power_system · power_system · **terminology** · item | 1 each |
+
+Every one resolved to the AUTHOR's entity, keeping its GLOSSARY kind. At the start of this
+session `terminology` was invisible to the anchor list entirely, `KNOWN_ENTITIES` was `[]`,
+and the last broken run minted 10 duplicate nodes.
+
+**Scaling seam:** selection is a regex per canon surface form over the chunk — fine for the
+low thousands. A book in the tens of thousands wants a trie / Aho-Corasick pass, and
+`_mentions()` is the single function to replace. Beyond that, per-chunk SEMANTIC retrieval
+over the glossary `:Passage` nodes built earlier this session would catch paraphrase and
+pronoun references that no surface match can.
+
+**Auto-merge after extraction: deliberately NOT built.** The infrastructure exists
+(`glossary.entity_merged`, the alias map), but merging is repair, and a wrong merge loses
+data in a way a duplicate does not. It is worth only as a narrow safety net for the case
+whose cause we KNOW — anchor pre-load failed, so the extraction demonstrably ran blind.
+Not a general dedup sweep.
+
 ## ✅ KIND-VOCABULARY FORK CLOSED — `D-KG-KIND-VOCAB-FORK` (2026-07-27)
 
 KG entity identity is `hash(user, project, name, kind)`, so a kind MISS does not degrade
