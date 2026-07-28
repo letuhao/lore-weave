@@ -137,3 +137,71 @@ describe('PassArtifactEditor (structured checkpoint edits)', () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+// ── F3 stage 3 · round-trip preservation, DERIVED from the producer ──────────────────────────────
+//
+// The flat editor exposes a few columns per kind; the producer emits more. Everything it does NOT
+// expose must survive an edit untouched, or a title change silently strips a chapter's identity
+// (`ordinal`/`event_id`) or a cast member's seeded `attributes`. B8 established the invariant and
+// the beats test above proves it — for ONE kind, against a hand-written field list.
+//
+// This derives the unexposed set instead: `contract.row_fields − the editor's real cols`, read from
+// the committed snapshot the BE guard generates. A producer that adds a field is covered the moment
+// it lands, with nobody having to remember — which is the same reason the contract itself is
+// generated rather than declared.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { SHAPE } from '../PassArtifactEditor';
+
+const CONTRACT = JSON.parse(
+  readFileSync(join(__dirname, '../../../../../../contracts/plan-artifacts.contract.json'), 'utf-8'),
+) as { artifacts: Record<string, { list_field?: string; row_fields?: string[] }> };
+
+describe('round-trip preservation — an unexposed producer field is never dropped', () => {
+  const kinds = Object.keys(SHAPE).filter((k) => {
+    const a = CONTRACT.artifacts[k];
+    return a?.list_field && (a.row_fields ?? []).length > 0;
+  });
+
+  it('covers every editable kind the contract knows (guards against a silent shrink)', () => {
+    expect(kinds.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each(kinds)('%s — fields the editor never shows still come back', (kind) => {
+    const a = CONTRACT.artifacts[kind];
+    const cols = SHAPE[kind as keyof typeof SHAPE]!.cols;
+    const exposed = cols.map((c) => c.key);
+    const unexposed = (a.row_fields ?? []).filter((f) => !exposed.includes(f));
+
+    // A row carrying EVERY field the producer emits, with one OBJECT-valued: a shallow copy that
+    // looked fine could still lose a nested value like `attributes`.
+    const row: Record<string, unknown> = {};
+    (a.row_fields ?? []).forEach((f, i) => { row[f] = `${f}-v${i}`; });
+    if (unexposed.length) row[unexposed[0]] = { nested: ['keep', 'me'] };
+
+    const onSave = vi.fn();
+    render(
+      <PassArtifactEditor
+        kind={kind as never} content={{ [a.list_field!]: [row] }}
+        busy={false} onSave={onSave} onCancel={vi.fn()}
+      />,
+    );
+    // Touch ONE exposed, editable cell — the "unrelated edit" the invariant is about. Skip
+    // closed-set columns: `beat_role` renders a <select>, so an arbitrary value simply does not
+    // stick and the test would be asserting the picker's behaviour instead of preservation.
+    const target = cols.find((c) =>
+      !c.readOnly && !c.enumOf && screen.queryByTestId(`edit-${a.list_field}-0-${c.key}`));
+    expect(target, `${kind}: no editable cell rendered`).toBeTruthy();
+    fireEvent.change(screen.getByTestId(`edit-${a.list_field}-0-${target!.key}`), {
+      target: { value: 'EDITED' },
+    });
+    fireEvent.click(screen.getByTestId('edit-save'));
+
+    const saved = onSave.mock.calls[0][0][a.list_field!][0] as Record<string, unknown>;
+    expect(saved[target!.key]).toBe('EDITED');
+    for (const f of unexposed) {
+      expect(saved[f], `${kind}: the editor dropped \`${f}\`, which it never showed`).toEqual(row[f]);
+    }
+  });
+});

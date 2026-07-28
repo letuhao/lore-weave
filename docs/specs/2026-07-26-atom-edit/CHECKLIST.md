@@ -626,7 +626,24 @@ observation. A claim that a check passed, without its output, does **not** tick 
         `char_arc_plan`(`character_arcs`) and `scene_plan`(`chapters`) deep-merge — a shorter list
         silently keeps the removed member. Live shapes confirmed. → **B6**
       - **FE cannot edit 4 of 6 kinds at all** (read-only JSON fallback). → **B5**
-- [ ] **F3** Rank the remaining gaps; fold the "built but never wired" ones into Phase B.
+- [x] **F3 — DONE (2026-07-28).** Swept by GATE rather than by 44 round-trips, in the priority
+      order below.
+      **Stage 1 (DELETE/archive):** the per-family atom-delete contract + live registry gate.
+      **Stage 2 (the FE door):** `scripts/fe-door-scan.py`. Reachability-by-import proves nothing —
+      F10's editors WERE imported — so it asks the three questions that do: mounted nowhere at all
+      (JSX *or* panel-catalog); single-parent (one point of failure); and does any test mount the
+      PARENT. Result: **0 dead components**, F10's own site covered by 13 `PassRow` tests, and one
+      real hit — `MotifDetailDrawer`'s edit door, a four-term predicate whose `motif-detail-edit`
+      had ZERO references outside the component, gating a change made the same day
+      (`isReadOnly` → `book_shared` editable). 6 tests, 3 mutation cuts caught.
+      **Stage 3 (round-trip preservation):** derived, not sampled. The unexposed set is
+      `contract.row_fields − the editor's real cols`, read from the generated snapshot, so a
+      producer that adds a field is covered the moment it lands. Every editable kind, one
+      object-valued field to catch a shallow copy. Both cuts caught (readRows dropping unexposed
+      keys; save rebuilding rows from the exposed columns).
+      **Two scanner blind spots found by checking hits instead of reporting them:** a panel is
+      mounted by REGISTRY not JSX, and a component's HOST and its DOOR can be different components
+      (`CheckpointReview` is hosted by `PassRailPanel`, gated by `PassRow`).
       **Proof sweep design (2026-07-27):** proving 11 families × 4 ops live is ~44 round-trips and
       most would pass. Prioritise by *failure mode observed in this track*, not by count:
       1. **DELETE / archive first** — the op that failed silently on 4 of 6 PlanForge kinds (B6).
