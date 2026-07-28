@@ -42,8 +42,42 @@ why the 16-entity Mị Đế book looked healthy. Live log evidence is in the cy
 **Evidence:** worker-ai 495 · knowledge-service 3980 · glossary-service Go clean ·
 live smoke on the running stack (56s→0.05s, 7-page walk 0.23s) · provider-gate + db-safety-gate OK.
 
-**Next:** the duplicates already minted by the pre-index runs still need cleaning up, and the
-author dogfood into chapter 1 resumes after that.
+**Next:** the author dogfood into chapter 1.
+
+### Post-cycle cleanup (same day) — and three of my own claims corrected
+
+Everything shipped today is now **deployed and verified in-container**, not just committed:
+`CanonIndex` live · `CANON_MAX_PAGES=40` · `AnchorPreloadUnavailable` live · glossary timeout 5.0 ·
+**`0056_attr_lookup_index` auto-applied on boot at 06:16:51** (the ledger step really runs — proof
+the no-op trap is closed). FE rebuilt + redeployed.
+
+**Claims of mine the data refuted — recorded so they stop being repeated:**
+1. *"Duplicates minted by the pre-index runs need cleaning."* **No such duplicates exist.** The 25
+   true duplicate groups are all **kind-fork** (`person`/`character`, `location`/`place`) in **two
+   OTHER projects**; the forward fix shipped in `8c81fcc1a`, only legacy rows remain. **Mị Đế is
+   clean: 9 entities, 0 duplicates.** Nothing blocked the dogfood.
+2. *"Flattened `- goals:` bullets are a defect."* They are **`appendUnmatchedAttrsToFallback`
+   working as designed** (`D-GLOSSARY-UNMATCHED-ATTR-FALLBACK`) — an unregistered attribute code is
+   filed into `description` rather than lost. The real gap was the **schema**, now closed:
+   `character.goals`, `character.secrets`, `power_system.limitations` added via the per-book
+   ontology API. The remaining unmatched codes (`item.goals`, `organization.role/affiliation/
+   social_class`) are the model mis-assigning, not gaps — deliberately not added.
+3. *"4 terminology entities have no description."* A **bad query on my part** — `terminology` uses
+   `definition`, not `description`. All four are fully populated.
+
+**Also fixed:** `D-CHAT-TURN-RETRYABLE-SWALLOW` (`7a5e6382a`) — a retryable chat-turn failure marked
+the turn processed and advanced, silently losing it; now mirrors the chapters branch's bounded
+retry-in-cursor + explicit skip. And the world-setup "not searchable" banner (`d5a9bae14`), which
+summed five outcomes and blamed one cause — it could send an author to fix a correct setting.
+
+**Two findings raised, NOT acted on (authorial calls, not mine):**
+- **`Cộng Hưởng Tần Số` and `Ngự Khí Thuật` carry near-verbatim identical definitions.** A writer
+  grounding on either gets the same text, so two intended concepts collapse into one. Deciding what
+  each means is the author's.
+- **The 15 draft entities do NOT block grounding** — the anchor pre-load and `known-entities` both
+  run with no status filter deliberately, so drafts already ground. Promotion is a UI/authorial
+  nicety, not a prerequisite. (`merge_candidates` is 0 because the curation pass is agent-invoked
+  and nobody has run it — the machinery is not broken.)
 
 ## ✅ ATOM EDIT — flat-arc bug fixed + PHASE D (error blocks) SHIPPED (2026-07-26/27, XL)
 **Track docs: [`docs/specs/2026-07-26-atom-edit/`](../specs/2026-07-26-atom-edit/) —
