@@ -59,6 +59,10 @@ class PassContext:
     #: Per-pass knobs (k_ceiling, thresholds…). Fingerprinted WITH the pass, so changing one stales
     #: exactly that pass and everything downstream of it.
     params: dict[str, Any] = field(default_factory=dict)
+    #: E6 — the book's ALREADY-SEEDED character names, assembled by the worker from the applied
+    #: bootstrap proposals (the same rows the roster join reads). Empty on a fresh book, which is
+    #: the honest value: there is no established cast yet.
+    known_cast: list[str] = field(default_factory=list)
     retriever: Any = None
     trace_id: str | None = None
     cancel_check: Callable[[], Awaitable[bool]] | None = None
@@ -84,6 +88,18 @@ class PassContext:
     def chapters(self) -> list[dict[str, Any]]:
         c = self.package.get("chapters")
         return c if isinstance(c, list) else []
+
+    @property
+    def canon(self) -> str:
+        """The charter's consistency anchors, as compile joined them.
+
+        E6 — this was compiled on EVERY run and read by nobody: `compile.py` builds it from
+        `charter.consistency_anchors`, and the only other mention in the codebase was a 200-char
+        `canon_excerpt` in telemetry. The one block an author writes to say "these things are
+        fixed" went nowhere near a prompt. A reader here rather than `package.get("canon")` in each
+        adapter, for the same reason as the others: a package-shape change then breaks LOUDLY in
+        one place instead of going quiet in several."""
+        return str(self.package.get("canon") or "")
 
     @property
     def structure(self) -> dict[str, Any]:
@@ -162,6 +178,11 @@ async def run_cast(ctx: PassContext) -> dict[str, Any]:
     proposed = await propose_cast(
         ctx.llm, user_id=ctx.user_id, model_source=ctx.model_source, model_ref=ctx.model_ref,
         premise=ctx.premise, source_language=ctx.source_language, genre_tags=ctx.genre_tags,
+        # E6 — without these the pass plans a book it cannot see: `is_new` was judged against the
+        # arc PREMISE, so an established character the premise happens not to mention came back as
+        # a brand-new invention (often under a fresh name), and the author's canon anchors were
+        # compiled and discarded.
+        known_cast=ctx.known_cast, canon=ctx.canon,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     return {"cast": [

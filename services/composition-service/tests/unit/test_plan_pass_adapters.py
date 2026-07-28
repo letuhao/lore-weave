@@ -185,3 +185,52 @@ def test_chapter_plans_carry_pass4s_beat_roles_onto_the_engines_shape():
     assert [p.sort_order for p in plans] == [1, 2]
     # `chapter_id` is the PLAN's event id — at plan time the manuscript chapter may not exist yet
     assert [p.chapter_id for p in plans] == ["arc_1_event_1", "arc_1_event_2"]
+
+
+# ── E6: the cast pass can SEE the book it is planning ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_cast_FORWARDS_the_roster_and_canon_it_was_given(monkeypatch):
+    """The third link in the chain, and the one a builder test cannot reach.
+
+    E6 threads two things the cast pass never had: the book's established roster (so `is_new` means
+    "not in the BOOK", not "not in this arc's premise") and the compiled canon anchors (which were
+    built on every run and read by nobody). Each layer needs its own assertion — mutation-checking
+    showed that deleting this forward left every cast_plan test green, because those call the
+    prompt builder directly. A capability wired at one layer and dropped at the next is precisely
+    the failure this sweep has been chasing.
+    """
+    import app.engine.cast_plan as cast_plan
+    from app.services.plan_pass_adapters import run_cast
+
+    seen: dict = {}
+
+    async def _fake_propose_cast(llm, **kw):
+        seen.update(kw)
+        return []
+
+    monkeypatch.setattr(cast_plan, "propose_cast", _fake_propose_cast)
+
+    await run_cast(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m",
+        package={"premise": "an arc summary", "canon": "The empire fell in year 300."},
+        known_cast=["Lâm Uyển", "Mị Đế"],
+    ))
+    assert seen["known_cast"] == ["Lâm Uyển", "Mị Đế"]
+    assert seen["canon"] == "The empire fell in year 300."
+
+
+@pytest.mark.asyncio
+async def test_pass_context_exposes_canon_from_the_package():
+    """`package["canon"]` had no reader at all — compile wrote it, telemetry logged 200 chars of
+    it, and no pass ever asked for it. The reader lives on PassContext with the others so a
+    package-shape change breaks loudly in one place."""
+    ctx = PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"canon": "anchors here"},
+    )
+    assert ctx.canon == "anchors here"
+    # Absent/garbage degrades to "", never a crash mid-plan.
+    assert PassContext(llm=None, user_id="u", book_id=uuid4(), project_id=uuid4(),
+                       model_source="user_model", model_ref="m").canon == ""

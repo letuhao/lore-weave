@@ -796,6 +796,13 @@ async def run_plan_pass(
             "cast": await _resolve_cast_entity_ids(pool, book_id, run, inputs["cast"]),
         }
 
+    # E6 — the book's ALREADY-SEEDED cast, for the passes that would otherwise plan blind. Same
+    # source as the roster join above (applied bootstrap proposals), because that is where a
+    # character becomes a FACT about the book rather than a proposal about it. Advisory: a read
+    # failure yields an empty roster and the pass behaves exactly as it did before E6, rather than
+    # failing a plan over context it would have been nice to have.
+    known_cast = await _known_cast_names(pool, book_id)
+
     retriever = None
     if pass_id == "motifs":
         from app.db.repositories.motif_retrieve import MotifRetriever
@@ -810,7 +817,7 @@ async def run_plan_pass(
         inputs=inputs,
         genre_tags=list(run.genre_tags or []),
         source_language=str(input.get("source_language") or "auto"),
-        params=params, retriever=retriever,
+        params=params, retriever=retriever, known_cast=known_cast,
         trace_id=input.get("trace_id"), cancel_check=cancel_check,
     )
     body = await PASS_ADAPTERS[pass_id](ctx)
@@ -827,6 +834,48 @@ async def run_plan_pass(
         "input_artifact_ids": pointers,
         "params": params,
     }
+
+
+async def _known_cast_names(pool: asyncpg.Pool, book_id: UUID) -> list[str]:
+    """The book's already-seeded character names (E6).
+
+    Read from the APPLIED bootstrap proposals — the same rows `_resolve_cast_entity_ids` uses, and
+    for the same reason: an applied proposal is where a character stopped being a suggestion and
+    became a glossary entity. A pending one is a request, not a fact, and feeding it back as
+    "already exists" would teach the planner to skip introducing someone who is not in the book.
+
+    Order is preserved and duplicates dropped (the same character can appear in several proposals
+    across re-runs). Never raises: an empty roster means "no established cast", which is the
+    correct answer for a fresh book and a safe one for a read failure.
+    """
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    try:
+        proposals = await PlanBootstrapProposalsRepo(pool).list_active_for_book(book_id)
+    except Exception:  # noqa: BLE001 — advisory context; never fail a pass over it
+        logger.warning("known-cast: could not load the seed proposals", exc_info=True)
+        return []
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for proposal in proposals:
+        if proposal.status != "applied":
+            continue
+        for row in (proposal.applied_results or {}).values():
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or "").strip()
+            # Characters only. A seeded location or concept is not cast, and listing one under
+            # "EXISTING CAST" would invite the planner to write it as a person.
+            kind = str(row.get("kind_code") or row.get("kind") or "").strip().casefold()
+            if not name or (kind and kind != "character"):
+                continue
+            if name.casefold() in seen:
+                continue
+            seen.add(name.casefold())
+            names.append(name)
+    logger.info("known-cast: book=%s resolved %d established character(s)", book_id, len(names))
+    return names
 
 
 async def _resolve_cast_entity_ids(

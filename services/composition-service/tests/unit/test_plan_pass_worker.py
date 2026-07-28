@@ -289,3 +289,63 @@ def test_the_join_reads_the_APPLIED_proposal_not_glossary_directly():
     src = inspect.getsource(_resolve_cast_entity_ids)
     assert "applied_results" in src
     assert 'proposal.status != "applied"' in src
+
+
+def test_the_worker_ASSEMBLES_the_known_cast_and_puts_it_ON_the_context():
+    """E6, outermost link. Mutation-checked: deleting `known_cast=known_cast` from the PassContext
+    construction left the entire suite green — the adapter tests build their own context, so
+    nothing watched the one place the real value is supplied. This file already inspects source for
+    exactly that reason (the op's dependencies make a live call impractical), so it does here too."""
+    from app.worker.operations import run_plan_pass
+
+    src = inspect.getsource(run_plan_pass)
+    assert "known_cast = await _known_cast_names(pool, book_id)" in src
+    assert "known_cast=known_cast" in src
+
+
+@pytest.mark.asyncio
+async def test_known_cast_counts_only_APPLIED_proposals_and_only_CHARACTERS(monkeypatch):
+    """A pending proposal is a request, not a fact: feeding one back as "already exists" would
+    teach the planner to skip introducing someone who is not in the book. And a seeded location
+    listed under EXISTING CAST would invite the model to write it as a person."""
+    from types import SimpleNamespace
+
+    from uuid import uuid4
+
+    import app.db.repositories.plan_bootstrap_proposals as mod
+    from app.worker.operations import _known_cast_names
+
+    proposals = [
+        SimpleNamespace(status="applied", applied_results={
+            "a": {"name": "Lâm Uyển", "entity_id": "e1", "kind_code": "character"},
+            "b": {"name": "Hoa Sơn", "entity_id": "e2", "kind_code": "location"},
+            "c": {"name": "lâm uyển", "entity_id": "e3", "kind_code": "character"},  # dup, folded
+        }),
+        SimpleNamespace(status="pending", applied_results={
+            "d": {"name": "Not Yet Real", "entity_id": "e4", "kind_code": "character"},
+        }),
+    ]
+
+    class _Repo:
+        def __init__(self, pool): pass
+        async def list_active_for_book(self, book_id): return proposals
+
+    monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Repo)
+    assert await _known_cast_names(None, uuid4()) == ["Lâm Uyển"]
+
+
+@pytest.mark.asyncio
+async def test_known_cast_DEGRADES_to_empty_rather_than_failing_the_plan(monkeypatch):
+    """Advisory context. A read failure must not kill a planning run — the pass then behaves
+    exactly as it did before E6, which is a worse plan, not a broken one."""
+    from uuid import uuid4
+
+    import app.db.repositories.plan_bootstrap_proposals as mod
+    from app.worker.operations import _known_cast_names
+
+    class _Boom:
+        def __init__(self, pool): pass
+        async def list_active_for_book(self, book_id): raise RuntimeError("db down")
+
+    monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Boom)
+    assert await _known_cast_names(None, uuid4()) == []

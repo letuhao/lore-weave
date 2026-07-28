@@ -523,8 +523,32 @@ but does not belong to this run:
   decision" framing was wrong.
 - **`D-KG-SCHEMA-RETIRE-NEEDS-REVERSE`** — if retiring a whole graph-schema is ever wanted, the
   un-deprecate has to exist FIRST (and a surface to host it). Reasoned in-place at the binding.
-- **E6** F7/F8 — the passes are still blind to canon rules + existing cast (`run_cast` re-invents
-  the book's characters from `premise` alone); `package["canon"]` is compiled and read by nobody.
+- ✅ **E6 — DONE (2026-07-28).** The cast pass can finally see the book it is planning.
+  - **`is_new` was judged against the PREMISE**, which is one arc's summary. For a book thirty
+    chapters deep, every established character that summary happened not to mention came back
+    `is_new=true` — the planner proposed *introducing* people the reader already knows, under
+    freshly invented names. It is now judged against the book's roster, and the prompt says so
+    only when a roster was actually supplied (claiming otherwise would ask for a judgement the
+    prompt cannot support).
+  - **`package["canon"]` had no reader.** compile built it from `charter.consistency_anchors` on
+    every run; the only other mention in the whole codebase was a 200-char `canon_excerpt` in
+    telemetry. The author's own "these facts are fixed" block never travelled. `PassContext.canon`
+    now exposes it beside `premise`/`beats`, so a package-shape change breaks loudly in one place.
+  - **The roster source is the APPLIED bootstrap proposals** — the same rows the existing roster
+    join reads, because that is where a character stops being a proposal and becomes a glossary
+    entity. Pending ones are excluded (a request is not a fact), non-characters are excluded (a
+    seeded location under "EXISTING CAST" invites the model to write it as a person), and a read
+    failure degrades to an empty roster rather than failing a planning run.
+  - **A fresh book is byte-identical to before** — no empty EXISTING CAST section, which would
+    read as "this book has no characters", a different claim from saying nothing.
+  - **Four layers, each mutation-proven separately**, because that is what this sweep keeps
+    teaching: builder → `propose_cast` → `run_cast` → the worker's `PassContext`. Cutting the
+    forward at *any* one of them left the others' tests green. The worker link needed the file's
+    existing `inspect.getsource` convention (its dependencies make a live call impractical).
+  - Natural follow-on, not done: `run_world` invents entities under the same blindness and gets
+    `cast_names` but no canon.
+
+  **VERIFY:** composition **2660 passed / 341 skipped**.
 - **E7** re-run `scenes`/`self_heal` against the real curve.
 - **Deferred, with reasons in the CHECKLIST:** the batch `/error-blocks/propose` route (needs the
   *which scene does `pack()` ground against* decision — `propose_for_blocks` is built + tested but
