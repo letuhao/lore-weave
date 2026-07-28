@@ -2740,6 +2740,55 @@ async def process_job(
                     await _update_project_status(pool, job.user_id, job.project_id, "failed")
                     return
 
+                # D-CHAT-TURN-RETRYABLE-SWALLOW: a RETRYABLE failure used to fall straight
+                # through to mark-processed + advance-cursor below — the turn was silently
+                # dropped and counted as done, so a transient outage lost memory with
+                # nothing going red. The chapters branch has had bounded retry-in-cursor
+                # since CM3b; chat had none. This mirrors it.
+                #
+                # It matters more now that the anchor pre-load fails CLOSED: an unreadable
+                # glossary returns a retryable 503, and swallowing that would drop the turn
+                # instead of re-driving it.
+                if result.error and result.retryable:
+                    retry_key = f"retry_chat_{turn['pending_id']}"
+                    cur = job.current_cursor or {}
+                    retries = cur.get(retry_key, 0) + 1
+                    if retries < _MAX_RETRIES_PER_ITEM:
+                        logger.warning(
+                            "Retryable error on chat turn %s (attempt %d/%d): %s",
+                            turn["pending_id"], retries, _MAX_RETRIES_PER_ITEM, result.error,
+                        )
+                        await _advance_cursor(
+                            pool, job.user_id, job.job_id,
+                            {**cur, retry_key: retries, "scope": "chat"},
+                            items_delta=0,
+                        )
+                        return  # stop this run, re-drive the same turn on the next poll
+                    # Exhausted: skip it EXPLICITLY — counted as skipped, not processed,
+                    # and said out loud, so a flapping dependency can't look like success.
+                    logger.warning(
+                        "Skipping chat turn %s after %d retries: %s",
+                        turn["pending_id"], retries, result.error,
+                    )
+                    await _append_log(
+                        pool, job.user_id, job.job_id, "error",
+                        f"Chat turn {turn['pending_id']} skipped after {retries} retries",
+                        context={
+                            "event": "retry_exhausted",
+                            "pending_id": str(turn["pending_id"]),
+                            "retries": retries,
+                            "error": result.error,
+                        },
+                    )
+                    await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
+                    await _advance_cursor(
+                        pool, job.user_id, job.job_id,
+                        {"last_pending_id": str(turn["pending_id"]), "scope": "chat"},
+                        items_delta=0,
+                        skipped_delta=1,
+                    )
+                    continue
+
                 await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
                 # D-EXTRACTION-SILENT-NOOP: a chat turn whose text is gone/empty
                 # (deleted session, a tool-only turn with no prose) does NO extraction —
