@@ -751,10 +751,24 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > intersection floors** rather than panicking (`i32::clamp` panics when min > max) — with a
 > `TODO(F2)` that the loader must REFUSE the contradiction at load time.
 >
-> ⚠️ **Residual, stated rather than hidden:** `layer_index` is a wildcard-free `match`, so a 7th
-> variant is a compile error — but a variant added to `layer_index` and forgotten in `ALL` still
-> passes the self-consistency test. Rust has no stable `variant_count`. The two sit six lines apart;
-> that is **discipline, not a mechanical guard**, and it should not be described as one.
+> ⚠️ **Residual — narrowed same day, and the anti-pattern named.** The shape is
+> **"a closed set plus a hand-written companion list"**: Rust forces you to *handle* every variant
+> (a wildcard-free `match`) but cannot force an *array* to *contain* every variant. `ModifierSource::ALL`
+> now has its length tied to a named `COUNT`, so forgetting **either one** is a **compile error** —
+> **bite-proven both ways** (bump `COUNT` alone → error; drop a variant from `ALL` alone → error).
+> Only forgetting **all three** (`ALL`, `COUNT`, `layer_index`) is still silent, and that is
+> **discipline, not a mechanism.**
+> **A successor chain (`next_layer() -> Option<Self>`) LOOKS like it closes this and does not** — an
+> exhaustive match forces a variant to be HANDLED, never to be REACHED, so a variant nothing points at
+> is still skipped. Worth recording because it is the obvious-looking fix.
+> Note `StatSlot::ALL` is *accidentally* safer: its length is tied to `SLOT_COUNT`, which `StatBlock`
+> also depends on — an array-length type check doing the work of discipline.
+> **Tracked (defer gate #2, structural):** the real fix is one **repo gate** comparing `enum X` against
+> `X::ALL`, done once rather than per-enum — `StatSlot`, `EffectOp`, `StatusFlag`, `DiscardReason` and
+> `SeedRole` are all the same shape, and this is exactly the **XST-F1** class (*closed sets grow, and
+> what rots first is the claim that they are closed*). `design-lint` already ships a
+> `count-assertions` check for the documentation half of this family and has it switched **off**
+> (`INFO, not parsed in v1`).
 >
 > **NEXT:** F1 `ruleset-core` real digest → F2 loader (which owns the `TODO(F2)` clamp-contradiction
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT

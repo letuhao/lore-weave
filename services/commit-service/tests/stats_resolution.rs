@@ -286,9 +286,22 @@ fn every_modifier_source_is_consumed() {
 /// exactly the declared order, so the two cannot drift apart.
 #[test]
 fn the_layer_order_table_is_self_consistent() {
+    assert_eq!(
+        ModifierSource::ALL.len(),
+        ModifierSource::COUNT,
+        "ALL and COUNT disagree"
+    );
     for (i, source) in ModifierSource::ALL.into_iter().enumerate() {
         assert_eq!(source.layer_index(), i, "{source:?} is out of position in ModifierSource::ALL");
     }
+    // Every index in 0..COUNT is claimed exactly once. A duplicated or skipped
+    // index means a layer runs twice or never — both silent.
+    let mut seen = [false; ModifierSource::COUNT];
+    for source in ModifierSource::ALL {
+        assert!(!seen[source.layer_index()], "{source:?} duplicates a layer index");
+        seen[source.layer_index()] = true;
+    }
+    assert!(seen.iter().all(|b| *b), "a layer index is unclaimed");
 }
 
 /// **XST-D8 — clamps COMPOSE; load order never decides the winner.**
