@@ -41,10 +41,15 @@ struct Args {
     /// the bootstrap floor, NOT a silent fallback: the digest still describes
     /// exactly the rules in force, and the startup line says which.
     ruleset: Option<String>,
-    /// Where resolved rulesets are stored, content-addressed (RLS-D6). Absent
-    /// = not stored, and the startup line says THAT too — an unstored ruleset
-    /// is one a future replay cannot resolve.
-    ruleset_store: Option<String>,
+    /// Root for the ruleset state: `<root>/content` (immutable, content-
+    /// addressed) and `<root>/bindings` (mutable `reality -> digest`). The two
+    /// are separate directories on purpose — a binding MOVES on an epoch switch,
+    /// and mutable state inside a content-addressed store is a category error.
+    ruleset_state: Option<String>,
+    /// Resolve the layer stack, store it, and bind this reality to it — ONCE.
+    /// Without this flag the binary only LOADS, which is what a running node
+    /// does.
+    create_reality: bool,
 }
 
 fn parse_args() -> anyhow::Result<Args> {
@@ -54,7 +59,8 @@ fn parse_args() -> anyhow::Result<Args> {
     let mut channel = 1i64;
     let mut drain_once = false;
     let mut ruleset = None;
-    let mut ruleset_store = None;
+    let mut ruleset_state = None;
+    let mut create_reality = false;
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
@@ -65,7 +71,8 @@ fn parse_args() -> anyhow::Result<Args> {
             "--channel" => { channel = argv[i + 1].parse()?; i += 2; }
             "--drain-once" => { drain_once = true; i += 1; }
             "--ruleset" => { ruleset = Some(argv[i + 1].clone()); i += 2; }
-            "--ruleset-store" => { ruleset_store = Some(argv[i + 1].clone()); i += 2; }
+            "--ruleset-state" => { ruleset_state = Some(argv[i + 1].clone()); i += 2; }
+            "--create-reality" => { create_reality = true; i += 1; }
             other => anyhow::bail!("unknown arg {other}"),
         }
     }
@@ -75,7 +82,8 @@ fn parse_args() -> anyhow::Result<Args> {
         reality: reality.ok_or_else(|| anyhow::anyhow!("--reality <uuid> required"))?,
         channel,
         ruleset,
-        ruleset_store,
+        ruleset_state,
+        create_reality,
         drain_once,
     })
 }
@@ -145,37 +153,48 @@ async fn main() -> anyhow::Result<()> {
     // with the author's diagnostic; a node hosting forty realities marks this
     // one `Unloadable` and carries on with the other thirty-nine.
     let ruleset = {
-        let mut layers = Vec::new();
-        if let Some(path) = &args.ruleset {
-            layers.push(
-                ruleset_loader::read_layer(ruleset_loader::Layer::Reality, std::path::Path::new(path))
-                    .map_err(|e| anyhow::anyhow!("reality is UNLOADABLE: {e}"))?,
+        let state = args.ruleset_state.as_deref().unwrap_or(".loreweave/rulesets");
+        let store = ruleset_loader::RulesetStore::new(std::path::Path::new(state).join("content"));
+        let bindings =
+            ruleset_loader::BindingStore::new(std::path::Path::new(state).join("bindings"));
+        let reality_id = args.reality.to_string();
+
+        // CREATE — the ONLY path that reads a layer file. Resolves once,
+        // validates, stores the bytes, binds the reality to their digest.
+        // Refuses a second creation: RLS-A3 binds early and ONCE.
+        if args.create_reality {
+            let mut layers = Vec::new();
+            if let Some(path) = &args.ruleset {
+                layers.push(
+                    ruleset_loader::read_layer(
+                        ruleset_loader::Layer::Reality,
+                        std::path::Path::new(path),
+                    )
+                    .map_err(|e| anyhow::anyhow!("reality NOT created: {e}"))?,
+                );
+            }
+            let (_, binding) =
+                ruleset_loader::create_reality(&reality_id, &layers, &store, &bindings)
+                    .map_err(|e| anyhow::anyhow!("reality NOT created: {e}"))?;
+            println!(
+                "CREATED reality {reality_id} epoch {} -> ruleset {} (from {})",
+                binding.epoch,
+                binding.digest,
+                args.ruleset.as_deref().unwrap_or("engine_default"),
             );
         }
-        let r = ruleset_loader::resolve(&layers)
-            .map_err(|e| anyhow::anyhow!("reality is UNLOADABLE: {e}"))?;
+
+        // LOAD — this does NOT look at a layer file, and that is the point.
+        // Editing `reality.toml` after creation, or deploying a binary with a
+        // different `engine_default`, must not change a reality that already
+        // exists. Before this split, spine re-resolved at every start and both
+        // of those silently did (doc 16 §12: creation and Cold->Hot are two
+        // columns; F2.1 built the left one and used it for both).
+        let (r, digest) = ruleset_loader::load_reality(&reality_id, &store, &bindings)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("RULESET {} <- store (NOT re-resolved)", digest.to_hex());
         std::sync::Arc::new(r)
     };
-    let digest = ruleset.digest();
-
-    // Store the RESOLVED bytes, content-addressed. Not an optimisation: without
-    // it the rules these events are pinned to exist only in this process, so a
-    // replay six months from now resolves against whatever the binary of the
-    // day compiled in — the exact configuration trap RLS-A13 exists to close.
-    match &args.ruleset_store {
-        Some(root) => {
-            let stored = ruleset_loader::RulesetStore::new(root)
-                .put(&ruleset)
-                .map_err(|e| anyhow::anyhow!("ruleset store: {e}"))?;
-            println!("RULESET {} <- {} (stored in {root})", stored.to_hex(),
-                     args.ruleset.as_deref().unwrap_or("engine_default"));
-        }
-        None => println!(
-            "RULESET {} <- {} (NOT STORED - a future replay cannot resolve these rules)",
-            digest.to_hex(),
-            args.ruleset.as_deref().unwrap_or("engine_default")
-        ),
-    }
 
     // The island DERIVES its pin from these rules via `Domain::rules_digest`,
     // so it cannot report a digest for rules it is not running.

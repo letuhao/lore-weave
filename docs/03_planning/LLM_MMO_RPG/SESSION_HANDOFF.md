@@ -774,6 +774,73 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **F2.2 — EARLY BINDING: CREATION RESOLVES, LOAD DOES NOT (2026-07-28).**
+> The PO asked *“khi nào build được cái này?”* about the paragraph describing what was broken, and
+> checking it honestly showed **F2.1 had only closed two of its three clauses.**
+>
+> | | |
+> |---|---|
+> | ✅ a reality **can** carry its own rules | `--ruleset <file>` |
+> | ✅ an old ruleset **is resolvable** later | the content store |
+> | ❌ **a running reality's rules were still re-derived at every start** | ← still open |
+>
+> **RLS-A3 early binding was not implemented.** `spine` re-resolved the whole layer stack on every
+> boot, so an edit to `reality.toml` — or a deploy changing `engine_default` — **silently changed the
+> rules of a reality that was already running.** The store held the old bytes and nothing read them:
+> the configuration trap RLS-A13 exists to close, reintroduced one layer up by the thing meant to
+> close it. Doc 16 §12 draws reality-creation and island-Cold→Hot as **two columns** for exactly this
+> reason; F2.1 built the left one and used it for both.
+>
+> **Now they are two paths.** `create_reality` is the ONLY code that reads a layer file — it resolves
+> once, validates, stores the bytes and binds the reality to their digest. `load_reality` **does not
+> look at a layer file at all**; it reads the binding and fetches those exact bytes. `spine` gained
+> `--create-reality`, and even in the same process the running island's rules come **from the store**,
+> never from the resolution — so there is one load path and the split is not merely advisory.
+>
+> **The property that was broken is now a test:** create from a file, edit the file, and what loads is
+> what was *created*. Bite-proven by making `load_reality` re-resolve — two tests red immediately.
+> That is what makes replay-safety **structural rather than procedural**: with it there is no path by
+> which a reality's rules change without an event in its own log.
+>
+> Also pinned: creation happens **once** (a second create is refused, naming *epoch switch* as what to
+> do instead — doc 16 §9); loading a never-created reality is **refused, not defaulted** (a silent
+> fallback to `engine_default` is the same bug with a friendlier face — a reality quietly running
+> rules nobody chose); a binding whose digest is missing from the store is **`Unloadable`, loudly**,
+> and the message says the store is append-only *for this reason* (RLS-D6).
+>
+> **Bindings live OUTSIDE the content store, deliberately** — `<state>/content` vs `<state>/bindings`.
+> A binding is **mutable state** (it moves on an epoch switch); putting a mutable pointer inside a
+> directory whose entire guarantee is *“these bytes never change”* is a category error. Its eventual
+> home is `reality_registry` in the meta DB beside the lifecycle `status` the append guard already
+> reads; it is a file today because spine has no meta pool, and the surface is `create`/`load` so
+> moving it touches one file.
+>
+> **AND A HOLE IN THE COMMIT 20 MINUTES OLD (fixed, `4ac03cace`).** `v1_engine_default_artifact_matches_the_code`
+> was **half a test**: the artifact is applied as a PATCH over `Ruleset::engine_default()`, so it
+> catches a field with the WRONG value and is **blind to a field that is MISSING** — a deleted line
+> just inherits the `const fn` and the digest comparison still passes. **The artifact could be half
+> empty and still “match the code”**, which is the opposite of what RLS-D2 asks it to be. Found by
+> deleting `hit_base_pm` and watching the suite stay green — asked of my own test *because* “the
+> artifact IS the default” is the kind of claim that deserves the bite-test twice.
+> Fixed with `RulesetPatch::missing_fields`, built on exhaustive destructuring so a new rules field
+> cannot quietly shrink what *total* means. Only `engine_default` must be total; every other layer is
+> a partial override by design.
+>
+> **VERIFY:** workspace **680 / 6** (the six pre-existing `service-http` `jsonwebtoken` panics);
+> `ruleset-loader` 21 pass; workspace + `release-commit` build; clippy clean; 8 gates green.
+>
+> **Sequencing agreed with the PO for what comes next:** (1) this slice — done; (2) **`stat_archetypes`
+> as the first COLLECTION** — `melee_archetype` is already a lone dense array in `StatRules`, and
+> generalising it to a named map gives tombstones + `UnionByIdOverride` their first real consumer AND
+> gives a preset something genre-shaped to carry; (3) **templates** (wuxia/modern/scifi) shipped as
+> content with property tests, *not* as test fixtures — a good fixture is adversarial, a good template
+> is playable, and conflating them yields neither; (4) **F3**.
+> **Why templates wait:** a preset that can only override ~20 combat/stat numbers is not “wuxia”, it
+> is a difficulty slider — races, sects and cultivation kinds are collections `Ruleset` does not have.
+> Shipping one now would name a genre, deliver three tuned numbers, and force a redefinition of
+> “preset” once collections land, with users' files already written against the shallow meaning. If a
+> template is wanted sooner, name it for what it contains (`gritty.toml`), not for a genre.
+
 > ✅ **F2.1 — RULES BECOME CONTENT (2026-07-28).** `crates/ruleset-loader`: the RLS-A3 layer stack,
 > TOML artifacts, load-time validation, the content-addressed **immutable store**, and the canonical
 > **decoder**. **120 tests pass** across the three ruleset crates; workspace **672 / 6** (the six are

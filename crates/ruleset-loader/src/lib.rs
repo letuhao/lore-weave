@@ -28,11 +28,13 @@
 //! multi-reality hosting), presets as a scoped DB resource (RLS-D19), and
 //! `forge_override` as an ordered event (§9, needs epoch-switch-as-ingress).
 
+mod binding;
 mod layer;
 mod patch;
 mod store;
 mod validate;
 
+pub use binding::{binding_store, BindingError, BindingStore, RealityBinding};
 pub use layer::Layer;
 pub use patch::{CombatPatch, RulesetPatch, StatPatch};
 pub use store::{RulesetStore, StoreError};
@@ -135,4 +137,106 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
 pub fn engine_default_from_artifact() -> Result<Ruleset, LoadError> {
     let base = parse_layer(Layer::EngineDefault, ENGINE_DEFAULT_TOML)?;
     resolve(&[base])
+}
+
+
+// ── the two paths doc 16 §12 draws as separate columns ──────────────────────
+
+/// Why a reality could not be created or loaded.
+#[derive(Debug)]
+pub enum RealityError {
+    Load(LoadError),
+    Binding(BindingError),
+    Store(StoreError),
+    /// The reality is bound to a digest the content store does not have.
+    ///
+    /// RLS-D12 quarantine, and the honest diagnosis: the rules this reality was
+    /// created with are GONE, so it cannot be resumed without reinterpreting it
+    /// under different rules — which is the one thing the whole design forbids.
+    /// (RLS-D6 is why: the store is append-only and never pruned *because* of
+    /// this. A missing digest means someone pruned it or the store moved.)
+    RulesetMissing { reality_id: String, digest: String },
+}
+
+impl core::fmt::Display for RealityError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Load(e) => write!(f, "{e}"),
+            Self::Binding(e) => write!(f, "{e}"),
+            Self::Store(e) => write!(f, "{e}"),
+            Self::RulesetMissing { reality_id, digest } => write!(
+                f,
+                "reality {reality_id} is UNLOADABLE: it is bound to ruleset {digest}, \
+                 which the content store does not have. The rules it was created with \
+                 are gone; resuming would mean running it under rules its log does not \
+                 describe. The store is append-only and never pruned for exactly this \
+                 reason (RLS-D6)"
+            ),
+        }
+    }
+}
+
+impl From<LoadError> for RealityError {
+    fn from(e: LoadError) -> Self {
+        Self::Load(e)
+    }
+}
+impl From<BindingError> for RealityError {
+    fn from(e: BindingError) -> Self {
+        Self::Binding(e)
+    }
+}
+impl From<StoreError> for RealityError {
+    fn from(e: StoreError) -> Self {
+        Self::Store(e)
+    }
+}
+
+/// **CREATE** — resolve the layer stack ONCE, validate it, store the bytes, and
+/// bind the reality to their digest (doc 16 §12, left column).
+///
+/// This is the only path that reads layer files. Failure here is a **rejected
+/// request** with an author sitting in front of it — the reality is never
+/// created, as opposed to created-and-unloadable. Doc 16 calls that asymmetry
+/// deliberate.
+///
+/// Refuses a second creation: RLS-A3 binds early and ONCE. Changing a live
+/// reality's rules is an epoch switch, an ordered event (doc 16 §9), not a
+/// re-create — and a silent re-resolve is precisely the bug this split closes.
+pub fn create_reality(
+    reality_id: &str,
+    layers: &[LayerSource],
+    store: &RulesetStore,
+    bindings: &BindingStore,
+) -> Result<(Ruleset, RealityBinding), RealityError> {
+    let resolved = resolve(layers)?;
+    let digest = store.put(&resolved)?;
+    let binding = bindings.create(reality_id, &digest)?;
+    Ok((resolved, binding))
+}
+
+/// **LOAD** — fetch the exact bytes this reality was created with (doc 16 §12,
+/// right column).
+///
+/// **It does not look at a layer file at all.** That is the entire point: an
+/// edit to `reality.toml`, or a deploy that changes `engine_default`, must not
+/// change a reality that already exists. Before this split, `spine` re-resolved
+/// at every start and both of those silently did.
+///
+/// Failure here is an **operational state** with players sitting in front of
+/// it: this reality is `Unloadable`, its neighbours on the same node are
+/// unaffected (RLS-D12).
+pub fn load_reality(
+    reality_id: &str,
+    store: &RulesetStore,
+    bindings: &BindingStore,
+) -> Result<(Ruleset, ruleset_core::RulesetDigest), RealityError> {
+    let digest = bindings.digest_for(reality_id)?;
+    match store.get(&digest)? {
+        Some(r) => Ok((r, digest)),
+        None => Err(RealityError::RulesetMissing {
+            reality_id: reality_id.to_string(),
+            digest: digest.to_hex(),
+        }),
+    }
 }
