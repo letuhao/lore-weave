@@ -85,6 +85,10 @@ summed five outcomes and blamed one cause — it could send an author to fix a c
   (`Arc-Test …`, `Scenario2 …`). **Rule going forward: a read-only smoke may use any book; a smoke
   that creates or edits content must target a throwaway one.** Keeping the `why="live … check"`
   label is what made this diagnosable — keep doing that.
+- **The 25 legacy kind-fork duplicate groups are NOT worth merging** — all 25 live in **orphan**
+  KG projects with no `knowledge_projects` row, i.e. data no code path can open. They are junk to
+  be collected by `D-KG-ORPHAN-GC`, not lore to be repaired. The live graph (17 projects / 80
+  entities) has **zero** duplicate groups; Mị Đế has 9 entities, all anchored.
 - **The 15 draft entities do NOT block grounding** — the anchor pre-load and `known-entities` both
   run with no status filter deliberately, so drafts already ground. Promotion is a UI/authorial
   nicety, not a prerequisite. (`merge_candidates` is 0 because the curation pass is agent-invoked
