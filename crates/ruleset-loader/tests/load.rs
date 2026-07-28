@@ -30,6 +30,29 @@ fn v1_engine_default_artifact_matches_the_code() {
     assert_eq!(from_file, from_code);
 }
 
+/// …and the artifact must be TOTAL, which the test above cannot see.
+///
+/// **This was a hole in the test one commit earlier.** `engine_default.toml` is
+/// applied as a PATCH over `Ruleset::engine_default()`, so a field deleted from
+/// the file just inherits the `const fn` and the digest comparison still
+/// passes. The artifact could be half empty and "match the code" — proven by
+/// deleting `hit_base_pm` and watching the suite stay green.
+///
+/// Only the `engine_default` layer is required to be total; every other layer
+/// is a partial override by design. `missing_fields` is built on exhaustive
+/// destructuring, so a new rules field cannot quietly shrink what total means.
+#[test]
+fn v1_engine_default_artifact_declares_every_field() {
+    let patch = parse_layer(Layer::EngineDefault, ruleset_loader::ENGINE_DEFAULT_TOML)
+        .unwrap()
+        .patch;
+    let missing = patch.missing_fields();
+    assert!(
+        missing.is_empty(),
+        "engine_default.toml is the layer that must declare EVERYTHING — a field          omitted here silently inherits the const fn, so the artifact stops being          the source of truth it claims to be. Undeclared: {missing:?}"
+    );
+}
+
 // ── V5 · the layer fold ─────────────────────────────────────────────────────
 
 #[test]

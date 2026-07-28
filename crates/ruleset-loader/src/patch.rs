@@ -47,6 +47,50 @@ pub struct CombatPatch {
 }
 
 impl CombatPatch {
+    /// Names of the fields this patch leaves undeclared.
+    fn missing_fields(&self, out: &mut Vec<&'static str>) {
+        // EXHAUSTIVE destructuring — a new field on `CombatPatch` is a compile
+        // error here until the completeness check knows about it. Without that,
+        // adding a field would silently shrink what "total" means.
+        let Self {
+            hit_base_pm,
+            hit_floor_pm,
+            hit_ceiling_pm,
+            roll_band_lo_pm,
+            roll_band_hi_pm,
+            elem_mult_pm,
+            resist_pm,
+            defend_divisor,
+            max_hit,
+            ko_duration_rounds,
+            av_base,
+            av_slowed_pm,
+            av_hasted_pm,
+            av_stunned_pm,
+            av_initiator_first_pm,
+        } = self;
+        macro_rules! check {
+            ($($f:ident),* $(,)?) => { $( if $f.is_none() { out.push(concat!("combat.", stringify!($f))); } )* };
+        }
+        check!(
+            hit_base_pm,
+            hit_floor_pm,
+            hit_ceiling_pm,
+            roll_band_lo_pm,
+            roll_band_hi_pm,
+            elem_mult_pm,
+            resist_pm,
+            defend_divisor,
+            max_hit,
+            ko_duration_rounds,
+            av_base,
+            av_slowed_pm,
+            av_hasted_pm,
+            av_stunned_pm,
+            av_initiator_first_pm,
+        );
+    }
+
     /// Apply this layer over `base`, higher layer wins per field.
     fn apply(&self, base: &mut CombatRules) {
         // EXHAUSTIVE destructuring, no `..` — the same mechanism `canon` uses.
@@ -111,6 +155,16 @@ pub struct StatPatch {
 }
 
 impl StatPatch {
+    /// Names of the fields this patch leaves undeclared.
+    fn missing_fields(&self, out: &mut Vec<&'static str>) {
+        let Self { slot_defaults, move_base, move_speed_per_tile, move_max, melee_archetype } =
+            self;
+        macro_rules! check {
+            ($($f:ident),* $(,)?) => { $( if $f.is_none() { out.push(concat!("stats.", stringify!($f))); } )* };
+        }
+        check!(slot_defaults, move_base, move_speed_per_tile, move_max, melee_archetype);
+    }
+
     fn apply(&self, base: &mut StatRules) {
         let Self { slot_defaults, move_base, move_speed_per_tile, move_max, melee_archetype } =
             self;
@@ -150,5 +204,24 @@ impl RulesetPatch {
 
     pub fn is_empty(&self) -> bool {
         self == &Self::default()
+    }
+
+    /// Fields this patch does NOT declare, by name.
+    ///
+    /// **Only the `engine_default` layer is required to be total**, and this is
+    /// how that is checked. Every other layer is a partial override by design.
+    ///
+    /// It exists because the obvious test was HALF a test: `engine_default.toml`
+    /// is applied as a patch over `Ruleset::engine_default()`, so comparing the
+    /// two catches a field with the WRONG value and is blind to a field that is
+    /// MISSING — a deleted line just inherits the `const fn` and the comparison
+    /// still passes. The artifact could be half empty and "match the code".
+    /// Found by deleting `hit_base_pm` from the artifact and watching the test
+    /// stay green.
+    pub fn missing_fields(&self) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        self.combat.missing_fields(&mut out);
+        self.stats.missing_fields(&mut out);
+        out
     }
 }
