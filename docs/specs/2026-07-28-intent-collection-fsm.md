@@ -186,6 +186,29 @@ before apply, because the author's own words being altered is not a quality issu
 gemma local (\$0). Compare against the same run with the slot order reversed (open slots first) to
 isolate the constraint effect from the model.
 
+### What every slot must record — the instrument, not a demo
+
+The POC is a **measuring instrument**. If it only answers "did it work?", it has failed, because the
+three parameters in §10 are settled from this same data. One row per slot:
+
+| field | why it is needed |
+|---|---|
+| `slot`, `position` (1…N) | Q1 — decay of acceptance across the run |
+| `constraint_class` (`closed` · `canon_open` · `blank_open`) | separates §5's effect from fatigue; the reversed arm needs it to be readable |
+| `arm` (`constrained_first` · `reversed`) | the controlled comparison |
+| `verdict` (`accept` · `light_edit` · `discard`) per candidate | metric A, scored by the author |
+| `author_value` and `applied_value` | metric B is `exact` / `drifted` / `dropped` — computed, not judged |
+| `outcome` (`applied` · `absent` · `proposal_failed`) | keeps a declined slot distinguishable from a broken one (§6) |
+| `llm_calls`, `retried` | proves the "one call, one retry, no loop" bound actually held |
+
+Two rules learned the hard way today:
+
+- **Score A by the author, compute B mechanically.** B is a string comparison; letting a model judge
+  it would be asking the thing under test to grade itself.
+- **A `proposal_failed` slot must never be silently dropped from the tally.** A run that quietly
+  omits its failures reports a better acceptance rate than it earned — the same shape as the
+  `empty`-counted-as-degrade bug fixed in `d5a9bae14`.
+
 ---
 
 ## 9 · Out of scope here
@@ -197,10 +220,52 @@ isolate the constraint effect from the model.
 
 ---
 
-## 10 · Open questions for the PO
+## 10 · The three design parameters — settled by MEASUREMENT, not by argument
 
-1. **Slot scope per run.** All slots of a chapter, or only the ones the author asks about? Defaulting
-   to "all" risks a 12-question interrogation before a single word is written.
-2. **Scene slots.** Does a scene get its own run, or inherit the chapter's and only fill deltas?
-3. **Re-opening a settled slot.** Free (any time, any slot) or gated (only while the chapter is
-   unwritten)? Free is friendlier; gated keeps the written prose and its spec from silently diverging.
+These were first written as "open questions for the PO". That was the wrong frame, and the PO said
+so: **cái này phải đo mới biết.** Each one has a defensible answer on both sides, which is exactly
+the signature of a question that opinion cannot close. So they become **variables of the
+experiment**, and §8's instrumentation has to be rich enough to settle them.
+
+This matters beyond these three: every inference made during the 2026-07-28 run that was not
+measured turned out wrong — duplicates blamed on the missing index (they were legacy kind-forks),
+`_text` blamed for a false-dirty (it was the empty mount doc), a cross-book leak that was a plan
+outline, a `tsc` failure that was a stale `npx`. **The pattern is not bad luck; it is that plausible
+mechanism is not evidence.**
+
+### Q1 · Slot scope per run — how many questions before the author is spent?
+
+*All 12 chapter slots, or only what the author asks about?* "All" risks a 12-question interrogation
+before a single word is written; "asked-only" risks a spec too thin to draft from.
+
+**Measured by:** acceptance rate as a function of **slot position in the run**. Every slot already
+records accept / light-edit / discard (§8 A), so plot that against position 1…N.
+**Reads as:** a clear decay after position *k* ⇒ cap a run at *k* and let the rest be asked later.
+Flat ⇒ scope is not the constraint and "all" is safe.
+**Confound to control:** position is entangled with constraint class (§5 puts closed sets first, so
+early slots are also the easy ones). The reversed-order arm already in §8 separates them — if the
+decay follows *position* in both arms it is fatigue; if it follows *constraint* it is §5 working.
+
+### Q2 · Scene runs — own run, or inherit the chapter and fill deltas?
+
+**Measured by:** for each scene, how many of its slots end up **differing** from the chapter's
+value. Run both arms on the same chapter: a full scene run vs a delta-only run seeded from the
+chapter.
+**Reads as:** most slots inherited unchanged ⇒ deltas win, and a full scene run is asking the author
+to re-answer what they already said. High divergence ⇒ scenes carry their own intent and deserve
+their own run.
+**Cheap signal available first:** the existing Mị Đế outline nodes can be inspected for how often a
+scene's `goal`/`conflict` restates its chapter's — no LLM needed.
+
+### Q3 · Re-opening a settled slot — free or gated?
+
+**Not answerable yet, and saying so is the point.** The risk being weighed — a re-opened slot
+silently diverging from prose already written — cannot occur until prose exists. Measuring it now
+would produce a number about nothing.
+
+**Measured by (later, once a chapter is drafted):** re-open a settled slot, then check whether the
+written prose still satisfies it. Frequency of divergence is the answer: rare ⇒ free re-open;
+common ⇒ gate it, or make the divergence loud (the `chapter_error_block` machinery already exists
+for exactly that kind of marking).
+**Sequencing:** Q1 and Q2 run in the first POC; Q3 is a second pass **after** the first chapter is
+written. A design that claims to have settled Q3 before then is guessing.
