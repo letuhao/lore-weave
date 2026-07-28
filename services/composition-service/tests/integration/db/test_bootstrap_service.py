@@ -96,6 +96,18 @@ class FakeGlossaryClient:
         self.calls: list[dict[str, Any]] = []
         self.fail_with: GlossaryClientError | None = None
         self._next_entity_id = 0
+        #: adopt-kinds calls, and whether adopting actually clears `fail_with`. A real adopt makes
+        #: the next seed succeed; setting this False fakes an adopt that silently did not take.
+        self.adopt_calls: list[list[str]] = []
+        self.adopt_works = True
+
+    async def adopt_book_kinds(self, book_id, user_id, kinds):
+        self.adopt_calls.append(list(kinds))
+        if not self.adopt_works:
+            return False
+        if self.fail_with is not None and self.fail_with.code == "GLOSS_BOOK_NOT_SCAFFOLDED":
+            self.fail_with = None          # the book is scaffolded now
+        return True
 
     async def seed_entities_or_raise(self, book_id, *, source_language, entities):
         self.calls.append({"source_language": source_language, "entities": list(entities)})
@@ -347,19 +359,101 @@ async def test_apply_surfaces_book_not_adopted_as_actionable_422(pool):
     proposed = await svc.propose(user, book, run.id, bearer="tok")
     await svc.approve(book, proposed.id)
 
+    # A caller WITHOUT manage (may_scaffold defaults False) still cannot scaffold — but the message
+    # now names who can, instead of sending them to a screen in another feature that they may not
+    # even have the access to use.
     with pytest.raises(GlossaryClientError) as exc_info:
         await svc.apply(user, book, proposed.id, bearer="tok")
     assert exc_info.value.code == "GLOSS_BOOK_NOT_SCAFFOLDED"
-    assert "Graph Schema" in exc_info.value.detail
+    assert "MANAGE access" in exc_info.value.detail and "owner" in exc_info.value.detail
+    assert "Graph Schema" not in exc_info.value.detail   # the old dead end, gone
+    assert glossary.adopt_calls == []                    # and NOTHING was scaffolded
 
     failed = await svc.get(book, proposed.id)
     assert failed is not None and failed.status == "failed"
-    assert "Graph Schema" in failed.error_detail
+    assert "MANAGE access" in failed.error_detail
 
     # Retry after "adopting" (the fake stops failing) resumes and succeeds.
     glossary.fail_with = None
     resumed = await svc.apply(user, book, proposed.id, bearer="tok")
     assert resumed.status == "applied"
+
+
+# ── the cold-start dead end ───────────────────────────────────────────────────────────────────────
+#
+# A brand-new book has no glossary ontology, so its very FIRST cast proposal could not be applied.
+# The only signal was a 422 naming a different screen in a different feature, arriving after the
+# author had already reviewed and approved a cast. knowledge-service had the identical shape when
+# adopting a KG graph-schema and fixed it by seeding the kinds the schema requires; this is the
+# composition side of that fix.
+
+
+async def test_a_manage_caller_SEEDS_the_kinds_and_the_apply_goes_through(pool):
+    """The dead end, gone: the first cast on a brand-new book applies."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book, chapters=[],
+        glossary_seeds=[
+            {"name": "Lin Feng", "kind_code": "character", "attributes": {}},
+            {"name": "Hoa Sơn", "kind_code": "location", "attributes": {}},
+        ],
+    )
+    glossary = FakeGlossaryClient()
+    glossary.fail_with = GlossaryClientError(422, "GLOSS_BOOK_NOT_SCAFFOLDED", "not adopted")
+    svc = _svc(pool, FakeBookClient(), glossary)
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(book, proposed.id)
+
+    applied = await svc.apply(user, book, proposed.id, bearer="tok", may_scaffold=True)
+    assert applied.status == "applied"
+    # ONLY the kinds this proposal references — choosing a book's whole ontology is an authoring
+    # decision, and making it silently on the author's behalf would be the worse bug.
+    assert glossary.adopt_calls == [["character", "location"]]
+    assert len(glossary.calls) == 2                      # failed once, retried once
+
+
+async def test_the_seed_is_retried_EXACTLY_once_not_looped(pool):
+    """A scaffold that does not take must surface the REAL error from the operation the caller
+    asked for — not a second-hand one about the repair, and not an endless retry."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book, chapters=[],
+        glossary_seeds=[{"name": "Lin Feng", "kind_code": "character", "attributes": {}}],
+    )
+    glossary = FakeGlossaryClient()
+    glossary.fail_with = GlossaryClientError(422, "GLOSS_BOOK_NOT_SCAFFOLDED", "not adopted")
+    glossary.adopt_works = False          # the adopt silently did not take
+    svc = _svc(pool, FakeBookClient(), glossary)
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(book, proposed.id)
+
+    with pytest.raises(GlossaryClientError) as exc_info:
+        await svc.apply(user, book, proposed.id, bearer="tok", may_scaffold=True)
+    assert exc_info.value.code == "GLOSS_BOOK_NOT_SCAFFOLDED"
+    assert len(glossary.adopt_calls) == 1
+    assert len(glossary.calls) == 2       # the original + ONE retry, then it gives up
+
+
+async def test_a_NON_scaffolding_error_is_never_swallowed_by_the_repair(pool):
+    """The repair is keyed to one code. Any other glossary failure must propagate untouched — a
+    repair path that widens into a general catch is how a real outage starts reading as a
+    configuration nit."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book, chapters=[],
+        glossary_seeds=[{"name": "Lin Feng", "kind_code": "character", "attributes": {}}],
+    )
+    glossary = FakeGlossaryClient()
+    glossary.fail_with = GlossaryClientError(503, "GLOSS_UNAVAILABLE", "glossary is down")
+    svc = _svc(pool, FakeBookClient(), glossary)
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(book, proposed.id)
+
+    with pytest.raises(GlossaryClientError) as exc_info:
+        await svc.apply(user, book, proposed.id, bearer="tok", may_scaffold=True)
+    assert exc_info.value.code == "GLOSS_UNAVAILABLE"
+    assert glossary.adopt_calls == []     # no scaffolding attempted for an unrelated failure
+    assert len(glossary.calls) == 1       # and no retry either
 
 
 async def test_apply_chapters_and_glossary_together_both_recorded(pool):

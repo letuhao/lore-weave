@@ -59,7 +59,8 @@ class StubBootstrapService:
         self.record = self.record.model_copy(update={"status": "rejected"})
         return self.record
 
-    async def apply(self, created_by, book_id, proposal_id, bearer):
+    async def apply(self, created_by, book_id, proposal_id, bearer, *, may_scaffold=False):
+        self.may_scaffold = may_scaffold
         self.record = self.record.model_copy(update={"status": "applied"})
         return self.record
 
@@ -179,3 +180,47 @@ def test_get_proposal_no_grant_404s(no_grant_client):
     c, _stub = no_grant_client
     r = c.get(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}")
     assert r.status_code == 404
+
+
+# ── the scaffold capability is a TIER decision, not a convenience flag ────────────────────────────
+#
+# A brand-new book has no glossary ontology, so its very first cast proposal could not be applied:
+# the only signal was a 422 pointing the author at a different screen in a different feature, after
+# they had already approved a cast. `apply` now seeds the kinds the proposal needs — but seeding is
+# MANAGE-tier while this route is EDIT-gated, so the capability is resolved at the router and passed
+# in. These tests pin the boundary, because "an EDIT collaborator reshaped the book's ontology as a
+# side effect of applying a cast" is a tenancy defect, not a bug.
+
+def _apply(level):
+    c, stub = _client(level)
+    try:
+        return c.post(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}/apply"), stub
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_an_OWNER_may_scaffold_the_books_ontology_on_apply():
+    from app.grant_client import GrantLevel
+
+    r, stub = _apply(GrantLevel.OWNER)
+    assert r.status_code == 200
+    assert stub.may_scaffold is True
+
+
+def test_MANAGE_may_scaffold_too():
+    from app.grant_client import GrantLevel
+
+    r, stub = _apply(GrantLevel.MANAGE)
+    assert r.status_code == 200
+    assert stub.may_scaffold is True
+
+
+def test_an_EDIT_collaborator_may_apply_but_may_NOT_scaffold():
+    """The whole point of passing the capability rather than assuming it. EDIT is enough to apply a
+    cast proposal and NOT enough to adopt an ontology — if this flips, an editor silently gains a
+    MANAGE-tier power through a side door."""
+    from app.grant_client import GrantLevel
+
+    r, stub = _apply(GrantLevel.EDIT)
+    assert r.status_code == 200          # applying is still allowed
+    assert stub.may_scaffold is False    # scaffolding is not

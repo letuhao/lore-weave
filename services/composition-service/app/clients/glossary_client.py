@@ -136,6 +136,38 @@ class GlossaryClient:
             defs.sort(key=lambda d: (not d.get("is_required"), d.get("sort_order") or 0))
         return out
 
+    async def adopt_book_kinds(
+        self, book_id: UUID, user_id: UUID, kinds: list[str],
+    ) -> bool:
+        """Idempotently copy the given System kind codes down into the book's tier.
+
+        The SAME internal route knowledge-service calls before adopting a KG graph-schema, and for
+        the same reason: a dependent operation that needs a kind should seed that kind rather than
+        fail and tell the author to go and find another screen. Adopting a schema used to 422
+        `NEEDS_GLOSSARY`; this is the composition-side of that fix.
+
+        TENANCY — this route carries NO grant check of its own (glossary trusts the caller, exactly
+        as it trusts knowledge). Scaffolding a book's ontology is a MANAGE-tier act while
+        `apply_bootstrap` is EDIT-gated, so the CALLER must have verified MANAGE before calling
+        this. Do not call it from an EDIT-gated path without that check.
+
+        Returns False rather than raising: the caller's next move is to retry the real work and let
+        THAT report the honest error. A failure here is never the interesting one.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/ontology/adopt-kinds"
+        try:
+            resp = await self._http.post(
+                url, params={"user_id": str(user_id)}, json={"kinds": kinds},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("glossary adopt-kinds failed (%s): %s", url, exc)
+            return False
+        if resp.status_code != 200:
+            logger.warning("glossary adopt-kinds %s returned %d", url, resp.status_code)
+            return False
+        logger.info("glossary adopt-kinds: book=%s seeded %s", book_id, kinds)
+        return True
+
     async def seed_entities_or_raise(
         self, book_id: UUID, *, source_language: str, entities: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:

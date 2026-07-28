@@ -29,9 +29,17 @@ from app.services.bootstrap_service import BootstrapService
 router = APIRouter(prefix="/v1/composition")
 
 
-async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
+async def _gate_book(
+    grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel
+) -> GrantLevel:
+    """Gate, and RETURN the caller's actual level.
+
+    Returned rather than discarded so a handler that needs a higher-tier capability can decide
+    from the SAME resolve that gated the request — one lookup, and no chance of the two answers
+    disagreeing (`apply_bootstrap` is EDIT-gated but may scaffold a book's ontology, which is
+    MANAGE-tier)."""
     try:
-        await authorize_book(grant, book_id, caller, need)
+        return await authorize_book(grant, book_id, caller, need)
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
     except InsufficientGrant:
@@ -119,9 +127,17 @@ async def apply_bootstrap(
     grant: GrantClient = Depends(get_grant_client_dep),
     svc: BootstrapService = Depends(get_bootstrap_service),
 ):
-    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    level = await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
-        record = await svc.apply(user_id, book_id, proposal_id, bearer)
+        # A brand-new book has no glossary ontology, so its first cast proposal cannot apply.
+        # `may_scaffold` lets apply() seed the kinds this proposal needs instead of dead-ending —
+        # but ONLY for a caller who could have adopted an ontology by hand anyway. Scaffolding is
+        # MANAGE-tier; this route is EDIT-gated; an EDIT collaborator must not reshape a book's
+        # ontology as a side effect of applying a cast.
+        record = await svc.apply(
+            user_id, book_id, proposal_id, bearer,
+            may_scaffold=level.at_least(GrantLevel.MANAGE),
+        )
     except LookupError:
         raise HTTPException(status_code=404, detail="proposal not found")
     except BookClientError as exc:

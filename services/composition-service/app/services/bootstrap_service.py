@@ -381,13 +381,20 @@ class BootstrapService:
 
     async def apply(
         self, created_by: UUID, book_id: UUID, proposal_id: UUID, bearer: str,
+        *, may_scaffold: bool = False,
     ) -> PlanBootstrapProposal:
         """Deterministic, zero LLM calls. Claims the record atomically
         (approved|failed → applying); a claim miss means another apply
         already ran or the record isn't in an applicable state — the
         current record is returned as-is (safe no-op / caller inspects
-        `status`), never a blind re-run."""
-        del created_by  # actor arity kept; apply replays the approved diff, book-scoped
+        `status`), never a blind re-run.
+
+        `may_scaffold` — whether the CALLER holds MANAGE on the book, resolved once at the router
+        from the same grant lookup that gates the request. It decides whether an unscaffolded book
+        may have the kinds this proposal needs seeded on the spot (see the seed step below).
+        Scaffolding a book's ontology is a MANAGE-tier act and this route is EDIT-gated, so the
+        capability is passed IN rather than assumed here: an EDIT collaborator must not be able to
+        reshape a book's ontology as a side effect of applying a cast proposal."""
         claimed = await self._proposals.claim_for_apply(book_id, proposal_id)
         if claimed is None:
             existing = await self._proposals.get_for_book(book_id, proposal_id)
@@ -463,13 +470,47 @@ class BootstrapService:
                         book_id, source_language=original_language, entities=pending_glossary,
                     )
                 except GlossaryClientError as exc:
-                    if exc.code == "GLOSS_BOOK_NOT_SCAFFOLDED":
+                    if exc.code != "GLOSS_BOOK_NOT_SCAFFOLDED":
+                        raise
+                    # A BRAND-NEW book has no ontology, so its very first cast proposal could not
+                    # be applied — and the only signal was this error, pointing the author at a
+                    # different screen in a different feature. That is a dead end in the first run
+                    # anyone ever does: nothing earlier in the plan flow mentions it, and the
+                    # author has already approved a cast by the time they hit it.
+                    #
+                    # knowledge-service solved the same shape already — adopting a KG graph-schema
+                    # used to 422 NEEDS_GLOSSARY, and now it seeds the node-kinds the schema
+                    # requires via this exact internal route. A dependent operation that needs a
+                    # kind should SEED that kind, not send the author away.
+                    #
+                    # Only the kinds THESE entities need, never a blanket ontology: seeding what
+                    # the proposal actually references is a mechanical prerequisite, whereas
+                    # choosing a book's whole ontology is an authoring decision that is not ours.
+                    needed = sorted({
+                        str(ge.get("kind_code") or "").strip()
+                        for ge in pending_glossary if (ge.get("kind_code") or "").strip()
+                    })
+                    if not (may_scaffold and needed):
                         raise GlossaryClientError(
                             exc.status, exc.code,
-                            "This book has no Glossary ontology yet — adopt one in the "
-                            "Graph Schema tab, then retry apply.",
+                            "This book has no Glossary ontology yet, and setting one up needs "
+                            "MANAGE access to the book — ask the book's owner to open it once, "
+                            "then retry apply."
+                            if needed else
+                            "This book has no Glossary ontology yet and this proposal names no "
+                            "entity kind to seed one from — adopt an ontology for the book first.",
                         ) from exc
-                    raise
+                    logger.info(
+                        "bootstrap apply: book=%s is unscaffolded — seeding %s and retrying",
+                        book_id, needed,
+                    )
+                    await self._glossary.adopt_book_kinds(book_id, created_by, needed)
+                    # Retried ONCE, and deliberately without inspecting the adopt result: if the
+                    # scaffold did not take, the retry raises the real error from the operation the
+                    # caller actually asked for, rather than a second-hand one about the repair.
+                    created_entities = await self._glossary.seed_entities_or_raise(
+                        book_id, source_language=original_language, entities=pending_glossary,
+                    )
                 for item in created_entities:
                     await self._proposals.mark_item_applied(
                         book_id, proposal_id,
