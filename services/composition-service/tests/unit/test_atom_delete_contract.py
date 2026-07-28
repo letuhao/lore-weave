@@ -19,26 +19,64 @@ exactly what undoing it would. Meanwhile `scene_link` carried an authored `label
 `entity_override` an authored JSONB blob, and losing those irreversibly destroys work only the
 author can reconstruct. The distinction is the PAYLOAD, not the shape.
 
-So the contract makes each family DECLARE its tier and justify a hard delete — and, most
-importantly, **fails when a family appears that has not declared at all**. That last property is
-the anti-drift one: a new `*_edit` tool with a destructive op cannot ship silently.
+So the contract makes each family DECLARE its tier and justify a non-recoverable delete — and, most
+importantly, **fails when a destructive surface appears that has not declared at all**.
+
+HOW IT FINDS THE SURFACES — and why the first version got this wrong. v1/v2 of this gate parsed
+`server.py` with a regex, on the stated grounds that the module "cannot be imported without env".
+That was false: `tests/conftest.py` sets all four required vars, so the module imports fine under
+pytest. The regex bought nothing and cost two silent blind spots (v1 saw 6 of 14 families, v2 saw
+13 of 14 — missing `structure_template`, which HAS an `archive` op and so went wholly unchecked),
+plus a third it never even aimed at (the 12 legacy standalone `*_delete`/`*_archive` tools).
+
+This version asks the LIVE MCP REGISTRY instead: `list_tools()` → `inputSchema.properties.op.enum`.
+A JSON schema has no docstrings or comments to trip over, and it is exactly the surface the model
+sees. That removes the blind-spot CLASS rather than its two instances.
+
+The three properties that make under-discovery impossible are pinned below:
+  1. every op verb in the service is CLASSIFIED (an unclassified verb fails — a new `purge`
+     cannot slip in as benign-by-default);
+  2. every legacy destructive door resolves through its own `superseded_by` meta to a DECLARED
+     family (the 12 standalone tools the earlier gate could not see at all);
+  3. the declared tier is checked against the DDL / the service, not taken on faith.
 """
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import pathlib
 import re
 
 import pytest
 
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
-_SERVER = _ROOT / "app" / "mcp" / "server.py"
 _MIGRATE = _ROOT / "app" / "db" / "migrate.py"
+_RUN_SERVICE = _ROOT / "app" / "services" / "authoring_run_service.py"
 
-# Ops that DESTROY or hide a row. `restore`/`reopen` are the reverses, not destructive.
+
+# ── OP VERB CLASSIFICATION ─────────────────────────────────────────────
+# EVERY verb the service exposes must appear in exactly one of these sets. `test_every_op_verb_is
+# _CLASSIFIED` fails on an unknown one, which is the property the previous version lacked: it held
+# a `_DESTRUCTIVE` ALLOWLIST, so anything not on it was benign by default — and `revert_all`, which
+# server.py itself labels "destructive + irreversible", was silently waved through.
+
+# Removes or hides an atom ROW.
 _DESTRUCTIVE = {"delete", "archive", "dismiss", "unbind"}
-# The reverse ops that satisfy a soft-delete declaration.
+# Does not touch the row, but REVERTS AUTHORED PROSE to an earlier revision. Recoverable through
+# the revision chain rather than an archive flag — a real guarantee, but a different one.
+_REVERSION = {"revert_all", "reject_unit"}
+# The reverses that satisfy a soft-delete declaration.
 _REVERSE = {"restore", "reopen", "bind"}
+# Everything else: creates, reads, lifecycle transitions, and job control. Listed explicitly so
+# that adding a verb is a decision someone made, not a default someone inherited.
+_BENIGN = {
+    "create", "add", "update", "patch", "update_spec", "clone", "move", "assign_chapters",
+    "list", "status", "resolve",
+    "start", "resume", "pause", "close", "cancel", "gate",
+    "accept_unit", "approve_plan", "approve_edges", "project_kg",
+}
+_CLASSIFIED = _DESTRUCTIVE | _REVERSION | _REVERSE | _BENIGN
 
 
 class AtomDelete:
@@ -55,16 +93,22 @@ class AtomDelete:
     reader (or a gate) had to go and look each time — the same "no declared contract" root the
     hard-vs-soft split came from. Declaring it does not unify them; it stops the next family from
     inventing a THIRD spelling by accident.
+
+    Tiers:
+        soft      the row is hidden by `flag` and a reverse op brings it back
+        hard      the row is really gone, and losing it costs the author nothing (must justify)
+        pair      the "destructive" op is half of a toggle whose other half is on the same tool
+        revision  authored prose is reverted, recoverable via the chapter revision chain
     """
 
     def __init__(self, tier: str, table: str | None = None, why: str = "",
                  flag: str = "is_archived"):
-        assert tier in ("soft", "hard", "pair"), tier
+        assert tier in ("soft", "hard", "pair", "revision"), tier
         self.tier, self.table, self.why, self.flag = tier, table, why, flag
 
 
 # ── THE SoT ────────────────────────────────────────────────────────────
-# Adding a destructive op to a family? Add its row here, with a reason if it is `hard`.
+# Adding a destructive op to a family? Add its row here, with a reason unless it is `soft`.
 CONTRACT: dict[str, AtomDelete] = {
     "composition_outline_node_edit": AtomDelete("soft", "outline_node"),
     "composition_canon_rule_edit": AtomDelete("soft", "canon_rule"),
@@ -99,84 +143,117 @@ CONTRACT: dict[str, AtomDelete] = {
         why="`unbind` is not a delete — `bind`/`unbind` are two halves of one toggle, and the "
             "tool exposes both, so the reverse is always reachable.",
     ),
+    # ── REVISION tier: these destroy no row, they roll authored PROSE back ──
+    # Both were invisible to the previous gate: its `_DESTRUCTIVE` allowlist held only row verbs,
+    # so `revert_all` passed as benign despite server.py:3221 calling it "destructive+irreversible".
+    "composition_authoring_run_manage": AtomDelete(
+        "revision",
+        why="`revert_all` restores every drafted/accepted unit to its `pre_revision_id`, so the "
+            "prose is recoverable through the chapter revision chain rather than an archive flag. "
+            "It is irreversible FROM THE UI, which is why it is Tier-W confirm-gated — the confirm "
+            "token is the guarantee here, standing in for a reverse op.",
+    ),
+    "composition_authoring_run_review": AtomDelete(
+        "revision",
+        why="`reject_unit` reverts one unit (and cascades downstream) back to its "
+            "`pre_revision_id`. Same guarantee as revert_all at single-unit granularity: the "
+            "revision chain holds the prose, so nothing the author wrote is unrecoverable.",
+    ),
 }
 
 
-def _declared_families() -> dict[str, str]:
-    """{tool_name: op-csv} for every unified op-dispatch tool, read from the REAL server module.
+@functools.lru_cache(maxsize=1)
+def _live_tools():
+    """Every registered tool, from the REAL MCP registry.
 
-    Parsed from source rather than imported so the gate keeps working when the module cannot be
-    imported (missing env), and so it sees exactly what a reviewer would read.
+    Imported, not regex-parsed: `tests/conftest.py` provides the env the settings model needs, so
+    the import that the earlier version of this gate declared impossible is in fact what
+    `test_mcp_server.py` has been doing all along.
     """
-    src = _SERVER.read_text(encoding="utf-8")
-    argops = {
-        m.group(1): m.group(2).replace('"', "").replace(" ", "")
-        # `op:` is not necessarily the next line. A class may carry a DOCSTRING (arc, motif) or
-        # leading `#` COMMENTS (structure_template) first. Both variants cost this gate a family
-        # while it still reported green:
-        #   v1 (`\s*\n\s*op:`)        saw 6 of 14 — missed every docstring'd family
-        #   v2 (docstring only)       saw 13 of 14 — missed structure_template, which HAS an
-        #                             `archive` op and so went entirely unchecked
-        # A gate with a silent blind spot is worse than no gate, because it certifies what it
-        # never looked at. `test_the_parser_sees_the_AWKWARD_shapes` below pins both variants.
-        for m in re.finditer(
-            r'class (_\w+)\(ForbidExtra\):\s*\n'
-            r'(?:\s*"""(?:.|\n)*?"""\s*\n)?'      # optional docstring
-            r'(?:\s*#[^\n]*\n)*'                  # optional leading comments
-            r'\s*op:\s*Literal\[([^\]]*)\]',
-            src,
-        )
-    }
-    out: dict[str, str] = {}
-    last: str | None = None
-    for line in src.split("\n"):
-        n = re.search(r'^\s*name="([a-z_]+)",', line)
-        if n:
-            last = n.group(1)
-        d = re.search(r'^async def \w+\(ctx: MCPContext, args: (_\w+)\)', line)
-        if d and last and d.group(1) in argops:
-            out[last] = argops[d.group(1)]
+    from app.mcp.server import mcp_server
+
+    return asyncio.run(mcp_server.list_tools())
+
+
+def _declared_families() -> dict[str, set[str]]:
+    """{tool_name: {op, …}} for every unified op-dispatch tool, read from its published schema."""
+    out: dict[str, set[str]] = {}
+    for t in _live_tools():
+        enum = (t.inputSchema.get("properties", {}).get("op") or {}).get("enum")
+        if enum:
+            out[t.name] = set(enum)
     return out
 
 
 def _destructive_families() -> dict[str, set[str]]:
     return {
-        tool: set(ops.split(","))
-        for tool, ops in _declared_families().items()
-        if _DESTRUCTIVE & set(ops.split(","))
+        tool: ops for tool, ops in _declared_families().items()
+        if (_DESTRUCTIVE | _REVERSION) & ops
     }
 
 
-def test_the_parser_actually_finds_the_families():
+def _legacy_destructive_doors() -> dict[str, str | None]:
+    """{tool_name: superseded_by} for standalone (non-op-dispatch) tools that destroy something.
+
+    These are the 12 pre-unification `*_delete` / `*_archive` / `*_unbind` / `revert_all` tools.
+    They are still registered and still callable, so they are still doors onto the same rows — and
+    the previous gate, which only looked at op-dispatch classes, could not see a single one.
+    """
+    families = _declared_families()
+    verbs = _DESTRUCTIVE | _REVERSION
+    out: dict[str, str | None] = {}
+    for t in _live_tools():
+        if t.name in families:
+            continue
+        tail = t.name.removeprefix("composition_")
+        if any(tail.endswith(v) or f"_{v}" in tail or tail.startswith(v) for v in verbs):
+            out[t.name] = (t.meta or {}).get("superseded_by")
+    return out
+
+
+def test_the_registry_actually_yields_the_families():
     """A gate that silently matches nothing passes forever. Pin that it sees real families."""
     fams = _declared_families()
-    assert len(fams) >= 12, f"only found {len(fams)} op-dispatch tools — the parser has drifted"
+    assert len(fams) >= 15, f"only found {len(fams)} op-dispatch tools — discovery has drifted"
     assert "composition_canon_rule_edit" in fams
 
 
-def test_the_parser_sees_the_AWKWARD_shapes():
-    """The two class layouts that each silently cost this gate a family while it reported green.
+def test_the_registry_sees_the_shapes_the_REGEX_could_not():
+    """The class layouts that each silently cost the earlier gate a family while it reported green.
 
-    Named explicitly rather than trusting the count: a future family could be added at the same
-    time one is missed, keeping the total plausible while coverage quietly drops.
+    `composition_arc_edit` carries a docstring before `op:`; `composition_structure_template_edit`
+    carries `#` comments. Both are invisible in a JSON schema — which is the point — but they are
+    named here so a future regression to source-parsing is caught by the test that documents why.
     """
     fams = _declared_families()
-    assert "composition_arc_edit" in fams, "docstring-before-op class is being skipped again"
+    assert "composition_arc_edit" in fams
     assert "composition_structure_template_edit" in fams, (
-        "comment-before-op class is being skipped again — this family HAS an `archive` op, so "
-        "missing it means a destructive op ships entirely unchecked"
+        "this family HAS an `archive` op — missing it means a destructive op ships unchecked"
+    )
+
+
+def test_every_op_verb_is_CLASSIFIED():
+    """No benign-by-default. An allowlist of destructive verbs lets a new `purge`/`remove`/`prune`
+    through silently, which is exactly how `revert_all` — labelled destructive in its own source
+    comment — passed the previous gate."""
+    seen = set().union(*_declared_families().values())
+    unknown = sorted(seen - _CLASSIFIED)
+    assert not unknown, (
+        f"unclassified op verbs: {unknown}\n\nAdd each to _DESTRUCTIVE (removes/hides a row), "
+        f"_REVERSION (rolls authored prose back), _REVERSE (an undo) or _BENIGN. Deciding is the "
+        f"point — a verb nobody classified is a verb nobody checked."
     )
 
 
 def test_every_destructive_family_has_DECLARED_its_tier():
     """The anti-drift property. A new `*_edit` with a delete op cannot ship without saying whether
-    the row is recoverable — which is exactly what nobody was forced to say before."""
+    what it removes is recoverable — which is exactly what nobody was forced to say before."""
     undeclared = sorted(set(_destructive_families()) - set(CONTRACT))
     assert not undeclared, (
         "these families have a destructive op but no row in CONTRACT:\n  "
         + "\n  ".join(undeclared)
-        + "\n\nDeclare the tier. `soft` needs is_archived + a reverse op; `hard` needs a written "
-          "reason why losing the row costs the author nothing."
+        + "\n\nDeclare the tier. `soft` needs its flag column + a reverse op; `hard` needs a "
+          "written reason why losing the row costs the author nothing."
     )
 
 
@@ -187,11 +264,30 @@ def test_the_contract_has_no_stale_rows():
     assert not stale, f"CONTRACT rows for families with no destructive op: {stale}"
 
 
+def test_every_LEGACY_destructive_door_resolves_to_a_declared_family():
+    """The 12 standalone `*_delete`/`*_archive` tools are still registered and still callable, so
+    they are still doors onto the same rows. Each carries `superseded_by` pointing at the unified
+    family — follow that edge rather than hand-maintaining a map, and a legacy door whose successor
+    was never declared (or which lost its `superseded_by`) fails here."""
+    doors = _legacy_destructive_doors()
+    assert len(doors) >= 12, f"only found {len(doors)} legacy destructive doors — discovery drifted"
+    broken = {
+        name: sup for name, sup in doors.items()
+        if sup is None or sup not in CONTRACT
+    }
+    assert not broken, (
+        "legacy destructive tools that do not resolve to a declared family:\n  "
+        + "\n  ".join(f"{k} → superseded_by={v!r}" for k, v in sorted(broken.items()))
+        + "\n\nA still-registered tool is a live door onto the row. Point it at the unified "
+          "family (and declare that family) or de-register it."
+    )
+
+
 @pytest.mark.parametrize("tool", sorted(k for k, v in CONTRACT.items() if v.tier == "soft"))
 def test_a_soft_delete_exposes_a_REVERSE_op(tool):
     """`canon_rules.restore` calls itself 'the UNDO the DELETE promises'. If a family declares soft
     but exposes no way back, the promise is unkeepable — and the author only finds out after."""
-    ops = set(_declared_families()[tool].split(","))
+    ops = _declared_families()[tool]
     assert _REVERSE & ops, (
         f"{tool} declares tier=soft but exposes none of {sorted(_REVERSE)} — the row is hidden "
         f"with no way to bring it back, which is worse than a hard delete because it looks "
@@ -221,13 +317,34 @@ def test_a_soft_delete_has_somewhere_to_put_the_flag(tool, table, flag):
     )
 
 
+@pytest.mark.parametrize("tool", sorted(k for k, v in CONTRACT.items() if v.tier == "revision"))
+def test_a_revision_revert_actually_has_a_revision_to_go_back_to(tool):
+    """tier=revision claims the prose survives in the chapter revision chain. That claim is only
+    true if the run unit actually captured a pre-revision to restore — the same check in spirit as
+    `test_a_soft_delete_has_somewhere_to_put_the_flag`: a declared guarantee must have a mechanism
+    behind it, not just a sentence."""
+    src = _RUN_SERVICE.read_text(encoding="utf-8")
+    # Both halves, not just the name: the column EXISTING proves nothing (migrate.py mentions it
+    # too, which is how a first attempt at this test passed against the wrong file). The guarantee
+    # is that the revert path reads the captured revision AND hands it to a restore.
+    assert re.search(r"if\s+\w+\.pre_revision_id\s+is\s+not\s+None", src), (
+        f"{tool} declares tier=revision, but the revert path never checks `pre_revision_id` — "
+        f"nothing proves a pre-revision was captured before the prose was overwritten."
+    )
+    assert re.search(r"await\s+restore\(", src), (
+        f"{tool} declares tier=revision, but authoring_run_service.py never calls `restore(...)` "
+        f"— the captured revision is read and then not used, so the revert is unrecoverable."
+    )
+
+
 @pytest.mark.parametrize("tool", sorted(k for k, v in CONTRACT.items() if v.tier != "soft"))
-def test_a_hard_delete_must_JUSTIFY_itself(tool):
+def test_a_non_soft_delete_must_JUSTIFY_itself(tool):
     """Uniformity is not the goal — motif_link's hard delete is correct. But the reason has to be
     written down, because the next person will otherwise copy the shape onto a family whose row
     DOES carry authored content, which is exactly how scene_link happened."""
     why = CONTRACT[tool].why
     assert len(why) > 60, (
         f"{tool} declares tier={CONTRACT[tool].tier} without a real justification. Say why losing "
-        f"this row costs the author nothing (no authored text? trivially re-creatable?)."
+        f"this row costs the author nothing (no authored text? trivially re-creatable? held in "
+        f"the revision chain?)."
     )
