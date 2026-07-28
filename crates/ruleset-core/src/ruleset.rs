@@ -2,7 +2,7 @@
 
 use sim_core::RulesetDigest;
 
-use crate::canon::{Canon, CanonEncode};
+use crate::canon::{Canon, CanonEncode, CanonError, CanonReader};
 use crate::combat::CombatRules;
 use crate::provenance::{Provenance, RulesetEpoch};
 use crate::stats::StatRules;
@@ -57,7 +57,7 @@ impl Ruleset {
     /// that is missing from one that hashes to a colliding value, and F2's
     /// stored artifact addresses these bytes, not the struct.
     pub fn canon_bytes(&self) -> Vec<u8> {
-        let mut c = Canon::new("loreweave.ruleset.v1");
+        let mut c = Canon::new(Self::CANON_DOMAIN);
         self.canon(&mut c);
         c.finish()
     }
@@ -70,6 +70,39 @@ impl Ruleset {
     /// to buy.
     pub fn digest(&self) -> RulesetDigest {
         RulesetDigest(*blake3::hash(&self.canon_bytes()).as_bytes())
+    }
+}
+
+impl Ruleset {
+    /// The domain-separation tag every ruleset stream begins with.
+    const CANON_DOMAIN: &'static str = "loreweave.ruleset.v1";
+
+    /// Decode a ruleset from the exact bytes [`Self::canon_bytes`] produces.
+    ///
+    /// **This is what makes RLS-D18 true rather than aspirational** — *"the
+    /// digest addresses the STORED BYTES, not the upcast form"*. Without a
+    /// decoder the store can only write; with one, `digest(decode(bytes))` can
+    /// be checked against `blake3(bytes)`, which is exactly how
+    /// `RulesetStore::get` refuses a tampered artifact.
+    ///
+    /// Refuses rather than guesses: wrong tag, unknown schema version, short
+    /// read, or trailing bytes. An unknown schema version is a REFUSAL and not
+    /// a best-effort read, because RLS-D18 says a stored ruleset is never
+    /// reinterpreted — and reading a v2 artifact with v1 field offsets would be
+    /// reinterpretation of the worst kind: silent, and numerically plausible.
+    pub fn from_canon_bytes(bytes: &[u8]) -> Result<Self, CanonError> {
+        let mut r = CanonReader::new(bytes, Self::CANON_DOMAIN)?;
+        let schema_version = r.u32()?;
+        if schema_version != RULESET_SCHEMA_VERSION {
+            return Err(CanonError::UnknownSchemaVersion {
+                found: schema_version,
+                known: RULESET_SCHEMA_VERSION,
+            });
+        }
+        let combat = CombatRules::decode(&mut r)?;
+        let stats = StatRules::decode(&mut r)?;
+        r.finish()?;
+        Ok(Self { schema_version, combat, stats })
     }
 }
 

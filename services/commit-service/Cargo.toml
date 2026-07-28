@@ -23,6 +23,11 @@ sim-core = { path = "../../crates/sim-core" }
 # `&Rules` by reference and know nothing about where it came from (IMP-D2);
 # this crate has no I/O, so depending on it cannot make a law fallible.
 ruleset-core = { path = "../../crates/ruleset-core" }
+# F2 — the loader. A reality's rules come from a FILE, and the resolved bytes
+# go into the content-addressed store so a HISTORICAL ruleset stays resolvable
+# (RLS-D6/D18). Only the HOST depends on this; the laws take `&Rules` by
+# reference and must not (IMP-D2).
+ruleset-loader = { path = "../../crates/ruleset-loader" }
 # LoreWeave LLM gateway SDK (the ONLY road to a model — provider-gateway invariant).
 loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }
 
@@ -43,6 +48,7 @@ hmac = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+ruleset-loader = { path = "../../crates/ruleset-loader" }
 wiremock = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # IAS-D3 — `test-util` exposes `Admitted::unchecked` for tests that drive the

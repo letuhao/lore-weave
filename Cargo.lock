@@ -525,6 +525,7 @@ dependencies = [
  "loreweave_llm",
  "redis",
  "ruleset-core",
+ "ruleset-loader",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2654,6 +2655,15 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "sim-core",
+]
+
+[[package]]
+name = "ruleset-loader"
+version = "0.1.0"
+dependencies = [
+ "ruleset-core",
+ "serde",
+ "toml",
 ]
 
 [[package]]

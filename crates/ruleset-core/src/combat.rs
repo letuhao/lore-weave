@@ -10,7 +10,7 @@
 //! [XST-D5](../../../docs/03_planning/LLM_MMO_RPG/27_extensibility_stress_test.md)
 //! named. `MAX_HIT` carried a `TODO(IMP-D5)` for exactly this row.
 
-use crate::canon::{Canon, CanonEncode};
+use crate::canon::{Canon, CanonEncode, CanonError, CanonReader};
 
 /// The numbers the COMB_001 §4 laws read.
 ///
@@ -170,5 +170,32 @@ impl CanonEncode for CombatRules {
         c.i64(*av_hasted_pm);
         c.i64(*av_stunned_pm);
         c.i64(*av_initiator_first_pm);
+    }
+}
+
+impl CombatRules {
+    /// Read back what [`CanonEncode::canon`] wrote, in the same order.
+    ///
+    /// Deliberately NOT derived and NOT reflective: the encoding is the
+    /// contract (RLS-D5), so both directions are spelled out and the
+    /// round-trip property test is what holds them together.
+    pub(crate) fn decode(r: &mut CanonReader<'_>) -> Result<Self, CanonError> {
+        Ok(Self {
+            hit_base_pm: r.i64()?,
+            hit_floor_pm: r.i64()?,
+            hit_ceiling_pm: r.i64()?,
+            roll_band_lo_pm: r.i64()?,
+            roll_band_hi_pm: r.i64()?,
+            elem_mult_pm: r.i64()?,
+            resist_pm: r.i64()?,
+            defend_divisor: r.i64()?,
+            max_hit: r.i64()?,
+            ko_duration_rounds: r.u8()?,
+            av_base: r.i64()?,
+            av_slowed_pm: r.i64()?,
+            av_hasted_pm: r.i64()?,
+            av_stunned_pm: r.i64()?,
+            av_initiator_first_pm: r.i64()?,
+        })
     }
 }

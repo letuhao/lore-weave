@@ -98,7 +98,7 @@ impl StatBlock {
         // `i32::clamp` PANICS when min > max, and `move_max` is now
         // author-supplied. Floor wins — the same deterministic, never-panicking
         // rule `intersect_clamps` applies to a contradictory clamp pair.
-        // TODO(F2): DF7-V1 already SPECIFIES this refusal at Stage 0
+        // F2 (DONE): `ruleset_loader::validate` implements DF7-V1's Stage-0 refusal
         // (`max_move >= 1`, `speed_per_tile >= 1`, `base_move <= max_move` ->
         // `stat.tuning_invalid`). This runtime floor keeps a bad ruleset
         // predictable until the loader enforces it; it does not bless one.
@@ -248,9 +248,14 @@ fn intersect_clamps(slot: StatSlot, clamps: &[Clamp]) -> Option<(i32, i32)> {
         // range, and `i32::clamp` PANICS when min > max. The floor wins, which
         // is deterministic and never panics.
         //
-        // TODO(F2): the ruleset loader should REFUSE an empty intersection at
-        // load time — this runtime rule exists so a contradiction degrades
-        // predictably, not so contradictions are acceptable.
+        // DEFERRED past F2, with the reason. The loader validates the RULESET,
+        // and clamps are not ruleset fields — they arrive per-actor from
+        // equipment, status and world rules, which are content the loader never
+        // sees. The refusal belongs wherever those clamps get declared, which
+        // does not exist yet. Refusing here at RUNTIME instead is the wrong
+        // trade: it would kill a live encounter over an author's contradiction.
+        // This runtime rule exists so a contradiction degrades predictably, not
+        // so contradictions are acceptable.
         (lo, hi.max(lo))
     })
 }

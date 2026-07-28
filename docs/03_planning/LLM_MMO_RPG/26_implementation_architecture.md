@@ -204,7 +204,7 @@ Nothing advances on "the code is written".
 | # | Layer | Delivers | Done when |
 |---|---|---|---|
 | **F1** ✅ **2026-07-28** | `ruleset-core` | Ruleset + REAL digest + Provenance. **No `Manifest`** — a manifest with no resolver is a shape with no consumer; it lands with F2. **`D1`'s constant sourcing was pulled forward into F1**: a digest over a struct holding no game constants is *worse* than an inert one, because it answers "did the rules change?" with a confident No | **met** — `v3_two_different_rulesets_are_distinguishable`; zero-digest count is **0 everywhere**, not just outside tests (the harness case is the NAMED `RulesetDigest::UNPINNED`, scope-checked by `scripts/zero-digest-gate.py`) |
-| **F2** | `ruleset-loader` | provider stack, presets, interning | a reality loads its ruleset from a file and the digest lands in a committed envelope |
+| **F2.1** ✅ **2026-07-28** | `ruleset-loader` | layer stack · TOML artifacts · normalization · load-time validation · the content-addressed **immutable store** · the canonical **decoder**. **Deferred with reasons:** tombstones + `UnionById*` (no collections in `Ruleset` to merge yet), presets-as-scoped-DB-resource, the `(reality, epoch)` registry, `forge_override`-as-event | **met** — `a_reality_loads_its_ruleset_from_a_file_and_the_digest_follows` reads a real `.toml` from disk; the digest was already landing in the envelope since the `B` slice |
 | **S1** | field classification | 16a's 64 fields wired: layer floors, `Tunable` vs `AdditiveOnly` | an over-reaching override is REFUSED, with a test |
 | **S2** | `game-rules` extraction | laws move out of `domain.rs`, take `Rules` by ref | `game-rules` has no I/O dependency, enforced by a gate |
 | **D1** | detail | `default_value` / `archetype_melee` / `CombatRules` read from the ruleset | the magic-constant allowlist is empty for combat + stats |
@@ -239,6 +239,6 @@ that prompted this document.
 
 | Id | Question |
 |---|---|
-| **IMP-Q1** | Ruleset format — YAML, RON or JSON? The prior project used YAML and drowned in it; the decision should weight *reviewability of a diff* over authoring comfort |
+| ~~**IMP-Q1**~~ ✅ | Ruleset format. **RESOLVED 2026-07-28: TOML** (`IMP-D10`). YAML rejected — its scalar coercion (`no` → bool, `1.0` vs `1`, sexagesimals) is a determinism hazard in an artifact whose whole job is to be hashed, and it is what the prior project drowned in. JSON rejected — **no comments**, and a rules file's most valuable content is *why this number*. RON rejected — unreadable to anyone who does not already write Rust, and rulesets are meant to be authored by non-engineers. TOML: comments, unambiguous scalars, **line-oriented diffs** (the stated criterion), already a pinned workspace dep. Its weakness is deep nesting — a real cost the day `Ruleset` grows collections, and cheaper than any of the three failure modes above |
 | **IMP-Q2** | Is `game-rules` a crate or a module of commit-service? A crate enforces IMP-D2 mechanically; a module is cheaper. Leaning crate, because the gate is the point |
 | **IMP-Q3** | Hot-reload of rules — out of scope for V1? Digest-pinning (RLS-A13) implies rules change only between realities/versions, which suggests no |

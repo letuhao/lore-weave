@@ -97,6 +97,144 @@ impl Canon {
     }
 }
 
+/// Reads back what [`Canon`] wrote.
+///
+/// **This is the risky half of the encoding and it is worth saying why.** The
+/// encoder defines the field order and widths; the decoder has to mirror them
+/// exactly — a mirror hazard inside a single language, with no compiler
+/// checking the correspondence. Neither exhaustive destructuring nor the
+/// perturbation table helps here: both live on the encode side.
+///
+/// The mechanism is the **round-trip property test over randomised rulesets**
+/// in `tests/digest.rs`. Any asymmetry surfaces on the first field that
+/// disagrees, for arbitrary values rather than for the one default the golden
+/// test pins.
+///
+/// It refuses rather than guesses: a wrong domain tag, an unknown schema
+/// version, a short read, or TRAILING BYTES are all errors. A decoder that
+/// tolerates trailing bytes will happily read a truncated artifact into
+/// something plausible — and "plausible" is the failure mode this whole arc has
+/// been eliminating.
+#[derive(Debug)]
+pub struct CanonReader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+}
+
+/// Why a canonical stream could not be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CanonError {
+    /// The stream does not begin with the expected domain-separation tag.
+    WrongDomain { expected: &'static str },
+    /// Ran out of bytes mid-field — a truncated artifact.
+    ShortRead { need: usize, have: usize },
+    /// Bytes remain after the last declared field. Either the artifact was
+    /// written by a NEWER encoder, or it is not what it claims to be; both are
+    /// refusals, because the alternative is decoding a prefix and calling it
+    /// the whole ruleset.
+    TrailingBytes { remaining: usize },
+    /// A `schema_version` this build does not know how to read.
+    UnknownSchemaVersion { found: u32, known: u32 },
+    /// A length prefix that does not match the fixed-size array it decodes into.
+    LengthMismatch { field: &'static str, expected: usize, found: usize },
+}
+
+impl core::fmt::Display for CanonError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::WrongDomain { expected } => {
+                write!(f, "canonical stream is not a `{expected}`")
+            }
+            Self::ShortRead { need, have } => {
+                write!(f, "truncated canonical stream: needed {need} more bytes, had {have}")
+            }
+            Self::TrailingBytes { remaining } => write!(
+                f,
+                "{remaining} trailing byte(s) after the last field - refusing to \
+                 decode a prefix and call it the whole ruleset"
+            ),
+            Self::UnknownSchemaVersion { found, known } => write!(
+                f,
+                "ruleset schema version {found}, this build reads {known} - a stored \
+                 ruleset is never reinterpreted (RLS-D18)"
+            ),
+            Self::LengthMismatch { field, expected, found } => {
+                write!(f, "`{field}`: expected {expected} elements, stream declares {found}")
+            }
+        }
+    }
+}
+
+impl<'a> CanonReader<'a> {
+    /// Open a stream, checking the domain tag first.
+    pub fn new(buf: &'a [u8], domain: &'static str) -> Result<Self, CanonError> {
+        let mut r = Self { buf, pos: 0 };
+        let tag = r.bytes()?;
+        if tag != domain.as_bytes() {
+            return Err(CanonError::WrongDomain { expected: domain });
+        }
+        Ok(r)
+    }
+
+    fn take(&mut self, n: usize) -> Result<&'a [u8], CanonError> {
+        if self.pos + n > self.buf.len() {
+            return Err(CanonError::ShortRead { need: n, have: self.buf.len() - self.pos });
+        }
+        let out = &self.buf[self.pos..self.pos + n];
+        self.pos += n;
+        Ok(out)
+    }
+
+    pub fn u8(&mut self) -> Result<u8, CanonError> {
+        Ok(self.take(1)?[0])
+    }
+
+    pub fn u32(&mut self) -> Result<u32, CanonError> {
+        Ok(u32::from_be_bytes(self.take(4)?.try_into().unwrap()))
+    }
+
+    pub fn i32(&mut self) -> Result<i32, CanonError> {
+        Ok(i32::from_be_bytes(self.take(4)?.try_into().unwrap()))
+    }
+
+    pub fn i64(&mut self) -> Result<i64, CanonError> {
+        Ok(i64::from_be_bytes(self.take(8)?.try_into().unwrap()))
+    }
+
+    pub fn bytes(&mut self) -> Result<&'a [u8], CanonError> {
+        let n = self.u32()? as usize;
+        self.take(n)
+    }
+
+    /// Read a length-prefixed sequence into a fixed-size array.
+    ///
+    /// The length is CHECKED, not skipped: an artifact written when
+    /// `SLOT_COUNT` was 10 must not silently half-fill an 11-slot array.
+    pub fn i32_array<const N: usize>(
+        &mut self,
+        field: &'static str,
+    ) -> Result<[i32; N], CanonError> {
+        let n = self.u32()? as usize;
+        if n != N {
+            return Err(CanonError::LengthMismatch { field, expected: N, found: n });
+        }
+        let mut out = [0i32; N];
+        for slot in out.iter_mut() {
+            *slot = self.i32()?;
+        }
+        Ok(out)
+    }
+
+    /// Assert the stream is fully consumed. Call at the end of every decode.
+    pub fn finish(self) -> Result<(), CanonError> {
+        let remaining = self.buf.len() - self.pos;
+        if remaining != 0 {
+            return Err(CanonError::TrailingBytes { remaining });
+        }
+        Ok(())
+    }
+}
+
 /// Anything that contributes to a ruleset digest.
 ///
 /// **Every implementation MUST open with an exhaustive destructuring pattern —

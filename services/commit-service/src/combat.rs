@@ -159,7 +159,10 @@ impl CombatStats {
 pub fn hit_chance_pm(rules: &CombatRules, accuracy_pm: i64, dodge_pm: i64) -> i64 {
     // Floor wins if a ruleset declares floor > ceiling — `i64::clamp` panics
     // otherwise, and a panic here takes the island down through `apply`.
-    // TODO(F2): the loader should refuse that ruleset at load time.
+    // F2 (DONE): `ruleset_loader::validate` REFUSES `hit_floor_pm > hit_ceiling_pm`
+    // at load. This floor stays anyway: RLS-D18 forbids re-validating a STORED
+    // ruleset, so an artifact written before that validator existed still has to
+    // degrade predictably rather than panic.
     let (lo, hi) = (rules.hit_floor_pm, rules.hit_ceiling_pm.max(rules.hit_floor_pm));
     // i128, because `hit_base_pm` is author-supplied now: the sum overflows in
     // i64 for an extreme ruleset, and the shipped profile has overflow-checks
@@ -308,7 +311,8 @@ pub fn resolve_attack(
     //
     // `defend_divisor` IS config. Clamped to ≥1 — a ruleset declaring 0 would
     // divide by zero inside `apply` and take the island down.
-    // TODO(F2): the loader should refuse `defend_divisor < 1` at load time.
+    // F2 (DONE): `ruleset_loader::validate` REFUSES `defend_divisor < 1` at load.
+    // The clamp stays for pre-validator artifacts (RLS-D18).
     let denom: i128 =
         1_000i128.pow(4) * if defending { rules.defend_divisor.max(1) as i128 } else { 1 };
 

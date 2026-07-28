@@ -774,6 +774,82 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **F2.1 — RULES BECOME CONTENT (2026-07-28).** `crates/ruleset-loader`: the RLS-A3 layer stack,
+> TOML artifacts, load-time validation, the content-addressed **immutable store**, and the canonical
+> **decoder**. **120 tests pass** across the three ruleset crates; workspace **672 / 6** (the six are
+> the pre-existing `service-http` `jsonwebtoken` panics). All 8 gates green.
+>
+> **What was actually broken until now.** F1 made the digest real and `B` put it in the log — but
+> **every reality on this engine still ran the same rules**, because `Ruleset::engine_default()` is a
+> `const fn` compiled into the binary. Two live consequences: there was no way to author a reality
+> with different rules (*the platform's entire premise*), and **the digest was a function of the
+> BUILD** — a deploy changing one constant silently changed the rules of every running reality, with
+> the old ruleset existing nowhere to recover to.
+>
+> **`IMP-Q1` RESOLVED — the artifact is TOML (`IMP-D10`).** Doc 26 said to weight *reviewability of a
+> diff*. **YAML** rejected: its scalar coercion (`no` → bool, `1.0` vs `1`, sexagesimals) is a
+> determinism hazard in an artifact whose whole job is to be hashed — and it is what the prior project
+> drowned in. **JSON** rejected: **no comments**, and a rules file's most valuable content is *why this
+> number*, which has been the entire argument of F1. **RON** rejected: unreadable to anyone who does
+> not already write Rust, and rulesets are meant to be authored by non-engineers. TOML's weakness is
+> deep nesting — a real cost the day `Ruleset` grows collections, and cheaper than all three.
+>
+> **RLS-D2 made real: `engine_default.toml` is an ARTIFACT, not prose,** and a test asserts it
+> resolves to the **same digest** as `Ruleset::engine_default()`. Every feature doc states its own
+> defaults, which made *“omit → the feature default applies”* unverifiable; it is now an assertion. The
+> `const fn` stays as the bootstrap floor (a node must boot with no filesystem) and the two can no
+> longer drift in silence — bite-proven by changing one number in the file.
+>
+> **The decoder — the risky half, and the mechanism that holds it.** `canon_bytes` was write-only, so
+> RLS-D18 (*“the digest addresses the STORED BYTES”*) was unverifiable. `from_canon_bytes` mirrors the
+> encoder's field order in ONE language with no compiler checking the correspondence — the same shape
+> as the Go/Rust envelope mirror, and exhaustive destructuring guards only the encode side. The guard
+> is a **round-trip property over 256 randomised rulesets** (full `i64` range, negatives included — a
+> positives-only round trip would pass a two's-complement bug). It refuses rather than guesses: wrong
+> tag, unknown schema version, short read, and **trailing bytes** — a lenient decoder reads a
+> truncated artifact into something *plausible*, which is the failure mode this whole arc kills.
+>
+> **The store re-digests on read.** A content-addressed store that trusts its own filenames is not
+> content-addressed — it is a directory with suggestive names, and it would serve a corrupted or
+> substituted ruleset under the right digest, which is exactly the substitution the digest exists to
+> detect. `put` is idempotent and **never overwrites** (an existing file either has identical bytes or
+> is corrupt, and rewriting would erase the evidence). Bite-proven by tampering with a stored file.
+>
+> **A misspelled key is an ERROR, not a no-op** (`deny_unknown_fields`). It is the single most likely
+> authoring mistake and serde's default is to ignore it — so the author's edit silently does nothing
+> while they tune the number that had no effect, twice, before suspecting the file. Same reasoning as
+> RLS-A5's rule that a tombstone against a missing ID is a load error.
+>
+> **All seven owed refusals are closed or re-deferred with a reason.** Six are implemented
+> (`hit_floor > ceiling`, inverted roll band, `defend_divisor < 1`, and DF7-V1's three
+> `stat.tuning_invalid` rules); **`TODO(F2)` count in the tree is now 0.** The clamp-intersection one
+> is deferred with its reason written where it lives: clamps are **not ruleset fields** — they arrive
+> per-actor from equipment/status/world rules, content the loader never sees, and refusing at runtime
+> would kill a live encounter over an author's contradiction. **Every runtime floor STAYS**: RLS-D18
+> forbids re-validating a stored ruleset, so an artifact written before the validator existed must
+> still degrade predictably. Belt and braces on purpose — deleting the floors *“because the loader
+> checks now”* would break exactly the old-artifact case.
+>
+> **Deferred, each because it would be a mechanism with no consumer today** — the `Manifest` rule,
+> applied consistently: tombstones (RLS-A5) and `UnionById*` (RLS-A4) operate on **collections** and
+> `Ruleset` has none; presets as a 3-tier scoped DB resource (RLS-D19) have nothing to preset; the
+> `(RealityId, Epoch)` registry + interning (RLS-A11) needs multi-reality hosting the island manager
+> does not do; `forge_override`-as-ordered-event needs epoch-switch-as-ingress; RLS-A9's topological
+> order needs cross-field references that do not exist.
+>
+> **Also settled: `B` did NOT owe an envelope version bump.** Doc 16 §13 prescribes
+> `event_schema_version` 1→2 + a permanent upcaster + a `RULESET_UNKNOWN` sentinel for the digest
+> field — but that row assumed a **required** field. `11_schema_versioning.md:14` is explicit:
+> *“For additive: add the field as **optional**, **no version bump needed** (EVT-S2).”* The field is
+> optional by presence, so the row is **stale** and should be amended rather than obeyed.
+>
+> **NEXT: F3** — replay under a mismatched digest is REFUSED. Everything it needs now exists: the log
+> carries the pin, the store resolves a historical ruleset from it, `Island::restore` already refuses
+> the checkpoint-side mismatch, and the decoder can read the stored bytes back.
+> **`live infra unavailable`**: `spine --ruleset <file> --ruleset-store <dir>` is wired and compiles
+> on the ship profile, but a real run needs Redis + Postgres. The file path itself IS covered by a
+> test that writes a `.toml` to disk and reads it back through `read_layer`.
+
 > ✅ **B+A — THE PIN REACHES THE LOG, AND THE ONE PLACE IT COULD STILL LIE NOW REFUSES (2026-07-28).**
 > At the PO's call, after they stopped me choosing a direction and asked me to **evaluate first** —
 > which flipped two of my own conclusions. Worth recording as a method, not just an outcome.

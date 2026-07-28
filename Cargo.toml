@@ -51,6 +51,10 @@ members = [
     # Depends on sim-core for `RulesetDigest` alone — the kernel CARRIES the
     # digest and keeps its zero-runtime-dependency invariant; blake3 lives here.
     "crates/ruleset-core",
+    # F2 (2026-07-28) — the loader: layer stack, TOML artifacts, normalization,
+    # load-time validation, and the content-addressed immutable ruleset store.
+    # The I/O half `ruleset-core` deliberately has none of (IMP-D2).
+    "crates/ruleset-loader",
     # POC-2 (2026-07-27) — commit-service seed per 15_commit_service.md CS-A5:
     # the Rust writer-node role hosting sim-core natively + the LlmDriver
     # (AGT-A3) dispatching NPC decisions via loreweave_llm → provider-registry.

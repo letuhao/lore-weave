@@ -24,7 +24,7 @@ use std::time::Duration;
 use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verdict};
 use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
-use commit_service::{Actor, CombatDomain, CombatState, Ruleset, Vocabulary, COMBAT_V1_JSON};
+use commit_service::{Actor, CombatDomain, CombatState, Vocabulary, COMBAT_V1_JSON};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{EntityId, Island, IslandId, Lane, Outcome, SeenWindow, StepStatus};
@@ -37,6 +37,14 @@ struct Args {
     reality: Uuid,
     channel: i64,
     drain_once: bool,
+    /// F2 — the reality layer's TOML. Absent = the engine default, which is
+    /// the bootstrap floor, NOT a silent fallback: the digest still describes
+    /// exactly the rules in force, and the startup line says which.
+    ruleset: Option<String>,
+    /// Where resolved rulesets are stored, content-addressed (RLS-D6). Absent
+    /// = not stored, and the startup line says THAT too — an unstored ruleset
+    /// is one a future replay cannot resolve.
+    ruleset_store: Option<String>,
 }
 
 fn parse_args() -> anyhow::Result<Args> {
@@ -45,6 +53,8 @@ fn parse_args() -> anyhow::Result<Args> {
     let mut reality = None;
     let mut channel = 1i64;
     let mut drain_once = false;
+    let mut ruleset = None;
+    let mut ruleset_store = None;
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
@@ -54,6 +64,8 @@ fn parse_args() -> anyhow::Result<Args> {
             "--reality" => { reality = Some(argv[i + 1].parse()?); i += 2; }
             "--channel" => { channel = argv[i + 1].parse()?; i += 2; }
             "--drain-once" => { drain_once = true; i += 1; }
+            "--ruleset" => { ruleset = Some(argv[i + 1].clone()); i += 2; }
+            "--ruleset-store" => { ruleset_store = Some(argv[i + 1].clone()); i += 2; }
             other => anyhow::bail!("unknown arg {other}"),
         }
     }
@@ -62,6 +74,8 @@ fn parse_args() -> anyhow::Result<Args> {
         pg_url: pg_url.ok_or_else(|| anyhow::anyhow!("--pg-url required"))?,
         reality: reality.ok_or_else(|| anyhow::anyhow!("--reality <uuid> required"))?,
         channel,
+        ruleset,
+        ruleset_store,
         drain_once,
     })
 }
@@ -118,18 +132,53 @@ async fn main() -> anyhow::Result<()> {
 
     // ── resolution side: the island (encounter demo state) ──
     let npc = EntityId(1);
-    // F1 — the reality's resolved ruleset. `engine_default()` is RLS-D2's
-    // priority-0 layer; F2 replaces this line with a real resolution through
-    // the provider stack (preset -> book -> reality overrides).
+    // ── F2: the reality's rules come from a FILE ──────────────────────────
     //
-    // The island DERIVES its pin from these rules via `Domain::rules_digest`
-    // (RLS-A13) — this call site used to pass `RulesetDigest([0u8; 32])`
-    // alongside the rules, which was inert AND unchecked: an all-zero digest
-    // made two realities with different rules stamp indistinguishable events,
-    // and nothing forced the digest passed to describe the rules passed. There
-    // is no longer a digest argument to get wrong.
-    let ruleset = std::sync::Arc::new(Ruleset::engine_default());
+    // RLS-A3 EARLY BINDING: the stack is resolved ONCE here, validated, hashed
+    // and then immutable. A later edit to the file never touches a reality that
+    // is already running, so replay-safety is STRUCTURAL rather than
+    // procedural: there is no path by which a reality's rules change without an
+    // event in its own log.
+    //
+    // RLS-D12 — a bad ruleset quarantines ONE reality, never the process. This
+    // binary hosts one channel, so "quarantine" is a clean refusal to start
+    // with the author's diagnostic; a node hosting forty realities marks this
+    // one `Unloadable` and carries on with the other thirty-nine.
+    let ruleset = {
+        let mut layers = Vec::new();
+        if let Some(path) = &args.ruleset {
+            layers.push(
+                ruleset_loader::read_layer(ruleset_loader::Layer::Reality, std::path::Path::new(path))
+                    .map_err(|e| anyhow::anyhow!("reality is UNLOADABLE: {e}"))?,
+            );
+        }
+        let r = ruleset_loader::resolve(&layers)
+            .map_err(|e| anyhow::anyhow!("reality is UNLOADABLE: {e}"))?;
+        std::sync::Arc::new(r)
+    };
+    let digest = ruleset.digest();
 
+    // Store the RESOLVED bytes, content-addressed. Not an optimisation: without
+    // it the rules these events are pinned to exist only in this process, so a
+    // replay six months from now resolves against whatever the binary of the
+    // day compiled in — the exact configuration trap RLS-A13 exists to close.
+    match &args.ruleset_store {
+        Some(root) => {
+            let stored = ruleset_loader::RulesetStore::new(root)
+                .put(&ruleset)
+                .map_err(|e| anyhow::anyhow!("ruleset store: {e}"))?;
+            println!("RULESET {} <- {} (stored in {root})", stored.to_hex(),
+                     args.ruleset.as_deref().unwrap_or("engine_default"));
+        }
+        None => println!(
+            "RULESET {} <- {} (NOT STORED - a future replay cannot resolve these rules)",
+            digest.to_hex(),
+            args.ruleset.as_deref().unwrap_or("engine_default")
+        ),
+    }
+
+    // The island DERIVES its pin from these rules via `Domain::rules_digest`,
+    // so it cannot report a digest for rules it is not running.
     let mut state = CombatState::default();
     state.actors.insert(npc, Actor::new(&ruleset, 100));
     state.actors.insert(EntityId(2), Actor::new(&ruleset, 40));

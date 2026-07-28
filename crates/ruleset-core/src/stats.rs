@@ -15,7 +15,7 @@
 //! invisible to the digest, and an archetype that changes silently changes
 //! every NPC in the reality.
 
-use crate::canon::{Canon, CanonEncode};
+use crate::canon::{Canon, CanonEncode, CanonError, CanonReader};
 use crate::slots::{SLOT_COUNT, StatSlot};
 
 /// The numbers `resolve_block` and the archetype projection read.
@@ -107,5 +107,18 @@ impl CanonEncode for StatRules {
         c.i32(*move_speed_per_tile);
         c.i32(*move_max);
         c.i32_slice(melee_archetype);
+    }
+}
+
+impl StatRules {
+    /// Read back what [`CanonEncode::canon`] wrote, in the same order.
+    pub(crate) fn decode(r: &mut CanonReader<'_>) -> Result<Self, CanonError> {
+        Ok(Self {
+            slot_defaults: r.i32_array::<SLOT_COUNT>("slot_defaults")?,
+            move_base: r.i32()?,
+            move_speed_per_tile: r.i32()?,
+            move_max: r.i32()?,
+            melee_archetype: r.i32_array::<SLOT_COUNT>("melee_archetype")?,
+        })
     }
 }

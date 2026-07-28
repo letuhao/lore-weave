@@ -44,7 +44,7 @@ mod ruleset;
 mod slots;
 mod stats;
 
-pub use canon::{Canon, CanonEncode};
+pub use canon::{Canon, CanonEncode, CanonError, CanonReader};
 pub use combat::CombatRules;
 pub use provenance::{Provenance, RulesetEpoch};
 pub use ruleset::{RULESET_SCHEMA_VERSION, ResolvedRuleset, Ruleset};
