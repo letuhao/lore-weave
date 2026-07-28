@@ -16,7 +16,7 @@ they get.
 So this drives the real stack over HTTP, as an author would, on a THROWAWAY book:
 
     login → create book → plan run → compile → cast → seed proposal → approve → apply
-          → motifs → beats → character_arcs → scenes → self_heal
+          → motifs → world → beats → character_arcs → scenes → self_heal
 
 Each step asserts, times, and reports. It creates content, so it cleans up after itself (the book is
 trashed unless --keep) and it must NEVER be pointed at a real book — smoke debris in an author's
@@ -57,7 +57,8 @@ The unlisted lantern burns in a window of a house the census says was demolished
 An old keeper admits she has been lighting it for someone who never came home.
 """
 
-STEPS = ["book", "run", "compile", "cast", "seed", "motifs", "beats", "arcs", "scenes", "heal"]
+STEPS = ["book", "run", "compile", "cast", "seed", "motifs", "world", "beats", "arcs",
+         "scenes", "heal"]
 
 
 class Failed(Exception):
@@ -191,7 +192,11 @@ def main() -> int:
         if done("seed"):
             return 0
 
-        for step, pass_id, accept in (("motifs", "motifs", False), ("beats", "beats", True),
+        # `world` (pass 3) was MISSING from the first version of this walk — the smoke reported
+        # 10/10 while never exercising a pass at all. Found by trying to MCP-edit `world_plan` on a
+        # book this script had "fully" walked and discovering the artifact did not exist.
+        for step, pass_id, accept in (("motifs", "motifs", False), ("world", "world", False),
+                                      ("beats", "beats", True),
                                       ("arcs", "character_arcs", False),
                                       ("scenes", "scenes", False), ("heal", "self_heal", False)):
             s, j = call("POST",

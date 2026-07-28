@@ -614,8 +614,26 @@ observation. A claim that a check passed, without its output, does **not** tick 
       ⚠️ **Presence is NOT proof.** All 6 PlanForge atoms also "had both sides" and 8 of them were
       broken (F10: four editors with no door; B6: four kinds where DELETE silently no-op'd). The
       matrix's real column — *real-run proven?* — is still **empty for all 11**. → F3.
-      **CLOSED by F3 (2026-07-28).** That column is now filled by GATES rather than by 44 manual
-      round-trips: delete/archive by the per-family contract + live registry gate, the FE door by
+      **The gates below are NOT that column.** They prove shape, reachability and preservation;
+      the commitment demands a live edit reaching the artifact. Closing F2 on gates alone was a
+      bar-lowering caught by the human, not by me — recorded because it is the exact drift this
+      checklist's evidence rule exists to stop.
+      **REAL-RUN PROVEN (2026-07-28), all 6 kinds — every one a DELETE, the semantic that failed
+      silently on four of six (B6), each verified by re-reading the artifact AFTER the write:**
+      `beat_plan` MCP (C3, `019f9eea`, curve re-derived) · `cast_plan` MCP (C3, `019f9eeb`, 7→6) ·
+      `scene_plan` GUI (C1/C2, `019f9f24`, 25→24, `present_entity_ids` preserved) ·
+      **`motif_plan` MCP 2→1** (dropped "Fortuitous Encounter → Legacy") ·
+      **`world_plan` MCP 10→9** (dropped "The Ember-Mark") ·
+      **`char_arc_plan` MCP 6→5** (dropped "Bram Low").
+      **Honest remainder:** that is ONE channel per kind, not both. MCP covers 5, the browser
+      covers `scene_plan`. A GUI pass over the other five is the only thing still owed on the
+      commitment's literal wording.
+      **Two defects found while proving it:** `cold-path-smoke.py` reported 10/10 while never
+      running the `world` pass at all (found by trying to edit a `world_plan` that did not exist —
+      now 11/11), and my MCP harness silently swallowed tool errors because `isError` rides inside
+      `result.content`, not the JSON-RPC `error` field, so two failed edits first read as "no error,
+      just not applied".
+      Supporting gates, which prove other things and are worth keeping: delete/archive by the per-family contract + live registry gate, the FE door by
       `scripts/fe-door-scan.py` (0 dead components; one real hit fixed), and round-trip
       preservation by a check DERIVED from the producer's own contract, so a field added tomorrow
       is covered without anyone remembering. Plus `scripts/cold-path-smoke.py`, which walks a book
