@@ -18,6 +18,7 @@ tags:
   - name: prose
   - name: outline
   - name: canon
+  - name: derivative
   - name: grounding
   - name: engine
 
@@ -170,10 +171,67 @@ paths:
   /scene-links/{link_id}:
     delete:
       tags: [outline]
+      summary: Soft-archive the scene link
+      description: >
+        SOFT since F3 (2026-07-27) — the edge carries an authored `label` and the author's
+        declared setup/payoff connection, so the row is archived rather than destroyed. The
+        undo is POST /scene-links/{link_id}/restore.
       parameters: [{ name: link_id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
-        '204': { description: Deleted }
+        '204': { description: Archived }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /scene-links/{link_id}/restore:
+    post:
+      tags: [outline]
+      summary: Un-archive a soft-deleted scene link (F3 — the undo behind the delete toast)
+      description: >
+        The inverse of DELETE /scene-links/{link_id}. This route is what makes that delete's
+        promise keepable BY THE AUTHOR: the soft delete and its `op=restore` first shipped on
+        the MCP surface only, so for a while the agent could undo the deletion and the human
+        could not — worse than the hard delete it replaced, because it LOOKS recoverable.
+        EDIT grant derived from the ROW's project (the by-id route carries no project in the
+        path). Reachability is the delete toast — the caller deleted BY ID, so the FE holds it;
+        the list reads filter `NOT is_archived` and there is no archive browser.
+      parameters: [{ name: link_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Restored (idempotent — an already-live edge also returns 200)
+          content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, restored: { type: boolean } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "SCENE_LINK_EXISTS — that edge was re-declared since; restoring this one would collide with the newer" }
+
+  /works/{project_id}/entity-overrides/{override_id}:
+    delete:
+      tags: [derivative]
+      summary: Soft-archive a dị bản's entity override
+      description: >
+        SOFT since F3 (2026-07-27) — `overridden_fields` is an authored JSONB delta (how this
+        derivative's entity differs from canon), so the row is archived, not destroyed.
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: override_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Archived }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /works/{project_id}/entity-overrides/{override_id}/restore:
+    post:
+      tags: [derivative]
+      summary: Un-archive a soft-deleted entity override (F3 — the author's undo)
+      description: >
+        The inverse of the DELETE above, and the human-reachable half of a promise that first
+        shipped agent-only. EDIT grant on the derivative's book. Reachability is the delete
+        toast; `list_overrides_for_work` filters `NOT is_archived`.
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: override_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Restored (idempotent — an already-live override also returns 200)
+          content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, restored: { type: boolean } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ENTITY_OVERRIDE_EXISTS — a newer override for that entity exists; restoring this one would collide" }
 
   /works/{project_id}/canon-rules:
     get:

@@ -173,9 +173,21 @@ export const compositionApi = {
       method: 'PATCH', body: JSON.stringify(body), token,
     });
   },
+  // SOFT since F3: `overridden_fields` is an authored JSONB delta (how this dị bản's entity
+  // differs from canon), so the row is archived rather than destroyed.
   deleteEntityOverride(projectId: string, overrideId: string, token: string): Promise<void> {
     return apiJson(`${BASE}/works/${projectId}/entity-overrides/${overrideId}`, {
       method: 'DELETE', token,
+    });
+  },
+  // F3 — the undo. `listEntityOverrides` filters `NOT is_archived`, so reachability is the delete
+  // toast (the caller still holds the id it just deleted). 409 when a NEWER override for the same
+  // entity exists — restoring this one would clobber it.
+  restoreEntityOverride(
+    projectId: string, overrideId: string, token: string,
+  ): Promise<{ id: string; restored: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/entity-overrides/${overrideId}/restore`, {
+      method: 'POST', token,
     });
   },
   // S5-B4 — the latest completed scene-draft prose for a chapter in ONE project
@@ -280,9 +292,17 @@ export const compositionApi = {
   ): Promise<SceneLink> {
     return apiJson(`${BASE}/works/${projectId}/scene-links`, { method: 'POST', body: JSON.stringify(body), token });
   },
-  // T1.3 — hard-delete a scene edge (edges have no archive; 204 / 404).
+  // T1.3 — delete a scene edge (204 / 404). SOFT since F3: the edge carries an authored `label`
+  // and the author's declared setup/payoff connection, so the row is archived, not destroyed.
   deleteSceneLink(linkId: string, token: string): Promise<void> {
     return apiJson(`${BASE}/scene-links/${linkId}`, { method: 'DELETE', token });
+  },
+  // F3 — the undo the delete promises. Reachability is the delete toast: the list read filters
+  // `NOT is_archived`, so an archived edge is unlistable, but the caller deleted it BY ID and
+  // therefore still holds it. 409 when that same edge was re-declared since (restoring this one
+  // would collide with the newer) — the caller must say so rather than swallow it.
+  restoreSceneLink(linkId: string, token: string): Promise<{ id: string; restored: boolean }> {
+    return apiJson(`${BASE}/scene-links/${linkId}/restore`, { method: 'POST', token });
   },
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });

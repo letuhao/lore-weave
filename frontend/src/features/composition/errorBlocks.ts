@@ -220,7 +220,16 @@ export const errorBlocksApi = {
     return apiJson(`${BASE}/error-blocks/${blockId}/reopen`, { method: 'POST', token });
   },
 
+  /** Soft-archive the mark itself (distinct from resolve/dismiss, which CLOSE it — this removes
+   *  it). No UI calls this yet; it exists so the agent's DELETE has a typed FE twin. */
   remove(blockId: string, token: string): Promise<ErrorBlock> {
     return apiJson(`${BASE}/error-blocks/${blockId}`, { method: 'DELETE', token });
+  },
+
+  /** F3 — the undo `remove` owes. Shipped alongside it rather than after the first call site
+   *  appears, because that is the order that keeps going wrong: the delete lands, the restore is
+   *  "obvious later", and the author is left with an archived row nothing can reach. */
+  restore(blockId: string, token: string): Promise<ErrorBlock> {
+    return apiJson(`${BASE}/error-blocks/${blockId}/restore`, { method: 'POST', token });
   },
 };

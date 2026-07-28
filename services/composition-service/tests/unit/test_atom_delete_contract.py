@@ -99,35 +99,56 @@ class AtomDelete:
         hard      the row is really gone, and losing it costs the author nothing (must justify)
         pair      the "destructive" op is half of a toggle whose other half is on the same tool
         revision  authored prose is reverted, recoverable via the chapter revision chain
+
+    `rest_reverse` names the route a HUMAN reaches the undo through, and exists because checking
+    only the MCP surface let a real bug through this very gate. F3 converted `scene_link` and
+    `entity_override` from hard delete to soft, and added `op=restore` — on MCP only. The row
+    survived, the agent could undo it, and the author could not: no REST route, and the list reads
+    filter `NOT is_archived`, so the id was not even discoverable. That is worse than the hard
+    delete it replaced, because the delete now LOOKS recoverable. A soft delete is a promise made
+    to the author, so it has to be checked on the surface the author actually uses.
     """
 
     def __init__(self, tier: str, table: str | None = None, why: str = "",
-                 flag: str = "is_archived"):
+                 flag: str = "is_archived", rest_reverse: str | None = None):
         assert tier in ("soft", "hard", "pair", "revision"), tier
         self.tier, self.table, self.why, self.flag = tier, table, why, flag
+        self.rest_reverse = rest_reverse
 
 
 # ── THE SoT ────────────────────────────────────────────────────────────
 # Adding a destructive op to a family? Add its row here, with a reason unless it is `soft`.
 CONTRACT: dict[str, AtomDelete] = {
-    "composition_outline_node_edit": AtomDelete("soft", "outline_node"),
-    "composition_canon_rule_edit": AtomDelete("soft", "canon_rule"),
+    "composition_outline_node_edit": AtomDelete(
+        "soft", "outline_node", rest_reverse="/outline/nodes/{node_id}/restore"),
+    "composition_canon_rule_edit": AtomDelete(
+        "soft", "canon_rule", rest_reverse="/canon-rules/{rule_id}/restore"),
     "composition_scene_link_edit": AtomDelete(
-        "soft", "scene_link",
+        "soft", "scene_link", rest_reverse="/scene-links/{link_id}/restore",
         why="F3: was a hard DELETE returning `undo_hint: None`. The row carries an AUTHORED "
             "`label` and the author's declared setup/payoff connection.",
     ),
     "composition_entity_override_edit": AtomDelete(
         "soft", "entity_override",
+        rest_reverse="/works/{project_id}/entity-overrides/{override_id}/restore",
         why="F3: was a hard DELETE. `overridden_fields` is an authored JSONB blob — how this dị "
             "bản's entity differs — and re-authoring it from memory is real lost work.",
     ),
-    "composition_derivative_edit": AtomDelete("soft", "composition_work", flag="status"),
-    "composition_motif_edit": AtomDelete("soft", "motif", flag="status"),
-    "composition_arc_edit": AtomDelete("soft", "outline_node"),
-    "composition_arc_template_edit": AtomDelete("soft", "arc_template", flag="status"),
-    "composition_error_block_edit": AtomDelete("soft", "chapter_error_block"),
-    "composition_structure_template_edit": AtomDelete("soft", "structure_template"),
+    # The reverse here is the generic PATCH (status back to active), not a dedicated /restore —
+    # declared explicitly rather than assumed, because assuming ONE shape is the mistake this
+    # contract exists to catch.
+    "composition_derivative_edit": AtomDelete(
+        "soft", "composition_work", flag="status", rest_reverse="/works/{project_id}"),
+    "composition_motif_edit": AtomDelete(
+        "soft", "motif", flag="status", rest_reverse="/motifs/{motif_id}/restore"),
+    "composition_arc_edit": AtomDelete(
+        "soft", "outline_node", rest_reverse="/arcs/{node_id}/restore"),
+    "composition_arc_template_edit": AtomDelete(
+        "soft", "arc_template", flag="status", rest_reverse="/arc-templates/{arc_id}/restore"),
+    "composition_error_block_edit": AtomDelete(
+        "soft", "chapter_error_block", rest_reverse="/error-blocks/{block_id}/restore"),
+    "composition_structure_template_edit": AtomDelete(
+        "soft", "structure_template", rest_reverse="/templates/{template_id}/restore"),
     # ── the DEFENSIBLE hard delete ──
     "composition_motif_link_edit": AtomDelete(
         "hard",
@@ -292,6 +313,30 @@ def test_a_soft_delete_exposes_a_REVERSE_op(tool):
         f"{tool} declares tier=soft but exposes none of {sorted(_REVERSE)} — the row is hidden "
         f"with no way to bring it back, which is worse than a hard delete because it looks "
         f"recoverable."
+    )
+
+
+@pytest.mark.parametrize(
+    "tool,route",
+    sorted((k, v.rest_reverse) for k, v in CONTRACT.items() if v.tier == "soft"),
+)
+def test_a_soft_delete_exposes_the_reverse_to_the_HUMAN_too(tool, route):
+    """The MCP `restore` op is the AGENT's door. This is the author's.
+
+    Checking only MCP is how F3 shipped an agent-only undo: scene_link and entity_override went
+    soft + `op=restore`, the row survived — and with no REST route and `NOT is_archived` on every
+    list read, the author could neither restore it nor discover its id. The previous version of
+    this gate passed that, because it inspected one surface of three.
+    """
+    assert route, f"{tool} declares tier=soft but names no `rest_reverse` — say where the author "\
+                  f"clicks to undo, or the promise is only kept for the agent."
+    routers = "\n".join(
+        p.read_text(encoding="utf-8") for p in (_ROOT / "app" / "routers").glob("*.py")
+    )
+    assert re.search(rf'@router\.(post|patch)\(\s*"{re.escape(route)}"', routers), (
+        f"{tool} declares tier=soft with the author's undo at `{route}`, but no router exposes "
+        f"it. The row is hidden and only an MCP client can bring it back — which is worse than a "
+        f"hard delete, because the delete now LOOKS recoverable."
     )
 
 

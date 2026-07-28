@@ -680,12 +680,58 @@ async def delete_entity_override(
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> None:
-    """S-04: hard-delete an override — reverts that entity to canon. EDIT grant; 404
-    when nothing matched (idempotent second delete is a 404, not a 500)."""
+    """S-04: delete an override — reverts that entity to canon. EDIT grant; 404 when nothing
+    matched (idempotent second delete is a 404, not a 500).
+
+    SOFT since F3 (2026-07-27): `overridden_fields` is an authored JSONB blob — how this dị bản's
+    entity differs from canon — so the row is archived, not destroyed. See POST .../restore below
+    for the undo that promise implies."""
     work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
     ok = await derivatives.delete_override(work.id, work.book_id, override_id)
     if not ok:
         raise HTTPException(status_code=404, detail="entity override not found")
+
+
+@router.post("/works/{project_id}/entity-overrides/{override_id}/restore", status_code=200)
+async def restore_entity_override(
+    project_id: UUID,
+    override_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """F3 — un-archive a soft-deleted override: the UNDO the DELETE promises.
+
+    The DELETE became a soft archive so the authored delta survives, but the reverse shipped on
+    MCP only — the AGENT could undo it and the AUTHOR could not. A soft delete reversible by
+    nobody the author can reach is worse than the hard delete it replaced, because it LOOKS
+    recoverable. This is the author's door.
+
+    Reachability is the delete call site: `list_overrides_for_work` filters `NOT is_archived`, so
+    an archived override is unlistable — but the caller just deleted it by id, so the FE holds it
+    and renders "Override removed · Undo" → here (the canon-rule precedent).
+    """
+    work = await _require_derivative_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    if await derivatives.restore_override(work.id, work.book_id, override_id):
+        return {"id": str(override_id), "restored": True}
+    # False covers two different situations and the author needs them told apart: the partial
+    # unique rejects the un-archive when a NEWER override for that same entity exists, which is a
+    # 409 the author can act on — not a 404 reading as "your delta is gone".
+    row = await get_pool().fetchrow(
+        "SELECT is_archived FROM entity_override WHERE id = $1 AND work_id = $2 AND book_id = $3",
+        override_id, work.id, work.book_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="entity override not found")
+    if not row["is_archived"]:
+        # Already live — a concurrent restore won. Idempotent, not an error.
+        return {"id": str(override_id), "restored": True}
+    raise HTTPException(
+        status_code=409,
+        detail={"code": "ENTITY_OVERRIDE_EXISTS",
+                "detail": "a newer override for that entity exists; restoring this one would collide"},
+    )
 
 
 @router.get("/works/{project_id}/chapters/{chapter_id}/scene-drafts")

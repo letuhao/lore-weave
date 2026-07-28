@@ -73,13 +73,61 @@ choosing the tool unprompted** · browser (the highlight renders on the exact qu
 - Also: F11 (Polish apply made chapters invisible to search — a port regression), a free-string
   `status` filter, an unvalidated span/quote length, and a scanner blind to a whole service.
 
+### ✅ F3 stages 1–2 — the ATOM DELETE CONTRACT + the author's missing undo (2026-07-28)
+
+**Stage 1 · delete/archive — done, and now GATED.** The asymmetry (some families soft-delete, some
+hard) was real, but the defect was one level up: **no declared atom contract and no gate.** The rule
+already existed (`canon_rules.restore` calls itself *"the UNDO the DELETE promises"*); only the
+enforcement was missing. `tests/unit/test_atom_delete_contract.py` is that gate — each family
+declares a tier (`soft`/`hard`/`pair`/`revision`) and must justify anything non-soft in writing.
+**Uniformity would have been the WRONG fix**: `motif_link` hard-deletes *correctly* — its row is
+ids + a closed-set kind + an ordinal, no authored text — while `scene_link` carried an authored
+`label` and `entity_override` an authored JSONB blob. **The distinction is the PAYLOAD, not the shape.**
+
+The gate itself needed rebuilding once, and that is the transferable lesson: **it was
+under-discovering while reporting green.** Three holes, all in *how it looked*:
+1. it parsed `server.py` with a **regex** on the false premise that the module can't be imported
+   (`tests/conftest.py` sets all four vars) — cost two silent blind spots, 6/14 then 13/14, the
+   miss being `structure_template`, which *has* an `archive` op. Now reads the **live MCP registry**
+   (`list_tools()` → `inputSchema.properties.op.enum`), which has no docstrings or comments to trip
+   over and is exactly the surface the model sees.
+2. `_DESTRUCTIVE` was an **allowlist**, so anything absent was benign by default — and
+   `server.py:3221` labels `revert_all` *"destructive + irreversible"* while the gate waved it
+   through. Now **all 30 op verbs must be classified**; an unknown one fails.
+3. it saw only op-dispatch tools, so **12 still-registered legacy `*_delete`/`*_archive` doors were
+   invisible**. Each already carries `superseded_by`, so the gate follows that edge — a legacy door
+   whose successor is undeclared now fails.
+
+**Stage 2 · the FE door — found the worst bug of the sweep, and it was MINE.** `bf33d7cc6` converted
+`scene_link` + `entity_override` to soft delete and added `op=restore` **on MCP only**. No REST
+route, and every list read filters `NOT is_archived`, so the id wasn't even discoverable: **the
+agent could undo the deletion and the author could not.** That is worse than the hard delete it
+replaced, because the delete now *looks* recoverable — and the brand-new gate passed it, because it
+inspected **one surface of three**. Fixed end to end: `POST /scene-links/{id}/restore` +
+`POST /works/{pid}/entity-overrides/{id}/restore` (409 — not 404 — when the row was re-declared
+since, so the author is told why); the OpenAPI contract; FE api + mutations; **the actual door** —
+an Undo action on the delete toast in `SceneLinksSection` and `DivergenceSpecEditor` (the
+canon-rule precedent: *reachability is the toast, not an archive browser*). The gate now checks the
+REST surface too (`rest_reverse` per family).
+
+**VERIFY:** composition **2614 passed / 336 skipped** (+19); FE `tsc` exit 0; new gate properties
+**all mutation-proven red** (unclassified verb · undeclared family · legacy door resolving nowhere ·
+pre-revision never captured · captured-but-never-restored · missing REST reverse · the FE Undo
+removed). 7 FE failures (`WritingStudioPage`, `BooksPage.createNavigate`, `serverKey`) are
+**pre-existing on HEAD — proven by re-running them with my FE changes stashed**, not caused here.
+
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
-- 🎯 **F3 — the proof sweep. This is the track's original question**: all 11 composition `*_edit`
-  atom families have both an FE path and an MCP tool (F2 swept), but the *real-run proven?* column
-  is **empty for all of them**. Presence is not proof — the 6 PlanForge atoms also "had both sides"
-  and 8 were broken. Sweep by observed failure mode, not by count: **delete/archive first** (silently
-  no-op'd on 4 of 6), then **the FE door** (four editors had none), then **round-trip field
-  preservation**. Add-a-row ops are least likely to be silently wrong — sample those.
+- 🎯 **F3 stage 3 — round-trip field preservation.** The last of the three observed failure modes:
+  does an unrelated edit DROP a field the editor never exposed? Sweep the 11 families' patch paths.
+  Stages 1 (delete/archive) and 2 (the FE door) are done and gated.
+- **F3 residual — `plan-hub`'s scene-link undo re-CREATES the edge** rather than restoring it
+  (correct when the delete was hard; now it leaves an orphaned archived row and the original can
+  never be restored). Left deliberately: **plan-hub/plan-forge is the concurrent session's active
+  surface — coordinate before touching `usePlanMoves`.**
+- **Found, not fixed (out of scope, small): `scene_link.create` does not check whether its endpoint
+  nodes are archived** — it validates project scope and `kind='scene'` only, so an edge to an
+  archived scene is creatable today. `restore` is at parity with `create` here, so this is
+  pre-existing rather than introduced; the fix belongs with the outline-archival rules.
 - **E6** F7/F8 — the passes are still blind to canon rules + existing cast (`run_cast` re-invents
   the book's characters from `premise` alone); `package["canon"]` is compiled and read by nobody.
 - **E7** re-run `scenes`/`self_heal` against the real curve.
