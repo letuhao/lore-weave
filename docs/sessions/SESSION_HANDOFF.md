@@ -161,10 +161,45 @@ pre-revision never captured · captured-but-never-restored · missing REST rever
 removed). 7 FE failures (`WritingStudioPage`, `BooksPage.createNavigate`, `serverKey`) are
 **pre-existing on HEAD — proven by re-running them with my FE changes stashed**, not caused here.
 
+### ✅ F3 stage 3 — round-trip field preservation: the REDACTION was the data-loss vector
+
+**Most write paths are structurally safe** and this is worth recording as a *negative* result so
+nobody re-sweeps it: 5 repos (`canon_rules`, `error_blocks`, `outline`, `structure`, `works`) patch
+through an `_UPDATABLE_COLUMNS` allowlist, and `motif._patch` uses `model_dump(exclude_unset=True)`,
+so an absent field is untouched. `motif`'s `preconditions`/`effects` are typed `list[dict[str, Any]]`
+in the BE and narrowed to `{text}` by the FE — which *looks* like a stripping bug, but **both**
+producers (`motif_deconstruct.py:443`, `motif_mine.py:290`) write exactly `{"text": …}`, so nothing
+is lost. Checked, not assumed.
+
+**The real find is `examples`, and the vector is the PRIVACY REDACTION.** `_PUBLIC_DETAIL_REDACT`
+hides `examples` from a non-owner (imported source prose — copyright) by returning `[]`, which is
+**indistinguishable from genuinely empty**. Separately, the shared book tier lets ANY EDIT-grantee
+patch the row. Composed: a grantee's editor seeds from the redacted read and a whole-object PATCH
+**wipes the owner's prose — content that grantee was never allowed to SEE.** No client can defend
+itself, because the payload never announces that it was redacted.
+
+Fixed server-side, where it belongs: `_reject_redacted_writes` refuses (400
+`MOTIF_REDACTED_FIELD_NOT_WRITABLE`) any write to a redacted field by a non-owner. **The read
+boundary and the write boundary are now the same boundary.** Refused *loudly*, never dropped —
+a silently-ignored field would let the caller believe the edit landed whole. Field-scoped, so the
+rest of the edit still applies, and the OWNER may still write their own `examples` (gating on
+`book_shared` instead would have locked them out of their own field).
+
+The agent surface turned out safe **by construction** — `_MotifPatchToolArgs` has no `examples`
+field and `ForbidExtra` rejects one — but that was *incidental*, so it is now pinned by
+`test_the_agent_patch_surface_cannot_EXPRESS_a_redacted_field`. The runtime guard I first added
+there was **removed**: provably unreachable, and dead defensive code is worse than the contract
+test that actually runs.
+
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
-- 🎯 **F3 stage 3 — round-trip field preservation.** The last of the three observed failure modes:
-  does an unrelated edit DROP a field the editor never exposed? Sweep the 11 families' patch paths.
-  Stages 1 (delete/archive) and 2 (the FE door) are done and gated.
+- **F3 turned up a MISSING FE DOOR (buildable, not blocked): the shared-tier motif edit.**
+  `D-MOTIF-ADOPT-BOOK-COLLAB-TIER` is fully implemented BE-side — `PATCH /motifs/{id}?book_id=`,
+  `repo.patch_shared`, MCP, tests — and has **no FE affordance at all**. Cause: the redaction nulls
+  `owner_user_id`, and `motifTier()` derives the tier from exactly that field, so a shared row reads
+  as `system` → `isReadOnly` → the in-place editor never opens; every path is clone-to-edit. The BE
+  docstring claimed the FE "routes an edit to the shared path" — it does not, and the docstring is
+  now corrected rather than left to mislead. Building it needs a tier signal that survives redaction
+  (`book_shared` is already on the wire) — and it is safe to build *now* that the write guard exists.
 - **F3 residual — `plan-hub`'s scene-link undo re-CREATES the edge** rather than restoring it
   (correct when the delete was hard; now it leaves an orphaned archived row and the original can
   never be restored). Left deliberately: **plan-hub/plan-forge is the concurrent session's active

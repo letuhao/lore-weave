@@ -1045,6 +1045,30 @@ async def test_motif_patch_shared_edit_gated():
     assert res["_meta"]["undo_hint"]["args"]["book_id"] == str(BOOK)
 
 
+def test_the_agent_patch_surface_cannot_EXPRESS_a_redacted_field():
+    """F3 — the read boundary is the write boundary, held here by CONSTRUCTION.
+
+    `examples` is redacted from a non-owner (imported source prose), and the shared book tier lets
+    any EDIT-grantee patch the row. On the REST surface those compose into silent destruction — the
+    redacted read returns `[]`, indistinguishable from genuinely empty, so a whole-object patch
+    wipes the owner's prose — which is why `_reject_redacted_writes` exists there.
+
+    The agent surface is safe for a different reason: `_MotifPatchToolArgs` simply has no
+    `examples` field, and `ForbidExtra` rejects it. That is a stronger guarantee than a runtime
+    check, but it is INCIDENTAL — nothing stopped someone from adding the field for convenience
+    and re-opening the hole. This pins it. Adding a redacted field to the tool args now reds here,
+    and the runtime guard in `composition_motif_patch` is the second layer if it ever does.
+    """
+    import app.mcp.server as srv
+    from app.routers.motif import _PUBLIC_DETAIL_REDACT
+
+    exposed = sorted(set(_PUBLIC_DETAIL_REDACT) & set(srv._MotifPatchToolArgs.model_fields))
+    assert not exposed, (
+        f"the motif patch tool now exposes redacted field(s) {exposed}. A non-owner cannot READ "
+        f"these, so letting an agent WRITE them lets a grantee wipe content they were never shown."
+    )
+
+
 async def test_motif_patch_shared_denied_without_edit():
     import app.mcp.server as srv
     from loreweave_mcp import NotAccessibleError

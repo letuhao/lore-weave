@@ -3947,6 +3947,14 @@ async def composition_motif_patch(ctx: MCPContext, args: _MotifPatchToolArgs) ->
         prior = await repo.get_in_book(tc.user_id, mid, bid)
         if prior is None or not prior.book_shared or prior.book_id != bid:
             raise uniform_not_accessible()
+        # F3 — the read boundary IS the write boundary. `examples` is redacted from a non-owner
+        # (imported source prose), and a redacted read hands back `[]`, indistinguishable from
+        # genuinely empty, so a whole-object patch from a grantee would wipe it for everyone
+        # including the owner. REST needs a runtime guard for that (`_reject_redacted_writes`);
+        # this surface is safe by CONSTRUCTION — `_MotifPatchToolArgs` has no redacted field and
+        # ForbidExtra rejects one. That is incidental rather than designed, so it is pinned by
+        # `test_the_agent_patch_surface_cannot_EXPRESS_a_redacted_field`; add a redacted field
+        # here and it reds, rather than quietly re-opening the hole.
     else:
         # OWNER edit: must be the caller's OWN row (system/public/foreign → deny).
         prior = await repo.get_visible(tc.user_id, mid)

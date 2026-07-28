@@ -48,6 +48,7 @@ class StubMotifRepo:
         self.create_raises: Exception | None = None
         self.patch_result: Motif | None = _motif(version=2)
         self.patch_raises: Exception | None = None
+        self.last_patch_shared = None
         self.archive_calls: list = []
         self.restore_calls: list = []
         self.restore_result: Motif | None = _motif(status="active")
@@ -72,6 +73,14 @@ class StubMotifRepo:
 
     async def get_visible(self, caller_id, motif_id):
         return self.get_result
+
+    # F3 — the shared-tier patch reads the row first so it can refuse a write to a field the
+    # SAME read redacts. Defaults to None (guard skipped) so the pre-existing shared tests are
+    # unchanged; the redaction tests set it explicitly.
+    get_in_book_result: Motif | None = None
+
+    async def get_in_book(self, caller_id, motif_id, book_id):
+        return self.get_in_book_result
 
     async def create(self, user_id, args, **kw):
         self.last_create_args = args
@@ -506,6 +515,57 @@ def test_patch_shared_edit_gated(ctx):
     assert r.status_code == 200
     assert repo.last_patch_shared[1] == mid and repo.last_patch_shared[2] == book
     assert repo.grant.calls and repo.grant.calls[0][0] == book
+
+
+# ── F3: the READ boundary is the WRITE boundary (redacted fields are not writable) ──
+#
+# `examples` is redacted from a non-owner (imported source prose — copyright), and the shared book
+# tier lets ANY EDIT-grantee patch the row. Composed, those two silently destroy data: the redacted
+# read hands the grantee `examples: []` — indistinguishable from genuinely empty — and a
+# whole-object patch then wipes it for everyone, including the owner, the only person allowed to
+# SEE it. No client can defend itself here, because the payload does not announce the redaction.
+
+def test_shared_patch_REFUSES_to_write_a_field_the_read_redacts(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book, mid = uuid.uuid4(), uuid.uuid4()
+    repo.get_in_book_result = _motif(owner_user_id=OTHER, book_id=book, book_shared=True,
+                                     examples=[{"text": "the owner's source prose"}])
+    r = c.patch(f"/v1/composition/motifs/{mid}?book_id={book}",
+                json={"name": "Edited", "examples": []})
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "MOTIF_REDACTED_FIELD_NOT_WRITABLE"
+    assert r.json()["detail"]["fields"] == ["examples"]
+    # Refused LOUDLY, not silently dropped — a silently-ignored field would let the caller
+    # believe the edit landed whole.
+    assert repo.last_patch_shared is None
+
+
+def test_shared_patch_allows_the_rest_of_the_edit(ctx):
+    """The refusal is field-scoped: a grantee edits everything they can actually see."""
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book, mid = uuid.uuid4(), uuid.uuid4()
+    repo.get_in_book_result = _motif(owner_user_id=OTHER, book_id=book, book_shared=True)
+    repo.patch_result = _motif(owner_user_id=OTHER, book_id=book, book_shared=True, version=2)
+    r = c.patch(f"/v1/composition/motifs/{mid}?book_id={book}", json={"name": "Edited"})
+    assert r.status_code == 200 and repo.last_patch_shared is not None
+
+
+def test_the_OWNER_may_still_write_examples_on_their_own_shared_row(ctx):
+    """The guard is about the redaction, not the tier — the owner reads examples, so they write
+    them. Gating on `book_shared` instead would have locked the owner out of their own field."""
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book, mid = uuid.uuid4(), uuid.uuid4()
+    repo.get_in_book_result = _motif(owner_user_id=USER, book_id=book, book_shared=True)
+    repo.patch_result = _motif(owner_user_id=USER, book_id=book, book_shared=True, version=2)
+    r = c.patch(f"/v1/composition/motifs/{mid}?book_id={book}",
+                json={"examples": [{"text": "mine to edit"}]})
+    assert r.status_code == 200 and repo.last_patch_shared is not None
 
 
 def test_patch_shared_under_tier_403(ctx):

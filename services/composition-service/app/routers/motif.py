@@ -119,6 +119,40 @@ def _redact_for_viewer(motif: Motif, *, is_owner: bool) -> dict[str, Any]:
     return data
 
 
+def _reject_redacted_writes(body: MotifPatchArgs, prior: Motif, caller_id: UUID) -> None:
+    """The READ boundary and the WRITE boundary must be the SAME boundary.
+
+    `_PUBLIC_DETAIL_REDACT` hides `examples` from a non-owner (they may carry imported source
+    prose — copyright). The shared book tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) separately lets ANY
+    EDIT-grantee of the book patch the row. Those two facts compose into silent destruction: a
+    grantee's client seeds an editor from the redacted read — where the field arrives as `[]`,
+    indistinguishable from genuinely empty — sends a whole-object patch, and wipes `examples` for
+    everyone, including the owner, who is the only person permitted to SEE them.
+
+    No client can defend against this on its own: the redaction is lossy in a way the payload does
+    not announce. So the server refuses the write rather than trusting every present and future
+    client to notice. Refused loudly (400), never dropped silently — a silently-ignored field is
+    the no-silent-no-op bug this codebase keeps re-learning.
+
+    Found by the F3 round-trip sweep. Not reachable from today's FE (its `isReadOnly` keys on
+    `owner_user_id`, which the same redaction nulls, so the editor never opens on a shared row) —
+    but that also means the shared-tier edit has no FE door at all, and the obvious way to add one
+    walks straight into this.
+    """
+    if prior.owner_user_id is not None and prior.owner_user_id == caller_id:
+        return  # the owner may write what the owner may read
+    offending = sorted(f for f in _PUBLIC_DETAIL_REDACT if f in body.model_fields_set)
+    if offending:
+        raise HTTPException(status_code=400, detail={
+            "code": "MOTIF_REDACTED_FIELD_NOT_WRITABLE",
+            "message": (
+                f"{', '.join(offending)} is hidden from you on a motif you do not own, so it "
+                f"cannot be written — omit the field (editing the rest is allowed)"
+            ),
+            "fields": offending,
+        })
+
+
 async def _publish_quota_guard(repo: MotifRepo, caller_id: UUID) -> None:
     """B-4 publish ceiling — informative refusal (NOT the uniform not-accessible
     error; a quota condition is not an ownership one). 0 = unlimited."""
@@ -213,7 +247,15 @@ def _book_view(motif: Motif, *, caller_id: UUID) -> dict[str, Any]:
     """Book-library projection (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): own rows full; a SHARED row
     owned by another collaborator gets the B-3 redaction (no examples / opaque source_ref / no
     owner) but keeps book_id + book_shared so the FE can badge it + route an edit to the shared
-    path. Mirrors the MCP _motif_book_view."""
+    path. Mirrors the MCP _motif_book_view.
+
+    NB (F3 sweep, 2026-07-28): the *badge* half is live; the *edit* half has **no FE door yet**.
+    The redaction nulls `owner_user_id`, and the FE derives its tier from exactly that field, so a
+    shared row reads as `system` → read-only → the in-place editor never opens and every client
+    path is clone-to-edit. `PATCH ?book_id=` + `patch_shared` are implemented and tested; only the
+    affordance is missing. Whoever builds it: the redaction is why `_reject_redacted_writes`
+    exists — a grantee's editor would otherwise seed `examples: []` from this very projection and
+    write the owner's prose away."""
     is_owner = motif.owner_user_id is not None and motif.owner_user_id == caller_id
     data = _redact_for_viewer(motif, is_owner=is_owner)
     data["book_id"] = str(motif.book_id) if motif.book_id else None
@@ -315,6 +357,11 @@ async def patch_motif(
                 "message": "a shared book-tier motif stays private; publish from your own copy instead",
             })
         await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+        # F3 — a grantee must not WRITE a field the same read redacts (see the helper). Reading
+        # the row first mirrors what the MCP path already does before its shared patch.
+        prior = await repo.get_in_book(user_id, motif_id, book_id)
+        if prior is not None:
+            _reject_redacted_writes(body, prior, user_id)
         try:
             motif = await repo.patch_shared(
                 user_id, motif_id, book_id, body, expected_version=_parse_if_match(if_match),
