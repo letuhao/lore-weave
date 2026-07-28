@@ -305,6 +305,46 @@ scene refused 400 `BAD_REFERENCE` while a live target still returns 201.
 
 **VERIFY:** unit **2645 passed / 341 skipped**; DB integration **337 passed / 8 skipped** (real SQL).
 
+### ✅ "REGENERATE TO BEAT" — built on the FOURTH attempt, and the first one verified live
+
+**No spec was needed and no endpoint was built.** Everything already existed: `POST
+/works/{project_id}/generate` is scene-scoped (`outline_node_id`) and operation-dispatched, so the
+feature is a **registry entry** — `regenerate_to_beat` in `_OPERATION_INSTRUCTIONS` — plus a call.
+It inherits the job record, billing, grant gate, 202-poll and correction capture for free.
+
+**The instruction is SERVER-authored on purpose.** The drift is a machine verdict (the conformance
+judge read the written scene and found the planned beat unrealized), so the wording that acts on it
+does not belong in the client. It tells the drafter the previous draft missed the beat, that the
+beat must *happen on the page* rather than be asserted, and — the part that matters —
+**"change how the beat is played out, not which beat it is"**: a model merely told to try again is
+free to pick an easier beat and make the verdict pass by moving the goalposts. `guide` still
+carries the author's own words.
+
+**This feature had been built wrong THREE times, each failing differently, each shipped green:**
+1. `POST /scenes/{id}/regenerate-to-beat` — a route composition-service never served → **404**.
+2. Migrated to the real `/generate`, but sent only `outline_node_id`; `GenerateBody` requires
+   `model_source` + `model_ref` → **422**. The comment even said *"Replaces the removed
+   regenerate-to-beat endpoint"* — the URL was fixed and the body was not.
+3. Mine, nearly: hand-rolling the body again, omitting `mode: 'auto'`. Firing it at the real stack
+   returned **23 seconds of SSE frames** — `apiJson` would have choked on the stream, and it would
+   have skipped the 202-poll too.
+
+Both earlier versions ALSO existed as **two copies** (`useMotifBinding` + `useConformanceTrace`),
+which is how a phantom survived review: the dead one held the fake URL, the live one held the bad
+body. There is one now, and it **delegates to `compositionApi.generateAuto`** rather than
+hand-rolling a request — so the only thing it can get wrong is the operation, which is exactly what
+the tests pin.
+
+**Also fixed the affordance rule:** `onRegenerate` is OPTIONAL, and the view passes it only when a
+model is resolved. No model ⇒ no button, rather than a button that 422s. That is the same
+no-dead-affordance rule the first version violated, now enforced by the type instead of a comment.
+
+**LIVE-PROVEN end to end** (the step all three earlier versions skipped): rebuilt the image,
+confirmed the operation is deployed, fired it through the gateway with a real JWT and a **local
+$0 model** → `202 enqueued` → polled → **`status: completed`, `operation: regenerate_to_beat`,
+2181 chars of real prose** ("The quill felt leaden…"). VERIFY: composition **2649 passed / 341
+skipped**; FE **6218 passed**, `tsc` exit 0; phantom-route scan still **0 phantoms**.
+
 ### 🛠️ PHANTOM ROUTE SCAN — the gate for the whole class (`scripts/phantom-route-scan.py`)
 
 Every bug this sweep found reduces to one shape: **a caller and a route that stopped agreeing,
@@ -362,7 +402,10 @@ composition-service (grepped: no route, no handler, not even a renamed equivalen
 (`CompositionPanel` + `QualityConformancePanel`). Worse: it rendered only when `hasDrift`, i.e.
 **exactly when the author most wanted it**, and 404'd.
 
-**Removed, not built.** There is no existing capability to re-point at — `/scenes/{id}/prose`
+**→ NOW BUILT AND LIVE-PROVEN (2026-07-28).** See the next section. The removal below stood for
+about an hour; the feature turned out to need a registry entry, not an endpoint.
+
+**Removed first, then built.** There is no existing capability to re-point at — `/scenes/{id}/prose`
 persists promoted prose, it does not generate — so the missing piece is scene regeneration
 constrained to a planned beat: an LLM call plus job orchestration, a feature rather than a repair.
 A dead affordance in the failure case is worse than none, so the button, its prop and the mutation

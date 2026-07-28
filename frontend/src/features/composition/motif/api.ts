@@ -420,10 +420,22 @@ export const motifApi = {
    *  regenerate-to-beat endpoint (BE-5 was never built; §5.1). The bound motif now steers
    *  generation through the packer's gather_motif lens (BE-M2), so a plain regenerate honours
    *  the beat. */
-  regenerateScene(projectId: string, outlineNodeId: string, token: string): Promise<{ job_id?: string }> {
-    return apiJson(`${BASE}/works/${projectId}/generate`, {
-      method: 'POST', body: JSON.stringify({ outline_node_id: outlineNodeId }), token,
-    });
+  /** W6 "Regenerate to beat" — DELEGATES to the shared scene-generate call rather than
+   *  re-implementing it. This feature has now been built wrong twice by hand-rolling the request:
+   *  v1 POSTed to `/scenes/{id}/regenerate-to-beat`, a route that was never built; v2 moved to the
+   *  right URL but sent only `outline_node_id`, so it 422'd on the required model fields. A
+   *  hand-rolled third version was about to miss `mode: 'auto'` — without it the endpoint STREAMS
+   *  SSE (proven live: 23s of `data:` frames), which `apiJson` cannot parse, and it would also
+   *  skip the 202-pending job poll that `generateAuto` already handles.
+   *
+   *  The only thing that differs from any other scene draft is the OPERATION, so that is the only
+   *  thing this passes. The retry instruction itself is server-authored in
+   *  `_OPERATION_INSTRUCTIONS` — the drift is a machine verdict, so its wording is not the
+   *  client's to phrase. */
+  regenerateScene(projectId: string, outlineNodeId: string, modelRef: string, token: string) {
+    return compositionApi.generateAuto(
+      projectId, { outlineNodeId, modelRef, operation: 'regenerate_to_beat' }, token,
+    );
   },
 };
 

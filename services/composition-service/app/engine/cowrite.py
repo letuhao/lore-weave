@@ -28,6 +28,20 @@ logger = logging.getLogger(__name__)
 _OPERATION_INSTRUCTIONS = {
     "continue": "Continue the scene from where the recent prose ends, in the same voice.",
     "draft_scene": "Draft this scene from its beat, goal, POV, and synopsis.",
+    # W6 — the conformance judge read the WRITTEN scene and found it did not realize its planned
+    # beat. This is a second attempt with that knowledge, so it must not be a bare re-roll: the
+    # plan above is unchanged and the beat is already in it, what failed was landing it ON THE
+    # PAGE. Server-authored on purpose — the drift is a machine verdict, and letting the client
+    # phrase the retry instruction would put the one part that matters in the least trustworthy
+    # place. (`guide` still carries the AUTHOR's own words when they add any.)
+    "regenerate_to_beat":
+        "Draft this scene AGAIN from its beat, goal, POV, and synopsis. A previous draft of this "
+        "scene did NOT realize its planned beat, so writing something merely competent is not "
+        "enough: the beat named in the plan above must unmistakably HAPPEN in this passage — "
+        "dramatised through action, dialogue and interiority, never summarised or asserted. Keep "
+        "the scene's established POV, characters and continuity; change how the beat is played "
+        "out, not which beat it is. If the plan also names a tension target, let the scene's "
+        "rhythm actually reach it rather than staying flat.",
     # B2 chapter single-pass: the user prompt carries the chapter intent + every
     # scene beat in order; write the WHOLE chapter as one continuous narrative
     # (not a single scene) so the output isn't fragmented back into per-scene size.

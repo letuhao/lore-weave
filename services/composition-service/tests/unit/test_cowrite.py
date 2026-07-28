@@ -158,6 +158,35 @@ def test_build_messages_threads_language_and_voice():
     assert "be tense" in msgs[1]["content"] and "Continue the scene" in msgs[1]["content"]
 
 
+def test_regenerate_to_beat_is_a_REGISTERED_operation_not_the_generic_fallback():
+    """W6 — the conformance drift retry must reach the drafter as its own instruction.
+
+    `_OPERATION_INSTRUCTIONS` is a `.get(op, "Write the next passage of the scene.")`, so an
+    UNREGISTERED operation silently degrades to that generic line instead of failing. This repo has
+    already paid for that once: `useWhatIfTakes` sent a made-up `'diverge'` and got the weak
+    fallback, caught only by a review. So the assertion is not "some instruction came back" — it is
+    that this operation's OWN wording is present and the fallback's is not.
+    """
+    user = cowrite.build_messages("ctx", NEUTRAL, "regenerate_to_beat")[1]["content"]
+    assert "did NOT realize its planned beat" in user
+    assert "Write the next passage of the scene." not in user
+
+
+def test_regenerate_to_beat_keeps_the_plan_and_changes_only_the_EXECUTION():
+    """The retry must not drift into re-planning. A model told merely to 'try again' is free to
+    pick an easier beat, which would make the conformance verdict pass by moving the goalposts."""
+    user = cowrite.build_messages("ctx", NEUTRAL, "regenerate_to_beat")[1]["content"]
+    assert "not which beat it is" in user
+    assert "dramatised" in user.lower()          # landed on the page, not asserted
+
+
+def test_regenerate_to_beat_still_carries_the_AUTHOR_guide():
+    """Server-authored instruction and author guidance are different things; the retry keeps both."""
+    user = cowrite.build_messages("ctx", NEUTRAL, "regenerate_to_beat", guide="colder, less dialogue")[1]["content"]
+    assert "did NOT realize its planned beat" in user
+    assert "colder, less dialogue" in user
+
+
 def test_build_messages_neutral_no_forced_language():
     msgs = cowrite.build_messages("ctx", NEUTRAL, "draft_scene")
     assert "language with code" not in msgs[0]["content"]

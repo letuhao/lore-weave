@@ -89,6 +89,9 @@ export function ConformanceTraceView({ projectId, chapterId, token, modelRef, on
                 key={s.outline_node_id}
                 scene={s}
                 onOpenScene={onOpenScene && chapterId ? (sid) => onOpenScene(sid, chapterId) : undefined}
+                // No model resolved ⇒ no `onRegenerate` ⇒ the row draws no button, rather than
+                // one that fails on click. The panel already resolves `modelRef` for the judge.
+                onRegenerate={modelRef ? (id) => trace.regenerateScene.mutate(id) : undefined}
               />
             ))}
           </div>

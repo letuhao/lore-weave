@@ -1,4 +1,4 @@
-// W6 §7.1 — a drift row shows ⚠/✗; calibrated=false stamps
+// W6 §7.1 — a drift row shows ⚠/✗ + "Regenerate to beat"; calibrated=false stamps
 // the advisory honesty note (R2.1); an on-beat calibrated row shows ✓ + no advisory.
 // A null verdict (not judged) and a degraded judge (null booleans) are neutral states.
 // Rows read the chapter reader's NESTED shape ({planned, realized, conformance}).
@@ -27,11 +27,19 @@ describe('ConformanceSceneRow', () => {
     expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
   });
 
-  it('beat missed → ✗, and NO regenerate button (the endpoint never existed)', () => {
-    // The drift affordance was removed 2026-07-28: it POSTed to
-    // `/scenes/{id}/regenerate-to-beat`, a route composition-service has never served. This test
-    // used to assert the click reached `onRegenerate` — and passed, because the handler was a
-    // vi.fn(). That is the whole failure mode: a mock cannot notice the route was never built.
+  it('beat missed → ✗ + Regenerate to beat (the drift affordance)', () => {
+    const onRegen = vi.fn();
+    render(<ConformanceSceneRow scene={scene({ conformance: dim({ beat_realized: false }) })} onRegenerate={onRegen} />);
+    expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✗');
+    fireEvent.click(screen.getByTestId('conformance-regen-n1'));
+    expect(onRegen).toHaveBeenCalledWith('n1');
+  });
+
+  it('drift but NO handler → the button is not drawn at all', () => {
+    // `onRegenerate` is optional on purpose: the view only passes it when a model is resolved,
+    // because generation without one is a 422 at request validation. An affordance that cannot
+    // complete should not be drawn — this row shipped once as a button that could only fail, so
+    // the gate is the prop's presence rather than a disabled state nobody can explain.
     render(<ConformanceSceneRow scene={scene({ conformance: dim({ beat_realized: false }) })} />);
     expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✗');
     expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
