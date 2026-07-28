@@ -330,15 +330,35 @@ segment was substituted as a path param (invented `/outline00000000-…`); and `
 'POST' : 'DELETE'` fell back to GET, reporting a correct call site as a phantom. A gate that cries
 wolf ends up ignored — same end state as no gate.
 
-**🔴 9 PHANTOMS FOUND, not yet fixed** (they span 5 features and want per-owner triage):
-`/v1/catalog/books/*` ×3 · `/v1/sharing/unlisted/*` ×3 (one a 405) · `GET /v1/users/{id}` ·
-`POST /v1/account/oauth/consent` · **`POST /v1/composition/works/{p}/scenes/{s}/regenerate-to-beat`
-— verified by hand: no such route in composition-service, and `useMotifBinding` calls it from the
-live `ChapterMotifBindings`.** All the named services are running, so these are not "service down".
-Tracked as `D-PHANTOM-ROUTES-9`.
+**`D-PHANTOM-ROUTES-9` → triaged: 8 were MY FALSE POSITIVES, 1 is real.** Every one was checked by
+hand rather than believed, and the answer changed the scanner:
 
-Also 38 inconclusive (18×422, 10×200, 5×400, 4×503, 1×202) — the 200s are worth a look on their
-own: those endpoints answered a BOGUS token.
+- **The bogus-token oracle only silences handlers on AUTHENTICATED routes.** A PUBLIC one runs
+  regardless and 404s because the fake id matches nothing — `/v1/catalog/books/{id}` answered
+  `{"code":"BOOK_NOT_FOUND"}`, `/v1/users/{id}` answered `{"code":"AUTH_USER_NOT_FOUND"}`. Those
+  routes are alive and correct. The fix is to read the BODY: a **domain error code** means a
+  handler ran (served); only the framework's own `{"detail":"Not Found"}` / chi's
+  `404 page not found` means no route. That reclaimed 7 of the 8.
+- `POST /v1/account/oauth/consent` → `{"code":"oauth_disabled"}`. The route exists; the feature is
+  switched off. Not a phantom.
+- The last false one was a **window bug**: `getUnlistedChapter` is a GET, but the options window
+  ran past the function into a neighbour's `method: 'POST'` (that neighbour uses XHR, so there was
+  no `apiJson` to stop at). The window is now bounded by the call's own closing paren, counted.
+
+**After the fixes: 715 probed → 676 served, 1 phantom, 38 inconclusive.**
+
+**🔴 `D-MOTIF-REGENERATE-TO-BEAT-404` — the one real find, and it is a live button.**
+`POST /v1/composition/works/{p}/scenes/{s}/regenerate-to-beat` **has never existed** in
+composition-service (grepped: no route, no handler, not even a renamed equivalent). It is called by
+`useMotifBinding.regenerateScene`, wired to the **"Regenerate to beat"** button in
+`ConformanceSceneRow.tsx` via `ConformanceTraceView`. A user can click it today and get a 404.
+Two honest options, and it is a product call which: **build the endpoint** (scene regeneration
+constrained to its planned beat — a real feature), or **remove the affordance** until it exists
+(the no-dead-affordance rule). Not fixed here because it is not cleanup either way.
+
+Also 38 inconclusive (18×422, 10×200, 5×400, 4×503, 1×202) — the **10 that answered `200` to a
+BOGUS token** are worth their own look: those endpoints are unauthenticated, which may be intended
+(public catalog, leaderboards) or may not.
 
 ### ✅ `D-GLOSSARY-UNKNOWN-REVIEW-405` — the unknown-kind review was broken by DEFAULT (2026-07-28)
 

@@ -241,16 +241,33 @@ def extract(files: list[pathlib.Path]) -> tuple[dict[tuple[str, str], str], list
             except Unparsed as exc:
                 (dynamic if rel in _KNOWN_DYNAMIC else unparsed).append(f"{where}  ({exc})")
                 continue
-            # The options object belongs to THIS call: stop at the next apiJson so a neighbouring
-            # call's `method:` can never be attributed here.
-            nxt = _CALL.search(src, end)
-            window = src[end:nxt.start() if nxt else min(len(src), end + 400)]
+            # The options object belongs to THIS call, so the window is bounded by the call's OWN
+            # closing paren — counted, not guessed. "Up to the next apiJson, else 400 chars" read
+            # `getUnlistedChapter`'s window straight into the NEXT function, picked up an unrelated
+            # `method: 'POST'` (that neighbour uses XHR, so there was no apiJson to stop at) and
+            # reported a live GET route as a phantom.
+            depth, k = 1, end
+            while k < len(src) and depth:
+                depth += (src[k] == "(") - (src[k] == ")")
+                k += 1
+            window = src[end:k]
             for method in _methods_in(window):
                 routes.setdefault((method, path), where)
     return routes, unparsed, dynamic
 
 
-def probe(method: str, path: str, base_url: str, timeout: float) -> int | str:
+# A 404 whose body carries a DOMAIN error code came from a handler that ran — the route exists and
+# the fake id simply matched nothing. Only the framework's own default 404 means "no route".
+#   FastAPI  {"detail":"Not Found"}      ·  chi  "404 page not found"
+# Without this the scan called 8 live public endpoints phantom: `/v1/catalog/books/{id}` answered
+# `{"code":"BOOK_NOT_FOUND"}` and `/v1/users/{id}` answered `{"code":"AUTH_USER_NOT_FOUND"}`. The
+# bogus-token oracle only silences handlers on AUTHENTICATED routes; a public one runs regardless,
+# and that blind spot is precisely where the false positives clustered.
+_FRAMEWORK_404 = ('{"detail":"not found"}', "404 page not found", "cannot ")
+
+
+def probe(method: str, path: str, base_url: str, timeout: float) -> tuple[int | str, str]:
+    """(status, verdict) — verdict ∈ {served, phantom, unknown}."""
     req = urllib.request.Request(
         base_url.rstrip("/") + path, method=method,
         headers={"Authorization": f"Bearer {BOGUS_TOKEN}", "Content-Type": "application/json"},
@@ -259,11 +276,21 @@ def probe(method: str, path: str, base_url: str, timeout: float) -> int | str:
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status
+            status, body = r.status, r.read(400).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        return e.code
+        status, body = e.code, e.read(400).decode("utf-8", "replace")
     except Exception as e:                                   # noqa: BLE001 — surfaced, not hidden
-        return f"unreachable: {type(e).__name__}"
+        return f"unreachable: {type(e).__name__}", "unknown"
+
+    if status in SERVED:
+        return status, "served"
+    if status == 405:
+        return status, "phantom"                # the path matched; the METHOD did not. Unambiguous.
+    if status == 404:
+        squashed = " ".join(body.split()).lower()
+        framework = any(squashed.startswith(s) for s in _FRAMEWORK_404) or not squashed
+        return status, "phantom" if framework else "served"
+    return status, "unknown"
 
 
 def main() -> int:
@@ -311,9 +338,9 @@ def main() -> int:
     # layer that rejects before proxying, a gateway that 200s everything — this file would report
     # "0 phantoms" forever and look like good news. That is the exact failure this session hit
     # twice (a gate green because it was blind). So prove the oracle on every run, both arms.
-    dead = probe("GET", "/v1/glossary/__phantom_route_scan_self_check__", args.base_url, args.timeout)
-    live = probe("GET", "/v1/glossary/kinds", args.base_url, args.timeout)
-    if dead not in PHANTOM or live not in SERVED:
+    dead, dead_v = probe("GET", "/v1/glossary/__phantom_route_scan_self_check__", args.base_url, args.timeout)
+    live, live_v = probe("GET", "/v1/glossary/kinds", args.base_url, args.timeout)
+    if dead_v != "phantom" or live_v != "served":
         print(f"ERROR: the oracle is not holding — a known-DEAD path returned {dead} "
               f"(expected 404/405) and a known-LIVE path returned {live} (expected 401/403).\n"
               f"       Either the stack is down or auth now runs before routing. Results from "
@@ -323,10 +350,10 @@ def main() -> int:
 
     phantoms, unknown, served = [], [], 0
     for (method, path), where in sorted(routes.items()):
-        status = probe(method, path, args.base_url, args.timeout)
-        if status in SERVED:
+        status, verdict = probe(method, path, args.base_url, args.timeout)
+        if verdict == "served":
             served += 1
-        elif status in PHANTOM:
+        elif verdict == "phantom":
             phantoms.append((method, path, status, where))
         else:
             unknown.append((method, path, status, where))
