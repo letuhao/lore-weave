@@ -53,6 +53,15 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # "Destructive DB ops in tests". Exempt a real false positive with a `db-safety-gate: ok` pragma.
 "$PY" "$ROOT/scripts/db-safety-gate.py" --staged
 
+# CLOSED SET vs its companion list. Rust forces you to HANDLE every variant (a match with no
+# wildcard arm) but cannot force an ARRAY to CONTAIN every variant, and variant_count is
+# unstable — so `const ALL: [Enum; N]` drifts from its enum silently. That shipped once:
+# ModifierSource listed 3 of 6, so Base/Archetype/Lex flat modifiers were constructible,
+# accepted and DISCARDED, and a world rule worked or did nothing depending on which operator
+# the author picked (XST-D7). Passed all 76 tests; deterministic, so replay agreed with itself.
+# A genuinely partial list carries `closed-set-gate: ok — <reason>` in its doc block.
+"$PY" "$ROOT/scripts/closed-set-gate.py" --staged
+
 # No ABSOLUTE HOST PATH hardcoded in committed code. Such a path resolves on exactly one
 # machine; everywhere else the script dies or — worse — the path happens to exist and it
 # silently reads a STALE COPY from a sibling checkout (four POC exporters pointed at a

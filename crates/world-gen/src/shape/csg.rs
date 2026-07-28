@@ -57,6 +57,11 @@ pub enum BooleanTemplate {
 impl BooleanTemplate {
     /// Active templates picked by `pick_template`. Ring is reserved (see
     /// doc comment) so it never lands until v3.3 hole support arrives.
+    ///
+    /// closed-set-gate: ok — a deliberate ROTATION subset, not the variant set.
+    /// `Ring` is withheld until `Polygon` supports interior rings (v3.3); until
+    /// then its exterior is identical to a plain Ellipse, so shipping it would
+    /// add a template with zero visual variety.
     const ACTIVE: [BooleanTemplate; 3] = [
         BooleanTemplate::EllipseUnion,
         BooleanTemplate::EllipseDifference,
