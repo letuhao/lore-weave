@@ -571,7 +571,35 @@ but does not belong to this run:
 
   **VERIFY:** composition **2604 passed / 1 skipped** (`-n auto`) · live: composition-service →
   provider-registry → lm_studio, two real generations, output pasted in the cycle notes.
-- **E7** re-run `scenes`/`self_heal` against the real curve.
+- ✅ **E7 — DONE (2026-07-28).** Pass 6 **does** honour the curve, measured rather than asserted:
+  on the real 10-chapter arc 8 chapters landed EXACTLY on target, two undershot (−22, −4), none
+  ever exceeded. `app/engine/tension_conformance.py` makes that a permanent deterministic output
+  (pure arithmetic — judging a number with an LLM would add cost and non-determinism to a question
+  arithmetic answers), stamped on the artifact and rendered per-chapter in `PassArtifactView`.
+  - **It also flags the DEGENERATE curve** — artifact `019f9d2f` is ten chapters of 50,52,55…72
+    with every `beat_role` NULL, what a failed L1 mapping degrades to, and it scores **10/10
+    conformance**. Perfect obedience to a curve nobody planned is not success. Detection keys on
+    the ROLES, never the numbers (a real single-beat arc is linear too).
+  - **`self_heal` FIRST LIGHT — it had never run, 0 of 278 plan runs.** It completed, applied 6
+    edits, and moved **no chapter's tension peak at all**. So pass 7's curve-blindness is a real
+    structural risk that is NOT realised: it edits scene CONTENT, not tension. My hypothesis was
+    wrong and the data says so; the re-measure is the guard, not a bug found.
+  - **The pass-6 → pass-7 bridge proven LIVE twice** — on the dogfood run, and clean-room on a
+    throwaway book compiled from scratch (both 10/10). Pass 7 depends on `scenes`+`cast`, NOT
+    `beats`, so pass 6's stamp is the only channel by which it can know the targets.
+  - **Dogfood run RESTORED.** Proving this mutated run `019f9d2e`; `pass_state` was re-pointed back
+    (`scenes` → `019f9f24`, `self_heal` removed) and diffed against a backup — only those two
+    pointer fields moved. The orphaned artifacts are left in place rather than deleted.
+  **VERIFY:** composition **2623 passed / 1 skipped**; FE plan-forge **150 passed**; `tsc` exit 0;
+  9 mutation cuts all caught.
+- 🔴 **NEW (found proving E7): a new book's cold start is a dead end in the UI.** A fresh book's
+  cast seed cannot be applied until a glossary ontology is adopted, and the only signal is a **422
+  at bootstrap-apply** saying "adopt one in the Graph Schema tab". Nothing in the plan flow says so
+  beforehand. Cost three round-trips to discover; costs an author the same. Small, author-facing.
+- **Hand-off to the chapter-quality session:** `self_heal`'s first-ever run reports the same defect
+  five times — **every chapter's FIRST scene re-enacts the previous chapter's LAST scene**
+  (CH03←CH02, CH04←CH03, CH05←CH04, CH08←CH07, CH09←CH08). That is pass 6 cross-chapter threading,
+  their surface. Recorded, not chased.
 - **Deferred, with reasons in the CHECKLIST:** the batch `/error-blocks/propose` route (needs the
   *which scene does `pack()` ground against* decision — `propose_for_blocks` is built + tested but
   deliberately unwired, stated rather than left to be discovered) · F11's structural residual
