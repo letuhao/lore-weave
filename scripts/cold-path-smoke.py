@@ -57,6 +57,21 @@ The unlisted lantern burns in a window of a house the census says was demolished
 An old keeper admits she has been lighting it for someone who never came home.
 """
 
+#: A second arc for when the walk needs a NON-EMPTY motif_plan. Genre tags alone are not enough —
+#: motif retrieval is semantic, so the PREMISE has to sit near the library's material. The default
+#: harbour arc tagged `intrigue` still matched zero; this court arc matches.
+SOURCE_MD_COURT = """# 1. Arc Overview
+## The Silk Petition
+### The Petition
+A junior scribe finds a petition the court insists was never filed.
+### The Seal
+The seal on it belongs to a minister who died before the date it carries.
+### The Answer
+She learns the petition was answered — and the answer is what killed him.
+"""
+
+SOURCES = {"harbour": SOURCE_MD, "court": SOURCE_MD_COURT}
+
 STEPS = ["book", "run", "compile", "cast", "seed", "motifs", "world", "beats", "arcs",
          "scenes", "heal"]
 
@@ -112,6 +127,15 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=DEFAULT_MODEL, help="a chat-capable user_model_id")
     ap.add_argument("--keep", action="store_true", help="do not trash the throwaway book")
+    # The motif library carries hook/connective, intrigue/court, cultivation/xianxia and untagged
+    # rows — NOTHING for `fantasy`. A fantasy book legitimately matches zero motifs, which is
+    # correct behaviour but makes the walk unusable for anything that needs a non-empty motif_plan.
+    ap.add_argument("--source", choices=sorted(SOURCES), default="harbour",
+                    help="which arc to plan; `court` + --genre intrigue,court,scheme is the "
+                         "combination that yields a non-empty motif_plan")
+    ap.add_argument("--genre", default="fantasy",
+                    help="comma-separated genre_tags; use e.g. intrigue,court,scheme for a book "
+                         "whose motifs actually match the library")
     ap.add_argument("--until", choices=STEPS, default="heal", help="stop after this step")
     args = ap.parse_args()
     stop_after = STEPS.index(args.until)
@@ -137,14 +161,15 @@ def main() -> int:
         print("cold path:")
         s, b = call("POST", "/v1/books", {
             "title": "COLD-PATH SMOKE (throwaway — safe to delete)",
-            "source_language": "en", "genre_tags": ["fantasy"]}, token)
+            "source_language": "en",
+            "genre_tags": [g.strip() for g in args.genre.split(",") if g.strip()]}, token)
         book = ok("book", s, b, 200, 201)["book_id"]
         mark("book", book)
         if done("book"):
             return 0
 
         s, r = call("POST", f"/v1/composition/books/{book}/plan/runs",
-                    {"mode": "rules", "source_markdown": SOURCE_MD}, token)
+                    {"mode": "rules", "source_markdown": SOURCES[args.source]}, token)
         run = ok("run", s, r, 200, 201)["id"]
         arcs = r.get("arcs") or []
         if not arcs:

@@ -121,3 +121,33 @@ describe('PassRow — the edit door', () => {
     expect(onReview).toHaveBeenCalledWith('scenes');
   });
 });
+
+// ── blocked ≠ unreadable (found by driving the real rail) ─────────────────────
+// F10 one step over. `blocked` means this pass cannot be RE-RUN yet — its upstream is stale or
+// unaccepted. It never meant the artifact the pass already produced is unreadable. But the action
+// cell was `running ? … : awaitingReview ? … : blocked ? <lock/> : (edit… + re-run)`, so the lock
+// swallowed the door entirely.
+//
+// The trigger is an ordinary authoring action, not an edge case: edit `beats`, and
+// `character_arcs`/`scenes`/`self_heal` — all completed, all still holding artifacts — went
+// doorless. The author lost the ability to even LOOK at the scene plan they were working from.
+
+describe('PassRow — a blocked pass keeps the door to what it already produced', () => {
+  it('blocked + completed + has artifact → the edit door is STILL there, beside the lock', () => {
+    render(<PassRow index={5} {...base} pass={pass({
+      pass_id: 'character_arcs', checkpoint: 'advisory', status: 'completed', decision: 'auto',
+      fresh: false, blockers: ['beats'], artifact_id: 'a1',
+    })} />);
+    expect(screen.getByTestId('pass-blocked-character_arcs')).toBeTruthy();  // still says why
+    expect(screen.getByTestId('pass-edit-character_arcs')).toBeTruthy();     // …and still opens
+  });
+
+  it('blocked with NOTHING produced yet offers no door — there is nothing to read', () => {
+    render(<PassRow index={6} {...base} pass={pass({
+      pass_id: 'scenes', checkpoint: 'advisory', status: null, decision: null,
+      fresh: false, blockers: ['beats'], artifact_id: null,
+    })} />);
+    expect(screen.getByTestId('pass-blocked-scenes')).toBeTruthy();
+    expect(screen.queryByTestId('pass-edit-scenes')).toBeNull();
+  });
+});

@@ -625,9 +625,20 @@ observation. A claim that a check passed, without its output, does **not** tick 
       **`motif_plan` MCP 2→1** (dropped "Fortuitous Encounter → Legacy") ·
       **`world_plan` MCP 10→9** (dropped "The Ember-Mark") ·
       **`char_arc_plan` MCP 6→5** (dropped "Bram Low").
-      **Honest remainder:** that is ONE channel per kind, not both. MCP covers 5, the browser
-      covers `scene_plan`. A GUI pass over the other five is the only thing still owed on the
-      commitment's literal wording.
+      **GUI channel closed too (2026-07-28)** — the real rail driven in Chrome on a cold-walked
+      book, each edit verified as a NEW artifact in `plan_artifact`:
+      `motif_plan` 2→1 · `cast_plan` 7→6 · `world_plan` 11→10 · `beat_plan` 3→2 ·
+      `char_arc_plan` 7→6. With `scene_plan` (C1/C2) that is **all 6 kinds on BOTH channels** —
+      the commitment's literal wording is met.
+      🔴 **And driving it found a real bug — F10 one step over.** After a `beats` edit,
+      `character_arcs`/`scenes`/`self_heal` were `completed`, still holding artifacts, and
+      **doorless**: the action cell was `running ? … : awaitingReview ? … : blocked ? <lock/> :
+      (edit… + re-run)`, so the lock swallowed the door. `blocked` means the pass cannot be
+      RE-RUN yet; it never meant the artifact it already produced is unreadable. An ordinary
+      authoring action — editing an upstream pass — took away the author's ability to even LOOK
+      at the scene plan they were working from. Fixed: the door renders beside the lock when the
+      pass has an artifact. 2 tests. Not findable statically: every term was correct in
+      isolation, and it needed a real staled run to observe.
       **Two defects found while proving it:** `cold-path-smoke.py` reported 10/10 while never
       running the `world` pass at all (found by trying to edit a `world_plan` that did not exist —
       now 11/11), and my MCP harness silently swallowed tool errors because `isError` rides inside

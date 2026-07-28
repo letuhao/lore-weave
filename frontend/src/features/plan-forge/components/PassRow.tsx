@@ -106,15 +106,32 @@ export function PassRow({ index, pass, blockedAtHere, onRun, onReview, onView, d
             {t('planPasses.review', { defaultValue: 'review →' })}
           </button>
         ) : blocked ? (
-          <span
-            data-testid={`pass-blocked-${pass.pass_id}`}
-            title={t('planPasses.blockedBy', {
-              defaultValue: `blocked by: ${pass.blockers.join(', ')}`,
-              blockers: pass.blockers.join(', '),
-            })}
-            className="rounded border border-border px-2 py-1 text-[10px] text-muted-foreground/60"
-          >
-            🔒 {t('planPasses.blocked', { defaultValue: 'blocked' })}
+          <span className="flex items-center gap-1">
+            {/* Blocked means this pass cannot be RE-RUN yet — its upstream is stale or unaccepted.
+                It does NOT mean the artifact the pass already produced is unreadable, and hiding
+                the door here re-created F10 one step over: editing an upstream pass (an ordinary
+                authoring action) instantly took away the author's ability to even LOOK at the
+                scene plan they were working from, let alone correct it. Found by driving the real
+                rail: after a `beats` edit, `character_arcs`/`scenes`/`self_heal` were all
+                completed, all still holding artifacts, and all doorless. */}
+            {canOpen && (
+              <button
+                type="button" data-testid={`pass-edit-${pass.pass_id}`} onClick={() => onReview(pass.pass_id)}
+                className="rounded border border-border px-2 py-1 text-[11px] hover:bg-secondary"
+              >
+                {t('planPasses.openEdit', { defaultValue: 'edit…' })}
+              </button>
+            )}
+            <span
+              data-testid={`pass-blocked-${pass.pass_id}`}
+              title={t('planPasses.blockedBy', {
+                defaultValue: `blocked by: ${pass.blockers.join(', ')}`,
+                blockers: pass.blockers.join(', '),
+              })}
+              className="rounded border border-border px-2 py-1 text-[10px] text-muted-foreground/60"
+            >
+              🔒 {t('planPasses.blocked', { defaultValue: 'blocked' })}
+            </span>
           </span>
         ) : (
           <span className="flex items-center gap-1">
