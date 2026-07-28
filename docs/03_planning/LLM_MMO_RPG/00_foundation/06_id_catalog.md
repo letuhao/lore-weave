@@ -122,6 +122,13 @@
 | `CNC-*` | Concurrency & cache audit (thread → CPU → node) | [`23_concurrency_and_cache_audit.md`](../23_concurrency_and_cache_audit.md) | next free per family | CNC-F6 = durable idempotency written but never read |
 | `IMG-*` | Island manager — writer liveness + island lifecycle | [`24_island_manager.md`](../24_island_manager.md) | next free per family | IMG-A1 = put liveness where safety already is |
 | `PID-*` | Producer identity & trust derivation (bus auth) | [`25_producer_identity.md`](../25_producer_identity.md) | next free per family | PID-A1 = a trust attribute is derived, never read from the message |
+| `IMP-*` | Implementation architecture — code vs config, module boundaries, anti-rot | [`26_implementation_architecture.md`](../26_implementation_architecture.md) | next free per family | IMP-A1 = code owns SHAPE, config owns VALUES |
+| `XST-*` | Extensibility stress test + live-defect record | [`27_extensibility_stress_test.md`](../27_extensibility_stress_test.md) | next free per family | XST-D5 = the ruleset digest is decorative |
+| `PRD-*` | Product definition — the core loop + what "extensible mechanics" concretely means | [`28_product_definition.md`](../28_product_definition.md) | next free per family | PRD-A2 = a mechanic is WHEN·IF·THEN·ON |
+| `ONT-*` | Ontology — tồn tại / ta / chúng: existence ladder, the self, the others | [`29_ontology_existence_self_others.md`](../29_ontology_existence_self_others.md) | next free per family | ONT-A2 = the self is not the decider |
+| `EXC-*` | Exchange model — three currencies, the transaction dataflow, ledger laws | [`30_exchange_model_and_dataflow.md`](../30_exchange_model_and_dataflow.md) | next free per family | EXC-A1 = time / resource / imprint obey different laws |
+| `WSA-*` | World-simulation architecture + spec reconciliation (4 layers, local writes, near/far reads) | [`31_world_simulation_architecture.md`](../31_world_simulation_architecture.md) | next free per family | WSA-A3 = every write is local and unilateral |
+| `TRG-*` | Trigger group order + failure tolerance (8 locked groups, aspect lifecycle) | [`33_trigger_group_order.md`](../33_trigger_group_order.md) | next free per family | TRG-A1 = ordered groups, commutative within |
 
 ---
 

@@ -633,6 +633,85 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > ✅ **PYTHON SUITES: 3 of 10 were unrunnable outside compose (`2e12d2839`).** They looked like **hangs**; they were not — ~1 % CPU while paying real wall-clock. Two measured causes: **(1)** compose hostnames don't resolve outside compose and a *failed* Windows lookup costs **1,276 ms (provider-registry) / 2,690 ms (ai-gateway) / 7,259 ms (book-service)** vs **2 ms** for `127.0.0.1`; **(2)** chat-service's best-effort auxiliary calls (steering / timezone / known-entities / agent-registry / knowledge) each burn their full 0.5–2 s production budget because the callee is *always* absent in a unit run — `test_admin_surface.py` **34.5 s → 6.7 s**. Fixed test-side only (`setdefault`, production config untouched). **All 10 suites now green: 11,472 passed, 0 failed, 170 s wall in parallel vs 438 s serial-sum.** ⚠️ **Correction to an earlier note in this session:** the claim that those suites "hang rather than skip, a test-hygiene defect" was **wrong** — the missing-`skipif` analysis answered the wrong question; they were slow, not hung.
 > **NEXT (build-health):** add **`pytest-timeout`** to `sdks/python[test]` — its absence is *why* this was opaque for hours, in CI too (a hang and a slow suite are indistinguishable without it); deliberately not done here because that file is a shared surface and a peer session is active. · `services/game-server` needs a local `npm install` on pre-existing checkouts (`node_modules` had colyseus 0.16.5 against a `^0.17.10` declaration; a fresh clone is fine). · **`bash` on this host is WSL and has no Go** — bash-based gates must run through Git Bash (`C:\Program Files\Git\bin\bash.exe`), which is what git itself uses; this produced one phantom eventgen failure.
 
+> 🔒 **PRODUCT + ONTOLOGY ARC SEALED — docs 26–34 (2026-07-28).** The session that started as an
+> extensibility stress test ended by writing the thing the corpus never had: **what this game IS.**
+>
+> **The trigger.** Asked what our gameplay is and what "extensible" means, the PO answered: *"chưa có,
+> tôi còn chưa bao giờ thực sự làm cái này — hiện tại kiến trúc thì thiết kế kiểu để cho mở rộng thôi."*
+> 34 feature folders and 28 architecture docs answered *how do we extend it* in detail; **no document
+> said what the player does.** Every open architectural question (closed-10 slots, trigger substrate,
+> typed damage packet) was unanswerable for that reason — same architecture, three different correct
+> answers.
+>
+> **[26](26_implementation_architecture.md) implementation architecture** — IMP-A1 *code owns SHAPE,
+> config owns VALUES*; module boundaries; the F1→D1 build order. §1's 88× argument was later
+> **falsified by re-measurement** and carries a SUPERSEDED banner.
+> **[27](27_extensibility_stress_test.md) + [27a](27a_stress_test_agent_reports.md) stress test** —
+> 5 agents across 4 genres + an adversarial architect. **Four stated invariants are FALSE in code and
+> a fifth is unfalsifiable** (XST-D1 sign inversion = a documented kill-mutation re-implemented;
+> XST-D5 the ruleset digest is decorative; XST-D6 the "inescapable" Lex clamp is escapable; XST-D7
+> three of six `ModifierSource` silently dropped; XST-F5 layer order unobservable). Re-measured
+> **1.384 / 1.496 / 11.952 ns** kills the performance case for closed-10. 27a preserves the raw agent
+> reports verbatim — **§11 records that the first distillation lost four load-bearing findings**, and
+> the rule that follows: *write raw evidence to disk BEFORE summarising, not after.*
+>
+> **[28](28_product_definition.md) PRODUCT — PRD-D1: the loop is WORLD SIMULATION**, one character who
+> must genuinely live in the environment. Not combat-centric, not scene-narrative. **PRD-A2 defines a
+> mechanic as `WHEN · IF · THEN · ON`**, which turns "can we add mechanics?" into a lookup — and the
+> lookup says **exactly ONE author-declarable trigger exists** (`TrainingRuleDecl`). PRD-F3: 7 of 8
+> extension seams extend the CHARACTER; **zero extend what the WORLD does.**
+> **[29](29_ontology_existence_self_others.md) ONTOLOGY — tồn tại · ta · chúng**, the PO's frame, made
+> falsifiable. Existence is a ladder AIT already built for cost reasons (ONT-D1: **attention must
+> promote**). ONT-A2: *the self is not the decider* — already locked by DL-A8. ONT-F3: **there is no
+> society in V1** — NPC→PC only, written at session end. ONT-F4: the loop's last arrow (*what they
+> hold changes what I can do*) is **missing entirely** = stored-but-never-read, applied to the whole
+> social layer.
+>
+> **[30](30_exchange_model_and_dataflow.md) EXCHANGE** — accepted the PO's *"mọi tương tác đều có cost
+> và earn"*, with one refinement that prevents an expensive bug: **three currencies, not one** — time
+> (irreversible sink), resource (conserved, transferable), **imprint (non-conserved, lives in the
+> OTHER party's state)**. Modelling imprint as a resource ships tradeable/farmable/zero-sum reputation.
+> EXC-A3: **ownership is a relation the world RECOGNISES**; EXC-A4: **capability is DERIVED** — which
+> is ONT-F4's missing arrow. **EXC-F3: the world acts when a ledger cannot balance** — deterministic,
+> no LLM; this is the unnamed cell in DL-A1's cost table.
+>
+> **[31](31_world_simulation_architecture.md) ARCHITECTURE + RECONCILIATION** — 4 layers, L3 the only
+> mutator; **WSA-A3 all writes local+unilateral**; **WSA-A4 near/far asymmetry** (individual opinion
+> read locally, aggregate standing as a fold) — which is what lets an unbounded society run on
+> shared-nothing islands, and `REP_001` **already is** that fold. 18 amendment rows.
+> **[32](32_locus_as_actor.md) LOCUS-AS-ACTOR** — the PO's *"world chính là 1 actor"*. Precise form: a
+> locus is BOTH entity and actor, as a **population** (WSA-A8), never one global writer. Closes fields
+> (diffusion = conserved transfer between neighbours) and most of WHEN (**every WHEN is "an actor took
+> a turn"**; reaction depth = the turn budget). **WSA-F6: this is the substrate of strategy + world
+> economy** — the PO's own point, and the strongest argument of the three.
+>
+> **[33](33_trigger_group_order.md) TRIGGER GROUP ORDER** — the PO's correction. **8 locked groups**
+> `ADMIT→AUTHORISE→REPLACE→APPLY→LIFECYCLE→REACT→IMPRINT→DERIVE`, commutative within,
+> **six adjacent swaps = six named bugs = the acceptance suite**. TRG-A5: *commutative in SEMANTICS,
+> deterministic in ITERATION*. Aspect lifecycle (`BodyOrSoul` promoted); **TRG-A7 a grudge survives its
+> object's death FOR FREE** because imprints live on the holder. **Q2 resolved: the WAVE model** —
+> `G3` rewrites / `G6` spawns, which is what removes MTG's hardness. **Q3 resolved: attribution follows
+> OWNERSHIP** (the PO's dog-bite rule) — causal chains fork, ownership chains don't; **there is no
+> global fault field.** §11: three termination layers, and **the 95 % chance cap is a taper, NOT a
+> bound**.
+>
+> **[34](34_when_the_world_runs.md) WHEN THE WORLD RUNS** — WSA-Q4/Q5 were one question. **Accumulation
+> can be LAZY if it is closed-form** (the corpus invented this twice: AC-DL-15, TDIL-A11). Then the
+> PO's **observer mechanism** superseded my framing: `Player · Agent · EventGenerator`, and
+> **computation happens ONLY on observation**. **WSA-A20 `occurred_at` ≠ `recorded_at`** fixes DL-D13's
+> accepted wart. **Fabrication-on-observation** (PO): deterministic function never a draw; and §11 —
+> **EVT-A8 already existed** and my WSA-A23 partly reinvented it worse. The tier axis completes it:
+> **WSA-A26 — commit exactly what the player could FALSIFY**; fidelity capped by tier, enforced at the
+> READ API as a contract.
+>
+> **⚠️ 43 amendment rows are PROPOSED, NOT APPLIED. No feature spec was edited by this arc.**
+> **NEXT:** apply R01–R43 (start with the 8 `verified` contradictions in [31 §3](31_world_simulation_architecture.md))
+> · then the build order in [31 §6](31_world_simulation_architecture.md): **F1 real digest → F2 loader →
+> F3 make the digest BITE → X1 the four silent-correctness fixes** (all four are *cheap now /
+> archaeology later*) → W1 quantities → W2 ledger → W3 chúng → W4 capability → W5 tồn tại → W6 the
+> balancing cell → E3 triggers. **COMB_002/003 + ABL_001 remain held** (PRD-D3 — they pass none of
+> ONT-T1/T2/T3). Still open: WSA-Q1–Q3, WSA-Q6, TRG-Q1, TRG-Q4, ONT-Q2, EXC-Q1–Q3.
+
 Started 2026-04-23 from a SillyTavern prior-art survey. Evolved through systematic design of:
 - Four product shapes → Shape D (shared persistent world)
 - Multiverse model (peer realities, snapshot fork, 4-layer canon)
