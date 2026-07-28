@@ -275,10 +275,42 @@ Two consequences:
 2. **Q2 cannot be answered from history; it needs the POC.** The delta-vs-own-run arms have to be
    run, not mined.
 
-Worth a separate check, not asserted here: an earlier cycle reported "10/10 chapters now carry a
-beat role" as live-proven, yet `outline_node.beat_role` is 0 across all 95. Either that value lives
-in `plan_artifact` rather than the node, or the two have diverged — a real question, and exactly the
-kind that only surfaces by counting.
+### Why chapter intent is empty — traced 2026-07-28
+
+The earlier cycle's "10/10 chapters now carry a beat role" was **true, about the plan artifact**.
+`plan_artifact(kind='beat_plan')` holds the full curve — hook · establishment ×2 · rising_conflict
+×3 · setback ×2 · **climax = "The Void"** · resolution. `outline_node.beat_role` holds none of it.
+Two representations, diverged. Tracing why turned up two distinct causes, and my first two readings
+of it were both wrong:
+
+**1 · The chapter node is never given its beat role — justified by a stale comment.**
+`_insert_decomposed_tree` creates the chapter node WITHOUT `beat_role`, then passes the *chapter's*
+`beat_role` to each of its **scenes**. Its docstring explains why: *"beat_role is stamped on the
+SCENES (DB CHECK forbids it on chapter)"*. **The constraint no longer says that:**
+
+```sql
+outline_beatrole_kind CHECK (beat_role IS NULL OR kind = ANY (ARRAY['scene','chapter']))
+```
+
+`'chapter'` is explicitly allowed. The check was widened; the comment and the code never followed.
+This is the exact bug class CLAUDE.md names — *verify the claim against code, a doc note goes stale*
+— and it cost me two wrong reads in a row: first "found the bug", then "not a bug, the CHECK
+forbids it", before actually querying `pg_constraint`.
+
+**2 · The planner emits an empty chapter intent.**
+The chapter node is supposed to carry the beat intent in `goal`, set from `ch["intent"]`. Measured
+across the three newest `scene_plan` artifacts: **0 of 30 chapter entries have a non-empty
+`intent`.** So `goal` is written as `""` every time.
+
+**Net:** a chapter node ends up with no intent by EITHER route — the role is dropped on the floor
+and the intent field arrives empty. That is the whole explanation for the 0/95 table above, and it
+is the strongest argument for this spec: chapter-level intent has no producer today.
+
+**Consequence for the design — which store is the SSOT?** Not settled here, and it must be before
+the FSM writes anything, or the FSM adds a *third* representation to two that already disagree.
+The candidates are the outline node (queryable, joins to prose, what the rail reads) and the plan
+artifact (versioned, what the planner emits). Whichever wins, the other has to become derived —
+that is the point of the two-layer pattern the glossary/knowledge split already uses.
 
 ### Q3 · Re-opening a settled slot — free or gated?
 
