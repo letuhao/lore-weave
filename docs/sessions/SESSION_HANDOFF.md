@@ -305,6 +305,41 @@ scene refused 400 `BAD_REFERENCE` while a live target still returns 201.
 
 **VERIFY:** unit **2645 passed / 341 skipped**; DB integration **337 passed / 8 skipped** (real SQL).
 
+### 🛠️ PHANTOM ROUTE SCAN — the gate for the whole class (`scripts/phantom-route-scan.py`)
+
+Every bug this sweep found reduces to one shape: **a caller and a route that stopped agreeing,
+with green tests in between.** Unit tests cannot see it (they mock the api module) and typecheck
+cannot either (a string is a string). So it needed a different kind of check.
+
+**The oracle, and why it is safe:** routing runs *before* authentication, so a deliberately INVALID
+token separates the cases without executing a single handler — `401/403` = the route exists,
+`404/405` = nothing serves it. No writes, no fixtures, no ids that must exist. Read-only **by
+construction**, which is what makes it safe against a live stack.
+
+`python scripts/phantom-route-scan.py --probe` — 74 api modules → **715 (method, path) pairs, zero
+unparsed**, 6 declared-dynamic (with reasons, not hidden). Exit 1 on phantoms, 2 if it cannot run.
+
+**It self-checks its own oracle on every run.** A known-dead path must 404/405 and a known-live one
+must 401; if either fails it refuses to report at all. Without that, an edge-auth change would make
+it print "0 phantoms" forever and look like good news — which is precisely how the atom-delete gate
+shipped green while blind to 8 of 14 families, twice in one day.
+
+Three rounds of ITS OWN false positives were fixed before trusting it, each a real parser bug:
+a `//` comment containing `/*` swallowed live code (killed 26 call sites); `${qs}` glued to a
+segment was substituted as a path param (invented `/outline00000000-…`); and `method: pinned ?
+'POST' : 'DELETE'` fell back to GET, reporting a correct call site as a phantom. A gate that cries
+wolf ends up ignored — same end state as no gate.
+
+**🔴 9 PHANTOMS FOUND, not yet fixed** (they span 5 features and want per-owner triage):
+`/v1/catalog/books/*` ×3 · `/v1/sharing/unlisted/*` ×3 (one a 405) · `GET /v1/users/{id}` ·
+`POST /v1/account/oauth/consent` · **`POST /v1/composition/works/{p}/scenes/{s}/regenerate-to-beat`
+— verified by hand: no such route in composition-service, and `useMotifBinding` calls it from the
+live `ChapterMotifBindings`.** All the named services are running, so these are not "service down".
+Tracked as `D-PHANTOM-ROUTES-9`.
+
+Also 38 inconclusive (18×422, 10×200, 5×400, 4×503, 1×202) — the 200s are worth a look on their
+own: those endpoints answered a BOGUS token.
+
 ### ✅ `D-GLOSSARY-UNKNOWN-REVIEW-405` — the unknown-kind review was broken by DEFAULT (2026-07-28)
 
 I had parked this as "needs a glossary-track decision on which tier a new kind lands in". **There
