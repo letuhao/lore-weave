@@ -14,12 +14,12 @@ use std::sync::Arc;
 
 use commit_service::admission::{admit_t6, AdmissionOutcome, DedupCache};
 use commit_service::{
-    decide, Actor, CombatDomain, CombatRules, CombatState, DecisionContext,
+    decide, Actor, CombatDomain, CombatState, DecisionContext, Ruleset,
     Vocabulary, COMBAT_V1_JSON,
 };
 use loreweave_llm::{GatewayClient, ModelSource, ReasoningEffort};
 use sim_core::{
-    EntityId, Island, IslandId, Lane, RulesetDigest, SeenWindow, StepStatus,
+    EntityId, Island, IslandId, Lane, SeenWindow, StepStatus,
 };
 use uuid::Uuid;
 
@@ -96,16 +96,27 @@ async fn main() -> anyhow::Result<()> {
     // Encounter island: 1 LLM-driven NPC vs 2 script-driven hostiles.
     let npc = EntityId(1);
     let hostiles = [EntityId(2), EntityId(3)];
+    // F1 — the reality's resolved ruleset. `engine_default()` is RLS-D2's
+    // priority-0 layer; F2 replaces this line with a real resolution through
+    // the provider stack (preset -> book -> reality overrides).
+    //
+    // The island DERIVES its pin from these rules via `Domain::rules_digest`
+    // (RLS-A13) — this call site used to pass `RulesetDigest([0u8; 32])`
+    // alongside the rules, which was inert AND unchecked: an all-zero digest
+    // made two realities with different rules stamp indistinguishable events,
+    // and nothing forced the digest passed to describe the rules passed. There
+    // is no longer a digest argument to get wrong.
+    let ruleset = std::sync::Arc::new(Ruleset::engine_default());
+
     let mut state = CombatState::default();
-    state.actors.insert(npc, Actor::new(100));
-    state.actors.insert(hostiles[0], Actor::new(40));
-    state.actors.insert(hostiles[1], Actor::new(40));
+    state.actors.insert(npc, Actor::new(&ruleset, 100));
+    state.actors.insert(hostiles[0], Actor::new(&ruleset, 40));
+    state.actors.insert(hostiles[1], Actor::new(&ruleset, 40));
 
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0x00C0_B0A7u64, // fixed seed — replay-exact runs
-        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
-        RulesetDigest([0u8; 32]),
+        Arc::clone(&ruleset),
         SeenWindow::Unbounded,
         state,
     );

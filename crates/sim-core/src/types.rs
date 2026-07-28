@@ -41,6 +41,26 @@ pub struct Gen(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RulesetDigest(pub [u8; 32]);
 
+impl RulesetDigest {
+    /// An island running a domain that has **no content ruleset to hash** — the
+    /// kernel's own harness domains (`crates/sim`'s `TestDomain`, benches,
+    /// stress bins). Their rules are Rust structs invented by the test, not a
+    /// resolved artifact, so there is nothing for a digest to address.
+    ///
+    /// **This exists so the zero is DECLARED rather than emergent.** The bare
+    /// `RulesetDigest([0u8; 32])` literal used to appear in 15 places — four of
+    /// them production paths — and read identically in all of them: in a bin it
+    /// meant *"we have not wired the loader yet"*, and nothing distinguished
+    /// that from *"this domain genuinely has no ruleset."* Same move as
+    /// `MAX_HIT` in the damage chain: a declared value has a name and a reason;
+    /// an emergent one is a number nobody can explain.
+    ///
+    /// `scripts/zero-digest-gate.py` bans the anonymous literal repo-wide, and
+    /// bans this constant outside `crates/sim` and test files — so reaching for
+    /// it in a service binary is a gate finding, not a shortcut.
+    pub const UNPINNED: Self = Self([0u8; 32]);
+}
+
 /// SL-A2 execution classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Class {

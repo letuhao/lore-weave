@@ -521,10 +521,13 @@ dependencies = [
  "anyhow",
  "blake3",
  "dp-kernel",
+ "hmac",
  "loreweave_llm",
  "redis",
+ "ruleset-core",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sim-core",
  "sqlx",
  "thiserror 2.0.19",
@@ -2643,6 +2646,14 @@ dependencies = [
  "spki",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "ruleset-core"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "sim-core",
 ]
 
 [[package]]

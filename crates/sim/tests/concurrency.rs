@@ -30,7 +30,7 @@ use std::thread;
 
 use sim_core::{
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
-    Outcome, Producer, QueuedInput, RulesetDigest, SeenWindow, Seq, StepStatus,
+    Outcome, Producer, QueuedInput, SeenWindow, Seq, StepStatus,
 };
 
 use sim::{TestDomain, TestPayload, TestRules, TestState};
@@ -54,7 +54,6 @@ fn island_for(id: u64) -> Island<TestDomain> {
         // reproducible across runs and across thread counts.
         0xC0FFEE_u64.wrapping_mul(id + 1),
         Arc::new(TestRules { max_counter: MAX_COUNTER }),
-        RulesetDigest([0u8; 32]),
         SeenWindow::Unbounded,
         TestState::default(),
     )

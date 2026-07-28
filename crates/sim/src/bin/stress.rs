@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use sim::{input, Qi, TestDomain, TestPayload, TestRules, TestState};
 use sim_core::{Admitted, 
-    EntityId, Fallback, Island, IslandId, Lane, Precondition, RulesetDigest, SeenWindow,
+    EntityId, Fallback, Island, IslandId, Lane, Precondition, SeenWindow,
     StepStatus,
 };
 
@@ -19,7 +19,6 @@ fn fresh(entities: u64) -> Island<TestDomain> {
         IslandId(1),
         42,
         Arc::new(TestRules { max_counter: i64::MAX }),
-        RulesetDigest([0u8; 32]),
         SeenWindow::TtlTicks(300),
         st,
     );
@@ -173,7 +172,6 @@ fn main() {
         let mut b = Island::new(
             IslandId(2), 43,
             Arc::new(TestRules { max_counter: i64::MAX }),
-            RulesetDigest([0u8; 32]),
             SeenWindow::TtlTicks(300),
             st,
         );

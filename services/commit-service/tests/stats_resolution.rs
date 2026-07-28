@@ -7,11 +7,15 @@
 
 use commit_service::stats::{
     resolve_block, Clamp, ModifierOp, ModifierSource, StatBlock, StatEpoch, StatModifier, StatSlot,
-    StatSnapshot, StatTuning,
+    StatRules, StatSnapshot,
 };
 
-fn tuning() -> StatTuning {
-    StatTuning::default()
+/// F1 — `resolve_block` reads its four `MoveRange` numbers AND the ten slot
+/// defaults from the ruleset instead of from `StatTuning::default()` /
+/// `StatSlot::default_value()`. `engine_default` holds the same literals, so
+/// every expected value in this file is unchanged.
+fn rules() -> StatRules {
+    StatRules::engine_default()
 }
 
 fn flat(slot: StatSlot, v: i32, source: ModifierSource) -> StatModifier {
@@ -29,7 +33,7 @@ fn pct(slot: StatSlot, v: i32, source: ModifierSource) -> StatModifier {
 /// 10000/speed` undefined and every unconfigured NPC unplayable.
 #[test]
 fn a_bare_block_is_already_playable() {
-    let b = resolve_block(&StatBlock::default(), &[], &[], &[], &tuning());
+    let b = resolve_block(&StatBlock::from_defaults(&rules()), &[], &[], &[], &rules());
     assert_eq!(b.get(StatSlot::MaxHp), 100);
     assert_eq!(b.get(StatSlot::StrikePower), 10);
     assert_eq!(b.get(StatSlot::Speed), 100);
@@ -45,14 +49,14 @@ fn a_bare_block_is_already_playable() {
 /// guarantee.
 #[test]
 fn percent_modifiers_sum_rather_than_chain() {
-    let mut arch = StatBlock::default();
+    let mut arch = StatBlock::from_defaults(&rules());
     arch.set(StatSlot::StrikePower, 100);
 
     let mods = [
         pct(StatSlot::StrikePower, 500, ModifierSource::Equipment),
         pct(StatSlot::StrikePower, 500, ModifierSource::Status),
     ];
-    let b = resolve_block(&arch, &mods, &[], &[], &tuning());
+    let b = resolve_block(&arch, &mods, &[], &[], &rules());
 
     assert_eq!(b.get(StatSlot::StrikePower), 200, "100 x (1000+500+500)/1000 = 200, not 225");
 }
@@ -62,7 +66,7 @@ fn percent_modifiers_sum_rather_than_chain() {
 /// whatever sequence the caller happens to build them.
 #[test]
 fn percent_order_does_not_matter() {
-    let mut arch = StatBlock::default();
+    let mut arch = StatBlock::from_defaults(&rules());
     arch.set(StatSlot::StrikePower, 100);
 
     let a = [
@@ -74,8 +78,8 @@ fn percent_order_does_not_matter() {
         pct(StatSlot::StrikePower, 300, ModifierSource::Equipment),
     ];
     assert_eq!(
-        resolve_block(&arch, &a, &[], &[], &tuning()).get(StatSlot::StrikePower),
-        resolve_block(&arch, &b, &[], &[], &tuning()).get(StatSlot::StrikePower),
+        resolve_block(&arch, &a, &[], &[], &rules()).get(StatSlot::StrikePower),
+        resolve_block(&arch, &b, &[], &[], &rules()).get(StatSlot::StrikePower),
     );
 }
 
@@ -91,7 +95,7 @@ fn percent_order_does_not_matter() {
 /// silently escapable by any author who sets a high enough minimum.
 #[test]
 fn a_world_rule_is_never_escapable_by_an_author_clamp() {
-    let mut arch = StatBlock::default();
+    let mut arch = StatBlock::from_defaults(&rules());
     arch.set(StatSlot::StrikePower, 100);
 
     let b = resolve_block(
@@ -99,7 +103,7 @@ fn a_world_rule_is_never_escapable_by_an_author_clamp() {
         &[],
         &[Clamp { slot: StatSlot::StrikePower, min: 80, max: 500 }], // author
         &[Clamp { slot: StatSlot::StrikePower, min: 0, max: 50 }],   // world rule
-        &tuning(),
+        &rules(),
     );
 
     assert_eq!(
@@ -114,14 +118,14 @@ fn a_world_rule_is_never_escapable_by_an_author_clamp() {
 /// makes equipment feel worthless on a buffed character.
 #[test]
 fn flat_layers_land_before_percent() {
-    let mut arch = StatBlock::default();
+    let mut arch = StatBlock::from_defaults(&rules());
     arch.set(StatSlot::StrikePower, 100);
 
     let mods = [
         flat(StatSlot::StrikePower, 100, ModifierSource::Equipment),
         pct(StatSlot::StrikePower, 1000, ModifierSource::Status),
     ];
-    let b = resolve_block(&arch, &mods, &[], &[], &tuning());
+    let b = resolve_block(&arch, &mods, &[], &[], &rules());
     assert_eq!(b.get(StatSlot::StrikePower), 400, "(100+100) x 2.0 — not 100x2 + 100");
 }
 
@@ -130,7 +134,7 @@ fn flat_layers_land_before_percent() {
 /// encounter resolve identically on another machine.
 #[test]
 fn resolution_is_bit_identical_for_identical_inputs() {
-    let mut arch = StatBlock::default();
+    let mut arch = StatBlock::from_defaults(&rules());
     arch.set(StatSlot::StrikePower, 37);
     arch.set(StatSlot::Speed, 133);
     let mods = [
@@ -139,12 +143,12 @@ fn resolution_is_bit_identical_for_identical_inputs() {
         pct(StatSlot::Speed, 111, ModifierSource::Progression),
     ];
 
-    let a = resolve_block(&arch, &mods, &[], &[], &tuning());
-    let b = resolve_block(&arch, &mods, &[], &[], &tuning());
+    let a = resolve_block(&arch, &mods, &[], &[], &rules());
+    let b = resolve_block(&arch, &mods, &[], &[], &rules());
     assert_eq!(a, b);
     // And repeated resolution never drifts — there is no accumulator to round.
     for _ in 0..100 {
-        assert_eq!(resolve_block(&arch, &mods, &[], &[], &tuning()), a);
+        assert_eq!(resolve_block(&arch, &mods, &[], &[], &rules()), a);
     }
 }
 
@@ -152,17 +156,17 @@ fn resolution_is_bit_identical_for_identical_inputs() {
 /// Default speed 100 ⇒ 3 + 2 = 5 tiles on a 16×16 grid.
 #[test]
 fn move_range_is_derived_from_speed_and_clamped() {
-    let b = resolve_block(&StatBlock::default(), &[], &[], &[], &tuning());
+    let b = resolve_block(&StatBlock::from_defaults(&rules()), &[], &[], &[], &rules());
     assert_eq!(b.get(StatSlot::MoveRange), 5, "3 + floor(100/50)");
 
-    let mut fast = StatBlock::default();
+    let mut fast = StatBlock::from_defaults(&rules());
     fast.set(StatSlot::Speed, 10_000);
-    let b = resolve_block(&fast, &[], &[], &[], &tuning());
+    let b = resolve_block(&fast, &[], &[], &[], &rules());
     assert_eq!(b.get(StatSlot::MoveRange), 10, "capped at max_move — not 203 tiles");
 
-    let mut slow = StatBlock::default();
+    let mut slow = StatBlock::from_defaults(&rules());
     slow.set(StatSlot::Speed, 1);
-    let b = resolve_block(&slow, &[], &[], &[], &tuning());
+    let b = resolve_block(&slow, &[], &[], &[], &rules());
     assert!(b.get(StatSlot::MoveRange) >= 1, "never zero — an actor that cannot move at all");
 }
 
@@ -174,7 +178,7 @@ fn move_range_is_derived_from_speed_and_clamped() {
 #[test]
 fn a_snapshot_knows_when_its_inputs_moved() {
     let epoch = StatEpoch { equipment_version: 7, ..Default::default() };
-    let snap = StatSnapshot { stats: StatBlock::default(), epoch };
+    let snap = StatSnapshot { stats: StatBlock::from_defaults(&rules()), epoch };
 
     assert!(!snap.is_stale(&epoch), "unchanged inputs ⇒ still valid");
     assert!(
@@ -206,12 +210,12 @@ fn a_snapshot_knows_when_its_inputs_moved() {
 /// yields a negative stat."* With that dropped, `Σpct = −1200` gives −20 here.
 #[test]
 fn a_debuff_past_minus_one_hundred_percent_floors_at_zero() {
-    let arch = StatBlock::default(); // StrikePower 10
+    let arch = StatBlock::from_defaults(&rules()); // StrikePower 10
     let mods = [
         pct(StatSlot::StrikePower, -600, ModifierSource::Status),
         pct(StatSlot::StrikePower, -600, ModifierSource::Status),
     ];
-    let out = resolve_block(&arch, &mods, &[], &[], &tuning());
+    let out = resolve_block(&arch, &mods, &[], &[], &rules());
     assert_eq!(
         out.get(StatSlot::StrikePower),
         0,
@@ -220,7 +224,7 @@ fn a_debuff_past_minus_one_hundred_percent_floors_at_zero() {
 
     // Paired positive case (IAS-D10): the floor must not swallow ordinary debuffs.
     let mild = [pct(StatSlot::StrikePower, -500, ModifierSource::Status)];
-    let out = resolve_block(&arch, &mild, &[], &[], &tuning());
+    let out = resolve_block(&arch, &mild, &[], &[], &rules());
     assert_eq!(out.get(StatSlot::StrikePower), 5, "a −50% debuff must still halve, not floor");
 }
 
@@ -239,9 +243,9 @@ fn a_debuff_past_minus_one_hundred_percent_floors_at_zero() {
 /// `resolve_block` (dropping the re-clamp) → this yields 5 against a ceiling of 2.
 #[test]
 fn a_world_rule_binds_the_derived_slot_too() {
-    let arch = StatBlock::default(); // Speed 100 ⇒ derived MoveRange 3 + 100/50 = 5
+    let arch = StatBlock::from_defaults(&rules()); // Speed 100 ⇒ derived MoveRange 3 + 100/50 = 5
     let lex = [Clamp { slot: StatSlot::MoveRange, min: 1, max: 2 }];
-    let out = resolve_block(&arch, &[], &[], &lex, &tuning());
+    let out = resolve_block(&arch, &[], &[], &lex, &rules());
     assert_eq!(
         out.get(StatSlot::MoveRange),
         2,
@@ -249,7 +253,7 @@ fn a_world_rule_binds_the_derived_slot_too() {
     );
 
     // Paired: with no world rule, the derivation is untouched.
-    let out = resolve_block(&arch, &[], &[], &[], &tuning());
+    let out = resolve_block(&arch, &[], &[], &[], &rules());
     assert_eq!(out.get(StatSlot::MoveRange), 5, "an unclamped derivation must still derive");
 }
 
@@ -266,10 +270,10 @@ fn a_world_rule_binds_the_derived_slot_too() {
 /// and `Lex` each yield 10 instead of 60.
 #[test]
 fn every_modifier_source_is_consumed() {
-    let arch = StatBlock::default(); // StrikePower 10
+    let arch = StatBlock::from_defaults(&rules()); // StrikePower 10
     for source in ModifierSource::ALL {
         let mods = [flat(StatSlot::StrikePower, 50, source)];
-        let out = resolve_block(&arch, &mods, &[], &[], &tuning());
+        let out = resolve_block(&arch, &mods, &[], &[], &rules());
         assert_eq!(
             out.get(StatSlot::StrikePower),
             60,
@@ -315,7 +319,7 @@ fn the_layer_order_table_is_self_consistent() {
 /// instead of 120, and the two halves of this test disagree.
 #[test]
 fn clamps_compose_and_do_not_depend_on_declaration_order() {
-    let arch = StatBlock::default();
+    let arch = StatBlock::from_defaults(&rules());
     let mods = [flat(StatSlot::MaxHp, 400, ModifierSource::Equipment)]; // 100 + 400 = 500
 
     let a = [
@@ -324,8 +328,8 @@ fn clamps_compose_and_do_not_depend_on_declaration_order() {
     ];
     let b = [a[1], a[0]]; // same declarations, opposite order
 
-    let out_a = resolve_block(&arch, &mods, &a, &[], &tuning());
-    let out_b = resolve_block(&arch, &mods, &b, &[], &tuning());
+    let out_a = resolve_block(&arch, &mods, &a, &[], &rules());
+    let out_b = resolve_block(&arch, &mods, &b, &[], &rules());
 
     assert_eq!(out_a.get(StatSlot::MaxHp), 120, "the intersection of both clamps must bind");
     assert_eq!(
@@ -343,11 +347,11 @@ fn clamps_compose_and_do_not_depend_on_declaration_order() {
 /// time — F2 — but a runtime contradiction must degrade, not crash.)
 #[test]
 fn contradictory_clamps_degrade_rather_than_panic() {
-    let arch = StatBlock::default();
+    let arch = StatBlock::from_defaults(&rules());
     let contradictory = [
         Clamp { slot: StatSlot::MaxHp, min: 50, max: 100 },
         Clamp { slot: StatSlot::MaxHp, min: 200, max: 300 },
     ];
-    let out = resolve_block(&arch, &[], &contradictory, &[], &tuning());
+    let out = resolve_block(&arch, &[], &contradictory, &[], &rules());
     assert_eq!(out.get(StatSlot::MaxHp), 200, "empty intersection: the floor wins, no panic");
 }

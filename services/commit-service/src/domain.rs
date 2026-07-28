@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 
+use ruleset_core::Ruleset;
 use sim_core::{PreconditionKind, DetRng, Domain, EntityId, Precondition, QueuedInput, Violation};
 
 use crate::combat::{
@@ -177,14 +178,17 @@ pub struct Actor {
 
 impl Actor {
     /// Slice-1 constructor: a melee archetype at `max_hp`, on side B.
-    /// Kept so existing callers/tests compile unchanged; `with_side` is the
-    /// one to use when the side matters.
-    pub fn new(max_hp: i64) -> Self {
-        Self::with_side(max_hp, Side::B)
+    /// `with_side` is the one to use when the side matters.
+    ///
+    /// F1 added the `rules` parameter: an actor's opening stats are the
+    /// reality's melee archetype resolved through the DF07 path, and there is
+    /// no such thing as an archetype without a ruleset to read it from.
+    pub fn new(rules: &Ruleset, max_hp: i64) -> Self {
+        Self::with_side(rules, max_hp, Side::B)
     }
 
-    pub fn with_side(max_hp: i64, side: Side) -> Self {
-        let stats = CombatStats::archetype_melee(max_hp);
+    pub fn with_side(rules: &Ruleset, max_hp: i64, side: Side) -> Self {
+        let stats = CombatStats::archetype_melee(&rules.stats, max_hp);
         Self {
             hp: max_hp,
             max_hp,
@@ -194,10 +198,48 @@ impl Actor {
             side,
             snapshot: StatSnapshot::default(),
             stats,
-            av: action_value(stats.speed, AvStatus::default(), false),
+            av: action_value(&rules.combat, stats.speed, AvStatus::default(), false),
             status: AvStatus::default(),
             knocked_out: None,
             turn_slots: 1,
+        }
+    }
+
+    /// The SL-A12 **empty case**: `Domain::extract` is TOTAL, so an entity with
+    /// no domain rows must still be able to depart, and this is the portable
+    /// that encodes "there was nothing here".
+    ///
+    /// It takes no `rules` on purpose, and that is the whole point of splitting
+    /// it out of `Actor::new`. `extract` has no rules parameter (the kernel's
+    /// trait gives it none), so building a placeholder from an *archetype*
+    /// would mean reaching for an ambient `Ruleset::engine_default()` — exactly
+    /// the ambient-configuration reach RLS-A12 added the `Rules` seam to
+    /// prevent. A fabricated actor is not an archetype instance; it is a hole,
+    /// and it now looks like one.
+    ///
+    /// Zeroed is behaviour-preserving here: the initiative queue filters on
+    /// [`Actor::alive`] before it ever reads `av`, and `hp = 0` keeps this out
+    /// of it either way.
+    ///
+    /// **Pre-existing hazard, now visible and NOT fixed here:** installing this
+    /// on the arrival island materialises a side-B actor at 0 HP, which
+    /// `outcome_of` counts as *present but not standing* — i.e. an empty-case
+    /// handoff can read as a Victory. That is a sim-core handoff-semantics
+    /// question, out of F1's scope; tracked as `D-EMPTY-PORTABLE-SIDE`.
+    pub fn absent() -> Self {
+        Self {
+            hp: 0,
+            max_hp: 0,
+            defending: false,
+            stance: None,
+            fled: false,
+            side: Side::B,
+            snapshot: StatSnapshot::default(),
+            stats: CombatStats::from_block(&crate::stats::StatBlock::zeroed()),
+            av: 0,
+            status: AvStatus::default(),
+            knocked_out: None,
+            turn_slots: 0,
         }
     }
 
@@ -226,17 +268,15 @@ pub struct CombatState {
     pub outcome: Option<EncounterOutcome>,
 }
 
-/// RLS-A12 rules slice — resolved per reality, immutable, never in State.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CombatRules {
-    /// Retained for compatibility with existing callers/tests. The real
-    /// damage now comes from the COMB_001 law-chain over `StatBlock`; this is
-    /// no longer consulted for a Strike.
-    pub strike_damage: i64,
-    /// COMB_001 AC-8 — how many rounds a KO stays revivable before it is
-    /// permanent.
-    pub ko_duration_rounds: u8,
-}
+// F1 — the domain's rules slice is now the RESOLVED RULESET (`ruleset_core::
+// Ruleset`), digest-pinned, rather than a two-field struct owned by this file.
+// RLS-A12's seam was already here; until F1 it carried almost nothing, so the
+// digest that pins it to an event could not have detected a rules change.
+//
+// `strike_damage` was DELETED rather than migrated: its own doc-comment said
+// "no longer consulted for a Strike" and grep confirmed zero reads. Carrying a
+// field nobody reads into the hashed struct would let it change the digest —
+// a rules change that changes no rule.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoResource;
@@ -294,7 +334,14 @@ impl Domain for CombatDomain {
     type State = CombatState;
     type Event = CombatEvent;
     type ResKind = CombatResource;
-    type Rules = CombatRules;
+    type Rules = Ruleset;
+
+    /// RLS-A13 — BLAKE3 over the ruleset's canonical bytes. The island derives
+    /// its pin through this, so the digest an island reports and the rules it
+    /// actually runs cannot disagree.
+    fn rules_digest(rules: &Self::Rules) -> sim_core::RulesetDigest {
+        rules.digest()
+    }
     /// `Fled` leaves the encounter island (the SL-A12 handoff seam).
     type External = CombatEvent;
     type Portable = Actor;
@@ -377,7 +424,7 @@ impl Domain for CombatDomain {
             for (id, a) in state.actors.iter_mut() {
                 a.av = a.av.saturating_sub(spent);
                 if *id == actor {
-                    a.av = action_value(a.stats.speed, a.status, false);
+                    a.av = action_value(&rules.combat, a.stats.speed, a.status, false);
                 }
             }
         }
@@ -423,6 +470,7 @@ impl Domain for CombatDomain {
                 let action_idx = state.next_action_idx;
                 state.next_action_idx = state.next_action_idx.wrapping_add(1);
                 let out = resolve_attack(
+                    &rules.combat,
                     &atk,
                     &def,
                     defending,
@@ -453,7 +501,7 @@ impl Domain for CombatDomain {
                     // KO, not death: revivable for `ko_duration_rounds`
                     // (COMB_001 AC-8). WA_006 mortality only applies once the
                     // encounter itself resolves to Defeat.
-                    t.knocked_out = Some(rules.ko_duration_rounds);
+                    t.knocked_out = Some(rules.combat.ko_duration_rounds);
                     events.push(CombatEvent::Downed { target: *target });
                 }
                 if let Some(o) = Self::outcome_of(state) {
@@ -500,7 +548,7 @@ impl Domain for CombatDomain {
                     a.turn_slots = 1;
                     // AV resets each round from the actor's own speed and
                     // whatever status it currently carries.
-                    a.av = action_value(a.stats.speed, a.status, false);
+                    a.av = action_value(&rules.combat, a.stats.speed, a.status, false);
 
                     // Round-scoped statuses expire together, and the expiry is
                     // EMITTED — a debuff that vanishes silently is
@@ -542,7 +590,7 @@ impl Domain for CombatDomain {
     }
 
     fn extract(state: &mut Self::State, id: EntityId) -> Self::Portable {
-        state.actors.remove(&id).unwrap_or_else(|| Actor::new(0))
+        state.actors.remove(&id).unwrap_or_else(Actor::absent)
     }
 
     fn install(state: &mut Self::State, id: EntityId, portable: Self::Portable) {

@@ -448,6 +448,18 @@ export class ChannelRoom extends Room {
       session_id: client.sessionId,
       reality_id: this.opts.realityId,
       channel_id: this.opts.channelId,
+      // zero-digest-gate: ok — D-WIRE-DIGEST-ZERO, tracked, blocked on F2.
+      //
+      // This is the SAME bug F1 removed from the Rust side, still standing here:
+      // a 64-zero fallback, and `common.schema.json` says the client caches BY
+      // digest — so every reality would share one cache key. It is LATENT, not
+      // live: nothing in `frontend/src` reads `ruleset_digest` yet.
+      //
+      // It is not fixable here. The real digest is `Ruleset::digest()` inside
+      // commit-service; `LW_CHANNEL_RULESET_DIGEST` is an env var carrying a
+      // PER-REALITY value, which is itself the wrong shape (a per-reality fact
+      // is not deploy-time config). Wiring it through the bind path is a
+      // cross-service seam that lands with F2's loader.
       ruleset_digest: this.opts.rulesetDigest ?? '0'.repeat(64),
       from_tokens: { [this.opts.channelId]: this.view.last_event_id },
       client_protocol: 1,

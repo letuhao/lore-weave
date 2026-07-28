@@ -19,6 +19,10 @@ path = "src/lib.rs"
 [dependencies]
 # The simulation kernel (14_sim_core_spec.md) — linked natively per CS-A5.
 sim-core = { path = "../../crates/sim-core" }
+# F1 — the resolved ruleset + its content digest (RLS-A13). The laws take
+# `&Rules` by reference and know nothing about where it came from (IMP-D2);
+# this crate has no I/O, so depending on it cannot make a law fallible.
+ruleset-core = { path = "../../crates/ruleset-core" }
 # LoreWeave LLM gateway SDK (the ONLY road to a model — provider-gateway invariant).
 loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }
 

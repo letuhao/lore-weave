@@ -774,6 +774,160 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **F1 — THE DIGEST IS REAL, AND IT NOW HASHES SOMETHING THAT GOVERNS (2026-07-28).**
+> `crates/ruleset-core` ships: `Ruleset` · canonical encoding (RLS-D5) · BLAKE3 digest (RLS-A13) ·
+> `Provenance` (RLS-A15) · `ResolvedRuleset`. **154 tests pass, 0 fail** (13 new + 85 commit-service
+> + 56 kernel); workspace builds `--all-targets`; every gate green.
+>
+> **Why it was not just “add a hash function.”** Making the digest real while the game constants
+> stayed Rust literals would have produced something *worse than an inert digest* — a **confident**
+> one. It would hash `{schema_version, ko_duration_rounds}` and report “same rules” for two builds
+> whose damage differs by 2×, because `MAX_HIT`, the variance band, the hit floor/ceiling and all ten
+> slot defaults lived where no digest could see them. So **doc 26 §6's `D1` constant sourcing was
+> pulled forward into F1**, deliberately and stated: **~30 constants** now resolve from
+> `Ruleset::engine_default()`. Every `TODO(IMP-D5)` is retired.
+>
+> **The line held, in both directions.** Moved: the hit base/floor/ceiling, the variance band,
+> elem/resist/defend, `max_hit`, `ko_duration_rounds`, the four action-value multipliers, the ten slot
+> defaults, the move tuning, the melee archetype. **Stayed a literal, with the reason written down:**
+> the `/1000` per-mille divisor (*the UNIT is shape — making it configurable would redefine every
+> other number underneath itself*), the non-crit identity `1000`, and every `max(1, …)` floor
+> (*a configurable floor of 1 is a configurable stalemate*).
+>
+> **How the digest is kept HONEST — two mechanisms, because neither is complete:**
+> | Mechanism | Catches | Misses |
+> |---|---|---|
+> | exhaustive destructuring `let Self { … } = self` with **no `..`** opening every `canon` | a field ADDED and not encoded ⇒ **E0027, compile error** | a field bound then encoded from the wrong binding (unused binding = warning only) |
+> | per-field **perturbation** test | a field bound but not encoded | a NEW field (no row exists for it yet) |
+> | **golden digest** of `engine_default()`, pinned as hex | any change to any field or the encoding — which is what makes forgetting a perturbation row hard | — |
+>
+> The perturbation table is the only hand-maintained list, and it is **called discipline, not a
+> guard** — the lesson from `ModifierSource::ALL` was that describing a companion list as a guard
+> *is* the defect. **RLS-A15's exclusion is structural instead:** `Provenance` has **no `CanonEncode`
+> impl**, so hashing it would not compile; and it lives INSIDE `ResolvedRuleset`, which is what makes
+> “same rules + different lineage ⇒ same digest” a claim about a real path rather than a vacuous one.
+>
+> **FOUR BITE-PROOFS, all pasted into the transcript:**
+> 1. the pre-F1 zero literal restored in `main.rs` → `zero-digest-gate` **FAILS**;
+> 2. a field added to `CombatRules` but not to `canon` → **E0027** at `combat.rs:128`;
+> 3. an existing field bound but its `c.i64(…)` deleted → perturbation **and** golden both **RED**
+> (this is the destructuring's blind spot, caught by the other mechanism exactly as designed);
+> 4. **`hit_base_pm` 500 → 501 ⇒ the digest moves.** *That is XST-D5's test — the one that could not
+> be written at all before today, which was the whole tell.* F3 is now writable.
+>
+> **The value-preservation proof: NOT ONE test's expected value was edited.** 85 pre-existing
+> commit-service assertions ran unchanged against constants supplied from the ruleset. A test needing
+> a new expected number would have been a migration bug, not a test bug.
+>
+> **`RulesetDigest([0u8; 32])` is now at ZERO occurrences in Rust — everywhere, not merely “outside
+> tests.”** *(That sentence first read “zero everywhere” full stop, which `/review-impl` proved false
+> — see `D-WIRE-DIGEST-ZERO` below. The evidence claim was wider than the evidence.)*
+> The literal survived for so long because it *looks like a value*: nothing distinguished *“the loader
+> is not wired here yet”* (a bug, in `main.rs`/`spine.rs`) from *“this domain genuinely has no content
+> ruleset”* (the kernel harness). Same move as `MAX_HIT`: the second case is the **named**
+> `RulesetDigest::UNPINNED`, and **`scripts/zero-digest-gate.py`** (pre-commit, self-tested) bans the
+> anonymous literal repo-wide plus `UNPINNED` outside `crates/sim` and tests.
+>
+> **F1-D1 — the dependency direction, and the answer I first got wrong.** The obvious move is to
+> relocate `RulesetDigest` into `ruleset-core`. Rejected: `sim-core/Cargo.toml` states its own
+> invariant — *“ZERO runtime dependencies, deliberately: determinism is the product”* — and that
+> relocation pushes `blake3` into the kernel to serve a 32-byte newtype the kernel only **carries**.
+> So the TYPE stays in `sim-core` and the COMPUTATION lives in `ruleset-core`, which depends on it.
+>
+> **THREE self-review findings, fixed before commit — the pass was not a rubber stamp:**
+> 1. I had added **`move_floor` as a tunable**. DF07_001 §5.2's `StatTuningDecl` declares three fields
+> and not that one, and **my own “floors are structure” line forbade it.** Deleted — inventing a knob
+> the spec never asked for is the same failure as leaving a constant hardcoded, mirrored.
+> 2. `Ruleset` derived **`Copy`**. Its entire design point (RLS-A13) is that identical rules **intern**
+> into one shared `Arc`; `Copy` invites the by-value duplication that undermines. Dropped.
+> 3. `Canon::u64` had **no consumer** — removed, same rule as everything else this arc has deleted.
+>
+> **Also corrected:** a stale `ModifierSource` doc still saying the repo-level closed-set gate was
+> merely *“tracked”*. It shipped three commits ago as `closed-set-gate.py`.
+>
+> **Debt this run CREATED or made visible, stated rather than absorbed:**
+> · **IMP-D3's 400-line ceiling has no gate**, and F1 grew two files past it — `domain.rs` **592**,
+> `combat.rs` **456** (both were already over: 551 / 426). The split is `S2`, not F1.
+> · **IMP-D5 `no-magic-game-constant.py` is still unbuilt.** It is now *possible*, which it was not
+> before — and it is what would keep the count at zero rather than trusting this run.
+> · **IMP-D4 `hot-path-gate.py`** unbuilt.
+> · **`D-EMPTY-PORTABLE-SIDE`** — `Domain::extract` on an absent entity fabricates a placeholder
+> (now the explicit `Actor::absent()` rather than a disguised `Actor::new(0)`); installing it
+> materialises a **side-B actor at 0 HP**, which `outcome_of` counts as *present but not standing* —
+> so an empty-case handoff can read as a **Victory**. Pre-existing, made visible, out of F1's scope
+> (sim-core handoff semantics).
+>
+> **`/review-impl` FOUND FIVE THINGS, and the most useful one was that MY OWN EVIDENCE OVERCLAIMED.**
+> 1. **`D-WIRE-DIGEST-ZERO` (MED, tracked)** — the identical bug is still live **in TypeScript**:
+> `ChannelRoom.ts` sends `ruleset_digest: … ?? '0'.repeat(64)` on `w0.bind`, and
+> `contracts/game-wire/common.schema.json` states *“the client caches by digest”* — so a shared zero
+> gives **every reality one cache key**. LATENT, not live: nothing in `frontend/src` reads the field
+> yet. Not fixable in F1 — the real digest lives in commit-service, and `LW_CHANNEL_RULESET_DIGEST`
+> is an **env var carrying a per-reality value**, which is the wrong shape to begin with. The gate now
+> scans `.ts`/`.tsx`; the site carries an explicit pragma naming the row. **The gate I built to kill
+> this bug class did not originally cover the language the bug was still living in.**
+> 2. **FOUR author-controlled overflow sites (fixed).** F1 made ~30 numbers author-supplied, and the
+> code claimed each bad value *“degrades predictably”*. Three of those claims were false: the guards
+> were computed by arithmetic that itself overflowed in `i64`/`i32` — `roll_band_width`'s
+> `hi - lo + 1`, `hit_base_pm + acc - dodge`, `(1000 - resist_pm) as i128` (the cast was on the WRONG
+> side of the subtraction), and `move_base + speed/per_tile`. **And `[profile.release-commit]`
+> inherits `release`, so `overflow-checks` is OFF in the shipped binary** — tests would have panicked
+> while production WRAPPED into a silently wrong number. That is XST-D2's class again, one layer up,
+> on precisely the surface F2 is about to open. All four now compute in a wider type;
+> `an_extreme_ruleset_degrades_predictably_instead_of_overflowing` + `an_extreme_move_tuning_stays_inside_i32`
+> pin them, and reverting either fix turns them red (pasted). **A floor computed by arithmetic that
+> can overflow is not a floor.**
+> 3. **The new gate's pragma window was two lines — the SAME vacuity bug as `closed-set-gate`, in the
+> same week, by the same author.** The one real justification is an 11-line comment, so the pragma did
+> nothing and the bite-test reported the finding with *and* without it. Now walks the contiguous
+> comment block; proven by removal → finding, restore → clean.
+> 4. **`closed-set-gate` still sees `StatSlot` after it changed crates** — verified by deleting
+> `CritMult` from `ALL` in its new home and watching the gate fire. A gate that quietly stops seeing a
+> symbol is the failure mode a green run cannot distinguish from success.
+> 5. **`cargo test --workspace` is 649 pass / 6 fail** — the six are `service-http`'s auth tests
+> panicking inside `jsonwebtoken-10.4.0`'s crypto module. **Pre-existing and outside F1's blast
+> radius** (`cargo tree` shows service-http depends on nothing F1 touched; the `Cargo.lock` diff is
+> the single new `ruleset-core` entry). Recorded because the earlier “workspace green” claim in this
+> file came from a **build**, not a test run — and nobody had run the whole suite.
+>
+> **SECOND `/review-impl` PASS — the one that asked “is F1 actually FINISHED?”, and the answer had
+> two halves.**
+>
+> **(a) A structural hole F1's own exit criteria did not cover — FIXED.** `Island::new` took
+> `rules: Arc<D::Rules>` and `digest: RulesetDigest` as **two independent parameters with nothing
+> tying them together.** So an island could report a digest for a ruleset it was not running — the
+> exact divergence the digest exists to DETECT, made constructible **inside the mechanism meant to
+> prevent it**. F1 shipped a correct digest that could still be attached to the wrong rules.
+> Fixed structurally: `Domain::rules_digest` was added and the digest **parameter is gone** — it is
+> DERIVED. Passing a mismatched digest is now a **compile error, not a test failure**, because there
+> is no argument to pass. `RulesetDigest::UNPINNED` moved from 8 construction sites into one
+> `TestDomain` impl, where it states a property of the domain rather than a per-call choice.
+> `restore()` deliberately keeps the STORED digest with a `TODO(F3)`: a fresh island's digest is a
+> fact about its rules, a restored one's is a *historical* fact that may disagree — and detecting
+> that disagreement is the whole of F3. Re-deriving there would paper over precisely what F3 refuses.
+> Bite-proven by pointing `CombatDomain::rules_digest` at `UNPINNED` → red.
+>
+> **(b) The completeness verdict, stated plainly: THE DIGEST HAS NO CONSUMER YET.**
+> `EventEnvelope` (dp-kernel) has **no `ruleset_digest` field**, and every occurrence of `digest` in
+> the tree is an **assignment** — island → checkpoint → restored island. Nothing ever reads it to
+> decide anything. **RLS-A13 — *“every event is pinned to the ruleset that produced it”* — is not
+> implemented.** That is legitimate by the build order (F2's own done-when is *“the digest lands in a
+> committed envelope”*), but it must be said in the words this session has been using for everything
+> else: **right now the digest is a write-only field.** F1's value today is entirely POTENTIAL — the
+> artifact is correct, guarded and unforgeable, and it enforces nothing until F2 stamps it and F3
+> refuses on mismatch.
+>
+> **Still open after F1, none of it hidden:** nothing forces `RULESET_SCHEMA_VERSION` to be bumped
+> when the encoding changes (the golden test reds, a human decides) · there is **no decoder** for
+> `canon_bytes`, so RLS-D18's *“the digest addresses the stored BYTES”* is unverified until F2 stores
+> some · `D-WIRE-DIGEST-ZERO` · `D-EMPTY-PORTABLE-SIDE` · IMP-D3/D4/D5 gates.
+>
+> **NEXT: F2 `ruleset-loader`** — provider stack · presets · merge algebra · tombstones · validation.
+> It inherits four `TODO(F2)` refusals the laws now flag at runtime (empty clamp intersection;
+> `roll_band_hi < lo`; `defend_divisor < 1`; `hit_floor > hit_ceiling`) — and DF7-V1 **already
+> specifies** three of them at Stage 0 (`stat.tuning_invalid`), so the loader is implementing a
+> written spec, not inventing one. Then **F3**: replay under a mismatched digest is REFUSED.
+
 > ✅ **FOUNDATION SWEEP — both halves of XST-F1 gated, and XST-D2 closed (2026-07-28).**
 > At the PO's call: *"nên bật mấy cái audit đang tắt lên rồi fix hết mấy bugs đi — tốt hơn là nên
 > clear foundation và dọn rot trước"* — correct, and it changed the order: `X1` fixed ONE instance

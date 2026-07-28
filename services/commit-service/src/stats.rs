@@ -26,90 +26,54 @@
 //! the worst kind of failure, since it passes locally and fails in CI on a
 //! different seed.
 
-/// DF7-A1 — the closed engine vocabulary. Authors declare how their kinds
-/// *project into* these slots; they never add one. Extending the set is an
-/// engine release plus a boundary-matrix registration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(usize)]
-pub enum StatSlot {
-    // vitals
-    MaxHp = 0,
-    MaxStamina = 1,
-    // offense / defense — feed the COMB_001 §4 law-chain
-    StrikePower = 2,
-    Armor = 3,
-    /// per-mille
-    Accuracy = 4,
-    /// per-mille
-    Dodge = 5,
-    /// per-mille
-    CritChance = 6,
-    /// per-mille (1500 = 1.5×)
-    CritMult = 7,
-    // tempo
-    Speed = 8,
-    /// Derived, not authored — see [`StatBlock::derive_move_range`].
-    MoveRange = 9,
-}
-
-pub const SLOT_COUNT: usize = 10;
-
-impl StatSlot {
-    pub const ALL: [StatSlot; SLOT_COUNT] = [
-        StatSlot::MaxHp,
-        StatSlot::MaxStamina,
-        StatSlot::StrikePower,
-        StatSlot::Armor,
-        StatSlot::Accuracy,
-        StatSlot::Dodge,
-        StatSlot::CritChance,
-        StatSlot::CritMult,
-        StatSlot::Speed,
-        StatSlot::MoveRange,
-    ];
-
-    /// DF7-A6 — every slot has an engine default, so a reality that declares
-    /// nothing at all still yields a valid, balanced-enough block. "Playable
-    /// with zero declaration" is a hard requirement, not a convenience.
-    pub const fn default_value(self) -> i32 {
-        match self {
-            StatSlot::MaxHp => 100,
-            StatSlot::MaxStamina => 100,
-            StatSlot::StrikePower => 10,
-            StatSlot::Armor => 0,
-            StatSlot::Accuracy => 250,
-            StatSlot::Dodge => 50,
-            StatSlot::CritChance => 50,
-            StatSlot::CritMult => 1500,
-            StatSlot::Speed => 100,
-            StatSlot::MoveRange => 5,
-        }
-    }
-
-    /// Slots whose unit is per-mille (0..1000 = 0..100%).
-    pub const fn is_per_mille(self) -> bool {
-        matches!(
-            self,
-            StatSlot::Accuracy | StatSlot::Dodge | StatSlot::CritChance | StatSlot::CritMult
-        )
-    }
-}
+// F1 — the closed slot vocabulary now lives in `ruleset-core`, because the
+// ruleset declares a VALUE PER SLOT (`StatRules::slot_defaults`) and therefore
+// has to be able to name the slots. Re-exported so every existing
+// `commit_service::stats::StatSlot` import keeps working: one definition, two
+// paths, no ordinal contract crossing a crate boundary untyped.
+//
+// What went with it: `default_value()`. Slot defaults are VALUES, and IMP-A1
+// puts values in config — they are `StatRules::slot_defaults` now, inside the
+// hashed struct, which is what makes XST-D5's *"edit a constant → the digest
+// moves"* writable at all.
+pub use ruleset_core::{SLOT_COUNT, StatRules, StatSlot};
 
 /// A resolved block. Derived, never an SSOT row (DF7-A2).
+///
+/// **`impl Default` was REMOVED in F1, deliberately.** It used to mean *the
+/// engine-default block*, which is now a function of `StatRules` and cannot be
+/// produced from nothing. Redefining it as "zeroed" would have left every
+/// existing `StatBlock::default()` call site compiling with silently different
+/// semantics — so it is gone, and each site had to say which it meant:
+/// [`StatBlock::zeroed`] for an accumulator, [`StatBlock::from_defaults`] for
+/// the engine defaults. Mechanism over discipline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatBlock([i32; SLOT_COUNT]);
 
-impl Default for StatBlock {
-    fn default() -> Self {
-        let mut v = [0i32; SLOT_COUNT];
-        for slot in StatSlot::ALL {
-            v[slot as usize] = slot.default_value();
-        }
-        Self(v)
-    }
-}
-
 impl StatBlock {
+    /// All slots at zero: "no contribution", the accumulator `resolve_block`
+    /// fills. NOT a playable actor — a zeroed block has 0 max HP.
+    pub const fn zeroed() -> Self {
+        Self([0i32; SLOT_COUNT])
+    }
+
+    /// Build a block from a dense per-slot declaration.
+    ///
+    /// The ONE place a ruleset array becomes a block. Both the engine defaults
+    /// and the melee archetype come through here rather than each writing its
+    /// own ordinal loop — two copies of an index mapping is how the ordinals
+    /// drift apart.
+    pub fn from_slots(slots: &[i32; SLOT_COUNT]) -> Self {
+        Self(*slots)
+    }
+
+    /// DF7-A6 — the engine-default block. "Playable with zero declaration" is a
+    /// hard requirement, and this is where that requirement is now met from:
+    /// the ruleset, not a `match` arm in the binary.
+    pub fn from_defaults(rules: &StatRules) -> Self {
+        Self::from_slots(&rules.slot_defaults)
+    }
+
     pub fn get(&self, slot: StatSlot) -> i32 {
         self.0[slot as usize]
     }
@@ -119,26 +83,26 @@ impl StatBlock {
     }
 
     /// `MoveRange` is the one slot with an engine derivation rather than an
-    /// author term list (DF07 §): `clamp(base + floor(speed / per_tile), 1, max)`.
-    pub fn derive_move_range(&mut self, tuning: &StatTuning) {
-        let speed = self.get(StatSlot::Speed).max(1);
-        let derived = tuning.base_move + speed / tuning.speed_per_tile.max(1);
-        self.set(StatSlot::MoveRange, derived.clamp(1, tuning.max_move));
-    }
-}
-
-/// Engine tuning for the derived slot. Defaults give 5 tiles at speed 100 on
-/// a 16×16 grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StatTuning {
-    pub base_move: i32,
-    pub speed_per_tile: i32,
-    pub max_move: i32,
-}
-
-impl Default for StatTuning {
-    fn default() -> Self {
-        Self { base_move: 3, speed_per_tile: 50, max_move: 10 }
+    /// author term list (DF07 §):
+    /// `clamp(base + floor(speed / per_tile), 1, max)`.
+    ///
+    /// The derivation's SHAPE — and its floor of 1 — are here; its three
+    /// numbers come from the ruleset (DF07_001 §5.2 `StatTuningDecl`).
+    pub fn derive_move_range(&mut self, rules: &StatRules) {
+        let speed = self.get(StatSlot::Speed).max(1) as i64;
+        // i64 intermediate: `move_base` is author-supplied, so the sum
+        // overflows i32 for an extreme ruleset — and the shipped profile has
+        // overflow-checks OFF, so it wraps rather than panicking. The clamp
+        // below brings it back into i32 range exactly.
+        let derived = rules.move_base as i64 + speed / rules.move_speed_per_tile.max(1) as i64;
+        // `i32::clamp` PANICS when min > max, and `move_max` is now
+        // author-supplied. Floor wins — the same deterministic, never-panicking
+        // rule `intersect_clamps` applies to a contradictory clamp pair.
+        // TODO(F2): DF7-V1 already SPECIFIES this refusal at Stage 0
+        // (`max_move >= 1`, `speed_per_tile >= 1`, `base_move <= max_move` ->
+        // `stat.tuning_invalid`). This runtime floor keeps a bad ruleset
+        // predictable until the loader enforces it; it does not bless one.
+        self.set(StatSlot::MoveRange, derived.clamp(1, rules.move_max.max(1) as i64) as i32);
     }
 }
 
@@ -189,10 +153,13 @@ impl ModifierSource {
     /// `match` forces a variant to be HANDLED, never to be REACHED, so a variant
     /// nothing points at is still skipped.
     ///
-    /// Closing it for real needs a derive macro (which sees the variant list) or
-    /// a repo-level gate that compares `enum X` against `X::ALL` — tracked, and
-    /// worth doing once rather than per-enum, because `StatSlot`, `EffectOp`,
-    /// `StatusFlag`, `DiscardReason` and `SeedRole` are all the same shape.
+    /// **That repo-level gate now EXISTS** — `scripts/closed-set-gate.py`
+    /// (pre-commit) compares every `const NAME: [Enum; _]` against the enum it
+    /// is typed over, so the last row is caught outside the compiler rather
+    /// than by discipline. Done once for the whole tree, because `StatSlot`,
+    /// `EffectOp`, `StatusFlag`, `DiscardReason` and `SeedRole` are all the
+    /// same shape. A derive macro would still be stronger (it sees the variant
+    /// list at expansion time); the gate is what shipped.
     /// (`StatSlot::ALL` is accidentally safer: its length is tied to
     /// `SLOT_COUNT`, which `StatBlock` also depends on.)
     ///
@@ -310,9 +277,12 @@ pub fn resolve_block(
     modifiers: &[StatModifier],
     slot_clamps: &[Clamp],
     lex_clamps: &[Clamp],
-    tuning: &StatTuning,
+    rules: &StatRules,
 ) -> StatBlock {
-    let mut out = StatBlock::default();
+    // Zeroed, not defaults: the loop below `set`s EVERY slot, so the starting
+    // values are dead. Starting from the defaults would look like they matter
+    // and hide a future slot the loop stops covering.
+    let mut out = StatBlock::zeroed();
 
     for slot in StatSlot::ALL {
         // base → archetype
@@ -371,7 +341,7 @@ pub fn resolve_block(
     // `StrikePower`, so nothing covered the one slot where the invariant was
     // actually broken. Deriving and THEN re-clamping restores DF7-A3: a world
     // rule is applied last and is therefore inescapable.
-    out.derive_move_range(tuning);
+    out.derive_move_range(rules);
     let mr = StatSlot::MoveRange;
     let ranged = apply_clamps(out.get(mr), mr, slot_clamps, lex_clamps);
     out.set(mr, ranged);
@@ -413,10 +383,22 @@ pub struct StatEpoch {
 /// have resolved*, breaking replay of the encounter as a unit. Striking trains
 /// swordsmanship, and PROG_001 trains on Action — so this is the normal case,
 /// not an exotic one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatSnapshot {
     pub stats: StatBlock,
     pub epoch: StatEpoch,
+}
+
+impl Default for StatSnapshot {
+    /// A snapshot that has never been resolved: a ZEROED block at epoch zero.
+    ///
+    /// Hand-written because `StatBlock` no longer has `Default` (see its doc).
+    /// Zeroed is the honest value here — `is_stale` against any real epoch
+    /// returns true, so an unresolved snapshot is one that must be re-resolved
+    /// before it is read, which is exactly what it is.
+    fn default() -> Self {
+        Self { stats: StatBlock::zeroed(), epoch: StatEpoch::default() }
+    }
 }
 
 impl StatSnapshot {

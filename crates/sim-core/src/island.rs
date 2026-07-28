@@ -76,10 +76,12 @@ impl<D: Domain> Island<D> {
         id: IslandId,
         seed: u64,
         rules: Arc<D::Rules>,
-        digest: RulesetDigest,
         seen_window: SeenWindow,
         initial_state: D::State,
     ) -> Self {
+        // RLS-A13 — DERIVED, never supplied. See `Domain::rules_digest`: a
+        // digest handed in beside the rules is a pair nothing forces to agree.
+        let digest = D::rules_digest(&rules);
         Self {
             id,
             tick: Tick(0),
@@ -330,6 +332,15 @@ impl<D: Domain> Island<D> {
             seen: cp.seen,
             state: cp.state,
             rules,
+            // The STORED digest, deliberately not re-derived. A fresh island's
+            // digest is a fact about its rules; a restored island's is a
+            // HISTORICAL fact that may disagree with the rules it is being
+            // restored under — and detecting that disagreement is the whole of
+            // F3. Re-deriving here would silently paper over exactly the
+            // divergence F3 must refuse.
+            // TODO(F3): compare against `D::rules_digest(&rules)` and REFUSE on
+            // mismatch. Both values are now available at this line, which they
+            // were not before.
             digest: cp.digest,
             rng: cp.rng,
             outcomes: Vec::new(),

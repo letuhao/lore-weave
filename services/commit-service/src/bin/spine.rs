@@ -24,10 +24,10 @@ use std::time::Duration;
 use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verdict};
 use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
-use commit_service::{Actor, CombatDomain, CombatRules, CombatState, Vocabulary, COMBAT_V1_JSON};
+use commit_service::{Actor, CombatDomain, CombatState, Ruleset, Vocabulary, COMBAT_V1_JSON};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
-use sim_core::{EntityId, Island, IslandId, Lane, Outcome, RulesetDigest, SeenWindow, StepStatus};
+use sim_core::{EntityId, Island, IslandId, Lane, Outcome, SeenWindow, StepStatus};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -118,15 +118,26 @@ async fn main() -> anyhow::Result<()> {
 
     // ── resolution side: the island (encounter demo state) ──
     let npc = EntityId(1);
+    // F1 — the reality's resolved ruleset. `engine_default()` is RLS-D2's
+    // priority-0 layer; F2 replaces this line with a real resolution through
+    // the provider stack (preset -> book -> reality overrides).
+    //
+    // The island DERIVES its pin from these rules via `Domain::rules_digest`
+    // (RLS-A13) — this call site used to pass `RulesetDigest([0u8; 32])`
+    // alongside the rules, which was inert AND unchecked: an all-zero digest
+    // made two realities with different rules stamp indistinguishable events,
+    // and nothing forced the digest passed to describe the rules passed. There
+    // is no longer a digest argument to get wrong.
+    let ruleset = std::sync::Arc::new(Ruleset::engine_default());
+
     let mut state = CombatState::default();
-    state.actors.insert(npc, Actor::new(100));
-    state.actors.insert(EntityId(2), Actor::new(40));
-    state.actors.insert(EntityId(3), Actor::new(40));
+    state.actors.insert(npc, Actor::new(&ruleset, 100));
+    state.actors.insert(EntityId(2), Actor::new(&ruleset, 40));
+    state.actors.insert(EntityId(3), Actor::new(&ruleset, 40));
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(args.channel as u64),
         0x53A5_71DE,
-        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
-        RulesetDigest([0u8; 32]),
+        Arc::clone(&ruleset),
         SeenWindow::TtlTicks(300),
         state,
     );

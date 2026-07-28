@@ -15,11 +15,11 @@ use std::sync::Arc;
 
 use commit_service::combat::{EncounterOutcome, Side};
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatRules, CombatState,
+    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, Ruleset, CombatState,
 };
 use sim_core::{
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
-    Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest, SeenWindow, Seq,
+    Outcome, Precondition, PreconditionKind, Producer, QueuedInput, SeenWindow, Seq,
     StepStatus,
 };
 
@@ -28,11 +28,14 @@ const FOE: EntityId = EntityId(2);
 
 /// Hero on side A, foe on side B. Hero is faster, so hero is up first.
 fn encounter(hero_hp: i64, foe_hp: i64) -> Island<CombatDomain> {
+    // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
+    // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
+    let rules = Arc::new(Ruleset::engine_default());
     let mut state = CombatState { session_seed: 0xBEEF_5EED, ..Default::default() };
-    let mut hero = Actor::with_side(hero_hp, Side::A);
+    let mut hero = Actor::with_side(&rules, hero_hp, Side::A);
     hero.stats.speed = 200; // av 50
     hero.av = 50;
-    let mut foe = Actor::with_side(foe_hp, Side::B);
+    let mut foe = Actor::with_side(&rules, foe_hp, Side::B);
     foe.stats.speed = 100; // av 100
     foe.av = 100;
     state.actors.insert(HERO, hero);
@@ -41,8 +44,7 @@ fn encounter(hero_hp: i64, foe_hp: i64) -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xE1CE,
-        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
-        RulesetDigest([0u8; 32]),
+        Arc::clone(&rules),
         SeenWindow::Unbounded,
         state,
     );

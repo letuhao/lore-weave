@@ -62,6 +62,15 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # A genuinely partial list carries `closed-set-gate: ok — <reason>` in its doc block.
 "$PY" "$ROOT/scripts/closed-set-gate.py" --staged
 
+# A RULESET PIN must not be an anonymous zero. RLS-A13 makes the digest the thing that ties an
+# event to the rules that produced it; `RulesetDigest([0u8; 32])` — which appeared in 15 places,
+# four of them production — makes that pin INERT: two realities with different rules stamp
+# indistinguishable events, and replay cannot detect the rules moved underneath it (IMP-D6).
+# It survived because it LOOKS like a value: nothing distinguished "the loader is not wired yet"
+# from "this domain genuinely has no ruleset". Now the second case is the NAMED
+# `RulesetDigest::UNPINNED` (kernel harness + tests only) and the first is a finding.
+"$PY" "$ROOT/scripts/zero-digest-gate.py" --staged
+
 # No ABSOLUTE HOST PATH hardcoded in committed code. Such a path resolves on exactly one
 # machine; everywhere else the script dies or — worse — the path happens to exist and it
 # silently reads a STALE COPY from a sibling checkout (four POC exporters pointed at a

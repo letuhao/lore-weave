@@ -24,9 +24,10 @@
 //! Everything is a function of state, which is what keeps the CNC-D5
 //! concurrency conformance test green.
 
+use ruleset_core::{CombatRules, StatRules};
 use sim_core::{DetRng, EntityId};
 
-use crate::stats::{resolve_block, StatBlock, StatSlot, StatTuning};
+use crate::stats::{resolve_block, StatBlock, StatSlot};
 
 /// Which roll a derived stream is for (COMB_001 Q8). Closed set — an
 //  open-ended role string would let two call sites collide on one stream and
@@ -132,14 +133,16 @@ impl CombatStats {
     /// A plain melee archetype at `max_hp`, resolved through the real DF07
     /// path rather than hand-written literals — so the defaults, the clamps
     /// and the MoveRange derivation are all exercised even by a bare NPC.
-    pub fn archetype_melee(max_hp: i64) -> Self {
-        let mut arch = StatBlock::default();
+    ///
+    /// F1: the archetype's five numbers were `12 / 2 / 450 / 100` inline here.
+    /// They are `StatRules::melee_archetype` now — genuinely *content*
+    /// (IMP-A4 files `stat_archetypes` on the loaded side), and an archetype
+    /// that can change without moving the digest changes every NPC in the
+    /// reality silently.
+    pub fn archetype_melee(rules: &StatRules, max_hp: i64) -> Self {
+        let mut arch = StatBlock::from_slots(&rules.melee_archetype);
         arch.set(StatSlot::MaxHp, max_hp as i32);
-        arch.set(StatSlot::StrikePower, 12);
-        arch.set(StatSlot::Armor, 2);
-        arch.set(StatSlot::Accuracy, 450);
-        arch.set(StatSlot::Dodge, 100);
-        let block = resolve_block(&arch, &[], &[], &[], &StatTuning::default());
+        let block = resolve_block(&arch, &[], &[], &[], rules);
         Self::from_block(&block)
     }
 }
@@ -149,11 +152,21 @@ impl CombatStats {
 /// `hit_chance = clamp(0.5 + acc − dodge, 0.05, 0.95)` (COMB_001 §4), in
 /// per-mille: `clamp(500 + acc − dodge, 50, 950)`.
 ///
-/// The clamps are not cosmetic: without the 950 ceiling an accuracy-stacked
-/// build becomes unmissable and dodge stops being a stat; without the 50 floor
-/// a high-dodge target becomes untouchable and the fight cannot end.
-pub fn hit_chance_pm(accuracy_pm: i64, dodge_pm: i64) -> i64 {
-    (500 + accuracy_pm - dodge_pm).clamp(50, 950)
+/// The clamps are not cosmetic: without the ceiling an accuracy-stacked build
+/// becomes unmissable and dodge stops being a stat; without the floor a
+/// high-dodge target becomes untouchable and the fight cannot end. **That the
+/// clamps EXIST is the law; their values are the ruleset's** (IMP-D1).
+pub fn hit_chance_pm(rules: &CombatRules, accuracy_pm: i64, dodge_pm: i64) -> i64 {
+    // Floor wins if a ruleset declares floor > ceiling — `i64::clamp` panics
+    // otherwise, and a panic here takes the island down through `apply`.
+    // TODO(F2): the loader should refuse that ruleset at load time.
+    let (lo, hi) = (rules.hit_floor_pm, rules.hit_ceiling_pm.max(rules.hit_floor_pm));
+    // i128, because `hit_base_pm` is author-supplied now: the sum overflows in
+    // i64 for an extreme ruleset, and the shipped profile has overflow-checks
+    // OFF, so it would wrap into a wildly wrong hit chance in production while
+    // panicking in tests. The clamp bounds are i64, so the cast back is exact.
+    let raw = rules.hit_base_pm as i128 + accuracy_pm as i128 - dodge_pm as i128;
+    raw.clamp(lo as i128, hi as i128) as i64
 }
 
 /// One resolved attack.
@@ -163,7 +176,7 @@ pub struct AttackOutcome {
     pub crit: bool,
     pub damage: i64,
     /// True when `damage` is the declared ceiling rather than the number the
-    /// chain computed — see [`MAX_HIT`] and XST-D2.
+    /// chain computed — see `CombatRules::max_hit` and XST-D2.
     ///
     /// Surfaced for the same reason `crit` is surfaced on the event: it is the
     /// difference between *"the numbers are swingy"* and *"the numbers are
@@ -172,7 +185,11 @@ pub struct AttackOutcome {
     pub capped: bool,
 }
 
-/// The declared ceiling on a single hit.
+/// **Where the ceiling went (F1).** `MAX_HIT` was a `const` here with a
+/// `TODO(IMP-D5)` saying it belonged in the ruleset. It is now
+/// `CombatRules::max_hit`, hashed into the digest — that TODO is retired. The
+/// reasoning below is kept because it is *why the field exists*, and a
+/// constant that moves into config loses its rationale otherwise.
 ///
 /// **XST-D2 (fixed 2026-07-28).** The chain used to run in `i64` with
 /// `saturating_mul`, so above a base of ~1.6 M **every hit returned the
@@ -195,12 +212,6 @@ pub struct AttackOutcome {
 /// is exactly what [27 §7.1](../../../docs/03_planning/LLM_MMO_RPG/27_extensibility_stress_test.md)
 /// decided when it put true incremental-game numeric range out of scope.
 ///
-/// TODO(IMP-D5): this belongs in `CombatRules`, loaded from the ruleset — a
-/// law's STRUCTURE is code, a law's CONSTANTS are config (IMP-D1). It is a
-/// literal here only until F1/F2 land, and it is listed as debt so "we already
-/// have it, let's just continue" stops being frictionless (IMP-D8).
-pub const MAX_HIT: i64 = 1_000_000_000;
-
 /// The 4-step damage law-chain (COMB_001 §4, order LOCKED for V1+):
 ///
 /// ```text
@@ -224,6 +235,7 @@ pub const MAX_HIT: i64 = 1_000_000_000;
 /// last because it is a resolution-time flag and explicitly **not** a stat
 /// modifier (DF7-A8).
 pub fn resolve_attack(
+    rules: &CombatRules,
     atk: &CombatStats,
     def: &CombatStats,
     defending: bool,
@@ -234,7 +246,7 @@ pub fn resolve_attack(
     // Independent streams: whether a hit lands must not correlate with how
     // hard it lands, or a lucky seed produces suspiciously consistent play.
     let mut hit_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Hit);
-    if roll_pm(&mut hit_rng) >= hit_chance_pm(atk.accuracy_pm, def.dodge_pm) {
+    if roll_pm(&mut hit_rng) >= hit_chance_pm(rules, atk.accuracy_pm, def.dodge_pm) {
         return AttackOutcome { hit: false, crit: false, damage: 0, capped: false };
     }
 
@@ -242,7 +254,10 @@ pub fn resolve_attack(
     let crit = roll_pm(&mut crit_rng) < atk.crit_chance_pm;
     let crit_mult_pm = if crit { atk.crit_mult_pm } else { 1000 };
 
-    // Variance band 0.85–1.15, as per-mille 850..=1150 INCLUSIVE.
+    // Variance band, as per-mille and INCLUSIVE at both ends (850..=1150 by
+    // default). `roll_band_width()` derives the number of distinct values from
+    // lo/hi rather than storing a third number that could disagree with them —
+    // which is how XST-D3 happened.
     //
     // XST-D3 (fixed 2026-07-28) — this was `850 + roll_pm(..) * 300 / 1000`
     // over a `0..=999` draw, which yields **850..=1149**: the top of the
@@ -255,10 +270,7 @@ pub fn resolve_attack(
     // truncation anywhere. Cheaper than the old form, and it removes the
     // division rather than correcting it.
     let mut dmg_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Damage);
-    let roll_band_pm = 850 + dmg_rng.range_u64(301) as i64;
-
-    const ELEM_MULT_PM: i64 = 1000; // V1 = 1.0
-    const RESIST_PM: i64 = 0; // V1 = 0
+    let roll_band_pm = rules.roll_band_lo_pm + dmg_rng.range_u64(rules.roll_band_width()) as i64;
 
     let base = (atk.strike_power - def.armor).max(1);
 
@@ -276,8 +288,11 @@ pub fn resolve_attack(
     // multiplicative bucket would have taken the safe base from 1.6 M to ~1600.
     // Widening is a prerequisite for XST-R6/R7, not an optimisation.
     let numer: i128 = (base as i128)
-        * (ELEM_MULT_PM as i128)
-        * ((1000 - RESIST_PM) as i128)
+        * (rules.elem_mult_pm as i128)
+        // NOTE the cast placement: `(1000 - resist) as i128` would do the
+        // subtraction in i64 and overflow for an extreme `resist_pm`. The
+        // widening happens FIRST.
+        * (1000i128 - rules.resist_pm as i128)
         * (roll_band_pm as i128)
         * (crit_mult_pm as i128);
     // FOUR per-mille factors are multiplied in (elem, resist-complement,
@@ -285,17 +300,28 @@ pub fn resolve_attack(
     // wrong scales every hit by 1000×, which the damage-band test caught
     // immediately; it is the kind of error that fixed-point arithmetic trades
     // for float's rounding drift, and it fails loudly rather than subtly.
-    let denom: i128 = 1_000i128.pow(4) * if defending { 2 } else { 1 };
+    //
+    // `1000` here is the per-mille UNIT, not a tunable: it is what "‰" MEANS.
+    // Making it configurable would not tune a rule, it would redefine every
+    // other number in the ruleset underneath itself. The unit is shape; the
+    // values expressed in it are config (IMP-A1).
+    //
+    // `defend_divisor` IS config. Clamped to ≥1 — a ruleset declaring 0 would
+    // divide by zero inside `apply` and take the island down.
+    // TODO(F2): the loader should refuse `defend_divisor < 1` at load time.
+    let denom: i128 =
+        1_000i128.pow(4) * if defending { rules.defend_divisor.max(1) as i128 } else { 1 };
 
     // The result must come back to i64, so a ceiling is unavoidable — but it is
     // DECLARED and it REPORTS. `capped` rides out on the outcome and onto the
     // committed `Struck` event, so a bound ceiling is a fact in the log rather
     // than a number nobody can explain (CS-D5/EVT-L5: nothing silent).
     let raw = numer / denom;
-    let capped = raw > MAX_HIT as i128;
+    let capped = raw > rules.max_hit as i128;
     // Floor of 1: a defended glancing hit could otherwise round to zero and
-    // read to the player as a miss that was reported as a hit.
-    let damage = if capped { MAX_HIT } else { raw as i64 }.max(1);
+    // read to the player as a miss that was reported as a hit. The floor's
+    // VALUE is 1 by structure — "a hit did something" is the law, not a knob.
+    let damage = if capped { rules.max_hit } else { raw as i64 }.max(1);
 
     AttackOutcome { hit: true, crit, damage, capped }
 }
@@ -314,19 +340,28 @@ pub struct AvStatus {
     pub stunned: bool,
 }
 
-/// `av = 10000 / speed`; **lowest acts first**. Status mutates it:
-/// `slowed +20%`, `hasted −20%`, `stunned +100%`.
+/// `av = av_base / speed`; **lowest acts first**. Status mutates it by a
+/// per-mille factor each (by default: `slowed +20%`, `hasted −20%`,
+/// `stunned +100%`).
+///
+/// WHICH statuses exist and that each contributes one commutative factor is the
+/// law; the factors themselves are the ruleset's.
 ///
 /// Speed is clamped to ≥1 rather than trusted: a zero-speed actor (a bug, or a
 /// future stat debuff that over-subtracts) would divide by zero and take the
 /// whole island down through `apply` — which the kernel would contain as a
 /// poison pill, but the encounter would still be dead.
-pub fn action_value(speed: i64, status: AvStatus, is_initiator_first_turn: bool) -> i64 {
+pub fn action_value(
+    rules: &CombatRules,
+    speed: i64,
+    status: AvStatus,
+    is_initiator_first_turn: bool,
+) -> i64 {
     // Integer throughout — the last float in the combat path lived here.
     // Each status is a per-mille factor accumulated into ONE numerator and
     // denominator so there is a single division at the end, rather than a
     // chain of `x * 1200 / 1000` steps each shedding a milli-unit.
-    let mut num: i64 = 10_000;
+    let mut num: i64 = rules.av_base;
     let mut den: i64 = speed.max(1);
 
     // Speed is clamped to >=1 rather than trusted: a zero-speed actor (a bug,
@@ -338,18 +373,18 @@ pub fn action_value(speed: i64, status: AvStatus, is_initiator_first_turn: bool)
         den = den.saturating_mul(1000);
     };
     if status.slowed {
-        apply(1200);
+        apply(rules.av_slowed_pm);
     }
     if status.hasted {
-        apply(800);
+        apply(rules.av_hasted_pm);
     }
     if status.stunned {
-        apply(2000);
+        apply(rules.av_stunned_pm);
     }
     if is_initiator_first_turn {
-        // COMB_001: the initiator's first turn is AV x 0.75 — starting a
+        // COMB_001: the initiator's first turn is discounted — starting a
         // fight is worth a head start, not a free round.
-        apply(750);
+        apply(rules.av_initiator_first_pm);
     }
 
     // Round to nearest rather than truncate: truncation would bias every

@@ -180,10 +180,19 @@ loader is a finding. Same shape as the provider gate that already blocks hardcod
 Bootstrapping: the existing literals get an explicit allowlist with a `TODO(IMP)` and shrink to zero
 as the loader lands — visible debt rather than invisible debt.
 
-**IMP-D6 — the digest must become real.** `RulesetDigest([0u8; 32])` appears in **15 places** today.
-An all-zero digest means RLS-A13's pin is inert: two realities with different rules produce
-indistinguishable events, and replay cannot detect that the rules changed underneath it. A gate
-should reject a zero digest outside tests once the loader exists.
+**IMP-D6 — the digest must become real.** ✅ **DONE 2026-07-28 (F1).** `RulesetDigest([0u8; 32])`
+appeared in **15 places**. An all-zero digest means RLS-A13's pin is inert: two realities with
+different rules produce indistinguishable events, and replay cannot detect that the rules changed
+underneath it.
+
+> **What the fix taught, worth keeping:** the literal survived because it *looks like a value*.
+> Nothing distinguished *"the loader is not wired here yet"* (a bug) from *"this domain genuinely has
+> no content ruleset"* (the kernel harness), so both were spelled the same way and neither was
+> visible. The resolution is the same one `MAX_HIT` got in the damage chain: **a declared zero has a
+> name and a reason; an emergent one is a number nobody can explain.** `RulesetDigest::UNPINNED` is
+> the named case, `scripts/zero-digest-gate.py` bans the anonymous literal repo-wide and bans
+> `UNPINNED` outside `crates/sim` + tests. The gate did not wait for the loader — F1's own exit
+> criterion is what it enforces.
 
 ---
 
@@ -194,7 +203,7 @@ Nothing advances on "the code is written".
 
 | # | Layer | Delivers | Done when |
 |---|---|---|---|
-| **F1** | `ruleset-core` | Manifest/Ruleset types, real digest, Provenance | a digest is computed from bytes and two different rulesets are distinguishable; `RulesetDigest([0u8;32])` count is 0 outside tests |
+| **F1** ✅ **2026-07-28** | `ruleset-core` | Ruleset + REAL digest + Provenance. **No `Manifest`** — a manifest with no resolver is a shape with no consumer; it lands with F2. **`D1`'s constant sourcing was pulled forward into F1**: a digest over a struct holding no game constants is *worse* than an inert one, because it answers "did the rules change?" with a confident No | **met** — `v3_two_different_rulesets_are_distinguishable`; zero-digest count is **0 everywhere**, not just outside tests (the harness case is the NAMED `RulesetDigest::UNPINNED`, scope-checked by `scripts/zero-digest-gate.py`) |
 | **F2** | `ruleset-loader` | provider stack, presets, interning | a reality loads its ruleset from a file and the digest lands in a committed envelope |
 | **S1** | field classification | 16a's 64 fields wired: layer floors, `Tunable` vs `AdditiveOnly` | an over-reaching override is REFUSED, with a test |
 | **S2** | `game-rules` extraction | laws move out of `domain.rs`, take `Rules` by ref | `game-rules` has no I/O dependency, enforced by a gate |
@@ -209,6 +218,15 @@ discard the tested laws to fix a supply chain.
 **IMP-D8 — but the debt is made loud immediately.** Those three sites get `TODO(IMP-D5)` plus an
 allowlist row, so "we already have it, let's just continue" stops being frictionless. That is the
 real risk in keeping them, and it is a discipline problem rather than a technical one.
+
+> **Closed 2026-07-28 (F1).** The `TODO(IMP-D5)` sites are gone: `MAX_HIT`, the hit floor/ceiling and
+> base, the variance band, the elemental/resist/defend factors, the four action-value multipliers,
+> the ten slot defaults, the move-range tuning and the melee archetype all resolve from
+> `Ruleset::engine_default()` and are hashed. **`scripts/no-magic-game-constant.py` (IMP-D5) is still
+> unbuilt** — it is now *possible*, which it was not before, and it is what would keep the count at
+> zero. Also unbuilt: **IMP-D4** `hot-path-gate.py`, and **IMP-D3**'s 400-line ceiling has no gate
+> (`domain.rs` 592 · `combat.rs` 456 today — both already over before F1, and F1 grew them; the split
+> is `S2`).
 
 **IMP-D9 — no new game feature until F1+F2 land.** Slices 3–5 of the encounter plan (threat, grid,
 abilities) are on hold. Each would otherwise add its own literals to the pile, and each is a

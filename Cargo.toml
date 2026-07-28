@@ -45,6 +45,12 @@ members = [
     # docs/plans/2026-07-26-sim-core-s1a.md (docs 14 §10.4 / 15 warned by name).
     "crates/sim-core",
     "crates/sim",
+    # F1 (2026-07-28) — the resolved ruleset + its REAL content digest
+    # (16_ruleset_loader_and_registry.md RLS-A13/D5, 26 §6 F1). No I/O: the
+    # provider stack / presets / merge algebra are F2 (`ruleset-loader`).
+    # Depends on sim-core for `RulesetDigest` alone — the kernel CARRIES the
+    # digest and keeps its zero-runtime-dependency invariant; blake3 lives here.
+    "crates/ruleset-core",
     # POC-2 (2026-07-27) — commit-service seed per 15_commit_service.md CS-A5:
     # the Rust writer-node role hosting sim-core natively + the LlmDriver
     # (AGT-A3) dispatching NPC decisions via loreweave_llm → provider-registry.

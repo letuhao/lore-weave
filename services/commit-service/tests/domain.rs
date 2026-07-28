@@ -2,21 +2,23 @@
 
 use std::sync::Arc;
 
-use commit_service::{Actor, CombatDomain, CombatEvent, CombatPayload, CombatRules, CombatState};
+use commit_service::{Actor, CombatDomain, CombatEvent, CombatPayload, Ruleset, CombatState};
 use sim_core::{
     Class, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane, Outcome, Producer,
-    QueuedInput, RulesetDigest, SeenWindow, Seq, StepStatus,
+    QueuedInput, SeenWindow, Seq, StepStatus,
 };
 
 fn island() -> Island<CombatDomain> {
+    // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
+    // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
+    let rules = Arc::new(Ruleset::engine_default());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(100));
-    state.actors.insert(EntityId(2), Actor::new(40));
+    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
+    state.actors.insert(EntityId(2), Actor::new(&rules, 40));
     let mut isle = Island::new(
         IslandId(1),
         7,
-        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
-        RulesetDigest([0u8; 32]),
+        Arc::clone(&rules),
         SeenWindow::Unbounded,
         state,
     );
@@ -142,5 +144,49 @@ fn panic_canary_this_profile_unwinds() {
     assert!(
         std::panic::catch_unwind(|| panic!("canary")).is_err(),
         "profile must unwind — SC-A8 containment depends on it"
+    );
+}
+
+/// RLS-A13 — an island's digest must describe the rules it is actually running.
+///
+/// **Found by the second `/review-impl` pass.** `Island::new` used to take
+/// `rules` and `digest` as two independent parameters with nothing tying them,
+/// so an island could report a digest for a ruleset it was not running — the
+/// exact divergence the digest exists to DETECT, made constructible inside the
+/// mechanism meant to prevent it. F1 shipped a correct digest that could still
+/// be attached to the wrong rules.
+///
+/// The fix is structural: the digest is DERIVED via `Domain::rules_digest` and
+/// the parameter is gone. **Passing a mismatched digest is now a compile error,
+/// not a test failure** — there is no argument to pass. This test pins the
+/// derivation itself, which is the part a future edit could still get wrong.
+#[test]
+fn an_island_reports_the_digest_of_the_rules_it_runs() {
+    use commit_service::Ruleset;
+
+    let mut a = Ruleset::engine_default();
+    a.combat.max_hit -= 1; // any reality with non-default rules
+
+    let isle_default: Island<CombatDomain> = Island::new(
+        IslandId(1),
+        7,
+        Arc::new(Ruleset::engine_default()),
+        SeenWindow::Unbounded,
+        CombatState::default(),
+    );
+    let isle_a: Island<CombatDomain> = Island::new(
+        IslandId(2),
+        7,
+        Arc::new(a.clone()),
+        SeenWindow::Unbounded,
+        CombatState::default(),
+    );
+
+    assert_eq!(isle_default.digest, Ruleset::engine_default().digest());
+    assert_eq!(isle_a.digest, a.digest());
+    assert_ne!(
+        isle_default.digest, isle_a.digest,
+        "two islands on different rules must be distinguishable by their pin — \
+         this is what makes replay able to notice the rules moved"
     );
 }

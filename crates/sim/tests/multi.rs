@@ -6,7 +6,7 @@ use std::sync::Arc;
 use sim::{input, Realm, TestDomain, TestPayload, TestPortable, TestRules, TestState};
 use sim_core::{Admitted, 
     DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, Island, IslandId,
-    IslandMessage, Lane, Outcome, Precondition, PreconditionKind, RulesetDigest, SeenWindow, Seq,
+    IslandMessage, Lane, Outcome, Precondition, PreconditionKind, SeenWindow, Seq,
     StepStatus, Tick, Violation,
 };
 
@@ -15,7 +15,6 @@ fn island(id: u64, seed: u64) -> Island<TestDomain> {
         IslandId(id),
         seed,
         Arc::new(TestRules { max_counter: 1_000_000 }),
-        RulesetDigest([0u8; 32]),
         SeenWindow::Unbounded,
         TestState::default(),
     )

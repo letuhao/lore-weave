@@ -61,6 +61,15 @@ impl Domain for TestDomain {
     type Event = TestEvent;
     type ResKind = Qi;
     type Rules = TestRules;
+
+    /// The harness has no CONTENT ruleset: `TestRules` is a struct invented by
+    /// the test, not a resolved artifact, so there is nothing for a digest to
+    /// address. `UNPINNED` says that once, here, instead of at every
+    /// `Island::new` in the suite (`zero-digest-gate` scopes the constant to
+    /// this crate and to test files).
+    fn rules_digest(_rules: &Self::Rules) -> sim_core::RulesetDigest {
+        sim_core::RulesetDigest::UNPINNED
+    }
     /// `Spent` leaves the island (a stand-in for loot→inventory etc.).
     type External = TestEvent;
     type Portable = TestPortable;

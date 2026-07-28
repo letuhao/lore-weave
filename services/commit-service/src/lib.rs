@@ -27,9 +27,12 @@ pub mod vocabulary;
 pub mod wire;
 
 pub use domain::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatRules, CombatState,
-    Stance,
+    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, Stance,
 };
+// F1 — the domain's rules slice IS the resolved ruleset now. Re-exported here
+// so a host wiring an island does not need a direct `ruleset-core` dependency
+// just to name the type it passes to `Island::new`.
+pub use ruleset_core::{CombatRules, ResolvedRuleset, Ruleset, StatRules};
 pub use llm_driver::{decide, hp_band, Candidate, DecisionContext, Dispatch};
 pub use vocabulary::{Reject, Vocabulary};
 pub use wire::{OutcomeDetail, OutcomeKind, TurnOutcome};

@@ -22,11 +22,11 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use commit_service::manager::{AdoptOutcome, Manager};
-use commit_service::{Actor, CombatDomain, CombatPayload, CombatRules, CombatState};
+use commit_service::{Actor, CombatDomain, CombatPayload, Ruleset, CombatState};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
-    Outcome, Producer, QueuedInput, RulesetDigest, SeenWindow, Seq,
+    Outcome, Producer, QueuedInput, SeenWindow, Seq,
 };
 
 fn dsn() -> Option<String> {
@@ -43,14 +43,16 @@ async fn pool(url: &str) -> Arc<PgPool> {
 }
 
 fn build_island() -> Island<CombatDomain> {
+    // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
+    // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
+    let rules = Arc::new(Ruleset::engine_default());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(100));
-    state.actors.insert(EntityId(2), Actor::new(100_000));
+    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
+    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xFA1_10,
-        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
-        RulesetDigest([0u8; 32]),
+        Arc::clone(&rules),
         SeenWindow::TtlTicks(300),
         state,
     );

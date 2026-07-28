@@ -30,10 +30,10 @@ use std::time::Duration;
 
 use commit_service::admission::{admit_engine_turn_end as engine_end_turn, admit_t6, AdmissionOutcome, DedupCache};
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, CombatRules, CombatState, Vocabulary, COMBAT_V1_JSON,
+    Actor, CombatDomain, CombatEvent, Ruleset, CombatState, Vocabulary, COMBAT_V1_JSON,
 };
 use sim_core::{
-    DiscardReason, EntityId, Island, IslandId, Lane, Outcome, PreconditionKind, RulesetDigest,
+    DiscardReason, EntityId, Island, IslandId, Lane, Outcome, PreconditionKind,
     SeenWindow, StepStatus,
 };
 
@@ -68,15 +68,17 @@ fn strike(client_request_id: &str) -> String {
 /// so the exploit is measured in landed strikes rather than cut short by the
 /// target dying.
 fn island() -> Island<CombatDomain> {
+    // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
+    // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
+    let rules = Arc::new(Ruleset::engine_default());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(100));
-    state.actors.insert(EntityId(2), Actor::new(100_000));
+    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
+    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
 
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         SEED,
-        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
-        RulesetDigest([0u8; 32]),
+        Arc::clone(&rules),
         SeenWindow::Unbounded,
         state,
     );

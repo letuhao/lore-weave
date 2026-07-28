@@ -14,12 +14,27 @@ use commit_service::combat::{
     action_value, evaluate_outcome, hit_chance_pm, next_actor, resolve_attack, role_rng, AvStatus,
     CombatStats, EncounterOutcome, SeedRole, Side,
 };
+use commit_service::{CombatRules, StatRules};
 use sim_core::EntityId;
 
 const SEED: u64 = 0xC0FFEE;
 
+/// F1 — the laws now take their constants by reference instead of embedding
+/// them. These helpers supply the `engine_default` layer, which holds exactly
+/// the literals the laws used to contain, so every expected value below is
+/// unchanged. **A test that needed its expected value edited would be a
+/// migration bug, not a test bug** — that is what makes this suite the proof
+/// the constant move was value-preserving.
+fn crules() -> CombatRules {
+    CombatRules::engine_default()
+}
+
+fn srules() -> StatRules {
+    StatRules::engine_default()
+}
+
 fn atk() -> CombatStats {
-    CombatStats::archetype_melee(100)
+    CombatStats::archetype_melee(&srules(), 100)
 }
 
 // ───────────────────────────── hit / dodge ──────────────────────────────────
@@ -32,12 +47,12 @@ fn atk() -> CombatStats {
 /// encounter can never resolve.
 #[test]
 fn hit_chance_is_clamped_at_both_ends() {
-    assert_eq!(hit_chance_pm(0, 0), 500, "the 0.5 base, in per-mille");
-    assert_eq!(hit_chance_pm(10_000, 0), 950, "no build is unmissable");
-    assert_eq!(hit_chance_pm(0, 10_000), 50, "no target is untouchable");
+    assert_eq!(hit_chance_pm(&crules(), 0, 0), 500, "the 0.5 base, in per-mille");
+    assert_eq!(hit_chance_pm(&crules(), 10_000, 0), 950, "no build is unmissable");
+    assert_eq!(hit_chance_pm(&crules(), 0, 10_000), 50, "no target is untouchable");
     // Monotonic in between: more accuracy is never worse.
-    assert!(hit_chance_pm(300, 100) > hit_chance_pm(200, 100));
-    assert!(hit_chance_pm(200, 200) < hit_chance_pm(200, 100));
+    assert!(hit_chance_pm(&crules(), 300, 100) > hit_chance_pm(&crules(), 200, 100));
+    assert!(hit_chance_pm(&crules(), 200, 200) < hit_chance_pm(&crules(), 200, 100));
 }
 
 // ──────────────────────────── damage law-chain ──────────────────────────────
@@ -58,7 +73,7 @@ fn armor_cannot_make_a_target_immortal() {
     tank.dodge_pm = 0;
 
     let hits: Vec<i64> = (0..50)
-        .map(|i| resolve_attack(&a, &tank, false, SEED, EntityId(1), i))
+        .map(|i| resolve_attack(&crules(), &a, &tank, false, SEED, EntityId(1), i))
         .filter(|o| o.hit)
         .map(|o| o.damage)
         .collect();
@@ -85,7 +100,7 @@ fn damage_varies_within_the_locked_band() {
     // Filter to hits: a miss is damage 0 by design (and a separate law), so
     // including them here would test `hit_chance`, not the damage band.
     let dmgs: Vec<i64> = (0..200)
-        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .map(|i| resolve_attack(&crules(), &a, &d, false, SEED, EntityId(1), i))
         .filter(|o| o.hit)
         .map(|o| o.damage)
         .collect();
@@ -108,8 +123,8 @@ fn defending_halves_but_never_negates() {
 
     let mut compared = 0;
     for i in 0..50 {
-        let open = resolve_attack(&a, &d, false, SEED, EntityId(1), i);
-        let guarded = resolve_attack(&a, &d, true, SEED, EntityId(1), i);
+        let open = resolve_attack(&crules(), &a, &d, false, SEED, EntityId(1), i);
+        let guarded = resolve_attack(&crules(), &a, &d, true, SEED, EntityId(1), i);
         // Same coordinate ⇒ same hit roll, so the two agree on landing.
         assert_eq!(open.hit, guarded.hit, "defending must not change WHETHER it hits");
         if !open.hit {
@@ -168,14 +183,14 @@ fn roles_do_not_collide() {
 /// `av = 10000 / speed`, and status mutates it by the locked percentages.
 #[test]
 fn action_value_follows_speed_and_status() {
-    let base = action_value(100, AvStatus::default(), false);
+    let base = action_value(&crules(), 100, AvStatus::default(), false);
     assert_eq!(base, 100, "10000/100");
 
-    assert!(action_value(200, AvStatus::default(), false) < base, "faster acts sooner");
-    assert_eq!(action_value(100, AvStatus { slowed: true, ..Default::default() }, false), 120);
-    assert_eq!(action_value(100, AvStatus { hasted: true, ..Default::default() }, false), 80);
-    assert_eq!(action_value(100, AvStatus { stunned: true, ..Default::default() }, false), 200);
-    assert_eq!(action_value(100, AvStatus::default(), true), 75, "initiator head start");
+    assert!(action_value(&crules(), 200, AvStatus::default(), false) < base, "faster acts sooner");
+    assert_eq!(action_value(&crules(), 100, AvStatus { slowed: true, ..Default::default() }, false), 120);
+    assert_eq!(action_value(&crules(), 100, AvStatus { hasted: true, ..Default::default() }, false), 80);
+    assert_eq!(action_value(&crules(), 100, AvStatus { stunned: true, ..Default::default() }, false), 200);
+    assert_eq!(action_value(&crules(), 100, AvStatus::default(), true), 75, "initiator head start");
 }
 
 /// Speed 0 must not divide by zero. A stat debuff that over-subtracts would
@@ -183,8 +198,8 @@ fn action_value_follows_speed_and_status() {
 /// but the encounter is dead either way.
 #[test]
 fn zero_speed_does_not_divide_by_zero() {
-    assert!(action_value(0, AvStatus::default(), false) > 0);
-    assert!(action_value(-5, AvStatus::default(), false) > 0);
+    assert!(action_value(&crules(), 0, AvStatus::default(), false) > 0);
+    assert!(action_value(&crules(), -5, AvStatus::default(), false) > 0);
 }
 
 /// Lowest AV acts; ties break on entity id so the order is replay-stable.
@@ -252,10 +267,10 @@ fn misses_occur_at_the_archetype_rate() {
     let (a, d) = (atk(), atk());
     let n = 2_000;
     let hits = (0..n)
-        .filter(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), *i).hit)
+        .filter(|i| resolve_attack(&crules(), &a, &d, false, SEED, EntityId(1), *i).hit)
         .count();
 
-    let expected = hit_chance_pm(a.accuracy_pm, d.dodge_pm); // 850
+    let expected = hit_chance_pm(&crules(), a.accuracy_pm, d.dodge_pm); // 850
     assert_eq!(expected, 850, "the archetype's hit chance is what we think");
 
     let observed_pm = (hits as i64 * 1000) / n as i64;
@@ -270,14 +285,14 @@ fn misses_occur_at_the_archetype_rate() {
 /// per-mille slots stay per-mille rather than being silently divided twice.
 #[test]
 fn the_combat_view_maps_the_df07_slots() {
-    use commit_service::stats::{resolve_block, StatBlock, StatSlot, StatTuning};
+    use commit_service::stats::{resolve_block, StatBlock, StatSlot};
 
-    let mut arch = StatBlock::default();
+    let mut arch = StatBlock::from_defaults(&srules());
     arch.set(StatSlot::StrikePower, 33);
     arch.set(StatSlot::Armor, 7);
     arch.set(StatSlot::Accuracy, 321);
     arch.set(StatSlot::Speed, 250);
-    let block = resolve_block(&arch, &[], &[], &[], &StatTuning::default());
+    let block = resolve_block(&arch, &[], &[], &[], &srules());
     let view = CombatStats::from_block(&block);
 
     assert_eq!(view.strike_power, 33);
@@ -313,7 +328,7 @@ fn the_damage_band_reaches_both_ends_and_centres_on_one() {
     d.dodge_pm = 0;
 
     let dmgs: Vec<i64> = (0..4000)
-        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .map(|i| resolve_attack(&crules(), &a, &d, false, SEED, EntityId(1), i))
         .filter(|o| o.hit)
         .map(|o| o.damage)
         .collect();
@@ -367,20 +382,20 @@ fn an_oversized_hit_is_capped_and_says_so() {
     // Far past the old ~1.6M i64 saturation point.
     a.strike_power = 1_000_000_000_000;
     let big: Vec<_> = (0..20)
-        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .map(|i| resolve_attack(&crules(), &a, &d, false, SEED, EntityId(1), i))
         .filter(|o| o.hit)
         .collect();
     assert!(!big.is_empty());
     assert!(big.iter().all(|o| o.capped), "the ceiling bound but did not report");
     assert!(
-        big.iter().all(|o| o.damage == commit_service::combat::MAX_HIT),
+        big.iter().all(|o| o.damage == crules().max_hit),
         "a capped hit must BE the declared ceiling, not an arbitrary saturated number"
     );
 
     // Ordinary play is untouched: no cap, and damage still tracks strike_power.
     a.strike_power = 1000;
     let small: Vec<_> = (0..20)
-        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .map(|i| resolve_attack(&crules(), &a, &d, false, SEED, EntityId(1), i))
         .filter(|o| o.hit)
         .collect();
     assert!(small.iter().all(|o| !o.capped), "a normal hit must not report a cap");
@@ -406,7 +421,7 @@ fn damage_scales_across_the_old_saturation_point() {
         let mut a2 = a;
         a2.strike_power = sp;
         (0..20)
-            .map(|i| resolve_attack(&a2, &d, false, SEED, EntityId(1), i))
+            .map(|i| resolve_attack(&crules(), &a2, &d, false, SEED, EntityId(1), i))
             .find(|o| o.hit)
             .map(|o| o.damage)
             .expect("a hit")
@@ -425,4 +440,85 @@ fn damage_scales_across_the_old_saturation_point() {
     // strike_power, so the same action_idx is chosen), so the scaling is EXACT
     // rather than approximate — a sharper assertion than a ratio band.
     assert_eq!(hi, lo * 4, "4x the strike power must be exactly 4x the damage");
+}
+
+// ─────────────────── adversarial rulesets (F1 /review-impl) ──────────────────
+
+/// Every runtime floor must hold for an ARBITRARY `i64` ruleset, not just for
+/// `engine_default`.
+///
+/// F1 made these numbers author-supplied, and the code claims each bad value
+/// "degrades predictably". Three of those claims were false: the guards were
+/// computed by arithmetic that itself overflowed in `i64`. That is not merely a
+/// panic risk — `[profile.release-commit]` inherits `release`, so
+/// `overflow-checks` is **off** in the shipped binary: tests would have panicked
+/// while production WRAPPED into a silently wrong number. Same class as XST-D2,
+/// one layer up, on the surface F2 is about to open to authors.
+///
+/// **A floor computed by arithmetic that can overflow is not a floor.**
+#[test]
+fn an_extreme_ruleset_degrades_predictably_instead_of_overflowing() {
+    let mut r = crules();
+    r.roll_band_lo_pm = i64::MIN;
+    r.roll_band_hi_pm = i64::MAX;
+    // Would have overflowed `hi - lo + 1` in i64.
+    assert!(r.roll_band_width() >= 1, "the band width floor must hold");
+
+    let mut inverted = crules();
+    inverted.roll_band_lo_pm = 1000;
+    inverted.roll_band_hi_pm = -1000;
+    assert_eq!(inverted.roll_band_width(), 1, "an inverted band collapses, never panics");
+
+    // `hit_base_pm + acc − dodge` overflowed i64 before the i128 widening.
+    let mut h = crules();
+    h.hit_base_pm = i64::MAX;
+    assert_eq!(
+        hit_chance_pm(&h, i64::MAX, i64::MIN),
+        h.hit_ceiling_pm,
+        "an overflowing hit chance saturates to the declared ceiling"
+    );
+    h.hit_base_pm = i64::MIN;
+    assert_eq!(hit_chance_pm(&h, i64::MIN, i64::MAX), h.hit_floor_pm);
+
+    // floor > ceiling: floor wins, and `i64::clamp` must not panic.
+    let mut inv = crules();
+    inv.hit_floor_pm = 900;
+    inv.hit_ceiling_pm = 100;
+    assert_eq!(hit_chance_pm(&inv, 0, 0), 900, "floor wins, deterministically");
+
+    // `(1000 − resist_pm)` was evaluated in i64 BEFORE the i128 cast.
+    let mut e = crules();
+    e.resist_pm = i64::MIN;
+    let a = atk();
+    let out = resolve_attack(&e, &a, &a, false, SEED, EntityId(1), 0);
+    assert!(out.damage >= 1, "damage floor holds even for an absurd resist");
+
+    // `defend_divisor = 0` must not divide by zero.
+    let mut d = crules();
+    d.defend_divisor = 0;
+    let guarded = resolve_attack(&d, &a, &a, true, SEED, EntityId(1), 0);
+    assert!(guarded.damage >= 1);
+}
+
+/// The same, for the stat path: `move_base` is author-supplied and its sum with
+/// the speed term overflowed `i32`.
+#[test]
+fn an_extreme_move_tuning_stays_inside_i32() {
+    use commit_service::stats::{resolve_block, StatBlock, StatSlot};
+
+    let mut r = srules();
+    r.move_base = i32::MAX;
+    r.move_max = i32::MAX;
+    r.move_speed_per_tile = 1;
+    let mut arch = StatBlock::from_slots(&r.melee_archetype);
+    arch.set(StatSlot::Speed, i32::MAX);
+
+    let out = resolve_block(&arch, &[], &[], &[], &r);
+    assert!(out.get(StatSlot::MoveRange) >= 1, "the move floor holds");
+
+    // And an inverted max collapses to the floor rather than panicking in clamp.
+    let mut inv = srules();
+    inv.move_max = 0;
+    let out = resolve_block(&arch, &[], &[], &[], &inv);
+    assert_eq!(out.get(StatSlot::MoveRange), 1);
 }
