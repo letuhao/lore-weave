@@ -731,6 +731,80 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS exit_state   JSONB;     -- SC1
 -- chapter/scene nodes and inserts a fresh tree built purely from the plan output, so without a
 -- per-slot record the first re-plan would silently delete everything the author had settled.
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS intent_slots JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- INTENT-COLLECTION FSM (spec 2026-07-28) — the machine that ASKS for intent.
+--
+-- Measured 2026-07-28: 0 of 95 chapter nodes carried a single intent slot. The columns above have
+-- modelled chapter intent all along and NOTHING has ever written to them — there was no producer.
+-- This is that producer, and it is a state machine rather than a chat loop for one reason: a weak
+-- model is reliable only when every decision it makes is small enough for it to make. One slot per
+-- call, one retry, no loops, and every author-facing state BLOCKS (an unattended fill loop is
+-- exactly how a model invents canon).
+--
+-- Scoped to ONE outline_node, never the book: intent is per-chapter and per-scene, and a book-level
+-- run would be the ask-everything-upfront mistake the spec opens by correcting.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS intent_run (
+  run_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,                    -- the author this run is a conversation WITH
+  book_id       UUID NOT NULL,                    -- tenancy scope key (E0 book gate at the route)
+  project_id    UUID NOT NULL,
+  node_id       UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
+  -- `advanced` is a REAL resting state, not a transient: it is where the run sits between two slots
+  -- with no LLM call in flight and no author blocked. Making it real keeps EVERY LLM call on exactly
+  -- one route (propose), so spend is visible per call instead of hidden inside an apply.
+  status        TEXT NOT NULL DEFAULT 'opened'
+                CHECK (status IN ('opened','proposing','awaiting_author','applying',
+                                  'advanced','proposal_failed','done','cancelled','failed')),
+  slot_plan     JSONB NOT NULL DEFAULT '[]'::jsonb,   -- the ordered slots in scope for THIS run
+  slot_cursor   TEXT,                                 -- which slot the current status is about
+  candidates    JSONB NOT NULL DEFAULT '[]'::jsonb,   -- the live proposal for slot_cursor
+  params        JSONB NOT NULL DEFAULT '{}'::jsonb,   -- model_source/model_ref (never a literal name), arm, n
+  error_detail  TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- One LIVE run per node. `opened` is deliberately INSIDE the predicate (unlike glossary-build's
+-- free `draft`): a second run on the same node would race the first one's writes onto the same
+-- columns, so the collision must land at create time, not on the first transition.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_intent_run_active_node ON intent_run(node_id)
+  WHERE status NOT IN ('done','cancelled','failed');
+CREATE INDEX IF NOT EXISTS idx_intent_run_owner_book ON intent_run(owner_user_id, book_id);
+
+-- The INSTRUMENT (spec §8). One row per slot VISITED — including the failed and the declined ones.
+-- A run that quietly omits its failures reports an acceptance rate it did not earn, which is the
+-- same shape as the empty-counted-as-degrade bug fixed earlier today; hence `outcome` is NOT NULL
+-- and `proposal_failed` is one of its values rather than an absent row.
+CREATE TABLE IF NOT EXISTS intent_slot_record (
+  record_id     UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id        UUID NOT NULL REFERENCES intent_run(run_id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  book_id       UUID NOT NULL,
+  node_id       UUID NOT NULL,
+  slot          TEXT NOT NULL,
+  position      INT  NOT NULL,                    -- 1…N — Q1 reads acceptance against this
+  -- Q1's confound: position is entangled with constraint class (closed sets come first), so the
+  -- decay-is-fatigue vs decay-is-constraint question is only answerable with BOTH recorded.
+  constraint_class TEXT NOT NULL CHECK (constraint_class IN ('closed','canon_open','blank_open')),
+  arm           TEXT NOT NULL DEFAULT 'constrained_first'
+                CHECK (arm IN ('constrained_first','reversed')),
+  candidates    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  verdicts      JSONB NOT NULL DEFAULT '[]'::jsonb,   -- metric A, scored by the AUTHOR (never a judge model)
+  author_value  TEXT,                                 -- what the author accepted or wrote
+  applied_value TEXT,                                 -- read BACK off the node after the write
+  -- `offered` is a distinct outcome, not a shade of `skipped`: it means the machine asked and the
+  -- author has not answered yet. Folding it into `skipped` would report an ABANDONED run as one the
+  -- author actively passed on — a difference the POC's acceptance rate is entirely built on.
+  outcome       TEXT NOT NULL
+                CHECK (outcome IN ('offered','applied','absent','proposal_failed','skipped')),
+  llm_calls     INT     NOT NULL DEFAULT 0,           -- proves the one-call/one-retry bound held
+  retried       BOOLEAN NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_intent_slot_record UNIQUE (run_id, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_intent_slot_record_run ON intent_slot_record(run_id);
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward

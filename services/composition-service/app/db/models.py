@@ -197,6 +197,13 @@ class OutlineNode(BaseModel):
     stakes: str = ""
     target_words: int | None = None     # > 0
     exit_state: dict[str, Any] | None = None
+    # Intent-collection FSM (spec 2026-07-28) — WHO settled each of the slots above:
+    # `{"goal": "settled", "conflict": "absent"}`; a slot absent from the map is planner-owned.
+    # Read back here because the distinction is invisible in the values themselves: a `goal` the
+    # PLANNER proposed and a `goal` the AUTHOR settled are both just a string in the column, and a
+    # consumer that cannot tell them apart either re-asks what the author already answered or
+    # presents a machine guess to the model as settled intent it must not contradict.
+    intent_slots: dict[str, Any] = Field(default_factory=dict)
     # ── SC11 amendment — the WRITTEN VERDICT (Phase 1). NOT authored: MAINTAINED. ──
     # "Is there prose behind this spec node?" reconciled from book-service's
     # `scenes.source_scene_id` (the sole authored anchor — DA-3 still holds, this is its

@@ -311,3 +311,26 @@ async def get_glossary_build_service():
         Repo(get_pool()), get_llm_client(), get_glossary_client(),
         knowledge=get_knowledge_client(),
     )
+
+
+async def get_intent_fsm_service():
+    """The intent-collection FSM (spec 2026-07-28) — the missing PRODUCER of chapter/scene intent.
+
+    `structure_templates` supplies `beat_role`'s closed set (there is no global beat vocabulary —
+    the book's chosen template IS it) and `plan_runs` says which template the outline was actually
+    planned against. `kal` grounds the open slots in the book's real cast. Each is degrade-safe:
+    without them the run still works, it just asks less constrained questions — and the instrument
+    records the class it actually asked under, so a degraded run never reads as a constrained one."""
+    from app.db.repositories.outline import OutlineRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.structure_templates import StructureTemplatesRepo
+    from app.services.intent_fsm.repo import IntentRepo
+    from app.services.intent_fsm.service import IntentFSMService
+
+    pool = get_pool()
+    return IntentFSMService(
+        IntentRepo(pool), OutlineRepo(pool), get_llm_client(),
+        plan_runs=PlanRunsRepo(pool),
+        structure_templates=StructureTemplatesRepo(pool),
+        kal=get_kal_client(),
+    )

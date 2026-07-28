@@ -1,5 +1,73 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✅ INTENT-COLLECTION FSM M1 — the missing PRODUCER of chapter intent (2026-07-28, L)
+
+**The measurement that justified the whole thing: 0 of 95 chapter outline nodes carried a single
+intent slot.** The columns have modelled chapter intent since the schema was written and nothing had
+ever written one — traced to two independent causes, both shipped fixed: the plan apply step dropped
+`beat_role` on the floor (justified by a docstring claiming a DB CHECK forbade it; `pg_constraint`
+says the opposite and has for some time), and the planner emits `intent: ""` in 0 of 30 entries.
+
+**Precondition first (`dccf2393d`).** `outline_node` is SSOT for *settled* intent, `plan_artifact`
+for the *proposal* — they hold different facts, so there was never an SSOT conflict, only a proposal
+that was never applied. But a re-plan archives the tree and rebuilds it from plan output, so without
+a per-slot record the first re-plan silently deletes everything the author settled. `intent_slots`
+jsonb + a `settled > absent > planner` cascade. One test caught a real bug in my first implementation
+(the `absent` marker survived but the value still fell through to the planner).
+
+**Then the machine (this cycle).** `intent_run` + `intent_slot_record`, a slot registry, the
+optimistic-transition repo, a bounded LLM step, the service, the router, and
+`contracts/api/composition-service/intent.v1.yaml` (8 routes, machine-checked BOTH ways).
+
+- **`advanced` is a real resting state**, so every LLM call sits on exactly one route (`propose`) —
+  spend is visible per call instead of buried inside an apply.
+- **I-1 asserted at import**: every askable slot must be one the re-plan merge carries. A slot
+  outside it is deleted by the next re-plan — the precondition's own bug, one layer up.
+- **Live-proven** on the running stack with local Gemma-4 26B ($0): propose 2.2 s → 2 valid
+  closed-set beat candidates in Vietnamese → accept → `beat_role='hook'`,
+  `intent_slots={"beat_role":"settled"}` read straight from Postgres. The open slot's candidates
+  named **Silas the Weaver** and **Mayor Vane** — real cast via the KAL roster, so the grounding
+  works: the model transforms, it does not invent.
+
+**Review found 3 real defects, all fixed + tested** (none reachable on the happy path):
+`goal` is unbounded TEXT in Postgres but `_Short(2000)` on the model, so an over-long write succeeds
+and then makes every later `get_node` raise — the node goes unreadable long after the write ·
+`revise` with no value settled the literal string `"None"` and was therefore never re-asked ·
+`plan_for(kind)` was accepted-and-ignored, reading as scene-aware behaviour that does not exist.
+
+**Evidence:** composition 2,729 pass · 32 DB-gated on a throwaway DB · two assertions
+mutation-tested (both went red on sabotage, restored) · provider-gate + db-safety-gate green.
+
+### ⚠️ SCOPE CORRECTION FROM THE PO — M1 is aimed one layer too low
+
+> *planforge đã làm đủ tốt nếu có plan sẵn rồi. cái chúng ta đang build là khiến model giúp human
+> tạo lên nguyên liệu cho chính planforge* — and: *planforge không chỉ consume markdown, nó build
+> lên architecture để compiler khai thác.*
+
+`outline_node`'s slots are the OUTPUT of PlanForge's `scenes` pass. So M1 is a refine-after-plan
+tool — real and correct, but not the gap. **Verified against code**, the actual boundary is:
+
+| the author must supply (nguyên liệu) | PlanForge BUILDS (architecture) |
+|---|---|
+| `character_seed` · `mechanics` · `planner_variables` · `arc_overview` · `writing_principles` · `open_questions` | `cast_plan`* · `beat_plan`* · `world_plan` · `char_arc_plan` · `scene_plan` · `motif_plan` |
+
+(`ingest.py::SECTION_KIND_MAP` names the six; `propose.py` reads exactly those. *blocking checkpoints.)
+
+**And the hole is real and silent:** `# An unmatched section is 'other', and 'other' is IGNORED, not
+guessed at.` A section the classifier misses is dropped; a section never written is simply absent.
+Grepped for a missing-section signal — **there is none.** So an author submits an incomplete document,
+PlanForge builds an architecture with a hole in it, and reports success.
+
+**Next:** the POC at the RAW-MATERIAL layer — a real multi-turn chat session that turns the author's
+talk into the six section kinds, ending in the REAL `ingest → run_rules → compile`. Headline metric
+is mechanical, not a taste judgement: *does the conversation produce a document PlanForge can
+actually compile, and how much did the author have to type?* Plus `other`-drop rate, six-kind
+coverage, and author-words vs model-words (the laundering risk).
+
+Also open, unchanged by this: metric B of the FSM spec (apply fidelity) is **vacuous by
+construction** — the model never touches the apply path, so `author_value == applied_value` always.
+It is answered by design, not by measurement, and needs one proof test rather than a metric.
+
 ## ✅ GLOSSARY GROUNDING AT SCALE — one missing index was corrupting the KG (2026-07-28, M)
 
 **The headline: the duplicate entities were never a random outage. They were a missing index.**

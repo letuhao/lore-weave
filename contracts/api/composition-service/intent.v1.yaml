@@ -1,0 +1,348 @@
+openapi: 3.1.0
+info:
+  title: Composition — intent-collection FSM
+  version: "1.0.0"
+  description: |
+    The producer of chapter/scene INTENT (spec docs/specs/2026-07-28-intent-collection-fsm.md).
+
+    Measured 2026-07-28: 0 of 95 chapter outline nodes carried a single intent slot. The columns
+    have modelled chapter intent since the schema was written and nothing had ever written one.
+    This is that missing producer.
+
+    An author cannot state their intent up front — it accretes through the work. So the machine's
+    job is to make intent CHEAP TO SAY: propose small, grounded, reversible options and let the
+    author correct them. With a weak model that only works under rails:
+
+      * ONE slot per LLM call, ONE retry on unusable JSON, then `proposal_failed` — no step loops.
+      * EVERY author-facing state BLOCKS. There is no "the agent finished your chapter spec while
+        you were away" — an unattended fill loop is how a model invents canon unnoticed.
+      * The cursor only advances; a settled slot needs an explicit re-open.
+      * `decline` is a WRITE (`absent` = "the story has not decided this"), never re-asked.
+      * Every transition is optimistic — a duplicate click 409s rather than double-applying.
+
+    All LLM spend sits on ONE route (`/propose`), by design: `advanced` is a real resting state so
+    cost is visible per call instead of buried inside an apply.
+
+    Auth: JWT user + E0 book-grant at the route (VIEW to read, EDIT to mutate). Runs are
+    OWNER-scoped — an intent run is a conversation with one author; a non-owner 404s rather than
+    403ing, so the route is not an existence oracle.
+servers:
+  - url: http://composition-service:8000
+tags:
+  - name: intent
+
+paths:
+  /v1/composition/intent/runs:
+    post:
+      tags: [intent]
+      summary: Open a run over the slots this node has not settled yet
+      description: |
+        Slots already `settled` or declared `absent` are EXCLUDED from the plan — not skipped at ask
+        time. 409 `NOTHING_TO_ASK` when nothing is left, rather than opening an empty run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, node_id, params]
+              properties:
+                book_id: { type: string, format: uuid }
+                node_id:
+                  type: string
+                  format: uuid
+                  description: an outline_node of kind `chapter` or `scene` — never the book (a book-level run is the ask-everything-upfront mistake)
+                params:
+                  type: object
+                  required: [model_source, model_ref]
+                  properties:
+                    model_source: { type: string, example: user_model }
+                    model_ref:
+                      type: string
+                      description: user-model UUID — resolved via provider-registry, never a literal model name
+                    arm:
+                      type: string
+                      enum: [constrained_first, reversed]
+                      default: constrained_first
+                      description: |
+                        The POC's controlled comparison (spec §10 Q1). `reversed` is the exact mirror
+                        of the default order, so the two arms differ ONLY in order — it separates
+                        "acceptance decays with position" (fatigue) from "acceptance rises with
+                        constraint" (§5 working).
+                    n: { type: integer, default: 3, description: candidates per slot }
+                    lang: { type: string, default: vi }
+                    slots:
+                      type: array
+                      items: { $ref: "#/components/schemas/Slot" }
+                      description: narrow the run's scope; ORDER always comes from the registry, never from this list
+                    structure_template_id:
+                      type: string
+                      format: uuid
+                      description: overrides the beat vocabulary; defaults to the structure the book's newest plan run was planned against
+      responses:
+        "201": { $ref: "#/components/responses/Run" }
+        "403": { description: insufficient grant }
+        "404": { description: book or outline node not found }
+        "409": { description: the node already has a live run (ACTIVE_RUN), or nothing is left to ask (NOTHING_TO_ASK) }
+        "422": { description: missing params, a non-chapter/scene node, an unknown slot, or a bad arm }
+    get:
+      tags: [intent]
+      summary: List this user's intent runs for a book
+      parameters:
+        - { in: query, name: book_id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: limit, schema: { type: integer, default: 20, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: runs
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Run" } }
+
+  /v1/composition/intent/runs/{run_id}:
+    get:
+      tags: [intent]
+      summary: Read a run and its per-slot records
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "404": { description: not found (also returned to a non-owner) }
+
+  /v1/composition/intent/runs/{run_id}/propose:
+    post:
+      tags: [intent]
+      summary: The run's ONLY LLM call — N candidates for the cursor's slot
+      description: |
+        `opened | advanced | proposal_failed` → `proposing` → `awaiting_author | proposal_failed`.
+
+        One call; unusable JSON gets exactly one retry with the parse error fed back; then the slot
+        is `proposal_failed` and SAYS SO. A `proposal_failed` slot is recorded in the instrument, not
+        dropped — a run that omits its failures reports an acceptance rate it did not earn.
+
+        A transport/provider failure is deliberately NOT `proposal_failed` (that state is a fact
+        about the MODEL): it 502s and rewinds to `opened` so the run stays retryable.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: the run is not waiting to propose (most often it is awaiting your answer) }
+        "502": { description: the LLM call failed — the run is rewound to `opened` }
+
+  /v1/composition/intent/runs/{run_id}/answer:
+    post:
+      tags: [intent]
+      summary: The author's blocking checkpoint — accept, revise, or decline
+      description: |
+        `awaiting_author` → `applying` → `advanced` (or `done`). ALL THREE ACTIONS WRITE.
+
+        `decline` is not a no-op: it stamps `absent`, an AUTHORED STATEMENT that the story has not
+        decided this slot. It is never re-asked and never auto-filled — collapsing it into "skip" is
+        what lets a fill loop re-ask what the story has no answer to, and the model then invents.
+
+        A value the column cannot hold 422s and REWINDS to `awaiting_author`; the author is still
+        the one being asked, so the run is never stranded over a typo.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [accept, revise, decline]
+                  description: CLOSED SET, enum-validated on the way in — a free string here is the frontend-tool bug class that shipped once as a silent no-op plus a hallucinated success
+                value:
+                  description: the author's value; `accept` with none takes the top candidate, `decline` ignores it
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: the run is not awaiting an answer (a duplicate click loses here) }
+        "422": { description: unknown action, nothing to accept, or a value the slot's column rejects }
+        "502": { description: the node write failed — the run is rewound to `awaiting_author` }
+
+  /v1/composition/intent/runs/{run_id}/skip:
+    post:
+      tags: [intent]
+      summary: Move past a slot whose proposal failed
+      description: The slot stays UNASKED, and the instrument record says `proposal_failed` — never a silent skip.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: the run has no failed proposal to skip }
+
+  /v1/composition/intent/runs/{run_id}/resume:
+    post:
+      tags: [intent]
+      summary: Rewind a run a restart stranded mid-request
+      description: |
+        Only the two non-author-facing states resume: `proposing` → `opened`, `applying` →
+        `awaiting_author`. Each rewinds to the state BEFORE its side effect, so resuming can re-do
+        work but can never skip the author. Re-applying the same value to the same column is
+        idempotent; advancing past it would drop the slot in silence.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: the run is not stranded (NOT_STRANDED) }
+
+  /v1/composition/intent/runs/{run_id}/cancel:
+    post:
+      tags: [intent]
+      summary: End the run
+      description: Every slot already settled STAYS settled — the writes were never provisional. Cancelling frees the node for a new run.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: the run is already finished }
+
+  /v1/composition/intent/runs/{run_id}/score:
+    post:
+      tags: [intent]
+      summary: The author's per-candidate verdict (metric A)
+      description: |
+        Scored by the AUTHOR and never by a judge model — the thing being measured is authorial
+        taste, so a model grading it would be the thing under test grading itself. Metric B
+        (`exact`/`drifted`/`dropped`) is computed mechanically from `author_value` vs
+        `applied_value` and needs no route.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slot, verdicts]
+              properties:
+                slot: { $ref: "#/components/schemas/Slot" }
+                verdicts:
+                  type: array
+                  items:
+                    type: object
+                    required: [verdict]
+                    properties:
+                      index: { type: integer, description: the candidate's position in the offered list }
+                      verdict: { type: string, enum: [accept, light_edit, discard] }
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "404": { description: no record for that slot in this run }
+        "422": { description: a verdict outside the closed set }
+
+components:
+  parameters:
+    RunId:
+      in: path
+      name: run_id
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Run:
+      description: the run
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Run" }
+
+  schemas:
+    Slot:
+      type: string
+      description: |
+        The askable intent slots, in the order the FSM asks them: closed sets first (a weak model
+        picks well from a set and invents badly), then canon-grounded open, then the rest. Every one
+        of these is carried across a re-plan by the merge — a slot outside that set would be silently
+        deleted by the next re-plan.
+      enum: [beat_role, value_shift, tension, goal, conflict, outcome, stakes, exit_state, story_time, target_words]
+
+    Status:
+      type: string
+      description: |
+        `advanced` is a REAL resting state, not a transient — it is where the run sits between two
+        slots with no LLM call in flight and no author blocked, which is what keeps every LLM call on
+        exactly one route.
+      enum: [opened, proposing, awaiting_author, applying, advanced, proposal_failed, done, cancelled, failed]
+
+    Run:
+      type: object
+      properties:
+        run_id: { type: string, format: uuid }
+        book_id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/Status" }
+        slot_plan:
+          type: array
+          items: { $ref: "#/components/schemas/Slot" }
+        slot_cursor:
+          oneOf: [{ $ref: "#/components/schemas/Slot" }, { type: "null" }]
+        candidates:
+          type: array
+          description: the live proposal for `slot_cursor`
+          items:
+            type: object
+            properties:
+              value: {}
+              why: { type: string }
+        params:
+          type: object
+          description: the run's knobs plus the RESOLVED structure provenance
+          properties:
+            arm: { type: string, enum: [constrained_first, reversed] }
+            n: { type: integer }
+            lang: { type: string }
+            beat_keys:
+              type: array
+              items: { type: string }
+              description: the run's FROZEN beat vocabulary — resolved once, so propose and answer cannot disagree and a mid-run template switch cannot rewrite what earlier slots were asked against
+            structure:
+              type: object
+              description: |
+                `resolve_structure`'s provenance block. `source` is the honesty field: a consumer
+                that sees only the beats cannot tell the author's real structure from a platform
+                fallback, and `beat_role` asked with no structure is not a closed set at all.
+              properties:
+                source: { type: string, enum: [run, default, unavailable] }
+                name: { type: string }
+                beat_count: { type: integer }
+                note: { type: string }
+        error_detail:
+          oneOf: [{ type: string }, { type: "null" }]
+        records:
+          type: array
+          description: the INSTRUMENT — one row per slot VISITED, including the failed and declined ones
+          items: { $ref: "#/components/schemas/SlotRecord" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    SlotRecord:
+      type: object
+      properties:
+        slot: { $ref: "#/components/schemas/Slot" }
+        position:
+          type: integer
+          description: 1…N within THIS run — Q1 plots acceptance against it
+        constraint_class:
+          type: string
+          enum: [closed, canon_open, blank_open]
+          description: |
+            What the slot was ACTUALLY asked under, not what was intended — `beat_role` degrades to
+            `blank_open` when the book has no structure. Position is entangled with class (closed
+            sets come first), so both are needed to tell fatigue from constraint.
+        arm: { type: string, enum: [constrained_first, reversed] }
+        candidates: { type: array, items: { type: object } }
+        verdicts:
+          type: array
+          description: metric A — filled in by the author
+          items: { type: object }
+        author_value:
+          oneOf: [{ type: string }, { type: "null" }]
+        applied_value:
+          oneOf: [{ type: string }, { type: "null" }]
+          description: read BACK off the node after the write, never echoed from the request — metric B's whole point is catching a write that did not land as given
+        outcome:
+          type: string
+          enum: [offered, applied, absent, proposal_failed, skipped]
+          description: |
+            `offered` (asked, not yet answered) is distinct from `skipped` (actively passed on) —
+            folding them together would report an ABANDONED run as one the author declined, and the
+            acceptance rate is built entirely on that difference.
+        llm_calls:
+          type: integer
+          description: accumulates across a re-proposed slot — proves the one-call/one-retry bound held, and reporting only the last attempt would under-count the costliest runs
+        retried: { type: boolean }

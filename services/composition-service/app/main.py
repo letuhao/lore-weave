@@ -38,6 +38,7 @@ from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     actions, approve, arc, authoring_runs, canon, conformance, engine, error_blocks,
     glossary_build,
+    intent,
     grounding, health,
     import_source, internal_eval, internal_job_control, internal_model_settings,
     internal_plan_state, internal_structure_state, metrics,
@@ -238,6 +239,7 @@ app.include_router(plan_forge.router)
 app.include_router(plan_bootstrap.router)  # PlanForge auto-bootstrap gate POC
 app.include_router(authoring_runs.router)  # RAID Wave D2 — autonomy-dial run FSM
 app.include_router(glossary_build.router)  # glossary-build pipeline (spec 2026-07-27)
+app.include_router(intent.router)          # intent-collection FSM (spec 2026-07-28)
 app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(internal_model_settings.router)  # D-CHATAI-M1B — Book tier model-settings read

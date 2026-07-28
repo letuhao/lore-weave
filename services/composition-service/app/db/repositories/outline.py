@@ -39,7 +39,7 @@ _SELECT_COLS = """
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
   story_order, synopsis, structure_node_id,
   location_entity_id, story_time, conflict, outcome, value_shift, stakes,
-  target_words, exit_state, source,
+  target_words, exit_state, source, intent_slots,
   -- SC11 Phase 1/3 — the written verdict. A MAINTAINED column (reconciled from
   -- book-service's scenes.source_scene_id), never authored. Selected here so the PH10
   -- summary projection can ship `written` without a second query.
@@ -75,6 +75,11 @@ def _row_to_node(row: asyncpg.Record) -> OutlineNode:
     ev = data.get("exit_state")
     if isinstance(ev, str):
         data["exit_state"] = json.loads(ev)
+    # Same TEXT-not-dict story for the FSM's per-slot provenance. `or {}` covers a legacy row
+    # written before the column existed — a NULL here must read as "nothing settled", never crash
+    # the whole node read.
+    st = data.get("intent_slots")
+    data["intent_slots"] = json.loads(st) if isinstance(st, str) else (st or {})
     return OutlineNode.model_validate(data)
 
 
@@ -491,6 +496,56 @@ class OutlineRepo:
         "beat_role", "value_shift", "tension",
         "goal", "conflict", "outcome", "stakes", "exit_state", "story_time", "target_words",
     )
+
+    async def settle_intent_slot(
+        self, project_id: UUID, node_id: UUID, *,
+        slot: str, value: Any, pg_cast: str, verdict: str,
+    ) -> Any:
+        """Write ONE intent slot and stamp who settled it. Returns the value as PERSISTED.
+
+        The intent-collection FSM's apply step (spec 2026-07-28 §4). Two properties matter:
+
+        **It returns the column read BACK, not the value passed in.** Metric B of the POC asks
+        whether the artifact ends up saying exactly what the author said — `exact` / `drifted` /
+        `dropped`. Echoing the request would make that metric measure nothing, since the one failure
+        it exists to catch is precisely a write that did not land as given.
+
+        **`slot` is interpolated into the statement, so it is membership-checked FIRST.** The caller
+        (`intent_fsm.slots.spec`) already does this; doing it again here is deliberate — this is the
+        only method in the repo that chooses a column at runtime, and the check must not live solely
+        in a module that a future caller might bypass.
+
+        `intent_slots` is MERGED (`||`), never replaced: two slots settled in sequence must both
+        survive, and a whole-map write would drop the earlier one.
+        """
+        if slot not in self.INTENT_SLOTS:
+            raise ValueError(f"not a settleable intent slot: {slot!r}")
+        if verdict not in ("settled", "absent"):
+            raise ValueError(f"not an intent verdict: {verdict!r}")
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                f"""
+                UPDATE outline_node
+                   SET {slot} = $3::{pg_cast},
+                       intent_slots = intent_slots || jsonb_build_object($4::text, $5::text),
+                       -- Bumped even though `update_node` bumps only on a CAS write. A settled
+                       -- slot IS a content change, so an editor holding the pre-write version
+                       -- SHOULD lose its compare-and-set rather than clobber it — the FSM writes
+                       -- the same columns a human editor does.
+                       version = version + 1,
+                       updated_at = now()
+                 WHERE project_id = $1 AND id = $2 AND NOT is_archived
+                RETURNING {slot} AS settled_value
+                """,
+                project_id, node_id,
+                json.dumps(value) if pg_cast == "jsonb" and value is not None else value,
+                slot, verdict,
+            )
+        if row is None:
+            raise ReferenceViolationError(
+                f"outline node {node_id} not found in project {project_id} (or archived)"
+            )
+        return row["settled_value"]
 
     async def _lift_settled_intent(
         self, c: asyncpg.Connection, project_id: UUID, chapter_ids: list,
