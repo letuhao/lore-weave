@@ -252,11 +252,15 @@ describe('useManuscriptUnit (Tier-4 hoist)', () => {
       expect(patchDraft).toHaveBeenCalled();
     });
 
-    it('a brand-new EMPTY chapter is unaffected (nothing to protect)', async () => {
+    it('a brand-new EMPTY chapter: the mount emission is still not an edit, typing still is', async () => {
       getDraft.mockReset();
       getDraft.mockResolvedValue({ chapter_id: 'ch2', body: emptyDoc(), draft_version: 1, text_content: '' });
       renderHoist();
       await act(async () => { await api!.openUnit('ch2'); });
+      // Nothing to lose here (saving empty over empty is a no-op) — but a false "unsaved" on a
+      // fresh chapter teaches the author to ignore the one indicator that warns them.
+      act(() => { api!.setBody(emptyDoc(), ''); });
+      expect(api!.isDirty).toBe(false);
       act(() => { api!.setBody(doc('first words'), 'first words'); });
       expect(api!.isDirty).toBe(true);
     });

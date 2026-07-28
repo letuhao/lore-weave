@@ -289,9 +289,13 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     //
     // Chosen deliberately over widening the structural compare: the failure direction matters.
     // Worst case here is declining to mark dirty; the alternative silently erases prose.
+    // The rule is simply "while un-seeded, an empty document is never an edit". It deliberately
+    // does NOT also require the loaded chapter to be non-empty: on a brand-new chapter that
+    // narrower form left the same false "● unsaved" on screen (harmless — saving empty over empty
+    // loses nothing — but it trains an author to ignore the one indicator that warns them).
     const seeded = seededRef.current;
     if (text === loadedTextRef.current) seededRef.current = true;
-    if (!seeded && text.trim() === '' && loadedTextRef.current.trim() !== '') return;
+    if (!seeded && text.trim() === '') return;
     // A REAL edit changes the text; a mount-normalize re-emits the loaded text. Only the former
     // should block the fork-identity reload (D-S5).
     if (text !== loadedTextRef.current) userEditedRef.current = true;

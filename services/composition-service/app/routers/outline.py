@@ -487,9 +487,14 @@ async def outline_stats(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
-) -> dict[str, int]:
-    """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived).
-    Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline."""
+) -> dict[str, Any]:
+    """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived),
+    plus `linked_chapter_ids` — every book chapter this outline claims.
+
+    Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline. The
+    link list rides here rather than on a new route because the navigator already calls this
+    once per book in outline mode, and it is what lets the rail show the chapters that are NOT
+    in the plan instead of hiding them (D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN)."""
     await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
     return await outline.outline_stats(project_id)
 

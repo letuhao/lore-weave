@@ -43,6 +43,13 @@ const isNode = (r: ManuscriptRow, id: string) => r.type === 'node' && r.node.id 
 beforeEach(() => {
   listChaptersPage.mockReset();
   listOutlineChildren.mockReset();
+  // The outline branch now reads the chapter list + outline stats too (it has to, to know which
+  // chapters the plan does NOT claim). A bare mockReset() returns `undefined`, and a promise
+  // combinator over undefined throws — give both a resolved default so a test that does not care
+  // about unplanned chapters keeps exercising only what it names.
+  outlineStats.mockReset();
+  outlineStats.mockResolvedValue({ arcs: 0, chapters: 0, scenes: 0, linked_chapter_ids: [] });
+  listChaptersPage.mockResolvedValue({ items: [], next_cursor: null, total: 0 });
   listParts.mockReset();
   reorderParts.mockReset();
   restorePart.mockReset();
@@ -94,6 +101,46 @@ describe('useManuscriptTree', () => {
     expect(result.current.source).toBe('outline');
     expect(listOutlineChildren).toHaveBeenCalledWith('p1', 't', expect.objectContaining({ parentId: null }));
     expect(isNode(result.current.rows[0], 'arc1')).toBe(true);
+  });
+
+  // D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN — a chapter the plan does not claim must still appear in
+  // the rail. It used to appear NOWHERE (tree, jump box, ⌘P palette all queried the outline), so
+  // an author who created a chapter in a planned book simply lost sight of it.
+  it('outline source: surfaces a chapter the plan does not claim', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    listOutlineChildren.mockResolvedValue({
+      items: [{ id: 'arc1', kind: 'arc', title: 'Arc I', chapter_id: null, status: 'outline' }],
+      next_cursor: null,
+    });
+    outlineStats.mockResolvedValue({ arcs: 1, chapters: 1, scenes: 0, linked_chapter_ids: ['cPlanned'] });
+    listChaptersPage.mockResolvedValue({
+      items: [
+        { chapter_id: 'cPlanned', sort_order: 1, title: 'In the plan' },
+        { chapter_id: 'cLoose', sort_order: 2, title: 'Written outside the plan' },
+      ],
+      next_cursor: null,
+    });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'cLoose'))).toBe(true));
+    // the claimed one is NOT duplicated into the bucket — the outline already represents it
+    expect(result.current.rows.some((r) => isNode(r, 'cPlanned'))).toBe(false);
+  });
+
+  it('outline source: a stats outage flags NOTHING rather than flagging everything', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    listOutlineChildren.mockResolvedValue({
+      items: [{ id: 'arc1', kind: 'arc', title: 'Arc I', chapter_id: null, status: 'outline' }],
+      next_cursor: null,
+    });
+    outlineStats.mockRejectedValue(new Error('composition down'));
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'cAny', sort_order: 1, title: 'Any' }],
+      next_cursor: null,
+    });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'arc1'))).toBe(true));
+    // Without the coverage set every chapter would look unplanned — noisier than the gap it fixes.
+    expect(result.current.rows.some((r) => isNode(r, 'cAny'))).toBe(false);
   });
 
   it('toggleExpand lazy-loads a node’s children (parentId = the node)', async () => {

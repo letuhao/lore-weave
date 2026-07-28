@@ -1008,10 +1008,24 @@ class OutlineRepo:
 
     async def outline_stats(
         self, project_id: UUID,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Whole-book totals per kind (non-archived) for the navigator footer — arcs / chapters
         / scenes. A single GROUP BY (not derivable from the lazy-loaded tree window). Kinds with
-        no rows report 0; 'beat' is excluded (structural, not navigable)."""
+        no rows report 0; 'beat' is excluded (structural, not navigable).
+
+        Also returns `linked_chapter_ids`: every book chapter this outline claims. The navigator
+        needs it to answer "which chapters are NOT in the plan" — a question it cannot answer from
+        the tree, because the outline loads lazily and a node carrying the link can sit at any
+        depth. Without it a chapter written outside the plan was invisible in the manuscript rail
+        (D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN), and to an author a chapter they cannot see is a
+        chapter they have lost.
+
+        `chapter_id` ONLY, deliberately — it is the node's OWN spec chapter, i.e. plan identity.
+        `written_chapter_id` means "whose prose backs this scene", which a chapter can satisfy
+        without being planned at all; counting it would HIDE such a chapter. The failure
+        directions are not symmetric: listing a chapter twice is noise, dropping it is data loss
+        from the author's point of view.
+        """
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 """
@@ -1021,12 +1035,20 @@ class OutlineRepo:
                 """,
                 project_id,
             )
-        out = {"arcs": 0, "chapters": 0, "scenes": 0}
+            linked = await c.fetch(
+                """
+                SELECT DISTINCT chapter_id FROM outline_node
+                WHERE project_id = $1 AND NOT is_archived AND chapter_id IS NOT NULL
+                """,
+                project_id,
+            )
+        out: dict[str, Any] = {"arcs": 0, "chapters": 0, "scenes": 0}
         key = {"arc": "arcs", "chapter": "chapters", "scene": "scenes"}
         for r in rows:
             mapped = key.get(r["kind"])
             if mapped:
                 out[mapped] = r["n"]
+        out["linked_chapter_ids"] = [str(r["chapter_id"]) for r in linked]
         return out
 
     async def search_nodes(

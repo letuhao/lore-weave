@@ -273,7 +273,10 @@ export const compositionApi = {
   },
   // #02 navigator footer — whole-book totals per kind (non-archived). One GROUP BY; not
   // derivable from the lazy-loaded tree window.
-  outlineStats(projectId: string, token: string): Promise<{ arcs: number; chapters: number; scenes: number }> {
+  // `linked_chapter_ids` — every book chapter this outline claims. The navigator needs it to
+  // show the chapters that are NOT in the plan (D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN); it cannot
+  // derive them from the tree, which loads lazily and can carry the link at any depth.
+  outlineStats(projectId: string, token: string): Promise<{ arcs: number; chapters: number; scenes: number; linked_chapter_ids?: string[] }> {
     return apiJson(`${BASE}/works/${projectId}/outline/stats`, { token });
   },
   // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif binding

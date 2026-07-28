@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildPartsTree, chapterDisplayTitle, PART_UNASSIGNED_ID } from '../partsTree';
+import { appendUnplannedChapters, buildPartsTree, chapterDisplayTitle, PART_UNASSIGNED_ID } from '../partsTree';
 import { flatten } from '../tree';
+import { emptyTree, ROOT_KEY } from '../types';
 import type { Part, ChapterLike } from '../partsApi';
 
 const part = (id: string, sort: number, title: string): Part => ({
@@ -73,5 +74,43 @@ describe('chapterDisplayTitle (F4 — never leak the storage filename)', () => {
     const t = buildPartsTree([], [{ chapter_id: 'c1', title: '', sort_order: 1, part_id: null, original_filename: 'editor-abc.txt' } as any]);
     expect(t.nodes['c1'].title).not.toContain('editor-');
     expect(t.nodes['c1'].title).not.toContain('.txt');
+  });
+});
+
+// D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN — the outline lens renders outline nodes, so a chapter the
+// plan does not claim appeared nowhere in the rail. To an author, a chapter they cannot see is a
+// chapter they have lost.
+describe('appendUnplannedChapters', () => {
+  const outlineTree = () => {
+    const t = emptyTree();
+    t.nodes.arc1 = { id: 'arc1', kind: 'arc', title: 'Arc I', number: null, status: 'outline', chapterId: null, hasChildren: true, childCount: 3 };
+    t.childrenOf[ROOT_KEY] = ['arc1'];
+    t.childCursor[ROOT_KEY] = null;
+    return t;
+  };
+
+  it('appends a bucket, expanded, holding the chapters the plan does not claim', () => {
+    const t = appendUnplannedChapters(outlineTree(), [
+      { chapter_id: 'c9', sort_order: 1, title: 'Written outside the plan', part_id: null },
+    ]);
+    const root = t.childrenOf[ROOT_KEY];
+    expect(root[0]).toBe('arc1');                       // the outline is untouched and stays first
+    expect(root).toHaveLength(2);
+    const bucketId = root[1];
+    expect(t.expanded[bucketId]).toBe(true);            // visible without a click — that is the point
+    expect(t.childCursor[bucketId]).toBeNull();         // fully loaded, nothing to page
+    expect(t.childrenOf[bucketId]).toEqual(['c9']);
+    expect(t.nodes.c9).toMatchObject({ kind: 'chapter', chapterId: 'c9' });
+  });
+
+  it('is a no-op when every chapter is in the plan', () => {
+    const before = outlineTree();
+    expect(appendUnplannedChapters(before, [])).toBe(before);
+  });
+
+  it('does not mutate the tree it is given', () => {
+    const before = outlineTree();
+    appendUnplannedChapters(before, [{ chapter_id: 'c9', sort_order: 1, title: 'X', part_id: null }]);
+    expect(before.childrenOf[ROOT_KEY]).toEqual(['arc1']);
   });
 });
