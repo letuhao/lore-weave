@@ -16,7 +16,8 @@
         "chapters",
         "structure",
         "tension_curve",
-        "unmapped_beats"
+        "unmapped_beats",
+        "warning"
       ]
     },
     "cast_plan": {
@@ -58,7 +59,9 @@
         "why"
       ],
       "top_level_fields": [
-        "motifs"
+        "degraded",
+        "motifs",
+        "warning"
       ]
     },
     "scene_plan": {

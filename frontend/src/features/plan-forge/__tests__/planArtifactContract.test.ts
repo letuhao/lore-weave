@@ -43,8 +43,12 @@ const EDITOR_SHAPE: Record<string, { field: string; cols: string[] }> = Object.f
 /** Top-level keys each read-only view pulls off the artifact (PassArtifactView). */
 const VIEW_TOP_LEVEL: Record<string, string[]> = {
   cast_plan: ['cast'],
-  beat_plan: ['chapters', 'tension_curve', 'unmapped_beats', 'structure'],
-  motif_plan: ['motifs'],
+  // `warning` is emitted only on the DEGRADED path, so a healthy-only snapshot could not see it and
+  // the contract silently stopped covering exactly the fields that carry bad news. The BE guard now
+  // captures a second, degraded run, so these can be declared — and a producer that quits emitting
+  // them reds here instead of going quiet in the browser.
+  beat_plan: ['chapters', 'tension_curve', 'unmapped_beats', 'structure', 'warning'],
+  motif_plan: ['motifs', 'warning'],
   world_plan: ['entities'],
   char_arc_plan: ['character_arcs'],
   // E7 — the view reads the stamped curve-conformance report. Declared here so the producer can

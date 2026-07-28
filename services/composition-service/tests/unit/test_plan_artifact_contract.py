@@ -26,6 +26,7 @@ and commit the new JSON alongside the matching FE change. The FE test fails unti
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -103,6 +104,12 @@ class _HealReport:
     edits_applied = 0
 
 
+#: Toggled around the contract's SECOND capture run. A module flag rather than a ctx field because
+#: what needs to change is what the stubbed ENGINES return, not what the pass is asked for — the
+#: degraded shapes come from below the adapter, which is exactly where the real ones come from too.
+_DEGRADED = False
+
+
 def _install_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.engine.cast_plan as cast_plan
     import app.engine.character_plan as character_plan
@@ -123,6 +130,11 @@ def _install_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _beats(*a: Any, **k: Any) -> tuple[Any, list[str], list[Any]]:
         from app.engine.arc_plan import shape_tension_curve
         chs = [_chapter_plan()]
+        if _DEGRADED:
+            # The wholesale beat-mapping failure (A0): an empty vocabulary makes `beat in
+            # beat_keys` false for everything, so every chapter comes back unassigned. `run_beats`
+            # emits its `warning` only on this path, and a healthy-only snapshot cannot see it.
+            chs = [dataclasses.replace(c, beat_role=None) for c in chs]
         return chs, ["climax"], shape_tension_curve([c.beat_role for c in chs])
 
     async def _arcs(*a: Any, **k: Any) -> list[Any]:
@@ -187,12 +199,28 @@ def _row_fields(rows: Any) -> list[str]:
     return sorted(rows[0].keys())
 
 
+def _degrade(ctx: PassContext) -> PassContext:
+    """The same context, arranged so every pass takes its DEGRADED path.
+
+    Several artifact keys only appear when something went wrong — `motif_plan.warning` when no
+    motif matched, `beat_plan.warning` when the mapping produced no role for any chapter. A
+    snapshot taken from a healthy run alone cannot see them, so the contract silently stopped
+    covering exactly the fields that carry bad news: the FE reads `warning`, and if a producer quit
+    emitting it, nothing here would red. A consumer must be able to trust the contract for what it
+    may EVER see, and "only when it went wrong" is still ever.
+
+    Derived, never hand-declared — the same principle as the rest of this guard. We arrange the
+    failure and let the real adapter tell us what it emits.
+    """
+    return dataclasses.replace(ctx, retriever=None)
+
+
 async def _capture() -> dict[str, Any]:
-    """Run every adapter and record the shape it ACTUALLY produced."""
+    """Run every adapter — healthy AND degraded — and record what it ACTUALLY produced."""
     out: dict[str, Any] = {}
-    ctx = _ctx()
+    healthy = _ctx()
     for pass_id, adapter in PASS_ADAPTERS.items():
-        body = await adapter(ctx)
+        body = await adapter(healthy)
         kind = PASS_REGISTRY[pass_id].output_kind
         entry: dict[str, Any] = {
             "produced_by_pass": pass_id,
@@ -218,7 +246,31 @@ async def _capture() -> dict[str, Any]:
             out[kind]["produced_by_pass"] = f"{out[kind]['produced_by_pass']},{pass_id}"
         else:
             out[kind] = entry
+
+    # Second pass, degraded. Only the KEY SET is merged: a degraded body's list is empty, so its
+    # row_fields would be [] and would wrongly narrow what an editor may bind to.
+    global _DEGRADED
+    degraded = _degrade(healthy)
+    _DEGRADED = True
+    try:
+        await _capture_degraded(out, degraded)
+    finally:
+        _DEGRADED = False
     return out
+
+
+async def _capture_degraded(out: dict[str, Any], degraded: PassContext) -> None:
+    for pass_id, adapter in PASS_ADAPTERS.items():
+        kind = PASS_REGISTRY[pass_id].output_kind
+        if kind not in out:
+            continue
+        try:
+            body = await adapter(degraded)
+        except Exception:  # noqa: BLE001 — a pass that cannot run degraded simply adds no keys
+            continue
+        out[kind]["top_level_fields"] = sorted(
+            set(out[kind]["top_level_fields"]) | set(body.keys())
+        )
 
 
 async def test_plan_artifact_contract_matches_the_producers(monkeypatch: pytest.MonkeyPatch) -> None:

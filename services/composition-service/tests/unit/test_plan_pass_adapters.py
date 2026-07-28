@@ -252,6 +252,38 @@ async def test_run_world_forwards_the_known_world_and_canon(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_retriever_that_MATCHED_NOTHING_warns_too_not_just_a_missing_one(monkeypatch):
+    """Absent ≠ zero, the second half — and the untested half.
+
+    The no-retriever case above covers "we could not even LOOK". This covers "we looked and found
+    nothing", which is a different claim and the one that actually shipped:
+    D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL had `language="auto"` match 0 of 147 rows, so EVERY
+    motif_plan in the database was empty and pass 6 planned every scene with no motif layer while
+    the checkpoint reported perfect health.
+
+    Found by mutation: deleting this warning left the artifact-contract guard green (the key is
+    still set by the OTHER branch, so the shape never changed) and no behaviour test noticed. A
+    shape guard cannot see which code path filled a key — that is what this test is for.
+    """
+    import app.engine.motif_plan as motif_plan
+    from app.services.plan_pass_adapters import run_motifs
+
+    async def _matched_nothing(llm, retriever, **kw):
+        return []
+
+    monkeypatch.setattr(motif_plan, "select_arc_motifs", _matched_nothing)
+    art = await run_motifs(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p"},
+        retriever=object(),                       # a retriever that RAN
+    ))
+    assert art["motifs"] == []
+    assert "degraded" not in art                  # it is not degraded — it worked and found none
+    assert "no motif matched this arc" in art["warning"]
+    assert "no motif layer" in art["warning"]     # says what it COSTS, not just what happened
+
+
+@pytest.mark.asyncio
 async def test_beats_with_EVERY_chapter_unassigned_warns_at_the_BLOCKING_checkpoint(monkeypatch):
     """The A0 failure, made visible where it can still be stopped.
 
