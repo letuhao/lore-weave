@@ -110,6 +110,36 @@ It is also the missing home for two orphan bindings: `VitalProfile.max_value` (R
 - **DF7-A1 (Closed slot set).** The engine consumes a **fixed, closed** `StatSlot` enum. Authors declare
   *how their kinds project into slots*, never new slots. Extending the set is an engine release, registered
   in `_boundaries/01_feature_ownership_matrix.md` — the same discipline as PL_006's `StatusFlag`.
+
+  > **AMENDED 2026-07-28 — [QTY-D6](../../../35_quantity_architecture.md). A1 is UPHELD, and its scope
+  > is now stated.** [WSA-R02](../../../31_world_simulation_architecture.md) previously proposed making
+  > the slot set ruleset-declared; that is retired
+  > ([QTY-D4/D5](../../../35_quantity_architecture.md)) — the laws read 9 of 10 slots **by name**, so
+  > opening the set buys one dead slot. Three clarifications, none of which weaken A1:
+  >
+  > 1. **Slots are the DERIVED layer (L1) only.** The open layer is **L2 declared quantities**
+  >    (primary stats · resources · elements), which are ruleset-declared with ordinals pinned by the
+  >    digest. *"A person is not ten numbers"* ([ONT-F2](../../../29_ontology_existence_self_others.md))
+  >    is answered there, not by more slots.
+  > 2. **`StatTerm.kind_id` refers to an L2 declared-quantity ordinal**, not a free string. This is
+  >    the `primary → derived` arrow, which does not exist in the shipped code — `melee_archetype`
+  >    lets an author write derived values directly, which is why `ModifierSource::Progression` is
+  >    passed an empty slice in production.
+  > 3. **A pool is not a stat** ([QTY-A4](../../../35_quantity_architecture.md)) — but **no slot is
+  >    removed.** A pool is `{current, max, min, regen, zero-behaviour}`: a declared row whose *max*
+  >    **binds to** `MaxHp`/`MaxStamina`, exactly as `RES_001:1083` already specifies. Those two slots
+  >    stay. (An earlier draft said pools "leave the slot array" — that is a slot **removal**, which
+  >    `QTY-A10(c)` forbids: a declared ordinal is never reused and never removed, because every
+  >    artifact written at the wider `n` would be refused on decode.) A law reads the pool bound to the
+  >    **`Vital` role**, so a reality may bind `Vital → qi` with no engine release
+  >    ([QTY-A3](../../../35_quantity_architecture.md)); `Effort` was cut — an ability's cost names its
+  >    own pool.
+  >
+  > **And A1 gains an obligation it did not have:** *"extending the set is an engine release"* is only
+  > acceptable if that release is **bounded**. Today it is not — moving `SLOT_COUNT` makes every
+  > stored `.canon` undecodable (`canon.rs:213-226`) and reds the golden digest with no legal repin.
+  > [QTY-A10/A11](../../../35_quantity_architecture.md) make an additive slot a
+  > canon-version + upcast + **epoch-switch event**, which is what lets A1 stay closed *and* grow.
 - **DF7-A2 (Derived, never stored as truth).** A stat block is a **pure function** of
   `(reality manifest, actor_progression, equipment, actor_status, archetype)`. No aggregate holds it as
   SSOT. Any cache is invalidated by `StatEpoch`, never repaired by hand. *(This is what makes MV12

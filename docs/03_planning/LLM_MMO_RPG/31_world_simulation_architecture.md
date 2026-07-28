@@ -168,10 +168,22 @@ Dependency rules, each mechanically checkable:
 * `capability` must **not** depend on `exchange` — derivation cannot mutate.
 * `exchange` **must** depend on `world-quantities` — a delta names a declared kind, never a literal.
 
-> **WSA-A6 — a currency kind is DECLARED (L1) and its ordinal is pinned by the digest.** This is
-> [XST-R6](27_extensibility_stress_test.md) generalised from stat slots to all three currencies, and
-> it carries the same deadline: **ordinals must be fixed before they are serialised into replay logs**
-> — cheap now, a data migration after ([27 §11.6](27_extensibility_stress_test.md)).
+> **WSA-A6 — a currency kind is DECLARED (L1) and its ordinal is pinned by the digest.** ~~This is
+> [XST-R6](27_extensibility_stress_test.md) generalised from stat slots to all three currencies~~ —
+> **re-based 2026-07-28**: XST-R6 is retired ([QTY-D4](35_quantity_architecture.md)) and a declared
+> currency kind is now simply an **L2 declared quantity**
+> ([QTY-A2](35_quantity_architecture.md)), inheriting its ordinal discipline
+> ([QTY-A5](35_quantity_architecture.md): assigned not authored, never reused, **assignment table
+> inside the hashed ruleset**) and its width rule ([QTY-A6](35_quantity_architecture.md): the array
+> width is a **compile-time** constant, the identities inside it are declared per reality — A6's first
+> draft said the opposite and was reversed by red team the same day).
+> The axiom is unchanged; it now has a substrate. It carries the same deadline: **ordinals must be
+> fixed before they are serialised into replay logs** — cheap now, a data migration after
+> ([27 §11.6](27_extensibility_stress_test.md)).
+>
+> ⚠️ **Note the layer-name collision:** WSA's "L1" (declared canon) and
+> [QTY](35_quantity_architecture.md)'s "L1" (closed derived) are different numbering schemes over
+> different things. QTY's layers are always written `L0..L3` with the QTY prefix in scope.
 
 ---
 
@@ -180,7 +192,7 @@ Dependency rules, each mechanically checkable:
 | # | Target | Says now | Must say | Why | Confidence |
 |---|---|---|---|---|---|
 | **R01** | `DL_001` **DL-A1 / DL-D1** | ambient sim splits by cost: deterministic ⇒ V1, generative ⇒ V2/V3; routines *"evaluated, never ticked"* | add the **third row — deterministic + accumulating** — and narrow DL-D1 so the world may keep a consequence | [EXC-F3](30_exchange_model_and_dataflow.md): the world acts when a ledger cannot balance. DL-D1 forbids it for **token-cost** reasons that do not apply | **verified** |
-| **R02** | `DF07` **DF7-A1** closed `StatSlot` | 10 slots closed **in the binary** | slot set **declared per ruleset**, ordinals pinned by digest; closed *head* the laws match on + open tail | [ONT-F2](29_ontology_existence_self_others.md) + [XST-F9](27_extensibility_stress_test.md): a person is not ten numbers, and the escape hatch is currently un-validated | **verified** |
+| **R02** ⚠️ | `DF07` **DF7-A1** closed `StatSlot` | 10 slots closed **in the binary** | ~~slot set **declared per ruleset** … closed *head* + open tail~~ **MECHANISM REVISED 2026-07-28 → [QTY-D5](35_quantity_architecture.md).** The **finding stands** (ONT-F2: a person is not ten numbers; the escape hatch is un-validated) but the fix does not: the laws read **9 of 10** slots by name, so an "open tail" of slots is one dead slot. `DF7-A1` **stays closed**. The open layer is **L2 declared quantities** (primary · resources · elements), and laws bind to **roles** ([QTY-A3](35_quantity_architecture.md)) so a reality may bind `Vital → qi` with no engine release | [ONT-F2](29_ontology_existence_self_others.md) + [XST-F9](27_extensibility_stress_test.md): a person is not ten numbers, and the escape hatch is currently un-validated | **verified (finding); mechanism replaced** |
 | **R03** | `DF07` **DF7-A5** percent-sum rationale | sums *"so the result is order-independent"* | rationale is **wrong** — multiplication commutes too. State the real rule: **one commutative operator per stage; stages ordered** | [XST-F12](27_extensibility_stress_test.md) | **verified** |
 | **R04** | `ACT_001` **ACT-A5** | two unilateral rows, because feelings are asymmetric | **add the second, load-bearing reason**: it gives every relationship half exactly one writer under SL-A12. Mark as LOCKED against "simplifying" into one symmetric row | [ONT-A4](29_ontology_existence_self_others.md) / WSA-A3 | **verified** |
 | **R05** | `ACT_001` §3.1.2 `FlexibleState` | *"typed standard fields + extension keys, **NOT engine-validated**, author guidance"* | extension keys become **declared quantities** (L1) — validated, ordinal-pinned. The property bag is retired | [ONT-F2](29_ontology_existence_self_others.md): the self's escape hatch is unvalidated, which is where slot-overloading starts | **verified** |
@@ -226,7 +238,8 @@ each row states the evidence that closes it.**
 | **F2** | `ruleset-loader` | a reality loads its ruleset from a file and the digest lands in a committed envelope |
 | **F3** | **Make the digest BITE** ([XST-D5](27_extensibility_stress_test.md)) | edit one constant → the digest moves → replay under a mismatched digest is **refused**. *This test cannot be written today, which is the tell* |
 | **X1** | **The four silent-correctness fixes** ([XST-D1/D6/D7/D8](27_extensibility_stress_test.md)) + four tests that can fail | each fix has a test that reds when the fix is reverted |
-| **W1** | `world-quantities` (R02, R05, WSA-A6) | a reality declares a quantity that does not exist in the engine, and it works end-to-end; ordinals pinned by digest |
+| **Q0** | **[QTY-A11](35_quantity_architecture.md) length-declared canon + `upcast_rules` + epoch-switch** — *inserted 2026-07-28, and it precedes W1* | an artifact written at 10 slots loads on an 11-slot engine, the old digest still verifies, the transition is an event in the reality's log — **bite-proven**. Deadline: **before any production reality exists** |
+| **W1** | `world-quantities` = **[QTY](35_quantity_architecture.md) L2** (R02 *as revised*, R05, WSA-A6) | a reality declares a quantity that does not exist in the engine, and it works end-to-end; ordinals pinned by digest |
 | **W2** | `exchange` + the ledger (R14) | a source-less creation reds the conservation assertion |
 | **W3** | **chúng** — imprint written by the transaction; NPC→NPC (R07, R08) | two NPCs hold different opinions of the same PC, changed during play, surviving the session |
 | **W4** | `capability` derivation + the standing precondition (R15) | an action is refused for a social reason, and the refusal is a recorded outcome |

@@ -20,15 +20,27 @@
 
 ## 1. The failure this exists to prevent, with its numbers
 
-> ⚠️ **SUPERSEDED IN PART — read [27 §9.4](27_extensibility_stress_test.md) before quoting this
-> section.** The 88× figure below was re-measured against the design that actually competes with
-> ours (an *interned-ordinal* open array, not a string-keyed HashMap): **1.384 ns closed vs 1.496 ns
-> open vs 11.952 ns HashMap** — i.e. the open design costs **1.08×**, or 0.05 % of an island step,
-> and the cited 125.78 ns is ~10× slower than even a plain HashMap, so it measured something
-> pathological. Worse, `CombatStats::from_block` already projects the block once (IMP-A3), so the hot
-> path never performs a stat lookup at all. **The code/config line (IMP-A1) stands; the performance
-> argument for the *closed-10* decision specifically does not** — that decision must be re-made on
-> the ground that actually applies: the laws `match` on named slots, so those slots must be named.
+> ⚠️ **BANNER CORRECTED 2026-07-28 ([QTY-D7](35_quantity_architecture.md)). The previous version of
+> this banner overstated its case and was used as load-bearing evidence; do not quote the old form.**
+>
+> What it claimed: that a re-measurement (1.384 ns closed / 1.496 ns open / 11.952 ns HashMap) showed
+> the open design costs only **1.08×**, so *"the performance argument for the closed-10 decision does
+> not stand"*. Two problems, both found by the adversarial audit:
+>
+> 1. **That re-measurement is UNVERIFIED.** Its own method note records *"probe file written, run,
+>    then **deleted**"* ([27a:782](27a_stress_test_agent_reports.md)); no benchmark file for this
+>    comparison exists in the repo and `StatId` has zero hits in `.rs`. It is prose, not a harness.
+> 2. **The two figures measure different competitors.** 88× is closed-array vs **`HashMap`**;
+>    1.08× would be closed-array vs an **interned-ordinal array**. chaos's own *committed* criterion
+>    output supports the former (8.2 ns for 50 ordinal reads vs 704.9 ns for 50 `HashMap<u64>` reads).
+>    **88× was never an argument against ordinal-interned openness** — it is an argument against a
+>    map, and every design this repo is considering keeps the dense array.
+>
+> **What stands:** the code/config line (IMP-A1); the closed *derived* set; and `CombatStats::from_block`
+> projecting once (IMP-A3) so the hot path performs no stat lookup at all. **What changed:** the
+> closed-10 decision is re-grounded on [QTY-A3](35_quantity_architecture.md) — laws bind to **roles**,
+> and a role must be named to be matched. Openness belongs one layer down, at L2, where it does not
+> compete with the dense array at all.
 
 A prior project (`chaos-backend-service`) specified actor stats dynamically — string-keyed, HashMap
 backed — and had to retreat to fixed arrays. Its own benchmark, 1 000 000 iterations:
@@ -232,6 +244,21 @@ real risk in keeping them, and it is a discipline problem rather than a technica
 abilities) are on hold. Each would otherwise add its own literals to the pile, and each is a
 *consumer* of the ruleset — building consumers before the supply chain is precisely the inversion
 that prompted this document.
+
+> **IMP-D9 EXTENDED 2026-07-28 — the hold now also covers `stat_archetypes`, templates and F3, and it
+> extends to `Q0` ([35 §12](35_quantity_architecture.md)).** F1+F2 landed and the F-track was about to
+> continue into content. A four-audit review found the same inversion one layer down: all three of
+> those slices bind content to a **derived set that cannot grow**. Moving `SLOT_COUNT` today makes
+> every stored `.canon` undecodable (`canon.rs:213-226`) and reds the golden digest with no legal
+> repin, and `upcaster.rs` versions *event* schemas, not rules.
+>
+> `Q0` — a **length-declared canonical encoding** plus `upcast_rules` plus the epoch-switch path
+> ([QTY-A10/A11](35_quantity_architecture.md)) — is what converts every future L1 addition from a
+> spine break into an ordered event. **It must land before any production reality is created**,
+> because after that the same change is a data migration across live realities.
+>
+> This is the same call IMP-D9 already makes, applied to itself: **do not build consumers of a supply
+> chain that cannot be extended.**
 
 ---
 

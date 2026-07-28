@@ -272,7 +272,7 @@ Four agents, four genres, no contact with each other. Where they agree is the si
 | # | Convergent finding | Raised by |
 |---|---|---|
 | 1 | **Interned tag/keyword bitsets** as the extension escape hatch | deckbuilder · immersive-sim |
-| 2 | **Closed *per ruleset*, not closed *in the binary*** | immersive · cultivation · ARPG |
+| 2 | **Closed *per ruleset*, not closed *in the binary*** | ~~immersive · cultivation · ARPG~~ ⚠️ **MISATTRIBUTED — see §6.1** |
 | 3 | **Percent: products across stages, sums within a stage** | deckbuilder · ARPG · cultivation |
 | 4 | **The integers are too narrow** (i128 intermediates / `[i64; N]`) | ARPG · cultivation |
 | 5 | **No trigger substrate** — nothing carries a committed event back into resolution | all four |
@@ -281,6 +281,30 @@ Four agents, four genres, no contact with each other. Where they agree is the si
 Point 6 is concrete and cheap **today**: `role_rng(seed, actor, action_idx, role)` gives every hit of
 a multi-hit action the *same* draw — all crit or none. Retrofit cost rises monotonically with every
 replay log written.
+
+### 6.1 ⚠️ Convergence #2 is MISATTRIBUTED — correction 2026-07-28 ([QTY-D8](35_quantity_architecture.md))
+
+A cold-start adversarial audit checked each attribution against the raw reports in
+[27a](27a_stress_test_agent_reports.md). **Convergence #2 had one source, not three**, and two of the
+three named agents recorded the *opposite* position:
+
+| Agent | What it actually wrote |
+|---|---|
+| **immersive-sim** ✅ | the genuine source — *"move `SLOT_COUNT` from a language constant to a ruleset constant … converts 'closed enum' (a fact about the binary) into 'closed set per ruleset' (a fact about data)"* ([27a:502-511](27a_stress_test_agent_reports.md)) |
+| **cultivation** ❌ | *"None of these introduces a map, a float, **or an author-declared slot**"* ([27a:730](27a_stress_test_agent_reports.md)); its S7 keeps a dense closed `[i64;12]` and spends *"the engine-release cost DF7-A1 anticipates … once"* ([27a:740](27a_stress_test_agent_reports.md)); *"What I would not change: **the dense closed array**"* ([27a:747](27a_stress_test_agent_reports.md)) |
+| **ARPG** ❌ | grows the **binary's** enum `[i32;10] → [i32;26]`, *"the 88× HashMap argument is untouched"* ([27a:349](27a_stress_test_agent_reports.md)); per-element resist *"survives **only if `ElementId` is engine-closed and small**"* ([27a:274](27a_stress_test_agent_reports.md)) |
+
+The second independent voice for the closed-head/open-tail form is the **fifth (adversarial) agent**,
+which was reading *our code* rather than a genre ([27a:980](27a_stress_test_agent_reports.md)) — not
+one of the three named. **The honest count is one genre agent plus one code-reading adversary.**
+
+**What survives the correction, and it is the more useful reading:** the cultivation agent objected to
+author-declared *stat slots* and in the same breath proposed author-declared *pool identity* —
+*"The behaviors stay closed; only the **identity** opens"* ([27a:739](27a_stress_test_agent_reports.md)).
+Both positions are right, and [QTY-A3](35_quantity_architecture.md) is where they meet: **the closed
+set is the set of ROLES the laws bind to, not the set of quantities.** ARPG's density requirement is
+satisfied too, because [QTY-A6](35_quantity_architecture.md) makes the width a *per-reality* constant
+— the set really is closed and small, just not in the binary.
 
 ---
 
@@ -296,8 +320,8 @@ deterministic replay.
 | **XST-R3** | Fix the roll band to be inclusive of 1150 | XST-D3 | one line |
 | **XST-R4** | Add `sub_index` to the RNG coordinate; **reserve** roles `shuffle`/`draw`/`cost`/`trigger_order`/`ailment` now | convergence #6 | small now, expensive later |
 | **XST-R5** | Emit a signal when a slot saturates, when Σpct goes negative, or when a clamp fires | XST-D1/D2 and the whole silent class | small; directly the repo's non-vacuity discipline |
-| **XST-R6** | `SLOT_COUNT` becomes a **ruleset** constant; `[i64; MAX_SLOTS]`, ordinals pinned by digest | convergence #2 + pools + capacities + mood | medium; highest structural value |
-| **XST-R7** | `StatSlotDecl { …, combine: Sum \| Product }` — stage-scoped operator | convergence #3 | one enum field |
+| ~~**XST-R6**~~ | ~~`SLOT_COUNT` becomes a **ruleset** constant; `[i64; MAX_SLOTS]`, ordinals pinned by digest~~ **RETIRED 2026-07-28 → [QTY-D4](35_quantity_architecture.md).** Opening the slot set is the wrong fix: the laws read **9 of 10** slots by name, so the "open tail" is one dead slot while every pressure case needs a *head* slot. The pressures are real and are re-homed — pools → [QTY-A4](35_quantity_architecture.md), capacities/mood → L2 declared quantities, law binding → [QTY-A3](35_quantity_architecture.md) roles. **Also: the "medium" cost here was self-authored and contradicted by "cheap now (two accessors, ~11 tests)" at §11.6 — two estimates of two different designs, never reconciled; the real surface is 102 `StatSlot::` references across 6 files** | convergence #2 (⚠️ misattributed — §6.1) | ~~medium~~ **retired** |
+| **XST-R7** ✅ | `StatSlotDecl { …, combine: Sum \| Product }` — stage-scoped operator. **ADOPTED 2026-07-28 → [QTY-D11](35_quantity_architecture.md).** Because terms in one slot's pool carry **distinct `kind_id`s**, `Product` is a genuine *cross-quantity* product — which is what `mị ma song tu` (qi × body) and `ngự khí` require. **Three edges it does not solve are now [QTY-Q8](35_quantity_architecture.md):** `combine` is per-decl not per-term (so a mixed polynomial `2×str + qi×body` is inexpressible, and `stat.duplicate_slot_decl` forbids the two-decl workaround); any zero term **annihilates** the slot; and the n-ary milli divisor is unspecified corpus-wide | convergence #3 | one enum field |
 | **XST-R8** | Interned tag bitset `[u64; 4]` + one `Precondition::HasTags(mask)` variant | convergence #1 | medium |
 | **XST-R9** | Closed `TriggerPoint` + `Reaction { when, guard, then }` with a depth budget | convergence #5 | medium-large |
 
@@ -419,6 +443,24 @@ This is exactly the **no-silent-no-op** class CLAUDE.md names as a shipped bug. 
 be able to express something the resolver ignores.
 
 ### 9.4 XST-F4 — the 88× benchmark does not support the conclusion I drew from it
+
+> ⚠️ **UNVERIFIED — NO COMMITTED HARNESS. Do not quote the table below as measurement**
+> (correction 2026-07-28, [QTY-D8](35_quantity_architecture.md)).
+>
+> The numbers come from an agent's narrative report whose own method note reads *"probe file written,
+> run, then **deleted**; working tree is clean"* ([27a:782](27a_stress_test_agent_reports.md)). No
+> benchmark file for this comparison exists anywhere in the repo (`criterion` is declared only in
+> `world-gen` and `world-service`), `StatId` has **zero** hits in `.rs`, and there is no machine spec,
+> iteration count or variance. **In a repo whose stated discipline is the bite-test, this may not
+> overturn a locked decision.** Re-running it with a committed harness is `Q0`'s companion task
+> ([35 §12](35_quantity_architecture.md)).
+>
+> **Separately, the framing below is wrong even if the numbers are right.** 88× compares closed-array
+> vs **`HashMap`**; 1.08× compares closed-array vs **interned-ordinal array**. Those are different
+> competitors, so 1.08× does not refute 88× — and chaos's *committed* criterion output supports 88×
+> for the map (8.2 ns / 50 ordinal reads vs 704.9 ns / 50 `HashMap<u64>` reads). **88× was never an
+> argument against ordinal-interned openness.** The closed-derived decision is now re-grounded on
+> [QTY-A3](35_quantity_architecture.md) (laws bind to named *roles*) rather than on either number.
 
 The agent re-ran the comparison that actually matters:
 

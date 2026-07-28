@@ -774,6 +774,135 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> 🛑 **BUILD STOPPED BY THE PO — QUANTITY ARCHITECTURE (doc 35, 2026-07-28, /loom L, spec only).**
+> The F-track was about to continue into `stat_archetypes` → templates → F3. The PO asked whether the
+> new architecture could carry seven real progression systems (luyện khí · luyện thể · ma pháp ·
+> kinh nghiệm thăng cấp · mị ma song tu · ngự khí · ngự thú), doubted the claim that it beat `chaos`,
+> and called it: *"dừng build và update spec, lấy điểm mạnh của chaos vào spec của chúng ta và loại
+> điểm yếu của nó."*
+>
+> **The finding (4 cold-start audits — 2× chaos-rust, 1× our shipped code, 1× adversarial):**
+> **LoreWeave has laws and derived stats and NOTHING BENEATH THEM.** All ten `StatSlot` variants are
+> derived combat outputs; the entire authorable surface is **20 fields and every one is a number**;
+> `Ruleset` holds no collection. There is no primary layer, no resource/pool concept, no element
+> (`elem_mult_pm` is ONE global scalar — the engine knows **zero** elements), and no progression
+> source — which is why `ModifierSource::Progression` is passed an **empty slice** in production.
+> **A qi-cultivation reality and a mana reality on this binary are the same ten slots with different
+> integers in them.**
+>
+> **Worse, the derived set cannot GROW.** Moving `SLOT_COUNT` makes every stored `.canon` undecodable
+> (`canon.rs:219`), reds the golden digest with **no legal repin**, and `upcaster.rs` versions *event*
+> schemas, not rules. We were ~13 sites into becoming the exact god class chaos was rebuilt to escape
+> (*"Mỗi khi thêm system mới phải sửa class này!"*) — except chaos loses one struct and we lose the
+> digest/replay spine.
+>
+> **[`35_quantity_architecture.md`](35_quantity_architecture.md) — `QTY-A1..A12 · D1..D8 · Q1..Q4`:**
+> four layers (L0 laws · L1 roles+derived, **closed** · L2 declared quantities, **open per reality** ·
+> L3 sources). Key axioms: **QTY-A1** *arithmetic is code, arrangement is data* (chaos's real line,
+> sharper than IMP-A1 — it is why neither project needs an expression parser); **QTY-A3** *laws bind to
+> ROLES at the L1↔L2 boundary* so a reality can bind `Vital → qi` and the defeat law never changes;
+> **QTY-A4** *a pool is not a stat*; **QTY-A10/A11** the growth story nobody had solved:
+> **additive vs behavioural**, length-tolerant canon + `upcast_rules` + an **epoch-switch event**, so
+> `B1`/`D1` survive untouched and RLS-A3 holds.
+>
+> 🔴 **THEN A RED-TEAM ROUND REVERSED A CORE AXIOM — 4 agents on performance · multiverse · gameplay ·
+> the open questions. Two findings were raised INDEPENDENTLY BY THREE OF FOUR.**
+>
+> **`QTY-A6` is dead.** It said array width is *per-reality*; it was *"the one place we genuinely beat
+> chaos"*. Three independent kills: (1) it is **mutually exclusive with `QTY-A12`** — a runtime width
+> puts the payload behind a pointer, `size_of::<Box<[i32]>>()` is 16 B for n=3 and n=500, so the
+> `const` assertion **could never fire**; the doc took chaos's discipline while deleting chaos's
+> precondition for it (`MAX_ELEMENTS = 50`) in adjacent sections. (2) It is **probably unimplementable**
+> — const-generic dies at the monomorphic `Managed { island: Island<CombatDomain> }` and `Domain` is
+> not object-safe. (3) **Its benefit does not exist at our scale**: `Actor` is **192 B** today, ≈408 B
+> at a fixed `[i32;64]`; 10 k actors = **+2.2 MB total**. chaos's 41.5 KiB came from `f64` **plus a
+> per-actor `n²` matrix** — neither of which we copy. **Replaced by: fixed compile-time width, declared
+> identities inside it, + `QTY-A6.1` — `O(n)` per ACTOR, `O(n²)` per RULESET**, which was the actual
+> lesson from chaos and which the first draft omitted entirely.
+>
+> **`QTY-A11` refused this document's own build order.** `Q2` said *"`MaxHp`/`MaxStamina` leave the
+> slot array"* — a slot **removal**, so every artifact at n=10 is refused. That is precisely the third
+> kind of change `QTY-A10` says never to let happen silently. → **`QTY-A10(c)`: an ordinal is never
+> reused and never removed**; `Q2` corrected — the slots stay and become ceiling-binding targets, which
+> is what `RES_001:1083` already specified.
+>
+> **Four more added:** **`QTY-A13`** (an L3 source CONTRIBUTES, never DECLARES — else the digest
+> becomes a function of the compiled module set and RLS-A13 dies); **`QTY-A14`** (an ordinal never
+> travels without its digest — with a **live code defect** on that path: the publisher's SELECT drops
+> `ruleset_digest` while the envelope is `omitempty`, tracked as `D-PUBLISHER-DROPS-RULESET-PIN`);
+> **`QTY-D9`** tenancy (the draft had **zero** occurrences of owner/user/scope key — a CLAUDE.md
+> violation); **`QTY-D11`** adopting `XST-R7` (which the doc claimed to lean on and did not contain).
+>
+> **All four open questions CLOSED (§13.1):** Q1 — cut `Effort`, keep `Vital` on **cardinality**
+> grounds (a role is a total function; a declared flag is satisfiable 0 or N times, and **N=0 is a
+> silently unlosable world**). Q2 — **checkpoint boundary, not versioned law sets**, and first make the
+> change *detectable*: **the digest does not cover the LAW**, so two engine builds with different
+> `resolve_attack` produce the identical digest ⇒ add `LAW_VERSION` to the hashed bytes. Q3 — fix all
+> **eleven** `f32`s, do **not** reserve `SourceRef` (register the kernel *question* instead). Q4 —
+> the split is right, verified mechanically: all nine of chaos's "God Registry" bullets are about
+> **behaviour**, `grep declar|ordinal|identity` over both its architecture docs returns **zero**, and
+> its duplication cost **62 registries / ~9,187 LOC / a byte-identical trait in two copies**.
+>
+> **Also recorded: three miscitations of my own** (`recovery.rs` argues for neither side — it evaluates
+> zero laws; `PROG:83` has no `f32`, it is at `:461` commented out under a *different* deferral; and
+> "doc 35 leans on XST-R7" — R7 appeared nowhere in it). And the seven systems are now **walked**
+> (§6.5): luyện thể works today with no QTY · luyện khí/ma pháp land on `Q2` · kinh nghiệm thăng cấp is
+> blocked by **`DF7-A9`, a PO decision not an engineering gap** · mị ma song tu + ngự thú need
+> `QTY-Q7`, the cross-actor seam.
+>
+> **PO correction that closed the last thread:** the red team's *"nouns without verbs"* is a **scope
+> boundary, not an architectural defect** — and the verbs are **already designed**, in four places:
+> `RES_001`'s four named generators, `EXC-L1` conservation, `TRG-A1..A11`'s wave model, and
+> `TrainingRuleDecl.source`. Widening the author vocabulary already has an owner: **`WSA-R18`**. →
+> **`QTY-D10`: this document designs no triggers, effects or generators, and no slice may** — a second
+> dialect beside `TrainingRuleDecl.source` is the `combat.rs` failure mode.
+>
+> **Four corpus errors corrected — all were cited as load-bearing evidence, including by me one turn
+> earlier:** (1) `27 §6` convergence #2 was **misattributed** — cultivation and ARPG wrote the
+> *opposite* (§6.1 added, per-agent table); (2) `27 §9.4`'s re-measurement is **UNVERIFIED** (*"probe
+> file … then deleted"*, no harness); (3) *"the 88× justification was wrong"* is itself wrong — 88× is
+> vs `HashMap`, 1.08× is vs interned array, **different competitors**; (4) `XST-R6` **RETIRED** and
+> `WSA-R02` **mechanism revised, finding preserved** — the laws read 9 of 10 slots by name, so an
+> "open tail" of slots is one dead slot. **`DF7-A1` is UPHELD**, scoped to L1, and given a
+> bounded-growth obligation.
+>
+> **Self-review caught one defect in the new doc itself:** the first draft gave roles to four closed
+> derived slots — indirection with no consumer. Role set cut **6 → 2**; recorded in §3.1 rather than
+> silently deleted, because "a shape with no consumer" is a repeat failure mode here.
+>
+> **VERIFY:** design-lint OK (0 findings / 366 files) · zero-digest · closed-set · envelope-mirror ·
+> game-wire · no-absolute-host-paths · language-rule all PASS · 8 cited code lines spot-checked
+> against shipped source. Docs only — no code, no live smoke needed.
+>
+> **NEXT — build order, revised after red team. Replaces `stat_archetypes → templates → F3` (BLOCKED,
+> IMP-D9 extended):**
+> **`Q-1`** the two mechanical gates FIRST (`hot-path-gate.py` keyed on the KEY type + the `size_of`
+> assertion) — hours, and both must exist *before* the code they guard →
+> **`Q0`** length-tolerant decode **+ version-dispatched decode + `LAW_VERSION`** + `upcast_rules` +
+> epoch-switch →
+> **`S2`** `game-rules` extraction (**hard prerequisite** for Q2–Q4: don't write role plumbing into
+> `domain.rs`/`combat.rs`, both already over the 400-line ceiling and about to be split) →
+> **`Q1`** L2 substrate → **`Q2`** resources + `Vital` **+ the caps arm** (moved here from Q4 — a
+> pool's max *is* a ceiling) → **`Q4`** L3 sources → **`Q3`** elements (**last, droppable** — zero
+> pressure from the seven systems) → **`Q5`** the old F-track content slices.
+>
+> **`Q0` is bigger than the first draft said — two prerequisites, neither exists:** `RulesetEpochActivated`
+> has **ZERO occurrences** in `crates/`+`services/`, and `BindingStore` has **no mutating method at
+> all** (`create`/`load`/`digest_for`; `create` hardcodes `epoch: 1`) while the binding is a
+> **node-local TOML file** — so on multi-node there is no consistent target to write. Moving it to
+> `reality_registry` is part of `Q0`. **But the deadline is NOT ticking:** `create_reality` has no
+> production caller, so zero production realities exist and the clock is ours. `Q0` is still first
+> because it is the **cheapest** slice (one branch in `canon.rs` — the encoding is *already*
+> length-prefixed — plus one version dispatch).
+>
+> **Not in this build order, deliberately:** triggers/effects/generators → `WSA-R18`.
+> **Open: `QTY-Q5..Q11`** — cross-reality translation (retires `DF7-D12`'s reasoning) · the ordinal
+> ledger's home · **`Q7` the cross-actor seam** (a *kernel* question: entity-in-exactly-one-island is
+> structural in sim-core) · `XST-R7`'s three edges · threshold-conditional terms · whether one table
+> is the right shape for four quantity families · and **`Q11` — the question this doc never asked:
+> will more than one team, or more than a handful of realities, author genuinely different quantity
+> sets? QTY earns its cost only if yes.**
+
 > ✅ **F2.2 — EARLY BINDING: CREATION RESOLVES, LOAD DOES NOT (2026-07-28).**
 > The PO asked *“khi nào build được cái này?”* about the paragraph describing what was broken, and
 > checking it honestly showed **F2.1 had only closed two of its three clauses.**
