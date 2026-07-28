@@ -301,6 +301,33 @@ scene refused 400 `BAD_REFERENCE` while a live target still returns 201.
 
 **VERIFY:** unit **2645 passed / 341 skipped**; DB integration **337 passed / 8 skipped** (real SQL).
 
+### 📋 F3 — what is left, and why each is PARKED rather than done
+
+The composition atom families are now clean on all three axes. What remains was found by the sweep
+but does not belong to this run:
+
+- **`D-MOTIF-SHARED-EDIT-FE-DOOR` — the shared-tier motif edit (gate 2: needs a product call).**
+  Fully built BE-side (`PATCH /motifs/{id}?book_id=`, `patch_shared`, MCP, tests) with no FE
+  affordance. Cause is precise: the B-3 redaction nulls `owner_user_id`, and `motifTier()` derives
+  the tier from exactly that field, so a shared row reads as `system` → `isReadOnly` → clone-to-edit.
+  **The design is already worked out** — `isReadOnly` must treat `book_shared` as editable (the wire
+  already carries it), `useMotifEditor` must pass `book_id`, and **`toArgs` must stop sending
+  `examples` for a row the caller doesn't own**, or every save 400s on the new write guard.
+  Parked because it ADDS a user-facing capability (collaborators editing each other's shared
+  motifs); the FE's current stance is the kinds-bug lesson (*a user never mutates a shared row*),
+  and although the LOCKED tenancy table says the per-book tier is writable by grantees, flipping
+  that affordance on is the human's call, not a cleanup.
+- **`D-KG-SCHEMA-DEPRECATE-FE-DOOR` (gate 1: different module).** `ontologyApi.deprecateSchema`
+  (`DELETE /graph-schemas/{id}`, a soft `deprecated_at`) has no caller. Every CHILD type in
+  `useGraphSchema` has add/patch/delete wired — only the schema itself cannot be retired.
+- **`D-GLOSSARY-ATTRDEF-DELETE-FE-DOOR` (gate 1: different module).** `glossaryApi.deleteAttrDef`
+  (`DELETE /kinds/{kindId}/attributes/{attrDefId}`) has no caller and no attr-def management UI
+  exists at all — so this is "retire the api fn or build the surface", a glossary-track decision.
+- **`D-PLANHUB-UNLINK-USES-RECREATE` (gate 1: the concurrent session's active surface).**
+  plan-hub's scene-link undo re-CREATES the edge instead of restoring it. Correct when the delete
+  was hard; now it leaves the archived original orphaned (and a later restore of it 409s). Harmless
+  to the author, untidy in the table. **Coordinate before touching `usePlanMoves`.**
+
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
 - **F3 turned up a MISSING FE DOOR (buildable, not blocked): the shared-tier motif edit.**
   `D-MOTIF-ADOPT-BOOK-COLLAB-TIER` is fully implemented BE-side — `PATCH /motifs/{id}?book_id=`,
@@ -2218,6 +2245,7 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 
 | ID | What | Gate |
 |---|---|---|
+| **D-KG-ORPHAN-GC** | 🔴 **99% of the knowledge graph is unreachable orphan data.** Measured 2026-07-28: Neo4j holds **196 projects / 6,242 `:Entity`**, but only **17 projects / 80 entities** have a `knowledge_projects` row in Postgres — **179 projects / 6,162 entities are orphans** no code path can open (every read resolves `SELECT … FROM knowledge_projects WHERE project_id=$1 AND user_id=$2` first). Likely a dev-DB reset that Postgres took and Neo4j did not: `knowledge_projects` retains rows only from 2026-07-16, while the orphan UUIDv7 ids are older. **Not a perf problem** (the whole graph is <8k nodes / 2,965 rels) — the live cost is that **every global KG query reports dead data as if it were real**: today's duplicate audit found "25 duplicate groups" and all 25 were in orphan projects, which nearly sent a cleanup after data nobody can reach. Repro: dump `MATCH (e:Entity) RETURN e.project_id, count(*)` and anti-join against `knowledge_projects`. | **#2 large/structural — needs a real garbage collector, not a DELETE.** A one-shot Cypher is the wrong shape: the design must define what "orphan" means authoritatively (absent row vs soft-deleted vs a synthetic project like `p-assist`), **cascade** correctly to `:Event`/`:Passage`/`:Fact`/`:EntityStatus`/`:ExtractionSource` + their relationships, be **tenancy-scoped**, run **dry-run-first and batched/resumable** (never one 6k-node transaction), be **idempotent**, and carry a **guard that makes touching a LIVE project impossible** — the same posture `db-safety-gate.py` enforces for tests, since Neo4j has no trash to undo a mistake. Also decide whether it is a periodic job or an admin-invoked tool, and whether project deletion should cascade at delete time so orphans stop accruing at the source. **Trigger:** before any KG-wide metric is trusted, or when graph size starts to matter. |
 | **D-CHAT-TURN-RETRYABLE-SWALLOW** | 🔴 Found reviewing W1. In `runner.py`'s **chat-turn** branch a `retryable` persist failure falls straight through to `_mark_pending_processed` + `_advance_cursor` — the turn is silently SKIPPED and counted as processed. The chapters branch has the bounded-retry cursor pattern; chat has none. | #2 — needs the chapters branch's retry-accounting replicated, not a one-liner. Pre-existing; W1 makes 503 newly reachable here. |
 | **D-KG-CJK-SUBSTRING-FALSE-POSITIVE** | Surface matching uses ASCII-only boundary lookarounds, so a short CJK name matches INSIDE a longer word (`林` selected from `森林`). Confirmed live + pinned by `TestCjkBoundary`; shared with knowledge-service's `entity_detector`. | #2 — the real fix is CJK segmentation (jieba is already a knowledge-service dep) or a min-length/aliased-only rule, applied to BOTH matchers together. Documented, not silent. |
 | **D-GLOSSARY-PROJECTION-FAILURE-CONFLATION** | `project_glossary_entities_to_nodes` still returns an all-zero `ProjectionResult` for BOTH "glossary empty" and "glossary unreachable" — the same conflation W1 removed from the extraction path. Lower severity: it is a foreground tool with a visible result, not a background mint. | #1 out of scope of this cycle (tool contract + its caller's messaging), but the fix shape is now established. |
