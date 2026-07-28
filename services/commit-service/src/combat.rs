@@ -26,6 +26,8 @@
 
 use sim_core::{DetRng, EntityId};
 
+use crate::stats::{resolve_block, StatBlock, StatSlot, StatTuning};
+
 /// Which roll a derived stream is for (COMB_001 Q8). Closed set — an
 //  open-ended role string would let two call sites collide on one stream and
 //  correlate rolls that must be independent.
@@ -70,62 +72,88 @@ pub fn role_rng(session_seed: u64, actor: EntityId, action_idx: u32, role: SeedR
     DetRng::new(z)
 }
 
-/// Draw a uniform fraction in [0, 1). `u64 → f64` via the top 53 bits, which
-/// is exactly the mantissa width: anything wider would quantise unevenly.
-fn unit(rng: &mut DetRng) -> f64 {
-    (rng.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+/// Draw a per-mille value in `0..1000`.
+///
+/// Integer, not a float fraction — DF7-A4 keeps floats out of the stat path,
+/// and the same reasoning applies to the rolls that consume it. Float
+/// arithmetic is reproducible within a build but not reliably across targets
+/// (fused multiply-add, x87 80-bit intermediates), and this project REPLAYS
+/// committed encounters. A roll that differs in the last bit on another
+/// machine makes a replayed fight diverge.
+fn roll_pm(rng: &mut DetRng) -> i64 {
+    rng.range_u64(1000) as i64
 }
 
 // ───────────────────────────────── stats ────────────────────────────────────
 
-/// The combat-relevant slice of an actor's stats.
+/// The combat-relevant view of a DF07 stat block.
 ///
-/// Slice 1 fills this from a fixed archetype; DF07 stat snapshots replace the
-/// source in slice 2 without touching any law below — which is the point of
-/// separating them.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct StatBlock {
+/// Slice 1 held these as `f64`, which **DF7-A4 forbids** ("no float anywhere
+/// in the stat path"). They are now the DF07 slots: integers, with
+/// accuracy / dodge / crit as **per-mille** (0..1000). Every law below reads
+/// through this view, so swapping the SOURCE of the numbers — archetype today,
+/// a resolved snapshot with equipment and progression tomorrow — touches no
+/// law at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CombatStats {
     pub max_hp: i64,
     pub strike_power: i64,
     pub armor: i64,
-    /// Accuracy and dodge are ADDITIVE fractions in the hit formula, not
-    /// multipliers — see [`hit_chance`].
-    pub accuracy: f64,
-    pub dodge: f64,
+    /// per-mille; ADDITIVE in the hit formula, not a multiplier.
+    pub accuracy_pm: i64,
+    /// per-mille
+    pub dodge_pm: i64,
     /// HSR action value is `10000 / speed`, so speed is a rate: higher acts
-    /// sooner. Zero is clamped in [`action_value`] rather than dividing by it.
+    /// sooner. Zero is clamped in [`action_value`] rather than divided by.
     pub speed: i64,
-    pub crit_chance: f64,
-    pub crit_mult: f64,
+    /// per-mille
+    pub crit_chance_pm: i64,
+    /// per-mille (1500 = 1.5x)
+    pub crit_mult_pm: i64,
 }
 
-impl StatBlock {
-    /// A plain melee archetype. Slice 1's stand-in for DF07 — deliberately a
-    /// named constructor rather than scattered literals, so slice 2 has one
-    /// place to replace.
-    pub fn archetype_melee(max_hp: i64) -> Self {
+impl CombatStats {
+    /// Project a resolved DF07 block into the combat view. The mapping is
+    /// DF07 §8.1's table, in one place — a law reading a slot directly would
+    /// be a second mapping to keep in sync.
+    pub fn from_block(b: &StatBlock) -> Self {
         Self {
-            max_hp,
-            strike_power: 12,
-            armor: 2,
-            accuracy: 0.45,
-            dodge: 0.10,
-            speed: 100,
-            crit_chance: 0.10,
-            crit_mult: 1.5,
+            max_hp: b.get(StatSlot::MaxHp) as i64,
+            strike_power: b.get(StatSlot::StrikePower) as i64,
+            armor: b.get(StatSlot::Armor) as i64,
+            accuracy_pm: b.get(StatSlot::Accuracy) as i64,
+            dodge_pm: b.get(StatSlot::Dodge) as i64,
+            speed: b.get(StatSlot::Speed) as i64,
+            crit_chance_pm: b.get(StatSlot::CritChance) as i64,
+            crit_mult_pm: b.get(StatSlot::CritMult) as i64,
         }
+    }
+
+    /// A plain melee archetype at `max_hp`, resolved through the real DF07
+    /// path rather than hand-written literals — so the defaults, the clamps
+    /// and the MoveRange derivation are all exercised even by a bare NPC.
+    pub fn archetype_melee(max_hp: i64) -> Self {
+        let mut arch = StatBlock::default();
+        arch.set(StatSlot::MaxHp, max_hp as i32);
+        arch.set(StatSlot::StrikePower, 12);
+        arch.set(StatSlot::Armor, 2);
+        arch.set(StatSlot::Accuracy, 450);
+        arch.set(StatSlot::Dodge, 100);
+        let block = resolve_block(&arch, &[], &[], &[], &StatTuning::default());
+        Self::from_block(&block)
     }
 }
 
 // ──────────────────────────────── the laws ──────────────────────────────────
 
-/// `hit_chance = clamp(0.5 + acc − dodge, 0.05, 0.95)` (COMB_001 §4).
+/// `hit_chance = clamp(0.5 + acc − dodge, 0.05, 0.95)` (COMB_001 §4), in
+/// per-mille: `clamp(500 + acc − dodge, 50, 950)`.
 ///
-/// The clamp is not cosmetic: without the 0.95 ceiling an accuracy-stacked
-/// build becomes unmissable and dodge stops being a stat; without the 0.05
-/// floor a high-dodge target becomes untouchable and the fight cannot end.
-pub fn hit_chance(accuracy: f64, dodge: f64) -> f64 {
-    (0.5 + accuracy - dodge).clamp(0.05, 0.95)
+/// The clamps are not cosmetic: without the 950 ceiling an accuracy-stacked
+/// build becomes unmissable and dodge stops being a stat; without the 50 floor
+/// a high-dodge target becomes untouchable and the fight cannot end.
+pub fn hit_chance_pm(accuracy_pm: i64, dodge_pm: i64) -> i64 {
+    (500 + accuracy_pm - dodge_pm).clamp(50, 950)
 }
 
 /// One resolved attack.
@@ -159,8 +187,8 @@ pub struct AttackOutcome {
 /// last because it is a resolution-time flag and explicitly **not** a stat
 /// modifier (DF7-A8).
 pub fn resolve_attack(
-    atk: &StatBlock,
-    def: &StatBlock,
+    atk: &CombatStats,
+    def: &CombatStats,
     defending: bool,
     session_seed: u64,
     attacker: EntityId,
@@ -169,30 +197,41 @@ pub fn resolve_attack(
     // Independent streams: whether a hit lands must not correlate with how
     // hard it lands, or a lucky seed produces suspiciously consistent play.
     let mut hit_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Hit);
-    if unit(&mut hit_rng) >= hit_chance(atk.accuracy, def.dodge) {
+    if roll_pm(&mut hit_rng) >= hit_chance_pm(atk.accuracy_pm, def.dodge_pm) {
         return AttackOutcome { hit: false, crit: false, damage: 0 };
     }
 
     let mut crit_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Crit);
-    let crit = unit(&mut crit_rng) < atk.crit_chance;
-    let crit_mult = if crit { atk.crit_mult } else { 1.0 };
+    let crit = roll_pm(&mut crit_rng) < atk.crit_chance_pm;
+    let crit_mult_pm = if crit { atk.crit_mult_pm } else { 1000 };
 
+    // Variance band 0.85–1.15, as per-mille 850..=1150.
     let mut dmg_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Damage);
-    let roll = 0.85 + unit(&mut dmg_rng) * 0.30; // 0.85 – 1.15
+    let roll_band_pm = 850 + (roll_pm(&mut dmg_rng) * 300) / 1000;
 
-    const ELEM_MULT: f64 = 1.0; // V1
-    const RESIST: f64 = 0.0; // V1
+    const ELEM_MULT_PM: i64 = 1000; // V1 = 1.0
+    const RESIST_PM: i64 = 0; // V1 = 0
 
-    let base = (atk.strike_power - def.armor).max(1) as f64;
-    let mut dmg = base * ELEM_MULT * (1.0 - RESIST) * roll * crit_mult;
-    if defending {
-        dmg /= 2.0;
-    }
+    let base = (atk.strike_power - def.armor).max(1);
 
-    // `floor`, then a floor of 1: a defended glancing crit could otherwise
-    // round to zero and read to the player as a miss that was reported as a
-    // hit.
-    AttackOutcome { hit: true, crit, damage: (dmg.floor() as i64).max(1) }
+    // One expression, integer throughout, with the divisions carried to the
+    // END so intermediate precision is never lost to repeated truncation —
+    // the integer equivalent of DF7-A4's "exactly one floor at emit".
+    let numer = base
+        .saturating_mul(ELEM_MULT_PM)
+        .saturating_mul(1000 - RESIST_PM)
+        .saturating_mul(roll_band_pm)
+        .saturating_mul(crit_mult_pm);
+    // FOUR per-mille factors are multiplied in (elem, resist-complement,
+    // roll band, crit), so the divisor is 1000^4 — not 1000^3. Getting this
+    // wrong scales every hit by 1000×, which the damage-band test caught
+    // immediately; it is the kind of error that fixed-point arithmetic trades
+    // for float's rounding drift, and it fails loudly rather than subtly.
+    let denom: i64 = 1000 * 1000 * 1000 * 1000 * if defending { 2 } else { 1 };
+
+    // Floor of 1: a defended glancing hit could otherwise round to zero and
+    // read to the player as a miss that was reported as a hit.
+    AttackOutcome { hit: true, crit, damage: (numer / denom).max(1) }
 }
 
 // ─────────────────────────────── initiative ─────────────────────────────────
@@ -217,22 +256,39 @@ pub struct AvStatus {
 /// whole island down through `apply` — which the kernel would contain as a
 /// poison pill, but the encounter would still be dead.
 pub fn action_value(speed: i64, status: AvStatus, is_initiator_first_turn: bool) -> i64 {
-    let mut av = 10_000.0 / speed.max(1) as f64;
+    // Integer throughout — the last float in the combat path lived here.
+    // Each status is a per-mille factor accumulated into ONE numerator and
+    // denominator so there is a single division at the end, rather than a
+    // chain of `x * 1200 / 1000` steps each shedding a milli-unit.
+    let mut num: i64 = 10_000;
+    let mut den: i64 = speed.max(1);
+
+    // Speed is clamped to >=1 rather than trusted: a zero-speed actor (a bug,
+    // or a future debuff that over-subtracts) would divide by zero and take
+    // the island down through `apply` — contained by the kernel as a poison
+    // pill, but the encounter would still be dead.
+    let mut apply = |pm: i64| {
+        num = num.saturating_mul(pm);
+        den = den.saturating_mul(1000);
+    };
     if status.slowed {
-        av *= 1.20;
+        apply(1200);
     }
     if status.hasted {
-        av *= 0.80;
+        apply(800);
     }
     if status.stunned {
-        av *= 2.00;
+        apply(2000);
     }
     if is_initiator_first_turn {
-        // COMB_001: the initiator's first turn is AV × 0.75 — starting a fight
-        // is worth a head start, not a free round.
-        av *= 0.75;
+        // COMB_001: the initiator's first turn is AV x 0.75 — starting a
+        // fight is worth a head start, not a free round.
+        apply(750);
     }
-    av.round() as i64
+
+    // Round to nearest rather than truncate: truncation would bias every
+    // status toward acting sooner than the multiplier says.
+    (num.saturating_add(den / 2)) / den
 }
 
 /// Whose turn it is: the lowest action value acts.

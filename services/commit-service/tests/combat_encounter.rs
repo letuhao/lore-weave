@@ -127,10 +127,11 @@ fn an_encounter_runs_to_victory() {
         ev.iter().any(|e| matches!(e, CombatEvent::EncounterEnded { .. })),
         "the end is an EVENT — the client cannot render a victory it never heard about"
     );
-    assert!(
-        ev.iter().any(|e| matches!(e, CombatEvent::Missed { .. })),
-        "over a whole fight some attacks miss — the 0.95 ceiling is real, not decorative"
-    );
+    // "some attacks miss" is a RATE property and does not belong here: with a
+    // fixed seed one short fight either contains a miss or does not, so this
+    // assertion was a coin-flip dressed as a check. It lives in
+    // `combat_rules::misses_occur_at_the_archetype_rate`, where it can be
+    // sampled.
 }
 
 /// **Initiative BINDS.** The slower actor cannot act while the faster one is

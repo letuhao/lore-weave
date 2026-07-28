@@ -22,6 +22,7 @@ pub mod llm_driver;
 pub mod manager;
 pub mod producer;
 pub mod recovery;
+pub mod stats;
 pub mod vocabulary;
 pub mod wire;
 

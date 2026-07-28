@@ -12,9 +12,10 @@ use std::collections::BTreeMap;
 use sim_core::{PreconditionKind, DetRng, Domain, EntityId, Precondition, QueuedInput, Violation};
 
 use crate::combat::{
-    action_value, evaluate_outcome, next_actor, resolve_attack, AvStatus, EncounterOutcome, Side,
-    StatBlock,
+    action_value, evaluate_outcome, next_actor, resolve_attack, AvStatus, CombatStats,
+    EncounterOutcome, Side,
 };
+use crate::stats::StatSnapshot;
 
 pub struct CombatDomain;
 
@@ -133,7 +134,16 @@ pub struct Actor {
     /// actor with no side could never be counted and the encounter could
     /// never end.
     pub side: Side,
-    pub stats: StatBlock,
+    /// DF07 §8.1 — the block RESOLVED AT ENCOUNTER START, not read live.
+    ///
+    /// A progression tick or manifest reload mid-encounter would otherwise
+    /// retroactively change how earlier rounds *should* have resolved,
+    /// breaking replay of the encounter as a unit. And that is the normal
+    /// case, not an exotic one: striking trains swordsmanship, and PROG_001
+    /// trains on Action.
+    pub snapshot: StatSnapshot,
+    /// The combat-facing projection of `snapshot.stats` (DF07 §8.1 table).
+    pub stats: CombatStats,
     /// HSR action value. LOWEST acts; reset on act (COMB_001 §4).
     pub av: i64,
     pub status: AvStatus,
@@ -163,7 +173,7 @@ impl Actor {
     }
 
     pub fn with_side(max_hp: i64, side: Side) -> Self {
-        let stats = StatBlock::archetype_melee(max_hp);
+        let stats = CombatStats::archetype_melee(max_hp);
         Self {
             hp: max_hp,
             max_hp,
@@ -171,6 +181,7 @@ impl Actor {
             stance: None,
             fled: false,
             side,
+            snapshot: StatSnapshot::default(),
             stats,
             av: action_value(stats.speed, AvStatus::default(), false),
             status: AvStatus::default(),

@@ -11,15 +11,15 @@
 //! covered in `combat_encounter.rs`.
 
 use commit_service::combat::{
-    action_value, evaluate_outcome, hit_chance, next_actor, resolve_attack, role_rng, AvStatus,
-    EncounterOutcome, SeedRole, Side, StatBlock,
+    action_value, evaluate_outcome, hit_chance_pm, next_actor, resolve_attack, role_rng, AvStatus,
+    CombatStats, EncounterOutcome, SeedRole, Side,
 };
 use sim_core::EntityId;
 
 const SEED: u64 = 0xC0FFEE;
 
-fn atk() -> StatBlock {
-    StatBlock::archetype_melee(100)
+fn atk() -> CombatStats {
+    CombatStats::archetype_melee(100)
 }
 
 // ───────────────────────────── hit / dodge ──────────────────────────────────
@@ -32,12 +32,12 @@ fn atk() -> StatBlock {
 /// encounter can never resolve.
 #[test]
 fn hit_chance_is_clamped_at_both_ends() {
-    assert!((hit_chance(0.0, 0.0) - 0.5).abs() < 1e-9, "the 0.5 base");
-    assert_eq!(hit_chance(10.0, 0.0), 0.95, "no build is unmissable");
-    assert_eq!(hit_chance(0.0, 10.0), 0.05, "no target is untouchable");
+    assert_eq!(hit_chance_pm(0, 0), 500, "the 0.5 base, in per-mille");
+    assert_eq!(hit_chance_pm(10_000, 0), 950, "no build is unmissable");
+    assert_eq!(hit_chance_pm(0, 10_000), 50, "no target is untouchable");
     // Monotonic in between: more accuracy is never worse.
-    assert!(hit_chance(0.3, 0.1) > hit_chance(0.2, 0.1));
-    assert!(hit_chance(0.2, 0.2) < hit_chance(0.2, 0.1));
+    assert!(hit_chance_pm(300, 100) > hit_chance_pm(200, 100));
+    assert!(hit_chance_pm(200, 200) < hit_chance_pm(200, 100));
 }
 
 // ──────────────────────────── damage law-chain ──────────────────────────────
@@ -52,10 +52,10 @@ fn armor_cannot_make_a_target_immortal() {
     // 0.95, so ~5% still miss BY DESIGN. Sampling and filtering to the hits is
     // the honest way to isolate the damage law; asserting a single attack lands
     // would be a 1-in-20 flake.
-    a.accuracy = 10.0;
+    a.accuracy_pm = 10_000;
     let mut tank = atk();
     tank.armor = 9_999;
-    tank.dodge = 0.0;
+    tank.dodge_pm = 0;
 
     let hits: Vec<i64> = (0..50)
         .map(|i| resolve_attack(&a, &tank, false, SEED, EntityId(1), i))
@@ -78,8 +78,8 @@ fn armor_cannot_make_a_target_immortal() {
 #[test]
 fn damage_varies_within_the_locked_band() {
     let mut a = atk();
-    a.accuracy = 10.0;
-    a.crit_chance = 0.0; // isolate the damage roll from crit
+    a.accuracy_pm = 10_000;
+    a.crit_chance_pm = 0; // isolate the damage roll from crit
     let d = atk();
 
     // Filter to hits: a miss is damage 0 by design (and a separate law), so
@@ -103,7 +103,7 @@ fn damage_varies_within_the_locked_band() {
 #[test]
 fn defending_halves_but_never_negates() {
     let mut a = atk();
-    a.accuracy = 10.0;
+    a.accuracy_pm = 10_000;
     let d = atk();
 
     let mut compared = 0;
@@ -236,4 +236,53 @@ fn fleeing_is_not_dying() {
         evaluate_outcome([who(Side::A, 10, false), who(Side::B, 10, true)].into_iter()),
         Some(EncounterOutcome::Victory)
     );
+}
+
+/// Misses actually happen, at roughly the rate the clamp implies.
+///
+/// This is a RATE and needs sampling — asserting it from a single encounter
+/// makes the test a coin-flip on the seed. The archetype is accuracy 450‰ /
+/// dodge 100‰, so `hit_chance = clamp(500 + 450 − 100) = 850‰`: about one in
+/// seven attacks should miss.
+///
+/// Kill-mutation: dropping the hit roll entirely (every attack lands) — combat
+/// becomes deterministic in the boring sense and dodge stops existing.
+#[test]
+fn misses_occur_at_the_archetype_rate() {
+    let (a, d) = (atk(), atk());
+    let n = 2_000;
+    let hits = (0..n)
+        .filter(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), *i).hit)
+        .count();
+
+    let expected = hit_chance_pm(a.accuracy_pm, d.dodge_pm); // 850
+    assert_eq!(expected, 850, "the archetype's hit chance is what we think");
+
+    let observed_pm = (hits as i64 * 1000) / n as i64;
+    assert!(
+        (observed_pm - expected).abs() < 40,
+        "observed {observed_pm}‰ vs expected {expected}‰ over {n} attacks"
+    );
+    assert!(hits < n as usize, "some attacks DO miss");
+}
+
+/// DF07 §8.1 mapping: the combat view reads the right slots, and the
+/// per-mille slots stay per-mille rather than being silently divided twice.
+#[test]
+fn the_combat_view_maps_the_df07_slots() {
+    use commit_service::stats::{resolve_block, StatBlock, StatSlot, StatTuning};
+
+    let mut arch = StatBlock::default();
+    arch.set(StatSlot::StrikePower, 33);
+    arch.set(StatSlot::Armor, 7);
+    arch.set(StatSlot::Accuracy, 321);
+    arch.set(StatSlot::Speed, 250);
+    let block = resolve_block(&arch, &[], &[], &[], &StatTuning::default());
+    let view = CombatStats::from_block(&block);
+
+    assert_eq!(view.strike_power, 33);
+    assert_eq!(view.armor, 7);
+    assert_eq!(view.accuracy_pm, 321, "per-mille stays per-mille");
+    assert_eq!(view.speed, 250);
+    assert_eq!(view.crit_mult_pm, 1500, "engine default 1.5x survives (DF7-A6)");
 }

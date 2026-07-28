@@ -48,8 +48,8 @@ Building that blind is XL+ and would fail halfway. It is therefore sliced, and t
 
 | # | Slice | Why this order |
 |---|---|---|
-| **1** | **Combat spine** — HSR initiative, 4-step damage chain, hit/dodge/crit on seeded RNG, rounds + status expiry, sides, win/lose, KO | This is the slice that changes the *kind* of thing it is. Turn order stops being "who submitted first"; damage stops being a constant; actors can die and be revived; someone wins |
-| **2** | **DF07 stat snapshots** | Slice 1 needs `strike_power`/`armor`/`acc`/`dodge`/`speed` from somewhere. Slice 1 takes them from a fixed archetype; slice 2 makes them real stat blocks |
+| ~~**1**~~ ✅ | **Combat spine** — HSR initiative, 4-step damage chain, hit/dodge/crit on seeded RNG, rounds + status expiry, sides, win/lose, KO | This is the slice that changes the *kind* of thing it is. Turn order stops being "who submitted first"; damage stops being a constant; actors can die and be revived; someone wins |
+| ~~**2**~~ ✅ | **DF07 stat snapshots** | DONE — and it corrected slice 1, see §6 |
 | **3** | COMB_003 threat + targeting | NPCs choose targets properly instead of "first hostile" |
 | **4** | COMB_002 tactical grid | Space: range, LoS, movement |
 | **5** | ABL_001 abilities + PL_007 equipment | Depth on top of a working fight |
@@ -120,3 +120,60 @@ comes.
 Slice 1: an encounter runs to Victory/Defeat through the real chain, with initiative deciding order,
 misses and crits observable, KO revivable, and statuses expiring at the round boundary — all
 deterministic under a fixed seed, and all replayable.
+
+---
+
+## 6. Slice 2 — what DF07 changed about slice 1
+
+Reading DF07 properly turned slice 2 from "swap the archetype" into a
+**correction**.
+
+**DF7-A4 (Integer determinism)** — *"all resolution runs in i64 milli-units;
+exactly one `floor` at slot emit; **no float anywhere in the stat path**; same
+inputs → byte-identical block on any machine."*
+
+Slice 1 stored `accuracy` / `dodge` / `crit_chance` / `crit_mult` as `f64`, and
+ran the damage chain and action value in floating point. That is reproducible
+*within* a build but not reliably *across* targets — a fused multiply-add or an
+x87 80-bit intermediate is enough — and this project replays committed
+encounters as its recovery model (EVT-A9, CNC-D5, and now the writer recovery
+of CNC-D2). A roll differing in the last bit on another machine makes a
+replayed fight diverge.
+
+So the whole combat path is now integer:
+
+| | Before | After |
+|---|---|---|
+| fractional stats | `f64` 0.0–1.0 | **per-mille** `i64` 0–1000, as DF07 specifies |
+| `hit_chance` | `clamp(0.5+acc−dodge, .05, .95)` | `hit_chance_pm` → `clamp(500+acc−dodge, 50, 950)` |
+| damage roll | `0.85 + u*0.30` | per-mille band `850..=1150` |
+| damage chain | float multiply | one integer expression, divisions carried to the end |
+| `action_value` | `10000.0/speed × factors` | one numerator/denominator, single division, round-to-nearest |
+
+**A bug this immediately caught.** The integer chain multiplies **four**
+per-mille factors (elem, resist-complement, roll band, crit) and I divided by
+`1000³`. Every hit came out 1000× too large and the damage-band test failed on
+the first run. That is the trade fixed-point makes: it swaps float's quiet
+rounding drift for scale errors that fail *loudly*.
+
+**Round-to-nearest in `action_value`** is deliberate. Truncating would bias
+every status toward acting sooner than its multiplier says — a small, systematic
+advantage that would be very hard to notice as a bug and very easy to feel as
+"the speed stat is wrong".
+
+### 6.1 The DF07 axioms now under test
+
+* **DF7-A6** a bare block is already playable (no declaration required).
+* **DF7-A5** percent modifiers **sum**, never chain — two +50% give ×2.0, not
+  ×2.25 — which also makes the result order-independent.
+* **DF7-A3** the **Lex clamp runs LAST**. This encodes a correction the spec
+  itself records (DF07_002 EC-1): the first draft ran `Lex → slot`, reasoning
+  that an author clamp must not escape a world rule, which is backwards —
+  whichever clamp runs last wins, so an author `min` above the Lex ceiling
+  raises the value back through it. **Bite-proven**: reversing the order makes
+  the test report exactly the predicted 80 instead of 50.
+* **DF7-A2 / §8.2** the snapshot detects staleness via `StatEpoch` and is
+  re-resolved, never patched.
+* **§8.1** stats are snapshotted at encounter start, because a progression tick
+  mid-fight would retroactively change how earlier rounds *should* have
+  resolved — and that is the normal case: striking trains swordsmanship.
