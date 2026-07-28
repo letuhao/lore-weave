@@ -252,6 +252,93 @@ async def test_run_world_forwards_the_known_world_and_canon(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_scenes_STAMPS_the_curve_conformance_onto_the_artifact(monkeypatch):
+    """E7. Pass 6 hands the curve to the drafter as a prompt line and never checks the result, so a
+    chapter that missed its target by 22 was indistinguishable from one that hit exactly.
+
+    Stamped ON the artifact rather than logged, because pass 7's input IS this artifact — that is
+    what makes `self_heal` (which knows nothing about the curve) checkable for flattening it.
+    """
+    import app.engine.grounded_plan as gp
+    from app.engine.plan import ChapterPlan, ChapterScenes, DecomposeResult, ScenePlan
+    from app.services.plan_pass_adapters import run_scenes
+
+    async def _fake_decompose(llm, **kw):
+        return DecomposeResult(arc_title="A", chapters=[
+            ChapterScenes(
+                chapter=ChapterPlan(chapter_id="c1", title="T", sort_order=1,
+                                    beat_role="hook", intent=""),
+                scenes=[ScenePlan(title="s", synopsis="", tension=40, suggested_k=1,
+                                  present_entity_ids=[],
+                                  present_entity_names_unresolved=[])],
+            ),
+        ], unmapped_beats=[])
+
+    monkeypatch.setattr(gp, "grounded_decompose", _fake_decompose)
+
+    art = await run_scenes(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p"},
+        inputs={"beats": {
+            "chapters": [{"ordinal": 1, "beat_role": "hook"}],
+            "tension_curve": [{"chapter_index": 1, "beat_role": "hook", "tension_target": 65}],
+        }},
+    ))
+    r = art["tension_conformance"]
+    assert r["measured"] is True
+    assert r["chapters"][0]["tension_target"] == 65 and r["chapters"][0]["peak"] == 40
+    assert r["under"] == 1                       # 40 against a target of 65 is a real miss
+    assert "missed their tension target" in r["warning"]
+
+
+@pytest.mark.asyncio
+async def test_run_self_heal_RE_MEASURES_against_pass_6s_stamped_targets(monkeypatch):
+    """`run_plan_self_heal` receives the DecomposeResult and nothing else — no curve, no targets,
+    no beats. It rewrites scenes with no knowledge of the arc's pacing, so it can flatten what pass
+    6 achieved while reporting a successful heal. Re-measuring is what makes that visible, and the
+    targets come from pass 6's stamp because pass 7 depends on ("scenes", "cast"), not on `beats`.
+    """
+    import app.engine.plan_heal as ph
+    from app.services.plan_pass_adapters import run_self_heal
+
+    class _Report:
+        findings: list = []
+        edits_applied = 1
+
+    async def _fake_heal(llm, result, **kw):
+        for ch in result.chapters:          # the heal flattens chapter 1 down to 20
+            for s in ch.scenes:
+                s.tension = 20
+        return result, _Report()
+
+    monkeypatch.setattr(ph, "run_plan_self_heal", _fake_heal)
+
+    scenes_art = {
+        "arc_title": "A",
+        "chapters": [{"chapter": {"chapter_id": "c1", "title": "T", "sort_order": 1,
+                                  "beat_role": "hook", "intent": ""},
+                      "scenes": [{"title": "s", "synopsis": "", "tension": 65,
+                                  "suggested_k": 1, "present_entity_ids": [],
+                                  "present_entity_names_unresolved": []}],
+                      "warning": None, "exit_state": None}],
+        "unmapped_beats": [], "motif_coverage": {},
+        # pass 6's stamp — the only place pass 7 can learn what the chapter was aiming at
+        "tension_conformance": {"measured": True, "chapters": [
+            {"chapter_index": 1, "beat_role": "hook", "tension_target": 65,
+             "peak": 65, "delta": 0, "verdict": "on_target"}]},
+    }
+    out = await run_self_heal(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", inputs={"scenes": scenes_art},
+    ))
+    r = out["tension_conformance"]
+    assert r["measured"] is True
+    assert r["chapters"][0]["peak"] == 20 and r["chapters"][0]["delta"] == -45
+    assert r["under"] == 1                       # the heal's flattening is now VISIBLE
+    assert out["heal"]["edits_applied"] == 1
+
+
+@pytest.mark.asyncio
 async def test_pass_context_exposes_canon_from_the_package():
     """`package["canon"]` had no reader at all — compile wrote it, telemetry logged 200 chars of
     it, and no pass ever asked for it. The reader lives on PassContext with the others so a

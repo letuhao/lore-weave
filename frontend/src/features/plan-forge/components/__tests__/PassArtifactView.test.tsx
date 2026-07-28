@@ -185,3 +185,70 @@ describe('PassArtifactView — the remaining atom kinds', () => {
     expect(el.textContent).toContain('thin');
   });
 });
+
+// ── E7 · the curve-conformance stamp ──────────────────────────────────────────
+// Pass 6 hands the drafter a tension target as a prompt line and never checked the result, so a
+// chapter that missed by 22 points rendered identically to one that hit exactly. Measuring it is
+// only half the fix — a report stamped on the artifact that no view reads is the same defect one
+// layer along. Fixture mirrors `tension_conformance.measure`.
+
+const SCENES_WITH_MISS = {
+  chapters: [
+    { chapter: { chapter_id: 'c1', title: 'The Wet Ink', sort_order: 1 },
+      scenes: [{ title: 'At the desk', tension: 65 }], warning: null },
+    { chapter: { chapter_id: 'c2', title: 'The Marsh', sort_order: 2 },
+      scenes: [{ title: 'The phantom road', tension: 60 }], warning: null },
+  ],
+  tension_conformance: {
+    measured: true, tolerance: 10, on_target: 1, under: 1, over: 0, no_scenes: 0,
+    mean_abs_delta: 11.0, degenerate_curve: false,
+    warning: '1 chapter(s) missed their tension target (worst: chapter 2 aimed at 82, peaked at 60)',
+    chapters: [
+      { chapter_index: 1, beat_role: 'hook', tension_target: 65, peak: 65, delta: 0, verdict: 'on_target' },
+      { chapter_index: 2, beat_role: 'rising_conflict', tension_target: 82, peak: 60, delta: -22, verdict: 'under' },
+    ],
+  },
+};
+
+describe('PassArtifactView — scene_plan tension conformance (E7)', () => {
+  it('names the chapter that drifted off its planned pacing, not just a count', () => {
+    render(<PassArtifactView kind="scene_plan" content={SCENES_WITH_MISS} />);
+    // per-chapter, because a whole-plan count says something is wrong without saying where
+    expect(screen.getByTestId('scene-tension-miss-2').textContent).toContain('aimed 82');
+    expect(screen.getByTestId('scene-tension-miss-2').textContent).toContain('peaked 60');
+    // the chapter that hit its target is NOT badged — a marker on every row is noise
+    expect(screen.queryByTestId('scene-tension-miss-1')).toBeNull();
+    expect(screen.getByTestId('scene-tension-warning').textContent).toContain('chapter 2 aimed at 82');
+  });
+
+  it('a clean plan shows no pacing banner at all', () => {
+    const clean = {
+      ...SCENES_WITH_MISS,
+      tension_conformance: { ...SCENES_WITH_MISS.tension_conformance, under: 0, warning: '' },
+    };
+    render(<PassArtifactView kind="scene_plan" content={clean} />);
+    expect(screen.queryByTestId('scene-tension-warning')).toBeNull();
+    expect(screen.queryByTestId('scene-tension-unmeasured')).toBeNull();
+  });
+
+  it('UNMEASURED is shown as unmeasured, never as a clean bill of health', () => {
+    // The bug class this repo keeps re-shipping: "we did not look" rendering identically to
+    // "we looked and found nothing wrong".
+    const unmeasured = {
+      ...SCENES_WITH_MISS,
+      tension_conformance: { measured: false, chapters: [], warning: 'no tension curve was available' },
+    };
+    render(<PassArtifactView kind="scene_plan" content={unmeasured} />);
+    expect(screen.getByTestId('scene-tension-unmeasured')).toBeTruthy();
+    expect(screen.queryByTestId('scene-tension-miss-2')).toBeNull();
+  });
+
+  it('an older artifact with no report at all renders unchanged', () => {
+    // Every scene_plan written before E7 lacks the key; it must not sprout a scary banner.
+    const legacy = { chapters: SCENES_WITH_MISS.chapters };
+    render(<PassArtifactView kind="scene_plan" content={legacy} />);
+    expect(screen.getByTestId('artifact-scenes')).toBeTruthy();
+    expect(screen.queryByTestId('scene-tension-unmeasured')).toBeNull();
+    expect(screen.queryByTestId('scene-tension-warning')).toBeNull();
+  });
+});

@@ -47,7 +47,10 @@ const VIEW_TOP_LEVEL: Record<string, string[]> = {
   motif_plan: ['motifs'],
   world_plan: ['entities'],
   char_arc_plan: ['character_arcs'],
-  scene_plan: ['chapters'],
+  // E7 — the view reads the stamped curve-conformance report. Declared here so the producer can
+  // never quietly stop emitting it: a pacing miss that silently stops being shown is exactly as
+  // invisible as the miss was before it was measured at all.
+  scene_plan: ['chapters', 'tension_conformance'],
 };
 
 /** The nested editor (ScenePlanEditor) binds these per-scene fields. */

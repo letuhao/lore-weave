@@ -35,6 +35,7 @@ from uuid import UUID
 
 from app.clients.llm_client import LLMClient
 from app.db.models import PlanPassId
+from app.engine import tension_conformance
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +329,18 @@ async def run_scenes(ctx: PassContext) -> dict[str, Any]:
         tension_curve=curve or None,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
-    return _decompose_to_artifact(result)
+    art = _decompose_to_artifact(result)
+    # E7 — measure what the curve actually achieved. The target reaches the drafter as a prompt
+    # directive and `parse_scenes` is never told what the chapter was aiming at, so a chapter that
+    # missed by 22 points has until now been indistinguishable from one that hit exactly. Stamped
+    # ON the artifact (not merely logged) because pass 7's input IS this artifact — that is how
+    # `self_heal`, which knows nothing about the curve, can be checked for flattening it.
+    art["tension_conformance"] = tension_conformance.measure(
+        [{"chapter_index": c.chapter_index, "beat_role": c.beat_role,
+          "tension_target": c.tension_target} for c in curve],
+        art.get("chapters"),
+    )
+    return art
 
 
 # ── pass 7 · self_heal ───────────────────────────────────────────────────────────────────────────
@@ -350,6 +362,15 @@ async def run_self_heal(ctx: PassContext) -> dict[str, Any]:
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     out = _decompose_to_artifact(healed)
+    # E7 — re-measure the HEALED plan against the same targets pass 6 was given. `run_plan_self_heal`
+    # receives the DecomposeResult and nothing else: no curve, no targets, no beats. It rewrites
+    # scenes with no knowledge of the arc's pacing, so it can flatten what pass 6 achieved and
+    # nothing would say so. The targets come from pass 6's stamped report — pass 7 depends on
+    # ("scenes", "cast"), so reading them from the artifact costs no dependency change.
+    out["tension_conformance"] = tension_conformance.measure(
+        tension_conformance.curve_from_report(scenes_art.get("tension_conformance")),
+        out.get("chapters"),
+    )
     out["heal"] = {
         "findings": [
             {"chapter": f.chapter, "scene": f.scene, "type": f.type, "issue": f.issue,

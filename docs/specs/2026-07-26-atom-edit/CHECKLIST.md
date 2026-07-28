@@ -542,9 +542,16 @@ observation. A claim that a check passed, without its output, does **not** tick 
       three established entities came back `is_new=false` under their correct kinds. The roster is
       passed BY KIND (a flat one is how a mountain becomes a character), and the worker's
       already-existing read now feeds both passes instead of discarding the non-characters.
-- [ ] **E7** Re-run `scenes` + `self_heal` and confirm the scene decomposition now honours the real
-      curve (pass 6 reads `tension_curve` verbatim). **Not yet done — the shape is proven at the
-      beat layer only.**
+- [~] **E7** Curve conformance. **Pass 6 DOES honour the curve — measured, not asserted:** on the
+      real 10-chapter arc (beat_plan `019f9f0f` → scene_plan `019f9f12`) 8 chapters landed EXACTLY
+      on target, two undershot (−22, −4), none ever exceeded. `app/engine/tension_conformance.py`
+      makes that a permanent, deterministic output instead of a one-off query, stamped on the
+      artifact and rendered per-chapter in `PassArtifactView`. It also flags the **degenerate
+      curve** — a real stored artifact (`019f9d2f`) is the all-`beat_role`-NULL flat ramp, which
+      scores 10/10 conformance to a curve nobody planned.
+      **Still open:** `self_heal` has NEVER run — 0 of 278 plan runs — and `run_plan_self_heal`
+      gets no curve and no targets, so it can flatten pass 6's pacing while reporting success.
+      Pass 7 now re-measures against pass 6's stamped targets; the first live run is the next step.
 - [x] **E8** FE structure picker shipped. `CompilePlanBody.structure_template_id` → `runCompile` →
       a picker beside the arc picker, labelled with each structure's beat count. `usePlanRun` loads
       the library once per token (synchronization effect) and exposes `structures`.

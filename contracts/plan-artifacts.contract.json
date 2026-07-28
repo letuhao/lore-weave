@@ -84,6 +84,7 @@
         "chapters",
         "heal",
         "motif_coverage",
+        "tension_conformance",
         "unmapped_beats"
       ]
     },

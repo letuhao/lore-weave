@@ -203,15 +203,48 @@ export function PassArtifactView({ kind, content }: Props) {
   if (kind === 'scene_plan') {
     const chapters = arr(content, 'chapters');
     if (!chapters.length) return <Empty label="No scenes in this plan yet." />;
+    // E7 — did the decomposition actually LAND on the arc's tension curve? The target reaches the
+    // drafter as a prompt line and nothing checked the result, so a chapter that missed by 22
+    // points rendered identically to one that hit exactly. A report stamped on the artifact that
+    // no view reads would be the same defect one layer along, so it is surfaced here.
+    const conf = ((content as Record<string, unknown> | null)?.tension_conformance ?? null) as
+      Record<string, unknown> | null;
+    const missByIndex = new Map<number, Record<string, unknown>>();
+    if (conf?.measured === true) {
+      (Array.isArray(conf.chapters) ? (conf.chapters as Record<string, unknown>[]) : []).forEach((r) => {
+        const idx = Number(r.chapter_index);
+        if (Number.isFinite(idx) && r.verdict !== 'on_target') missByIndex.set(idx, r);
+      });
+    }
     return (
       <ol data-testid="artifact-scenes" className="space-y-1">
+        {/* Measured-and-clean and never-measured are DIFFERENT claims; say which. */}
+        {conf != null && conf.measured !== true && (
+          <li data-testid="scene-tension-unmeasured" className="rounded bg-muted/60 px-2 py-1 text-[10px] text-muted-foreground">
+            Pacing was not measured against a tension curve.
+          </li>
+        )}
+        {conf?.measured === true && str(conf.warning) !== '' && (
+          <li data-testid="scene-tension-warning" className="rounded bg-warning/15 px-2 py-1 text-[10px] text-foreground">
+            Pacing: {str(conf.warning)}
+          </li>
+        )}
         {chapters.map((c, i) => {
           const chapter = (c.chapter ?? {}) as Record<string, unknown>;
           const scenes = Array.isArray(c.scenes) ? (c.scenes as Record<string, unknown>[]) : [];
+          const ordinal = typeof chapter.sort_order === 'number' ? chapter.sort_order : i + 1;
+          const miss = missByIndex.get(ordinal);
           return (
             <li key={`${str(chapter.chapter_id)}-${i}`} className="rounded bg-muted/40 px-2 py-1">
               <span className="font-medium text-foreground">{str(chapter.title) || '—'}</span>
               <span className="ml-1 text-[9px] text-muted-foreground">{scenes.length} scene{scenes.length === 1 ? '' : 's'}</span>
+              {/* The chapter drifted off its planned pacing — named per-chapter, because a
+                  whole-plan count tells an author something is wrong without saying where. */}
+              {miss != null && miss.verdict !== 'no_scenes' && (
+                <span data-testid={`scene-tension-miss-${ordinal}`} className="ml-1 rounded bg-warning/20 px-1 text-[9px] text-foreground">
+                  aimed {str(miss.tension_target)} · peaked {str(miss.peak)}
+                </span>
+              )}
               {/* A chapter the decomposer flagged is the one worth a human's attention. */}
               {c.warning != null && str(c.warning) !== '' && (
                 <span className="ml-1 rounded bg-warning/20 px-1 text-[9px] text-foreground">{str(c.warning)}</span>
