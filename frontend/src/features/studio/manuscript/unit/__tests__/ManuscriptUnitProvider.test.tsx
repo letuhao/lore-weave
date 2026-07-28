@@ -199,4 +199,66 @@ describe('useManuscriptUnit (Tier-4 hoist)', () => {
       expect(progressSpies.reportProgress).not.toHaveBeenCalled();
     });
   });
+
+  // ── D-EDITOR-MOUNT-EMPTY-AUTOSAVE — P0 data loss ────────────────────────────
+  //
+  // Found by opening a real chapter in the browser and touching NOTHING:
+  //
+  //   07:31:35  chapter opened, header showed "● unsaved"
+  //   07:36:34  autosave fired -> word_count 102 -> 0, the chapter was gone
+  //
+  // The persisted body was `{paragraph, _text: "", attrs: {audio_key: null, ...}}` — the
+  // editor's own EMPTY initial document, complete with its custom paragraph attrs. Tiptap
+  // emits an onUpdate from that empty doc BEFORE the loaded body has been applied. The
+  // existing M-I guard only recognises the other mount emission (one whose content EQUALS
+  // what was loaded), so the empty one fell through as a real edit, became `workingBody`,
+  // and AUTO_SAVE_DEBOUNCE_MS later overwrote the chapter with it.
+  //
+  // No test caught this because every existing test drives setBody with real content.
+  describe('mount-race: an empty first update must never become an edit', () => {
+    const emptyDoc = () => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', _text: '', attrs: { audio_key: null, audio_url: null } }],
+    });
+
+    it('does NOT mark dirty when the editor emits its empty initial doc', async () => {
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      act(() => { api!.setBody(emptyDoc(), ''); });
+      expect(api!.isDirty).toBe(false);
+    });
+
+    it('does NOT let the autosave path persist that empty doc', async () => {
+      patchDraft.mockResolvedValue(undefined);
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      act(() => { api!.setBody(emptyDoc(), ''); });
+      await act(async () => { await api!.save(); });
+      expect(patchDraft).not.toHaveBeenCalled();
+    });
+
+    it('still accepts a REAL emptying once the editor has shown the loaded content', async () => {
+      // The fix must not make a chapter un-clearable: after the editor emits the loaded
+      // body (its other mount emission), a later empty doc IS the author deleting it.
+      patchDraft.mockResolvedValue(undefined);
+      getDraft.mockResolvedValueOnce({ chapter_id: 'ch1', body: doc('server'), draft_version: 3, text_content: 'server' })
+              .mockResolvedValueOnce({ chapter_id: 'ch1', body: emptyDoc(), draft_version: 4, text_content: '' });
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      act(() => { api!.setBody(doc('server'), 'server'); });   // seeded with the loaded content
+      act(() => { api!.setBody(emptyDoc(), ''); });            // now the author clears it
+      expect(api!.isDirty).toBe(true);
+      await act(async () => { await api!.save(); });
+      expect(patchDraft).toHaveBeenCalled();
+    });
+
+    it('a brand-new EMPTY chapter is unaffected (nothing to protect)', async () => {
+      getDraft.mockReset();
+      getDraft.mockResolvedValue({ chapter_id: 'ch2', body: emptyDoc(), draft_version: 1, text_content: '' });
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch2'); });
+      act(() => { api!.setBody(doc('first words'), 'first words'); });
+      expect(api!.isDirty).toBe(true);
+    });
+  });
 });
