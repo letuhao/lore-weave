@@ -1,5 +1,82 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
+
+**Measured, not inferred, and it had already happened on the real book.** This project's Mị Đế
+planning document — 4,279 chars, 14 headings, premise + a cast of four + relationships + the opening
+arc + long-range seeds — parsed to **ZERO sections** and produced an **entirely empty spec**:
+0 characters, 0 mechanics, 0 variables, 0 arcs. Status `proposed`. No error anywhere.
+
+`plan_run` still holds the row: `rules | proposed | 4278`. The author ran it, got nothing back, and
+switched to `llm` mode (which reads the raw markdown and bypasses the parser) — `llm | compiled |
+4278`. **They worked around a silent failure, probably without knowing what it was.** Across the
+whole DB, rules is **251 of 281 runs**.
+
+Cause: `_parse_top_sections` required `# <n>. Title` — a **numbered** heading. That is the shape of
+the POC's own braindump, not of anything a person writes. `validate.py` already confesses the same
+disease about its rules: *"started as the POC's OWN golden-fixture acceptance test … reused directly
+as the LIVE per-user gate without ever being generalized."*
+
+**Fixed (live-proven through the gateway on a throwaway book, same document):**
+
+| | before | after |
+|---|---|---|
+| sections | 0 | 9 |
+| characters | 0 | **Lâm Uyên · Tô Thanh Dao · Lâm Trạch · Huyết Vô Thường** |
+| mechanics · arcs | 0 · 0 | 2 · 1 |
+| signal | silence | `9/14 read` + the 4 it still cannot classify, **by name** |
+
+- **The honesty block.** `ingest` now always returns `unread` (never omitted — a key that appears
+  only on failure cannot be told from an older ingest that never reported), naming what it could not
+  classify, and it rides onto **`spec.meta.ingest_unread`** because nobody reviews the document
+  artifact — they review the spec, where "thin because the book is young" and "thin because half the
+  document was unreadable" otherwise look identical.
+- **`front_matter`** — a table of contents is *understood and deliberately ignored*, which is not
+  `other` (*not understood*). A guard that fires on every well-organised document is not a guard.
+- **Extractors:** `_characters` returned **at most one** (hardcoded `id="protagonist"`); arcs needed
+  `## ` blocks and only the FIRST arc section was read at all.
+
+**The golden fixture caught TWO regressions I introduced** — both silent, both worse than the bug:
+a `#` inside a fenced code block became a heading and **split the variables block, losing all four
+state variables**; and taking the sub-heading as the name **renamed a character to their own role**
+(a document may use `## The Detective` as a label with `**Name:** Mara Vance`). A third was found in
+my own review: an unclosed ``` swallows the rest of the document, and my first guard for it was a
+heading-count heuristic that **false-fired on a healthy document** — replaced with the exact
+condition (an odd number of fences).
+
+**Evidence:** composition **2,748 pass** · 14 new regression tests over a document shaped like a real
+one (deliberately NOT the golden fixture) · provider-gate + db-safety-gate green · live rules-mode
+run through the gateway.
+
+**Stated limit, not hidden:** the regex now reaches 5/9 classification on the real document; **gemma
+reaches 8/9**. The LLM read remains the answer for the tail — but the tail is now *visible*. And an
+UNNUMBERED aspect layout (`## Background`, `## Personality`) is still read as two characters; telling
+that apart needs to understand the words.
+
+## 🔬 POC — the weak model READS the raw material (2026-07-28, measured, N=4)
+
+Full write-up: [`docs/specs/2026-07-28-poc-material-read.md`](../specs/2026-07-28-poc-material-read.md).
+
+Answers the PO's original question — *gemma + a state machine, hiểu và khai thác được không, hay chỉ
+làm theo?* — **it understands**:
+
+- **Classification:** regex 0/9 → gemma **8/9**, one call, 5.2 s, $0. `Bối cảnh` → mechanics,
+  `Quan hệ` → character_seed. Its own missing-report (`planner_variables`, `writing_principles`,
+  `open_questions`) **matched the computed truth exactly**.
+- **Extraction:** 4 characters vs rules mode's 1 `[TBD]`; **grounding 4/4 across all four runs, zero
+  invention**, checked mechanically by diacritic-folded substring (never by a judge model).
+- **My grounding metric was wrong, not the model.** It flagged `Huyết Vô Thường (Huyết Chủ)` as
+  invented; both names are in the document and the author uses them for the same character. The model
+  **merged two real aliases** — correct. Same lesson as the entity highlighter: match **all surface
+  forms**, not one canonical string.
+
+**So the machine to build is not an interrogation:** *READ what the author already wrote → show the
+coverage board → ask ONLY for what is genuinely absent.* For this document that is **3 questions, not
+10**.
+
+**Next:** half B — the conversation that asks for the three absent kinds. Then the cold-start arm (a
+document with no headings at all), which is the real worst case.
+
 ## ✅ INTENT-COLLECTION FSM M1 — the missing PRODUCER of chapter intent (2026-07-28, L)
 
 **The measurement that justified the whole thing: 0 of 95 chapter outline nodes carried a single

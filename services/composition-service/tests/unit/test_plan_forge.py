@@ -71,13 +71,29 @@ def pipeline_artifacts():
     return doc, spec, graph, compiled
 
 
-def test_ingest_seven_sections():
+def test_ingest_reads_every_top_level_heading():
+    """Nine, not seven: the `# <n>.` enumerator is no longer REQUIRED (2026-07-28).
+
+    Requiring it was fixture shape, not document shape — this project's real planning document uses
+    `# Bối cảnh`, `# Nhân vật`, `# Arc mở đầu` and parsed to ZERO sections, producing an empty spec
+    with no error. The two extra sections here are the fixture's own title block and its table of
+    contents, which the old regex skipped by accident rather than by decision.
+
+    The seven MATERIAL sections are unchanged, which is the property that actually matters: a
+    document written the old way still yields exactly the same planning material.
+    """
     doc = ingest_file(FIXTURE)
-    assert len(doc["sections"]) == 7
+    assert len(doc["sections"]) == 9
+    material = [s for s in doc["sections"] if s["kind"] not in ("other", "front_matter")]
+    assert len(material) == 7
     kinds = {s["kind"] for s in doc["sections"]}
     assert "character_seed" in kinds
     assert "planner_variables" in kinds
     assert "arc_overview" in kinds
+    # The TOC is UNDERSTOOD and ignored, not misread as material and not reported as a failure —
+    # a guard that fires on every well-organised document is a guard nobody reads.
+    assert "front_matter" in kinds
+    assert "MỤC LỤC" not in doc["unread"]["unclassified"]
 
 
 def test_propose_four_variables(pipeline_artifacts):

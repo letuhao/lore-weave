@@ -270,9 +270,15 @@ def _parse_events_in_block(arc_id: str, body: str, var_codes: list[str]) -> list
 
 
 def _parse_arcs_and_events(
-    arc_body: str, var_codes: list[str],
+    arc_body: str, var_codes: list[str], *, section_title: str = "", id_offset: int = 0,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Every `## ` block in the arc section is an arc — whatever it is called.
+
+    `section_title` covers the case where the section has NO `## ` blocks at all: an author who
+    writes `# Arc mở đầu` followed by plain prose has described exactly one arc, and reading zero
+    arcs out of a section the classifier just called `arc_overview` is a contradiction the caller
+    cannot see. Measured on this project's real document 2026-07-28: three arc sections, all prose,
+    0 arcs parsed.
 
     The old version matched the literal headers `## Arc 1` and `## Arc 2` (case-insensitively) and
     hardcoded each one's title, theme, arc_kind and summary. A document with `## Arc 3`, `## Act
@@ -300,8 +306,7 @@ def _parse_arcs_and_events(
             events.extend(_parse_events_in_block("transition", body, var_codes))
             continue
 
-        ordinal = len(arcs) + 1
-        arc_id = f"arc_{ordinal}"
+        arc_id = f"arc_{id_offset + len(arcs) + 1}"
         arcs.append({
             "id": arc_id,
             # The header IS the title. "Arc 1: The Iron Court" → "The Iron Court"; a bare "Arc 1"
@@ -313,6 +318,18 @@ def _parse_arcs_and_events(
             "summary": _field(body, "Summary") or _field(body, "Tóm tắt") or _prose(body),
         })
         events.extend(_parse_events_in_block(arc_id, body, var_codes))
+
+    if not arcs and arc_body.strip() and section_title:
+        # Prose under an arc heading, no `## ` blocks. The SECTION is the arc.
+        arc_id = f"arc_{id_offset + 1}"
+        arcs.append({
+            "id": arc_id,
+            "title": _arc_title(section_title),
+            "theme": _field(arc_body, "Theme") or _field(arc_body, "Chủ đề"),
+            "arc_kind": _field(arc_body, "Kind") or _field(arc_body, "Arc kind") or "",
+            "summary": _field(arc_body, "Summary") or _field(arc_body, "Tóm tắt") or _prose(arc_body),
+        })
+        events.extend(_parse_events_in_block(arc_id, arc_body, var_codes))
 
     return arcs, events
 
@@ -399,6 +416,64 @@ def _characters(char_body: str, anchors: list[str]) -> list[dict[str, Any]]:
     """
     if not char_body.strip():
         return []
+
+    # A CAST, not a protagonist. This returned exactly one person — `id="protagonist"`, name read
+    # from a `Name:`/`Tên:` field line — so a document introducing four characters under `## 1. Lâm
+    # Uyên`, `## 2. Tô Thanh Dao`, … collapsed to a single entry named "[TBD]". Measured on this
+    # project's real planning document 2026-07-28: 4 named characters in, 1 placeholder out, and the
+    # cast pass then ran with that placeholder in its prompt.
+    #
+    # `## ` sub-headings are how a person actually writes a cast list. When the section has none, the
+    # original single-character field parse is used unchanged, so a document written the old way
+    # produces the same one entry it always did.
+    # `## ` in a cast section is genuinely ambiguous — it can mean "the next character" (a cast
+    # list) or "the next aspect of this character" (a profile laid out in parts). The disambiguator
+    # is the numbering, and it is an ordinary markdown convention rather than any one document's
+    # habit: a DOTTED `N.M` header is a sub-section OF section N ("## 1.1 Hồ Sơ Cơ Bản",
+    # "## 1.2 Ngoại Hình"), while a flat `N.` or a bare title is a list item ("## 1. Lâm Uyên",
+    # "## The Detective"). Splitting on the former turned one protagonist's six profile sections into
+    # six people named after their own headings — caught by the golden fidelity test.
+    #
+    # LIMIT, stated rather than hidden: an UNNUMBERED aspect layout ("## Background", "## Personality")
+    # is still read as two characters. Telling those apart needs to understand the words, which is
+    # what the LLM read does — measured 2026-07-28 at 4/4 on the real document. This rule is strictly
+    # better than the "always exactly one character" it replaces, not a substitute for that read.
+    people = [b for b in re.split(r"(?m)^##\s+", char_body)[1:]
+              if b.strip() and not re.match(r"^\d+\.\d", b.strip())]
+    if people:
+        out: list[dict[str, Any]] = []
+        for i, block in enumerate(people):
+            lines = block.strip().splitlines()
+            header = lines[0].strip()
+            body = "\n".join(lines[1:])
+            # "1. Lâm Uyên (Nam chính)" → name "Lâm Uyên", role "Nam chính". The parenthetical is
+            # how a Vietnamese braindump states a role; an explicit Role:/Vai trò: field still wins.
+            header = re.sub(r"^[①-⑳\d]+[.)]?\s*", "", header).strip()
+            m = re.match(r"^(.+?)\s*[（(]([^）)]+)[）)]\s*$", header)
+            # An explicit `**Name:**` WINS over the heading. A document may use the sub-heading as a
+            # label ("## The Detective") and state the real name in the field — taking the header
+            # unconditionally renamed that character to their own role, which the golden test caught.
+            name = (_field(body, "Name") or _field(body, "Tên")
+                    or (m.group(1) if m else header)).strip()
+            role = (_field(body, "Role") or _field(body, "Vai trò")
+                    or (m.group(2).strip() if m else ""))
+            if not name:
+                continue
+            out.append({
+                "id": f"character_{i + 1}",
+                "name": name,
+                "role": role,
+                # This person's OWN bullets are their traits — not the section-wide anchors, which
+                # would give every character the same personality.
+                "traits": _bullets(body, limit=6),
+                "baseline_notes": _field(body, "Baseline") or _prose(body),
+            })
+        if out:
+            # The first character listed is the protagonist by position — the same assumption the
+            # single-entry parser made, just no longer the only one allowed to exist.
+            out[0]["id"] = "protagonist"
+            return out
+
     name = _field(char_body, "Name") or _field(char_body, "Tên") or ""
     role = _field(char_body, "Role") or _field(char_body, "Vai trò") or "protagonist"
     return [{
@@ -447,7 +522,17 @@ def propose_spec(
             ],
         })
 
-    arcs, events = _parse_arcs_and_events(arc_sec["body"] if arc_sec else "", var_codes)
+    # EVERY arc section, not just the first. `_section` returns one, so a document with
+    # "Giọt nước tràn ly", "Arc mở đầu" and "Hàng vạn năm sau" contributed only the first — the
+    # other two were classified, stored, and then never read. `id_offset` keeps arc ids unique and
+    # sequential across sections so events never point at a shared id.
+    arcs: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
+    for _asec in _sections(doc, "arc_overview"):
+        _a, _e = _parse_arcs_and_events(
+            _asec["body"], var_codes, section_title=_asec["title"], id_offset=len(arcs))
+        arcs.extend(_a)
+        events.extend(_e)
 
     style = _bullets(principles_sec["body"], limit=10) if principles_sec else []
 
@@ -499,6 +584,12 @@ def propose_spec(
             "version_label": "v1.0",
             "source_checksum": doc["source"]["checksum_sha256"],
             "open_questions": _extract_open_questions(open_sec["body"]) if open_sec else [],
+            # WHAT THE READ COULD NOT USE, carried onto the artifact the author actually reviews.
+            # The block already rides the `document` artifact, but nobody reviews that — they review
+            # the spec, and a spec that came out thin because half the document was unreadable looks
+            # exactly like a spec that came out thin because the book is young. Those two must be
+            # distinguishable at the place the judgement is made.
+            "ingest_unread": doc.get("unread") or {},
         },
         "charter": {
             "consistency_anchors": anchors,
