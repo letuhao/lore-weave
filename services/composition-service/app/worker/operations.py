@@ -841,10 +841,16 @@ async def run_plan_pass(
     }
 
 
-#: A seeded row that states no kind is counted as cast. That is not a guess made here — it is the
-#: behaviour E6 shipped (`if kind and kind != "character"`), preserved deliberately: the bootstrap
-#: seeds the cast first, and moving unkinded rows to the world side would silently change which
-#: pass sees them.
+#: An ENTITY row that states no kind is counted as cast — E6's behaviour (`if kind and kind !=
+#: "character"`), preserved deliberately so this refactor cannot silently re-route which pass sees
+#: a row.
+#:
+#: Checked against production rather than assumed: of 45 applied rows, 31 state `character`, 15
+#: state a world kind, and the 14 with no kind at all are not entities — `applied_results` is
+#: HETEROGENEOUS and also holds created-chapter rows (`{"title", "chapter_id"}`). Those carry no
+#: `name`, so the name guard below drops them and this default has never actually fired. It is a
+#: defensive path, not the common one, and the name guard is what is really doing the work: if a
+#: chapter row ever gained a `name`, every chapter in the book would arrive as a cast member.
 _KIND_WHEN_UNSTATED = "character"
 
 

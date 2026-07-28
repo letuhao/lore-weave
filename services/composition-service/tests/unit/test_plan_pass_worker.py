@@ -384,6 +384,43 @@ async def test_a_row_with_no_kind_stays_on_the_CAST_side(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_CHAPTER_row_in_applied_results_reaches_NEITHER_pass(monkeypatch):
+    """`applied_results` is HETEROGENEOUS, which the mocked fixtures above do not show.
+
+    Checked against production: of 45 applied rows, 14 are not entities at all — they are created
+    CHAPTERS (`{"title", "chapter_id"}`), with no `name`, no `entity_id` and no `kind_code`. They
+    are dropped by the name guard, so `_KIND_WHEN_UNSTATED` has never actually fired on real data
+    and the guard is what is really doing the work.
+
+    That is the hazard worth pinning: if a chapter row ever gained a `name`, every chapter title in
+    the book would arrive at the cast pass as an EXISTING CHARACTER — a silent, plausible-looking
+    corruption of the roster with nothing anywhere to say so.
+    """
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    import app.db.repositories.plan_bootstrap_proposals as mod
+    from app.worker.operations import _cast_of_known, _known_entities, _world_of_known
+
+    class _Repo:
+        def __init__(self, pool): pass
+        async def list_active_for_book(self, book_id):
+            return [SimpleNamespace(status="applied", applied_results={
+                # verbatim shapes from loreweave_composition
+                "c1": {"title": "Event 1 — Nhập Môn", "chapter_id": str(uuid4())},
+                "c2": {"title": "The Wet Ink", "chapter_id": str(uuid4())},
+                "e1": {"name": "Lâm Uyển", "entity_id": "e1", "kind_code": "character",
+                       "status": "created"},
+            })]
+
+    monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Repo)
+    known = await _known_entities(None, uuid4())
+    assert _cast_of_known(known) == ["Lâm Uyển"]      # not the two chapter titles
+    assert _world_of_known(known) == {}
+    assert "The Wet Ink" not in str(known)
+
+
+@pytest.mark.asyncio
 async def test_the_world_slice_carries_only_kinds_pass_3_MAY_PROPOSE(monkeypatch):
     """WORLD_KINDS is a closed set. A seeded `item` or `event` listed under EXISTING WORLD would
     be an instruction the model cannot obey — it is forbidden to return those kinds."""
