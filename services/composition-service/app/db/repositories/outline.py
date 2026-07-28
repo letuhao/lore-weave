@@ -242,6 +242,9 @@ class OutlineRepo:
         # decompiler passes source='decompiled' + decompile_key='<chapter>:<sort>'.
         source: str = "authored",
         decompile_key: str | None = None,
+        # Intent-collection FSM: which slots the AUTHOR settled ({"goal":"settled",...}).
+        # Carried across a re-plan so author-settled intent is not destroyed by the next plan.
+        intent_slots: dict[str, Any] | None = None,
         conn: asyncpg.Connection | None = None,
     ) -> OutlineNode:
         """Insert an outline node. When `rank` is omitted it is auto-computed to
@@ -271,14 +274,14 @@ class OutlineRepo:
                    pov_entity_id, present_entity_ids, goal, beat_role, status,
                    chapter_id, tension, story_order, synopsis,
                    location_entity_id, story_time, conflict, outcome, value_shift,
-                   stakes, target_words, exit_state, source, decompile_key,
+                   stakes, target_words, exit_state, source, decompile_key, intent_slots,
                    structure_node_id)
                 SELECT $1, $2, w.book_id, $3, $4, $5, $6,
                        $7, $8, $9, $10, $11,
                        $12, $13, $14, $15,
                        $16, $17, $18, $19, $20,
-                       $21, $22, $23::jsonb, $24, $25,
-                       $26
+                       $21, $22, $23::jsonb, $24, $25, $26::jsonb,
+                       $27
                 FROM composition_work w
                 WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 RETURNING {_SELECT_COLS}
@@ -289,7 +292,9 @@ class OutlineRepo:
                 location_entity_id, story_time, conflict, outcome, value_shift,
                 stakes, target_words,
                 json.dumps(exit_state) if exit_state is not None else None,
-                source, decompile_key, structure_node_id,
+                source, decompile_key,
+                json.dumps(intent_slots or {}),
+                structure_node_id,
             )
             if row is None:
                 # The INSERT … SELECT found no composition_work to derive book_id
@@ -480,9 +485,57 @@ class OutlineRepo:
                 project_id, chapter_id,
             )
 
+    #: The intent slots a re-plan must not destroy. Ordered as the FSM asks them (closed sets
+    #: first — a weak model picks well and invents badly, and each answer narrows the next).
+    INTENT_SLOTS = (
+        "beat_role", "value_shift", "tension",
+        "goal", "conflict", "outcome", "stakes", "exit_state", "story_time", "target_words",
+    )
+
+    async def _lift_settled_intent(
+        self, c: asyncpg.Connection, project_id: UUID, chapter_ids: list,
+    ) -> dict[str, dict[str, Any]]:
+        """Read the AUTHOR-settled intent off the chapter nodes a re-plan is about to archive.
+
+        Returns ``{chapter_id: {"slots": {...values...}, "state": {...settled/absent...}}}``.
+
+        Only slots the author actually settled are lifted — `intent_slots` records that per node,
+        because the node-level `source` ('authored' vs 'planforge') is too coarse: an author who
+        settles ONE slot on a planforge chapter must keep it AND still receive the planner's fresh
+        values for the slots they never touched.
+
+        An `absent` slot is carried too, and carrying it is the point: it is an AUTHORED STATEMENT
+        ("the story has not decided this"), so a re-plan must not quietly refill it.
+        """
+        rows = await c.fetch(
+            f"""
+            SELECT chapter_id, intent_slots, {", ".join(self.INTENT_SLOTS)}
+            FROM outline_node
+            WHERE project_id = $1 AND kind = 'chapter'
+              AND NOT is_archived AND chapter_id = ANY($2)
+              AND intent_slots <> '{{}}'::jsonb
+            """,
+            project_id, chapter_ids,
+        )
+        carried: dict[str, dict[str, Any]] = {}
+        for r in rows:
+            state = r["intent_slots"]
+            if isinstance(state, str):
+                state = json.loads(state)
+            if not state:
+                continue
+            slots = {
+                name: r[name]
+                for name, verdict in state.items()
+                if verdict == "settled" and name in self.INTENT_SLOTS
+            }
+            carried[str(r["chapter_id"])] = {"slots": slots, "state": state}
+        return carried
+
     async def _insert_decomposed_tree(
         self, c: asyncpg.Connection, project_id: UUID, *,
         book_id: UUID, created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
+        carried: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Insert arc→chapter→scene on an open connection (NO Tx of its own — the
         caller owns the transaction). The ARC is a `structure_node` (kind='arc',
@@ -490,9 +543,21 @@ class OutlineRepo:
         NEVER as a `kind='arc'` outline_node, which the post-lift CHECK rejects);
         chapters are outline_nodes LINKED to it via `structure_node_id` (parent_id
         stays NULL — the arc is not an outline parent). `beat_role` is stamped on
-        the SCENES (DB CHECK forbids it on chapter); the chapter node carries the
-        beat intent in `goal`. Returns the created node ids (UUIDs); `arc_id` is a
-        `structure_node` id."""
+        the chapter AND on its scenes; the chapter also carries the beat intent in
+        `goal`. Returns the created node ids (UUIDs); `arc_id` is a `structure_node` id.
+
+        The chapter used to be created WITHOUT `beat_role`, explained by "DB CHECK forbids it on
+        chapter". The constraint says the opposite and has for some time:
+
+            outline_beatrole_kind CHECK (beat_role IS NULL OR kind = ANY (ARRAY['scene','chapter']))
+
+        The check was widened; the comment and the code never followed. Measured 2026-07-28:
+        0 of 95 chapter nodes carried a beat role while `plan_artifact(kind='beat_plan')` held the
+        full curve — two representations, diverged, because the apply step dropped it.
+
+        `carried` holds the slots the author already SETTLED on the chapter being re-planned
+        (see `_lift_settled_intent`). Author-settled shadows planner-proposed — the same
+        higher-tier-wins cascade this repo already mandates for settings."""
         # Lazy import avoids a package-load cycle (structure ↔ repositories __init__).
         from app.db.repositories.structure import StructureRepo
 
@@ -502,12 +567,38 @@ class OutlineRepo:
         )
         chapter_ids: list[UUID] = []
         scene_ids: list[UUID] = []
+        carried = carried or {}
         for ch in chapters:
+            # Author-settled slots SHADOW the planner's fresh values; slots the author never
+            # touched take the plan's. `state` is re-stamped so the next re-plan carries them again
+            # — dropping it would make the merge work exactly once.
+            keep = carried.get(str(ch.get("chapter_id")), {})
+            settled, state = keep.get("slots") or {}, keep.get("state") or {}
+
+            def _slot(name: str, planner_value: Any, *, empty: Any = None) -> Any:
+                """Resolve one slot: author-settled > author-absent > planner.
+
+                The `absent` branch is the one that is easy to get wrong and was: carrying the
+                marker but still falling through to the planner's value silently refills a slot the
+                author explicitly declined — which is exactly the machine answering a question they
+                said the story has not decided. Caught by
+                `test_an_ABSENT_slot_is_not_quietly_refilled`.
+                """
+                verdict = state.get(name)
+                if verdict == "absent":
+                    return empty
+                if verdict == "settled":
+                    return settled.get(name, empty)
+                return planner_value
             ch_node = await self.create_node(
                 project_id, created_by=created_by, kind="chapter",
                 structure_node_id=arc.id,
                 chapter_id=ch["chapter_id"], title=ch.get("title", ""),
-                goal=ch.get("intent", ""),
+                goal=_slot("goal", ch.get("intent", ""), empty=""),
+                # The chapter's OWN beat role. Omitting it is what left beat_role 0/95 while the
+                # plan artifact held the whole curve (see the docstring).
+                beat_role=_slot("beat_role", ch.get("beat_role")),
+                intent_slots=state,
                 # The chapter's reading position on the SAME axis its scenes use
                 # (chapter_sort * STORY_ORDER_CHAPTER_STRIDE — so a chapter sits exactly at its
                 # own scene 0). Omitting it left every chapter node's story_order NULL, which:
@@ -705,6 +796,23 @@ class OutlineRepo:
                     if existing_ids and not replace:
                         raise AlreadyPlannedError(existing_ids)
                     if replace:
+                        # MERGE, NOT REPLACE (spec 2026-07-28 §SSOT). Before archiving, lift every
+                        # slot the AUTHOR settled off the chapter nodes about to be archived, keyed
+                        # by `chapter_id` — the identity that survives a re-plan (it is the real book
+                        # chapter UUID, and the archive sweep below keys on it too).
+                        #
+                        # Without this the choice of `outline_node` as the SSOT for settled intent
+                        # does not survive its own code path: a re-plan archives the chapter nodes
+                        # and inserts a FRESH tree built purely from the plan output, carrying
+                        # nothing forward. The first re-plan would silently delete everything the
+                        # author had settled — and an intent-collection FSM whose output the next
+                        # re-plan deletes is worse than none, because by then the author relies on it.
+                        #
+                        # CHAPTERS ONLY. A scene has no stable identity across a re-plan (the planner
+                        # re-decomposes them), so there is nothing to key a carry-forward on. Chapter
+                        # intent is what the author settles; scenes are the planner's decomposition
+                        # of it.
+                        carried = await self._lift_settled_intent(c, project_id, affected)
                         # true replace — soft-archive the target chapters' prior
                         # PLAN nodes: the scene + chapter outline_nodes AND the now-
                         # emptied `structure_node` arc (D-A3-REPLACE-ORPHAN-ARC-NODES
@@ -768,6 +876,7 @@ class OutlineRepo:
                     ids = await self._insert_decomposed_tree(
                         c, project_id, book_id=book_id, created_by=created_by,
                         arc_title=arc_title, chapters=chapters,
+                        carried=carried if replace else None,
                     )
                     result = {
                         "arc_id": str(ids["arc_id"]),

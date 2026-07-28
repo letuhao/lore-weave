@@ -712,6 +712,25 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS stakes       TEXT NOT NULL DEF
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS target_words INT
   CHECK (target_words IS NULL OR target_words > 0);
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS exit_state   JSONB;     -- SC12, {v:1,…}
+
+-- Intent-collection FSM (spec 2026-07-28) — which intent slots the AUTHOR has settled, per node:
+--   {"goal": "settled", "conflict": "absent"}
+-- A slot absent from the map is planner-owned. Two states are recorded, never three, because the
+-- third (unasked) IS absence:
+--   * settled — the author accepted or wrote this value;
+--   * absent  — the author said the story has not decided it. An AUTHORED STATEMENT, not a gap:
+--               never re-asked, never auto-filled. Collapsing it into "unasked" is what makes a
+--               fill loop re-ask what the story has no answer to, and the model then invents.
+--
+-- WHY PER-SLOT and not the existing node-level `source` ('authored' vs 'planforge'): an author who
+-- settles ONE slot on a planforge chapter must keep that slot AND still receive the planner's fresh
+-- values for the slots they never touched. Node-level provenance can only freeze or replace the
+-- whole node, so it would either lose the settled slot or wall off the rest of the re-plan.
+--
+-- This is what makes `outline_node` safe as the SSOT for settled intent: a re-plan ARCHIVES the
+-- chapter/scene nodes and inserts a fresh tree built purely from the plan output, so without a
+-- per-slot record the first re-plan would silently delete everything the author had settled.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS intent_slots JSONB NOT NULL DEFAULT '{}'::jsonb;
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward
