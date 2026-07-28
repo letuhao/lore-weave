@@ -57,7 +57,14 @@ vi.mock('@/features/ai-models/api', () => ({ aiModelsApi: { listUserModels: vi.f
 vi.mock('@/features/glossary/api', () => ({ glossaryApi: { listEntityNames: vi.fn(() => Promise.resolve([])) } }));
 vi.mock('@/components/editor/GlossaryTooltip', () => ({ GlossaryTooltip: () => null }));
 vi.mock('@/components/editor/GlossaryAutocomplete', () => ({ GlossaryAutocomplete: () => null }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined, isLoading: false }) }));
+// F3 — the panel now also drives the author's error-block actions, which need the mutation side
+// of react-query. A mock that stops at `useQuery` throws at import time rather than failing an
+// assertion, so the panel renders nothing and every test in the file dies for one missing export.
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: undefined, isLoading: false }),
+  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
 
 const applyProposedEdit = vi.hoisted(() => vi.fn(() => true));
 const unitState = vi.hoisted(() => ({

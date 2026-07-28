@@ -191,6 +191,46 @@ field and `ForbidExtra` rejects one — but that was *incidental*, so it is now 
 there was **removed**: provably unreachable, and dead defensive code is worse than the contract
 test that actually runs.
 
+### ✅ F3 — LIVE-PROVEN, and the last dead surface got its door (2026-07-28)
+
+**The drift I had to fix first: none of F3 had been run against a real stack.** Everything was
+stub-tested — in a track whose entire thesis is *presence is not proof*. Also caught: I had been
+running the suite with a stale `--ignore=test_glossary_build_service.py` (the other session had
+long since fixed it), so every count I reported was **27 tests low**. Rebuilt the image first
+(the running container was 5h old and did not contain the routes — `grep` in the container, not
+faith), then drove the real gateway with a real JWT:
+
+| path | result |
+|---|---|
+| scene-link create → delete → **the authored `label` still in the table** → restore | 201 / 204 / `t\|LIVE F3 smoke…` / **200** |
+| re-declare the same edge, then undo the old delete | **409 SCENE_LINK_EXISTS** (not 404, not 500) |
+| unknown id | 404 |
+| override create → delete → **gone from the list, delta still in the table** → restore | 201 / 204 / `{"overrides":[]}` + delta intact / **200** |
+| newer override for the same entity, then undo the old | **409 ENTITY_OVERRIDE_EXISTS** |
+| **the redaction guard, end to end** | see below |
+
+The redaction proof needed a fixture (no shared motifs, one account): created a motif with
+`examples`, adopted it into a book's shared tier, then re-owned the clone to another user. As that
+book's EDIT-grantee the test account then saw **`examples: []`, `owner: None`** — *exactly the
+payload that would seed their editor* — renamed it (**200**, so the refusal is field-scoped), and
+had the whole-object save carrying `examples: []` refused **400 MOTIF_REDACTED_FIELD_NOT_WRITABLE**
+with the owner's prose still in the row **and the legitimate rename persisted**. Fixtures cleaned
+up by exact id.
+
+**Then the last dead surface.** The audit said "error-block DELETE has no caller"; it was worse —
+`resolve`, `dismiss`, `reopen` AND `remove` were all dead on the FE, and `EditorPanel` **discarded
+`useErrorBlockMarks`'s entire return value**. So Phase D shipped an author who could mark a passage
+and watch it highlight, while only the co-writer could ever close it: **the same agent-can /
+author-cannot shape as the scene-link bug**, in the feature this track shipped. Fixed with
+`useErrorBlockActions` + `ErrorBlockList` (resolve · dismiss · reopen · remove-with-Undo), wired
+into the editor. `orphaned` marks are deliberately KEPT in the list — the document can no longer
+draw them, so hiding them there would strand them permanently. All six routes live-driven
+(200/200/200/200/200 + soft-archive verified in the table + restore).
+
+**Deliberate non-change:** no `op=delete` on `composition_error_block_edit`. Resolve/dismiss are
+legitimate agent actions; **deleting the author's own annotation is not**, so that surface stays
+author-only rather than being unified for symmetry's sake.
+
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
 - **F3 turned up a MISSING FE DOOR (buildable, not blocked): the shared-tier motif edit.**
   `D-MOTIF-ADOPT-BOOK-COLLAB-TIER` is fully implemented BE-side — `PATCH /motifs/{id}?book_id=`,

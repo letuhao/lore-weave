@@ -220,8 +220,8 @@ export const errorBlocksApi = {
     return apiJson(`${BASE}/error-blocks/${blockId}/reopen`, { method: 'POST', token });
   },
 
-  /** Soft-archive the mark itself (distinct from resolve/dismiss, which CLOSE it — this removes
-   *  it). No UI calls this yet; it exists so the agent's DELETE has a typed FE twin. */
+  /** Soft-archive the mark itself — distinct from resolve/dismiss, which CLOSE it and keep it as
+   *  a decision. This is "I marked the wrong passage", so the mark should stop existing. */
   remove(blockId: string, token: string): Promise<ErrorBlock> {
     return apiJson(`${BASE}/error-blocks/${blockId}`, { method: 'DELETE', token });
   },

@@ -50,14 +50,38 @@ export function WorldSetupWizard({ bookId, token, modelRef, lang = 'vi' }: Props
     [run?.edges, droppedEdges],
   );
   const unresolved = (run?.edges ?? []).filter((e) => e.unresolved);
-  // Entities that were SAVED but could not be indexed for retrieval. Counted from the
-  // server's outcome tally — every non-indexing outcome, so a new degrade reason added
-  // later still surfaces instead of silently reading as "all good".
+  // Entities that were SAVED but could not be indexed for retrieval, GROUPED BY REASON.
+  //
+  // The first version counted every non-indexing outcome into one number and then
+  // explained it with one cause ("this book has no embedding model"). The server emits
+  // five distinct outcomes needing three different fixes — and `empty` is not a failure
+  // at all, just an entity with no prose to index. So the banner could send an author to
+  // change a setting that was already correct, or report a healthy book as broken.
+  //
+  // Unknown outcomes still surface (with the raw token), so a reason added server-side
+  // later cannot silently read as "all good" — that property was the point, and it is kept.
   const notIndexed = useMemo(() => {
     const outcomes = run?.params?.lore_index?.outcomes ?? {};
-    return Object.entries(outcomes)
-      .filter(([outcome]) => outcome !== 'indexed' && outcome !== 'unchanged')
-      .reduce((sum, [, n]) => sum + (n ?? 0), 0);
+    const reasons: { outcome: string; n: number; advice: string }[] = [];
+    let total = 0;
+    for (const [outcome, raw] of Object.entries(outcomes)) {
+      const n = raw ?? 0;
+      // `empty` is expected, not a degrade: nothing was written to index.
+      if (n <= 0 || outcome === 'indexed' || outcome === 'unchanged' || outcome === 'empty') continue;
+      total += n;
+      reasons.push({
+        outcome,
+        n,
+        advice: outcome === 'no_embedding_model'
+          ? 'this book has no embedding model — set one in the book’s knowledge settings, then run this step again'
+          : outcome === 'unsupported_dim'
+            ? 'the chosen embedding model’s vector size is not supported — pick a different model'
+            : outcome === 'embed_failed'
+              ? 'the embedding calls failed — check the provider, then run this step again'
+              : 'not indexed for an unrecognised reason — report this outcome token',
+      });
+    }
+    return { total, reasons };
   }, [run?.params?.lore_index]);
 
   const toggle = (set: Set<string>, key: string) => {
@@ -212,15 +236,24 @@ export function WorldSetupWizard({ bookId, token, modelRef, lang = 'vi' }: Props
               Reported by the server as a real outcome tally rather than guessed here —
               an un-surfaced degrade is how "I built my world" becomes a draft written
               from bare names. */}
-          {notIndexed > 0 && (
-            <p
+          {notIndexed.total > 0 && (
+            <div
               data-testid="world-setup-lore-not-indexed"
               className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400"
             >
-              ⚠ {notIndexed} entr{notIndexed === 1 ? 'y' : 'ies'} saved but <strong>not searchable</strong>:
-              this book has no embedding model, so the writer cannot look your world up while drafting.
-              Set one in the book’s knowledge settings, then run this step again.
-            </p>
+              <p>
+                ⚠ {notIndexed.total} entr{notIndexed.total === 1 ? 'y' : 'ies'} saved but{' '}
+                <strong>not searchable</strong> — the writer cannot look this part of your
+                world up while drafting.
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {notIndexed.reasons.map((r) => (
+                  <li key={r.outcome} data-testid={`world-setup-lore-reason-${r.outcome}`}>
+                    {r.n}: {r.advice}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {(run?.status === 'edges_ready' || run?.status === 'done') && (

@@ -16,6 +16,8 @@ import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
 import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
 import { useProvenance } from '@/features/composition/hooks/useProvenance';
 import { useErrorBlockMarks } from '@/features/composition/hooks/useErrorBlockMarks';
+import { useErrorBlockActions, actionableBlocks } from '@/features/composition/hooks/useErrorBlockActions';
+import { ErrorBlockList } from '@/features/composition/components/ErrorBlockList';
 import { ProvenanceToolbar } from '@/features/composition/components/ProvenanceToolbar';
 import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
@@ -206,7 +208,12 @@ export function EditorPanel(props: IDockviewPanelProps) {
 
   // Phase D — load the author's marked passages and render them in the prose. Without this
   // the co-writer can read the marks and the author cannot see them.
-  useErrorBlockMarks(editorRef, composeProjectId, chapterId, accessToken);
+  const errorMarks = useErrorBlockMarks(editorRef, composeProjectId, chapterId, accessToken);
+  // F3 — and the other half: the return value used to be DISCARDED, so the author could mark a
+  // passage and watch it highlight, but every close (resolve/dismiss/reopen) and the removal
+  // existed only on the API and the co-writer's MCP tool. The agent could close the author's own
+  // annotation and the author could not.
+  const errorActions = useErrorBlockActions(composeProjectId, chapterId, accessToken);
   // D-S5-DERIVATIVE-MANUSCRIPT-FORK — promote THIS forked chapter into canon. Two-step confirm
   // (the first click arms it). The branch keeps its own version; only canon is overwritten.
   const handleMergeToCanon = async () => {
@@ -506,6 +513,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
         {/* #16 1.3 — Revision History, a self-toggling right-edge strip (reads the hoist itself). */}
         {!focusMode && <RevisionHistorySection />}
       </div>
+      {/* F3 — the author's door onto their own marks. Hidden entirely when there are none, so an
+          unmarked manuscript is unchanged. Focus mode hides it with the other flanking surfaces. */}
+      {!focusMode && (
+        <ErrorBlockList
+          blocks={actionableBlocks(errorMarks.blocks)}
+          driftedIds={errorMarks.driftedIds}
+          actions={errorActions}
+        />
+      )}
       {/* #16 2.4 — glossary hover tooltip + `[[` autocomplete, scoped to this panel's own editor. */}
       {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
       {/* S-10 O7 — the `[[`-create flow is now wired (onCreateNew). It's undefined until the Work's

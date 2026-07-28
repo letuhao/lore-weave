@@ -162,6 +162,78 @@ describe('WorldSetupWizard', () => {
     expect(warn).toHaveTextContent('not searchable');
   });
 
+  // The banner used to sum EVERY non-indexing outcome and then explain the total with a
+  // single cause. The server emits five outcomes needing three different fixes, so an
+  // author could be sent to change a setting that was already correct.
+  it('names the REAL reason per outcome instead of assuming one cause', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
+    api.projectKg.mockResolvedValue({
+      ...planReady, status: 'edges_ready', edges: [],
+      params: {
+        lore_index: {
+          entities_seen: 12,
+          outcomes: { indexed: 4, unsupported_dim: 5, embed_failed: 3 },
+        },
+      },
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+    await user.click(screen.getByTestId('world-setup-project-kg'));
+
+    const warn = await screen.findByTestId('world-setup-lore-not-indexed');
+    expect(warn).toHaveTextContent('8');  // 5 + 3, NOT the 4 that indexed fine
+    expect(screen.getByTestId('world-setup-lore-reason-unsupported_dim'))
+      .toHaveTextContent('vector size is not supported');
+    expect(screen.getByTestId('world-setup-lore-reason-embed_failed'))
+      .toHaveTextContent('embedding calls failed');
+    // The wrong advice must NOT appear: nothing here is about a missing model.
+    expect(warn).not.toHaveTextContent('no embedding model');
+  });
+
+  // `empty` means the entity had no prose to index — expected, not a degrade. Counting
+  // it reported a healthy book as broken.
+  it('does not treat an entity with nothing to index as a failure', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
+    api.projectKg.mockResolvedValue({
+      ...planReady, status: 'edges_ready', edges: [],
+      params: { lore_index: { entities_seen: 12, outcomes: { indexed: 10, empty: 2 } } },
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+    await user.click(screen.getByTestId('world-setup-project-kg'));
+    await screen.findByTestId('world-setup-edges');
+
+    expect(screen.queryByTestId('world-setup-lore-not-indexed')).toBeNull();
+  });
+
+  // The property worth keeping from the first version: a reason added server-side later
+  // must still surface rather than silently read as "all good".
+  it('still surfaces an outcome token it has never seen', async () => {
+    const user = userEvent.setup();
+    api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
+    api.projectKg.mockResolvedValue({
+      ...planReady, status: 'edges_ready', edges: [],
+      params: { lore_index: { entities_seen: 5, outcomes: { quota_exhausted: 5 } } },
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await screen.findByTestId('world-setup-worklist');
+    await user.click(screen.getByTestId('world-setup-approve-plan'));
+    await user.click(screen.getByTestId('world-setup-project-kg'));
+
+    expect(await screen.findByTestId('world-setup-lore-reason-quota_exhausted'))
+      .toHaveTextContent('unrecognised reason');
+  });
+
   it('stays quiet when everything indexed', async () => {
     const user = userEvent.setup();
     api.approvePlan.mockResolvedValue({ ...planReady, status: 'proposed', items: [] });
