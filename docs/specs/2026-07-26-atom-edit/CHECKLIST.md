@@ -542,7 +542,7 @@ observation. A claim that a check passed, without its output, does **not** tick 
       three established entities came back `is_new=false` under their correct kinds. The roster is
       passed BY KIND (a flat one is how a mountain becomes a character), and the worker's
       already-existing read now feeds both passes instead of discarding the non-characters.
-- [~] **E7** Curve conformance. **Pass 6 DOES honour the curve — measured, not asserted:** on the
+- [x] **E7 — DONE.** Curve conformance. **Pass 6 DOES honour the curve — measured, not asserted:** on the
       real 10-chapter arc (beat_plan `019f9f0f` → scene_plan `019f9f12`) 8 chapters landed EXACTLY
       on target, two undershot (−22, −4), none ever exceeded. `app/engine/tension_conformance.py`
       makes that a permanent, deterministic output instead of a one-off query, stamped on the
@@ -614,6 +614,13 @@ observation. A claim that a check passed, without its output, does **not** tick 
       ⚠️ **Presence is NOT proof.** All 6 PlanForge atoms also "had both sides" and 8 of them were
       broken (F10: four editors with no door; B6: four kinds where DELETE silently no-op'd). The
       matrix's real column — *real-run proven?* — is still **empty for all 11**. → F3.
+      **CLOSED by F3 (2026-07-28).** That column is now filled by GATES rather than by 44 manual
+      round-trips: delete/archive by the per-family contract + live registry gate, the FE door by
+      `scripts/fe-door-scan.py` (0 dead components; one real hit fixed), and round-trip
+      preservation by a check DERIVED from the producer's own contract, so a field added tomorrow
+      is covered without anyone remembering. Plus `scripts/cold-path-smoke.py`, which walks a book
+      from nothing to a healed scene plan in 60.7s — the one thing none of the static gates could
+      have caught.
       Earlier confirmations:
       - **Consumed & wired:** canon_rule, motif, motif_bind/link, scene_link, reference,
         entity_override (all → `pack()` at draft time); arc, outline_node (→ propose grounding);
