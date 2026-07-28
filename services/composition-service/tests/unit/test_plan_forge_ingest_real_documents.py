@@ -209,6 +209,28 @@ def test_EVERY_arc_section_is_read_and_ids_stay_unique():
     assert len(ids) == len(set(ids)), f"duplicate arc ids: {ids}"
 
 
+def test_open_questions_written_as_plain_BULLETS_are_still_read():
+    """The same format-bound assumption one layer deeper, and much better hidden: the section was
+    correctly CLASSIFIED as `open_questions` and still extracted nothing, so the gap looked closed at
+    the classifier and stayed open at the compiler. Found by round-tripping a composed section back
+    through the real ingest — a check worth having precisely because the classification succeeded."""
+    md = ("# Câu hỏi còn bỏ ngỏ\n\n"
+          "- Lâm Uyên có thật sự trùng sinh?\n"
+          "- Tô Thanh Dao cuối cùng đứng về phía nào?\n")
+    spec = propose_spec(ingest_markdown(md))
+    assert len(spec["meta"]["open_questions"]) == 2
+
+
+def test_a_CHECKBOX_still_wins_over_a_bullet():
+    """Checkboxes carry the author's own done/not-done state, which a plain bullet cannot — so the
+    fallback must not start swallowing statements that sit beside real checkboxes."""
+    md = ("# Open Questions\n\n"
+          "- [ ] Does she survive the duel?\n"
+          "- A statement that is not a question.\n")
+    spec = propose_spec(ingest_markdown(md))
+    assert spec["meta"]["open_questions"] == ["Does she survive the duel?"]
+
+
 def test_the_whole_document_produces_a_NON_empty_spec():
     """The end-to-end statement of the bug: this shape used to yield 0 characters, 0 mechanics,
     0 arcs — an empty spec, reported as a successful propose."""

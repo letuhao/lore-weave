@@ -129,6 +129,95 @@ For this document that is 3 questions, not 10 — and the author has already don
 - `run_rules` moved 5/11 → 6/11 total, hard rules 1/3 → 1/3. The hard rules are the fixture-bound
   ones `validate.py` demoted to advisory — a genuinely general validator is separate work.
 
+## 6b · Half B — the conversation. It failed, and the failure is the finding.
+
+Half A measured the READ. Half B measured the loop that turns a gap into a filled section:
+
+```
+READ → for each absent kind, SEARCH what the author already wrote → ask ONLY for what is missing
+     → compose → RE-INGEST → did the gap actually close?
+```
+
+**Three failures, one of them mine three times over.**
+
+### The search step, and the two-step trap
+
+The first search returned **0 of 3** — including for `writing_principles`, whose material is
+demonstrably in the document (`Thế giới cực kỳ tàn khốc, lấy lợi ích và sinh tồn làm trung tâm`, and
+the author's own blockquote `> Lòng tốt thường bị xem là điểm yếu.`).
+
+Controlled arms found the cause, and it was not attention or context size:
+
+| arm | change | writing_principles recovered |
+|---|---|---|
+| phase-4 | "is content of this kind ALREADY THERE?" — a yes/no gate | 0 |
+| A | "quote the sentences of this kind" — same call, same document | **3** |
+| B | one kind per call + a worked example | 0 |
+| C | numbered sentences, answer = indices (selection) | 0 |
+| **D** | quote-first · one kind per call · **no example**, **no gate** | **3/3 probes** |
+
+Two mechanisms, both mine:
+
+1. **A weak model offered an easy "no" takes it.** Retrieval and absence-adjudication had been
+   fused into one step, and the adjudication half swallowed the retrieval half.
+2. **A worked example is double-edged.** Adding one narrowed recall to lines *resembling the
+   example*; the author's real lines look nothing like it, so they were dropped.
+
+Note that arms B and C were my "shrink every decision" hypothesis, straight from §5 of the FSM spec.
+**They made it strictly worse.** §5's lever is real for *choosing from a set*; it is not a general law.
+
+### The question step — diagnosed and fixed
+
+The prompt was handed `md[:2500]`: **42% of the document truncated**, and the last thing inside the
+window was the betrayal plot. Two of three questions came back as *the same trap question*.
+
+| arm | cross-kind overlap | grounded in the story |
+|---|---|---|
+| A · truncated + thin prompt | **100%** | 0/3 |
+| B · full doc + on-topic constraint + example | 7% | 1/3 |
+| **D** · full doc + constraint + **no example** + must name something real | 13% | **3/3** |
+
+### The round-trip caught what classification hid
+
+The composed `open_questions` section re-ingested under the right kind (94% author-word overlap — no
+laundering) and `propose_spec` still extracted **zero**: `_extract_open_questions` required `- [ ]`
+checkboxes. **The gap looked closed at the classifier and stayed open at the compiler** — the same
+format-bound disease, one layer deeper and far better hidden. Fixed (checkboxes still win; bullets
+are the fallback).
+
+### The decisive result: it reads, it does not judge
+
+Fixing recall cost precision — with no way to say "nothing here", retrieval returns *something* for
+every kind. The obvious repair is retrieve-then-verify. **It failed, and then failed in every
+direction**, on the same six lines with a human labelling written down first:
+
+| verifier framing | kept correct | false keeps | **missed** |
+|---|---|---|---|
+| strict + examples of wrong kinds | 0/3 | 0/3 | **3/3** |
+| permissive, non-exclusive | 3/3 | 3/3 | 0 |
+| ranked 0–3 | 3/3 | 2/3 | 0 |
+
+Strict says **no** to everything. Permissive says **yes** to everything. Ranked scores almost
+everything a 3. In 18 calls it discriminated **once**. The prompt decides *which degenerate answer
+you get*, not whether there is discrimination at all.
+
+**So this is not a prompting problem.** On this task the weak model has no usable category boundary —
+and it could not, because the boundary is not in the text: `Lòng tốt thường bị xem là điểm yếu` is
+simultaneously a world rule and a tone principle. Forcing an exclusive verdict destroys it either way.
+
+⇒ **The machine must never adjudicate.** Retrieve with high recall, show the author, let them keep or
+drop. That is one glance for them and it is the only step that can actually decide. It is also what
+the intent-FSM spec already said — *the agent proposes, the author corrects* — except this is now
+measured, and the measurement says the judging step must **not exist**, not merely be reviewable.
+
+**Capability map, measured:**
+
+| the model is GOOD at | the model FAILS at |
+|---|---|
+| classifying a section (8/9) | judging whether something is absent (0/3, then all-yes) |
+| extracting entities, grounded (4/4, 4 runs, zero invention) | category boundaries on multi-category text (1 discrimination in 18) |
+| retrieving by kind with high recall (3/3 probes) | asking a good question **unless** constrained + fully-informed + told to name something real |
+
 ## 7 · Deferred / follow-ups this produced
 
 | id | finding | gate |

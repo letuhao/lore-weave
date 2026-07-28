@@ -110,12 +110,24 @@ def _prose(body: str, limit: int = 500) -> str:
 
 
 def _extract_open_questions(body: str) -> list[str]:
+    """Unchecked checkboxes — and, failing those, the section's plain bullets.
+
+    Requiring `- [ ]` was the same format-bound assumption as the rest of this module, one layer
+    deeper and far better hidden: a section correctly CLASSIFIED as `open_questions` still extracted
+    nothing, so the gap looked closed at the classifier and stayed open at the compiler. Caught by
+    round-tripping a composed section back through the real ingest 2026-07-28 — a check worth having
+    precisely because the classification succeeded.
+
+    Checkboxes still win when present (they carry the author's own done/not-done state, which a
+    plain bullet cannot). Bullets are the fallback, mirroring `_extract_consistency_anchors`'s
+    `###`-else-bullets shape rather than inventing a new convention.
+    """
     items: list[str] = []
     for line in body.splitlines():
         m = re.match(r"^-\s+\[\s*\]\s+(.+)$", line.strip())
         if m:
             items.append(m.group(1).strip())
-    return items
+    return items or _bullets(body, limit=12)
 
 
 # ── the charter ──────────────────────────────────────────────────────────────────────────────────
