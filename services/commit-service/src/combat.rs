@@ -113,6 +113,14 @@ pub struct CombatStats {
     pub crit_mult_pm: i64,
 }
 
+// QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in `stats.rs`.
+//
+// This is IMP-A3's cold projection: the ONLY stat shape the hot path reads.
+// `resolve_attack` and `action_value` touch these eight fields and never the
+// block behind them, which is what makes the width question cold in the first
+// place. If this struct starts growing, that property is being lost.
+const _: () = assert!(core::mem::size_of::<CombatStats>() <= 64);
+
 impl CombatStats {
     /// Project a resolved DF07 block into the combat view. The mapping is
     /// DF07 §8.1's table, in one place — a law reading a slot directly would

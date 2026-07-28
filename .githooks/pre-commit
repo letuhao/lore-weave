@@ -71,6 +71,17 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # `RulesetDigest::UNPINNED` (kernel harness + tests only) and the first is a finding.
 "$PY" "$ROOT/scripts/zero-digest-gate.py" --staged
 
+# NO STRING-KEYED LOOKUP on the island step path (IMP-D4 / QTY-A9). Q1 introduces author-declared
+# quantities, which arrive as NAMES in TOML, and the shortest path from `name = "qi"` to a working
+# Q2 is `resources: BTreeMap<String, ResourceState>` on the actor — after which `evaluate_outcome`'s
+# three closures each do a string compare plus a tree descent, `outcome_of` runs them five times per
+# call, on every landed Strike and every EndTurn. Determinism SURVIVES (BTreeMap is ordered), so no
+# existing test reds and QTY-A9's letter is even satisfied — it forbids map iteration in AGGREGATION.
+# The bug is invisible to the suite by construction, which is why it is a gate. Note the rule is on
+# the KEY TYPE, never the container: `BTreeMap<EntityId, Actor>` structurally cannot match, which is
+# doc 26's "this distinction must be ENCODED, not assumed", encoded.
+"$PY" "$ROOT/scripts/hot-path-gate.py" --staged
+
 # The EVENT ENVELOPE is ONE shape in TWO languages: contracts/events/envelope.go is the SSOT and
 # crates/dp-kernel/src/envelope.rs is its mirror. Both files SAY they must move together and
 # NOTHING checked it — a rule with three of the four parts of rule+SoT+gate+test. The failure it

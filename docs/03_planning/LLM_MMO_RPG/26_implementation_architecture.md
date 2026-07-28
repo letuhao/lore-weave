@@ -187,6 +187,21 @@ This repo's whole meta-pattern is **rule + SoT + gate + test**. Aspirational rul
 *(Note: `BTreeMap` on `CombatState.actors` is a keyed collection over entities, not a per-stat
 lookup — the gate targets stat/attribute access, and this distinction must be encoded, not assumed.)*
 
+> ✅ **BUILT 2026-07-28 (slice `Q-1`).** The encoding this note demanded is: **the rule is on the KEY
+> TYPE, never on the container.** A map/set whose key is `String`/`&str`/`Cow<str>`/`Arc<str>`/
+> `Box<str>` is a finding; `BTreeMap<EntityId, Actor>` structurally cannot match. A second check
+> catches the *read* — `.get("…")` / `.contains_key("…")` / `["…"]` — because the declaration may
+> live in another file.
+>
+> **Why it had to exist before `Q1` rather than after:** `Q1` introduces author-declared quantities,
+> which arrive as **names**, and the shortest path to a working `Q2` is
+> `resources: BTreeMap<String, ResourceState>` on the actor. Determinism *survives* that
+> (`BTreeMap` is ordered), so **no existing test would red** — the bug is invisible to the suite by
+> construction, which is exactly the case a gate is for and a review is not.
+>
+> Bite-proven twice: `--self-test`, and against the real `services/commit-service/src/domain.rs`
+> with the predicted `BTreeMap<String, i64>` injected (reported at `domain.rs:140`, exit 1).
+
 **IMP-D5 — `scripts/no-magic-game-constant.py`**: a numeric literal used as a game value outside the
 loader is a finding. Same shape as the provider gate that already blocks hardcoded model names.
 Bootstrapping: the existing literals get an explicit allowlist with a `TODO(IMP)` and shrink to zero

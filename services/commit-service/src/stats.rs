@@ -50,6 +50,26 @@ pub use ruleset_core::{SLOT_COUNT, StatRules, StatSlot};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatBlock([i32; SLOT_COUNT]);
 
+// ── QTY-A12 — the memory budget is an ASSERTION, not a doc ──────────────────
+//
+// The prior project (`chaos-backend-service`) had an active design doc claiming
+// "~22 KB per system instance" against a stated budget of "acceptable up to
+// 20 KB", while the real figure was 41.5 KiB — computed from a four-field
+// illustrative struct rather than the fifty-seven-field real one, and wrong for
+// months BECAUSE NOTHING CHECKED IT. Two other of its docs claimed 2-3 KB, off
+// by ~15x. It has no `size_of` assertion anywhere. Neither did we: before this
+// line, `grep size_of::< crates/ services/` returned ZERO hits.
+//
+// Budgets are the CURRENT MEASURED size, so any growth reds and shrinkage is
+// free. A deliberate increase re-states the number here — the same conscious
+// repin the golden ruleset digest already forces.
+//
+// This check is only possible because QTY-A6 was reversed (doc 35 §4.2): under
+// a runtime per-reality width the payload sits behind a pointer, `size_of`
+// reports 16 bytes for every `n`, and the assertion could never fire. A guard
+// that cannot fire is worse than no guard, because it reads as one.
+const _: () = assert!(core::mem::size_of::<StatBlock>() <= 40);
+
 impl StatBlock {
     /// All slots at zero: "no contribution", the accumulator `resolve_block`
     /// fills. NOT a playable actor — a zeroed block has 0 max HP.

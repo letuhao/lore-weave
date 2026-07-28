@@ -774,6 +774,116 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **`Q-1` — THE GUARDS EXIST BEFORE THE CODE THEY GUARD (2026-07-28, /loom M).**
+> Doc 35's build order opens with two mechanical gates and one live defect, deliberately ahead of
+> every L2 slice. All three claims were **verified against source before acting on them** — the
+> publisher SELECT really did omit the column, `grep size_of::<` over `crates/`+`services/` really
+> did return **zero**, and `scripts/hot-path-gate.py` really did not exist.
+>
+> **1 · `scripts/hot-path-gate.py` (IMP-D4, unbuilt since it was specified).** Doc 26 stated the hard
+> part and left it open: *"`BTreeMap` on `CombatState.actors` is a keyed collection over entities,
+> not a per-stat lookup … **this distinction must be encoded, not assumed**"*. The encoding is:
+> **the rule is on the KEY TYPE, never on the container.** A map/set keyed by
+> `String`/`&str`/`Cow<str>`/`Arc<str>`/`Box<str>` in a hot-path file is a finding;
+> `BTreeMap<EntityId, Actor>` structurally cannot match. A second check catches the *read*
+> (`.get("…")`, `.contains_key("…")`, `["…"]`) because the declaration may live elsewhere.
+>
+> **Why before `Q1` and not after:** `Q1` introduces author-declared quantities that arrive as
+> **names**, and the shortest path to a working `Q2` is `resources: BTreeMap<String, ResourceState>`
+> on the actor — after which `evaluate_outcome`'s three closures each do a string compare + tree
+> descent and `outcome_of` runs them **five times per call**, on every landed Strike and every
+> `EndTurn`. **Determinism survives** (`BTreeMap` is ordered) so **no existing test reds**, and
+> `QTY-A9`'s letter is even satisfied because it forbids map iteration in *aggregation*. The bug is
+> invisible to the suite by construction — which is what a gate is for and a review is not.
+> **Bite-proven twice:** `--self-test`, and against the real `domain.rs` with the predicted
+> `BTreeMap<String, i64>` injected → reported at `domain.rs:140`, exit 1.
+>
+> **2 · `QTY-A12` `size_of` assertions — the first four in the repo.** Measured, then asserted at the
+> measured value so any growth reds and shrinkage is free: **`StatBlock` 40 · `CombatStats` 64 ·
+> `Actor` 192 · `Ruleset` 216**. (Exactly the figures the red team derived from a layout replica.)
+> Bite-proven: adding one `u64` field to `Actor` fails the build with
+> *"evaluation panicked: assertion failed: size_of::<Actor>() <= 192"*. **This check is only possible
+> because `QTY-A6` was reversed** — under a runtime per-reality width the payload sits behind a
+> pointer, `size_of` reports 16 bytes for every `n`, and the assertion could never fire. Noted at the
+> `Actor` site: **80 of its 192 bytes are `snapshot: StatSnapshot`, written at construction and read
+> nowhere outside tests** — pre-wired for Q2/Q4, and if those land without consuming it, it goes.
+>
+> **3 · `D-PUBLISHER-DROPS-RULESET-PIN` — CLEARED.** `selectPendingSQL` fetched 15 columns and not
+> `e.ruleset_digest`, while `contracts/events/envelope.go` tags it `omitempty` — so the pin vanished
+> the moment an event left its reality DB, with nothing anywhere reporting it. Fixed through the full
+> path: `types.OutboxRow` → SELECT → Scan → `envelopeFields`. Emitted **absent, not empty**, so a
+> consumer can tell *"unpinned"* from *"pinned to nothing"* — the same discipline the channel-ordering
+> fields already follow. **Guarded from both sides, because pgx binds by POSITION and a mismatch is a
+> runtime error per batch in production:** `scanRows` asserts `len(dests) == selectColumns` at
+> runtime, and `pgsource_test` asserts the SQL really projects that many. One side alone is a
+> half-check — declaring 16 while projecting 15 would satisfy the runtime guard and still fail on the
+> first query. Bite-proven: removing the column reds both tests with the right diagnoses.
+>
+> **Why this defect mattered enough to fix now rather than track:** an L2 ordinal is meaningless
+> without the digest that gives it meaning (`QTY-A14`). Reality A declares ordinal 3 = `qi`, reality B
+> declares ordinal 3 = `mana`; an item minted in A and read in B resolves against B's table and
+> silently becomes a different item. Nothing fails — no digest mismatch (nothing compares), no
+> validator (3 resolves locally), no length error. It is a wrong number in a committed, replayable
+> log that both realities replay "correctly" forever.
+>
+> ### 🔍 The PO asked for a review pass before testing. It found three things.
+>
+> **① The gate's scope had the WRONG POLARITY — my own defect, caught by attacking my own regexes.**
+> A matrix of twelve cases showed 6 true positives, 2 correct silences, and **4 false negatives**. The
+> serious one: a **new** file — the `resources.rs` that `Q2` will add — was **not in the enumerated
+> scope**, so it could declare the string map and the gate would say nothing. *Default-unguarded.*
+> Fixed by splitting into **two checks with two scopes**: the **declaration** check now covers whole
+> directories (`commit-service/src/`, `sim-core/src/`, `ruleset-core/src/`, `game-rules/`), so a new
+> file is guarded the day it is created; the **read** check stays on the step files, because
+> `serde_json::Value::get("tool")` is textually identical to `resources.get("qi")` and widening it
+> produced **~25 findings that were all correct code** — a gate that cries wolf gets switched off.
+> Scanned files went 12 → 31. One real exemption surfaced (`ProducerRegistry.by_name`), verified cold
+> first (`grep producer` in `domain.rs`: **zero hits**) and pragma'd with that evidence.
+>
+> **② The publisher live smoke has been RED FOR TWO DAYS and nobody knew — and the cause is the same
+> polarity bug.** Running it (the PO's *"test để kiểm chứng"*) surfaced
+> `column e.channel_id does not exist` — **pre-existing since migration `0014` landed 2026-07-27**,
+> entirely unrelated to this slice. Root cause: the smoke **hand-picked 2 of 16** per-reality
+> migrations (`0002`, `0005`), so every additive column after `0005` was invisible to it — `0013`
+> content_sha256, `0014` channel_ordering, `0016` ruleset_digest. Replaced the hand-list with
+> `mustApplyEventSchema`, which **globs** the migration directory: a future `0017_events_*` is picked
+> up with no edit. Now applies 6 and all three smoke tests pass. **The smoke is also not in CI**,
+> which is why two days passed — tracked as `D-PUBLISHER-SMOKE-NOT-IN-CI`.
+>
+> **③ `tests/integration` did not compile on this machine at all** — pre-existing (proved by stashing
+> my change and reproducing). `go mod tidy` fixed it and the entire diff is **two indirect patch
+> bumps** (`klauspost/compress`, `protobuf`). Kept, and disclosed rather than folded in silently.
+>
+> **④ `db-safety-gate` blocked the commit — and it was RIGHT, twice over.**
+>
+> First it caught a real hole **in the helper I had just written**: widening the applied set from two
+> hand-picked migrations to a globbed range made `mustApplyEventSchema` strictly *more* destructive
+> than the code it replaced, because `0002_events_table.up.sql` opens with a `DROP TABLE IF EXISTS`
+> on `events`. Point `LW_INTEGRATION_DB` at a real per-reality DB and it drops that reality's entire
+> event log — the statement is fine, the DSN is not, which is exactly how an unscoped
+> `DELETE FROM books` once hard-deleted every user's books. Fixed properly rather than pragma'd:
+> **`testsafe.EnsureThrowawayDB(current_database())` now runs BEFORE the first migration.**
+> **Bite-proven on a real connection** — pointed at an empty `qtyguardcheck` (no throwaway marker),
+> it refuses and nothing is dropped.
+>
+> Then its **pragma window turned out to be a fixed ONE LINE ABOVE — the THIRD time this repo has
+> shipped that exact bug** (`closed-set-gate` and `zero-digest-gate` both had it; in the latter the
+> one live finding's real justification sat eleven lines up, so the pragma did nothing and the
+> bite-test "proving" it reported the finding with *and* without it). A destructive statement worth
+> exempting needs a reason, and a reason worth reading is more than one line — the narrow window
+> pushes authors toward a terse pragma or toward `--no-verify`. Replaced with `_pragma_near`, which
+> walks the contiguous comment block upward, the same fix the other two gates already carry.
+> **Bite-proven:** removing the pragma reds 2 findings; restoring it clears them, from ~5 lines away
+> that the old window could never have reached.
+>
+> **LIVE SMOKE — the real one, on real Postgres + real Redis:** a pinned event's digest reaches the
+> `lw.events.<reality>` stream and an unpinned one carries **no field at all** (absent ≠ empty), with
+> a guard that the assertion matched exactly one of each so it cannot pass by matching nothing.
+> **Bite-proven end to end:** deleting the emitter's forwarding block reds it with *"pinned event
+> reached the stream with ruleset_digest=&lt;nil&gt; — the pin was dropped between Postgres and Redis."*
+> Note `FOUNDATION_REDIS_PORT=57379` was needed — the default 56379 is blocked by a Windows port
+> exclusion on this machine.
+
 > 🛑 **BUILD STOPPED BY THE PO — QUANTITY ARCHITECTURE (doc 35, 2026-07-28, /loom L, spec only).**
 > The F-track was about to continue into `stat_archetypes` → templates → F3. The PO asked whether the
 > new architecture could carry seven real progression systems (luyện khí · luyện thể · ma pháp ·

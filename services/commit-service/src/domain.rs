@@ -176,6 +176,16 @@ pub struct Actor {
     pub turn_slots: i64,
 }
 
+// QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in `stats.rs`.
+//
+// `Actor` is THE dense per-actor struct: one per combatant, cloned across every
+// `Domain::extract`/`install` island handoff. 80 of these 192 bytes are
+// `snapshot: StatSnapshot`, which is written at construction and read nowhere
+// outside tests today — it is pre-wired for the Q2/Q4 progression slices, and
+// if those land without consuming it, it must go rather than stay as a shape
+// with no consumer.
+const _: () = assert!(core::mem::size_of::<Actor>() <= 192);
+
 impl Actor {
     /// Slice-1 constructor: a melee archetype at `max_hp`, on side B.
     /// `with_side` is the one to use when the side matters.

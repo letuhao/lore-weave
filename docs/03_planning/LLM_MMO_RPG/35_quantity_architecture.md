@@ -397,8 +397,8 @@ by tests. Three specs promise deterministic order; none implements it.
 For a replay-pinned deterministic simulation this is not a quality issue, it is a correctness one. Our
 L2 iteration is `0..n` over ordinals by construction (QTY-A5), which gives total order for free —
 **provided nothing ever iterates a name-keyed map.** [IMP-D4](26_implementation_architecture.md)'s
-`hot-path-gate.py` is the mechanism; it is **unbuilt, and `Q1` cannot be declared done without it**,
-because `Q1` is precisely the slice that introduces string names. The gate cannot be a naïve
+`hot-path-gate.py` is the mechanism — ✅ **BUILT 2026-07-28 (`Q-1`)**, ahead of `Q1` precisely because
+`Q1` is the slice that introduces string names. The gate cannot be a naïve
 `grep BTreeMap` — doc 26 already flags the hard part: *"`BTreeMap` on `CombatState.actors` is a keyed
 collection over entities, not a per-stat lookup … **this distinction must be encoded, not assumed**"*
 (`26:185-188`). The rule is *no map whose KEY type is a string or a quantity id, inside

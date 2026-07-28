@@ -97,6 +97,17 @@ func envelopeFields(row types.OutboxRow) map[string]any {
 	if row.WriterEpoch != nil {
 		f["writer_epoch"] = strconv.FormatInt(*row.WriterEpoch, 10)
 	}
+	// RLS-A13 / QTY-A14 — the ruleset pin. Absent (not empty) when the event has
+	// none, so a consumer can tell "unpinned" from "pinned to nothing".
+	//
+	// This is the LAST hop where the pin could be lost, and it was being lost at
+	// the previous one: the outbox SELECT did not fetch the column. Anything
+	// downstream that reads a ruleset-scoped ORDINAL out of `payload` needs this
+	// value to know what the ordinal means — without it the number resolves
+	// against whatever table the reader happens to hold, silently.
+	if row.RulesetDigest != nil && *row.RulesetDigest != "" {
+		f["ruleset_digest"] = *row.RulesetDigest
+	}
 	return f
 }
 

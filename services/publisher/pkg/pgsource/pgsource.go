@@ -53,11 +53,17 @@ func New(pools map[string]*pgxpool.Pool, policy retry.Policy) (*Source, error) {
 	}, nil
 }
 
+// selectColumns is the projection width of selectPendingSQL: 15 original plus
+// `ruleset_digest`. It exists so the SELECT and the Scan destination list can be
+// checked against each other from two sides — see the note at the `dests` slice.
+const selectColumns = 16
+
 const selectPendingSQL = `
 SELECT o.event_id::text, o.reality_id::text, o.attempts,
        e.event_type, e.event_version, e.aggregate_type, e.aggregate_id,
        e.aggregate_version, e.occurred_at, e.recorded_at, e.payload, e.metadata,
-       e.channel_id, e.channel_event_id, e.writer_epoch
+       e.channel_id, e.channel_event_id, e.writer_epoch,
+       e.ruleset_digest
 FROM events_outbox o
 JOIN events e ON e.event_id = o.event_id
 WHERE o.published = FALSE
@@ -109,12 +115,26 @@ func scanRows(rows pgx.Rows) ([]types.OutboxRow, error) {
 			r                         types.OutboxRow
 			payloadRaw, metadataRaw   []byte
 		)
-		if err := rows.Scan(
+		dests := []any{
 			&eventIDStr, &realityIDStr, &attempts,
 			&eventType, &eventVersion, &aggType, &aggID,
 			&aggVersion, &r.OccurredAt, &r.RecordedAt, &payloadRaw, &metadataRaw,
 			&r.ChannelID, &r.ChannelEventID, &r.WriterEpoch,
-		); err != nil {
+			&r.RulesetDigest,
+		}
+		// pgx binds by POSITION, so the projection and this list must move
+		// together — and a mismatch is a RUNTIME error per batch, not a compile
+		// error. `ruleset_digest` was added to the events table and to the wire
+		// envelope and never to this query, so the pin was silently dropped for
+		// every event that left its reality DB. Both directions are now guarded:
+		// this checks destinations-vs-declared, and `pgsource_test` checks that
+		// the SQL really projects that many.
+		if len(dests) != selectColumns {
+			return nil, fmt.Errorf(
+				"pgsource: %d scan destination(s) for %d declared column(s)",
+				len(dests), selectColumns)
+		}
+		if err := rows.Scan(dests...); err != nil {
 			return nil, err
 		}
 		eid, err := uuid.Parse(eventIDStr)

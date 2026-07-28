@@ -125,14 +125,21 @@ func TestPublisherLiveSmoke_DrainsOutboxToRedis(t *testing.T) {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	// Apply 0002 (events) + 0005 (events_outbox) only. We deliberately skip
+	// db-safety-gate: ok — PROSE, not an executed statement. The DROP named
+	// below lives in migration 0002, and `mustApplyEventSchema` refuses any
+	// database whose name lacks a throwaway marker BEFORE applying anything
+	// (testsafe.EnsureThrowawayDB). Bite-proven: pointed at `qtyguardcheck`,
+	// it refuses and nothing is dropped.
+	//
+	// Applies the events + events_outbox migrations, discovered by GLOB rather
+	// than named — a hand-list is default-uncovered and that is exactly how
+	// this smoke silently ran two migrations behind for two days. We skip
 	// 0001_initial: it scaffolds skeleton tables that 0002 immediately DROPs,
 	// and its `outbox`→`events(event_id)` FK is NOT re-runnable once 0002 has
 	// repartitioned `events` (event_id is no longer a standalone unique key).
 	// 0002's `DROP TABLE IF EXISTS events` makes 0002+0005 idempotent across
 	// re-runs (matches scripts/foundation-dev-smoke-db.sh, which also skips 0001).
-	mustApply(t, db, "contracts/migrations/per_reality/0002_events_table.up.sql")
-	mustApply(t, db, "contracts/migrations/per_reality/0005_events_outbox_table.up.sql")
+	mustApplyEventSchema(t, db, eventTableMigrations)
 
 	realityID := uuid.New()
 	normalID := uuid.New()
@@ -146,6 +153,20 @@ func TestPublisherLiveSmoke_DrainsOutboxToRedis(t *testing.T) {
 	seedEvent(t, db, normalID, realityID, "npc.said", "npc", "npc-1", 1, `{"text":"hi"}`, nil)
 	seedEvent(t, db, xrealID, realityID, "xreality.canon.promoted", "reality", realityID.String(), 7,
 		`{"entry_id":"canon-42"}`, strPtr(`{"cross_reality":true}`))
+
+	// D-PUBLISHER-DROPS-RULESET-PIN — pin one of the two so the smoke proves the
+	// digest SURVIVES the hop, not merely that the query parses.
+	//
+	// It did not survive: `selectPendingSQL` never fetched `e.ruleset_digest`
+	// and the envelope tags it `omitempty`, so the pin ceased to exist the
+	// moment an event left its reality DB, with nothing reporting it. Unit tests
+	// cover the SELECT text and `envelopeFields` separately; only this asserts
+	// the two are actually joined by a real Postgres and a real Redis.
+	if _, err := db.Exec(
+		`UPDATE events SET ruleset_digest=$2 WHERE event_id=$1`, normalID, pinnedDigest,
+	); err != nil {
+		t.Fatalf("pin ruleset_digest on %s: %v", normalID, err)
+	}
 
 	// ── Redis: real client; clean the target streams first ───────────────
 	rOpts, err := redis.ParseURL(redisURL)
@@ -198,6 +219,42 @@ func TestPublisherLiveSmoke_DrainsOutboxToRedis(t *testing.T) {
 		t.Errorf("xreality stream %s XLEN=%d want >=%d", xrealStream, got, xrealBefore+1)
 	}
 
+	// ── D-PUBLISHER-DROPS-RULESET-PIN: the pin reached the wire ───────────
+	//
+	// Verify by EFFECT, on a real Postgres and a real Redis. RLS-A13 makes the
+	// digest what ties an event to the rules that produced it, and QTY-A14 makes
+	// it what gives a per-reality quantity ordinal its meaning — a consumer
+	// holding ordinal 3 and no digest resolves it against whatever table it
+	// happens to have, silently and forever.
+	entries, err := rdb.XRange(ctx, mainStream, "-", "+").Result()
+	if err != nil {
+		t.Fatalf("XRANGE %s: %v", mainStream, err)
+	}
+	var pinned, unpinned int
+	for _, e := range entries {
+		switch e.Values["event_id"] {
+		case normalID.String():
+			if got := e.Values["ruleset_digest"]; got != pinnedDigest {
+				t.Errorf("pinned event reached the stream with ruleset_digest=%v want %q "+
+					"— the pin was dropped between Postgres and Redis", got, pinnedDigest)
+			}
+			pinned++
+		case xrealID.String():
+			// ABSENT, not empty: a consumer must be able to tell "no ruleset"
+			// from "pinned to nothing".
+			if _, present := e.Values["ruleset_digest"]; present {
+				t.Errorf("unpinned event carries ruleset_digest=%v — a NULL pin must be "+
+					"absent from the wire, not emitted empty", e.Values["ruleset_digest"])
+			}
+			unpinned++
+		}
+	}
+	if pinned != 1 || unpinned != 1 {
+		t.Errorf("stream had pinned=%d unpinned=%d, want 1 and 1 (entries=%d) — "+
+			"the assertion above proves nothing if it matched no entry",
+			pinned, unpinned, len(entries))
+	}
+
 	// ── Failure path: broken Redis → retry, not published ─────────────────
 	failID := uuid.New()
 	seedEvent(t, db, failID, realityID, "npc.said", "npc", "npc-2", 1, `{"text":"x"}`, nil)
@@ -243,8 +300,7 @@ func TestPublisherLiveSmoke_BackoffExcludesRecentRetry(t *testing.T) {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	mustApply(t, db, "contracts/migrations/per_reality/0002_events_table.up.sql")
-	mustApply(t, db, "contracts/migrations/per_reality/0005_events_outbox_table.up.sql")
+	mustApplyEventSchema(t, db, eventTableMigrations)
 
 	realityID := uuid.New()
 	recentID := uuid.New()
@@ -312,6 +368,13 @@ func buildLoop(t *testing.T, pools map[string]*pgxpool.Pool, rdb *redis.Client, 
 	}
 	return loop
 }
+
+// pinnedDigest is a well-formed RLS-A13 pin: 64 lowercase hex, matching
+// `contracts/game-wire/common.schema.json#/$defs/Digest` and the CHAR(64)
+// column added by migration 0016. Deliberately NOT 64 zeros — that spelling is
+// banned repo-wide by `scripts/zero-digest-gate.py` because it would claim a pin
+// to the empty ruleset and give every reality one cache key.
+const pinnedDigest = "807d5b5213f0707ff1e0f2e359d1b22463ce074d914ab98646440a4f62f4fe01"
 
 func seedEvent(t *testing.T, db *sql.DB, eventID, realityID uuid.UUID, eventType, aggType, aggID string, aggVer int, payload string, metadata *string) {
 	t.Helper()

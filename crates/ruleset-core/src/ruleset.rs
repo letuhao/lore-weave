@@ -39,6 +39,17 @@ pub struct Ruleset {
     pub stats: StatRules,
 }
 
+// QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in
+// `services/commit-service/src/stats.rs`.
+//
+// A ruleset is interned per reality, not per actor, so its budget is generous
+// by comparison — but it is the struct L2 will grow (declared quantities, the
+// ordinal table, the O(n^2) element interaction table which QTY-A6.1 places
+// HERE and not on the actor). It also backs a claim with an expiry date:
+// `digest()` recomputes BLAKE3 on every call and justifies that with "the whole
+// artifact is ~200 bytes". True at 216. Watch this number.
+const _: () = assert!(core::mem::size_of::<Ruleset>() <= 216);
+
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
     /// higher layer present.

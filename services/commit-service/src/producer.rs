@@ -67,6 +67,13 @@ pub enum ProducerError {
 /// The set of producers allowed onto the proposal bus.
 #[derive(Debug, Clone, Default)]
 pub struct ProducerRegistry {
+    // hot-path-gate: ok — resolved at ADMISSION, never inside the step. This map
+    // is consulted once per inbound proposal by `verify_and_derive` to turn a
+    // producer NAME into a verified identity; `Domain::apply`/`check` hold no
+    // reference to it (grep `producer` in `domain.rs`: zero hits) and an actor
+    // carries a derived `Producer`, not a lookup key. A name is also the right
+    // key here — a producer identity is configuration, not a per-tick quantity,
+    // and interning it to an ordinal would buy nothing the step ever reads.
     by_name: BTreeMap<String, Producer>,
 }
 

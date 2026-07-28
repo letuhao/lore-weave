@@ -168,6 +168,43 @@ def _dir_is_guarded(path: str) -> bool:
     return False
 
 
+def _pragma_near(lines: list[str], idx: int) -> bool:
+    """A reason on this line, or anywhere in the comment block attached to it.
+
+    **This was a FIXED ONE-LINE-ABOVE WINDOW, and that is the third time this
+    repo shipped that exact bug** — `closed-set-gate` and `zero-digest-gate` both
+    had it, and in `zero-digest-gate` the one live finding's real justification
+    sat eleven lines up, so the pragma did NOTHING and the bite-test that
+    "proved" it worked reported the finding both with and without it. A vacuous
+    check that looks green, which is the failure the whole non-vacuity discipline
+    exists to catch.
+
+    A destructive statement worth exempting needs a REASON, and a reason worth
+    reading is more than one line. Forcing it onto the single line above pushes
+    authors toward a terse pragma or toward `--no-verify`. So walk the contiguous
+    comment block upward rather than guessing a distance.
+    """
+    if PRAGMA in lines[idx]:
+        return True
+    k = idx - 1
+    while k >= 0:
+        stripped = lines[k].strip()
+        is_comment = stripped.startswith(("#", "//", "///", "//!", "*", "/*"))
+        if is_comment or stripped == "":
+            if PRAGMA in lines[k]:
+                return True
+            # A blank line ends the block unless the run of comments continues
+            # above it (an intentionally spaced comment paragraph).
+            if stripped == "" and not (
+                k > 0 and lines[k - 1].strip().startswith(("#", "//", "*"))
+            ):
+                break
+            k -= 1
+            continue
+        break
+    return False
+
+
 def scan_test_file(path: str) -> list[Finding]:
     lines = _lines(path)
     if any(FILE_PRAGMA in ln for ln in lines[:60]):
@@ -190,7 +227,7 @@ def scan_test_file(path: str) -> list[Finding]:
     for i, ln in enumerate(lines):
         if RE_NON_EXEC.search(ln):
             continue
-        exempt = (PRAGMA in ln) or (i > 0 and PRAGMA in lines[i - 1])
+        exempt = _pragma_near(lines, i)
         kind = None
         if RE_TRUNCATE.search(ln):
             kind = "TRUNCATE-in-test"
