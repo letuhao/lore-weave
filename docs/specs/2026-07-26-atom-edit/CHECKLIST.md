@@ -549,9 +549,23 @@ observation. A claim that a check passed, without its output, does **not** tick 
       artifact and rendered per-chapter in `PassArtifactView`. It also flags the **degenerate
       curve** — a real stored artifact (`019f9d2f`) is the all-`beat_role`-NULL flat ramp, which
       scores 10/10 conformance to a curve nobody planned.
-      **Still open:** `self_heal` has NEVER run — 0 of 278 plan runs — and `run_plan_self_heal`
-      gets no curve and no targets, so it can flatten pass 6's pacing while reporting success.
-      Pass 7 now re-measures against pass 6's stamped targets; the first live run is the next step.
+      **`self_heal` FIRST LIGHT — it had never run, 0 of 278 plan runs.** It completed, applied
+      6 edits, and moved **no chapter's tension peak at all** (heal_moved = 0 across all 10). So
+      the curve-blindness of `run_plan_self_heal` is a real structural risk that is NOT realised
+      in practice: it edits scene CONTENT (5× repetition, 1× dangling setup), not tension values.
+      Recorded as a risk the re-measure now guards, not as a bug found.
+      **The pass-6 → pass-7 bridge is proven LIVE, twice.** (a) dogfood run `019f9d2e`: pass 6
+      re-run wrote `measured=true, 10/10, MAD 1.1`; pass 7 read those targets off its own input
+      (it depends on scenes+cast, NOT beats — the stamp is the only channel) and re-measured
+      identically after 6 edits. (b) clean room: a throwaway book + run `019fa874` compiled from
+      scratch → pass 6 `10/10, MAD 0.5` → pass 7 `10/10, MAD 0.5`, 6 edits. Throwaway trashed.
+      **Also found:** self_heal's first-ever run reports the same defect five times — every
+      chapter's FIRST scene re-enacts the previous chapter's LAST scene (CH03←CH02, CH04←CH03,
+      CH05←CH04, CH08←CH07, CH09←CH08). That is pass 6 cross-chapter threading quality, i.e. the
+      other session's surface — recorded, not chased.
+      **Still open:** a NEW book's cold-start needs a glossary ontology `POST /v1/glossary/books/
+      {id}/adopt` before the cast seed can apply; nothing in the plan UI says so (the error only
+      appears at bootstrap-apply time, as `422 … adopt one in the Graph Schema tab`).
 - [x] **E8** FE structure picker shipped. `CompilePlanBody.structure_template_id` → `runCompile` →
       a picker beside the arc picker, labelled with each structure's beat count. `usePlanRun` loads
       the library once per token (synchronization effect) and exposes `structures`.
