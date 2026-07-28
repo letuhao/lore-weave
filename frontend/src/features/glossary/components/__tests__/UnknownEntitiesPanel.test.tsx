@@ -95,39 +95,38 @@ describe('UnknownEntitiesPanel', () => {
     expect(opts).toEqual(['k-loc', 'k-org']); // no 'k-unknown'
   });
 
-  it('resolving with merge-all (default) requests existing+applyAll for the entity', async () => {
-    hookMocks.resolve.mockResolvedValue({ action: 'merged', count: 2, code: 'faction' });
+  // The bulk "apply to all" checkbox is GONE (2026-07-28). It was pre-checked by default and
+  // routed through `POST /kind-aliases`, which SS-4 removed — live-probed at 405 — so the modal's
+  // DEFAULT action could only fail. Its promise ("a reusable alias so future extractions resolve
+  // automatically") is the alias row itself, so a client-side bulk loop would not have delivered
+  // it either. Returns with the alias write in SS-7.
+  it('offers NO bulk merge option — the route behind it does not exist', () => {
     renderPanel();
     fireEvent.click(screen.getByTestId('unknown-resolve-e1'));
-    expect(screen.getByTestId('resolve-merge-all')).toBeChecked();
+    expect(screen.queryByTestId('resolve-merge-all')).toBeNull();
+  });
+
+  it('still TELLS the author how many siblings share the code — context, not a promise', () => {
+    renderPanel();
+    fireEvent.click(screen.getByTestId('unknown-resolve-e1'));
+    expect(screen.getByTestId('resolve-same-code-count')).toBeInTheDocument();
+  });
+
+  it('resolving an existing kind moves just that entity', async () => {
+    renderPanel();
+    fireEvent.click(screen.getByTestId('unknown-resolve-e1'));
     fireEvent.click(screen.getByTestId('resolve-apply'));
     await waitFor(() => expect(hookMocks.resolve).toHaveBeenCalledWith(
       expect.objectContaining({ entity_id: 'e1' }),
-      { strategy: 'existing', kindId: 'k-loc', applyAll: true },
+      { strategy: 'existing', kindId: 'k-loc' },
     ));
-    expect(toastMocks.success).toHaveBeenCalledWith('unknown.toast_merged');
+    expect(toastMocks.success).toHaveBeenCalledWith('unknown.toast_reassigned');
   });
 
-  it('unchecking merge-all requests existing+single', async () => {
-    renderPanel();
-    fireEvent.click(screen.getByTestId('unknown-resolve-e1'));
-    fireEvent.click(screen.getByTestId('resolve-merge-all')); // uncheck
-    fireEvent.click(screen.getByTestId('resolve-apply'));
-    await waitFor(() => expect(hookMocks.resolve).toHaveBeenCalledWith(
-      expect.objectContaining({ entity_id: 'e1' }),
-      { strategy: 'existing', kindId: 'k-loc', applyAll: false },
-    ));
-  });
-
-  it('an entity with no source code has no merge option (applyAll forced false)', async () => {
+  it('an entity with no source code shows no sibling note', () => {
     renderPanel();
     fireEvent.click(screen.getByTestId('unknown-resolve-e3'));
-    expect(screen.queryByTestId('resolve-merge-all')).toBeNull();
-    fireEvent.click(screen.getByTestId('resolve-apply'));
-    await waitFor(() => expect(hookMocks.resolve).toHaveBeenCalledWith(
-      expect.objectContaining({ entity_id: 'e3' }),
-      { strategy: 'existing', kindId: 'k-loc', applyAll: false },
-    ));
+    expect(screen.queryByTestId('resolve-same-code-count')).toBeNull();
   });
 
   it('the "new kind" strategy requests strategy=new with the typed code/name', async () => {
@@ -139,7 +138,7 @@ describe('UnknownEntitiesPanel', () => {
     fireEvent.click(screen.getByTestId('resolve-apply'));
     await waitFor(() => expect(hookMocks.resolve).toHaveBeenCalledWith(
       expect.objectContaining({ entity_id: 'e3' }),
-      { strategy: 'new', code: 'faction', name: 'Faction', applyAll: false },
+      { strategy: 'new', code: 'faction', name: 'Faction' },
     ));
   });
 

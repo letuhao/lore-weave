@@ -305,6 +305,36 @@ scene refused 400 `BAD_REFERENCE` while a live target still returns 201.
 
 **VERIFY:** unit **2645 passed / 341 skipped**; DB integration **337 passed / 8 skipped** (real SQL).
 
+### ✅ `D-GLOSSARY-UNKNOWN-REVIEW-405` — the unknown-kind review was broken by DEFAULT (2026-07-28)
+
+I had parked this as "needs a glossary-track decision on which tier a new kind lands in". **There
+was no decision to make**: `reassign-kind` validates its target against
+`book_kinds WHERE book_kind_id = $1 AND book_id = $2`, so a kind minted anywhere else is rejected by
+the very next call. The book tier is the only id space that works.
+
+Worse than recorded, too: `applyAll` **defaults to true**, so the modal's *default* action went
+through `POST /kind-aliases` — removed by SS-4, live-probed at **405**. The flow was broken in its
+normal configuration, not an edge case.
+
+- **"new kind" → FIXED.** `tieringApi.createBookKind` → `book_kind_id` → reassign. Also typed
+  `createBookKind`'s return (it was bare `apiJson`, i.e. `unknown` — an untyped api fn is how this
+  class of drift hides in the first place).
+- **"apply to all" → REMOVED, not re-implemented.** Its promise is the copy's own words — *"a
+  reusable alias so future extractions with this code resolve automatically"* — which IS the alias
+  row. A client-side bulk loop would fix today's entities and silently keep parking tomorrow's, so
+  it would have been a smaller lie, not a fix. The modal now states how many siblings share the
+  code (true, useful) without offering the merge. Returns with the alias write in SS-7.
+- `glossaryApi.createKind` + `createKindAlias` retired with the reason in place.
+
+**Proven on REAL data, not mocks** — which matters here more than usual: 8 tests asserted the old
+merge behaviour and passed happily against mocked routes that 405 in production (the
+mock-only-coverage trap, caught in its natural habitat). Live: minted a book kind (201), reassigned
+a genuine parked entity (200), and the unknown queue went **6 → 5**. Reverted: entity restored to
+its original `kind_id`, probe kind deleted, queue back to **6**.
+
+**VERIFY:** FE **6206 passed**, `tsc` exit 0, glossary suite 167 passed, 7 pre-existing failures
+unchanged.
+
 ### ✅ F3 — ALL FOUR PARKED ITEMS CLEARED (2026-07-28)
 
 Three of the four turned out **not** to be "wire up the missing button" — investigating each changed
@@ -376,11 +406,8 @@ but does not belong to this run:
 </details>
 
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
-- 🔴 **`D-GLOSSARY-UNKNOWN-REVIEW-405` — a LIVE broken path, the only unfixed find.**
-  `UnknownEntitiesPanel`'s "new kind" / "apply to all" call `POST /v1/glossary/kinds` and
-  `POST /v1/glossary/kind-aliases`; both were **probed live and return 405** (SS-4 removed the
-  writes). Needs a glossary-track decision on which tier a newly-minted kind lands in, so it is
-  not a rename. **Everything else the F3 sweep found is now closed.**
+- ✅ **`D-GLOSSARY-UNKNOWN-REVIEW-405` — CLEARED (2026-07-28).** See below; the "needs a tier
+  decision" framing was wrong.
 - **`D-KG-SCHEMA-RETIRE-NEEDS-REVERSE`** — if retiring a whole graph-schema is ever wanted, the
   un-deprecate has to exist FIRST (and a surface to host it). Reasoned in-place at the binding.
 - **E6** F7/F8 — the passes are still blind to canon rules + existing cast (`run_cast` re-invents

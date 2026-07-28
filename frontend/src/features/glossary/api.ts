@@ -373,16 +373,11 @@ export const glossaryApi = {
    * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)
    * onto that kind — the "merge" action.
    */
-  createKindAlias(
-    token: string,
-    payload: { alias_code: string; kind_id: string; reassign?: boolean; book_id?: string },
-  ): Promise<{ alias_id: string; alias_code: string; kind_id: string; reassigned: number }> {
-    return apiJson(`${BASE}/kind-aliases`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
+  // createKindAlias — RETIRED (2026-07-28). `POST /kind-aliases` was removed by SS-4 Milestone C
+  // and live-probes at 405; only the GET survives. Its one caller was the unknown-review's
+  // "apply to all", which is why that option is no longer offered (see useUnknownReview). The
+  // alias write returns in SS-7 retargeted at the tiered model — re-add the binding then, against
+  // whatever shape that route lands with, rather than resurrecting this one.
 
   /** Move ONE entity onto a kind (ad-hoc triage; re-keys attributes by code). */
   reassignEntityKind(
@@ -400,13 +395,12 @@ export const glossaryApi = {
 
   // ── Kind CRUD ──────────────────────────────────────────────────────────────
 
-  createKind(token: string, payload: { code: string; name: string; icon?: string; color?: string; genre_tags?: string[] }) {
-    return apiJson<import('./types').EntityKind>(`${BASE}/kinds`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
+  // createKind — RETIRED (2026-07-28). `POST /kinds` went the same way as the write family below
+  // (SS-4 → tiered kinds); live-probed at 405 while GET /kinds still works, which is exactly how
+  // it survived unnoticed. Minting a kind is `tieringApi.createBookKind` / `createUserKind`. There
+  // is no judgement call about which: `reassign-kind` validates its target against
+  // `book_kinds WHERE book_kind_id = $1 AND book_id = $2`, so the book tier is the only id space
+  // the very next call accepts.
 
   // ── RETIRED (2026-07-28): the flat `/kinds/{id}/…` write family ───────────
   //
