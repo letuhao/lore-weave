@@ -1,4 +1,4 @@
-// W6 §7.1 — a drift row shows ⚠/✗ + "Regenerate to beat"; calibrated=false stamps
+// W6 §7.1 — a drift row shows ⚠/✗; calibrated=false stamps
 // the advisory honesty note (R2.1); an on-beat calibrated row shows ✓ + no advisory.
 // A null verdict (not judged) and a degraded judge (null booleans) are neutral states.
 // Rows read the chapter reader's NESTED shape ({planned, realized, conformance}).
@@ -21,34 +21,36 @@ const dim = (over: Partial<ConformanceDim> = {}): ConformanceDim =>
 
 describe('ConformanceSceneRow', () => {
   it('on-beat + calibrated → ✓, no advisory, no regenerate', () => {
-    render(<ConformanceSceneRow scene={scene()} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene()} />);
     expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✓');
     expect(screen.queryByTestId('conformance-advisory-n1')).toBeNull();
     expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
   });
 
-  it('beat missed → ✗ + Regenerate to beat (drift affordance)', () => {
-    const onRegen = vi.fn();
-    render(<ConformanceSceneRow scene={scene({ conformance: dim({ beat_realized: false }) })} onRegenerate={onRegen} />);
+  it('beat missed → ✗, and NO regenerate button (the endpoint never existed)', () => {
+    // The drift affordance was removed 2026-07-28: it POSTed to
+    // `/scenes/{id}/regenerate-to-beat`, a route composition-service has never served. This test
+    // used to assert the click reached `onRegenerate` — and passed, because the handler was a
+    // vi.fn(). That is the whole failure mode: a mock cannot notice the route was never built.
+    render(<ConformanceSceneRow scene={scene({ conformance: dim({ beat_realized: false }) })} />);
     expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✗');
-    fireEvent.click(screen.getByTestId('conformance-regen-n1'));
-    expect(onRegen).toHaveBeenCalledWith('n1');
+    expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
   });
 
   it('calibrated=false stamps the advisory / unverified honesty note (R2.1)', () => {
-    render(<ConformanceSceneRow scene={scene({ conformance: dim({ calibrated: false }) })} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene({ conformance: dim({ calibrated: false }) })} />);
     expect(screen.getByTestId('conformance-advisory-n1')).toBeInTheDocument();
   });
 
   it('null verdict → neutral "not checked", no tone / advisory / regenerate', () => {
-    render(<ConformanceSceneRow scene={scene({ conformance: null })} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene({ conformance: null })} />);
     expect(screen.getByTestId('conformance-unchecked-n1')).toBeInTheDocument();
     expect(screen.queryByTestId('conformance-tone-n1')).toBeNull();
     expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
   });
 
   it('degraded judge (null booleans + error) → neutral "couldn\'t check", never a tone', () => {
-    render(<ConformanceSceneRow scene={scene({ conformance: { beat_realized: null, tension_band_match: null, calibrated: false, error: 'conformance_unavailable' } })} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene({ conformance: { beat_realized: null, tension_band_match: null, calibrated: false, error: 'conformance_unavailable' } })} />);
     expect(screen.getByTestId('conformance-unchecked-n1')).toBeInTheDocument();
     expect(screen.queryByTestId('conformance-tone-n1')).toBeNull();
   });

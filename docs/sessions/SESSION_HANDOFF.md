@@ -347,14 +347,29 @@ hand rather than believed, and the answer changed the scanner:
 
 **After the fixes: 715 probed → 676 served, 1 phantom, 38 inconclusive.**
 
-**🔴 `D-MOTIF-REGENERATE-TO-BEAT-404` — the one real find, and it is a live button.**
+**✅ CLEARED — the scan now reports 714 probed → 676 served, ZERO phantom.** The button was
+REMOVED rather than the endpoint built (see below), and the 38 inconclusive were checked: all
+eleven 200/202s are **intentionally public** — catalog listing, the three leaderboards, the VAPID
+public key, public profile stats / followers / following / wiki-contributions, and the
+password-reset request (which must be unauthenticated). No security finding; recorded so nobody
+re-investigates.
+
+**🔴→✅ `D-MOTIF-REGENERATE-TO-BEAT-404` — the one real find, and it was a live button.**
 `POST /v1/composition/works/{p}/scenes/{s}/regenerate-to-beat` **has never existed** in
 composition-service (grepped: no route, no handler, not even a renamed equivalent). It is called by
 `useMotifBinding.regenerateScene`, wired to the **"Regenerate to beat"** button in
-`ConformanceSceneRow.tsx` via `ConformanceTraceView`. A user can click it today and get a 404.
-Two honest options, and it is a product call which: **build the endpoint** (scene regeneration
-constrained to its planned beat — a real feature), or **remove the affordance** until it exists
-(the no-dead-affordance rule). Not fixed here because it is not cleanup either way.
+`ConformanceSceneRow.tsx` via `ConformanceTraceView` — mounted in **two** live studio panels
+(`CompositionPanel` + `QualityConformancePanel`). Worse: it rendered only when `hasDrift`, i.e.
+**exactly when the author most wanted it**, and 404'd.
+
+**Removed, not built.** There is no existing capability to re-point at — `/scenes/{id}/prose`
+persists promoted prose, it does not generate — so the missing piece is scene regeneration
+constrained to a planned beat: an LLM call plus job orchestration, a feature rather than a repair.
+A dead affordance in the failure case is worse than none, so the button, its prop and the mutation
+are gone, with the reason recorded at the call site. Re-adding it is a few lines once the endpoint
+exists. **The test that covered it passed the whole time** — it clicked the button and asserted a
+`vi.fn()` was called, which is precisely the failure mode: a mock cannot notice the route was
+never built. That test now asserts the button's ABSENCE, with the history in it.
 
 Also 38 inconclusive (18×422, 10×200, 5×400, 4×503, 1×202) — the **10 that answered `200` to a
 BOGUS token** are worth their own look: those endpoints are unauthenticated, which may be intended

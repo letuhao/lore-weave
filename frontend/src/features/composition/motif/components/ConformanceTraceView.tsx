@@ -88,7 +88,6 @@ export function ConformanceTraceView({ projectId, chapterId, token, modelRef, on
               <ConformanceSceneRow
                 key={s.outline_node_id}
                 scene={s}
-                onRegenerate={(id) => trace.regenerateScene.mutate(id)}
                 onOpenScene={onOpenScene && chapterId ? (sid) => onOpenScene(sid, chapterId) : undefined}
               />
             ))}

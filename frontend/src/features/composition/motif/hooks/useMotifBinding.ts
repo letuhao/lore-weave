@@ -61,16 +61,11 @@ export function useMotifBinding({ projectId, bookId, nodeId, token }: UseMotifBi
     onSuccess: invalidatePreview,
   });
 
-  const regenerateScene = useMutation({
-    mutationFn: (sceneId: string) =>
-      apiJson(`${BASE}/works/${projectId}/scenes/${sceneId}/regenerate-to-beat`, { method: 'POST', token: token! }),
-    onSuccess: invalidatePreview,
-  });
-
   // §4.6 — the bind → COMMIT → GENERATE contract. W6 returns WHERE to go; W2 wires
   // it to the panel's selectTab('compose'|'assemble') + setSceneId (the seam). This
   // closes the H-8 dead-end: bind → generate → verify is ONE path, not three islands.
   const commitAndGenerate = (sceneId: string): CommitAndGenerateRoute => ({ tab: 'compose', sceneId });
 
-  return { swap, rebindRole, clearMotif, chainIt, regenerateScene, commitAndGenerate };
+  // `regenerateScene` removed with its button — see ConformanceSceneRow for why.
+  return { swap, rebindRole, clearMotif, chainIt, commitAndGenerate };
 }

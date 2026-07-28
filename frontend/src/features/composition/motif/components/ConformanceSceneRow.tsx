@@ -1,5 +1,4 @@
-// W6 §3.4 (mockup 07-A) — one planned │ realized │ conformance row + regenerate-to-
-// beat. Reads the chapter reader's NESTED row shape ({planned, realized, conformance}
+// W6 §3.4 (mockup 07-A) — one planned │ realized │ conformance row. Reads the chapter reader's NESTED row shape ({planned, realized, conformance}
 // — routers/conformance.py). Conformance is co-encoded: glyph (✓/⚠/✗) + WORD + hue
 // (§5.3), never hue alone. A null verdict (no completed job / no bound motif) shows a
 // neutral "Not checked yet"; a degraded judge (booleans null) shows "Couldn't check".
@@ -15,9 +14,19 @@ const TONE_CLASS = {
   bad: 'text-red-700 dark:text-red-300',
 } as const;
 
+// ⚠ The 'Regenerate to beat' button was REMOVED here (2026-07-28, D-MOTIF-REGENERATE-TO-BEAT).
+// It POSTed to `/works/{p}/scenes/{s}/regenerate-to-beat`, which has NEVER existed in
+// composition-service — no route, no handler, not even a renamed equivalent. Found by
+// `scripts/phantom-route-scan.py`; every unit test around it passed because they mock the api
+// module, and a mock cannot notice that a route was never built.
+//
+// It rendered only when `hasDrift`, i.e. exactly when the author most wanted it, and 404'd.
+// A dead affordance in the failure case is worse than no affordance at all, so it is gone until
+// the endpoint exists. Re-adding it is a few lines; the missing part is scene regeneration
+// constrained to a planned beat, which is a real feature (LLM call + job orchestration).
 export function ConformanceSceneRow(
-  { scene, onRegenerate, onOpenScene }:
-  { scene: SceneConformance; onRegenerate: (nodeId: string) => void; onOpenScene?: (sceneId: string) => void },
+  { scene, onOpenScene }:
+  { scene: SceneConformance; onOpenScene?: (sceneId: string) => void },
 ) {
   const { t } = useTranslation('composition');
   const v = scene.conformance;
@@ -77,16 +86,6 @@ export function ConformanceSceneRow(
           <div data-testid={`conformance-advisory-${scene.outline_node_id}`} className="mt-0.5 text-[10px] italic text-neutral-400">
             {t('motif.conf.advisory', { defaultValue: 'Advisory — unverified self-report' })}
           </div>
-        )}
-        {hasDrift && (
-          <button
-            type="button"
-            data-testid={`conformance-regen-${scene.outline_node_id}`}
-            className="mt-1 rounded border border-amber-400 px-1.5 py-0.5 text-[11px] text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/30"
-            onClick={() => onRegenerate(scene.outline_node_id)}
-          >
-            {t('motif.conf.regenerate', { defaultValue: 'Regenerate to beat' })}
-          </button>
         )}
       </div>
     </div>

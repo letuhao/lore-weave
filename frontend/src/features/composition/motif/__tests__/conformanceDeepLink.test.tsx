@@ -16,13 +16,13 @@ const scene = {
 describe('conformance → scene deep-link', () => {
   it('a scene row opens the scene when onOpenScene is provided', () => {
     const onOpenScene = vi.fn();
-    render(<ConformanceSceneRow scene={scene} onRegenerate={() => {}} onOpenScene={onOpenScene} />);
+    render(<ConformanceSceneRow scene={scene} onOpenScene={onOpenScene} />);
     fireEvent.click(screen.getByTestId('conformance-open-scene-node-7'));
     expect(onOpenScene).toHaveBeenCalledWith('node-7');
   });
 
   it('renders a plain (non-link) beat label when no deep-link handler is given (legacy mount)', () => {
-    render(<ConformanceSceneRow scene={scene} onRegenerate={() => {}} />);
+    render(<ConformanceSceneRow scene={scene} />);
     expect(screen.queryByTestId('conformance-open-scene-node-7')).not.toBeInTheDocument();
   });
 });
