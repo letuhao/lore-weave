@@ -254,8 +254,31 @@ chapter.
 **Reads as:** most slots inherited unchanged ⇒ deltas win, and a full scene run is asking the author
 to re-answer what they already said. High divergence ⇒ scenes carry their own intent and deserve
 their own run.
-**Cheap signal available first:** the existing Mị Đế outline nodes can be inspected for how often a
-scene's `goal`/`conflict` restates its chapter's — no LLM needed.
+
+**~~Cheap signal available first from existing outline nodes.~~ Measured 2026-07-28 — there is
+nothing to read.** Across the WHOLE database:
+
+| kind | nodes | goal | conflict | outcome | stakes | value_shift | beat_role | tension | synopsis |
+|---|---|---|---|---|---|---|---|---|---|
+| chapter | **95** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| scene | 79 | 2 | 0 | 0 | 0 | 0 | 6 | 33 | 29 |
+
+**Not one of 95 chapter nodes carries a single intent slot.** A first pass on the one book with a
+full 10-chapter / 27-scene outline read as "27 of 27 scenes match their chapter" — an artifact of
+both sides being empty, not inheritance. The corrected read is the table above.
+
+Two consequences:
+
+1. **The slots are effectively dead columns.** The schema has modelled chapter intent all along and
+   nothing has ever written to it. So this FSM is not an enhancement to an existing flow — it is
+   the missing mechanism, and §2's "nothing needs inventing" is true of the *storage* only.
+2. **Q2 cannot be answered from history; it needs the POC.** The delta-vs-own-run arms have to be
+   run, not mined.
+
+Worth a separate check, not asserted here: an earlier cycle reported "10/10 chapters now carry a
+beat role" as live-proven, yet `outline_node.beat_role` is 0 across all 95. Either that value lives
+in `plan_artifact` rather than the node, or the two have diverged — a real question, and exactly the
+kind that only surfaces by counting.
 
 ### Q3 · Re-opening a settled slot — free or gated?
 
