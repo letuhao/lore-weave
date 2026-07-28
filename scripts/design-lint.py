@@ -22,9 +22,17 @@ CHECKS (each independently toggleable via --check):
                 "registered YYYY-MM-DD" for a prefix that does NOT appear in
                 _boundaries/01_feature_ownership_matrix.md. (This exact defect
                 shipped 4 times.)
-  count         INFO only — counts "N variants / N tools / count=N" style
-                assertions. v1 does not parse them against their lists; the
-                metric just sizes the drift surface. Never affects exit code.
+  count         count-drift — a tight "N variants of `X`" claim is VERIFIED
+                against the real Rust enum `X` in crates/ + services/. Precision
+                over recall on purpose: the number and the symbol must be
+                adjacent (see COUNT_FORMS), because a same-line matcher read
+                "(the §11 variant" as a count and mis-attributed one symbol's
+                number to another — and a lint that cries wolf gets switched
+                off, which is how this check spent its first life as INFO-only.
+                It can only check enums that EXIST in code. Exempt a real
+                false positive (a name collision, a spec-only type) with
+                `design-lint: ok count — reason` on the line or the one above,
+                or in an HTML comment to scope it to the whole file.
 
 ALLOWLIST (symbol check):
   - scripts/design-lint.allow.json — {"prefixes": {"UTF": "reason", ...}},
@@ -57,11 +65,11 @@ CATALOG_REL = os.path.join("00_foundation", "06_id_catalog.md")
 MATRIX_REL = os.path.join("_boundaries", "01_feature_ownership_matrix.md")
 DEFAULT_ALLOWLIST = os.path.join(SCRIPT_DIR, "design-lint.allow.json")
 ALL_CHECKS = ("symbol", "link", "registration", "count")
-# check → the finding kind it emits (count emits none; INFO only)
 KIND_OF_CHECK = {
     "symbol": "unregistered-prefix",
     "link": "broken-link",
     "registration": "phantom-registration",
+    "count": "count-drift",
 }
 
 # ── patterns ──────────────────────────────────────────────────────────────
@@ -73,6 +81,80 @@ ID_REF = re.compile(r"\b([A-Z]{2,5})-(?:Ch|[A-Z])?\d+[a-z]?\b")
 # registration-claim line: capitals followed by '-', a digit, or '*'.
 PREFIX_TOKEN = re.compile(r"\b([A-Z]{2,5})(?=[-\d*])")
 PRAGMA = re.compile(r"design-lint:\s*ok\s+prefix\s+([A-Z]{2,6})")
+# File-scoped opt-out for the count check (e.g. a file of verbatim third-party
+# or model-generated claims, which is evidence rather than an assertion we make).
+COUNT_PRAGMA = re.compile(r"design-lint:\s*ok\s+count\b")
+
+# ── count-drift: "N variants of `X`" vs the actual Rust enum ───────────────
+#
+# THE BUG THIS EXISTS TO PREVENT. `ABL_001`'s `EffectOp` is called a "closed
+# 9-variant vocabulary" in three places and an 11-variant one in a fourth. The
+# disagreement is the point: nobody knew, and nothing checked (XST-F1). The
+# same class had already produced `ModifierSource::ALL` listing 3 of 6 variants
+# — see `scripts/closed-set-gate.py`, which is this check's code-side twin.
+#
+# PRECISION OVER RECALL, DELIBERATELY. The first version of this matched a
+# number and a symbol anywhere on the SAME LINE, and ~8 of its 11 "findings"
+# were its own parse errors: `(the §11 variant` read as "11 variants", and
+# "`ZoneType` (6 variants) | `ZoneRole` (4 …)" attributed ZoneType's count to
+# ZoneRole. A lint that cries wolf gets switched off — which is exactly how
+# this check spent its first life as INFO-only. So the number and the symbol
+# must be ADJACENT, in one of four recognised shapes, and everything looser is
+# left uncounted on purpose.
+#
+# KNOWN LIMIT: it can only check enums that EXIST in code. `EffectOp` is
+# spec-only, which is precisely why nobody could settle 9 vs 11 — this check
+# will start covering it the day ABL_001 is implemented, and not before.
+COUNT_FORMS = (
+    (re.compile(r"`([A-Za-z_]\w*)`\s*\(\s*(\d+)[\s-]*variants?\b", re.I), 1, 2),
+    (re.compile(r"(\d+)[\s-]*variant\s+`([A-Za-z_]\w*)`", re.I), 2, 1),
+    (re.compile(r"`([A-Za-z_]\w*)`\s*(?:—|-|:)\s*(\d+)[\s-]*variants?\b", re.I), 1, 2),
+    (re.compile(r"`([A-Za-z_]\w*)`\s+(\d+)[\s-]*variant\b", re.I), 1, 2),
+)
+
+
+def rust_enum_arities(roots=("crates", "services")) -> dict:
+    """enum name -> {arity: [defining files]}. Parsed with the closed-set-gate
+    parser so the two checks cannot disagree about what a variant is."""
+    import importlib.util
+
+    gate = os.path.join(SCRIPT_DIR, "closed-set-gate.py")
+    if not os.path.exists(gate):
+        return {}
+    spec = importlib.util.spec_from_file_location("_closed_set_gate", gate)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    out: dict = {}
+    for base in roots:
+        base_dir = os.path.join(REPO_ROOT, base)
+        for dirpath, dirnames, filenames in os.walk(base_dir):
+            dirnames[:] = [d for d in dirnames if d not in
+                           {"target", "node_modules", ".git", "dist", "build"}]
+            for fn in filenames:
+                if not fn.endswith(".rs"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                try:
+                    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                        src = fh.read()
+                except OSError:
+                    continue
+                if "enum" not in src:
+                    continue
+                rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
+                for name, variants in mod.parse_enums(mod.strip_comments(src)).items():
+                    out.setdefault(name, {}).setdefault(len(variants), []).append(rel)
+    return out
+
+
+def count_claim(line: str):
+    """(symbol, claimed) for a tight adjacency form, else None."""
+    for rx, sym_g, num_g in COUNT_FORMS:
+        m = rx.search(line)
+        if m:
+            return m.group(sym_g), int(m.group(num_g))
+    return None
 MD_LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 INLINE_CODE = re.compile(r"`[^`]*`")
 FENCE = re.compile(r"^\s*(```|~~~)")
@@ -165,8 +247,12 @@ def iter_staged_md_files(root: str):
 
 # ── per-file scanning ─────────────────────────────────────────────────────
 
-def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings, counters):
+def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings,
+              counters, enum_arities=None):
     pragma_ok = {m for line in lines for m in PRAGMA.findall(line)}
+    # File-scoped only when the pragma sits in an HTML comment; otherwise it is
+    # line-scoped, so muting one collision does not blind a whole document.
+    count_muted = any(COUNT_PRAGMA.search(l) for l in lines if l.strip().startswith("<!--"))
     file_dir = os.path.dirname(path)
     in_fence = False
     # filename-derived fallback prefix for registration claims (COMB_003_… → COMB)
@@ -216,8 +302,23 @@ def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings
                                          f"claims registration for `{named}` but `{named}` does not "
                                          f"appear in the feature ownership matrix"))
 
-        if "count" in checks and COUNT_ASSERT.search(line):
-            counters["count_assertions"] += 1
+        if "count" in checks:
+            if COUNT_ASSERT.search(line):
+                counters["count_assertions"] += 1
+            line_muted = count_muted or COUNT_PRAGMA.search(line) or (
+                n >= 2 and COUNT_PRAGMA.search(lines[n - 2]))
+            claim = None if line_muted else count_claim(line)
+            if claim and enum_arities:
+                sym, claimed = claim
+                arities = enum_arities.get(sym)
+                if arities:
+                    counters["count_checked"] += 1
+                    if claimed not in arities:
+                        actual = sorted(arities)
+                        where = arities[actual[0]][0]
+                        findings.append((rel, n, "count-drift",
+                                         f"claims `{sym}` has {claimed} variant(s); the enum in "
+                                         f"`{where}` has {actual if len(actual) > 1 else actual[0]}"))
 
 
 # ── main ──────────────────────────────────────────────────────────────────
@@ -276,7 +377,9 @@ def main() -> int:
         matrix_text = read_text(matrix)
 
     findings: list[tuple[str, int, str, str]] = []
-    counters = {"symbol_prefixes": Counter(), "count_assertions": 0}
+    counters = {"symbol_prefixes": Counter(), "count_assertions": 0,
+                "count_checked": 0}
+    enum_arities = rust_enum_arities() if "count" in checks else {}
     n_files = 0
     source = iter_staged_md_files(corpus) if args.staged else iter_md_files(corpus)
     for path in source:
@@ -284,7 +387,7 @@ def main() -> int:
         rel = os.path.relpath(path, corpus).replace(os.sep, "/")
         lines = read_text(path).splitlines()
         scan_file(path, rel, lines, checks, registered, allow, matrix_text,
-                  findings, counters)
+                  findings, counters, enum_arities)
 
     # ── report ────────────────────────────────────────────────────────────
     scope = "STAGED" if args.staged else "all"
@@ -315,7 +418,9 @@ def main() -> int:
     if "registration" in checks:
         print(f"phantom-registration: {by_kind.get('phantom-registration', 0)} finding(s)")
     if "count" in checks:
-        print(f"count-assertions (INFO, not parsed in v1): {counters['count_assertions']}")
+        print(f"count-drift: {by_kind.get('count-drift', 0)} finding(s) "
+              f"({counters['count_checked']} claim(s) verified against a real Rust enum; "
+              f"{counters['count_assertions']} count-style phrases seen overall)")
 
     hard = [f for f in findings if f[2] not in warn_kinds]
     soft = [f for f in findings if f[2] in warn_kinds]
