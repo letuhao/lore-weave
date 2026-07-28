@@ -377,3 +377,62 @@ def test_a_REAL_vocabulary_says_nothing(caplog):
                                    chapters, {"hook", "climax"})
     assert out[0].beat_role == "hook"
     assert "EMPTY" not in caplog.text
+
+
+# ── the cross-chapter repetition self_heal found ─────────────────────────────────────────────────
+
+def test_the_previous_chapters_LAST_SCENE_is_named_not_just_its_exit_state():
+    """Everything else threading these chapters is chapter-GRAINED: exit state summarises where the
+    chapter left the characters and world, and `advances` lists developments at the same altitude.
+    None of it says what the previous chapter's final SCENE dramatised — so the planner opened the
+    next chapter by re-enacting it, technically continuing from the state while replaying the beat.
+
+    `self_heal`'s first-ever run reported that five times on ONE arc (CH03 S1 ← CH02 S2, CH04←CH03,
+    CH05←CH04, CH08←CH07, CH09←CH08). A systematic seam, not an occasional slip.
+    """
+    from app.engine.plan import ChapterExitState, render_story_so_far
+
+    out = render_story_so_far(
+        ChapterExitState(characters=["Mira is exposed"], world=["the quay at dawn"],
+                         plot=["the ledger is public"], advances=["ledger_revealed"]),
+        ["ledger_revealed"],
+        prev_last_scene=("The Reckoning at Low Water",
+                         "The tide gives up the crates in front of the auditor."),
+    )
+    assert "THE PREVIOUS CHAPTER ENDED ON THIS SCENE" in out
+    assert "The Reckoning at Low Water" in out
+    assert "tide gives up the crates" in out
+    assert "begin AFTER it" in out and "NOT re-stage it" in out
+    # the chapter-grained signals are still there — this ADDS a scale, it does not replace one
+    assert "Mira is exposed" in out and "ALREADY-USED DEVELOPMENTS" in out
+
+
+def test_chapter_one_threads_NOTHING_and_stays_byte_identical():
+    """No previous chapter means no block — an empty `story_so_far` is what switches the L2 prompt
+    back to its non-threaded shape, and inventing a heading here would silently change chapter 1."""
+    from app.engine.plan import render_story_so_far
+
+    assert render_story_so_far(None, [], prev_last_scene=None) == ""
+    # A pointer with nothing in it is the same as none — never an empty heading.
+    assert render_story_so_far(None, [], prev_last_scene=("", "  ")) == ""
+
+
+def test_the_threaded_scene_is_TRUNCATED_so_one_long_synopsis_cannot_swamp_the_prompt():
+    from app.engine.plan import render_story_so_far
+
+    out = render_story_so_far(None, [], prev_last_scene=("T", "x" * 5000))
+    assert len(out) < 700
+
+
+def test_grounded_decompose_CARRIES_the_pointer_and_a_degraded_chapter_does_not_blank_it():
+    """Mutation-checked at the loop, not the renderer: `render_story_so_far`'s own tests pass even
+    when the caller never threads the pointer. And a degraded chapter must not reset it — the next
+    chapter would then be told nothing about where the story stands, which is the very failure the
+    threading exists to prevent, arriving through a different door."""
+    import inspect
+
+    from app.engine.grounded_plan import grounded_decompose
+
+    src = inspect.getsource(grounded_decompose)
+    assert "prev_last_scene=prev_last_scene" in src        # threaded INTO the renderer
+    assert "if scenes:\n            prev_last_scene = (" in src   # …and only updated on success

@@ -177,8 +177,13 @@ async def grounded_decompose(
     results: list[ChapterScenes] = []
     prev_exit = None
     used_advances: list[str] = []
+    #: The scene the PREVIOUS chapter ended on. Threaded because everything else conditioning this
+    #: loop is chapter-grained — exit state and `advances` both summarise the chapter, never the
+    #: closing scene — so the planner opened each chapter by re-enacting the last one. `self_heal`
+    #: reported that five times on a single arc the first time it ever ran.
+    prev_last_scene: tuple[str, str] | None = None
     for i, ch in enumerate(mapped, start=1):
-        so_far = render_story_so_far(prev_exit, used_advances)
+        so_far = render_story_so_far(prev_exit, used_advances, prev_last_scene=prev_last_scene)
         sys2, usr2 = build_scene_decompose_messages(
             premise, ch, beat_purpose.get(ch.beat_role, "") if ch.beat_role else "",
             cast_names, min_scenes, max_scenes, source_language, so_far, emit_exit=True,
@@ -200,5 +205,11 @@ async def grounded_decompose(
         if exit_state is not None:
             prev_exit = exit_state
             used_advances.extend(exit_state.advances)
+        # Updated only when this chapter actually produced scenes. A DEGRADED chapter must not
+        # blank the pointer — the next chapter would then be told nothing about where the story
+        # stands, which is the failure the threading exists to prevent, arriving by a different
+        # door. Carrying the last good scene forward is the honest fallback.
+        if scenes:
+            prev_last_scene = (scenes[-1].title, scenes[-1].synopsis)
 
     return DecomposeResult(arc_title=arc_title, chapters=results, unmapped_beats=unmapped)

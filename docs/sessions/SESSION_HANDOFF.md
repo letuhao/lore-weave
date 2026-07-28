@@ -752,10 +752,17 @@ but does not belong to this run:
   cast seed cannot be applied until a glossary ontology is adopted, and the only signal is a **422
   at bootstrap-apply** saying "adopt one in the Graph Schema tab". Nothing in the plan flow says so
   beforehand. Cost three round-trips to discover; costs an author the same. Small, author-facing.
-- **Hand-off to the chapter-quality session:** `self_heal`'s first-ever run reports the same defect
-  five times — **every chapter's FIRST scene re-enacts the previous chapter's LAST scene**
-  (CH03←CH02, CH04←CH03, CH05←CH04, CH08←CH07, CH09←CH08). That is pass 6 cross-chapter threading,
-  their surface. Recorded, not chased.
+- ✅ **FIXED — the cross-chapter repetition `self_heal` found.** Its first-ever run reported the
+  same defect five times: **every chapter's FIRST scene re-enacted the previous chapter's LAST**
+  (CH03←CH02, CH04←CH03, CH05←CH04, CH08←CH07, CH09←CH08). Root cause: everything threading the
+  decompose loop is chapter-GRAINED — exit state and `advances` both summarise the chapter — so the
+  planner was never told what the previous chapter's final SCENE dramatised, and opened by
+  replaying it while technically "continuing from the state". `render_story_so_far` now names that
+  scene and instructs the planner to begin AFTER it. A degraded chapter carries the last good
+  pointer forward rather than blanking it. 4 mutation cuts caught (incl. the loop not threading it,
+  which left every renderer test green). **Honest on the live evidence:** a fresh 3-chapter walk
+  shows the specific shape absent, but 3 chapters vs the original 10 is corroboration, not a
+  controlled before/after.
 - **Deferred, with reasons in the CHECKLIST:** the batch `/error-blocks/propose` route (needs the
   *which scene does `pack()` ground against* decision — `propose_for_blocks` is built + tested but
   deliberately unwired, stated rather than left to be discovered) · F11's structural residual

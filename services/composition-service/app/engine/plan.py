@@ -388,12 +388,32 @@ def parse_chapter_exit(content: str) -> ChapterExitState | None:
 
 def render_story_so_far(
     prev_exit: ChapterExitState | None, used_advances: list[str], *, max_advances: int = 24,
+    prev_last_scene: tuple[str, str] | None = None,
 ) -> str:
     """Build the threaded conditioning block: the PREVIOUS chapter's full exit state
     (fine-grained backbone) + the cumulative list of developments already spent (the
     coarse global anti-repeat signal). Empty string when there is nothing to thread
-    (chapter 1), which switches the L2 prompt back to the non-threaded shape."""
+    (chapter 1), which switches the L2 prompt back to the non-threaded shape.
+
+    `prev_last_scene` — (title, synopsis) of the scene the previous chapter ENDED on.
+
+    Everything else here is chapter-GRAINED: exit state summarises where the chapter left the
+    characters and world, and `advances` lists developments at the same altitude. None of it tells
+    the planner what the previous chapter's final SCENE actually dramatised, so the model opened the
+    next chapter by re-enacting it — technically continuing from the state, while replaying the beat.
+    `self_heal`'s first-ever run reported exactly that five times on one arc (CH03 S1 repeating
+    CH02 S2, CH04←CH03, CH05←CH04, CH08←CH07, CH09←CH08): a systematic seam, not an occasional slip.
+    Naming the scene is what makes "start AFTER this" a checkable instruction rather than a vibe.
+    """
     parts: list[str] = []
+    if prev_last_scene is not None:
+        title, synopsis = prev_last_scene
+        if str(title).strip() or str(synopsis).strip():
+            parts.append(
+                "THE PREVIOUS CHAPTER ENDED ON THIS SCENE — your first scene must begin AFTER it "
+                "and must NOT re-stage it (no second version of this moment, no recap of it as "
+                f"action):\n  {str(title).strip()} — {str(synopsis).strip()[:400]}"
+            )
     if prev_exit is not None and not prev_exit.is_empty():
         if prev_exit.characters:
             parts.append(f"Characters: {prev_exit.characters}")
