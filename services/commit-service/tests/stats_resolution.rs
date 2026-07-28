@@ -186,3 +186,155 @@ fn a_snapshot_knows_when_its_inputs_moved() {
         "so does a progression tick — striking trains swordsmanship mid-fight"
     );
 }
+
+// ─────────────────── X1: the four silent-correctness defects ────────────────
+//
+// All four passed the entire pre-existing suite (76/76 green) and all four are
+// deterministic, so the conformance suite stayed green and replay kept agreeing
+// with itself. None was observable. That is what "silent" means here, and it is
+// why each test below is written as a BITE: it must go red if the fix is
+// reverted, not merely pass today.
+
+/// **XST-D1 / DF07_002 EC-2 — a percent debuff past −100% must FLOOR, never invert.**
+///
+/// The spec found this on paper, fixed it, wrote the acceptance criterion, and
+/// named the exact mutation that would reintroduce it — and the implementation
+/// reintroduced it anyway, because it was written from the axiom list rather
+/// than from the edge-case document.
+///
+/// Kill-mutation (AC-DF7-17, quoted): *"drop the `max(0, …)` on `factor` →
+/// yields a negative stat."* With that dropped, `Σpct = −1200` gives −20 here.
+#[test]
+fn a_debuff_past_minus_one_hundred_percent_floors_at_zero() {
+    let arch = StatBlock::default(); // StrikePower 10
+    let mods = [
+        pct(StatSlot::StrikePower, -600, ModifierSource::Status),
+        pct(StatSlot::StrikePower, -600, ModifierSource::Status),
+    ];
+    let out = resolve_block(&arch, &mods, &[], &[], &tuning());
+    assert_eq!(
+        out.get(StatSlot::StrikePower),
+        0,
+        "Σpct = −1200 must floor at 0; a negative StrikePower is EC-2 reintroduced"
+    );
+
+    // Paired positive case (IAS-D10): the floor must not swallow ordinary debuffs.
+    let mild = [pct(StatSlot::StrikePower, -500, ModifierSource::Status)];
+    let out = resolve_block(&arch, &mild, &[], &[], &tuning());
+    assert_eq!(out.get(StatSlot::StrikePower), 5, "a −50% debuff must still halve, not floor");
+}
+
+/// **XST-D6 / DF7-A3 — the Lex clamp is applied LAST and is therefore inescapable,
+/// including on the one DERIVED slot.**
+///
+/// `MoveRange` is derived from Speed, so the derivation has to run after the
+/// per-slot loop. It used to run after the *clamps* too, overwriting the slot
+/// with its own `clamp(1, max_move)` and discarding the world rule entirely.
+///
+/// The existing `a_world_rule_is_never_escapable_by_an_author_clamp` test covers
+/// `StrikePower` — so the invariant was tested everywhere except the one slot
+/// where it was broken.
+///
+/// Kill-mutation: move `derive_move_range` back to the last statement of
+/// `resolve_block` (dropping the re-clamp) → this yields 5 against a ceiling of 2.
+#[test]
+fn a_world_rule_binds_the_derived_slot_too() {
+    let arch = StatBlock::default(); // Speed 100 ⇒ derived MoveRange 3 + 100/50 = 5
+    let lex = [Clamp { slot: StatSlot::MoveRange, min: 1, max: 2 }];
+    let out = resolve_block(&arch, &[], &[], &lex, &tuning());
+    assert_eq!(
+        out.get(StatSlot::MoveRange),
+        2,
+        "the derivation must not escape the Lex ceiling — DF7-A3 says the world rule is last"
+    );
+
+    // Paired: with no world rule, the derivation is untouched.
+    let out = resolve_block(&arch, &[], &[], &[], &tuning());
+    assert_eq!(out.get(StatSlot::MoveRange), 5, "an unclamped derivation must still derive");
+}
+
+/// **XST-D7 — every `ModifierSource` a caller can construct must be CONSUMED.**
+///
+/// The flat loop iterated an inline `[Progression, Equipment, Status]` literal,
+/// so three of six sources were accepted and silently discarded — while the
+/// percent path was not source-filtered at all. The result: a `Lex` Percent
+/// applied and a `Lex` Flat vanished, so a world rule worked or did nothing
+/// depending on which operator the author picked. This is the no-silent-no-op
+/// class CLAUDE.md names as a shipped bug.
+///
+/// Kill-mutation: narrow the loop back to three sources → `Base`, `Archetype`
+/// and `Lex` each yield 10 instead of 60.
+#[test]
+fn every_modifier_source_is_consumed() {
+    let arch = StatBlock::default(); // StrikePower 10
+    for source in ModifierSource::ALL {
+        let mods = [flat(StatSlot::StrikePower, 50, source)];
+        let out = resolve_block(&arch, &mods, &[], &[], &tuning());
+        assert_eq!(
+            out.get(StatSlot::StrikePower),
+            60,
+            "Flat(+50) from {source:?} was dropped — the enum must not express what the \
+             resolver ignores"
+        );
+    }
+}
+
+/// **XST-D7 (b) — the layer-order table cannot silently fall out of sync.**
+///
+/// `layer_index` is a `match` with no wildcard arm, so a seventh variant is a
+/// compile error. This asserts the other half: that `ALL` lists the variants in
+/// exactly the declared order, so the two cannot drift apart.
+#[test]
+fn the_layer_order_table_is_self_consistent() {
+    for (i, source) in ModifierSource::ALL.into_iter().enumerate() {
+        assert_eq!(source.layer_index(), i, "{source:?} is out of position in ModifierSource::ALL");
+    }
+}
+
+/// **XST-D8 — clamps COMPOSE; load order never decides the winner.**
+///
+/// `slot_clamps.iter().find(...)` took the first clamp for a slot and discarded
+/// the rest, so two content packs both clamping `MaxHp` had their winner decided
+/// by `Vec` position — order-dependence smuggled into the one mechanism DF7-A5
+/// advertises as order-independent.
+///
+/// Kill-mutation: restore `.find()` → the reversed order below yields 200
+/// instead of 120, and the two halves of this test disagree.
+#[test]
+fn clamps_compose_and_do_not_depend_on_declaration_order() {
+    let arch = StatBlock::default();
+    let mods = [flat(StatSlot::MaxHp, 400, ModifierSource::Equipment)]; // 100 + 400 = 500
+
+    let a = [
+        Clamp { slot: StatSlot::MaxHp, min: 0, max: 200 },
+        Clamp { slot: StatSlot::MaxHp, min: 0, max: 120 },
+    ];
+    let b = [a[1], a[0]]; // same declarations, opposite order
+
+    let out_a = resolve_block(&arch, &mods, &a, &[], &tuning());
+    let out_b = resolve_block(&arch, &mods, &b, &[], &tuning());
+
+    assert_eq!(out_a.get(StatSlot::MaxHp), 120, "the intersection of both clamps must bind");
+    assert_eq!(
+        out_a.get(StatSlot::MaxHp),
+        out_b.get(StatSlot::MaxHp),
+        "reversing the clamp slice changed the result — load order is deciding"
+    );
+}
+
+/// **XST-D8 (b) — a contradictory intersection must not PANIC.**
+///
+/// `i32::clamp` panics when `min > max`, so two content packs declaring
+/// `[50,100]` and `[200,300]` on the same slot would take the process down.
+/// The floor wins, deterministically. (The loader should refuse this at load
+/// time — F2 — but a runtime contradiction must degrade, not crash.)
+#[test]
+fn contradictory_clamps_degrade_rather_than_panic() {
+    let arch = StatBlock::default();
+    let contradictory = [
+        Clamp { slot: StatSlot::MaxHp, min: 50, max: 100 },
+        Clamp { slot: StatSlot::MaxHp, min: 200, max: 300 },
+    ];
+    let out = resolve_block(&arch, &[], &contradictory, &[], &tuning());
+    assert_eq!(out.get(StatSlot::MaxHp), 200, "empty intersection: the floor wins, no panic");
+}

@@ -156,6 +156,53 @@ pub enum ModifierSource {
     Lex,
 }
 
+impl ModifierSource {
+    /// DF7-A3 — the locked layer order, enumerated once.
+    ///
+    /// **XST-D7 (fixed 2026-07-28).** `resolve_block` used to iterate an inline
+    /// `[Progression, Equipment, Status]` literal, so `Base`, `Archetype` and
+    /// `Lex` **flat** modifiers were constructible, accepted, and silently
+    /// discarded — while the *percent* filter was not source-filtered at all, so
+    /// a `Lex` Percent applied and a `Lex` Flat vanished. A world rule worked or
+    /// did nothing depending on which operator the author happened to pick.
+    ///
+    /// The enum must not be able to express something the resolver ignores, so
+    /// the order lives here and [`ModifierSource::layer_index`] is a `match`
+    /// with **no wildcard arm** — a seventh variant is a compile error, not a
+    /// seventh silently-dropped source.
+    ///
+    /// **`Lex` as a MODIFIER is consumed, not rejected (PO-confirmed 2026-07-28).**
+    /// DF7-A3's written layer order names `Lex` only as a *clamp*, and the Lex
+    /// clamp already arrives through `resolve_block`'s separate `lex_clamps`
+    /// parameter. So a `StatModifier` carrying `source: Lex` is a world-rule
+    /// **contribution**, applied last among the flat layers — which is what this
+    /// variant's own doc-comment says ("applied LAST and therefore inescapable")
+    /// and what removes the asymmetry the audit found: `Lex` Percent applied
+    /// while `Lex` Flat vanished, so a world rule worked or did nothing
+    /// depending on the author's choice of operator. The alternative considered
+    /// and rejected was forbidding `Lex` modifiers in the type system.
+    pub const ALL: [ModifierSource; 6] = [
+        ModifierSource::Base,
+        ModifierSource::Archetype,
+        ModifierSource::Progression,
+        ModifierSource::Equipment,
+        ModifierSource::Status,
+        ModifierSource::Lex,
+    ];
+
+    /// Position in the locked layer order. Exhaustive by construction.
+    pub const fn layer_index(self) -> usize {
+        match self {
+            ModifierSource::Base => 0,
+            ModifierSource::Archetype => 1,
+            ModifierSource::Progression => 2,
+            ModifierSource::Equipment => 3,
+            ModifierSource::Status => 4,
+            ModifierSource::Lex => 5,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModifierOp {
     Flat(i32),
@@ -178,6 +225,37 @@ pub struct Clamp {
     pub slot: StatSlot,
     pub min: i32,
     pub max: i32,
+}
+
+/// Intersect EVERY clamp declared for `slot`, returning `(min, max)`.
+///
+/// **XST-D8 (fixed 2026-07-28).** This was `clamps.iter().find(|c| c.slot == slot)`,
+/// which takes the **first** clamp and discards the rest — so two content packs
+/// both clamping `MaxHp` had their winner decided by `Vec` position, i.e. by
+/// **load order**, reintroducing order-dependence through the back door of the
+/// one mechanism advertised as order-independent (DF7-A5).
+///
+/// Intersection is order-independent *by construction*: `max` and `min` are both
+/// commutative and associative, so shuffling the slice cannot change the result.
+/// That is what makes the shuffle test in this module non-vacuous.
+fn intersect_clamps(slot: StatSlot, clamps: &[Clamp]) -> Option<(i32, i32)> {
+    let mut acc: Option<(i32, i32)> = None;
+    for c in clamps.iter().filter(|c| c.slot == slot) {
+        acc = Some(match acc {
+            None => (c.min, c.max),
+            Some((lo, hi)) => (lo.max(c.min), hi.min(c.max)),
+        });
+    }
+    acc.map(|(lo, hi)| {
+        // Contradictory declarations (`[50,100]` ∩ `[200,300]`) leave an EMPTY
+        // range, and `i32::clamp` PANICS when min > max. The floor wins, which
+        // is deterministic and never panics.
+        //
+        // TODO(F2): the ruleset loader should REFUSE an empty intersection at
+        // load time — this runtime rule exists so a contradiction degrades
+        // predictably, not so contradictions are acceptable.
+        (lo, hi.max(lo))
+    })
 }
 
 /// Resolve a block from its inputs — a pure function (DF7-A2), in the locked
@@ -213,9 +291,9 @@ pub fn resolve_block(
         // Flat layers, in source order. Iterating the ORDERED source list
         // rather than the modifier list keeps the result independent of the
         // order modifiers happen to arrive in.
-        for source in
-            [ModifierSource::Progression, ModifierSource::Equipment, ModifierSource::Status]
-        {
+        //
+        // XST-D7: this iterates ALL SIX sources. It previously iterated three.
+        for source in ModifierSource::ALL {
             for m in modifiers.iter().filter(|m| m.slot == slot && m.source == source) {
                 if let ModifierOp::Flat(v) = m.op {
                     flat += v as i64;
@@ -233,23 +311,55 @@ pub fn resolve_block(
             })
             .sum();
 
-        // Exactly one division, at emit. `(base+flat) × (1000+Σpct) / 1000`.
-        let value = flat.saturating_mul(1000 + pct) / 1000;
+        // Exactly one division, at emit. `(base+flat) × max(0, 1000+Σpct) / 1000`.
+        //
+        // XST-D1 (fixed 2026-07-28) — the `max(0, …)` is DF07_002 **EC-2**, an
+        // already-found, already-fixed SPEC defect that this implementation
+        // reintroduced by writing the formula from the axiom list instead of
+        // from the edge-case document. Without it, `Σpct = −1200` (two −60%
+        // debuffs, ordinary play in a debuff-dense reality) yields a factor of
+        // −0.2 and a **negative StrikePower**. AC-DF7-17 names this exact
+        // mutation: *"drop the max(0, …) on factor → yields a negative stat."*
+        // −100% is the floor; further debuffs are absorbed.
+        let factor = (1000 + pct).max(0);
+        let value = flat.saturating_mul(factor) / 1000;
         let mut value = value.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
 
         // Author clamp, then world rule — in that order, see above.
-        if let Some(c) = slot_clamps.iter().find(|c| c.slot == slot) {
-            value = value.clamp(c.min, c.max);
-        }
-        if let Some(c) = lex_clamps.iter().find(|c| c.slot == slot) {
-            value = value.clamp(c.min, c.max);
-        }
+        value = apply_clamps(value, slot, slot_clamps, lex_clamps);
         out.set(slot, value);
     }
 
-    // Speed feeds the derivation, so it must run after the loop.
+    // Speed feeds the derivation, so MoveRange can only be derived once the
+    // loop has finalised Speed.
+    //
+    // XST-D6 (fixed 2026-07-28) — the derivation used to be the LAST statement,
+    // overwriting MoveRange with its own `clamp(1, tuning.max_move)` and
+    // **discarding the Lex ceiling**. A Lex clamp of `max = 2` on MoveRange
+    // produced 5. The Lex-clamp-last property is a recorded correction
+    // (DF07_002 EC-1) with a dedicated test — and that test covers
+    // `StrikePower`, so nothing covered the one slot where the invariant was
+    // actually broken. Deriving and THEN re-clamping restores DF7-A3: a world
+    // rule is applied last and is therefore inescapable.
     out.derive_move_range(tuning);
+    let mr = StatSlot::MoveRange;
+    let ranged = apply_clamps(out.get(mr), mr, slot_clamps, lex_clamps);
+    out.set(mr, ranged);
+
     out
+}
+
+/// Author clamp, then world rule — the DF7-A3 order, in one place so both the
+/// per-slot loop and the `MoveRange` derivation cannot drift apart (XST-D6).
+fn apply_clamps(value: i32, slot: StatSlot, slot_clamps: &[Clamp], lex_clamps: &[Clamp]) -> i32 {
+    let mut value = value;
+    if let Some((lo, hi)) = intersect_clamps(slot, slot_clamps) {
+        value = value.clamp(lo, hi);
+    }
+    if let Some((lo, hi)) = intersect_clamps(slot, lex_clamps) {
+        value = value.clamp(lo, hi);
+    }
+    value
 }
 
 /// DF07 §8.2 — the 5-tuple of input versions a snapshot was resolved under.

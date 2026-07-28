@@ -205,9 +205,20 @@ pub fn resolve_attack(
     let crit = roll_pm(&mut crit_rng) < atk.crit_chance_pm;
     let crit_mult_pm = if crit { atk.crit_mult_pm } else { 1000 };
 
-    // Variance band 0.85–1.15, as per-mille 850..=1150.
+    // Variance band 0.85–1.15, as per-mille 850..=1150 INCLUSIVE.
+    //
+    // XST-D3 (fixed 2026-07-28) — this was `850 + roll_pm(..) * 300 / 1000`
+    // over a `0..=999` draw, which yields **850..=1149**: the top of the
+    // declared band was unreachable and the mean came out at 999.400‰ instead
+    // of 1000‰. That is a permanent, systematic −0.06 % damage shortfall — a
+    // BIAS, not noise, so it never averages out over a long game.
+    //
+    // Drawing the offset directly at its true width (301 values, 0..=300) makes
+    // the band exactly the one the spec declares, with mean 150 and no
+    // truncation anywhere. Cheaper than the old form, and it removes the
+    // division rather than correcting it.
     let mut dmg_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Damage);
-    let roll_band_pm = 850 + (roll_pm(&mut dmg_rng) * 300) / 1000;
+    let roll_band_pm = 850 + dmg_rng.range_u64(301) as i64;
 
     const ELEM_MULT_PM: i64 = 1000; // V1 = 1.0
     const RESIST_PM: i64 = 0; // V1 = 0

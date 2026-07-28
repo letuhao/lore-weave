@@ -712,6 +712,54 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > balancing cell → E3 triggers. **COMB_002/003 + ABL_001 remain held** (PRD-D3 — they pass none of
 > ONT-T1/T2/T3). Still open: WSA-Q1–Q3, WSA-Q6, TRG-Q1, TRG-Q4, ONT-Q2, EXC-Q1–Q3.
 
+> ✅ **X1 — THE FIVE SILENT-CORRECTNESS DEFECTS FIXED + BITE-PROVEN (2026-07-28, /loom M).**
+> First code after the doc arc. All five were live in `9ac178221` / `4c42150dc`, all five passed the
+> entire 76-test suite, and all five are deterministic — so the conformance suite stayed green and
+> replay kept agreeing with itself. **None was observable.** That is what made them survive.
+>
+> `services/commit-service/src/stats.rs` · `combat.rs` (+329/−14, 4 files):
+> **XST-D1** `factor = (1000 + pct).max(0)` — this is DF07_002 **EC-2**, a defect the spec had already
+> found, already fixed, and whose kill-mutation it had already written down as **AC-DF7-17**; the
+> implementation reintroduced it by being written from the axiom list instead of the edge-case doc.
+> Σpct = −1200 gave StrikePower **−20**. · **XST-D6** `derive_move_range` now runs *then re-clamps* — it
+> was the last statement, overwriting MoveRange and discarding the Lex ceiling (a `max=2` world rule
+> produced **5**). The existing Lex-clamp test covers `StrikePower`, so the invariant was tested
+> everywhere except the one slot where it was broken. · **XST-D7** the flat loop iterates
+> `ModifierSource::ALL` (6); it iterated an inline literal of 3, so `Base`/`Archetype`/`Lex` **flat**
+> modifiers were constructible, accepted and discarded — while percent was *not* source-filtered, so
+> **Lex Percent applied and Lex Flat vanished**. · **XST-D8** `intersect_clamps` replaces
+> `.find()`-takes-the-first, which let **`Vec` position** decide between two content packs clamping the
+> same slot — load-order dependence inside the one mechanism advertised as order-independent. ·
+> **XST-D3** `850 + range_u64(301)` — the band was `850..=1149`, mean 999.400‰: the declared top was
+> **unreachable** and every fight was permanently −0.06 % weak. A bias, not noise.
+>
+> **All five BITE-PROVEN** — each fix reverted in isolation, its test asserted RED. `83 tests passed,
+> 0 failed` (16 suites); clippy clean on both changed files; single service, no live-smoke needed.
+>
+> **Two lessons worth more than the fixes.** (1) The pre-existing
+> `damage_varies_within_the_locked_band` **could not** catch XST-D3: it asserts every roll is INSIDE
+> the band, which a band that never reaches its top satisfies perfectly — *a containment test cannot
+> detect a missing endpoint.* (2) My first version of the new test asserted the band **mean**; it went
+> red at 999.136, which was **sampling error, not the code** (SE ≈ 1.41). At any affordable n a mean
+> test cannot detect a 0.06 % bias — tight enough to catch it is flaky, loose enough to be stable is
+> vacuous. Replaced with **distinct-value coverage = 301**: deterministic, and a strictly stronger
+> claim.
+>
+> **Two PO decisions recorded in code (2026-07-28):** `ModifierSource::Lex` as a *modifier* is
+> **consumed, not rejected** (the Lex *clamp* already arrives via a separate parameter, so a Lex
+> modifier is a world-rule contribution applied last among flats); and a **contradictory clamp
+> intersection floors** rather than panicking (`i32::clamp` panics when min > max) — with a
+> `TODO(F2)` that the loader must REFUSE the contradiction at load time.
+>
+> ⚠️ **Residual, stated rather than hidden:** `layer_index` is a wildcard-free `match`, so a 7th
+> variant is a compile error — but a variant added to `layer_index` and forgotten in `ALL` still
+> passes the self-consistency test. Rust has no stable `variant_count`. The two sit six lines apart;
+> that is **discipline, not a mechanical guard**, and it should not be described as one.
+>
+> **NEXT:** F1 `ruleset-core` real digest → F2 loader (which owns the `TODO(F2)` clamp-contradiction
+> refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
+> in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
+
 Started 2026-04-23 from a SillyTavern prior-art survey. Evolved through systematic design of:
 - Four product shapes → Shape D (shared persistent world)
 - Multiverse model (peer realities, snapshot fork, 4-layer canon)

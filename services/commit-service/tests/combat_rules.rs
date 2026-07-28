@@ -286,3 +286,56 @@ fn the_combat_view_maps_the_df07_slots() {
     assert_eq!(view.speed, 250);
     assert_eq!(view.crit_mult_pm, 1500, "engine default 1.5x survives (DF7-A6)");
 }
+
+/// **XST-D3 — the damage variance band reaches BOTH of its declared ends.**
+///
+/// `850 + roll_pm(..) * 300 / 1000` over a `0..=999` draw yields **850..=1149**:
+/// the top of the declared 0.85–1.15 band was unreachable, and the mean landed
+/// at 999.400‰ rather than 1000‰. Small, but it is a BIAS, not noise — it never
+/// averages out, so every fight was permanently ~0.06 % weaker than the spec.
+///
+/// `damage_varies_within_the_locked_band` above could not catch this: it asserts
+/// every roll is INSIDE the band, which a band that never reaches its top
+/// satisfies perfectly. A containment test cannot detect a missing endpoint.
+///
+/// Kill-mutation: restore `850 + roll_pm(..) * 300 / 1000` → `hi` is 1149.
+#[test]
+fn the_damage_band_reaches_both_ends_and_centres_on_one() {
+    // strike_power 1000 against armor 0 makes `base` exactly 1000, so a landed
+    // non-crit hit's damage IS the band value in per-mille — read directly off
+    // the damage rather than inferred from the formula.
+    let mut a = atk();
+    a.strike_power = 1000;
+    a.accuracy_pm = 10_000;
+    a.crit_chance_pm = 0;
+    let mut d = atk();
+    d.armor = 0;
+    d.dodge_pm = 0;
+
+    let dmgs: Vec<i64> = (0..4000)
+        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .filter(|o| o.hit)
+        .map(|o| o.damage)
+        .collect();
+
+    assert!(dmgs.len() > 3000, "expected most swings to land (got {})", dmgs.len());
+
+    let hi = *dmgs.iter().max().unwrap();
+    let lo = *dmgs.iter().min().unwrap();
+    assert_eq!(hi, 1150, "the TOP of the declared band must be reachable (saw {hi})");
+    assert_eq!(lo, 850, "the bottom of the declared band must be reachable (saw {lo})");
+
+    // COVERAGE, not mean. A sample mean cannot detect a 0.06 % bias at any
+    // affordable n — the standard error here is ~1.4, so a tolerance tight
+    // enough to catch the old −0.6 shortfall would be flaky, and one loose
+    // enough to be stable would be vacuous. Counting DISTINCT values is
+    // deterministic instead: the band declares 301 values (850..=1150), the
+    // old form could only ever produce 300.
+    let distinct: std::collections::BTreeSet<i64> = dmgs.iter().copied().collect();
+    assert_eq!(
+        distinct.len(),
+        301,
+        "the band must cover all 301 declared values; saw {} spanning {lo}..={hi}",
+        distinct.len()
+    );
+}
