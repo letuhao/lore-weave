@@ -235,7 +235,16 @@ async def run_beats(ctx: PassContext) -> dict[str, Any]:
         source_language=ctx.source_language,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
-    return {
+    # EVERY chapter unassigned is not "this arc has no beats" — it is the beat mapping having
+    # failed wholesale (an empty vocabulary makes `beat in beat_keys` false for everything). The
+    # downstream shape is indistinguishable from success: `unmapped_beats` filters to `[]` and
+    # `shape_tension_curve` collapses to one neutral run, i.e. a smooth ramp that reads as
+    # deliberate pacing. This track already found it on the dogfood book, and artifact 019f9d2f
+    # still stores the resulting 50,52,55…72 curve. Said HERE because `beats` is the blocking
+    # checkpoint — the author is being asked to approve a story shape, and approving one that was
+    # never computed is the failure the whole checkpoint exists to prevent.
+    unassigned = bool(mapped) and not any(ch.beat_role for ch in mapped)
+    out: dict[str, Any] = {
         "chapters": [
             {"ordinal": ch.sort_order, "event_id": ch.chapter_id, "title": ch.title,
              "beat_role": ch.beat_role, "intent": ch.intent}
@@ -266,6 +275,13 @@ async def run_beats(ctx: PassContext) -> dict[str, Any]:
         # `available_beats` is: the artifact a reviewer opens should describe itself.
         "structure": dict(ctx.structure),
     }
+    if unassigned:
+        out["warning"] = (
+            "the beat mapping produced NO role for any chapter — this arc's structure was not "
+            "computed, and the tension curve below is the flat default ramp rather than a planned "
+            "shape. Re-run this pass rather than approving it."
+        )
+    return out
 
 
 # ── pass 5 · character_arcs ──────────────────────────────────────────────────────────────────────

@@ -85,12 +85,14 @@ describe('MotifDetailDrawer — the edit door', () => {
     expect(screen.getByTestId('motif-detail-clone')).toBeTruthy();      // …and offers the way out
   });
 
-  it('no token → no door (a term that can silently close it)', () => {
-    // Documented rather than endorsed: with no token the button disappears with no explanation at
-    // all, unlike the shared-template case above. Pinned so the behaviour is a decision, not a
-    // surprise — see the note in the session handoff.
+  it('no token → the door is disabled and SAYS SO, never silently absent', () => {
+    // This term used to close the door in silence: a motif you own, no Edit button, no reason.
+    // A missing affordance with no explanation is the bug — the shared-template case two tests up
+    // is the standard, and this now meets it.
     draw({}, { token: null });
-    expect(screen.queryByTestId('motif-detail-edit')).toBeNull();
+    expect(screen.queryByTestId('motif-detail-edit')).toBeNull();          // not clickable…
+    const hint = screen.getByTestId('motif-detail-edit-unavailable');       // …but present
+    expect(hint.getAttribute('title')).toMatch(/session/i);                 // and it explains why
   });
 
   it('no motif yet (loading) → no door, and no crash', () => {

@@ -252,6 +252,62 @@ async def test_run_world_forwards_the_known_world_and_canon(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_beats_with_EVERY_chapter_unassigned_warns_at_the_BLOCKING_checkpoint(monkeypatch):
+    """The A0 failure, made visible where it can still be stopped.
+
+    Every chapter unassigned is not "this arc has no beats" — it is the mapping having failed
+    wholesale. Downstream it is indistinguishable from success: `unmapped_beats` filters to `[]`
+    and the curve collapses to a smooth default ramp that reads as deliberate pacing. `beats` is
+    the BLOCKING checkpoint, so approving a shape that was never computed is precisely what the
+    checkpoint exists to prevent — it has to say so here, not three passes later.
+    """
+    import app.engine.grounded_plan as gp
+    from app.engine.arc_plan import ChapterTension
+    from app.engine.plan import ChapterPlan
+    from app.services.plan_pass_adapters import run_beats
+
+    async def _fake_map(llm, **kw):
+        chapters = [ChapterPlan(chapter_id=f"c{i}", title=f"T{i}", sort_order=i,
+                                beat_role=None, intent="") for i in (1, 2)]
+        curve = [ChapterTension(chapter_index=i, beat_role=None, tension_target=50 + i)
+                 for i in (1, 2)]
+        return chapters, [], curve
+
+    monkeypatch.setattr(gp, "map_beats_and_shape", _fake_map)
+    art = await run_beats(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p", "chapters": []},
+    ))
+    assert "NO role for any chapter" in art["warning"]
+    assert "flat default ramp" in art["warning"]
+    assert "Re-run this pass rather than approving it" in art["warning"]
+
+
+@pytest.mark.asyncio
+async def test_beats_says_NOTHING_when_the_mapping_actually_worked(monkeypatch):
+    """A warning on every run is one nobody reads — and a false alarm at a blocking checkpoint
+    trains the author to click past the real one."""
+    import app.engine.grounded_plan as gp
+    from app.engine.arc_plan import ChapterTension
+    from app.engine.plan import ChapterPlan
+    from app.services.plan_pass_adapters import run_beats
+
+    async def _fake_map(llm, **kw):
+        chapters = [ChapterPlan(chapter_id="c1", title="T", sort_order=1,
+                                beat_role="hook", intent=""),
+                    ChapterPlan(chapter_id="c2", title="T2", sort_order=2,
+                                beat_role=None, intent="")]      # ONE unassigned is not the bug
+        return chapters, [], [ChapterTension(chapter_index=1, beat_role="hook", tension_target=65)]
+
+    monkeypatch.setattr(gp, "map_beats_and_shape", _fake_map)
+    art = await run_beats(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p", "chapters": []},
+    ))
+    assert "warning" not in art
+
+
+@pytest.mark.asyncio
 async def test_run_scenes_STAMPS_the_curve_conformance_onto_the_artifact(monkeypatch):
     """E7. Pass 6 hands the curve to the drafter as a prompt line and never checks the result, so a
     chapter that missed its target by 22 was indistinguishable from one that hit exactly.

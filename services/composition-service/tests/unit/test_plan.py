@@ -336,3 +336,44 @@ async def test_decompose_thread_state_off_is_unthreaded():
     sys1, usr1 = llm.l2_prompts[0]
     assert "chapter_exit" not in sys1 and "STORY SO FAR" not in usr1
     assert res.chapters[0].exit_state is None  # not parsed when threading off
+
+
+# ── the flat-curve mechanism, guarded at the source ───────────────────────────────────────────────
+
+def test_an_EMPTY_beat_vocabulary_is_announced_not_silently_applied(caplog):
+    """A0's mechanism. An empty `beat_keys` is not a strict filter, it is a broken one: `beat in
+    beat_keys` is false for everything, so every chapter returns unassigned, `unmapped_beats`
+    filters to [], and `shape_tension_curve` collapses to one neutral run — a smooth ramp that
+    reads as deliberate pacing while 100% of the model's structural output was discarded.
+
+    The root cause was fixed upstream, but nothing at THIS layer ever said the vocabulary was
+    empty, so any future caller that gets it wrong reproduces the whole failure in silence.
+    """
+    import logging
+
+    from app.engine.plan import ChapterPlan, parse_chapter_map
+
+    chapters = [ChapterPlan(chapter_id=f"c{i}", title=f"T{i}", sort_order=i,
+                            beat_role=None, intent="") for i in (1, 2)]
+    content = '{"chapters": [{"index": 1, "beat": "hook"}, {"index": 2, "beat": "climax"}]}'
+
+    with caplog.at_level(logging.WARNING):
+        out, unmapped = parse_chapter_map(content, chapters, set())
+    assert [c.beat_role for c in out] == [None, None]      # the damage still happens…
+    assert unmapped == []                                  # …and looks exactly like success
+    assert "beat vocabulary is EMPTY" in caplog.text       # …but it is no longer silent
+    assert "degraded parse" in caplog.text
+
+
+def test_a_REAL_vocabulary_says_nothing(caplog):
+    """A warning that fires on every run is one nobody reads."""
+    import logging
+
+    from app.engine.plan import ChapterPlan, parse_chapter_map
+
+    chapters = [ChapterPlan(chapter_id="c1", title="T", sort_order=1, beat_role=None, intent="")]
+    with caplog.at_level(logging.WARNING):
+        out, _ = parse_chapter_map('{"chapters": [{"index": 1, "beat": "hook"}]}',
+                                   chapters, {"hook", "climax"})
+    assert out[0].beat_role == "hook"
+    assert "EMPTY" not in caplog.text

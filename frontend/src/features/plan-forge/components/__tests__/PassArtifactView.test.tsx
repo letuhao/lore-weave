@@ -252,3 +252,27 @@ describe('PassArtifactView — scene_plan tension conformance (E7)', () => {
     expect(screen.queryByTestId('scene-tension-warning')).toBeNull();
   });
 });
+
+// ── the beat mapping failed WHOLESALE (A0) ────────────────────────────────────
+// Every chapter unassigned is not "this arc has no beats" — it is the mapping having failed, and
+// downstream it is invisible: `unmapped_beats` filters to empty and the curve collapses to a smooth
+// default ramp that reads as deliberate pacing. `beats` is the BLOCKING checkpoint, so this is the
+// last place the author can stop it.
+
+describe('PassArtifactView — beat_plan wholesale-failure warning (A0)', () => {
+  it('shows the producer warning loudly when no chapter got a role', () => {
+    render(<PassArtifactView kind="beat_plan" content={{
+      ...BEATS,
+      chapters: BEATS.chapters.map((c) => ({ ...c, beat_role: null })),
+      warning: 'the beat mapping produced NO role for any chapter — this arc\'s structure was not computed, and the tension curve below is the flat default ramp rather than a planned shape. Re-run this pass rather than approving it.',
+    }} />);
+    const el = screen.getByTestId('artifact-beats-warning');
+    expect(el.textContent).toContain('NO role for any chapter');
+    expect(el.textContent).toContain('Re-run this pass');
+  });
+
+  it('a healthy beat plan shows no such banner', () => {
+    render(<PassArtifactView kind="beat_plan" content={BEATS} />);
+    expect(screen.queryByTestId('artifact-beats-warning')).toBeNull();
+  });
+});

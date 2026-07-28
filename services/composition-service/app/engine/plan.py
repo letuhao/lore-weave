@@ -156,6 +156,22 @@ def parse_chapter_map(
     """Apply the model's beat/intent assignments onto the existing chapters by
     index. Every chapter is returned (no drop — an omitted/invalid row keeps
     beat_role=None, intent=''). Only valid beat keys are accepted."""
+    # An EMPTY vocabulary is not a strict filter, it is a broken one: `beat in beat_keys` is then
+    # false for every beat the model returned, so all 10 chapters come back `beat_role=None`,
+    # `unmapped_beats` filters down to `[]`, and `shape_tension_curve` collapses to one neutral run
+    # — a flat ramp that reads as deliberate pacing. The checkpoint then reports a perfectly
+    # healthy arc while 100% of the model's structural output has been discarded.
+    #
+    # That is not hypothetical: it is exactly what this track found on the dogfood book (A0), and
+    # artifact 019f9d2f still stores its 50,52,55…72 curve. The root cause was fixed upstream, but
+    # nothing at THIS layer ever said the vocabulary was empty, so any future caller that gets it
+    # wrong reproduces the whole failure in silence. Absent ≠ zero — say it.
+    if not beat_keys:
+        logger.warning(
+            "parse_chapter_map: the beat vocabulary is EMPTY — every chapter will come back "
+            "unassigned and the tension curve will be a flat default ramp. This is a degraded "
+            "parse, not a story with no beats (%d chapter(s) affected).", len(chapters),
+        )
     obj = parse_critique_json(content) or {}
     by_index: dict[int, dict[str, Any]] = {}
     for row in obj.get("chapters") or []:

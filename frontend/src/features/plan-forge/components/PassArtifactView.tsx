@@ -93,6 +93,17 @@ export function PassArtifactView({ kind, content }: Props) {
             )}
           </p>
         )}
+        {/* EVERY chapter unassigned means the mapping failed wholesale, and the failure is
+            invisible downstream: `unmapped_beats` filters to empty and the curve collapses to a
+            smooth default ramp that reads as deliberate pacing. Loudest thing on the panel,
+            because this is the blocking checkpoint and the author is about to approve a story
+            shape that was never computed. */}
+        {str((content as Record<string, unknown> | null)?.warning) !== '' &&
+          (content as Record<string, unknown> | null)?.warning != null && (
+          <p data-testid="artifact-beats-warning" className="rounded bg-destructive/15 px-2 py-1 text-[10px] font-medium text-foreground">
+            {str((content as Record<string, unknown>).warning)}
+          </p>
+        )}
         {/* A beat nothing hits is the checkpoint's whole safety signal — show it FIRST, loudly. */}
         {unmappedKeys.length > 0 && (
           <p data-testid="artifact-unmapped-beats" className="rounded bg-warning/15 px-2 py-1 text-[10px] text-foreground">
