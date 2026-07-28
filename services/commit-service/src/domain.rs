@@ -66,6 +66,17 @@ pub enum CombatEvent {
         /// "the numbers are wrong" from the player's side. Hiding it makes
         /// legitimate variance look like a bug report.
         crit: bool,
+        /// The declared per-hit ceiling bound, so `damage` is `MAX_HIT` rather
+        /// than what the chain computed (XST-D2).
+        ///
+        /// Carried for exactly the reason `crit` is carried, one step further
+        /// along the same axis: a crit says the numbers are swingy, this says
+        /// the numbers are WRONG. Before this existed the chain saturated in
+        /// `i64` and every oversized hit returned the same clipped number in
+        /// silence — a degrade path absorbing a bug and reporting success, for
+        /// the third time in this codebase. A ceiling that binds is now a fact
+        /// in the committed log (CS-D5/EVT-L5: nothing silent).
+        capped: bool,
     },
     /// Total-apply discipline: target absent/fled/down — recorded, not applied.
     Missed {
@@ -436,6 +447,7 @@ impl Domain for CombatDomain {
                     damage: out.damage,
                     hp_left: t.hp,
                     crit: out.crit,
+                    capped: out.capped,
                 }];
                 if t.hp == 0 && t.knocked_out.is_none() {
                     // KO, not death: revivable for `ko_duration_rounds`

@@ -339,3 +339,90 @@ fn the_damage_band_reaches_both_ends_and_centres_on_one() {
         distinct.len()
     );
 }
+
+/// **XST-D2 — the damage chain must not saturate SILENTLY.**
+///
+/// The chain ran in `i64` with `saturating_mul` over four per-mille factors, so
+/// above a base of ~1.6 M (at a modest 5× crit) **every hit returned the same
+/// clipped number** and nothing said so. The comment above the divisor
+/// congratulates fixed-point for making a scale error "fail LOUDLY"; the line
+/// below it made overflow fail in total silence.
+///
+/// Two things are asserted, and the second is the one that matters: the
+/// arithmetic no longer overflows, AND when the declared ceiling binds it is
+/// REPORTED. A ceiling that binds quietly is a content bug wearing the costume
+/// of a balance decision.
+///
+/// Kill-mutation: revert `numer`/`denom` to `i64` + `saturating_mul` → the huge
+/// case stops scaling with `strike_power` and `capped` is never set.
+#[test]
+fn an_oversized_hit_is_capped_and_says_so() {
+    let mut a = atk();
+    a.accuracy_pm = 10_000;
+    a.crit_chance_pm = 0;
+    let mut d = atk();
+    d.armor = 0;
+    d.dodge_pm = 0;
+
+    // Far past the old ~1.6M i64 saturation point.
+    a.strike_power = 1_000_000_000_000;
+    let big: Vec<_> = (0..20)
+        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .filter(|o| o.hit)
+        .collect();
+    assert!(!big.is_empty());
+    assert!(big.iter().all(|o| o.capped), "the ceiling bound but did not report");
+    assert!(
+        big.iter().all(|o| o.damage == commit_service::combat::MAX_HIT),
+        "a capped hit must BE the declared ceiling, not an arbitrary saturated number"
+    );
+
+    // Ordinary play is untouched: no cap, and damage still tracks strike_power.
+    a.strike_power = 1000;
+    let small: Vec<_> = (0..20)
+        .map(|i| resolve_attack(&a, &d, false, SEED, EntityId(1), i))
+        .filter(|o| o.hit)
+        .collect();
+    assert!(small.iter().all(|o| !o.capped), "a normal hit must not report a cap");
+    assert!(small.iter().all(|o| (850..=1150).contains(&o.damage)));
+}
+
+/// **XST-D2 (b) — the chain still SCALES where the old one had gone flat.**
+///
+/// This is the assertion that would have caught the original bug. Under
+/// `i64` + `saturating_mul`, two very different strike powers above the
+/// saturation point produced the SAME damage — the failure was invisible
+/// precisely because the number looked plausible.
+#[test]
+fn damage_scales_across_the_old_saturation_point() {
+    let mut a = atk();
+    a.accuracy_pm = 10_000;
+    a.crit_chance_pm = 0;
+    let mut d = atk();
+    d.armor = 0;
+    d.dodge_pm = 0;
+
+    let dmg_at = |sp: i64| -> i64 {
+        let mut a2 = a;
+        a2.strike_power = sp;
+        (0..20)
+            .map(|i| resolve_attack(&a2, &d, false, SEED, EntityId(1), i))
+            .find(|o| o.hit)
+            .map(|o| o.damage)
+            .expect("a hit")
+    };
+
+    // The saturation point depends on crit: ~1.6M at a 5x crit, but ~8.02M with
+    // crit OFF, which is how this test runs. My first attempt used 2M and 8M —
+    // BOTH below 8.02M, so nothing saturated and the test passed against the
+    // reverted code. The BITE-PROOF caught that; the test did not.
+    //
+    // 20M and 80M both sit well above 8.02M, so under `i64` + `saturating_mul`
+    // both clamp to `i64::MAX` and return the SAME damage.
+    let (lo, hi) = (dmg_at(20_000_000), dmg_at(80_000_000));
+    assert!(hi > lo, "damage went FLAT above the old saturation point: {lo} vs {hi}");
+    // Both sample the same roll (the hit/miss pattern does not depend on
+    // strike_power, so the same action_idx is chosen), so the scaling is EXACT
+    // rather than approximate — a sharper assertion than a ratio band.
+    assert_eq!(hi, lo * 4, "4x the strike power must be exactly 4x the damage");
+}

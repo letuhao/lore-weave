@@ -774,6 +774,64 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **FOUNDATION SWEEP — both halves of XST-F1 gated, and XST-D2 closed (2026-07-28).**
+> At the PO's call: *"nên bật mấy cái audit đang tắt lên rồi fix hết mấy bugs đi — tốt hơn là nên
+> clear foundation và dọn rot trước"* — correct, and it changed the order: `X1` fixed ONE instance
+> of a bug class; these gate the CLASS.
+>
+> **`closed-set-gate.py` (69bae584c)** — a closed enum and its hand-written companion array may not
+> drift. Rust forces you to HANDLE every variant, never to CONTAIN every variant, and `variant_count`
+> is unstable. Keys off the element TYPE (the lists are called `ALL`, `ALL_KINDS`, `ALL_BIOME_TYPES`).
+> **Found a real case on the first run, in code this branch did not write** — `BooleanTemplate::ACTIVE`
+> omits `Ring`; inspected, legitimate (withheld until `Polygon` supports interior rings in v3.3), given
+> the escape pragma with that reason.
+> **`design-lint count` → count-drift (696cb039f)** — the doc-side twin. The check had existed since the
+> lint was written, **counting** 924 phrases and comparing none of them; its own docstring said *"INFO
+> only … never affects exit code"*. It now verifies a tight *"N variants of X"* claim against the real
+> Rust enum, sharing the gate's parser by import so the two cannot disagree about what a variant is.
+>
+> **`XST-D2` closed** — the damage chain ran in `i64` with `saturating_mul` over four per-mille
+> factors, so above ~8.02 M base (crit off) / ~1.6 M (5x crit) **every hit returned the identical
+> clipped number, silently.** Now `i128` intermediates (the arithmetic cannot overflow for any `i64`
+> input) plus a **declared `MAX_HIT`** and a `capped` flag that rides onto the committed
+> `CombatEvent::Struck` — carried for exactly the reason `crit` already is: *a crit says the numbers
+> are swingy; this says the numbers are WRONG.* Widening is also a **prerequisite** for XST-R6/R7:
+> every additional per-mille factor divides an `i64` ceiling by 1000, so element + one multiplicative
+> bucket would have taken the safe base from 1.6 M to ~1600 — reachable in ordinary play.
+>
+> **THREE of my own mistakes, each caught by the discipline rather than by review:**
+> 1. The first count-drift matcher allowed the number and the symbol anywhere on the **same line** —
+> ~8 of its 11 "findings" were its own parse errors (a section number read as a count; one symbol's
+> number attributed to another). Precision ~27 %. Tightened to four adjacency forms → 20 verified, 1
+> finding. **Low recall is the correct trade: a lint that cries wolf gets switched off — which is
+> literally how this check spent its first life.**
+> 2. `closed-set-gate`'s pragma scan looked a fixed two lines above the `const`; the real justification
+> sat four lines above, inside its doc block — so the pragma did **nothing**, and the bite-test that
+> "proved" it worked reported a finding **both with and without it**. A vacuous test that looks green.
+> Fixed by walking the contiguous doc block instead of guessing a distance.
+> 3. `damage_scales_across_the_old_saturation_point` used 2 M and 8 M — both **below** the 8.02 M
+> crit-off saturation point (I took 1.6 M from the 5x-crit row and then ran with crit off), so it
+> passed against the reverted code. **The bite-proof caught it; the test did not.** Now 20 M / 80 M
+> with an EXACT `hi == lo * 4` assertion.
+>
+> **Audit answer — the "old build" hypothesis is FALSIFIED for the code.** `cargo build --workspace
+> --all-targets` exit 0; ~850 game-tier tests green (`sim-core` · `dp-kernel` · `world-gen` ·
+> `commit-service`); **0** `allow(dead_code)`, **1** TODO, every `#[ignore]` carries a stated reason.
+> What is actually stale is the **spec-to-code relationship**: 15 `RulesetDigest([0...])` leaving
+> RLS-A13 inert, the load-bearing enums (`EffectOp`, `StatusFlag`) still spec-only, and 43 amendment
+> rows unapplied. **Not rotted code — a foundation not yet wired to its blueprint**, which is what
+> F1→F3 exists to do.
+>
+> **Known limit, stated:** count-drift can only check enums that EXIST in code, so it does **not**
+> close XST-F1's original case — `EffectOp` is spec-only, which is exactly why nobody could settle 9
+> vs 11. It starts covering that the day ABL_001 is implemented.
+> **Also tracked, not done:** `PresenceState` is a NAME COLLISION (`dp-kernel` rich presence vs DF5
+> session membership) — a rename crosses crates and is the PO's call.
+>
+> **NEXT:** F1 `ruleset-core` real digest — its hard half is moving the ~15 game constants (`MAX_HIT`
+> now among them, `TODO(IMP-D5)`) out of `combat.rs`/`stats.rs`, because until they live in the hashed
+> struct, F3's *edit-a-constant-then-the-digest-moves* test cannot be written at all.
+
 Started 2026-04-23 from a SillyTavern prior-art survey. Evolved through systematic design of:
 - Four product shapes → Shape D (shared persistent world)
 - Multiverse model (peer realities, snapshot fork, 4-layer canon)

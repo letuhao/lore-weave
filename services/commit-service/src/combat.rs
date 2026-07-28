@@ -162,7 +162,44 @@ pub struct AttackOutcome {
     pub hit: bool,
     pub crit: bool,
     pub damage: i64,
+    /// True when `damage` is the declared ceiling rather than the number the
+    /// chain computed — see [`MAX_HIT`] and XST-D2.
+    ///
+    /// Surfaced for the same reason `crit` is surfaced on the event: it is the
+    /// difference between *"the numbers are swingy"* and *"the numbers are
+    /// wrong"*. A ceiling that binds silently is a content bug wearing the
+    /// costume of a balance decision.
+    pub capped: bool,
 }
+
+/// The declared ceiling on a single hit.
+///
+/// **XST-D2 (fixed 2026-07-28).** The chain used to run in `i64` with
+/// `saturating_mul`, so above a base of ~1.6 M **every hit returned the
+/// identical saturated number, silently.** The irony was in the file: the
+/// comment on the divisor congratulates fixed-point for making a scale error
+/// *"fail LOUDLY"* — and the line below it used `saturating_mul`, which makes
+/// overflow fail in total silence. Same pattern as `saturating_mul` in the stat
+/// path and the `Substitute` admission fallback: **a degrade path absorbs the
+/// bug and reports success.** That is three times now, which is why this one is
+/// both widened AND made observable rather than just widened.
+///
+/// The intermediates are now `i128`, so nothing overflows for any `i64` input.
+/// A ceiling is still required because the result must return to `i64`, and a
+/// ceiling that is *declared* is a different object from one that *emerges*:
+/// this one has a number, a reason, and a flag that fires when it binds.
+///
+/// 1e9 is ~1000× beyond any plausible content (a normal hit is ~10; a boss
+/// might reach 1e3; an extreme cultivation ruleset 1e6) and far below `i64`
+/// overflow. Damage above it is a content defect, not a balance choice — which
+/// is exactly what [27 §7.1](../../../docs/03_planning/LLM_MMO_RPG/27_extensibility_stress_test.md)
+/// decided when it put true incremental-game numeric range out of scope.
+///
+/// TODO(IMP-D5): this belongs in `CombatRules`, loaded from the ruleset — a
+/// law's STRUCTURE is code, a law's CONSTANTS are config (IMP-D1). It is a
+/// literal here only until F1/F2 land, and it is listed as debt so "we already
+/// have it, let's just continue" stops being frictionless (IMP-D8).
+pub const MAX_HIT: i64 = 1_000_000_000;
 
 /// The 4-step damage law-chain (COMB_001 §4, order LOCKED for V1+):
 ///
@@ -198,7 +235,7 @@ pub fn resolve_attack(
     // hard it lands, or a lucky seed produces suspiciously consistent play.
     let mut hit_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Hit);
     if roll_pm(&mut hit_rng) >= hit_chance_pm(atk.accuracy_pm, def.dodge_pm) {
-        return AttackOutcome { hit: false, crit: false, damage: 0 };
+        return AttackOutcome { hit: false, crit: false, damage: 0, capped: false };
     }
 
     let mut crit_rng = role_rng(session_seed, attacker, action_idx, SeedRole::Crit);
@@ -228,21 +265,39 @@ pub fn resolve_attack(
     // One expression, integer throughout, with the divisions carried to the
     // END so intermediate precision is never lost to repeated truncation —
     // the integer equivalent of DF7-A4's "exactly one floor at emit".
-    let numer = base
-        .saturating_mul(ELEM_MULT_PM)
-        .saturating_mul(1000 - RESIST_PM)
-        .saturating_mul(roll_band_pm)
-        .saturating_mul(crit_mult_pm);
+    // i128, NOT i64-with-saturating_mul. XST-D2: four per-mille factors over an
+    // i64 base overflowed above ~1.6 M (at a modest 5× crit) and `saturating_mul`
+    // then returned the SAME clipped number for every larger hit, in silence.
+    // i128 holds `i64::MAX × 5.75e15` with four orders of magnitude to spare, so
+    // the arithmetic itself can no longer overflow for any i64 input.
+    //
+    // This also unblocks the extensions: every ADDITIONAL per-mille factor
+    // divides an i64 ceiling by 1000, so an element factor plus one
+    // multiplicative bucket would have taken the safe base from 1.6 M to ~1600.
+    // Widening is a prerequisite for XST-R6/R7, not an optimisation.
+    let numer: i128 = (base as i128)
+        * (ELEM_MULT_PM as i128)
+        * ((1000 - RESIST_PM) as i128)
+        * (roll_band_pm as i128)
+        * (crit_mult_pm as i128);
     // FOUR per-mille factors are multiplied in (elem, resist-complement,
     // roll band, crit), so the divisor is 1000^4 — not 1000^3. Getting this
     // wrong scales every hit by 1000×, which the damage-band test caught
     // immediately; it is the kind of error that fixed-point arithmetic trades
     // for float's rounding drift, and it fails loudly rather than subtly.
-    let denom: i64 = 1000 * 1000 * 1000 * 1000 * if defending { 2 } else { 1 };
+    let denom: i128 = 1_000i128.pow(4) * if defending { 2 } else { 1 };
 
+    // The result must come back to i64, so a ceiling is unavoidable — but it is
+    // DECLARED and it REPORTS. `capped` rides out on the outcome and onto the
+    // committed `Struck` event, so a bound ceiling is a fact in the log rather
+    // than a number nobody can explain (CS-D5/EVT-L5: nothing silent).
+    let raw = numer / denom;
+    let capped = raw > MAX_HIT as i128;
     // Floor of 1: a defended glancing hit could otherwise round to zero and
     // read to the player as a miss that was reported as a hit.
-    AttackOutcome { hit: true, crit, damage: (numer / denom).max(1) }
+    let damage = if capped { MAX_HIT } else { raw as i64 }.max(1);
+
+    AttackOutcome { hit: true, crit, damage, capped }
 }
 
 // ─────────────────────────────── initiative ─────────────────────────────────
