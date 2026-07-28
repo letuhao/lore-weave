@@ -660,7 +660,18 @@ but does not belong to this run:
     pointer fields moved. The orphaned artifacts are left in place rather than deleted.
   **VERIFY:** composition **2623 passed / 1 skipped**; FE plan-forge **150 passed**; `tsc` exit 0;
   9 mutation cuts all caught.
-- 🔴 **NEW (found proving E7): a new book's cold start is a dead end in the UI.** A fresh book's
+- ✅ **`scripts/cold-path-smoke.py` — the gate that would have caught the cold-start bug.**
+  Drives the real stack over HTTP as an author would, on a THROWAWAY book: login → book → run →
+  compile → cast → seed → approve → apply → motifs → beats → character_arcs → scenes → self_heal.
+  **10/10 steps in 60.7s**, and it cleans up after itself (trashes the book, even on the failure
+  path). Mutation-proven: restoring the cold-start dead end in the running container makes it
+  **exit 1 naming the step and quoting the 422**. `--until <step>` stops early (through `seed` is
+  12.6s and needs no LLM pass); `--keep` leaves the book for inspection.
+  **Why it exists:** hours of static analysis, contract gates, door scans and mutation testing each
+  found real bugs, and NONE of them found the one that broke 100% of new books. Every fixture and
+  the dogfood book itself were created before the gate they trip over. A cold path is not a path
+  anyone tests — it is the path every new user takes exactly once.
+- ✅ **FIXED (found proving E7): a new book's cold start was a dead end in the UI.** A fresh book's
   cast seed cannot be applied until a glossary ontology is adopted, and the only signal is a **422
   at bootstrap-apply** saying "adopt one in the Graph Schema tab". Nothing in the plan flow says so
   beforehand. Cost three round-trips to discover; costs an author the same. Small, author-facing.
