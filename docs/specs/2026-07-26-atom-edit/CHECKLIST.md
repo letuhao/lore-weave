@@ -532,8 +532,16 @@ observation. A claim that a check passed, without its output, does **not** tick 
       `known_beat_keys()` and a `unshaped_beat_keys` / `shapeable` field on the structure
       provenance so a **custom** template with unknown keys reports itself instead of silently
       flattening. Two tests pin it, including "every vocabulary must PEAK and come back down".
-- [ ] **E6** F7/F8 — thread canon rules + existing cast into `PassContext` so the compiler stops
-      re-inventing the book. *(Larger; may split.)*
+- [x] **E6** F7/F8 — canon rules + existing cast threaded into `PassContext`; the CAST pass
+      (`run_cast`) stops re-inventing the book. `is_new` is anchored to the book's roster instead
+      of one arc's premise, and `package["canon"]` — compiled on every run, read by nobody — now
+      reaches a prompt. Four layers, each mutation-proven separately.
+- [x] **E6b** The same for the WORLD pass (`run_world`), which had it worse: pass 3 both extracts
+      and INVENTS. Live-fired at a real model, the blind run **re-invented the established faction
+      `Thanh Vân Môn` as `Thanh Vân Tông`, `is_new=true`, kind `location`**; with the roster all
+      three established entities came back `is_new=false` under their correct kinds. The roster is
+      passed BY KIND (a flat one is how a mountain becomes a character), and the worker's
+      already-existing read now feeds both passes instead of discarding the non-characters.
 - [ ] **E7** Re-run `scenes` + `self_heal` and confirm the scene decomposition now honours the real
       curve (pass 6 reads `tension_curve` verbatim). **Not yet done — the shape is proven at the
       beat layer only.**

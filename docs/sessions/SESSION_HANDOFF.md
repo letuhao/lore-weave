@@ -545,10 +545,32 @@ but does not belong to this run:
     teaching: builder → `propose_cast` → `run_cast` → the worker's `PassContext`. Cutting the
     forward at *any* one of them left the others' tests green. The worker link needed the file's
     existing `inspect.getsource` convention (its dependencies make a live call impractical).
-  - Natural follow-on, not done: `run_world` invents entities under the same blindness and gets
-    `cast_names` but no canon.
-
   **VERIFY:** composition **2660 passed / 341 skipped**.
+- ✅ **E6b — DONE (2026-07-28).** The same fix for the WORLD pass, and the live firing showed the
+  bug was worse there than on the cast.
+  - **Same root line**, `world_plan.py`: *"`is_new` is true ONLY for entries you invented (not
+    named in the premise)"*. Pass 3 both extracts and INVENTS, so a premise-anchored `is_new` on a
+    long book means re-inventing the standing world every arc.
+  - **Live-proven against a real local model** (gemma-4-26b, $0, same premise twice). The blind run
+    did not merely mislabel the established faction — it **re-invented `Thanh Vân Môn` as
+    `Thanh Vân Tông`, `is_new=true`, and as a `location`**. With the roster: all three established
+    entities returned, `is_new=false`, correct kinds, and the inventions were genuinely new. The
+    canon anchor *"cultivation costs years of the practitioner's own lifespan"* visibly shaped an
+    invented concept (`Huyết Mạch Thọ Nguyên`) — that block had never reached a prompt before.
+  - **The roster is passed BY KIND, not flattened.** The cast can be a flat list because they are
+    all people; a world cannot. The blind run's location/faction confusion is exactly what an
+    unkinded roster would have left in place.
+  - **One read, two consumers.** `_known_cast_names` was already loading every applied-proposal row
+    and *discarding* the non-characters — the data pass 3 needed was being thrown away. It is now
+    `_known_entities` → `{kind: [names]}`, with `_cast_of_known` / `_world_of_known` slicing it.
+    Two loaders would have meant two queries over the same rows and two kind-filters free to drift.
+  - **An unkinded seed row still counts as CAST** — E6's behaviour, preserved deliberately and
+    pinned by a test, so the refactor cannot silently re-route which pass sees it.
+  - **Five mutation cuts, all caught** (builder ×2 → `propose_world` → `run_world` → the worker's
+    `PassContext`). Cutting any single forward left the other layers' suites green, again.
+
+  **VERIFY:** composition **2604 passed / 1 skipped** (`-n auto`) · live: composition-service →
+  provider-registry → lm_studio, two real generations, output pasted in the cycle notes.
 - **E7** re-run `scenes`/`self_heal` against the real curve.
 - **Deferred, with reasons in the CHECKLIST:** the batch `/error-blocks/propose` route (needs the
   *which scene does `pack()` ground against* decision — `propose_for_blocks` is built + tested but

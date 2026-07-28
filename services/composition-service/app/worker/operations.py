@@ -801,7 +801,11 @@ async def run_plan_pass(
     # character becomes a FACT about the book rather than a proposal about it. Advisory: a read
     # failure yields an empty roster and the pass behaves exactly as it did before E6, rather than
     # failing a plan over context it would have been nice to have.
-    known_cast = await _known_cast_names(pool, book_id)
+    # One read, two consumers (E6 cast + E6b world). Splitting it into two loaders would mean two
+    # queries over the same proposals and two kind-filters free to drift apart.
+    known = await _known_entities(pool, book_id)
+    known_cast = _cast_of_known(known)
+    known_world = _world_of_known(known)
 
     retriever = None
     if pass_id == "motifs":
@@ -817,7 +821,8 @@ async def run_plan_pass(
         inputs=inputs,
         genre_tags=list(run.genre_tags or []),
         source_language=str(input.get("source_language") or "auto"),
-        params=params, retriever=retriever, known_cast=known_cast,
+        params=params, retriever=retriever,
+        known_cast=known_cast, known_world=known_world,
         trace_id=input.get("trace_id"), cancel_check=cancel_check,
     )
     body = await PASS_ADAPTERS[pass_id](ctx)
@@ -836,28 +841,39 @@ async def run_plan_pass(
     }
 
 
-async def _known_cast_names(pool: asyncpg.Pool, book_id: UUID) -> list[str]:
-    """The book's already-seeded character names (E6).
+#: A seeded row that states no kind is counted as cast. That is not a guess made here — it is the
+#: behaviour E6 shipped (`if kind and kind != "character"`), preserved deliberately: the bootstrap
+#: seeds the cast first, and moving unkinded rows to the world side would silently change which
+#: pass sees them.
+_KIND_WHEN_UNSTATED = "character"
+
+
+async def _known_entities(pool: asyncpg.Pool, book_id: UUID) -> dict[str, list[str]]:
+    """The book's already-seeded entity names, keyed by glossary kind (E6 cast + E6b world).
 
     Read from the APPLIED bootstrap proposals — the same rows `_resolve_cast_entity_ids` uses, and
-    for the same reason: an applied proposal is where a character stopped being a suggestion and
+    for the same reason: an applied proposal is where an entity stopped being a suggestion and
     became a glossary entity. A pending one is a request, not a fact, and feeding it back as
-    "already exists" would teach the planner to skip introducing someone who is not in the book.
+    "already exists" would teach the planner to skip introducing something that is not in the book.
 
-    Order is preserved and duplicates dropped (the same character can appear in several proposals
-    across re-runs). Never raises: an empty roster means "no established cast", which is the
-    correct answer for a fresh book and a safe one for a read failure.
+    Keyed rather than flattened because the two consumers need different slices AND pass 3 needs
+    the kind itself: a location listed to the cast pass invites the model to write it as a person,
+    and a location listed to the world pass without its kind invites the same mistake there.
+
+    Order is preserved and duplicates dropped within a kind (the same entity can appear in several
+    proposals across re-runs). Never raises: an empty map means "nothing established yet", which is
+    the correct answer for a fresh book and a safe one for a read failure.
     """
     from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 
     try:
         proposals = await PlanBootstrapProposalsRepo(pool).list_active_for_book(book_id)
     except Exception:  # noqa: BLE001 — advisory context; never fail a pass over it
-        logger.warning("known-cast: could not load the seed proposals", exc_info=True)
-        return []
+        logger.warning("known-entities: could not load the seed proposals", exc_info=True)
+        return {}
 
-    names: list[str] = []
-    seen: set[str] = set()
+    by_kind: dict[str, list[str]] = {}
+    seen: dict[str, set[str]] = {}
     for proposal in proposals:
         if proposal.status != "applied":
             continue
@@ -865,17 +881,34 @@ async def _known_cast_names(pool: asyncpg.Pool, book_id: UUID) -> list[str]:
             if not isinstance(row, dict):
                 continue
             name = str(row.get("name") or "").strip()
-            # Characters only. A seeded location or concept is not cast, and listing one under
-            # "EXISTING CAST" would invite the planner to write it as a person.
+            if not name:
+                continue
             kind = str(row.get("kind_code") or row.get("kind") or "").strip().casefold()
-            if not name or (kind and kind != "character"):
+            kind = kind or _KIND_WHEN_UNSTATED
+            folded = name.casefold()
+            if folded in seen.setdefault(kind, set()):
                 continue
-            if name.casefold() in seen:
-                continue
-            seen.add(name.casefold())
-            names.append(name)
-    logger.info("known-cast: book=%s resolved %d established character(s)", book_id, len(names))
-    return names
+            seen[kind].add(folded)
+            by_kind.setdefault(kind, []).append(name)
+    logger.info(
+        "known-entities: book=%s resolved %s",
+        book_id, {k: len(v) for k, v in sorted(by_kind.items())},
+    )
+    return by_kind
+
+
+def _cast_of_known(known: dict[str, list[str]]) -> list[str]:
+    """The cast slice (E6). Characters only — a seeded location under "EXISTING CAST" would invite
+    the planner to write it as a person."""
+    return list(known.get("character") or [])
+
+
+def _world_of_known(known: dict[str, list[str]]) -> dict[str, list[str]]:
+    """The world slice (E6b). Restricted to the kinds pass 3 may itself propose: listing a kind it
+    is forbidden to return would be an instruction it cannot obey."""
+    from app.engine.world_plan import WORLD_KINDS
+
+    return {k: list(v) for k, v in known.items() if k in WORLD_KINDS and v}
 
 
 async def _resolve_cast_entity_ids(

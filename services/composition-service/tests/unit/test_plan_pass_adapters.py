@@ -222,6 +222,36 @@ async def test_run_cast_FORWARDS_the_roster_and_canon_it_was_given(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_world_forwards_the_known_world_and_canon(monkeypatch):
+    """E6b, the adapter link — the world-side twin of the cast forward above.
+
+    Same mutation result, and worth restating because it is the whole reason this test exists:
+    deleting `known_world=ctx.known_world, canon=ctx.canon` from `run_world` leaves every
+    `world_plan` test green, because those call the prompt builder directly. Nothing between the
+    context and the engine is watched unless it is watched HERE.
+    """
+    import app.engine.world_plan as world_plan
+    from app.services.plan_pass_adapters import run_world
+
+    seen: dict = {}
+
+    async def _fake_propose_world(llm, **kw):
+        seen.update(kw)
+        return []
+
+    monkeypatch.setattr(world_plan, "propose_world", _fake_propose_world)
+
+    await run_world(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m",
+        package={"premise": "an arc summary", "canon": "The empire fell in year 300."},
+        known_world={"location": ["Hoa Sơn"], "faction": ["Thanh Vân Môn"]},
+    ))
+    assert seen["known_world"] == {"location": ["Hoa Sơn"], "faction": ["Thanh Vân Môn"]}
+    assert seen["canon"] == "The empire fell in year 300."
+
+
+@pytest.mark.asyncio
 async def test_pass_context_exposes_canon_from_the_package():
     """`package["canon"]` had no reader at all — compile wrote it, telemetry logged 200 chars of
     it, and no pass ever asked for it. The reader lives on PassContext with the others so a

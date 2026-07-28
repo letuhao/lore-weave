@@ -63,6 +63,10 @@ class PassContext:
     #: bootstrap proposals (the same rows the roster join reads). Empty on a fresh book, which is
     #: the honest value: there is no established cast yet.
     known_cast: list[str] = field(default_factory=list)
+    #: E6b — the same rows, the other half. The book's already-seeded LOCATIONS, FACTIONS and
+    #: CONCEPTS, keyed by glossary kind. Kept keyed rather than flattened: pass 3 must place each
+    #: name under the kind it already has, or a mountain gets written as a person.
+    known_world: dict[str, list[str]] = field(default_factory=dict)
     retriever: Any = None
     trace_id: str | None = None
     cancel_check: Callable[[], Awaitable[bool]] | None = None
@@ -201,6 +205,11 @@ async def run_world(ctx: PassContext) -> dict[str, Any]:
         ctx.llm, user_id=ctx.user_id, model_source=ctx.model_source, model_ref=ctx.model_ref,
         premise=ctx.premise, source_language=ctx.source_language, genre_tags=ctx.genre_tags,
         cast_names=[c["name"] for c in cast if c.get("name")],
+        # E6b — the world-side of E6. Without the roster this pass judged `is_new` against one arc's
+        # premise, so an established capital came back as a fresh invention (often renamed); and
+        # the canon anchors, which constrain invented factions and concepts more than anything
+        # else, were compiled on every run and never reached the pass that does the inventing.
+        known_world=ctx.known_world, canon=ctx.canon,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     return {"entities": [

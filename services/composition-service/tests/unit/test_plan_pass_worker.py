@@ -299,8 +299,30 @@ def test_the_worker_ASSEMBLES_the_known_cast_and_puts_it_ON_the_context():
     from app.worker.operations import run_plan_pass
 
     src = inspect.getsource(run_plan_pass)
-    assert "known_cast = await _known_cast_names(pool, book_id)" in src
+    assert "known = await _known_entities(pool, book_id)" in src
+    assert "known_cast = _cast_of_known(known)" in src
     assert "known_cast=known_cast" in src
+
+
+def test_the_worker_ASSEMBLES_the_known_world_and_puts_it_ON_the_context():
+    """E6b, outermost link — and it needs its own assertion, not a shared one with the cast: the
+    two slices come off the same read, so a forward that carries only `known_cast=` looks entirely
+    healthy from the cast's side while pass 3 stays blind."""
+    from app.worker.operations import run_plan_pass
+
+    src = inspect.getsource(run_plan_pass)
+    assert "known_world = _world_of_known(known)" in src
+    assert "known_world=known_world" in src
+
+
+def test_the_seed_proposals_are_read_ONCE_for_both_slices():
+    """Two loaders would mean two queries over the same rows and two kind-filters free to drift
+    apart — which is how the cast pass and the world pass would end up disagreeing about what is
+    already in the book."""
+    from app.worker.operations import run_plan_pass
+
+    src = inspect.getsource(run_plan_pass)
+    assert src.count("_known_entities(") == 1
 
 
 @pytest.mark.asyncio
@@ -313,7 +335,7 @@ async def test_known_cast_counts_only_APPLIED_proposals_and_only_CHARACTERS(monk
     from uuid import uuid4
 
     import app.db.repositories.plan_bootstrap_proposals as mod
-    from app.worker.operations import _known_cast_names
+    from app.worker.operations import _cast_of_known, _known_entities, _world_of_known
 
     proposals = [
         SimpleNamespace(status="applied", applied_results={
@@ -331,7 +353,63 @@ async def test_known_cast_counts_only_APPLIED_proposals_and_only_CHARACTERS(monk
         async def list_active_for_book(self, book_id): return proposals
 
     monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Repo)
-    assert await _known_cast_names(None, uuid4()) == ["Lâm Uyển"]
+    known = await _known_entities(None, uuid4())
+    assert _cast_of_known(known) == ["Lâm Uyển"]
+    # E6b — the same read now keeps the rows the cast slice drops, instead of discarding them.
+    assert _world_of_known(known) == {"location": ["Hoa Sơn"]}
+
+
+@pytest.mark.asyncio
+async def test_a_row_with_no_kind_stays_on_the_CAST_side(monkeypatch):
+    """E6b preserved E6's behaviour deliberately: an unkinded seed row counted as cast before, and
+    quietly moving it to the world side would change which pass sees it — a silent re-routing is
+    exactly the class of change that should never ride along with a refactor."""
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    import app.db.repositories.plan_bootstrap_proposals as mod
+    from app.worker.operations import _cast_of_known, _known_entities, _world_of_known
+
+    class _Repo:
+        def __init__(self, pool): pass
+        async def list_active_for_book(self, book_id):
+            return [SimpleNamespace(status="applied", applied_results={
+                "a": {"name": "Unkinded", "entity_id": "e1"},
+            })]
+
+    monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Repo)
+    known = await _known_entities(None, uuid4())
+    assert _cast_of_known(known) == ["Unkinded"]
+    assert _world_of_known(known) == {}
+
+
+@pytest.mark.asyncio
+async def test_the_world_slice_carries_only_kinds_pass_3_MAY_PROPOSE(monkeypatch):
+    """WORLD_KINDS is a closed set. A seeded `item` or `event` listed under EXISTING WORLD would
+    be an instruction the model cannot obey — it is forbidden to return those kinds."""
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    import app.db.repositories.plan_bootstrap_proposals as mod
+    from app.engine.world_plan import WORLD_KINDS
+    from app.worker.operations import _known_entities, _world_of_known
+
+    class _Repo:
+        def __init__(self, pool): pass
+        async def list_active_for_book(self, book_id):
+            return [SimpleNamespace(status="applied", applied_results={
+                "a": {"name": "Hoa Sơn", "kind_code": "location"},
+                "b": {"name": "Thanh Vân Môn", "kind_code": "faction"},
+                "c": {"name": "Kiếm Đạo", "kind_code": "concept"},
+                "d": {"name": "Huyền Thiết Kiếm", "kind_code": "item"},
+                "e": {"name": "Lâm Uyển", "kind_code": "character"},
+            })]
+
+    monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Repo)
+    world = _world_of_known(await _known_entities(None, uuid4()))
+    assert set(world) == set(WORLD_KINDS)
+    assert world["location"] == ["Hoa Sơn"]
+    assert "Huyền Thiết Kiếm" not in str(world) and "Lâm Uyển" not in str(world)
 
 
 @pytest.mark.asyncio
@@ -341,11 +419,16 @@ async def test_known_cast_DEGRADES_to_empty_rather_than_failing_the_plan(monkeyp
     from uuid import uuid4
 
     import app.db.repositories.plan_bootstrap_proposals as mod
-    from app.worker.operations import _known_cast_names
+    from app.worker.operations import _cast_of_known, _known_entities, _world_of_known
 
     class _Boom:
         def __init__(self, pool): pass
         async def list_active_for_book(self, book_id): raise RuntimeError("db down")
 
     monkeypatch.setattr(mod, "PlanBootstrapProposalsRepo", _Boom)
-    assert await _known_cast_names(None, uuid4()) == []
+    known = await _known_entities(None, uuid4())
+    assert known == {}
+    # Both slices degrade, and each to the shape its consumer expects (a list / a dict) — a
+    # `None` leaking into either would crash the pass it was meant to protect.
+    assert _cast_of_known(known) == []
+    assert _world_of_known(known) == {}

@@ -43,6 +43,18 @@ _NO_THINK = {
 WorldKind = Literal["location", "faction", "concept"]
 WORLD_KINDS: tuple[str, ...] = ("location", "faction", "concept")
 
+#: A long-running book's world can be large; the principals are what stop re-invention. Capped
+#: PER KIND, not overall: a book with ninety locations and three factions must still show both.
+_MAX_KNOWN_WORLD = 40
+
+#: Rendering order for the existing-world roster. Fixed rather than dict order so the same book
+#: produces the same prompt on every run.
+_WORLD_KIND_LABELS: tuple[tuple[str, str], ...] = (
+    ("location", "PLACES"),
+    ("faction", "FACTIONS / ORGANISATIONS"),
+    ("concept", "CONCEPTS"),
+)
+
 
 @dataclass
 class ProposedWorldEntity:
@@ -52,7 +64,9 @@ class ProposedWorldEntity:
     #: Free-text ties — "the seat of the Iron Court", "outlawed after the Third Rising".
     relationships: str = ""
     traits: list[str] = field(default_factory=list)
-    is_new: bool = False         # True = invented here (not named in the premise)
+    #: True = invented here. Judged against whatever roster the prompt was GIVEN: the book's
+    #: existing world when one is supplied, and only the premise when it is not (E6b).
+    is_new: bool = False
 
 
 def build_propose_world_messages(
@@ -60,12 +74,32 @@ def build_propose_world_messages(
     source_language: str = "auto",
     genre_tags: list[str] | None = None,
     cast_names: list[str] | None = None,
+    known_world: dict[str, list[str]] | None = None,
+    canon: str = "",
 ) -> tuple[str, str]:
     """(system, user). Language-/genre-aware; names + values in the story's language.
 
     The CAST is supplied as context (pass 3 depends on pass 2 — PF-1): a world proposed blind to
     its characters invents a faction for nobody and a home for no one. Naming them is what makes
     "the seat of the Iron Court" resolvable.
+
+    E6b — `known_world` and `canon` are the world-side of the same correctness bug E6 fixed for the
+    cast, and this pass had it worse:
+
+    · KNOWN_WORLD. `is_new` meant "not named in the PREMISE", and the premise is ONE arc's summary.
+      So on a book forty chapters deep, the capital the story has been set in since chapter three
+      came back marked `is_new` — a planned INTRODUCTION of a place the reader already knows, often
+      renamed on the way. Anchored to the book's actual world instead, `is_new` means what it says.
+    · CANON. Consistency anchors bite harder here than on the cast: "the empire fell in year 300",
+      "magic costs blood" are constraints on invented factions and concepts, and pass 3 is the pass
+      that invents them.
+
+    The roster is passed BY KIND rather than as one flat list. The cast is flat because they are
+    all people; a world is not. Telling the model "Hoa Sơn already exists" without saying it is a
+    *location* is how a mountain becomes a character.
+
+    Both are OPTIONAL, and a book with neither must build exactly the prompt it built before —
+    an empty "EXISTING WORLD" heading reads as "this book has no world", which is a lie.
     """
     lang = "" if source_language in ("", "auto") else (
         f" Write all names and values in the language with code '{source_language}'."
@@ -77,6 +111,22 @@ def build_propose_world_messages(
             " The cast of this story is: " + ", ".join(cast_names[:40])
             + ". Tie the world to THEM — where they are from, what they belong to, what they want."
         )
+    # Only the three kinds this pass may propose, in a fixed order, empty buckets dropped. A kind
+    # outside WORLD_KINDS would be listed as something the model is then forbidden to return.
+    roster: list[tuple[str, list[str]]] = []
+    for kind, label in _WORLD_KIND_LABELS:
+        names = [str(n).strip() for n in ((known_world or {}).get(kind) or []) if str(n).strip()]
+        if names:
+            roster.append((label, names[:_MAX_KNOWN_WORLD]))
+    # `is_new` is defined against whatever roster the model was actually GIVEN — with none, the
+    # premise is the only thing to compare to, and claiming otherwise asks for a judgement the
+    # prompt does not support.
+    is_new_rule = (
+        "`is_new` is true ONLY for entries you invented — i.e. named neither in the premise nor "
+        "in the EXISTING WORLD listed below. "
+        if roster else
+        "`is_new` is true ONLY for entries you invented (not named in the premise). "
+    )
     system = (
         "You are a story-bible architect designing the WORLD of a novel from its premise. "
         "Do TWO things: (1) EXTRACT every place, faction/organisation, and named concept "
@@ -87,11 +137,25 @@ def build_propose_world_messages(
         " Return ONLY a JSON array. Each item: "
         '{"name": str, "kind": "location"|"faction"|"concept", "summary": str, '
         '"relationships": str, "traits": [str], "is_new": bool}. '
-        "`is_new` is true ONLY for entries you invented (not named in the premise). "
+        + is_new_rule +
         "No prose, no markdown fences, no commentary."
     )
-    user = f"PREMISE:\n{premise.strip()}"
-    return system, user
+    # The roster and the anchors go in the USER message beside the premise: they are data about
+    # THIS book, not rules about how to behave (the `cast_plan` E6 shape).
+    parts = [f"PREMISE:\n{premise.strip()}"]
+    if roster:
+        block = [
+            "EXISTING WORLD — these ALREADY EXIST in this book. Use their names exactly as "
+            "written, do NOT rename or re-invent them, keep each one under the KIND it is listed "
+            "here, and mark them is_new=false:"
+        ]
+        block += [f"{label}: " + ", ".join(names) for label, names in roster]
+        parts.append("\n".join(block))
+    if canon.strip():
+        parts.append(
+            "CANON — established facts this world must not contradict:\n" + canon.strip()[:1500]
+        )
+    return system, "\n\n".join(parts)
 
 
 def parse_world(content: str) -> list[ProposedWorldEntity]:
@@ -211,6 +275,8 @@ async def propose_world(
     source_language: str = "auto",
     genre_tags: list[str] | None = None,
     cast_names: list[str] | None = None,
+    known_world: dict[str, list[str]] | None = None,
+    canon: str = "",
     max_tokens: int = 4000,   # a full world JSON is verbose — undersizing truncates the array → parse fails
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
@@ -222,6 +288,7 @@ async def propose_world(
     """
     system, user = build_propose_world_messages(
         premise, source_language, genre_tags, cast_names,
+        known_world=known_world, canon=canon,
     )
     try:
         job = await llm.submit_and_wait(
