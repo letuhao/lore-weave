@@ -151,6 +151,13 @@ var chain = []Step{
 	// mirroring book-service. Backs the KIND-C durable human gate (action_task_gate.go): a
 	// propose on one replica + its accept on another resolve the same task exactly once.
 	{"0055_mcp_gate_tasks", UpMcpGateTasks},
+	// D-GLOSSARY-ATTR-LOOKUP-SEQSCAN — (kind_id, code) index on book_attributes. Ten
+	// handler queries resolve an attribute definition by (kind_id, code) with no
+	// book_id, and every prior index leads with book_id, so each evaluation seq-scanned
+	// 441k rows. Live: known-entities 56s -> 0.05s on a 3,187-entity book. The latency
+	// silently timed out knowledge-service's anchor pre-load, which made extraction mint
+	// duplicate entities. See attr_lookup_index.go.
+	{"0056_attr_lookup_index", UpAttrLookupIndex},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

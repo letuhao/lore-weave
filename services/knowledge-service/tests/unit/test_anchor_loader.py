@@ -10,6 +10,7 @@ import pytest
 from app.db.neo4j_repos.entities import Entity
 from app.extraction.anchor_loader import (
     Anchor,
+    AnchorPreloadUnavailable,
     ProjectionResult,
     load_glossary_anchors,
     project_glossary_entities_to_nodes,
@@ -36,30 +37,32 @@ def _make_entity(name: str, kind: str, gid: str) -> Entity:
 
 
 @pytest.mark.asyncio
-async def test_returns_empty_when_glossary_client_fails(monkeypatch):
-    """Circuit-open or HTTP 500 from glossary → return [] and keep job running."""
+async def test_RAISES_when_the_glossary_read_fails(monkeypatch):
+    """W1 — a failed READ must not look like an empty glossary.
+
+    This test previously asserted `out == []` "and keep job running". That posture
+    is what produced un-mergeable duplicates: with no anchor index the resolver
+    cannot see that an entity already exists, so it mints a fresh node per name and
+    a human has to merge them back. Retrying the chapter is cheap; the cleanup is not.
+    """
     gc = MagicMock()
     gc.list_all_entities = AsyncMock(return_value=None)
 
-    calls = []
-
     async def fake_upsert(*a, **kw):
-        calls.append(kw)
-        raise AssertionError("upsert must not be called when list_entities fails")
+        raise AssertionError("upsert must not be called when the glossary read fails")
 
     monkeypatch.setattr(
         "app.extraction.anchor_loader.upsert_glossary_anchor", fake_upsert,
     )
 
-    out = await load_glossary_anchors(
-        session=MagicMock(),
-        glossary_client=gc,
-        user_id=USER_ID,
-        project_id=PROJECT_ID,
-        book_id=BOOK_ID,
-    )
-    assert out == []
-    assert calls == []
+    with pytest.raises(AnchorPreloadUnavailable):
+        await load_glossary_anchors(
+            session=MagicMock(),
+            glossary_client=gc,
+            user_id=USER_ID,
+            project_id=PROJECT_ID,
+            book_id=BOOK_ID,
+        )
 
 
 @pytest.mark.asyncio
@@ -138,7 +141,11 @@ async def test_skips_entry_on_upsert_exception(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_empty_glossary_returns_empty_list(monkeypatch):
-    """Fresh book with no curated entries → normal empty result."""
+    """Fresh book with no curated entries → normal empty result.
+
+    W1's other half: this is the case that must NOT raise. An empty glossary is a
+    real answer; only an unreadable one fails closed. If these two ever collapse
+    back together, every brand-new book stops extracting."""
     gc = MagicMock()
     gc.list_all_entities = AsyncMock(return_value=([], False))
 

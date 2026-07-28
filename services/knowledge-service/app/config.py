@@ -27,7 +27,18 @@ class Settings(BaseSettings):
 
     # K4b — glossary-service HTTP client for Mode 2 fallback selector.
     glossary_service_url: str = "http://glossary-service:8088"
-    glossary_client_timeout_s: float = 0.5
+    # 0.5s was survivable only while a glossary read failure degraded SILENTLY to
+    # "this book has no entities". It does not any more: the extraction anchor pre-load
+    # now fails CLOSED (AnchorPreloadUnavailable -> retryable 503) precisely because
+    # running un-anchored mints duplicate entities a human has to merge back by hand.
+    #
+    # With the failure mode inverted, the budget has to have real headroom. It also had
+    # none in practice: the known-entities read was seq-scanning book_attributes and
+    # took 56s on a 3,187-entity book (fixed by idx_ba_kind_code -> 0.05s), so every
+    # real-sized book blew this budget and quietly extracted un-anchored. The index is
+    # the fix; this is the margin, so a cold cache or a larger book cannot re-open the
+    # same hole.
+    glossary_client_timeout_s: float = 5.0
     glossary_client_retries: int = 1
 
     # K4c — cross-layer dedup tunable. Number of distinct keyword tokens

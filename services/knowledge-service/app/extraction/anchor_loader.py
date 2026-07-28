@@ -37,10 +37,26 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Anchor",
+    "AnchorPreloadUnavailable",
     "ProjectionResult",
     "load_glossary_anchors",
     "project_glossary_entities_to_nodes",
 ]
+
+
+class AnchorPreloadUnavailable(RuntimeError):
+    """The glossary could not be READ, so we do not know what already exists.
+
+    Distinct from an empty result, which is a real answer ("this book has no curated
+    entities"). This is the absence of an answer, and the two must never be conflated:
+    running extraction on an empty anchor index makes the resolver mint a fresh node
+    for every name in the chapter, and those duplicates are not automatically
+    reversible — a human has to merge them back by hand.
+
+    A failed read is transient by nature; a retried chapter costs one LLM call, a
+    silently un-anchored chapter costs manual cleanup. So this fails CLOSED.
+    """
+
 
 
 @dataclass(frozen=True)
@@ -77,9 +93,11 @@ async def load_glossary_anchors(
     for them. Behavior is preserved; callers may now opt in to a real filter.
 
     Degradation model:
-      - glossary_client returns None (circuit open / HTTP error) → log
-        at WARNING and return []. Extraction should still run without
-        anchors rather than abort.
+      - glossary_client returns None (circuit open / HTTP error) → raise
+        `AnchorPreloadUnavailable`. This USED to return [] "so extraction still
+        runs", which reads as resilience and is not: with no anchors the resolver
+        mints a new node for every name in the chapter, and un-merging them is
+        manual work. Retrying a chapter is cheap; hand-merging duplicates is not.
       - Empty list from glossary → return []. This means the book genuinely has no
         curated entries. It used to ALSO mean "it has entries, but none has been
         mentioned in two chapters yet" — a silent failure indistinguishable from the
@@ -115,12 +133,10 @@ async def load_glossary_anchors(
         book_id, status_filter=status_filter, min_frequency=0,
     )
     if page is None:
-        logger.warning(
-            "K13.0: glossary list_all_entities failed for book=%s — "
-            "skipping anchor pre-load (extractor will mint-on-no-match)",
-            book_id,
+        raise AnchorPreloadUnavailable(
+            f"glossary entity read failed for book={book_id} — refusing to extract "
+            "un-anchored (the extractor would mint duplicates that need manual merge)"
         )
-        return []
     raw, truncated = page
     if truncated:
         logger.warning(

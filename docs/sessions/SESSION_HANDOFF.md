@@ -1,5 +1,50 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✅ GLOSSARY GROUNDING AT SCALE — one missing index was corrupting the KG (2026-07-28, M)
+
+**The headline: the duplicate entities were never a random outage. They were a missing index.**
+
+`known-entities` took **56s** on a 3,187-entity book — and the cost was INDEPENDENT of `limit`,
+because the GROUP BY/HAVING aggregate runs over every row before LIMIT applies. Ten queries across
+four handlers resolve an attribute definition with a correlated subquery on `(kind_id, code)` and
+**no `book_id`**, while every `book_attributes` index leads with `book_id` — so Postgres seq-scanned
+441,848 rows *per evaluation*, inside a hash-join condition (71.9M shared buffer hits).
+
+knowledge-service's glossary client had a **0.5s** budget. So on any real-sized book the anchor
+pre-load timed out, logged `skipping anchor pre-load (extractor will mint-on-no-match)`, and the
+extractor minted duplicates a human then had to merge by hand. **Size-gated** — which is exactly
+why the 16-entity Mị Đế book looked healthy. Live log evidence is in the cycle notes.
+
+`0056_attr_lookup_index`: **56s → 0.05s**. Full 7-page walk of that book: **0.23s**.
+
+**Shipped:**
+- **Index + a NEW ledger step.** First attempt appended the DDL to `0024_genre_kind_attr` — already
+  applied everywhere, so it would have been a **silent no-op on every existing DB**. Caught before
+  commit; `TestAttrLookupIndexIsRegisteredInTheChain` now guards that class.
+- **W1 fail-closed.** `AnchorPreloadUnavailable` splits "glossary unreadable" from "book has no
+  entities" — the two were both `[]`. Unreadable ⇒ retryable **503**; worker-ai's bounded retry then
+  skips the chapter loudly instead of corrupting the graph quietly. Timeout raised 0.5s → 5.0s,
+  because W1 turned a timeout from a silent degrade into a blocker.
+- **W2 paged canon read.** The 2,000 flat fetch bound truncated an `ORDER BY mention_count DESC`,
+  dropping the LEAST-mentioned lore — on a book being written, the newest. Now pages at the same
+  500×40 ceiling as the persist layer, so the two layers cannot ground a book differently.
+- **W3b `CanonIndex`.** Matching cost scaled with the GLOSSARY, not the prose: **10,158 ms** per
+  chunk at 20k entities, synchronously, on the worker's event loop. Inverted to substring-lookup:
+  **15.1 ms** (673×). A differential test runs the old regex oracle and the new index over the whole
+  20k corpus and asserts identical output.
+- **A committed 20k-entity corpus** (`services/worker-ai/tests/testdata/`, 280 KB) built from real
+  Wikipedia titles + real redirect-derived aliases: 34,935 surface forms, 3,602 nested, 6,000 CJK,
+  913 accent/case alias variants. Committed rather than downloaded so the scale tests can't rot.
+  Regenerate: `scripts/build-glossary-test-corpus.py`.
+- **A predicted bug, confirmed:** ASCII-only boundaries mean `林` matches inside `森林`. Pinned by
+  test, deferred as `D-KG-CJK-SUBSTRING-FALSE-POSITIVE` (needs segmentation, in both matchers).
+
+**Evidence:** worker-ai 495 · knowledge-service 3980 · glossary-service Go clean ·
+live smoke on the running stack (56s→0.05s, 7-page walk 0.23s) · provider-gate + db-safety-gate OK.
+
+**Next:** the duplicates already minted by the pre-index runs still need cleaning up, and the
+author dogfood into chapter 1 resumes after that.
+
 ## ✅ ATOM EDIT — flat-arc bug fixed + PHASE D (error blocks) SHIPPED (2026-07-26/27, XL)
 **Track docs: [`docs/specs/2026-07-26-atom-edit/`](../specs/2026-07-26-atom-edit/) —
 `INVESTIGATION.md` (findings + evidence) · `CHECKLIST.md` (the RUN-STATE board; re-read it first).**
@@ -2028,6 +2073,9 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 
 | ID | What | Gate |
 |---|---|---|
+| **D-CHAT-TURN-RETRYABLE-SWALLOW** | 🔴 Found reviewing W1. In `runner.py`'s **chat-turn** branch a `retryable` persist failure falls straight through to `_mark_pending_processed` + `_advance_cursor` — the turn is silently SKIPPED and counted as processed. The chapters branch has the bounded-retry cursor pattern; chat has none. | #2 — needs the chapters branch's retry-accounting replicated, not a one-liner. Pre-existing; W1 makes 503 newly reachable here. |
+| **D-KG-CJK-SUBSTRING-FALSE-POSITIVE** | Surface matching uses ASCII-only boundary lookarounds, so a short CJK name matches INSIDE a longer word (`林` selected from `森林`). Confirmed live + pinned by `TestCjkBoundary`; shared with knowledge-service's `entity_detector`. | #2 — the real fix is CJK segmentation (jieba is already a knowledge-service dep) or a min-length/aliased-only rule, applied to BOTH matchers together. Documented, not silent. |
+| **D-GLOSSARY-PROJECTION-FAILURE-CONFLATION** | `project_glossary_entities_to_nodes` still returns an all-zero `ProjectionResult` for BOTH "glossary empty" and "glossary unreachable" — the same conflation W1 removed from the extraction path. Lower severity: it is a foreground tool with a visible result, not a background mint. | #1 out of scope of this cycle (tool contract + its caller's messaging), but the fix shape is now established. |
 | **D-PUSH-LIVE-SMOKE** | The M5 closed-tab VAPID push not proven live (mechanics unit-proven; routes live-smoked; SSRF guard live-verified). | #4 blocked-on-external: needs a deploy with a VAPID keypair + HTTPS + a browser push service (FCM/autopush) — none bootable at dev. Do the closed-tab content-free E2E there. |
 | **D-PUSH-ACCOUNT-TEARDOWN** | M5 push subs not auto-deleted on ACCOUNT deletion (sign-out DELETE IS wired). `DeleteAllForOwner` primitive is built. | #2/#4: account erasure is admin-cli-driven, no AMQP event to bind. Wire to an erasure event OR add `push_subscriptions` to the admin erasure purge. |
 | **D-STUDIO-07S-COMPACTION-BREAKER** | 🔴 **P1 — a real defect, not a gap.** 07S has **no microcompact tier, no `hard_truncate`, and no `compaction_failed` breaker** (0 grep hits) — while **Agent Mode's L3/L4 autonomous runs are SHIPPED and running**, and 07S §3/§10 make that breaker **MANDATORY for headless runs**. An unattended run can therefore fail compaction with nothing to stop it. **Raise it, scope it, build it.** | #2 large/structural (needs its own slice + design), **not** "later" |

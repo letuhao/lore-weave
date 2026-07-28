@@ -1442,9 +1442,9 @@ async def _extract_and_persist(
     # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
     # chat_turn / glossary callers leave it unset → no pins).
     pinned_names: list[str] | None = None,
-    # The book's canon, fetched once per job. Selection is PER CHUNK — only the
-    # entries this chunk actually mentions ship in KNOWN_ENTITIES.
-    canon_entries: list[tuple[str, list[str]]] | None = None,
+    # The book's canon, fetched AND INDEXED once per job. Selection is PER CHUNK —
+    # only the entries this chunk actually mentions ship in KNOWN_ENTITIES.
+    canon_index: "CanonIndex | None" = None,
     # D-KG-WORKER-GRADED-EFFORT — the job's graded reasoning effort, threaded
     # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
     # wire fields (chat_turn / glossary callers omit it → unchanged).
@@ -1507,7 +1507,7 @@ async def _extract_and_persist(
             # C13 — force-inject the pinned glossary names. Replaces the legacy
             # hardcoded [] ("worker-ai has no glossary access"). None ⇒ [].
             known_entities=_known_entities_for_chunk(
-                pinned_names, canon_entries, text),
+                pinned_names, canon_index, text),
             user_id=str(user_id),
             project_id=str(project_id) if project_id else None,
             model_source="user_model",
@@ -1619,14 +1619,119 @@ def _mentions(text: str, surface: str) -> bool:
     ) is not None
 
 
+#: ASCII word characters, as a set — the same class the lookarounds above spell out.
+#: `CanonIndex` applies the boundary rule by index instead of by regex, so it needs
+#: the class as data.
+_ASCII_WORD = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+)
+
+
+class CanonIndex:
+    """A book's whole canon vocabulary, indexed for one-pass per-chunk matching.
+
+    Built ONCE per extraction job; `present()` is then called per chunk.
+
+    Why this exists — measured, not assumed. The previous implementation ran one
+    `re.search` per canon surface form per chunk, so its cost scaled with the
+    GLOSSARY, not with the prose. At 20,000 entities / 34,935 real surface forms
+    against one 8k-character chunk that is **10.2 seconds** — and it is synchronous
+    work inside an async worker, so it does not merely run slowly, it stalls the
+    event loop for every other job on the process.
+
+    This inverts the loop: enumerate the chunk's own substrings and look each one up.
+    The text is a few thousand characters and the distinct surface-form LENGTHS are a
+    few dozen, so the work is bounded by the prose — adding entities costs a dict
+    insert at build time and nothing per chunk.
+
+    Behaviour is intended to be identical to the regex it replaces, including the
+    ASCII-only boundary rule (and therefore its known CJK substring false positive —
+    see `TestCjkBoundary`). `test_new_matcher_matches_the_regex_over_the_whole_corpus`
+    is the differential proof, not this comment.
+    """
+
+    __slots__ = ("_names", "_by_form", "_lengths_by_first")
+
+    def __init__(
+        self,
+        names: list[str],
+        by_form: dict[str, list[str]],
+        lengths_by_first: dict[str, tuple[int, ...]],
+    ) -> None:
+        self._names = names
+        self._by_form = by_form
+        self._lengths_by_first = lengths_by_first
+
+    @classmethod
+    def build(cls, canon: list[tuple[str, list[str]]] | None) -> "CanonIndex":
+        names: list[str] = []
+        by_form: dict[str, list[str]] = {}
+        lengths: dict[str, set[int]] = {}
+        for name, aliases in canon or ():
+            names.append(name)
+            for surface in (name, *(aliases or ())):
+                if not surface:
+                    continue
+                low = surface.lower()
+                # A surface form can belong to more than one entity (two entities
+                # legitimately share an alias). The regex checked every entity's own
+                # forms, so BOTH were selected; a form->single-name map would silently
+                # drop the second.
+                bucket = by_form.setdefault(low, [])
+                if name not in bucket:
+                    bucket.append(name)
+                lengths.setdefault(low[0], set()).add(len(low))
+        return cls(
+            names,
+            by_form,
+            {c: tuple(sorted(v)) for c, v in lengths.items()},
+        )
+
+    def __len__(self) -> int:
+        """Entity count — what the cap accounting reports as the drop."""
+        return len(self._names)
+
+    @property
+    def names(self) -> list[str]:
+        """Canon order. Selection walks this so output order is unchanged."""
+        return self._names
+
+    def present(self, text: str) -> set[str]:
+        """Canonical names whose name OR any alias appears in `text`."""
+        low = text.lower()
+        n = len(low)
+        by_form = self._by_form
+        lengths_by_first = self._lengths_by_first
+        found: set[str] = set()
+        prev_is_word = False
+        for i, ch in enumerate(low):
+            lengths = lengths_by_first.get(ch)
+            # Left boundary: a match cannot START here if the preceding character is
+            # an ASCII word char, so the whole position is skipped.
+            if lengths is not None and not prev_is_word:
+                for length in lengths:
+                    j = i + length
+                    if j > n:
+                        break  # ascending — every longer form overruns too
+                    if j < n and low[j] in _ASCII_WORD:
+                        continue  # right boundary
+                    hit = by_form.get(low[i:j])
+                    if hit:
+                        found.update(hit)
+            prev_is_word = ch in _ASCII_WORD
+        return found
+
+
 def _known_entities_for_chunk(
     pinned: list[str] | None,
-    canon: list[tuple[str, list[str]]] | None,
+    canon: "CanonIndex | None",
     chunk_text: str,
 ) -> list[str]:
     """Per-chunk KNOWN_ENTITIES, with the drop reported rather than silently cut."""
     names, dropped = select_known_entities(
-        list(pinned or []), list(canon or []), chunk_text,
+        list(pinned or []),
+        canon if canon is not None else CanonIndex.build(None),
+        chunk_text,
         cap=settings.known_entities_prompt_cap,
     )
     if dropped:
@@ -1640,7 +1745,7 @@ def _known_entities_for_chunk(
 
 def select_known_entities(
     pinned: list[str],
-    canon: list[tuple[str, list[str]]],
+    canon: CanonIndex,
     chunk_text: str,
     *,
     cap: int,
@@ -1662,19 +1767,21 @@ def select_known_entities(
     prompt budget to say nothing. Presence is the signal; the cap is only a backstop for
     a chapter that genuinely names a huge cast.
 
-    Scaling note: this is a regex per canon surface form over the chunk. Fine for the
-    low thousands; a book in the tens of thousands wants a trie / Aho-Corasick pass, at
-    which point `_mentions` is the seam to replace.
+    `canon` is a `CanonIndex` built ONCE per job, not the raw list — matching used to
+    cost 10.2s per chunk at 20k entities because the index was rebuilt (in effect) on
+    every call. The type is deliberately not `list | CanonIndex`: accepting both would
+    let a caller re-pay that cost silently, which is the exact bug being fixed.
     """
     if cap <= 0:
         return [], len(pinned) + len(canon)
     out = list(pinned[:cap])
     seen = {n.casefold() for n in out}
     dropped = max(0, len(pinned) - cap)
-    for name, aliases in canon:
-        if name.casefold() in seen:
+    present = canon.present(chunk_text)
+    for name in canon.names:
+        if name not in present:
             continue
-        if not any(_mentions(chunk_text, s) for s in (name, *aliases)):
+        if name.casefold() in seen:
             continue
         if len(out) >= cap:
             dropped += 1
@@ -1699,9 +1806,9 @@ async def _start_decoupled_chunk(
     # C13 — pinned glossary names to force-inject into this chunk's
     # known_entities. [] ⇒ no pins (back-compat).
     pinned_names: list[str] | None = None,
-    # The book's canon, fetched once per job. Selection is PER CHUNK — only the
-    # entries this chunk actually mentions ship in KNOWN_ENTITIES.
-    canon_entries: list[tuple[str, list[str]]] | None = None,
+    # The book's canon, fetched AND INDEXED once per job. Selection is PER CHUNK —
+    # only the entries this chunk actually mentions ship in KNOWN_ENTITIES.
+    canon_index: "CanonIndex | None" = None,
     # P5 — the WFQ lease token acquired for this chunk (None when P5 off). Stashed in
     # resume_state so the decoupled consumer can release the exact slot at the chunk
     # terminal; released here on submit-failure (no chunk ends up in flight).
@@ -1746,7 +1853,7 @@ async def _start_decoupled_chunk(
         # known_entities (the decoupled consumer threads it into the entity +
         # R/E/F extractor calls). Replaces the legacy hardcoded []. None ⇒ [].
         chunk_text=text,
-        known_entities=_known_entities_for_chunk(pinned_names, canon_entries, text),
+        known_entities=_known_entities_for_chunk(pinned_names, canon_index, text),
         has_recovery=(eff_recovery is not None) and entities_requested,
         has_filter=(eff_filter is not None) and entities_requested,
         # C12 — the job's pass subset; reduced to the requested trio ops.
@@ -2052,16 +2159,21 @@ async def process_job(
         # shipped a flat cap ordered by mention count and injected the same list into
         # every chunk — wrong on a big book twice over: the most-mentioned 150 names are
         # not the ones in THIS chapter, and an unmentioned name costs prompt budget to
-        # say nothing. `canon_fetch_limit` is a FETCH bound, not the prompt budget.
-        canon_entries: list[tuple[str, list[str]]] = []
+        # say nothing.
+        #
+        # The read is now PAGED (no fetch ceiling) and the result is INDEXED here, once.
+        # Both were real ceilings: a flat 2,000-row fetch ordered by mention count DESC
+        # dropped exactly the least-mentioned lore — which on a book being written is
+        # the newest lore — and rebuilding the match structure per chunk cost 10.2s per
+        # chunk at 20k entities, synchronously, on the worker's event loop.
+        canon_index = CanonIndex.build(None)
         if book_id is not None:
-            canon_entries = await glossary_client.list_canon_entries(
-                book_id, limit=settings.canon_fetch_limit,
-            )
+            canon_entries = await glossary_client.list_canon_entries(book_id)
+            canon_index = CanonIndex.build(canon_entries)
             logger.info(
-                "Job %s: canon vocabulary loaded — %d entr(y|ies) available for "
+                "Job %s: canon vocabulary loaded — %d entr(y|ies) indexed for "
                 "per-chunk KNOWN_ENTITIES selection",
-                job.job_id, len(canon_entries),
+                job.job_id, len(canon_index),
             )
 
         # B2-A — pin the effective config snapshot ONCE per job (a mid-job
@@ -2325,7 +2437,7 @@ async def process_job(
                         p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
                         # C13 — pinned names resolved once per job above.
                         pinned_names=pinned_names,
-                        canon_entries=canon_entries,
+                        canon_index=canon_index,
                         # P5 — the WFQ lease for this chunk; stashed in resume_state so the
                         # consumer releases it at the chunk terminal. None when P5 off.
                         p5_token=_p5_token,
@@ -2409,7 +2521,7 @@ async def process_job(
                     # C13 — pinned names resolved once per job above; injected
                     # into this window's known_entities.
                     pinned_names=pinned_names,
-                        canon_entries=canon_entries,
+                        canon_index=canon_index,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
                     reasoning_effort=job.reasoning_effort,
                     # bug #34 — abort an in-flight LLM call on job cancellation.
@@ -2614,7 +2726,7 @@ async def process_job(
                     # included (the cost estimate's num_windows counts chat turns,
                     # so the injection must too). Resolved once per job above.
                     pinned_names=pinned_names,
-                        canon_entries=canon_entries,
+                        canon_index=canon_index,
                     # L7 (Milestone B) — advisory project schema (None ⇒ static).
                     schema=extraction_schema,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.

@@ -40,6 +40,31 @@ def _clear_overrides():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_anchor_preload():
+    """W1 — stub the anchor pre-load for the endpoint tests in this module.
+
+    The pre-load now FAILS CLOSED: if the glossary (or the pool behind it) cannot be
+    read, the endpoint returns a retryable 503 instead of extracting un-anchored and
+    minting duplicate entities nobody can un-merge automatically.
+
+    These tests do not initialise the knowledge pool, so before W1 the pre-load threw,
+    was swallowed, and quietly yielded `[]` — every one of them was passing THROUGH
+    the silent degrade that W1 removes. Stubbing it here makes that dependency
+    explicit; the pre-load's own contract (raise vs empty, and the 503 mapping) is
+    proven in `test_anchor_loader.py` / `test_anchor_cache.py`, not here.
+
+    A test that patches `_load_anchors_for_extraction` itself still wins — its patch
+    is applied inside this one.
+    """
+    with patch(
+        "app.routers.internal_extraction._load_anchors_for_extraction",
+        new_callable=AsyncMock,
+    ) as m:
+        m.return_value = []
+        yield m
+
+
 def _client() -> TestClient:
     from app.main import app
     return TestClient(app, raise_server_exceptions=False)
