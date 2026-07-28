@@ -306,11 +306,50 @@ across the three newest `scene_plan` artifacts: **0 of 30 chapter entries have a
 and the intent field arrives empty. That is the whole explanation for the 0/95 table above, and it
 is the strongest argument for this spec: chapter-level intent has no producer today.
 
-**Consequence for the design — which store is the SSOT?** Not settled here, and it must be before
-the FSM writes anything, or the FSM adds a *third* representation to two that already disagree.
-The candidates are the outline node (queryable, joins to prose, what the rail reads) and the plan
-artifact (versioned, what the planner emits). Whichever wins, the other has to become derived —
-that is the point of the two-layer pattern the glossary/knowledge split already uses.
+### SSOT — SETTLED: `outline_node`, with one blocking precondition
+
+**The question was framed wrong first.** `plan_artifact` and `outline_node` are not two SSOTs
+competing for one fact. They hold *different* facts:
+
+- `plan_artifact` — **the proposal**: what one planner run emitted. Immutable, versioned, per-run.
+- `outline_node` — **the settled state**: what the author has accepted. Live, editable, joined to
+  prose, read by the rail.
+
+So the divergence traced above is **not SSOT ambiguity**. It is a proposal that was never applied
+(the role dropped) plus a proposal that was empty (`intent: ""`). Neither is an SSOT problem.
+
+**`outline_node` is SSOT for settled intent.** Four reasons, strongest first:
+
+1. **Intent accretes through dialogue ⇒ it must be mutable in place.** An artifact is a snapshot of
+   a run; editing it retroactively would *falsify the record of what the planner actually proposed*
+   and destroy the ability to compare "what the machine suggested" against "what the author chose"
+   — which is precisely metric A of §8.
+2. **Atom edit operates on nodes.** "Review, then have it atom-edit" is a one-column UPDATE on one
+   row. On a versioned JSON blob it is a read-modify-rewrite of the whole document — not atomic,
+   and it serialises concurrent slot edits that have no reason to conflict.
+3. **Prose links to nodes** (`chapter_id`, `written_chapter_id`). Q3 — does written prose still
+   satisfy its spec — is only answerable with intent on the node.
+4. **The FSM writes one slot at a time.** Natural as a row UPDATE; awkward as an artifact rewrite.
+
+**BLOCKING PRECONDITION — `outline_node` cannot safely hold settled intent today.** A re-plan
+`is_archived`s the chapter/scene nodes and inserts a **fresh tree built purely from the plan
+output**; nothing is carried forward from the archived rows. So the first time an author re-plans,
+every slot they settled evaporates and is replaced by the planner's values — which are currently
+empty.
+
+That is not an argument for `plan_artifact`. It is a prerequisite: **re-plan must become a merge,
+not a replace**, and it has a shape already mandated elsewhere in this repo — the
+System → Per-user → Per-book resolution cascade, where a higher tier shadows a lower one:
+
+| slot state | what a re-plan does |
+|---|---|
+| author-settled | **survives** — the planner's value becomes a *suggestion*, never an overwrite |
+| `absent` (author said the story has not decided) | **survives** — never re-asked, never auto-filled |
+| untouched by the author | the planner's fresh value wins |
+
+**Order of work is therefore fixed:** merge-on-re-plan lands BEFORE the FSM writes anything.
+Building the FSM first would produce an intent-collection machine whose output the next re-plan
+deletes — worse than not having it, because by then the author would be relying on it.
 
 ### Q3 · Re-opening a settled slot — free or gated?
 
