@@ -276,6 +276,31 @@ draw them, so hiding them there would strand them permanently. All six routes li
 legitimate agent actions; **deleting the author's own annotation is not**, so that surface stays
 author-only rather than being unified for symmetry's sake.
 
+### ✅ F3 cleanup — the dangling scene-link edge (2026-07-28)
+
+The parked "`scene_link.create` doesn't check archived endpoints" turned out to be the smaller half.
+`archive_node` cascades over the outline subtree and deliberately does **not** touch `scene_link`,
+so archiving a scene left its causal edges behind — still returned by both reads, pointing at a node
+the tree no longer shows (the FE resolves the missing title to a short id, so the author saw an edge
+to `deadbeef…`).
+
+**Filtering the reads on their endpoints, rather than cascading the archive onto the edges.** A
+cascade must remember which edges *it* archived, or restoring the scene resurrects one the author
+deliberately deleted — that needs an `archived_by_cascade` marker and gets it wrong the first time
+someone forgets. Filtering makes symmetry free: archive hides the edges, restore brings back exactly
+the ones still live, and the author's own delete stays an independent fact. `create` now also
+refuses an archived endpoint (the FE picker already did, but a rule that lives in one client is not
+a rule — MCP and REST reach the same repo).
+
+**This SQL was covered by nothing** — every unit test in the service stubs the repo — so it got a
+real-DB test in `tests/integration/db/` (throwaway DB + the mandated guard). 5 tests, the
+load-bearing one being *an edge the author deleted stays deleted across archive→restore*, which is
+what makes filtering the right choice. Both halves mutation-proven red. Live-verified too: edge
+visible → archive scene → **0 edges** → restore scene → **1 edge**, and a create onto an archived
+scene refused 400 `BAD_REFERENCE` while a live target still returns 201.
+
+**VERIFY:** unit **2645 passed / 341 skipped**; DB integration **337 passed / 8 skipped** (real SQL).
+
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
 - **F3 turned up a MISSING FE DOOR (buildable, not blocked): the shared-tier motif edit.**
   `D-MOTIF-ADOPT-BOOK-COLLAB-TIER` is fully implemented BE-side — `PATCH /motifs/{id}?book_id=`,

@@ -76,14 +76,21 @@ class SceneLinksRepo:
             # is already expressible as reading order, so it is not a thing. The FE refuses it,
             # but the invariant belongs HERE: an MCP/REST caller reaches the same repo through a
             # different front door, and a rule that lives only in one client is not a rule.
+            # ...and both must be LIVE. `archive_node` cascades over the outline subtree and does
+            # not touch scene_link, so without this an author could draw a causal edge onto a
+            # scene they had already archived — an edge to something the tree no longer shows.
+            # The FE picker already filters archived targets, but (as with the kind rule above)
+            # a rule that lives only in one client is not a rule: MCP and REST reach this same
+            # repo through different front doors.
             kinds = await c.fetchval(
                 "SELECT count(*) FROM outline_node "
-                "WHERE project_id = $1 AND id = ANY($2::uuid[]) AND kind = 'scene'",
+                "WHERE project_id = $1 AND id = ANY($2::uuid[]) "
+                "AND kind = 'scene' AND NOT is_archived",
                 project_id, [from_node_id, to_node_id],
             )
             if kinds != 2:
                 raise ReferenceViolationError(
-                    "scene_link endpoints must both be SCENE nodes"
+                    "scene_link endpoints must both be LIVE SCENE nodes"
                 )
             row = await c.fetchrow(
                 query, created_by, project_id, from_node_id, to_node_id, kind, label
@@ -95,10 +102,24 @@ class SceneLinksRepo:
         return _row_to_link(row)
 
     async def list_by_project(self, project_id: UUID) -> list[SceneLink]:
+        """Live edges only — and "live" includes the ENDPOINTS.
+
+        `archive_node` cascades over the outline subtree and deliberately does not touch
+        scene_link, so archiving a scene used to leave its causal edges behind: still returned,
+        pointing at a node the tree no longer shows (the FE resolved the missing title to a
+        short id, so the author saw an edge to `deadbeef…`). Filtering on the endpoints here
+        rather than cascading the archive keeps the pair SYMMETRIC for free — restore the scene
+        and its edges come back, with no `archived_by_cascade` bookkeeping to get wrong, and
+        with an edge the author deleted themselves staying deleted.
+        """
         query = f"""
-        SELECT {_SELECT_COLS} FROM scene_link
-        WHERE project_id = $1 AND NOT is_archived
-        ORDER BY created_at, id
+        SELECT {_SELECT_COLS_SL} FROM scene_link sl
+        WHERE sl.project_id = $1 AND NOT sl.is_archived
+          AND EXISTS (SELECT 1 FROM outline_node f
+                      WHERE f.id = sl.from_node_id AND NOT f.is_archived)
+          AND EXISTS (SELECT 1 FROM outline_node t
+                      WHERE t.id = sl.to_node_id AND NOT t.is_archived)
+        ORDER BY sl.created_at, sl.id
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, project_id)
@@ -141,6 +162,13 @@ class SceneLinksRepo:
         LEFT JOIN outline_node t  ON t.id = sl.to_node_id
         LEFT JOIN outline_node tc ON tc.id = t.parent_id
         WHERE sl.book_id = $1 AND NOT sl.is_archived
+          -- Same rule as list_by_project: an edge whose endpoint has been archived is not a
+          -- live edge. These are LEFT JOINs (an endpoint row can be missing entirely), so the
+          -- NULL case must be excluded explicitly — `NOT f.is_archived` alone is NULL, not
+          -- true, for a missing row, which happens to drop it, but relying on that would be
+          -- an accident rather than a stated rule.
+          AND f.id IS NOT NULL AND NOT f.is_archived
+          AND t.id IS NOT NULL AND NOT t.is_archived
         ORDER BY sl.created_at, sl.id
         """
         async with self._pool.acquire() as c:
