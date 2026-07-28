@@ -305,7 +305,48 @@ scene refused 400 `BAD_REFERENCE` while a live target still returns 201.
 
 **VERIFY:** unit **2645 passed / 341 skipped**; DB integration **337 passed / 8 skipped** (real SQL).
 
-### 📋 F3 — what is left, and why each is PARKED rather than done
+### ✅ F3 — ALL FOUR PARKED ITEMS CLEARED (2026-07-28)
+
+Three of the four turned out **not** to be "wire up the missing button" — investigating each changed
+what the right answer was:
+
+- **`D-MOTIF-SHARED-EDIT-FE-DOOR` → BUILT.** `isReadOnly` now treats a `book_shared` row as
+  editable. The kinds-bug lesson (*a user never mutates a shared row*) still holds for system and
+  public rows — it was being applied **one tier too wide**, over a per-book collab tier the LOCKED
+  tenancy table says grantees may write and the backend has implemented since it shipped. The FE
+  could not see it because the B-3 redaction nulls `owner_user_id` and `motifTier` reads precisely
+  that field, so every shared row looked like `system`. `book_shared` is the signal because it
+  survives the redaction. Also: `patch` now threads `?book_id=`, and `toArgs` **omits `examples`
+  on a redacted row** — echoing it back would wipe the owner's prose (my own new write guard would
+  400 the save, which is how the FE half proved necessary). Both halves mutation-proven red.
+- **`D-GLOSSARY-ATTRDEF-DELETE-FE-DOOR` → RETIRED, and it was bigger than one function.** The whole
+  flat `/kinds/{id}/…` write family (`patchKind`, `deleteKind`, `reorderKinds`, `reorderAttrDefs`,
+  `createAttrDef`, `patchAttrDef`, `deleteAttrDef`) had **zero callers and no backend** — SS-4 moved
+  kinds to the tiered model, so those routes are gone; the live UI already goes through `tieringApi`.
+  Removed rather than left as a trap for the next person to wire.
+- **`D-KG-SCHEMA-DEPRECATE-FE-DOOR` → deliberately NOT wired** (`D-KG-SCHEMA-RETIRE-NEEDS-REVERSE`).
+  `DELETE /graph-schemas/{id}` sets `deprecated_at` and **nothing anywhere un-deprecates** — wiring
+  it would ship exactly the "looks recoverable, isn't" bug this whole sweep removed. It also has
+  nowhere to live (`listSchemas` feeds only the current-schema resolver; no schema-management
+  surface exists). Reasoned in-place at the binding so it is not re-discovered as an oversight.
+- **`D-PLANHUB-UNLINK-USES-RECREATE` → FIXED** (and the "coordinate first" caution was stale —
+  plan-hub was last touched 10 days ago; the concurrent session is in worker-ai/KG). The undo now
+  RESTORES the archived row instead of re-creating an identical edge. Re-creating was right while
+  the delete was hard; against a soft archive it mints a second row and strands the original
+  forever (the new row takes the partial-unique slot, so restoring the old one 409s).
+
+**🔴 NEW, NOT FIXED — `D-GLOSSARY-UNKNOWN-REVIEW-405`.** Found while retiring the dead family:
+`glossaryApi.createKind` and `createKindAlias` still point at removed routes and **do** have a live
+caller — `useUnknownReview.resolve`, behind UnknownEntitiesPanel's *"new kind"* / *"apply to all"*.
+**Probed live: both return 405.** So that review path is broken end to end today. Not fixed here
+because the fix needs a glossary-track decision about which tier a newly-minted kind belongs to
+(user? book?) — it is not a rename.
+
+**VERIFY:** FE **6203 passed** (+9), `tsc` exit 0, the 7 pre-existing failures unchanged.
+
+<details><summary>Superseded: the parked list, kept for the reasoning</summary>
+
+### 📋 F3 — what was left, and why each was PARKED
 
 The composition atom families are now clean on all three axes. What remains was found by the sweep
 but does not belong to this run:
@@ -332,23 +373,16 @@ but does not belong to this run:
   was hard; now it leaves the archived original orphaned (and a later restore of it 409s). Harmless
   to the author, untidy in the table. **Coordinate before touching `usePlanMoves`.**
 
+</details>
+
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
-- **F3 turned up a MISSING FE DOOR (buildable, not blocked): the shared-tier motif edit.**
-  `D-MOTIF-ADOPT-BOOK-COLLAB-TIER` is fully implemented BE-side — `PATCH /motifs/{id}?book_id=`,
-  `repo.patch_shared`, MCP, tests — and has **no FE affordance at all**. Cause: the redaction nulls
-  `owner_user_id`, and `motifTier()` derives the tier from exactly that field, so a shared row reads
-  as `system` → `isReadOnly` → the in-place editor never opens; every path is clone-to-edit. The BE
-  docstring claimed the FE "routes an edit to the shared path" — it does not, and the docstring is
-  now corrected rather than left to mislead. Building it needs a tier signal that survives redaction
-  (`book_shared` is already on the wire) — and it is safe to build *now* that the write guard exists.
-- **F3 residual — `plan-hub`'s scene-link undo re-CREATES the edge** rather than restoring it
-  (correct when the delete was hard; now it leaves an orphaned archived row and the original can
-  never be restored). Left deliberately: **plan-hub/plan-forge is the concurrent session's active
-  surface — coordinate before touching `usePlanMoves`.**
-- **Found, not fixed (out of scope, small): `scene_link.create` does not check whether its endpoint
-  nodes are archived** — it validates project scope and `kind='scene'` only, so an edge to an
-  archived scene is creatable today. `restore` is at parity with `create` here, so this is
-  pre-existing rather than introduced; the fix belongs with the outline-archival rules.
+- 🔴 **`D-GLOSSARY-UNKNOWN-REVIEW-405` — a LIVE broken path, the only unfixed find.**
+  `UnknownEntitiesPanel`'s "new kind" / "apply to all" call `POST /v1/glossary/kinds` and
+  `POST /v1/glossary/kind-aliases`; both were **probed live and return 405** (SS-4 removed the
+  writes). Needs a glossary-track decision on which tier a newly-minted kind lands in, so it is
+  not a rename. **Everything else the F3 sweep found is now closed.**
+- **`D-KG-SCHEMA-RETIRE-NEEDS-REVERSE`** — if retiring a whole graph-schema is ever wanted, the
+  un-deprecate has to exist FIRST (and a surface to host it). Reasoned in-place at the binding.
 - **E6** F7/F8 — the passes are still blind to canon rules + existing cast (`run_cast` re-invents
   the book's characters from `premise` alone); `package["canon"]` is compiled and read by nobody.
 - **E7** re-run `scenes`/`self_heal` against the real curve.

@@ -98,8 +98,16 @@ export const motifApi = {
       method: 'POST', body: JSON.stringify(args), token,
     });
   },
-  patch(motifId: string, args: MotifPatchArgs, expectedVersion: number, token: string): Promise<Motif> {
-    return apiJson<Motif>(`${BASE}/motifs/${motifId}`, {
+  /** `bookId` routes the SHARED book-tier edit (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): the server gates
+   *  EDIT on that book instead of ownership, so any collaborator may edit the row. Omit it for
+   *  your own motif — without `book_id` the server matches `owner_user_id = caller` and a shared
+   *  row simply 404s (the clone-to-edit affordance). */
+  patch(
+    motifId: string, args: MotifPatchArgs, expectedVersion: number, token: string,
+    bookId?: string | null,
+  ): Promise<Motif> {
+    const qs = bookId ? `?book_id=${encodeURIComponent(bookId)}` : '';
+    return apiJson<Motif>(`${BASE}/motifs/${motifId}${qs}`, {
       method: 'PATCH',
       body: JSON.stringify(args),
       headers: { 'If-Match': String(expectedVersion) },

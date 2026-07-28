@@ -121,12 +121,23 @@ export const ontologyApi = {
     });
   },
 
-  deprecateSchema(schemaId: string, token: string): Promise<void> {
-    return apiJson(`${BASE}/graph-schemas/${schemaId}`, {
-      method: 'DELETE',
-      token,
-    });
-  },
+  // ── NOT wired, deliberately: retiring a whole schema (F3 sweep, 2026-07-28) ────────────────
+  //
+  // `DELETE /graph-schemas/{id}` exists and sets `deprecated_at = now()`. This binding had zero
+  // callers, and it is staying that way until two things are true, because wiring it now would
+  // ship the exact bug class this repo keeps re-learning:
+  //
+  //   1. THERE IS NO REVERSE. Nothing anywhere un-deprecates a schema — no route, no repo method.
+  //      A soft-hide with no way back is worse than a hard delete, because it looks recoverable
+  //      (the atom-delete contract in composition-service spells this out). Retiring a schema
+  //      takes its edge types, fact types, node kinds and vocab sets out of every read with it.
+  //   2. THERE IS NOWHERE TO PUT IT. `listSchemas` is consumed only by `useGraphSchema` to
+  //      resolve the CURRENT schema; no surface lists schemas to manage, so the button would
+  //      need a new surface invented around it — a feature, not a wiring job.
+  //
+  // Every CHILD type here (edge/fact/node-kind/vocab) already has add + patch + delete wired,
+  // which is why the gap looked like a simple omission. It isn't. Tracked as
+  // D-KG-SCHEMA-RETIRE-NEEDS-REVERSE.
 
   // Clone (A2) — deep-copy any readable schema into a NEW user-scoped editable
   // template the caller owns (distinct from adopt's project-scoped replace).

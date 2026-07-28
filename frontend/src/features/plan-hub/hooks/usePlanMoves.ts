@@ -23,6 +23,7 @@ import {
   assignChapters,
   createSceneLink,
   deleteSceneLink,
+  restoreSceneLink,
   getChildren,
   moveArc,
   reorderBookChapter,
@@ -114,8 +115,9 @@ export interface PlanMoves {
   /** H5 Row-5 (PH20): DRAW a scene-link edge between two SCENE nodes. Rejects a stub endpoint (a
    *  chapter card / arc rollup standing in for something collapsed) with a reason. */
   linkScenes: (fromNodeId: string, toNodeId: string) => void;
-  /** H5 Row-5 (PH20): DELETE a scene-link edge. Takes the whole EDGE, not just its id, so the undo
-   *  can re-create it with its original kind + label. */
+  /** H5 Row-5 (PH20): DELETE a scene-link edge. Still takes the whole EDGE (callers have it, and
+   *  the label is wanted for the undo toast), but since F3 the delete is a SOFT archive and the
+   *  undo RESTORES that row rather than re-creating an identical one. */
   unlinkScenes: (edge: SceneLinkEdge) => void;
   moving: boolean;
   moveError: string | null;
@@ -429,6 +431,16 @@ export function usePlanMoves(input: {
     onSettled: settle,
   });
 
+  // F3 — the true inverse of the unlink. The delete became a SOFT archive, so re-CREATING an
+  // identical edge (what the undo used to do) is no longer the reverse: it mints a second row and
+  // strands the archived original, which can then never be restored because the new one holds the
+  // partial-unique slot. Restoring the row itself also keeps its id, author and created_at.
+  const relinkMutation = useMutation({
+    mutationFn: (linkId: string) => restoreSceneLink(linkId, token!),
+    onError: onFailed,
+    onSettled: settle,
+  });
+
   const linkScenes = useCallback(
     (fromNodeId: string, toNodeId: string) => {
       if (!token) return;
@@ -470,18 +482,15 @@ export function usePlanMoves(input: {
         onSuccess: () => {
           setUndo({
             label: 'Scene link deleted',
-            run: () =>
-              linkMutation.mutate({
-                from: edge.from_node_id,
-                to: edge.to_node_id,
-                kind: edge.kind,
-                label: edge.label ?? '',
-              }),
+            // RESTORE the archived row, don't draw a new edge. Re-creating was correct while the
+            // delete was hard; now it leaves the original archived forever (the new row takes the
+            // partial-unique slot, so restoring the old one 409s) and loses its id/author/date.
+            run: () => relinkMutation.mutate(edge.id),
           });
         },
       });
     },
-    [token, unlinkMutation, linkMutation],
+    [token, unlinkMutation, relinkMutation],
   );
 
   return {

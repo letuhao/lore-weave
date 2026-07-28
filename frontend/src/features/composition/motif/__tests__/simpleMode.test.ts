@@ -1,7 +1,7 @@
 // W6 §7.1 — simpleMode pure-fn tests: tier derivation, read-only, label maps.
 import { describe, expect, it } from 'vitest';
 import {
-  actantLabelKey, conformanceGlyph, conformanceTone, fieldLabelKey, isReadOnly,
+  actantLabelKey, conformanceGlyph, conformanceTone, fieldLabelKey, isReadOnly, isRedactedForViewer,
   kindLabelKey, motifTier, tierLabelKey,
 } from '../simpleMode';
 import type { Actant, MotifKind } from '../types';
@@ -35,6 +35,33 @@ describe('isReadOnly (clone-to-edit gate — the kinds-bug lesson)', () => {
   });
   it('my own motif is editable', () => {
     expect(isReadOnly({ owner_user_id: ME, visibility: 'private' }, ME)).toBe(false);
+  });
+
+  // F3 (2026-07-28) — the lesson was being applied ONE TIER TOO WIDE. "A user never mutates a
+  // shared row" is about GLOBAL rows; the per-book collab tier is writable by the owner and its
+  // EDIT-grantees (LOCKED tenancy table), and the backend has implemented exactly that since the
+  // tier shipped. The FE could not see it because the B-3 redaction nulls `owner_user_id` and
+  // `motifTier` reads precisely that field — so every shared row looked like `system`.
+  it("a book's SHARED row is editable by a collaborator, even though the redaction nulled the owner", () => {
+    expect(isReadOnly({ owner_user_id: null, visibility: 'private', book_shared: true }, ME)).toBe(false);
+  });
+  it('the shared-tier exception does NOT leak to system rows (they stay clone-to-edit)', () => {
+    expect(isReadOnly({ owner_user_id: null, visibility: 'unlisted', book_shared: false }, ME)).toBe(true);
+  });
+  it("nor to another user's PUBLIC motif — the kinds-bug lesson still holds where it applies", () => {
+    expect(isReadOnly({ owner_user_id: 'user-2', visibility: 'public' }, ME)).toBe(true);
+  });
+});
+
+describe('isRedactedForViewer (never echo back what you were not shown)', () => {
+  it('a foreign shared row IS redacted — the owner id was stripped, so `examples` was too', () => {
+    expect(isRedactedForViewer({ owner_user_id: null, book_shared: true })).toBe(true);
+  });
+  it('MY OWN shared row is not — I can read my examples, so I may write them', () => {
+    expect(isRedactedForViewer({ owner_user_id: ME, book_shared: true })).toBe(false);
+  });
+  it('a system row is not book_shared, so this never fires for it', () => {
+    expect(isRedactedForViewer({ owner_user_id: null, book_shared: false })).toBe(false);
   });
 });
 

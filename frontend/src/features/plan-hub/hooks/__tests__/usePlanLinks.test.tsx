@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 const api = vi.hoisted(() => ({
   createSceneLink: vi.fn(),
   deleteSceneLink: vi.fn(),
+  restoreSceneLink: vi.fn(),
   assignChapters: vi.fn(),
   getChildren: vi.fn(),
   moveArc: vi.fn(),
@@ -150,29 +151,26 @@ describe('Row-5 unlinkScenes (PH20)', () => {
     await waitFor(() => expect(reloadWindows).toHaveBeenCalled());
   });
 
-  it('the delete IS undoable - it re-creates the edge with its ORIGINAL kind + label', async () => {
-    // An earlier version took only the id and claimed no undo was possible ("the 204 carries no
-    // kind/label"). But the CLIENT holds the whole edge, and createSceneLink takes both - so a
-    // single click was irreversibly destroying a link for no reason at all.
+  it('the delete IS undoable - and since F3 the undo RESTORES the row, it does not re-create it', async () => {
+    // History, because the right answer changed twice. The FIRST version took only the id and
+    // claimed no undo was possible ("the 204 carries no kind/label") — a single click destroyed a
+    // link for no reason, since the CLIENT holds the whole edge. So the undo re-CREATED it, which
+    // was correct while the delete was a hard DELETE.
+    //
+    // F3 made the delete a soft archive (the edge carries an authored `label`), and that flipped
+    // the answer again: re-creating now mints a SECOND row and strands the archived original,
+    // which can then never be restored because the new row holds the partial-unique slot. The
+    // true inverse of an archive is an un-archive — and it also keeps the row's id, author and
+    // created_at instead of quietly minting new ones.
     api.deleteSceneLink.mockResolvedValue(undefined);
-    api.createSceneLink.mockResolvedValue({ id: 'link-new' });
+    api.restoreSceneLink.mockResolvedValue(undefined);
     const { hook } = setup({});
 
     act(() => hook.result.current.unlinkScenes(edge()));
     await waitFor(() => expect(hook.result.current.undo).not.toBeNull());
 
     act(() => hook.result.current.undo!.run());
-    await waitFor(() =>
-      expect(api.createSceneLink).toHaveBeenCalledWith(
-        'book-1',
-        {
-          from_node_id: 's1',
-          to_node_id: 's2',
-          kind: 'setup_payoff',
-          label: 'the red thread', // the label SURVIVES the round trip
-        },
-        'tok',
-      ),
-    );
+    await waitFor(() => expect(api.restoreSceneLink).toHaveBeenCalledWith('link-9', 'tok'));
+    expect(api.createSceneLink).not.toHaveBeenCalled();
   });
 });

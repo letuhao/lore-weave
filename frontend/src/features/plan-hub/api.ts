@@ -219,6 +219,12 @@ export async function deleteSceneLink(linkId: string, token: string): Promise<vo
   await apiJson<unknown>(`${COMP}/scene-links/${linkId}`, { method: 'DELETE', token });
 }
 
+/** F3 — the delete above became a SOFT archive, so the true inverse is un-archiving THIS row, not
+ *  drawing a new edge with the same shape. 409 when the author re-declared that edge meanwhile. */
+export async function restoreSceneLink(linkId: string, token: string): Promise<void> {
+  await apiJson<unknown>(`${COMP}/scene-links/${linkId}/restore`, { method: 'POST', token });
+}
+
 /** H5 Row-2 write — move an ARC in the structure tree (the `composition_arc_move` mirror, PH20).
  *  Places `arcId` under `new_parent_arc_id` (null = a root) AFTER `after_id` (null = first). The
  *  server computes the fractional rank AND recomputes the moved subtree's `depth` in one txn; a

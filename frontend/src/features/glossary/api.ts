@@ -408,59 +408,25 @@ export const glossaryApi = {
     });
   },
 
-  patchKind(token: string, kindId: string, changes: Record<string, unknown>) {
-    return apiJson<import('./types').EntityKind>(`${BASE}/kinds/${kindId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteKind(token: string, kindId: string): Promise<void> {
-    return apiJson<void>(`${BASE}/kinds/${kindId}`, { method: 'DELETE', token });
-  },
-
-  reorderKinds(token: string, kindIds: string[]) {
-    return apiJson<{ reordered: number }>(`${BASE}/kinds/reorder`, {
-      method: 'PATCH',
-      body: JSON.stringify({ kind_ids: kindIds }),
-      token,
-    });
-  },
-
-  reorderAttrDefs(token: string, kindId: string, attrDefIds: string[]) {
-    return apiJson<{ reordered: number }>(`${BASE}/kinds/${kindId}/attributes/reorder`, {
-      method: 'PATCH',
-      body: JSON.stringify({ attr_def_ids: attrDefIds }),
-      token,
-    });
-  },
-
-  // ── Attribute Definition CRUD ─────────────────────────────────────────────
-
-  createAttrDef(token: string, kindId: string, payload: {
-    code: string; name: string; description?: string; field_type?: string; is_required?: boolean;
-    sort_order?: number; options?: string[]; genre_tags?: string[];
-    auto_fill_prompt?: string; translation_hint?: string;
-  }) {
-    return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
-
-  patchAttrDef(token: string, kindId: string, attrDefId: string, changes: Record<string, unknown>) {
-    return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes/${attrDefId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteAttrDef(token: string, kindId: string, attrDefId: string): Promise<void> {
-    return apiJson<void>(`${BASE}/kinds/${kindId}/attributes/${attrDefId}`, { method: 'DELETE', token });
-  },
+  // ── RETIRED (2026-07-28): the flat `/kinds/{id}/…` write family ───────────
+  //
+  // patchKind · deleteKind · reorderKinds · reorderAttrDefs · createAttrDef · patchAttrDef ·
+  // deleteAttrDef all lived here with ZERO callers, aimed at routes the glossary service no
+  // longer serves: SS-4 moved kinds to the tiered model, so the writes are now
+  // `/system-kinds/…` (admin), `/user-kinds/{id}/attributes/…` (per-user) and
+  // `/books/{book_id}/kinds/…` (per-book) — the paths `tieringApi` already uses and the live
+  // UI already calls through `useBookOntology`. Only `GET /kinds` survives (see getKinds above).
+  //
+  // Kept as a comment rather than silently deleted because "an api function whose route 404s"
+  // is exactly the dead affordance this codebase forbids: the next person to need a kind write
+  // would otherwise find these, wire them, and ship a button that fails at runtime. Use
+  // `tieringApi`.
+  //
+  // ⚠ NOT yet fixed: `createKind` (above) and `createKindAlias` still point at removed routes
+  // and DO have a live caller — `useUnknownReview.resolve`, behind UnknownEntitiesPanel's
+  // "new kind" / "apply to all". Both were probed live and return **405**. Tracked as
+  // D-GLOSSARY-UNKNOWN-REVIEW-405; the fix needs a glossary-track decision about which tier a
+  // newly-minted kind belongs to, so it is not a rename.
 
   // ── Attribute Values ──────────────────────────────────────────────────────
 

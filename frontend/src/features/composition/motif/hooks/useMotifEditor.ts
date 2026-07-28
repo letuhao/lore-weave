@@ -7,6 +7,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { motifApi } from '../api';
+import { isRedactedForViewer } from '../simpleMode';
 import type {
   Actant, InfoAsymmetry, Motif, MotifBeat, MotifKind, MotifPatchArgs, MotifRole,
 } from '../types';
@@ -43,7 +44,11 @@ function fromMotif(m: Motif): MotifEditState {
   };
 }
 
-function toArgs(s: MotifEditState): MotifPatchArgs {
+// `redacted` = the row came to us with the owner's `examples` stripped (a collaborator's shared
+// motif). Echoing that back as `[]` would wipe content this caller was never shown, so the field
+// is OMITTED — a PATCH ignores what it is not sent. The server refuses it outright (400
+// MOTIF_REDACTED_FIELD_NOT_WRITABLE); this keeps an otherwise-legal edit from tripping that.
+function toArgs(s: MotifEditState, redacted = false): MotifPatchArgs {
   return {
     name: s.name.trim(),
     kind: s.kind,
@@ -55,7 +60,7 @@ function toArgs(s: MotifEditState): MotifPatchArgs {
     beats: s.beats.filter((b) => b.label.trim()).map((b, i) => ({ ...b, label: b.label.trim(), order: i })),
     preconditions: s.preconditions.map((t) => t.trim()).filter(Boolean).map((text) => ({ text })),
     effects: s.effects.map((t) => t.trim()).filter(Boolean).map((text) => ({ text })),
-    examples: s.examples.map((t) => t.trim()).filter(Boolean).map((text) => ({ text })),
+    ...(redacted ? {} : { examples: s.examples.map((t) => t.trim()).filter(Boolean).map((text) => ({ text })) }),
     // a scheme's info_asymmetry rides along; non-schemes never send it
     ...(s.kind === 'scheme' && s.info_asymmetry ? { info_asymmetry: s.info_asymmetry } : {}),
   };
@@ -116,7 +121,16 @@ export function useMotifEditor(motif: Motif | null, token: string | null, onSave
   const canSubmit = !!form && form.name.trim().length > 0 && dirty;
 
   const save = useMutation({
-    mutationFn: () => motifApi.patch(motif!.id, toArgs(form!), motif!.version, token!),
+    // A shared book-tier row is edited through `?book_id=` (the server gates EDIT on the book
+    // rather than ownership). Without it the server matches `owner_user_id = caller` and a
+    // collaborator's save 404s.
+    mutationFn: () => motifApi.patch(
+      motif!.id,
+      toArgs(form!, isRedactedForViewer(motif!)),
+      motif!.version,
+      token!,
+      motif!.book_shared ? motif!.book_id : null,
+    ),
     onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: ['composition', 'motifs'] });
       qc.invalidateQueries({ queryKey: ['composition', 'motif', m.id] });
