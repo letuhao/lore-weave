@@ -16,6 +16,7 @@
 
 pub mod admission;
 pub mod bus;
+pub mod combat;
 pub mod domain;
 pub mod llm_driver;
 pub mod manager;
@@ -24,7 +25,10 @@ pub mod recovery;
 pub mod vocabulary;
 pub mod wire;
 
-pub use domain::{Actor, CombatDomain, CombatEvent, CombatPayload, CombatRules, CombatState, Stance};
+pub use domain::{
+    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatRules, CombatState,
+    Stance,
+};
 pub use llm_driver::{decide, hp_band, Candidate, DecisionContext, Dispatch};
 pub use vocabulary::{Reject, Vocabulary};
 pub use wire::{OutcomeDetail, OutcomeKind, TurnOutcome};

@@ -27,7 +27,12 @@ fn dsn() -> Option<String> {
 }
 
 async fn pool(url: &str) -> Arc<PgPool> {
-    Arc::new(PgPoolOptions::new().max_connections(4).connect(url).await.expect("connect test PG"))
+    // Pool of 2: cargo runs test binaries AND the tests inside them in
+    // parallel, so a large per-test pool multiplies quickly against Postgres
+    // `max_connections`. A test uses one connection at a time, so a bigger
+    // pool buys nothing. (Sizing hygiene, not a fix for an observed failure —
+    // the one time these went red it was the dev container being stopped.)
+    Arc::new(PgPoolOptions::new().max_connections(2).connect(url).await.expect("connect test PG"))
 }
 
 /// A free channel is claimable; a HELD one is not. The second half is the

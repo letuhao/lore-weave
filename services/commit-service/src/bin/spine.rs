@@ -125,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(args.channel as u64),
         0x53A5_71DE,
-        Arc::new(CombatRules { strike_damage: 10 }),
+        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
         RulesetDigest([0u8; 32]),
         SeenWindow::TtlTicks(300),
         state,

@@ -40,7 +40,12 @@ fn dsn() -> Option<String> {
 }
 
 async fn pool(url: &str) -> Arc<PgPool> {
-    Arc::new(PgPoolOptions::new().max_connections(4).connect(url).await.expect("connect test PG"))
+    // Pool of 2: cargo runs test binaries AND the tests inside them in
+    // parallel, so a large per-test pool multiplies quickly against Postgres
+    // `max_connections`. A test uses one connection at a time, so a bigger
+    // pool buys nothing. (Sizing hygiene, not a fix for an observed failure —
+    // the one time these went red it was the dev container being stopped.)
+    Arc::new(PgPoolOptions::new().max_connections(2).connect(url).await.expect("connect test PG"))
 }
 
 /// A committed event shaped like the spine's: the dedup key rides `metadata`
@@ -88,7 +93,7 @@ fn island() -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xC2D2,
-        Arc::new(CombatRules { strike_damage: 10 }),
+        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
         RulesetDigest([0u8; 32]),
         // The TTL window is the realistic case: a recovered id stamped at a
         // PAST tick would expire on arrival and re-open the hole.

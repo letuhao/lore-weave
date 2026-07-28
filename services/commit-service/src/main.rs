@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0x00C0_B0A7u64, // fixed seed — replay-exact runs
-        Arc::new(CombatRules { strike_damage: 10 }),
+        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
         RulesetDigest([0u8; 32]),
         SeenWindow::Unbounded,
         state,

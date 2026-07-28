@@ -75,7 +75,7 @@ fn island() -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         SEED,
-        Arc::new(CombatRules { strike_damage: 10 }),
+        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
         RulesetDigest([0u8; 32]),
         SeenWindow::Unbounded,
         state,

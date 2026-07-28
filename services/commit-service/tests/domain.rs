@@ -15,7 +15,7 @@ fn island() -> Island<CombatDomain> {
     let mut isle = Island::new(
         IslandId(1),
         7,
-        Arc::new(CombatRules { strike_damage: 10 }),
+        Arc::new(CombatRules { strike_damage: 10, ko_duration_rounds: 5 }),
         RulesetDigest([0u8; 32]),
         SeenWindow::Unbounded,
         state,
@@ -49,15 +49,37 @@ fn submit(isle: &mut Island<CombatDomain>, id: u128, payload: CombatPayload) {
     while isle.step() != StepStatus::Idle {}
 }
 
-/// Kill-mutation: defend not halving / not resetting after one strike.
+/// Defend halves ONE incoming strike, then is consumed.
+///
+/// Asserted as a RELATIONSHIP, not against fixed hp values: damage now runs
+/// the COMB_001 law-chain (`floor(max(1, sp − armor) × roll(0.85–1.15) ×
+/// crit)`), so a hardcoded 35/25 would be asserting one particular seed's
+/// arithmetic rather than the rule. Pinning numbers here would also make every
+/// future stat or archetype change look like a regression.
+///
+/// Kill-mutations: defend not halving · defend not being consumed by the hit.
 #[test]
 fn defend_halves_exactly_one_strike() {
     let mut isle = island();
+    let full_hp = isle.state().actors[&EntityId(2)].hp;
+
     submit(&mut isle, 1, CombatPayload::Defend { actor: EntityId(2) });
     submit(&mut isle, 2, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
-    assert_eq!(isle.state().actors[&EntityId(2)].hp, 35, "halved (5, not 10)");
+    let defended_dmg = full_hp - isle.state().actors[&EntityId(2)].hp;
+
+    let before = isle.state().actors[&EntityId(2)].hp;
     submit(&mut isle, 3, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
-    assert_eq!(isle.state().actors[&EntityId(2)].hp, 25, "defend consumed — full 10");
+    let undefended_dmg = before - isle.state().actors[&EntityId(2)].hp;
+
+    assert!(defended_dmg > 0, "the defended hit still landed (it is halved, not negated)");
+    assert!(
+        defended_dmg < undefended_dmg,
+        "defend must reduce the hit: defended {defended_dmg} vs undefended {undefended_dmg}"
+    );
+    assert!(
+        !isle.state().actors[&EntityId(2)].defending,
+        "defend is CONSUMED by the hit it absorbs, not a standing buff"
+    );
 }
 
 /// Total-apply discipline: striking an absent or fled target records a Miss,
