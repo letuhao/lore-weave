@@ -26,6 +26,7 @@ import asyncpg
 from loreweave_jobs import BaseProjectionConsumer
 
 from app.clients.book_client import BookClient
+from app.db.repositories.works import WorksRepo
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ GROUP_NAME = "composition-book-lifecycle"
 
 #: The mirror is only correct if this event is handled. A depended-on event with no handler is the
 #: silent-ack-into-void bug — REQUIRED_EVENTS + its unit test make that a RED TEST at construction.
-REQUIRED_EVENTS = frozenset({"book.lifecycle_changed"})
+REQUIRED_EVENTS = frozenset({"book.lifecycle_changed", "book.created"})
 
 
 class BookLifecycleConsumer(BaseProjectionConsumer):
@@ -59,7 +60,7 @@ class BookLifecycleConsumer(BaseProjectionConsumer):
         self._pool = pool
         self._book_client = book_client
         # Parity with the written-verdict mirror: fail LOUDLY if a required event has no route.
-        handled = {"book.lifecycle_changed"}
+        handled = {"book.lifecycle_changed", "book.created"}
         missing = REQUIRED_EVENTS - handled
         if missing:
             raise RuntimeError(f"book-lifecycle mirror has no handler for {sorted(missing)}")
@@ -73,13 +74,42 @@ class BookLifecycleConsumer(BaseProjectionConsumer):
         payload = _parse_payload(fields)
         book_raw = payload.get("book_id") or fields.get("aggregate_id")
         if not book_raw:
-            logger.warning("book.lifecycle_changed without book_id: %s", fields)
+            logger.warning("%s without book_id: %s", event_type, fields)
             return  # unrecoverable — ack, nothing to mirror
         book_id = UUID(str(book_raw))
+        if event_type == "book.created":
+            await self._provision_work(book_id, payload)
+            return
         # Re-read the CURRENT lifecycle (order-/replay-safe). A transport/5xx RAISES BookClientError →
         # the base retries and (after max_retries) dead-letters — never silently mislabel a book live.
         lifecycle = await self._book_client.get_book_lifecycle(book_id)
         await self._apply(book_id, lifecycle)
+
+    async def _provision_work(self, book_id: UUID, payload: dict) -> None:
+        """Give a new NOVEL its composition Work so the author never meets the concept.
+
+        Kind policy lives HERE, not at the emit sites: four paths write `books` (REST create, MCP
+        book_create, diary provisioning, world-bible), so keeping the "which kinds get a Work"
+        decision in one consumer means a future kind is one edit here rather than a hunt through
+        emitters. A diary is the assistant's private workspace and a bible is a reference shelf —
+        neither is a novel anyone plans, so neither gets a Work.
+        """
+        kind = str(payload.get("kind") or "")
+        if kind != "novel":
+            logger.debug("book.created kind=%s — no Work provisioned (book %s)", kind, book_id)
+            return
+        owner_raw = payload.get("owner_user_id")
+        if not owner_raw:
+            # The emitter always sends it; without an owner we cannot stamp `created_by`, and
+            # guessing one would mis-attribute the Work. Say so — do not silently skip.
+            logger.warning("book.created without owner_user_id, no Work provisioned: %s", book_id)
+            return
+        repo = WorksRepo(self._pool)
+        created = await repo.ensure_pending_for_book(UUID(str(owner_raw)), book_id)
+        logger.info(
+            "book.created: book %s → composition Work %s",
+            book_id, "provisioned (pending project)" if created else "already present",
+        )
 
     async def _apply(self, book_id: UUID, lifecycle: str) -> None:
         """Idempotent: `IS DISTINCT FROM` skips a no-op write, and the value is the re-read truth, so a

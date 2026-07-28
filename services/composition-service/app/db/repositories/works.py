@@ -127,6 +127,43 @@ class WorksRepo:
             row = await c.fetchrow(query, *args)
         return _row_to_work(row)
 
+    async def ensure_pending_for_book(
+        self, created_by: UUID, book_id: UUID,
+    ) -> bool:
+        """Onboarding provisioning: give a brand-new book its Work vessel. True = one was created.
+
+        Called from the `book.created` consumer so an author never has to discover that a
+        composition Work exists. Before this, the only affordance that created one lived on gated
+        panels a new author never opens, so the Studio offered "write a chapter" with no sign that
+        plan / beats / scenes / quality were switched off — dogfooded on a real book: work=0,
+        outline=0, plan_run=0, and nothing on screen said so.
+
+        PENDING (project_id NULL) on purpose, not a degrade: minting the knowledge project is
+        deliberately JWT-only (knowledge_client: "no internal-token variant … FORWARDS the caller's
+        user Bearer"), and a background consumer holds no user JWT. So the vessel is created now and
+        the project is backfilled by the first owner-authenticated path — the exact mechanism C16
+        already built for a knowledge outage.
+
+        Two guards, both load-bearing under at-least-once redelivery:
+          * `WHERE NOT EXISTS (… book_id)` — never a SECOND work row for a book that already has a
+            real one. The partial-unique index only covers PENDING rows, so it would not stop that.
+          * `ON CONFLICT DO NOTHING` — two concurrent deliveries race on the partial-unique index;
+            the loser is a no-op, not an error that dead-letters the event.
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                """
+                INSERT INTO composition_work
+                  (project_id, created_by, book_id, pending_project_backfill, settings)
+                SELECT NULL, $1, $2, true, '{}'::jsonb
+                WHERE NOT EXISTS (SELECT 1 FROM composition_work WHERE book_id = $2)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                created_by, book_id,
+            )
+        return row is not None
+
     async def create_derivative(
         self,
         created_by: UUID,

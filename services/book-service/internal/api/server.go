@@ -734,8 +734,16 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("book limit reached (%d) — delete or purge a book first", maxBooksPerUser))
 		return
 	}
+	// A tx (not a bare QueryRow) so book.created is atomic with the INSERT — a book must never
+	// exist without the signal that provisions its composition Work (see BookCreatedEvent).
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var bookID uuid.UUID
-	if err := s.pool.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 -- WS-1.1: kind EXPLICIT, never leaning on the column default. kind is the privacy lock,
 -- and a create path that silently inherits a default is exactly how a new path (a diary!)
 -- ends up mis-kinded and shareable. The hygiene test asserts every INSERT names it.
@@ -743,6 +751,14 @@ INSERT INTO books(owner_user_id,title,description,original_language,summary,genr
 VALUES($1,$2,$3,$4,$5,$6,'novel')
 RETURNING id
 `, ownerID, in.Title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
+		return
+	}
+	if err := emitBookCreated(ctx, tx, bookID, ownerID, "novel"); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
 		return
 	}
