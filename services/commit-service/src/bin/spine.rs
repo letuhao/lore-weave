@@ -263,6 +263,12 @@ async fn main() -> anyhow::Result<()> {
                             // precision on a JSON number past 2^53).
                             "turn_number": turn_number.to_string(), // NOT advanced
                         })),
+                        // RLS-A13 — the pin, taken from the island that produced
+                        // this, not from a config value that could describe a
+                        // different ruleset. `isle.digest` is DERIVED from the
+                        // rules the island actually runs (Domain::rules_digest),
+                        // so the value written here cannot describe anything else.
+                        ruleset_digest: Some(isle.digest.to_hex()),
                     };
                     let appended = writer.append(&env, &serde_json::json!([])).await?;
                     println!(
@@ -331,6 +337,10 @@ async fn main() -> anyhow::Result<()> {
                             // CWC-A2 — decimal string, never a number.
                             "turn_number": turn_number.to_string(),
                         })),
+                        // RLS-A13 — see the reject path above. Same island, same
+                        // derived pin: every event this writer commits carries the
+                        // digest of the rules that actually resolved it.
+                        ruleset_digest: Some(isle.digest.to_hex()),
                     };
                     let appended = writer.append(&env, &serde_json::json!([])).await?;
                     committed += 1;

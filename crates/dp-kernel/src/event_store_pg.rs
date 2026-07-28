@@ -260,7 +260,8 @@ impl EventStore for PgEventStore {
                     metadata,
                     occurred_at,
                     recorded_at,
-                    content_sha256
+                    content_sha256,
+                    ruleset_digest
                 )
                 VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -273,7 +274,12 @@ impl EventStore for PgEventStore {
                     -- with no cross-lang JSON lib. Plain column (not generated) so a
                     -- later UPDATE to payload/metadata can't mask byte-rot.
                     encode(sha256(convert_to(
-                        jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex')
+                        jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex'),
+                    -- RLS-A13. NULL when the producer had no ruleset pin (canon
+                    -- writes, Forge edits, admin actions) — a real category, not
+                    -- a gap. NULL, never a 64-zero string: NULL says "no pin",
+                    -- zeros would claim "pinned to the empty ruleset".
+                    $12
                 )
                 "#,
             )
@@ -288,6 +294,7 @@ impl EventStore for PgEventStore {
             .bind(ev.metadata.as_ref())
             .bind(&ev.occurred_at)
             .bind(&ev.recorded_at)
+            .bind(ev.ruleset_digest.as_ref())
             .execute(&mut *tx)
             .await
             .map_err(|e| EventStoreError::Transport(e.to_string()))?;
@@ -319,6 +326,7 @@ impl EventStore for PgEventStore {
                 reality_id,
                 payload,
                 metadata,
+                ruleset_digest,
                 to_char(occurred_at AT TIME ZONE 'UTC',
                         'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS occurred_at_str,
                 to_char(recorded_at AT TIME ZONE 'UTC',
@@ -380,6 +388,13 @@ impl EventStore for PgEventStore {
                     .map_err(|e| EventStoreError::Transport(e.to_string()))?,
                 metadata: r
                     .try_get::<Option<serde_json::Value>, _>("metadata")
+                    .map_err(|e| EventStoreError::Transport(e.to_string()))?,
+                // Read BACK, not merely written. A pin the store cannot return
+                // is a pin replay cannot check — which is the entire reason for
+                // having one. NULL for pre-0016 rows, and NULL is the honest
+                // value there: "written before pinning existed".
+                ruleset_digest: r
+                    .try_get::<Option<String>, _>("ruleset_digest")
                     .map_err(|e| EventStoreError::Transport(e.to_string()))?,
             });
         }

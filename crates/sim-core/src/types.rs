@@ -59,6 +59,52 @@ impl RulesetDigest {
     /// bans this constant outside `crates/sim` and test files — so reaching for
     /// it in a service binary is a gate finding, not a shortcut.
     pub const UNPINNED: Self = Self([0u8; 32]);
+
+    /// Lowercase hex, 64 chars — the ONE spelling this value has outside Rust.
+    ///
+    /// The DB column (`events.ruleset_digest CHAR(64)`), the wire schema
+    /// (`game-wire/common.schema.json#/$defs/Digest`, `^[0-9a-f]{64}$`) and both
+    /// language envelopes all use it, so a second spelling anywhere means two
+    /// producers write the same rules under different keys and nothing matches.
+    /// Hand-rolled rather than a hex crate: 8 lines, and `sim-core` takes no
+    /// runtime dependencies.
+    pub fn to_hex(&self) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(64);
+        for b in self.0 {
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0f) as usize] as char);
+        }
+        out
+    }
+}
+
+/// A checkpoint's ruleset pin does not describe the rules it is being restored
+/// under (RLS-A13).
+///
+/// Carries BOTH digests rather than a bare "mismatch": the operator's first
+/// question is *which* ruleset the island was checkpointed under, and an error
+/// that cannot answer it turns a five-minute lookup into an archaeology
+/// session. Once F2's immutable ruleset store exists, `checkpoint` is the
+/// digest to resolve the correct rules BY.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RulesetMismatch {
+    /// What the checkpoint was written under.
+    pub checkpoint: RulesetDigest,
+    /// What the rules handed to `restore` actually hash to.
+    pub supplied: RulesetDigest,
+}
+
+impl core::fmt::Display for RulesetMismatch {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "ruleset mismatch: checkpoint pinned {} but the supplied rules hash to {} - \
+             refusing to resume under rules the log does not describe",
+            self.checkpoint.to_hex(),
+            self.supplied.to_hex()
+        )
+    }
 }
 
 /// SL-A2 execution classes.

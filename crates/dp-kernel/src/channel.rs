@@ -164,14 +164,17 @@ impl ChannelWriter {
             INSERT INTO events (
                 event_id, reality_id, aggregate_type, aggregate_id, aggregate_version,
                 event_type, event_version, payload, metadata, occurred_at, recorded_at,
-                content_sha256, channel_id, channel_event_id, writer_epoch, causal_refs
+                content_sha256, channel_id, channel_event_id, writer_epoch, causal_refs,
+                ruleset_digest
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9,
                 $10::timestamptz, $11::timestamptz,
                 encode(sha256(convert_to(
                     jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex'),
-                $12, $13, $14, $15
+                $12, $13, $14, $15,
+                -- RLS-A13, NULL when the producer had no pin. See event_store_pg.
+                $16
             )
             "#,
         )
@@ -190,6 +193,7 @@ impl ChannelWriter {
         .bind(channel_event_id)
         .bind(self.lease.epoch)
         .bind(causal_refs)
+        .bind(env.ruleset_digest.as_ref())
         .execute(&mut *tx)
         .await?;
 

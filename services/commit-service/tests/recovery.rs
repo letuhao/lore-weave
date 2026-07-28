@@ -74,6 +74,7 @@ fn envelope_for(
             "input_id": input_id.to_string(),
             "turn_number": turn.to_string(),
         })),
+        ruleset_digest: None,
     }
 }
 

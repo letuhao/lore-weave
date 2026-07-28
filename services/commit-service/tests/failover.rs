@@ -119,6 +119,7 @@ fn envelope(reality: Uuid, ver: u64, input_id: u128, turn: u64, ts: &str) -> Eve
             "input_id": input_id.to_string(),
             "turn_number": turn.to_string(),
         })),
+        ruleset_digest: None,
     }
 }
 

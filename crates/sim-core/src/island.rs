@@ -14,6 +14,7 @@ use crate::types::{
     Admitted,
     Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
     IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest,
+    RulesetMismatch,
     Seq, Tick, Violation,
 };
 
@@ -322,8 +323,40 @@ impl<D: Domain> Island<D> {
     /// dedups), same generations, continuing `Seq` stamps. Fresh metrics
     /// (cumulative telemetry is the HOST's aggregation concern), empty
     /// queues (§10.5), containment on, not poisoned.
-    pub fn restore(cp: IslandCheckpoint<D>, rules: Arc<D::Rules>) -> Self {
-        Self {
+    ///
+    /// # Refuses a rules/digest mismatch (RLS-A13)
+    ///
+    /// `Island::new` cannot be given a digest that disagrees with its rules —
+    /// there is no digest argument. `restore` is the one place the two can
+    /// still disagree, because the checkpoint carries a HISTORICAL digest and
+    /// the caller supplies rules NOW. Continuing under rules the checkpoint's
+    /// digest does not describe is silent replay divergence: the island keeps
+    /// stepping, its events keep claiming the old pin, and nothing is wrong
+    /// until an oracle disagrees months later — by which time the evidence is
+    /// gone.
+    ///
+    /// So it is refused, loudly, which is what RLS-D12 already specifies for an
+    /// engine that cannot honour a stored ruleset: **quarantine, never silently
+    /// reinterpret.** The cost is real and worth stating — a node that cannot
+    /// resolve the checkpoint's ruleset cannot adopt the island at all. That is
+    /// the correct trade for a determinism-pinned system, and it is the shape
+    /// F2 completes: once the immutable ruleset store exists, the caller looks
+    /// the ruleset up BY `cp.digest` and the mismatch stops being reachable.
+    ///
+    /// **Today this is latent, not live** — `checkpoint`/`restore` are not on
+    /// the durable recovery path (`recovery.rs` records the decision: replay
+    /// from the committed log, *"persisting island checkpoints … is strictly
+    /// more machinery"*), and nothing in production calls it. Which is exactly
+    /// why it costs nothing to close now, and would be archaeology later.
+    pub fn restore(
+        cp: IslandCheckpoint<D>,
+        rules: Arc<D::Rules>,
+    ) -> Result<Self, RulesetMismatch> {
+        let derived = D::rules_digest(&rules);
+        if derived != cp.digest {
+            return Err(RulesetMismatch { checkpoint: cp.digest, supplied: derived });
+        }
+        Ok(Self {
             id: cp.id,
             tick: cp.tick,
             entities: cp.entities,
@@ -332,15 +365,10 @@ impl<D: Domain> Island<D> {
             seen: cp.seen,
             state: cp.state,
             rules,
-            // The STORED digest, deliberately not re-derived. A fresh island's
-            // digest is a fact about its rules; a restored island's is a
-            // HISTORICAL fact that may disagree with the rules it is being
-            // restored under — and detecting that disagreement is the whole of
-            // F3. Re-deriving here would silently paper over exactly the
-            // divergence F3 must refuse.
-            // TODO(F3): compare against `D::rules_digest(&rules)` and REFUSE on
-            // mismatch. Both values are now available at this line, which they
-            // were not before.
+            // Equal to `D::rules_digest(&rules)` by the check above — the
+            // stored one is used so the field's PROVENANCE stays the
+            // checkpoint, not a re-derivation that would mask a future bug in
+            // the guard itself.
             digest: cp.digest,
             rng: cp.rng,
             outcomes: Vec::new(),
@@ -353,7 +381,7 @@ impl<D: Domain> Island<D> {
             containment: true,
             poisoned: false,
             quarantine: Vec::new(),
-        }
+        })
     }
 
     /// Dissolve, CONSUMING the island — "Gone" is unrepresentable by move

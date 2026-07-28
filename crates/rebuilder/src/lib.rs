@@ -549,6 +549,7 @@ mod tests {
             recorded_at: format!("2026-05-29T00:00:{:02}Z", version % 60),
             payload: json!({ "key": format!("k{}", version), "value": version }),
             metadata: None,
+            ruleset_digest: None,
         }
     }
 

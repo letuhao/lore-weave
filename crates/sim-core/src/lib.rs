@@ -39,6 +39,6 @@ pub use seen::{SeenSet, SeenWindow};
 pub use types::{
     Admitted,
     Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
-    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest,
+    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest, RulesetMismatch,
     Seq, Tick, Violation,
 };

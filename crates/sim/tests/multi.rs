@@ -196,7 +196,7 @@ fn dissolve_migrating_transfers_all_pending_work() {
     assert_eq!(d.checkpoint.state.counters[&e], 1, "only #1 applied pre-dissolve");
 
     // Successor: rebuild from the dissolution checkpoint, re-admit the work.
-    let mut succ = Island::restore(d.checkpoint, Arc::new(TestRules { max_counter: 1_000_000 }));
+    let mut succ = Island::restore(d.checkpoint, Arc::new(TestRules { max_counter: 1_000_000 })).expect("TestDomain pins UNPINNED, so any TestRules matches");
     for (lane, item) in d.transferable {
         succ.submit(lane, Admitted::unchecked(item));
     }
@@ -301,7 +301,7 @@ fn checkpoint_restore_is_stepping_identical() {
         original.outcomes()[outcomes_before..].iter().map(|o| format!("{o:?}")).collect();
 
     // Restored: rebuild from checkpoint → same stream2.
-    let mut restored = Island::restore(cp, Arc::new(TestRules { max_counter: 1_000_000 }));
+    let mut restored = Island::restore(cp, Arc::new(TestRules { max_counter: 1_000_000 })).expect("TestDomain pins UNPINNED, so any TestRules matches");
     stream2(&mut restored);
     let tail_b: Vec<String> = restored.outcomes().iter().map(|o| format!("{o:?}")).collect();
 
@@ -328,7 +328,7 @@ fn restore_continues_seq_stamps() {
     while isle.step() != StepStatus::Idle {}
 
     let cp = isle.checkpoint().expect("healthy island checkpoints");
-    let mut restored = Island::restore(cp, Arc::new(TestRules { max_counter: 1_000_000 }));
+    let mut restored = Island::restore(cp, Arc::new(TestRules { max_counter: 1_000_000 })).expect("TestDomain pins UNPINNED, so any TestRules matches");
     let seq = restored.submit(Lane::Live, Admitted::unchecked(input(9, TestPayload::Noop, vec![], Fallback::Drop)));
     assert_eq!(seq, Seq(5), "continues after the 5 pre-checkpoint stamps");
 }

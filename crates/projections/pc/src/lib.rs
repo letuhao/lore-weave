@@ -201,6 +201,7 @@ mod tests {
             recorded_at: format!("2026-05-29T00:00:{:02}Z", version % 60),
             payload,
             metadata: None,
+            ruleset_digest: None,
         }
     }
 

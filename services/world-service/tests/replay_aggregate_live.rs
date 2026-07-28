@@ -83,6 +83,7 @@ fn mk(
         recorded_at: occurred_at.into(),
         payload,
         metadata: None,
+        ruleset_digest: None,
     }
 }
 

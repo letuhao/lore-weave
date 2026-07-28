@@ -190,3 +190,52 @@ fn an_island_reports_the_digest_of_the_rules_it_runs() {
          this is what makes replay able to notice the rules moved"
     );
 }
+
+/// RLS-A13 on the RESTORE path: an island may not resume under rules its
+/// checkpoint's digest does not describe.
+///
+/// `Island::new` closed the forgery at construction (there is no digest
+/// argument). `restore` is the one place the two can still disagree, because
+/// the checkpoint carries a HISTORICAL digest while the caller supplies rules
+/// NOW — and the case is not exotic: `engine_default()` is compiled INTO the
+/// binary, so a rolling deploy that changes one constant is exactly this.
+///
+/// Resuming anyway is silent replay divergence: the island keeps stepping,
+/// its events keep claiming the old pin, and nothing looks wrong until an
+/// oracle disagrees months later, by which time the evidence is overwritten.
+/// RLS-D12 already specifies the answer for an engine that cannot honour a
+/// stored ruleset — quarantine, never silently reinterpret.
+///
+/// This test can only be written with a domain whose rules_digest actually
+/// varies; `TestDomain` pins `UNPINNED` and can never mismatch, so the kernel's
+/// own suite could not have caught a regression here.
+#[test]
+fn restoring_under_different_rules_is_refused() {
+    use commit_service::Ruleset;
+
+    let rules_a = Arc::new(Ruleset::engine_default());
+    let mut b = Ruleset::engine_default();
+    b.combat.max_hit -= 1; // one balance number, the smallest real rules change
+
+    let isle: Island<CombatDomain> = Island::new(
+        IslandId(9),
+        7,
+        Arc::clone(&rules_a),
+        SeenWindow::Unbounded,
+        CombatState::default(),
+    );
+    let cp = isle.checkpoint().expect("a healthy island checkpoints");
+
+    // Same rules — resumes.
+    let ok = Island::<CombatDomain>::restore(cp.clone(), Arc::clone(&rules_a));
+    assert!(ok.is_ok(), "an island must resume under the rules it was pinned to");
+
+    // Different rules — refused, and the error names BOTH digests so an
+    // operator can resolve the right ruleset instead of guessing.
+    let err = Island::<CombatDomain>::restore(cp, Arc::new(b.clone()))
+        .err()
+        .expect("resuming under rules the checkpoint does not describe must be REFUSED");
+    assert_eq!(err.checkpoint, rules_a.digest());
+    assert_eq!(err.supplied, b.digest());
+    assert!(format!("{err}").contains(&rules_a.digest().to_hex()));
+}

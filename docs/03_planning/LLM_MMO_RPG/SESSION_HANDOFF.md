@@ -774,6 +774,79 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **B+A — THE PIN REACHES THE LOG, AND THE ONE PLACE IT COULD STILL LIE NOW REFUSES (2026-07-28).**
+> At the PO's call, after they stopped me choosing a direction and asked me to **evaluate first** —
+> which flipped two of my own conclusions. Worth recording as a method, not just an outcome.
+>
+> **What the evaluation changed.** I had ranked the `restore()` hole HIGH and recommended inverting
+> its parameter to a resolve-by-digest closure. Both were wrong:
+> 1. `recovery.rs` already records the architectural decision I had skimmed — *“**Why replay rather
+> than a checkpoint**: persisting island checkpoints … is strictly more machinery. The committed log
+> is ALREADY the recovery source of truth.”* Checkpoints are deliberately never persisted;
+> `restore` is called only in `crates/sim/tests/multi.rs`. So the hole is **latent by design**, not
+> live. HIGH → **LOW-MED**.
+> 2. The resolve-by-digest closure has **no store to resolve against** until F2 — i.e. it is a shape
+> with no consumer, **which is exactly what I refused to build `Manifest` for three hours earlier**.
+> I was about to do the thing I had just outlawed, *because it sounded more architectural*. That is
+> how this anti-pattern gets back in.
+> 3. And the two findings turned out to be **one problem seen from two ends**: recovery is replay,
+> replay is where *“which rules produced this event?”* must be answerable, and **the log had no
+> digest**. So `restore()` was the sideshow and **B was the critical path** — F3 (*replay under a
+> mismatched digest is refused*) was **unwritable**, exactly as F1's own test was unwritable while
+> the constants were literals. The same tell, one layer up.
+>
+> **B — the envelope carries the pin.** `ruleset_digest` added to `contracts/events/envelope.go`
+> (the Go SSOT) **and** `crates/dp-kernel/src/envelope.rs` (the Rust mirror), plus migration
+> **`0016_events_ruleset_digest`** (`CHAR(64)`, following the `0013 content_sha256` precedent), both
+> INSERT paths (`event_store_pg` + the channel writer), **and the read-back SELECT** — a pin the
+> store cannot return is a pin replay cannot check. `spine.rs` stamps `isle.digest.to_hex()` on every
+> committed event, taken from the island that produced it rather than from config that could describe
+> a different ruleset.
+>
+> **Three design calls, made rather than defaulted:**
+> · **NULL, never a 64-zero sentinel.** NULL is true in two distinct cases — rows written before
+> 0016, and events with no ruleset governing them at all (canon writes, Forge edits, admin actions).
+> A zero digest would claim *“pinned to the empty ruleset”*, which is a lie and precisely what
+> `zero-digest-gate` was built to outlaw this morning.
+> · **Optional by presence, STRICT by format** (64 lowercase hex, validated on both sides). This
+> envelope is the whole platform's wire shape; a required field breaks every existing producer (I14).
+> The *always stamp it* obligation lives with the game writer, where it is enforceable.
+> · **The full digest per row, not a 4-byte epoch + lookup table.** The indirection is ~8× cheaper
+> per row and was rejected: it trades a self-describing row for a mandatory join and a second table
+> that may never be lost. For 28 bytes that is a false economy, and RLS-A13 says *every event is
+> pinned*, not *references a pin*.
+>
+> **`scripts/envelope-mirror-gate.py` — the guard that should have existed all along.** Both envelope
+> files **state** the sync rule in their own doc comments (*“Adding/removing/renaming a field here
+> REQUIRES a paired change”*) and **nothing checked it**: three of the four parts of rule+SoT+gate+test.
+> The drift it permits is silent by construction — `serde` ignores unknown fields, Go tolerates
+> missing ones, so a field added on one side is simply dropped downstream and no test fails.
+> Extending an unguarded mirror without adding the guard would have repeated the exact mistake being
+> fixed. Checks names + order, deliberately **not types** (`uuid.UUID`/`Uuid` are one wire shape spelled
+> twice; a type table would be a second contract needing its own gate). Bite-proven on the real files.
+>
+> **A — `restore()` refuses.** `Island::restore` now returns `Result<Self, RulesetMismatch>` and
+> rejects rules whose digest disagrees with the checkpoint's, carrying **both** digests so an operator
+> can resolve the right ruleset instead of guessing. This is RLS-D12's *quarantine, never silently
+> reinterpret*, and the accepted cost is stated: a node that cannot resolve the checkpoint's ruleset
+> **cannot adopt the island at all**. The case is not exotic — `engine_default()` is compiled INTO the
+> binary, so **today the digest is a function of the BUILD**: a rolling deploy changing one constant
+> is exactly this mismatch. F2's immutable store is what makes it unreachable rather than merely
+> refused.
+> Note the test could only be written in `commit-service`: `TestDomain` pins `UNPINNED` and can never
+> mismatch, so the kernel's own suite could not have caught a regression here.
+>
+> **VERIFY:** workspace **655 pass / 6 fail** (the six are the pre-existing `service-http`
+> `jsonwebtoken-10.4.0` panics, untouched). Go `build` + `vet` + `test` green. Workspace and the
+> `release-commit` ship profile both build. Clippy clean on every touched crate. All **8** gates green
+> incl. the new one. Bite-proofs pasted: the mirror gate on the real files, and the Go format
+> validator relaxed → 3 cases red.
+>
+> **What F3 can now be written against, which it could not this morning:** the log carries the pin,
+> the store reads it back, and `restore` already refuses the checkpoint-side mismatch. What remains is
+> the replay-side comparison — and **the ruleset store to resolve the historical rules FROM**, which
+> is F2.
+
 > ✅ **F1 — THE DIGEST IS REAL, AND IT NOW HASHES SOMETHING THAT GOVERNS (2026-07-28).**
 > `crates/ruleset-core` ships: `Ruleset` · canonical encoding (RLS-D5) · BLAKE3 digest (RLS-A13) ·
 > `Provenance` (RLS-A15) · `ResolvedRuleset`. **154 tests pass, 0 fail** (13 new + 85 commit-service

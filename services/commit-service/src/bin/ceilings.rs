@@ -322,6 +322,7 @@ fn turn_envelope(reality: Uuid, encounter: &str, version: u64, ts: &str) -> Even
         recorded_at: ts.into(),
         payload: serde_json::json!({ "turn_number": version.to_string(), "events": events }),
         metadata: Some(serde_json::json!({ "producer_service": "ceilings-harness" })),
+        ruleset_digest: None,
     }
 }
 

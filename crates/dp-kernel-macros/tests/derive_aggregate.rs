@@ -75,6 +75,7 @@ fn env(event_type: &str, agg_type: &str, agg_id: &str, version: u64, payload: se
         recorded_at: "2026-05-29T00:00:00Z".into(),
         payload,
         metadata: None,
+        ruleset_digest: None,
     }
 }
 
