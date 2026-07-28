@@ -71,9 +71,20 @@ retry-in-cursor + explicit skip. And the world-setup "not searchable" banner (`d
 summed five outcomes and blamed one cause — it could send an author to fix a correct setting.
 
 **Two findings raised, NOT acted on (authorial calls, not mine):**
-- **`Cộng Hưởng Tần Số` and `Ngự Khí Thuật` carry near-verbatim identical definitions.** A writer
-  grounding on either gets the same text, so two intended concepts collapse into one. Deciding what
-  each means is the author's.
+- ~~**`Cộng Hưởng Tần Số` and `Ngự Khí Thuật` carry near-verbatim identical definitions.**~~
+  **RESOLVED — and it was my mess, not the pipeline's.** `glossary_build_runs.worklist` carried the
+  receipts: both were created by *my own smoke tests* (`why="live fix-A check"`, 12:35 and 12:48),
+  the same check run twice with a different invented name each time. The identical definitions were
+  the inevitable result. Both soft-deleted (in trash, reversible); the book is back to **14 authored
+  entities**. Neither had reached Neo4j, so no KG cleanup was needed.
+
+  **The real finding is a process gap: a live smoke wrote content into the dogfood book.** The repo
+  forbids a *test* touching a real DB (`db-safety-gate.py`), but nothing covers a live smoke
+  CREATING real content in a real user's book — same class, slower fuse, and the debris grounds the
+  writer as if it were canon. The test account already has plenty of throwaway books
+  (`Arc-Test …`, `Scenario2 …`). **Rule going forward: a read-only smoke may use any book; a smoke
+  that creates or edits content must target a throwaway one.** Keeping the `why="live … check"`
+  label is what made this diagnosable — keep doing that.
 - **The 15 draft entities do NOT block grounding** — the anchor pre-load and `known-entities` both
   run with no status filter deliberately, so drafts already ground. Promotion is a UI/authorial
   nicety, not a prerequisite. (`merge_candidates` is 0 because the curation pass is agent-invoked
