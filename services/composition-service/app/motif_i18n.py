@@ -335,7 +335,23 @@ _URL_RE = re.compile(r"https?://\S+|\w+://\S+")
 # applied to a class it does not describe. A Japanese string is not incidentally spelled
 # "Confirm cost". For a target that does not write in the Latin alphabet the bar is one
 # translatable word.
-ECHO_MIN_WORDS = 3
+#
+# AND THE CORPUS MATTERS AS MUCH AS THE TARGET. This module serves the NARRATIVE corpus —
+# motif and arc-template text, every string of it authored prose. `scripts/i18n_translate.py`
+# serves the UI-string corpus, which is full of product and technical names (`LM Studio`,
+# `API Key`, `Top-K`, `JSON`) that a translator is RIGHT to keep verbatim. Those two facts
+# need two calibrations, and running one rule over both is the same category error a third
+# time. Measured on the real corpora:
+#
+#   · Title-Case exemption — indispensable for the UI corpus (309 → 66 false hits), and
+#     worth exactly ZERO here: not one verbatim Title-Case string in 17 locales × 84
+#     motifs is legitimate. It cost only the detection of the field that matters most, a
+#     motif NAME left in English, which is the whole point of a translated library.
+#     So: no exemption in this module.
+#   · Latin bar — 1 flags 79 values here, and `tension` / `suspense` / `anticipation`
+#     really are French words. 2 flags exactly two, BOTH real (`grim-resolve`,
+#     `moral-tension` sitting in the hand-written Vietnamese). 3 flags none. So: 2.
+ECHO_MIN_WORDS = 2
 ECHO_MIN_WORDS_NON_LATIN = 1
 NON_LATIN_TARGETS = frozenset({
     "ja", "ko", "zh-CN", "zh-TW", "ru", "ar", "hi", "bn", "th",
@@ -347,27 +363,11 @@ def prose_words(value: str) -> list[str]:
     return re.findall(r"[A-Za-z]{2,}", _URL_RE.sub("", _PLACEHOLDER_RE.sub("", value)))
 
 
-def has_lowercase_prose(value: str) -> bool:
-    """True when the value contains an ordinary lowercase word — i.e. real prose.
-
-# ...and the same trap on the OTHER side. A bar of one word for a non-Latin target
-# flagged `AI`, `JSON`, `Ollama`, `LM Studio`, `OAuth 2.1`, `200 OK`, `USD` — 309 of
-# them — as untranslated. They are not: an acronym, a brand, or a protocol name is
-# CORRECTLY left verbatim in every language, and "translating" them would be the
-# defect. Twice now a threshold justified by one class of input has been applied to a
-# class it does not describe, so state the discriminator instead of tuning a number:
-#
-#   a verbatim value is a defect only if it contains ORDINARY PROSE —
-#   at least one all-lowercase word.
-#
-# English prose always carries one (`Confirm cost` → "cost"; `Never allow this tool to
-# run` → four). A pure Title-Case / ALL-CAPS token string is a NAME — `LM Studio`,
-# `API Key`, `Top-K`, `Beat Sheet` — and a name kept as-is is a translator doing their
-# job. Conservative in the right direction: it under-reports a Title-Case label that
-# genuinely should have been localized, rather than crying wolf on every acronym in
-# the product.
-    """
-    return any(w.islower() for w in prose_words(value))
+# The UI corpus's extra discriminator lives in `scripts/i18n_translate.py`: there, a
+# verbatim value is a defect only if it contains an all-lowercase word, because a pure
+# Title-Case/ALL-CAPS token string is a NAME (`LM Studio`, `API Key`, `Top-K`) and keeping
+# a name is a translator doing their job. It is absent here ON PURPOSE: this corpus has no
+# product names, and the exemption would hide exactly the motif titles a reader needs.
 
 
 def echo_min_words(lang: str | None) -> int:
@@ -383,8 +383,9 @@ def is_untranslated_echo(src_val: str, out_val: Any, lang: str | None = None) ->
     """
     if not isinstance(out_val, str) or out_val != src_val:
         return False
-    if not has_lowercase_prose(src_val):
-        return False          # a name/acronym kept verbatim is correct in every language
+    # NO Title-Case exemption in the narrative corpus — see the calibration note above.
+    # A motif called "The Witness Who Lies" that comes back as "The Witness Who Lies" in
+    # a Japanese library is the defect, not a name being respected.
     return len(prose_words(src_val)) >= echo_min_words(lang)
 
 

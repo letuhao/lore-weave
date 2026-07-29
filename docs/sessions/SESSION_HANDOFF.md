@@ -26,14 +26,26 @@ echoed), read back as `ja` with `text_fallback=false` and beat tension preserved
 `usage_outbox` rows = 2 LLM calls. **Re-running the identical batch: `already_translated`
 ×2, `written: 0`, billing count unchanged at 2 — no double charge.**
 
-### Known, stated bias in the echo detector
+### The echo detector is now calibrated PER CORPUS — the third mis-generalisation, closed
 
-`has_lowercase_prose` deliberately does not flag a verbatim **Title-Case** string, so a
-motif *name* left in English would go unreported. That is the conservative side of a
-measured trade: including Title-Case re-flags `LM Studio` / `API Key` / `Top-K` /
-`Beat Sheet`, and excluding it is what took the FE corpus 309 → 66. In practice the models
-translate names fine (食い違う帳簿 · Chìa khóa để lại trong ổ · 두 번 불린 이름). Recorded
-because it is a real hole in the *detector*, not because it has bitten.
+I logged the Title-Case blind spot as an accepted trade. The human refused it: *a fixed
+English name is not good for i18n display* — and they were right, because the trade was
+never real. It assumed one rule over two corpora.
+
+The same rule had already been mis-generalised twice: a ≥3-word bar justified by
+**cognates** applied to non-Latin targets (no cognate defence exists there), then a
+Title-Case exemption justified by **product names** applied to the narrative corpus
+(which has none). Measured on each corpus separately:
+
+| | UI strings (`scripts/i18n_translate.py`) | narrative (`app/motif_i18n.py`) |
+|---|---|---|
+| Title-Case exemption | **keep** — `LM Studio`, `API Key`, `Top-K` are names; it is what took 309 → 66 | **drop** — **zero** legitimate hits across 17 locales × 84 motifs; it cost only the detection of a motif TITLE left in English |
+| Latin bar | **3** | **2** — bar 1 flags 79 of which `tension`/`suspense` really are French; bar 2 flags **2, both real** |
+
+**Lowering the bar immediately found two real defects** in the *hand-written* Vietnamese:
+`grim-resolve` and `moral-tension` sitting untranslated as `emotion_target`. Fixed by hand
+(`vi` is an authored language — the tool refuses to touch it, correctly) → **17/17 clean**.
+FE corpus verified unchanged at 66, so the split did not silently re-calibrate the other side.
 
 
 ## 🧬 ARC TEMPLATE i18n — the last table with language in its identity key (2026-07-30)
