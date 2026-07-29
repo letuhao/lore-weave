@@ -841,8 +841,52 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > * **Triggers, not builds** (`NV-2` — no subject yet): `QTY-A5` never-reuse → **`Q0b`** (a binding is
 >   write-once, so a declared set cannot change until an epoch switch) · `QTY-A13` contribution-to-an-
 >   undeclared-ordinal → **`Q4`** (there are no L3 sources to contribute).
-> * **B2:** migration + `contracts/meta/events_allowlist.yaml` row (**both** Go and Rust mirrors read
->   it) + sqlx adapter for `meta-rs` + `--meta-url` on the spine + `BindingStore` file → `reality_registry`.
+>
+> ✅ **`Q1 B2a` — THE BINDING GETS A HOME, AND `QTY-Q6` CLOSED WITH THE OPPOSITE ANSWER (checkpoint 2).**
+>
+> **There is no ordinal-assignment ledger, and building one would have been the bug.** `QTY-Q6` asked
+> *where the ledger lives* and doc 35 §4.6 guessed *"in `reality_registry`"*. Both halves were wrong.
+> The ordinal → identity assignment for epoch N **is** the quantity table inside `ruleset_N`, already
+> immutable and content-addressed (`RLS-D6/D18`); a second table would be **a copy of hashed bytes into
+> unhashed ones**, free to drift from what the digest says. What is actually missing is the **history**
+> — never-reuse at an epoch switch needs every ordinal a reality has *ever* assigned, not the ones its
+> current ruleset still declares. And a mutable column on `reality_registry` would have destroyed
+> exactly that. So: `migrations/meta/033_reality_ruleset_binding`, `(reality_id, epoch) → digest`,
+> **one row per epoch, append-only**; the high-water mark is `max(n)` over prior epochs' rulesets,
+> recomputed from the store and structurally unable to disagree with the bytes it comes from.
+>
+> **The append-only trigger was BYPASSABLE and I found it by attacking it, not by testing it.** An
+> ordinary trigger is an ORIGIN trigger, and `session_replication_role = replica` — what
+> `pg_restore --disable-triggers` and logical-replication apply both use — skips it. Measured on the
+> real table before the fix: **the UPDATE rewrote a bound digest and the DELETE removed the epoch,
+> both silently.** Fixed with `ENABLE ALWAYS`, which costs nothing here because INSERT is the only
+> operation this table has. The same probe paid twice: it proved the `epoch >= 1` CHECK — shadowed by
+> the gapless trigger for every input a client can send, so it looked like dead SQL — is reachable in
+> exactly that mode, and is the last line standing when triggers are off. **Non-vacuity register row 18.**
+>
+> **Widening `db-safety-gate`'s shell selector uncovered SIX scripts it had never read.** The gate's
+> own throwaway vocabulary had accepted `smoke` since it was written, while the selector deciding
+> *which files to open* only accepted `test` — so every `*-smoke.sh` dropping a database was
+> default-uncovered (**row 16**). The first fix, reusing that vocabulary wholesale, was itself wrong:
+> in a *database name* `audit` means "disposable", in a *file name* it means "operates on audit data",
+> and it pulled a production retention cron into test scope. And the file-level pragma still had its
+> own `lines[:60]` window — **row 3 of the register, in the same file, twenty lines away** (**row 17**).
+> Three bite-tests pasted in the commit message.
+>
+> **VERIFY:** workspace **1969 / 0** (+4) · Go `contracts/meta` green · **live smoke: 15 claims against
+> a real Postgres** (`bash scripts/reality-binding-migration-smoke.sh` — append-only under two session
+> modes, gapless epochs, digest format, down-migration reversibility) · 7 python gates + 4 shell lints OK.
+>
+> * **B2b (next):** sqlx adapter for `meta-rs`'s `ConnectionWriter`/`TransactionExecutor`/`QueryBuilder`
+>   (note: those traits are **sync** and sqlx is async — the adapter needs `block_in_place` plus a
+>   refusal to construct on a current-thread runtime, or the spine gets a panic instead of an error),
+>   `BindingStore` behind a trait with the file impl kept, `--meta-url` on the spine, live create → load
+>   through Postgres. Writes MUST go through `meta_write` — `meta-write-discipline-lint` scans `crates/`
+>   and `services/`, and a literal `INSERT INTO reality_ruleset_binding` outside `contracts/meta` or
+>   `crates/meta-rs` fails it.
+> * **B3:** the doc 35 §12 sweep + 16a/26 cross-refs + a **store round-trip test** proving ordinals
+>   survive `create → store → load` (the §12 exit criterion names it; the loader tests stop at
+>   create → resolve → digest).
 >
 > **A pattern worth recording against doc 35 §12 itself:** its rows bundle *mechanism + enforcement*,
 > and the enforcement's subject often arrives one or two rows later. That is now **three times**

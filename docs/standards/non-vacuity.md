@@ -12,7 +12,7 @@
 > returned **zero hits**.
 >
 > That is the repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing**. The
-> consequence is measurable: the same defect shipped **ten times** (§4), each fixed locally in the
+> consequence is measurable: the same defect shipped **eighteen times** (§4), each fixed locally in the
 > place it happened, because the next person had no page to read. This is that page.
 
 ---
@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — fifteen occurrences, one caught by a test
+## 4. The register — eighteen occurrences, one caught by a test
 
-Kept because the count is the argument. **Fourteen of the fifteen were found by a human or an agent
+Kept because the count is the argument. **Seventeen of the eighteen were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -149,6 +149,9 @@ that inspects the check itself can see it.
 | 13 | `crate-purity-gate` R3 stripped `//` with a line regex, so a `//` **inside a string literal** ate the violation after it — the check never saw the code | NV-3 | `/review-impl` | fixed 2026-07-29 — one shared `gatelib.strip_comments` |
 | 14 | the same gate's R2 checked only **direct** external deps, so an I/O crate added to `ruleset-core` reached the laws past R1 and R2 | NV-3 | `/review-impl` | fixed 2026-07-29 — widened to the workspace closure |
 | 15 | the shared stripper was string-blind under `keep_strings=True` — the fork `hot-path-gate` runs — so a `//` inside a string ate the rest of the line and its findings with it | NV-3 | `/review-impl`, reviewing the FIX for row 13 | fixed 2026-07-29 |
+| 16 | `db-safety-gate`'s shell selector was `"test" in base`, while the **same file's** `RE_THROWAWAY` had always accepted `smoke` — **six** DB-dropping smoke scripts were default-uncovered | NV-4 | writing a seventh and finding the gate silent on it | fixed 2026-07-29 (`Q1 B2a`) |
+| 17 | `db-safety-gate`'s **file-level** pragma window `lines[:60]` — row 3 fixed the *inline* pragma window in this very file and left its sibling alone | NV-5 | the exemption landed at line 69 and was discarded | fixed 2026-07-29 (`Q1 B2a`) |
+| 18 | migration 033's append-only trigger was an ORIGIN trigger, so `session_replication_role = replica` (`pg_restore --disable-triggers`, logical-replication apply) skipped it — the UPDATE rewrote a bound digest and the DELETE removed the epoch | NV-3 | probing the guard in the one mode that turns triggers off, before writing the test that asserts it | fixed 2026-07-29 (`Q1 B2a`) — `ENABLE ALWAYS` |
 
 **Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
 evidence for this page existing: each was fixed correctly, in place, by someone who had just
@@ -182,6 +185,26 @@ one careless afternoon — six of these landed in a single day, every one NV-3, 
 reading rather than by running. **§6's "not yet mechanical" is no longer a footnote; it is the finding.**
 The cheapest real step is a lint that reds when a boolean-forked function's tests only ever pass one
 value of the fork.
+
+**Rows 16 and 17 are both in `db-safety-gate.py`, and row 17 is row 3 again — in the same file, twenty
+lines away.** Row 3 fixed the *inline* pragma window; the *file-level* pragma kept its own arbitrary
+`lines[:60]` and discarded an exemption written at line 69, beside the line it explained. Row 16 is
+the sibling-disagreement shape one level up: the gate's own throwaway vocabulary (`test|smoke|audit|…`)
+had accepted `smoke` since the file was written, while the selector deciding *which files to read* only
+accepted `test` — so a correct decision in one half silently narrowed the scope in the other. **Six
+scripts, every one of them dropping a database, had never been looked at.** The first attempt to fix it
+by reusing that vocabulary wholesale was also wrong, and instructively: in a *database name* `audit`
+means "disposable", in a *file name* it means "operates on audit data", and the reuse pulled a
+production retention cron into the test-file scope. Same word, opposite meaning, one directory apart.
+
+**Row 18 is the first entry found by attacking a guard before writing its test**, and it argues for
+doing that by default. The trigger was correct against every client; the bypass was a documented
+one-line GUC that ordinary use never sets and every `pg_restore` does. Nothing in the test suite would
+ever have supplied it — the "input that reaches the guarded thing without passing the guard" was a
+*session mode*, not a value. The same probe paid twice: it also proved that the `epoch >= 1` CHECK,
+which the gapless trigger shadows for every input a client can send, is reachable in exactly that mode
+— so a constraint that looked like dead SQL is the one thing still standing when the triggers are off.
+**Ask of every guard: what turns this off, and who does that routinely?**
 
 ---
 

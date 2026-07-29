@@ -10,7 +10,8 @@ This gate is the mechanical layer of a three-part defense (CLAUDE.md › "Destru
 ops in tests"): the CLAUDE.md rule (agents read it) + this commit gate + the runtime
 `testsafe.EnsureThrowawayDB` guard in the test helpers.
 
-Flags, in TEST files only (*_test.go, test_*.py / *_test.py / conftest.py, test *.sh):
+Flags, in TEST files only (*_test.go, test_*.py / *_test.py / conftest.py, and any
+*.sh whose name carries a harness marker: test | smoke | drill):
   - an UNSCOPED `DELETE FROM <table>`  (no WHERE on the statement line)
   - any `TRUNCATE`
   - `DROP TABLE | DATABASE | SCHEMA`
@@ -22,8 +23,9 @@ Each finding must be FIXED (scope the statement with a WHERE; point the URL at a
 throwaway DB whose name carries a marker; guard the helper with
 `testsafe.EnsureThrowawayDB(current_database())`) OR consciously EXEMPTED with a pragma:
   - inline    `db-safety-gate: ok — <reason>`   on the finding line or the line above
-  - file-wide `db-safety-gate: file-ok — <reason>` within the first 60 lines (for a pure
-              sqlmock / SQL-string-assertion test file that never touches a real DB)
+  - file-wide `db-safety-gate: file-ok — <reason>` ANYWHERE in the file (for a pure
+              sqlmock / SQL-string-assertion test file that never touches a real DB,
+              or a harness whose target DB name is a non-overridable literal)
 False positives are expected and fine — exempt them with a one-line reason.
 
 Usage:
@@ -49,6 +51,10 @@ EXCLUDE_DIRS = {
 PRAGMA = "db-safety-gate:"            # inline / file-level exemption marker
 FILE_PRAGMA = "db-safety-gate: file-ok"
 
+# Filename markers that identify a shell script as a TEST HARNESS. Distinct from
+# RE_THROWAWAY below on purpose — see the note in is_test_file().
+RE_TEST_SCRIPT = re.compile(r"(?i)(test|smoke|drill)")
+
 # ── what counts as a TEST file (only there is unscoped destruction a landmine) ──
 def is_test_file(path: str) -> bool:
     p = path.replace("\\", "/")
@@ -57,7 +63,22 @@ def is_test_file(path: str) -> bool:
         return True
     if base == "conftest.py" or (base.startswith("test_") and base.endswith(".py")) or base.endswith("_test.py"):
         return True
-    if base.endswith(".sh") and ("test" in base):
+    # A shell script qualifies on any marker that names it as a HARNESS.
+    #
+    # This said `"test" in base` until a `*-smoke.sh` that DROPs and CREATEs a
+    # database walked straight past the gate — and it was not alone: widening it
+    # brought SIX previously-unscanned scripts into scope on the first run, every
+    # one of them dropping a database. `smoke` was already an accepted marker
+    # twenty lines below (RE_THROWAWAY), so one half of the gate knew the word
+    # counted and the other did not (docs/standards/non-vacuity.md, NV-4).
+    #
+    # It is deliberately NOT RE_THROWAWAY, though, and the first attempt to reuse
+    # it was wrong: the two vocabularies answer different questions. In a DATABASE
+    # NAME, `audit` means "this database is disposable". In a FILE NAME it means
+    # "this operates on audit data" — and reusing the set pulled in
+    # event-audit-retention-cron.sh, a PRODUCTION cron whose partition drops are
+    # its whole job. Same word, opposite meaning, one directory apart.
+    if base.endswith(".sh") and RE_TEST_SCRIPT.search(base):
         return True
     return False
 
@@ -207,7 +228,20 @@ def _pragma_near(lines: list[str], idx: int) -> bool:
 
 def scan_test_file(path: str) -> list[Finding]:
     lines = _lines(path)
-    if any(FILE_PRAGMA in ln for ln in lines[:60]):
+    # Anywhere in the file, NOT a fixed leading window.
+    #
+    # This was `lines[:60]`, and it bit on its second use: restore-drill.sh's
+    # exemption sits at line 69, beside the `DRILL_DB="drill_${DRILL_TS}"` line
+    # it explains, because that is where a reader needs to see it. The author
+    # writes the reason next to the reason; the window then discards it and
+    # reports the file as un-exempted, which reads as "you did not write one".
+    #
+    # This is the fourth non-vacuity shape by name — the escape hatch cannot
+    # reach its reason (docs/standards/non-vacuity.md, NV-5), already recorded
+    # against three sibling gates. A file-level pragma is a deliberate marker
+    # carrying a written justification; there is no threat model in which
+    # hiding it below an arbitrary line number is the abuse to defend against.
+    if any(FILE_PRAGMA in ln for ln in lines):
         return []
     out: list[Finding] = []
     # The production-DSN read is checked FIRST and is NOT exempted by guarded-dir:

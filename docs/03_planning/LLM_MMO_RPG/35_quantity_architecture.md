@@ -203,6 +203,17 @@ id→ordinal map anywhere. Putting the table in the hashed bytes makes an ordina
 ruleset with a different digest*, which the existing early-binding machinery already refuses to apply
 to a live reality (`crates/ruleset-loader/src/binding.rs:142-159`).
 
+**Where "never reused" is actually checked, and why it needs nothing new** (`Q1 B2a`, closing
+[`QTY-Q6`](#132-still-open)). The clause only has teeth across an **epoch switch** — within one
+ruleset the ordinal *is* the position, and the merge has no verb for removal
+(`ruleset-loader/tests/quantities.rs::a_lower_layers_declaration_survives_every_higher_layer`), so
+nothing can be removed to begin with. At a switch the high-water mark is `max(n)` over the rulesets
+of **every prior epoch**, and each of those is already durable in the content store. So the durable
+state this axiom implies is not an ordinal ledger — it is the **epoch history**,
+`(reality_id, epoch) → ruleset_digest`, append-only, in `migrations/meta/033_reality_ruleset_binding`.
+Writing the assignment into a second table would copy hashed bytes into unhashed ones and give them
+a way to disagree.
+
 > **QTY-A6 — the ARRAY WIDTH is a compile-time constant. The IDENTITIES inside it are declared per
 > reality and pinned by the digest.** A reality uses a prefix `0..n` of a fixed `N`; `n` is in the
 > hashed bytes, `N` is in the binary.
@@ -358,7 +369,7 @@ occurrences of *owner*, *user*, *tenant* or *scope key*.
 | **Tier** | **Per-reality.** A declared quantity set belongs to the reality, and its scope key is `reality_id` — inherited transitively because the declarations live *inside the hashed ruleset*, which a reality is bound to once (RLS-A3). |
 | **Who may write** | Whoever may author that reality's ruleset. **Never a regular user against a shared row** — there is no shared row: content-addressing makes every declaration set private to the digest that contains it. |
 | **System tier** | `engine_default.toml` — read-only to every user, admin-managed, cloned rather than edited. Same discipline as RLS-D19's presets (`16:230-232`), which QTY inherits rather than restates. |
-| **The one thing needing a scope key of its own** | The **ordinal-assignment ledger** that QTY-A5's never-reuse rule implies. It is per-reality state, not content, and it belongs with the binding — i.e. in `reality_registry`, not on disk. See `QTY-Q6`. |
+| **The one thing needing a scope key of its own** | The **epoch history** — `(reality_id, epoch) → ruleset_digest`, scope key `reality_id`, in `reality_ruleset_binding` (`migrations/meta/033`), append-only. This row originally said "the ordinal-assignment **ledger** … in `reality_registry`"; `QTY-Q6` closed with a **different** answer, and both halves of the old wording were wrong. There is no ledger (the assignment already lives in the hashed ruleset — duplicating it into an unhashed table is what creates drift), and it is not a column on `reality_registry` (one mutable column per reality destroys the history never-reuse is computed over). See [`QTY-Q6`](#132-still-open). |
 
 ---
 
@@ -895,7 +906,7 @@ ground that it is the **cheapest** slice (one branch in `canon.rs`, one version 
 | Id | Question |
 |---|---|
 | **QTY-Q5** | **Cross-reality quantity translation.** RLS-A6 says identical strings across realities are unrelated **by design** (`16:296-298`), so a global vocabulary is not available. That leaves an explicit per-reality-pair mapping with a declared behaviour for unmapped quantities. `PROG_001`'s current behaviour is a **silent drop** (`:932,963`), which is a defect. **This retires the reasoning behind `DF7-D12`**, whose justification (*"slots re-derive automatically"*) assumed both realities share a slot set |
-| **QTY-Q6** | **Where does the ordinal-assignment ledger live?** QTY-A5's never-reuse rule implies durable per-reality state that is *not* content. It belongs with the binding in `reality_registry`, which is also `Q0`'s prerequisite — but nobody has specified its write path or who may mutate it |
+| ~~**QTY-Q6**~~ | ✅ **CLOSED by `Q1 B2a`, 2026-07-29 — and the answer is that the ledger does not exist.** The question assumed a ledger was needed. It is not: **the ordinal → identity assignment for epoch N *is* the quantity table inside `ruleset_N`**, which is content-addressed, immutable and already durable (`RLS-D6`/`D18`). A separate table would be **a copy of hashed bytes into unhashed ones**, and a copy not covered by the digest can drift from what the digest says — the one thing the digest exists to make impossible. What is genuinely missing is not the assignment but the **history**: honouring never-reuse at an epoch switch needs every ordinal a reality has *ever* assigned, not the ones its current ruleset still declares. So the durable state is `(reality_id, epoch) → ruleset_digest`, **append-only, one row per epoch** — `migrations/meta/033_reality_ruleset_binding.up.sql`. The high-water ordinal is then `max(n)` over the rulesets of all prior epochs, recomputed from the content store and structurally unable to disagree with the bytes it is derived from. This also answers the *"nobody has specified its write path"* half: writes go through `MetaWrite` (I8) against the `reality_ruleset_binding` row in `contracts/meta/events_allowlist.yaml`, emitting `reality.ruleset.bound`; and **nothing may mutate it** — append-only is enforced by an `ENABLE ALWAYS` trigger, not by convention. Note the original guess (*"in `reality_registry`"*) was **wrong in a load-bearing way**: one mutable column per reality would have destroyed exactly the history never-reuse depends on |
 | **QTY-Q7** | **Can an L3 source read or mutate a SECOND actor?** (dual cultivation, master→disciple, owner→pet.) This is a **kernel** question before it is a shape question: `sim-core` makes entity-in-exactly-one-island structural, so a cross-actor source spanning islands is not merely a signature change. Blocks `mị ma song tu` and `ngự thú` (§6.5). `PROG-D33` defers the *accrual* half to V1+30d; the *stat-term* half is unowned |
 | **QTY-Q8** | **XST-R7's three edges** (§6.5.1): `combine` is per-decl not per-term (mixed polynomials inexpressible); any zero term annihilates under Product; the n-ary milli divisor is unspecified corpus-wide |
 | **QTY-Q9** | **Threshold-conditional terms** — *"+0.5×qi, but only above realm 3"* has no home (§6.5.2). The hole an author is most likely to hit first |

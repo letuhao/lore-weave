@@ -28,6 +28,23 @@ entries:
       - op: UPDATE
         event_name: reality.status.changed
 
+  # ── Q1 B2 (2026-07-29) — RLS-A3 early binding, one row per ruleset epoch
+  #
+  # INSERT is the ONLY operation this table has. It is append-only in the DB
+  # (033's trigger refuses UPDATE/DELETE for every role), so declaring an UPDATE
+  # or DELETE event here would advertise a write that cannot happen — the
+  # "API advertises only what the engine wires" rule, applied to a contract file.
+  #
+  # `reality.ruleset.bound` fires for epoch 1 (creation) AND every later epoch
+  # (a rules change). A consumer that cares about the difference reads the epoch
+  # in the payload rather than relying on two event names for one fact.
+  - table: reality_ruleset_binding
+    owner: commit-service (creation + epoch switch); read by every node at Cold -> Hot
+    notes: "Q1 B2 / doc 16 §12 + doc 35 §13.2 QTY-Q6 — per-epoch reality -> ruleset digest. Append-only; the never-reuse high-water ordinal is recomputed from these epochs' rulesets, so an epoch is never rewritten."
+    events:
+      - op: INSERT
+        event_name: reality.ruleset.bound
+
   # ── L1.A-1 §1.2 — per-reality migration tracker (no outbox events; orchestrator owns state)
   - table: instance_schema_migrations
     owner: migration-orchestrator

@@ -102,7 +102,8 @@ same device as `s1b_has_no_subject_yet_and_says_so`.
 | # | Boundary | Done when |
 |---|---|---|
 | **B1** | **L2 substrate in the hashed bytes** — `QuantityName`/`QuantityTable`, `Ruleset.quantities`, canon `v2→v3` + upcast, `A12` repin, `UnionById` merge in `RulesetPatch`, the three validators that bite, S1b's floor+mutability arms (forced — the trigger reds), classification rows | a reality declares `qi` (an identity the engine has never heard of) and it survives **create → store → load → digest** with ordinals unchanged; a v2 artifact still loads |
-| **B2** | **the ledger reaches the meta DB** — migration, `events_allowlist.yaml` row (**both mirrors**), sqlx adapter for `meta-rs`, `--meta-url` on the spine, `BindingStore` file → `reality_registry` | never-reuse has a home and Q0b's blocker is gone |
+| **B2a** | **the binding gets a home in the meta DB** — `migrations/meta/033_reality_ruleset_binding`, the `events_allowlist.yaml` row + a mirror test in **each** language, live migration smoke | the table exists, is append-only against every role *including* the mode that turns triggers off, and both parsers agree the row is there |
+| **B2b** | **Rust reaches it** — sqlx adapter for `meta-rs`, `BindingStore` behind a trait, `--meta-url` on the spine, live create → load through Postgres | Q0b's blocker is gone: a reality's binding survives a process restart in a table rather than a file |
 | **B3** | **doc 35 §12 sweep** + 16a/26 cross-refs + handoff | no row in §12 states a fact that contradicts the code |
 
 **POST-REVIEW at the end of B1** — it is the load-bearing half (author-declared identities entering
