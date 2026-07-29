@@ -24,6 +24,7 @@ from app.engine.plan_forge.prompts import (
     repair_user_prompt,
 )
 from app.engine.plan_forge.refine import accept_refine, artifact_json_for_refine, merge_refine_output
+from app.engine.plan_forge.schemas import ANALYZE_SCHEMA, SPEC_SCHEMA
 
 
 async def _parse_with_repair(
@@ -35,9 +36,18 @@ async def _parse_with_repair(
     *,
     temperature: float = 0.2,
     max_tokens: int = 8000,
+    schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """One step, then ONE repair on a parse failure.
+
+    With `schema` the shape is enforced at the decoder, so the repair becomes what it should always
+    have been — a fallback for a provider that will not take the grammar — rather than the routine
+    cost of asking a model for JSON in prose. The repair deliberately drops the schema: repeating a
+    grammar-constrained call that came back unparseable fails the same way, because the model is not
+    disagreeing about the format."""
     content = await client.chat(
         step=step, system=system, user=user, temperature=temperature, max_tokens=max_tokens,
+        schema=schema,
     )
     try:
         return extract_json_object(content)
@@ -66,6 +76,7 @@ async def analyze_markdown(
         ANALYZE_SYSTEM,
         analyze_user_prompt(source_markdown, block),
         "analyze_repair",
+        schema=ANALYZE_SCHEMA,
     )
     analyze.setdefault("version", 1)
     return analyze, checksum
@@ -88,6 +99,7 @@ async def materialize_from_analyze_async(
         materialize_user_prompt(analyze_json, source_checksum, block),
         "materialize_repair",
         max_tokens=12000,
+        schema=SPEC_SCHEMA,
     )
     spec = normalize_spec(spec, source_checksum, analyze=analyze)
     if analyze.get("open_questions") and not spec.get("meta", {}).get("open_questions"):

@@ -59,8 +59,24 @@ class ProviderPlanForgeLLM:
         temperature: float = 0.2,
         max_tokens: int = 8000,
         cancel_check: Callable[[], Awaitable[bool]] | None = None,
+        schema: dict[str, Any] | None = None,
     ) -> str:
+        """One chat step. With `schema`, the shape is enforced by the DECODER where the provider
+        supports it — `provider-registry.forwardOptionalChatFields` passes `response_format` through
+        to LM Studio's grammar layer.
+
+        This path is the ONE that works without the section classifier, and it was the only one that
+        could not constrain its output: both steps asked for free text, hand-parsed it, and on a
+        parse failure spent a SECOND 12,000-token call asking the model to repair its own JSON.
+
+        A provider that REJECTS the schema falls back to free-form, so the worst case is exactly
+        today's behaviour rather than a lost step."""
         check = cancel_check if cancel_check is not None else self._cancel_check
+        fmt: dict[str, Any] = {"type": "text"}
+        if schema is not None:
+            fmt = {"type": "json_schema",
+                   "json_schema": {"name": step.replace(" ", "_")[:40] or "result",
+                                   "schema": schema}}
         try:
             job = await self._llm.submit_and_wait(
                 user_id=self._user_id,
@@ -72,7 +88,7 @@ class ProviderPlanForgeLLM:
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    "response_format": {"type": "text"},
+                    "response_format": fmt,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                     **_NO_THINK,
@@ -81,6 +97,15 @@ class ProviderPlanForgeLLM:
                 cancel_check=check,
             )
         except LLMError as exc:
+            if schema is not None:
+                # Schema support is not a platform requirement. Retrying once WITHOUT it covers both
+                # a rejection and a transient failure, and a genuine outage fails again immediately —
+                # which is cheaper than a message-shape heuristic that guesses which one it was.
+                logger.info("plan_forge step=%s: schema rejected or call failed (%s) — "
+                            "retrying free-form", step, exc)
+                return await self.chat(step=step, system=system, user=user,
+                                       temperature=temperature, max_tokens=max_tokens,
+                                       cancel_check=cancel_check, schema=None)
             logger.warning("plan_forge LLM error step=%s: %s", step, exc)
             raise PlanForgeLLMError(str(exc)) from exc
         if job.status != "completed":
