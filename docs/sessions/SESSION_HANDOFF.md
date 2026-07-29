@@ -252,7 +252,40 @@ list. Their variables were written all along; the read missed them.
 `mechanics` and `planner_variables`. Not invention, over-retrieval, and precisely the case the review
 surface exists for.
 
-**Next:** the review surface (keep-or-drop over these candidates), then asking only what survives it.
+## ✅ THE LOOP IS CLOSED — review, then ask only what survives (2026-07-29)
+
+`engine/plan_forge/material_review.py` + MCP tool **`plan_find_missing_material`**. Board → grounded
+search → **three buckets**, and the third is the one that matters:
+
+- **`review`** — verbatim lines found in the author's own document. Shown for a keep-or-drop, never
+  applied. POC §6f measured why: the earlier loop concluded by itself on three retrieved lines and
+  **all three were wrong**, so it silently swallowed a question it should have asked.
+- **`ask`** — the search ran and honestly found nothing; the question text ships with it.
+- **`unavailable`** — the search could not run, or everything it returned failed the grounding gate.
+  **Never becomes a question.** Asking an author to write what they may already have written, because
+  a model call failed, is the failure this whole cycle has been removing. `unavailable` collapsing
+  into `ask` is the same bug as `absent` collapsing into `unknown` one layer up.
+
+`kinds_to_ask(packet, kept)` re-opens a kind whose candidates the author dropped — a keep-or-drop that
+cannot re-open the question would be the auto-conclude bug wearing a review surface.
+
+**Live through the real `/mcp` endpoint, on the author's own Mị Đế document:**
+
+```
+recovered   : character_seed · mechanics · arc_overview
+REVIEW      : planner_variables [unknown] dropped=0
+                 • Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh
+ASK         : writing_principles → "How should the prose itself read? …"
+              open_questions     → "What have you not decided yet?"
+UNAVAILABLE : —
+```
+
+The `[unknown]` status rides all the way through, so the agent knows the read was incomplete when it
+asks. Gated on **EDIT, not VIEW** — it spends the author's LLM budget, which a read grant does not
+entitle. The tool-catalog allowlist caught the new tool immediately, as designed.
+
+**POC §6e/6f is now built.** What remains is not this loop: persisting the author's keep/drop
+decisions, and the FE surface for it (the agent currently carries both in conversation).
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 

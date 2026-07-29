@@ -4978,6 +4978,45 @@ async def plan_validate(
 
 
 @mcp_server.tool(
+    name="plan_find_missing_material",
+    description=(
+        "PlanForge: for everything the plan is MISSING, look for it in the author's own document "
+        "first. Returns three buckets. review = verbatim lines found in their document — SHOW these "
+        "and let the author keep or drop each one; they are candidates, not answers (measured: a "
+        "search's three offered lines were all the wrong kind). ask = the search ran and honestly "
+        "found nothing, so this genuinely needs a question — the question text is included. "
+        "unavailable = the search could not run; do NOT turn these into questions, you would be "
+        "asking the author to rewrite what they may already have written. Costs one LLM call per "
+        "missing kind. Read-only, settles nothing. EDIT on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["what is my plan missing", "find missing material", "did I already write this"],
+        paid=True, tool_name="plan_find_missing_material",
+    ),
+)
+async def plan_find_missing_material(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    model_ref: Annotated[
+        str | None,
+        "optional user_model id — omit to use the author's default planner model.",
+    ] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    # EDIT rather than VIEW: this spends the author's LLM budget, which a read grant does not entitle.
+    await _gate(tc, bid, GrantLevel.EDIT)
+    out = await _plan_svc().find_missing_material(
+        tc.user_id, bid, UUID(run_id), model_ref=_opt_uuid(model_ref),
+    )
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
     name="plan_self_check",
     description=(
         "PlanForge: what a run's spec is MISSING. Returns coverage_board — for each planning kind "

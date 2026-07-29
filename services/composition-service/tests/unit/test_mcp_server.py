@@ -144,7 +144,7 @@ EXPECTED_TOOLS = {
     "composition_outline_node_move",
     # ── PlanForge (M4) plan_* tools ──
     # Tier R
-    "plan_validate", "plan_self_check",
+    "plan_validate", "plan_self_check", "plan_find_missing_material",
     # Tier A
     "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
@@ -172,7 +172,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
           "composition_arc_template_list", "composition_arc_template_get",  # O-3 reads
           "composition_conformance_status",
-          "plan_validate", "plan_self_check",
+          "plan_validate", "plan_self_check", "plan_find_missing_material",
           "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate", "composition_decompile_arcs",
           "composition_motif_adopt", "composition_motif_mine",

@@ -33,6 +33,9 @@ from app.engine.plan_forge.coverage import (
     load_coverage_context,
     spec_coverage_board,
 )
+from app.engine.plan_forge.material_review import (
+    find_missing_material as engine_find_missing_material,
+)
 from app.engine.plan_forge.decompose import build_graph
 from app.engine.plan_forge.elaborate import consistency_audit
 from app.engine.plan_forge.eval_fidelity import evaluate_spec_fidelity, load_fidelity_config
@@ -1346,6 +1349,43 @@ class PlanForgeService:
         if apply_mode_hint and apply_mode_hint != "auto":
             out["apply_mode"] = apply_mode_hint
         return out
+
+    async def find_missing_material(
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, model_ref: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        """What the plan is missing, and what of it the author ALREADY WROTE.
+
+        The board says what the read recovered; the search then looks for the rest in the author's
+        own document and returns verbatim, grounded lines. Measured (POC §6e Arm 1): the common case
+        is that the material is already there and the read missed it, so a loop that asks without
+        looking first asks an author to re-supply what they have given you.
+
+        Costs one LLM call per not-recovered kind (at most six, concurrent). Read-only: nothing is
+        written, and nothing is settled — the candidates come back for a keep-or-drop.
+        """
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        if spec_art is None:
+            raise ValueError("no spec for material search")
+        doc_md = await self._document_markdown(book_id, run_id)
+        if not doc_md:
+            # No source to search. Reported as its own state rather than as "nothing is missing":
+            # the board still holds, but every kind it did not recover is unresolvable from here.
+            board = spec_coverage_board(spec_art.content)
+            return {"version": 1, "recovered": board["recovered"], "review": [], "ask": [],
+                    "unavailable": [{"kind": k, "status": "unknown",
+                                     "reason": "the run has no source document to search"}
+                                    for k in board["absent"] + board["unknown"]],
+                    "read": board["read"]}
+        if self._llm is None:
+            raise ValueError("LLM unavailable — cannot search the document")
+        resolved = await self._resolve_model_ref(created_by, model_ref)
+        return await engine_find_missing_material(
+            self._llm, user_id=str(created_by), model_source="user_model",
+            model_ref=str(resolved), spec=spec_art.content, document_markdown=doc_md,
+        )
 
     async def self_check(
         self, created_by: UUID, book_id: UUID, run_id: UUID,
