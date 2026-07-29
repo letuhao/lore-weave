@@ -141,6 +141,15 @@ def compile_artifacts(
         ],
         "genre_tags": list(genre_tags or []),
         "chapters": chapters,
+        # THE AUTHOR'S UNPLACED WORDS. The kind matcher is advisory (see
+        # `ingest.SECTION_KIND_MAP`) and on a corpus it was not fitted to it recovers one kind out
+        # of nine and gets that one wrong. When it is wrong the structured extractors above produce
+        # nothing — and before this the paragraphs were simply gone, deleted by a regex that did not
+        # recognise a heading.
+        #
+        # They arrive as raw text on purpose. The passes read words; only the extractors need
+        # labels, and a label this matcher guessed is exactly what must not be trusted.
+        "author_notes": spec.get("author_notes") or [],
     }
 
     # `planner_state_init` and `working_memory_charter` were emitted here and read by NOTHING

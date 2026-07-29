@@ -17,9 +17,22 @@ logger = logging.getLogger(__name__)
 # character section was simply never seen. The POC's titles are kept — that document must still
 # parse — but each kind now also matches the ordinary words a person would actually write.
 #
-# An unmatched section is `other`, and `other` is IGNORED, not guessed at. A section we cannot
-# classify is a section we do not understand, and inventing a kind for it would put the user's prose
-# into a slot the compiler then reasons about as if it meant something.
+# ADVISORY, NOT A GATE. `kind` is this matcher's best GUESS at what a section is for. It decides
+# what gets STRUCTURED EXTRACTION — never what gets SEEN.
+#
+# It used to be a gate: an unmatched section was `other`, and `other` was dropped entirely, so a
+# heading this map happens not to know deleted the author's paragraphs from the plan. Measured
+# 2026-07-28 on a second corpus (grimdark sci-fi, English, `tests/fixtures/plan-forge/`), this
+# matcher recovers exactly ONE kind out of nine sections and that one is WRONG — a state-variable
+# section filed as cast because its title contains the substring "character". A vocabulary cannot
+# be widened into generality; the previous widening was fitted to the one document in front of me
+# and collapsed on the next one.
+#
+# So an unmatched section is still `other`, and `other` still gets no structured extraction —
+# inventing a kind would put the user's prose into a slot the compiler reasons about as if it meant
+# something. But its TEXT now travels: `propose_spec` carries it into the spec and `compile` into
+# `planning_package.author_notes`, where the LLM passes read it. PlanForge must work when this
+# matcher is wrong or silent, because on any document it has not been fitted to, it is.
 SECTION_KIND_MAP: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"nhân vật|quan hệ|character|protagonist|cast|dramatis|relationship", re.I),
      "character_seed"),

@@ -499,6 +499,34 @@ def _characters(char_body: str, anchors: list[str]) -> list[dict[str, Any]]:
     }]
 
 
+#: A long braindump can hold a lot of unplaceable prose, and this rides in every pass prompt.
+#: Bounded per section and in total — carrying the material must not crowd out the plan itself.
+_NOTES_PER_SECTION = 1200
+_NOTES_TOTAL = 6000
+
+
+def _unclassified_notes(doc: dict[str, Any]) -> list[dict[str, str]]:
+    """Sections the matcher could not place, as `{title, text}` — in the author's own words.
+
+    `front_matter` is excluded: it was understood and is genuinely not planning material, so
+    carrying a table of contents into every pass prompt would spend budget on nothing.
+    """
+    out: list[dict[str, str]] = []
+    used = 0
+    for sec in doc.get("sections", []):
+        if sec.get("kind") != "other":
+            continue
+        body = (sec.get("body") or "").strip()
+        if not body:
+            continue
+        text = body[:_NOTES_PER_SECTION]
+        if used + len(text) > _NOTES_TOTAL:
+            break
+        used += len(text)
+        out.append({"title": str(sec.get("title") or ""), "text": text})
+    return out
+
+
 # ── the spec ─────────────────────────────────────────────────────────────────────────────────────
 
 def propose_spec(
@@ -603,6 +631,17 @@ def propose_spec(
             # distinguishable at the place the judgement is made.
             "ingest_unread": doc.get("unread") or {},
         },
+        # THE AUTHOR'S OWN WORDS THAT NOTHING COULD PLACE — carried, not dropped.
+        #
+        # The kind matcher is advisory (see `ingest.SECTION_KIND_MAP`): on a corpus it was not
+        # fitted to it recovers one kind out of nine and gets that one wrong. When it is wrong the
+        # extractors above produce nothing, and before this the paragraphs simply vanished — the
+        # author's material deleted by a regex that did not recognise their heading.
+        #
+        # These sections deliberately get NO structured extraction; guessing a kind would put their
+        # prose into a slot the compiler then reasons about as if it meant something. They ride
+        # forward as raw text for the LLM passes, which read the words rather than the labels.
+        "author_notes": _unclassified_notes(doc),
         "charter": {
             "consistency_anchors": anchors,
             "forbids": _extract_forbids(doc),

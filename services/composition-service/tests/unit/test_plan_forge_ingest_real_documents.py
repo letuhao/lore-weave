@@ -293,3 +293,65 @@ def test_the_KIND_VOCABULARY_does_not_generalise_and_the_guard_says_so():
     unread = doc["unread"]
     assert len(unread["unclassified"]) >= 6
     assert "The setup" in unread["unclassified"] and "Still open" in unread["unclassified"]
+
+
+# ── the classifier is a SUGGESTION, not a gate ───────────────────────────────────────────────────
+
+def test_a_section_the_matcher_cannot_place_is_CARRIED_not_deleted():
+    """The architectural correction: the kind matcher decides what gets STRUCTURED EXTRACTION, never
+    what gets SEEN.
+
+    It used to be a gate. An unmatched section was `other` and `other` was dropped entirely, so a
+    heading this vocabulary happens not to know DELETED the author's paragraphs from their own plan.
+    Measured: 4,411 of the grimdark corpus's 5,276 characters were going nowhere — 84% of what the
+    author wrote — and 1,501 of Mị Đế's, including its whole premise section.
+
+    PlanForge has to work when the matcher is wrong or silent, because on any document it was not
+    fitted to, it is."""
+    doc = ingest_markdown(_GRIMDARK.read_text(encoding="utf-8"))
+    notes = propose_spec(doc)["author_notes"]
+    titles = [n["title"] for n in notes]
+    assert "The setup" in titles and "How the bad thing works" in titles and "Still open" in titles
+    assert sum(len(n["text"]) for n in notes) > 3000, "the author's material is being dropped again"
+
+
+def test_the_carried_text_reaches_the_planning_package_the_passes_read():
+    """Carrying it into the spec is not enough — the passes read `planning_package`, and material
+    that stops at the spec is material nobody sees."""
+    from app.engine.plan_forge.compile import compile_artifacts
+
+    doc = ingest_markdown(_GRIMDARK.read_text(encoding="utf-8"))
+    spec = propose_spec(doc)
+    arc_id = (spec.get("arcs") or [{"id": "arc_1"}])[0]["id"]
+    pkg = compile_artifacts(spec, arc_id=arc_id)["planning_package"]
+    assert [n["title"] for n in pkg["author_notes"]] == [n["title"] for n in spec["author_notes"]]
+
+
+def test_carrying_it_does_NOT_change_the_structured_extraction():
+    """This may only ADD. Unplaced prose must not leak into the extractors — a section nobody could
+    classify has no business becoming a character or an arc, because that is the invented-kind
+    failure the drop was protecting against in the first place."""
+    doc = _doc()
+    spec = propose_spec(doc)
+    chars = (spec["layers"] or {})["characters"]
+    assert [c["name"] for c in chars] == ["Lâm Uyên", "Tô Thanh Dao", "Lâm Trạch"]
+    assert [a["title"] for a in spec["arcs"]] == ["Arc mở đầu", "Cốt truyện hàng vạn năm sau"]
+    # …and the unplaced section rides alongside rather than inside them.
+    assert "Một mục tôi tự bịa ra" in [n["title"] for n in spec["author_notes"]]
+
+
+def test_front_matter_is_not_carried():
+    """A table of contents was UNDERSTOOD and is genuinely not planning material. Carrying it would
+    spend prompt budget in every pass on a list of section names."""
+    notes = [n["title"] for n in propose_spec(_doc())["author_notes"]]
+    assert "MỤC LỤC" not in notes
+
+
+def test_the_carried_material_is_BOUNDED():
+    """It rides in every pass prompt. A long braindump must not crowd out the plan itself."""
+    sep = chr(10) * 2
+    big = sep.join("# Section %d nobody can classify%s%s" % (i, sep, "x " * 2000)
+                   for i in range(12))
+    notes = propose_spec(ingest_markdown(big))["author_notes"]
+    assert sum(len(n["text"]) for n in notes) <= 6000
+
