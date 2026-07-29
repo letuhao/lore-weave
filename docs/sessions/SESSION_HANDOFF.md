@@ -1,5 +1,59 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🐕 DOGFOOD RESUMED — the author flow, end to end (2026-07-29)
+
+Book **Mị Đế** `019f9f2d-f9f1-7037-ba78-8ccc3e19c956` (test account), the author's REAL 4,278-char
+planning document, recovered from `plan_run.source_markdown`.
+
+**It got all the way to a scene plan for chapter 1.**
+
+```
+propose(llm)   -> Lâm Uyên · Tô Thanh Dao · Lâm Trạch · Huyết Vô Thường · 3 mech · 2 arcs
+material loop  -> board 4/6 -> 6/6 (the 2 missing kinds answered by the author)
+compile arc_01 -> package with real canon
+6 passes       -> cast keeps the author's 4 (is_new:false) + proposes 4 supports
+                  motifs in Vietnamese · scenes 3, tension 65->85
+                  present_entity_ids RESOLVED, present_entity_names_unresolved EMPTY
+```
+
+### What the dogfood found
+
+**1 · The author's ORIGINAL book is gone.** `019f33f1-65fd-7c6f-b068-cb1c6bbdd902` has 8 plan runs in
+composition and **no row in `loreweave_book.books`**; the account owns **zero** books. This is the
+unscoped-`DELETE FROM books` incident CLAUDE.md records, confirmed in the wild — the planning documents
+survived only because they live in another database.
+
+**2 · The PF-7 gate has a decoy, and the obvious action walks into it.** Approving the `cast`
+checkpoint 409s with *"cast cannot be accepted while its glossary seed proposal is 'pending' — apply
+it first (PF-7)"*. It does not say WHICH proposal, and `POST /bootstrap/propose` mints a **second,
+competing** one. Proposing then approving then applying that new proposal leaves you blocked with the
+**identical message**. The gate reads `pass_state.cast.bootstrap_proposal_id` — the proposal the PASS
+opened. Fix candidates: name the id in the message, and/or have `propose` return the pending one
+instead of minting a rival.
+
+**3 · `blocked_at: cast` did not block `beats`.** With the rail reporting `blocked_at: cast`, running
+pass 4 returned 200 and completed. Consistent with the registry (`beats depends_on=("motifs",)`), but
+the signal contradicts itself: the docstring says a blocking checkpoint means "the runner STOPS".
+Either the field means "the batch runner stops" and should say so, or a direct run of a later pass
+should refuse.
+
+**4 · The `unknown` state is unavailable on the now-default path.** `meta.ingest_unread` is written by
+the RULES propose; the LLM path does not carry it, so the coverage board can only say `absent`. Here
+that is the honest answer (the model read the raw document), but the degrade signal built this session
+does not exist where most runs now go.
+
+**5 · `compile` needs an `arc_id` nothing tells you.** The 422 is `field required`; the ids are
+`arc_01`/`arc_02`, not the guessable `arc_1`, and no error or response lists them.
+
+**6 · My own error, recorded:** I queried `scene_plan` with invented field names (`chapters[].title`,
+`scenes[].goal`), got nulls, and nearly reported them as a bug. The producer emits scene-level
+`title`/`synopsis` and no chapter title. Assert shapes against the producer — the same rule this
+codebase already carries in `PassArtifactEditor`.
+
+**Next:** write chương 1 from that scene plan, then fix 2 and 5 (both small, both hit a real author in
+the first ten minutes).
+
+
 ## 🧭 SESSION OVERVIEW + DRIFT CHECK (2026-07-29)
 
 **The goal we started with:** dogfood the platform by simulating a real author writing *Mị Đế*. It
