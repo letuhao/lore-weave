@@ -992,6 +992,64 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 >   `events_allowlist.yaml` row. A missing row fails at RUNTIME (`table not allowlisted`), not at
 >   commit. Pre-existing, surfaced here.
 >
+> 🧹 **DRIFT SWEEP (2026-07-29) — the audit was WRONG, and what it found instead was worse.**
+>
+> **My first number was `26 of 58 gates run nowhere`. It was wrong.** `lint-foundation.yml` wires its
+> lints as **matrices of bare names** (`- raw-sql-lint`), and I searched for paths. The true figure is
+> **3** — and all three turn out to be non-tree gates (a RAID cycle checklist, a subcommand wrapper).
+> Recorded as non-vacuity register **row 21**: the audit committed the exact defect it was auditing for.
+>
+> **What the corrected look found is the real rot: `lint-foundation` has been RED ON `main` since
+> 2026-07-26.** Six blocking legs — `raw-sql-lint`, `injection-coverage-lint`, `language-bias-gate`,
+> `pagination-cap-lint`, `dep-pinning-lint`, `capacity-budget-lint`. `continue-on-error` survives in
+> that workflow **only as a comment recording its deliberate removal**, so these are not advisory.
+> Six consecutive red runs, on the default branch, unread. **Register row 20.**
+>
+> > A gate nobody runs is not a gate. **A red gate nobody acts on is worse** — an unwired gate is
+> > silent, and silence is honest; a gate that stays red for four days teaches everyone that red is
+> > the normal colour, and the next real failure lands on an audience that has stopped looking.
+>
+> **The mechanism, not the instances:** `scripts/gate-wiring-gate.py` + `.github/workflows/gates.yml`.
+> Scope is a **predicate** over `scripts/**` (`*-gate`/`*-lint`, both separators), so a gate written
+> tomorrow is covered the day it lands. `--run-all` executes every discovered gate — **the runner IS
+> the wiring**, which is why the workflow does not enumerate anything. `KNOWN_RED` rows must name a
+> tracked deferral **and fail when the gate turns green**, so the acknowledgement list shrinks instead
+> of becoming permanent (the same rule `file-ceiling-gate` applies to allowlisted line counts).
+> Bite-proven three ways: a comment naming a gate no longer counts as wiring; removing the runner
+> re-reports the unwired set; the self-test fails if the scope stops being a predicate.
+>
+> **Two bugs in the gate itself, both found by running it rather than reading it:** it passed Windows
+> absolute paths to bash (every `.sh` gate reported `No such file` — a CI job would have shipped
+> failing everything), and it keyed the registry on bare filenames while `rglob` returned nested ones.
+>
+> **Doc rot cleared in the same pass:** `D-PUBLISHER-DROPS-RULESET-PIN` was **fixed in `Q-1`** and still
+> cited as an open blocker in 4 places — including doc 35 §12's `Q1` row, which read *"Blocked on…"*
+> **while `Q1` was being built and shipped**. §12's `Q-1`/`S2`/`Q1` rows are now ticked with evidence,
+> and S2's stale line counts (`592`/`456` — they had grown to 609 before the split) are corrected.
+>
+> **NEW DEFERRALS (8) — every one is a tracked row against a NAMED GATE, not a note. `--run-all`
+> fails if any of them turns green without the row being deleted, so this list can only shrink:**
+> `D-GATE-ROT-RAW-SQL` **(SECURITY, triage first — 4 interpolated SQL values in
+> `composition-service/app/db/package_rekey.py`)** · `D-GATE-ROT-INJECTION` **(SECURITY)** ·
+> `D-GATE-ROT-LANGUAGE-BIAS` · `D-GATE-ROT-PAGINATION` · `D-GATE-ROT-DEP-PINNING` (red in CI, GREEN
+> locally — an environment difference, so start from the CI log) · `D-GATE-ROT-CAPACITY-BUDGET`
+> (commit-service has no budget entry; predates Q1, verified red at `86eb42da2`) ·
+> `D-GATE-ROT-ENV-AT-IMPORT` (3 harnesses die on `KeyError: JWT_SECRET` at import) ·
+> `D-GATE-ROT-LOGGING-EXIT-CODE` (`logging-discipline-lint` prints **WARN** and exits **1** —
+> advisory in wording, blocking in exit code; a gate whose severity you cannot read off its own
+> output is how a suite becomes noise) · `D-GATE-SLOW-META-WRITE-DISCIPLINE`
+> (`meta-write-discipline-lint` re-greps the whole tree **once per meta table** — 33 of them — so it
+> is quadratic: 74s standalone, >900s under a shared runner. Wants its own CI leg or a one-pass
+> rewrite; classified `TOO_SLOW`, skipped with the reason printed, not called red).
+>
+> **Two mechanisms proved themselves during the build, which is the point of building them:**
+> `--run-all` reported the `dep-pinning-lint` KNOWN_RED row as **STALE** because the gate passes
+> locally — the shrink-the-list rule working before anyone relied on it. It is red in CI only, so the
+> row now carries a `CI-ONLY:` marker that suppresses the stale complaint *without* excusing the CI
+> failure. And a **measurement trap** is recorded in the runner: shell gates run ~10× slower as a
+> Python subprocess on Windows (`admin-command-registry` 38s → 484s), which is a git-bash artifact and
+> **not** a property of the gate — do not reclassify anything on a Windows number alone.
+>
 > * **B3 (next):** the doc 35 §12 sweep + 16a/26 cross-refs. The store round-trip test §12 asked for
 >   landed in B2b — it needed the Pg binding to be worth writing.
 > * **Q0b is now UNBLOCKED and small:** the table takes epoch N+1 rows already (proved by
@@ -1440,7 +1498,11 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > **Four more added:** **`QTY-A13`** (an L3 source CONTRIBUTES, never DECLARES — else the digest
 > becomes a function of the compiled module set and RLS-A13 dies); **`QTY-A14`** (an ordinal never
 > travels without its digest — with a **live code defect** on that path: the publisher's SELECT drops
-> `ruleset_digest` while the envelope is `omitempty`, tracked as `D-PUBLISHER-DROPS-RULESET-PIN`);
+> `ruleset_digest` while the envelope is `omitempty`, tracked as `D-PUBLISHER-DROPS-RULESET-PIN`
+> — **[✅ CLEARED in `Q-1`. This block is the dated record of when the defect was FOUND, not a
+> current claim: `pgsource.go` selects `e.ruleset_digest` and `pgsource_test.go` reds if it stops.
+> Marked in place rather than rewritten, because the history is worth keeping and the false
+> present tense is not]**);
 > **`QTY-D9`** tenancy (the draft had **zero** occurrences of owner/user/scope key — a CLAUDE.md
 > violation); **`QTY-D11`** adopting `XST-R7` (which the doc claimed to lean on and did not contain).
 >

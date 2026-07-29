@@ -346,11 +346,17 @@ Added after the red team walked the concrete failure, which is worth stating in 
 > It is a wrong number in a committed, digest-pinned, replayable log — reproducible forever, and
 > undetectable because **both realities replay it "correctly."**
 
-**There is a live code defect on this path today, independent of L2:** the publisher's SELECT does not
-include `ruleset_digest` (`services/publisher/pkg/pgsource/pgsource.go:56-72`) while the envelope
-field is `omitempty` (`contracts/events/envelope.go:57`) — so **the pin is dropped the moment an event
-leaves its reality DB, invisibly.** Tracked as `D-PUBLISHER-DROPS-RULESET-PIN`. It must be fixed before
-`Q1`, because L2 is what makes the loss consequential.
+**~~There is a live code defect on this path today~~ — ✅ FIXED in `Q-1`, and this paragraph was still
+describing it as open on 2026-07-29.** The publisher's SELECT omitted `ruleset_digest` while the
+envelope field was `omitempty`, so the pin was dropped the moment an event left its reality DB,
+invisibly. Tracked as `D-PUBLISHER-DROPS-RULESET-PIN`; **cleared** — `pgsource.go` now selects
+`e.ruleset_digest`, and `pgsource_test.go` reds if the column is dropped from the query again, so the
+fix has a guard rather than a memory.
+
+> **This sentence is why the sweep exists.** *"It must be fixed before `Q1`"* stayed in three documents
+> after it was fixed, and `Q1`'s own row in §12 still read *"Blocked on `D-PUBLISHER-DROPS-RULESET-PIN`"*
+> **while `Q1` was being built and shipped**. A stale blocker costs more than a stale fact: the next
+> reader either believes it and stops, or checks it and learns the table cannot be trusted.
 
 **Note the collision with a LOCKED axiom, deliberately not resolved here.** RLS-A6 states that
 identical strings across realities are **unrelated by design** (`16:296-298`). So a *global* quantity
@@ -808,7 +814,7 @@ findings were raised **independently by three of the four**, which is why they a
 | 2 | **`QTY-A6` is probably unimplementable** — the const-generic route dies at the monomorphic `Managed { island: Island<CombatDomain> }`, and `Domain` is not object-safe | §4.2 |
 | 3 | **`QTY-A11` refused this document's own `Q2`** — slot *removal* is the third kind of change A10 forbids being silent | §6.3.1 — `QTY-A10(c)`; `Q2` corrected so nothing is removed |
 | 4 | **The `n²` interaction table was unscoped** — shrinking `n` without moving the matrix off the actor reproduces chaos's exact 20 KB bug at n = 50 | §4.2 A6.1 |
-| 5 | **The ordinal-carrier rule was missing**, and there is a **live code defect** on that path: the publisher's SELECT drops `ruleset_digest` while the envelope field is `omitempty` | §4.5 — `QTY-A14` + `D-PUBLISHER-DROPS-RULESET-PIN` |
+| 5 | **The ordinal-carrier rule was missing**, and there ~~is~~ **was** a live code defect on that path: the publisher's SELECT dropped `ruleset_digest` while the envelope field is `omitempty` | §4.5 — `QTY-A14` + ~~`D-PUBLISHER-DROPS-RULESET-PIN`~~ **fixed in `Q-1`**, guarded by `pgsource_test.go` |
 | 6 | **Tenancy was absent** — zero occurrences of owner/user/scope key, a CLAUDE.md violation | §4.6 — `QTY-D9` |
 | 7 | **An L3 source could implicitly declare a quantity**, which would make the digest a function of the compiled module set and kill RLS-A13 | §5.4 — `QTY-A13` |
 | 8 | **The document never walked one of the seven systems** it opens by naming | §6.5 |
@@ -858,11 +864,11 @@ to a derived set that cannot yet grow.
 
 | # | Slice | Done when |
 |---|---|---|
-| **Q-1** | **The two mechanical gates, FIRST** — `IMP-D4 hot-path-gate.py` (keyed on the KEY type, per §5.3) + the `QTY-A12` `size_of` assertion | each gate reds against a deliberately-introduced violation. **Hours, and both must exist before the code they guard, not after** |
+| **Q-1** ✅ **2026-07-29** | **The two mechanical gates, FIRST** — `IMP-D4 hot-path-gate.py` (keyed on the KEY type, per §5.3) + the `QTY-A12` `size_of` assertion | each gate reds against a deliberately-introduced violation. **Hours, and both must exist before the code they guard, not after** |
 | **Q0a** ✅ **2026-07-29** | **[QTY-A11](#63-qty-a11--decode-is-version-dispatched-and-every-version-keeps-its-own-codec) version-dispatched codec + `LAW_VERSION` into the hashed bytes + `upcast v1→v2`.** No DB, no event, no unbuilt prerequisite | **met** — `a_v1_artifact_survives_put_and_get` places a genuine v1 artifact in the store and `get` verifies it; `a_v1_artifact_re_encodes_to_exactly_its_original_bytes` pins the property that check stands on; `a_future_schema_version_is_refused` keeps forward-compat impossible; the golden digest moved `807d5b52…` → `76d7045e…` and **that move is the proof `LAW_VERSION` is inside the bytes**. Bite-proven: reverting `get` to `digest()` reds with `DigestMismatch` — the store rejecting its own file, which is the `Unloadable` outcome the axiom exists to prevent |
 | **Q0b** | **The epoch switch as an ordered event** (§6.2 steps 4–6) | the `D1 → D2` transition appears as an event in the reality's own log. **Split from Q0a deliberately** — it needs three things that do not exist (below), and pairing them would make one slice with two unrelated failure surfaces. Nothing forces it early: **zero production realities exist** |
-| **S2** | **`game-rules` extraction** ([IMP-A5](26_implementation_architecture.md)) — laws move out of `domain.rs`, take `Rules` by ref | `game-rules` has no I/O dependency, enforced by a gate. **A hard prerequisite for Q2–Q4**: role plumbing must not be written into files that are about to be split (`domain.rs` 592 lines, `combat.rs` 456 — both already over the IMP-D3 ceiling) |
-| **Q1** | **L2 substrate** — declared-quantity registry, ordinal table inside the hashed ruleset, the assignment ledger, `QTY-A13` validator | a reality declares a quantity that does not exist in the engine and it survives create → store → load → digest with ordinals unchanged. **Blocked on `D-PUBLISHER-DROPS-RULESET-PIN`** (§4.5) |
+| **S2** ✅ **2026-07-29** | **`game-rules` extraction** ([IMP-A5](26_implementation_architecture.md)) — laws move out of `domain.rs`, take `Rules` by ref | **met** (`ce8bee02b`) — `crates/game-rules` has no I/O dependency, enforced by `scripts/crate-purity-gate.py` R1–R4, and `cargo test -p game-rules` runs 32 tests because the laws' proof moved with the laws. The prerequisite this row set for Q2–Q4 is **satisfied**: `domain.rs` 609 → `src/domain/` (largest file 317), `combat.rs` split under `crates/game-rules/src/combat/`, and `scripts/file-ceiling-gate.py` now holds IMP-D3 mechanically. *(The `592`/`456` counts this row used to quote were stale before it was ticked — they had grown.)* |
+| **Q1** ✅ **2026-07-29** | **L2 substrate** — declared-quantity registry + the ordinal table inside the hashed ruleset. ~~the assignment ledger~~ — **there is none, and building one would have been the bug** ([`QTY-Q6`](#132-still-open)): the assignment for epoch N *is* the quantity table inside `ruleset_N`, so a second table would copy hashed bytes into unhashed ones. What was missing is the **epoch history**, `migrations/meta/033_reality_ruleset_binding`, append-only. `QTY-A13`'s validator has **no subject until `Q4`** (no L3 sources exist to contribute) and is an asserted trigger, not a build | **met** — `a_declared_quantity_survives_create_store_load_with_its_ordinals` runs the full round trip through the **Postgres** binding, not the file one. ~~Blocked on `D-PUBLISHER-DROPS-RULESET-PIN`~~ — that was **cleared in `Q-1`** and this cell still said *blocked* while Q1 was being built |
 | **Q2** | **Resources** ([QTY-A4](#41-qty-a4--a-pool-is-not-a-stat)) + the `Vital` binding **+ the caps arm** ([QTY-A8](#52-qty-a8--contributions-carry-caps-not-just-values)) | a reality binds `Vital → qi` and the defeat law is **unchanged**. `MaxHp`/`MaxStamina` **stay** and become ceiling-binding targets (§6.3.1). **The caps arm moved here from Q4** — a pool's max *is* a ceiling, so building resources without it means every max lands as a formula edit and Q4 then retrofits it |
 | **Q4** | **L3 sources** — the contribution trait, two-level declared order ([QTY-A9](#53-qty-a9--aggregation-order-is-total-and-declared)) | two progression systems contribute to one actor with a total, reproducible order; a contribution to an undeclared ordinal is **refused** |
 | **Q3** | **Elements** as L2 + the interaction table replacing `elem_mult_pm`, **`O(n²)` per ruleset** (§4.2 A6.1) | two realities with different element sets on one binary. **Last, and explicitly droppable** — it is the only L2 family with zero pressure from the seven systems (§6.5); fire-beats-wood is a flourish |

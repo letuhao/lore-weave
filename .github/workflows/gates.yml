@@ -1,0 +1,78 @@
+# gates.yml — run EVERY gate in scripts/, discovered rather than listed.
+#
+# WHY THIS FILE EXISTS. A 2026-07-29 audit first reported "26 of 58 gates run
+# nowhere". That number was WRONG — lint-foundation.yml wires its lints as
+# matrices of BARE NAMES, which a path-only search missed. The true figure was 3.
+#
+# The real finding was worse than unwired, and CI had been saying so: SIX legs of
+# lint-foundation had been failing on MAIN since at least 2026-07-26 —
+# raw-sql-lint, injection-coverage-lint, language-bias-gate, pagination-cap-lint,
+# dep-pinning-lint, capacity-budget-lint. Not advisory: `continue-on-error`
+# survives in that file only as a comment recording its deliberate removal. The
+# gates ran, blocked, reported — and six consecutive red runs were ignored.
+#
+# A gate nobody runs is not a gate. A red gate nobody acts on is worse: it
+# teaches everyone to ignore the colour. `--run-all` + KNOWN_RED is the answer —
+# every failure is fixed or carries a tracked deferral BY NAME, and a KNOWN_RED
+# row that turns green FAILS, so the list shrinks instead of becoming normal.
+#
+# THE SHAPE MATTERS. This job does NOT enumerate gates. It calls
+# `gate-wiring-gate.py --run-all`, which iterates the same filename predicate the
+# wiring check uses — so a gate added tomorrow runs here the day it lands, with
+# nobody remembering to edit this file. Listing names would have reproduced the
+# original defect one level up: a list is default-uncovered.
+#
+# KNOWN_RED rows inside that script carry a tracked deferral id and are expected
+# to fail. The run ALSO fails if a KNOWN_RED gate turns green, so the list
+# shrinks when the debt is paid instead of quietly becoming permanent — the same
+# discipline file-ceiling-gate applies to allowlisted line counts.
+#
+# NOT HERE: gates needing a live stack (postgres, built binaries). `--run-all`
+# SKIPS those and prints the reason on every run; they want a stack-up job, and
+# their absence is tracked (D-META-LIVE-SMOKE-NOT-IN-CI,
+# D-PUBLISHER-SMOKE-NOT-IN-CI) rather than left as a silent hole.
+
+name: gates
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  all-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Several gates diff against the previous commit or scan history.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: false
+
+      # The registry has to be honest before its verdicts mean anything: the
+      # scope is still a predicate, every exemption carries a reason, every
+      # KNOWN_RED row names a deferral, and this runner is wired.
+      - name: gate registry self-test
+        run: python scripts/gate-wiring-gate.py --self-test
+
+      # Is anything unwired? With the runner below in place this is total by
+      # construction, so a failure here means the runner was removed.
+      - name: gate wiring
+        run: python scripts/gate-wiring-gate.py
+
+      - name: run every gate
+        run: python scripts/gate-wiring-gate.py --run-all

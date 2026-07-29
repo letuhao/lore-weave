@@ -12,7 +12,7 @@
 > returned **zero hits**.
 >
 > That is the repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing**. The
-> consequence is measurable: the same defect shipped **nineteen times** (§4), each fixed locally in the
+> consequence is measurable: the same defect shipped **twenty-one times** (§4), each fixed locally in the
 > place it happened, because the next person had no page to read. This is that page.
 
 ---
@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — nineteen occurrences, one caught by a test
+## 4. The register — twenty-one occurrences, one caught by a test
 
-Kept because the count is the argument. **Eighteen of the nineteen were found by a human or an agent
+Kept because the count is the argument. **Twenty of the twenty-one were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -151,7 +151,9 @@ that inspects the check itself can see it.
 | 15 | the shared stripper was string-blind under `keep_strings=True` — the fork `hot-path-gate` runs — so a `//` inside a string ate the rest of the line and its findings with it | NV-3 | `/review-impl`, reviewing the FIX for row 13 | fixed 2026-07-29 |
 | 16 | `db-safety-gate`'s shell selector was `"test" in base`, while the **same file's** `RE_THROWAWAY` had always accepted `smoke` — **six** DB-dropping smoke scripts were default-uncovered | NV-4 | writing a seventh and finding the gate silent on it | fixed 2026-07-29 (`Q1 B2a`) |
 | 17 | `db-safety-gate`'s **file-level** pragma window `lines[:60]` — row 3 fixed the *inline* pragma window in this very file and left its sibling alone | NV-5 | the exemption landed at line 69 and was discarded | fixed 2026-07-29 (`Q1 B2a`) |
-| 19 | four **meta** lints (`service-acl-matrix`, `role-grant-validator`, `pii-classify`, `meta-write-discipline`) existed and **none was wired into pre-commit** — `service-acl-matrix-lint` was RED for a whole commit and nothing said so | NV-3 | `/review-impl`'s standards gate, running it by hand | 3 wired 2026-07-29 (`Q1 B2b` review); `meta-write-discipline` left out at ~74s, CI's job — said out loud rather than quietly skipped |
+| 19 | four **meta** lints existed and **none was wired into pre-commit** — `service-acl-matrix-lint` was RED for a whole commit and nothing said so | NV-3 | `/review-impl`'s standards gate, running it by hand | 3 wired 2026-07-29; `meta-write-discipline` left out at ~74s, CI's job |
+| 20 | **six `lint-foundation` legs RED on `main` since ≥2026-07-26, blocking, ignored** — `raw-sql-lint`, `injection-coverage-lint`, `language-bias-gate`, `pagination-cap-lint`, `dep-pinning-lint`, `capacity-budget-lint`. The gates ran, blocked and reported; nobody read the result | NV-3 (degenerate) | `gh run list` during the drift audit row 19 prompted | `scripts/gate-wiring-gate.py` + `.github/workflows/gates.yml` 2026-07-29; each failure now carries a `KNOWN_RED` row naming a deferral, and a row that turns GREEN fails the run |
+| 21 | the drift audit's own first number — *"26 of 58 gates run nowhere"* — was **wrong**: `lint-foundation.yml` wires lints as matrices of BARE NAMES and a path-only search saw none of them. True figure: **3** | NV-3, committed BY the check | re-deriving it before writing it down | fixed same run; `_is_wired` matches stems as well as paths |
 | 18 | migration 033's append-only trigger was an ORIGIN trigger, so `session_replication_role = replica` (`pg_restore --disable-triggers`, logical-replication apply) skipped it — the UPDATE rewrote a bound digest and the DELETE removed the epoch | NV-3 | probing the guard in the one mode that turns triggers off, before writing the test that asserts it | fixed 2026-07-29 (`Q1 B2a`) — `ENABLE ALWAYS` |
 
 **Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
@@ -213,6 +215,23 @@ in `scripts/` beside seventeen siblings that ARE in `.githooks/pre-commit`, so t
 made it look enforced. A check nobody runs is not a weaker check; it is **the same as not having one**,
 with the added cost that its existence answers *"is this covered?"* with a yes.
 **"There is a lint for that" is not enforcement — grep the hook.**
+
+**Rows 20 and 21 are the sting in row 19's tail, and they invert its lesson.** Chasing row 19 produced
+an audit that said *26 of 58 gates run nowhere*. It was **wrong** — the workflow wires its lints as a
+matrix of bare names, and the audit searched for paths (row 21). The true figure was three. What the
+corrected look found instead was **worse**: six of those gates were wired, blocking, and had been
+**failing on `main` for four days** (row 20). The mechanism was never the problem. Nobody was reading
+the output.
+
+So the rule to carry forward is not *"wire your gates"* — that was already done. It is:
+
+> **A red gate nobody acts on is worse than an unwired one.** An unwired gate is silent, and silence
+> is at least honest. A red gate that stays red for four days teaches the whole team that red is the
+> normal colour, and the next real failure arrives into an audience that has stopped looking.
+
+That is why `KNOWN_RED` rows must name a deferral **and fail when they turn green**: an
+acknowledgement list that only grows is how "we know about that one" becomes "we do not look at any of
+them."
 
 ---
 

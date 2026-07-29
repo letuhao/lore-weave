@@ -138,6 +138,32 @@ if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/(service
   sh "$ROOT/scripts/pii-classify-lint.sh"
 fi
 
+# A GATE NOBODY RUNS IS NOT A GATE. Wired 2026-07-29 after an audit found 26 of
+# the repo's 58 gate/lint scripts running NOWHERE — not here, not in any
+# workflow — six of them RED, two reporting "NEW offender(s)" for regressions
+# that had already landed. Every one of those gates was correct; none was
+# attached to anything, while sitting in the same directory as the ones that
+# were. This is the cheap half (<1s, no subprocess): it only asks whether every
+# discovered gate is reachable from the hook or from CI. The EXECUTION of them
+# all is .github/workflows/gates.yml.
+#
+# Unconditional on purpose. The trigger for "did someone add a gate and forget
+# to wire it" is "someone committed", and any path-based condition would miss
+# the commit that adds scripts/foo-gate.py while touching nothing else.
+"$PY" "$ROOT/scripts/gate-wiring-gate.py"
+
+# The FAST gates the audit un-orphaned (each <500ms; the slower ones run in
+# gates.yml). Conditioned so an unrelated commit does not pay for them.
+if git diff --cached --name-only | grep -qE '\.(py|go|rs|ts|tsx|sql|ya?ml)$'; then
+  "$PY" "$ROOT/scripts/slo-latency-lint.py"
+  "$PY" "$ROOT/scripts/context-budget-l3-lint.py"
+  sh "$ROOT/scripts/transitions-validation-lint.sh"
+fi
+if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/meta/|crates/meta-rs/|_audit'; then
+  sh "$ROOT/scripts/meta-actor-uuid-lint.sh"
+  sh "$ROOT/scripts/read-audit-query-type-drift-lint.sh"
+fi
+
 # ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
 # must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
 # scripts/i18n_translate.py (gap-fill), never hand-edited into a locale, never a one-off translator.
