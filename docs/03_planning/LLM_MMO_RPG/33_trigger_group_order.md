@@ -205,11 +205,11 @@ machinery; it is a consequence of modelling reactions as turns.**
 
 | # | Target | Change | Confidence |
 |---|---|---|---|
-| **R25** | `EF_001` `LifecycleState` | currently **per entity**; must become **per aspect** (TRG-A6) | **verified** |
-| **R26** | `PROG_001` §4.3 `BodyOrSoul` | promote from *"what transfers on transmigration"* to a general **aspect tag** governing lifecycle and trigger scope | **verified** |
-| **R27** | `DF07` / stat resolution | reference the single statement of TRG-A1 rather than restating the stage law a second time (TRG-F1) | **verified** |
-| **R28** | [`27`](27_extensibility_stress_test.md) XST-R11 | `replacement_priority` is now **required**, scoped to G3, with the deterministic tie-break named | **verified** |
-| **R29** | wherever death cleanup is specified | **must not** delete imprints held by others about the deceased (TRG-A7). Add an explicit *do-not-clean-up* note, since it looks like garbage to a future optimiser | **verify** |
+| **TRG-R25** | `EF_001` `LifecycleState` | currently **per entity**; must become **per aspect** (TRG-A6) | **verified** |
+| **TRG-R26** | `PROG_001` §4.3 `BodyOrSoul` | promote from *"what transfers on transmigration"* to a general **aspect tag** governing lifecycle and trigger scope | **verified** |
+| **TRG-R27** | `DF07` / stat resolution | reference the single statement of TRG-A1 rather than restating the stage law a second time (TRG-F1) | **verified** |
+| **TRG-R28** | [`27`](27_extensibility_stress_test.md) XST-R11 | `replacement_priority` is now **required**, scoped to G3, with the deterministic tie-break named | **verified** |
+| **TRG-R29** | wherever death cleanup is specified | **must not** delete imprints held by others about the deceased (TRG-A7). Add an explicit *do-not-clean-up* note, since it looks like garbage to a future optimiser | **verify** |
 
 **Build-order impact:** the [31 §6](31_world_simulation_architecture.md) sequence is unchanged, but
 **E3 gains its real content**: not "design a trigger system" but *"declare the eight groups, implement

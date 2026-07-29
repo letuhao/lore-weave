@@ -33,6 +33,10 @@ pub struct IslandMetrics {
     pub quarantined: u64,
     /// Island-generation bumps — each is an O(1) invalidation cascade.
     pub island_gen_bumps: u64,
+    /// RLS-D8 ruleset epoch switches ACCEPTED. Refusals are not counted here:
+    /// a refused switch changed nothing, and folding the two together would
+    /// make a monotonicity violation look like normal churn on a dashboard.
+    pub epoch_switches: u64,
 
     // ─── S2: cross-island ───
     /// Messages accepted via `deliver()` (admissions, not step outcomes —

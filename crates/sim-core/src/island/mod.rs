@@ -1,20 +1,23 @@
 //! The island — single-threaded inside, one DP-A16 channel, the unit of
 //! parallelism (SL-A9). S1a: single island; cross-island messaging is S2.
 
+mod epoch;
+mod lifecycle;
+mod registry;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::checkpoint::{Dissolution, IslandCheckpoint};
 use crate::domain::Domain;
-use crate::ingress::{Ingress, Lane};
+use crate::ingress::{Ingress, IngressItem, Lane};
 use crate::metrics::IslandMetrics;
 use crate::rng::DetRng;
 use crate::seen::{SeenSet, SeenWindow};
 use crate::types::{
     Admitted,
-    Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
-    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest,
-    RulesetMismatch,
+    Class, DiscardReason, EntityId, Fallback, Gen, InputId,
+    IslandId,
+    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest, RulesetEpoch,
     Seq, Tick, Violation,
 };
 
@@ -44,6 +47,9 @@ pub struct Island<D: Domain> {
     /// enter checkpoints, migration payloads or crash rebuilds.
     rules: Arc<D::Rules>,
     pub digest: RulesetDigest,
+    /// RLS-I1 — which ruleset epoch this island is running. Monotonic; see
+    /// [`Island::activate_epoch`].
+    pub epoch: RulesetEpoch,
     rng: DetRng,
     /// Recorded outcomes, in processing order. Every item's fate is recorded;
     /// nothing is silent (CS-D5 discipline). Bounding is an S1b concern.
@@ -61,6 +67,12 @@ pub struct Island<D: Domain> {
     /// propagate (chaos-harness mode per spec §10.4 — surfacing beats
     /// swallowing in tests).
     containment: bool,
+    /// True for the duration of `step`. Its ONLY reader is `activate_epoch`,
+    /// and its only purpose is to make RLS-D8's *"never inside a step"* a
+    /// refusal rather than a sentence in a doc comment. Unreachable from a
+    /// host — `step` holds `&mut self` — so the arm it guards is reachable
+    /// only by an edit to this file, which is the edit worth catching.
+    in_step: bool,
     poisoned: bool,
     /// Quarantined poison-pill inputs (≤1 in V1: first quarantine poisons).
     quarantine: Vec<QueuedInput<D>>,
@@ -93,6 +105,10 @@ impl<D: Domain> Island<D> {
             state: initial_state,
             rules,
             digest,
+            // Doc 16 SS12: "assign epoch 1". Not 0 - `RulesetEpoch(0)` would be
+            // a sentinel meaning "unbound", and an island always runs SOME
+            // ruleset by construction (`new` takes it).
+            epoch: RulesetEpoch(1),
             rng: DetRng::new(seed),
             outcomes: Vec::new(),
             externals: Vec::new(),
@@ -102,55 +118,10 @@ impl<D: Domain> Island<D> {
             metrics: IslandMetrics::default(),
             island_gen: Gen(0),
             containment: true,
+            in_step: false,
             poisoned: false,
             quarantine: Vec::new(),
         }
-    }
-
-    // ─── structural registry (S1a surface; the invalidation CASCADE is S1b) ───
-
-    /// Spawning over an id this island ALREADY tracks bumps its generation
-    /// (same rule as `arrive` — review-impl S2 finding 2): re-inserting at
-    /// Gen(0) would RESURRECT old-epoch refs pinned to Gen(0).
-    pub fn spawn_entity(&mut self, id: EntityId) -> Gen {
-        let g = match self.entities.get(&id) {
-            Some(prev) => Gen(prev.0.saturating_add(1)),
-            None => Gen(0),
-        };
-        self.entities.insert(id, g);
-        g
-    }
-
-    /// Bump an entity's generation — every in-flight input holding the old
-    /// gen becomes stale and will discard at ITS step (never retroactively).
-    pub fn bump_entity_gen(&mut self, id: EntityId) -> Option<Gen> {
-        let g = self.entities.get_mut(&id)?;
-        // Saturating: a wrap at u32::MAX would RESURRECT stale generations;
-        // pinning at MAX makes everything stale-forever — the safe direction.
-        *g = Gen(g.0.saturating_add(1));
-        Some(*g)
-    }
-
-    pub fn despawn_entity(&mut self, id: EntityId) {
-        self.entities.remove(&id);
-    }
-
-    pub fn entity_gen(&self, id: EntityId) -> Option<Gen> {
-        self.entities.get(&id).copied()
-    }
-
-    /// Same anti-resurrection rule as `spawn_entity`.
-    pub fn start_encounter(&mut self, id: EntityId) -> Gen {
-        let g = match self.encounters.get(&id) {
-            Some(prev) => Gen(prev.0.saturating_add(1)),
-            None => Gen(0),
-        };
-        self.encounters.insert(id, g);
-        g
-    }
-
-    pub fn end_encounter(&mut self, id: EntityId) {
-        self.encounters.remove(&id);
     }
 
     /// Chaos-harness mode: panics PROPAGATE instead of poisoning (spec
@@ -224,7 +195,7 @@ impl<D: Domain> Island<D> {
     /// side door, so this is not exposed.
     fn submit_inner(&mut self, lane: Lane, mut input: QueuedInput<D>) -> Seq {
         input.admitted_gen = self.island_gen;
-        let seq = self.ingress.push(lane, input);
+        let seq = self.ingress.push(lane, IngressItem::Input(input));
         IslandMetrics::gauge_peak(&mut self.metrics.peak_ingress_depth, self.ingress.len());
         seq
     }
@@ -285,171 +256,6 @@ impl<D: Domain> Island<D> {
         generation
     }
 
-    // ─── S2 checkpoint / restore / dissolve (spec §10.1 / §10.5) ───
-
-    /// Snapshot everything needed to rebuild a stepping-identical island.
-    /// Pending work is EXCLUDED by contract (§10.5 loss table). A speed
-    /// optimisation for Class B (the event log is the recovery truth,
-    /// SC-A10); load-bearing for Class A ephemera (RTM-Q4).
-    ///
-    /// Returns `None` on a POISONED island — its state may be half-mutated
-    /// (SC-A8), and a checkpoint of it restored later would smuggle the
-    /// corruption past the poison flag. Post-panic forensics go through
-    /// `dissolve(Unresponsive)`, whose checkpoint field is explicitly
-    /// labelled last-known-state.
-    pub fn checkpoint(&self) -> Option<IslandCheckpoint<D>>
-    where
-        D::State: Clone,
-    {
-        if self.poisoned {
-            return None;
-        }
-        Some(IslandCheckpoint {
-            id: self.id,
-            tick: self.tick,
-            island_gen: self.island_gen,
-            digest: self.digest,
-            entities: self.entities.clone(),
-            encounters: self.encounters.clone(),
-            state: self.state.clone(),
-            rng: self.rng.clone(),
-            seen: self.seen.clone(),
-            next_seq: self.ingress.next_seq(),
-        })
-    }
-
-    /// Rebuild from a checkpoint: stepping-identical to the island at
-    /// `checkpoint()` time — same rng position, same seen-set (bus redelivery
-    /// dedups), same generations, continuing `Seq` stamps. Fresh metrics
-    /// (cumulative telemetry is the HOST's aggregation concern), empty
-    /// queues (§10.5), containment on, not poisoned.
-    ///
-    /// # Refuses a rules/digest mismatch (RLS-A13)
-    ///
-    /// `Island::new` cannot be given a digest that disagrees with its rules —
-    /// there is no digest argument. `restore` is the one place the two can
-    /// still disagree, because the checkpoint carries a HISTORICAL digest and
-    /// the caller supplies rules NOW. Continuing under rules the checkpoint's
-    /// digest does not describe is silent replay divergence: the island keeps
-    /// stepping, its events keep claiming the old pin, and nothing is wrong
-    /// until an oracle disagrees months later — by which time the evidence is
-    /// gone.
-    ///
-    /// So it is refused, loudly, which is what RLS-D12 already specifies for an
-    /// engine that cannot honour a stored ruleset: **quarantine, never silently
-    /// reinterpret.** The cost is real and worth stating — a node that cannot
-    /// resolve the checkpoint's ruleset cannot adopt the island at all. That is
-    /// the correct trade for a determinism-pinned system, and it is the shape
-    /// F2 completes: once the immutable ruleset store exists, the caller looks
-    /// the ruleset up BY `cp.digest` and the mismatch stops being reachable.
-    ///
-    /// **Today this is latent, not live** — `checkpoint`/`restore` are not on
-    /// the durable recovery path (`recovery.rs` records the decision: replay
-    /// from the committed log, *"persisting island checkpoints … is strictly
-    /// more machinery"*), and nothing in production calls it. Which is exactly
-    /// why it costs nothing to close now, and would be archaeology later.
-    pub fn restore(
-        cp: IslandCheckpoint<D>,
-        rules: Arc<D::Rules>,
-    ) -> Result<Self, RulesetMismatch> {
-        let derived = D::rules_digest(&rules);
-        if derived != cp.digest {
-            return Err(RulesetMismatch { checkpoint: cp.digest, supplied: derived });
-        }
-        Ok(Self {
-            id: cp.id,
-            tick: cp.tick,
-            entities: cp.entities,
-            encounters: cp.encounters,
-            ingress: Ingress::with_next_seq(cp.next_seq),
-            seen: cp.seen,
-            state: cp.state,
-            rules,
-            // Equal to `D::rules_digest(&rules)` by the check above — the
-            // stored one is used so the field's PROVENANCE stays the
-            // checkpoint, not a re-derivation that would mask a future bug in
-            // the guard itself.
-            digest: cp.digest,
-            rng: cp.rng,
-            outcomes: Vec::new(),
-            externals: Vec::new(),
-            schedule: BTreeMap::new(),
-            buffered: Vec::new(),
-            currently_buffered: std::collections::BTreeSet::new(),
-            metrics: IslandMetrics::default(),
-            island_gen: cp.island_gen,
-            containment: true,
-            poisoned: false,
-            quarantine: Vec::new(),
-        })
-    }
-
-    /// Dissolve, CONSUMING the island — "Gone" is unrepresentable by move
-    /// semantics, not a runtime flag. The §10.1 policy: transfer-class
-    /// reasons carry current-generation pending work in `transferable`;
-    /// everything else (and every stale-generation item) is counted
-    /// discarded. Quarantined pills ride their own field, NEVER
-    /// `transferable` (SC-A9 — replaying one is the infinite crash loop).
-    pub fn dissolve(mut self, reason: DissolutionReason) -> Dissolution<D> {
-        let mut pending = self.ingress.drain_all();
-        for (_, items) in std::mem::take(&mut self.schedule) {
-            // Scheduled items were never admitted — stamp them into the
-            // current epoch so a transfer target treats them as fresh.
-            pending.extend(items.into_iter().map(|(lane, mut i)| {
-                i.admitted_gen = self.island_gen;
-                (lane, i)
-            }));
-        }
-        pending.append(&mut self.buffered);
-
-        let total = pending.len() as u64;
-        // A POISONED island never transfers pending work regardless of the
-        // reason the host picked — §10.1 says a dead island's pending is
-        // LOST, and migrating a queue out of a corrupted context would
-        // launder it (review-impl S2 finding 3).
-        let transferable: Vec<(Lane, QueuedInput<D>)> = if reason.transfers_pending()
-            && !self.poisoned
-        {
-            pending
-                .into_iter()
-                .filter(|(_, i)| i.admitted_gen == self.island_gen)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let discarded_pending = total - transferable.len() as u64;
-
-        let checkpoint = IslandCheckpoint {
-            id: self.id,
-            tick: self.tick,
-            island_gen: self.island_gen,
-            digest: self.digest,
-            entities: self.entities,
-            encounters: self.encounters,
-            state: self.state,
-            rng: self.rng,
-            seen: self.seen,
-            next_seq: self.ingress.next_seq(),
-        };
-
-        Dissolution {
-            reason,
-            transferable,
-            discarded_pending,
-            checkpoint,
-            quarantined: self.quarantine,
-            outcomes: self.outcomes,
-            metrics: self.metrics,
-            was_poisoned: self.poisoned,
-        }
-    }
-
-    /// SC-A3 — a host must only `dissolve(Migrating)` a quiescent island
-    /// (encounters migrate between turns; cells when drained).
-    pub fn is_quiescent(&self) -> bool {
-        self.ingress.is_empty() && self.buffered.is_empty() && self.schedule.is_empty()
-    }
-
     // ─── time (injected, never read — TDIL-A9) ───
 
     /// Advance logical time. Never blocks; Class A work + due timers only.
@@ -478,7 +284,7 @@ impl<D: Domain> Island<D> {
                     // Stamped at FIRE time — a scheduled item outliving a
                     // dissolution belongs to the new epoch.
                     input.admitted_gen = self.island_gen;
-                    self.ingress.push(lane, input);
+                    self.ingress.push(lane, IngressItem::Input(input));
                     self.metrics.scheduled_fired += 1;
                 }
             }
@@ -487,7 +293,7 @@ impl<D: Domain> Island<D> {
         // Re-offer buffered items at the FRONT, original Seq preserved.
         // Reverse iteration keeps their relative order after push_front.
         for (lane, input) in self.buffered.drain(..).rev().collect::<Vec<_>>() {
-            self.ingress.push_front_preserving_seq(lane, input);
+            self.ingress.push_front_preserving_seq(lane, IngressItem::Input(input));
         }
 
         // Eviction runs on the tick path, never the per-item path.
@@ -501,21 +307,48 @@ impl<D: Domain> Island<D> {
         if self.poisoned {
             return StepStatus::Poisoned;
         }
+        // RLS-D8's "never inside a step", made refusable. Set here rather than
+        // after the pop so that even an idle step is covered: a switch is not
+        // more legal because this call happened to find the queue empty.
+        // Cleared on EVERY exit below, including the early returns - a flag
+        // left set by one path would refuse every subsequent switch forever,
+        // which fails toward "no epoch switches ever" and would look like the
+        // feature simply not working.
+        self.in_step = true;
+        let status = self.step_inner();
+        self.in_step = false;
+        status
+    }
+
+    fn step_inner(&mut self) -> StepStatus {
         let Some((lane, item)) = self.ingress.pop() else {
             return StepStatus::Idle;
         };
-        let seq = item.seq;
+        let seq = item.seq();
         self.metrics.steps_processed += 1;
 
-        // S1b §7 — generation gate FIRST, before the seen-set: a superseded
-        // item must not burn its input_id (re-submit after invalidation is
-        // legitimate), and this is the O(1) half of the cascade.
-        if item.admitted_gen != self.island_gen {
-            self.currently_buffered.remove(&item.input_id);
+        // S1b §7 — generation gate FIRST, before the seen-set and before the
+        // control/input split: a superseded item must not burn its input_id
+        // (re-submit after invalidation is legitimate), and a superseded
+        // EPOCH SWITCH must not apply either — an island that has dissolved
+        // and been rebuilt is not the island that switch was aimed at.
+        if item.admitted_gen() != self.island_gen {
+            if let IngressItem::Input(i) = &item {
+                self.currently_buffered.remove(&i.input_id);
+            }
             self.metrics.discarded_superseded += 1;
             self.record(seq, Outcome::Discarded { reason: DiscardReason::Superseded });
             return StepStatus::Processed(seq);
         }
+
+        // RLS-A14 — a switch is a CONTROL item, and its handling lives in
+        // `island::epoch` beside the rest of the epoch machinery.
+        let item = match item {
+            IngressItem::EpochSwitch { epoch, rules, .. } => {
+                return self.step_epoch_switch(seq, epoch, rules);
+            }
+            IngressItem::Input(i) => i,
+        };
 
         // I2 — idempotency. A duplicate is a normal recorded outcome.
         if !self.seen.insert(item.input_id, self.tick) {

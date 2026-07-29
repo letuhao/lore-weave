@@ -1,5 +1,25 @@
 # GEO_001 — World Geometry
 
+> **⚠ SCOPE INVERTED — CORRECTION 2026-07-30 ([`36_map_architecture.md`](../../36_map_architecture.md) `SPG-F3`, row `SPG-R3`):**
+> **§2 scopes `world_geometry` to a CONTINENT channel (*"One row per continent channel"*). That
+> containment is backwards relative to both the locked redesign and the shipped code.**
+> Seven days after this doc was drafted, [`GEO_WORLD_TIER_REDESIGN`](../../GEO_WORLD_TIER_REDESIGN.md)
+> (LOCKED 2026-05-20) stated the finding directly — *"the current generator is structurally a **region**
+> generator; this spec defines the **world** tier above it"* — and `crates/world-gen` followed it:
+> [`hierarchy.rs`](../../../../../crates/world-gen/src/hierarchy.rs) now emits **one sphere containing
+> many continents** (L0 Continent = a connected land component *inside* the world; L1 Subcontinent;
+> L2 Region). So a continent is a **product** of world generation, not its container.
+> **Correct scope: `world_geometry` belongs to a `MapKind::World` node.** Because GEO_001 is still at
+> **DRAFT** (never locked), this is correctable without a lock claim — but until `SPG-R3` is applied,
+> this file describes the inverse of what ships.
+> Also affected: `CellGrid` / `GeoCellId` adopt the name **`GeoCell`** (`SPG-R4`) to end the collision
+> with `CSC_001`'s "cell" (a tavern-sized interior) — see doc 36 §6.
+> **What still stands, and is load-bearing:** the per-cell substrate itself (`HeightmapValue u16`,
+> 8-variant `ClimateZone`, 14-variant `BiomeKind`, `RiverFlux`, adjacency) matches the shipped generator
+> exactly; the deterministic `(seed, creative_seed) → geometry` contract; and the **delta-overlay**
+> editing model — though that overlay is one of the two cascades `SPG-A15` requires be unified into a
+> single strength order (`SPG-R11`). Annotation only; no schema edited.
+
 > **Conversational name:** "World Geometry" (GEO). The procedural geographic substrate beneath MAP_001's visual layer. Voronoi cell partition (~10k cells per continent) + heightmap + climate + biome + (V1+ schema-reserved) political layer + settlement layer + route network + culture distribution + resource slots. Per-continent ChannelScoped T2 aggregate. Generated from `(seed, creative_seed)` reproducibly; edited via delta-overlay (admin canonization adds named ordered deltas); inherited by snapshot fork via reference + per-reality local deltas. V1 populates geometry/climate/biome layers; V1+ layers schema-reserved.
 >
 > **Category:** GEO — Geography Foundation (foundation tier; sibling of EF_001 + PF_001 + MAP_001 + CSC_001 + RES_001 + PROG_001)
@@ -27,7 +47,7 @@ Three concrete gaps in the V1+ design surface that GEO_001 closes.
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **WorldGeometry** | Aggregate `world_geometry` (T2 / Channel scope at continent channel) | One row per continent channel. Single aggregate with internal layered structure (geometry / climate / biome V1 populated + political / settlement / route / culture / resource V1 schema-reserved). |
+| **WorldGeometry** | Aggregate `world_geometry` (T2 / Channel scope at the **`MapKind::World`** node) | **CORRECTED 2026-07-30 (`SPG-R3` / [REC-80](../../19_reconciliation_register.md)).** ~~One row per **continent** channel.~~ **One row per WORLD** — a world **contains** many continents, not the reverse. The original scoping was written 2026-05-13 and inverted seven days later by [`GEO_WORLD_TIER_REDESIGN`](../../GEO_WORLD_TIER_REDESIGN.md) (LOCKED 2026-05-20): *"the current generator is structurally a **region** generator; this spec defines the **world** tier above it."* The shipped code followed the redesign — [`hierarchy.rs`](../../../../../crates/world-gen/src/hierarchy.rs) emits one sphere whose **L0 Continent** is a connected land component *inside* it, with L1 Subcontinent and L2 Region beneath — so a continent is a **product** of world generation. This spec is still **DRAFT**, so the correction needs no lock claim. Single aggregate with internal layered structure (geometry / climate / biome V1 populated + political / settlement / route / culture / resource V1 schema-reserved). |
 | **CellGrid** | `Vec<GeoCell>` — ~10k Voronoi cells per continent (V1 cap 16k) | Each cell carries center coordinate + neighbor adjacency list + heightmap value + climate zone + biome. Generated deterministically from `(seed, creative_seed)` via Voronoi partition over Poisson-disk sample (per Patel dual-mesh). NOT a DP channel — cells are rows under the world_geometry aggregate; the DP `cell` channel level (where gameplay sessions live) is a separate concept and maps to ONE GeoCell via `cell_channel.metadata.geo_cell_id` FK. |
 | **GeoCellId** | Newtype `pub struct GeoCellId(pub(crate) u32)` (per-continent dense u32; module-private constructor) | Dense small integers (0..16384) make adjacency lists compact. Distinct from `ChannelId` (which is per-reality UUID) — these are internal handles within the continent's geometry. |
 | **HeightmapValue** | `u16` (0..65535) per cell | Sea level threshold at deterministic value (default 32768); below = water cell. Plates + thermal/hydraulic erosion shape values during generation (§5). |

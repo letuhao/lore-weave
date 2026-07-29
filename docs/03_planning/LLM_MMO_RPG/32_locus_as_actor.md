@@ -1,5 +1,22 @@
 # 32 — The world is an actor: closing WSA-F1 and WSA-F2
 
+> **➤ CONTINUED 2026-07-30 by [`36_map_architecture.md`](36_map_architecture.md) (`SPG-*`) — the converse
+> and the container.** This doc established `WSA-A7`: *a locus is both an entity and an actor*. Doc 36
+> states the other half — **an entity may HOLD an interior, and interiors form a typed graph**
+> (`SPG-A1`) — so the two together close the circle: *entity* and *space* are one kind of thing seen from
+> outside and from inside. Where 32 asked *"can a place act?"*, 36 asks *"what is a place made of, what
+> may it contain, and where is it?"*
+> Doc 36 **reuses without re-opening**: `WSA-A9`'s existence ladder becomes the lazy-materialization rule
+> for interiors (`SPG-A12`) rather than a second ladder; `WSA-A8`'s no-central-world-actor constraint is
+> honored (a `Region` is a fold, never a writer); `WSA-F6`'s locus-as-ownable-entity is what lets
+> territory change hands by rebinding an ownership relation instead of restructuring the containment
+> tree. `WSA-F5(c)`'s unmeasured cost of acting loci is **carried forward unchanged** as `SPG-Q6`.
+> **⚠ `WSA-R19..R24` are still PROPOSED, not applied** — as this doc recorded. `SPG-R10` **depends on
+> `WSA-R19`**: `EntityId::Place` (32) and `SpaceNode.holder` (36) are the same seam, so they must land in
+> one pass. Both sets are registered in the ownership matrix as of 2026-07-30, together with a backfill
+> of six prefixes — **including this doc's own `WSA-*`** — that docs 27–35 introduced and never
+> registered. Annotation only; nothing sealed here is re-litigated.
+
 > **Status:** SEALED 2026-07-28 (DESIGN). Continues the `WSA` prefix from
 > [31](31_world_simulation_architecture.md) deliberately (axioms `WSA-A7..A11`, findings
 > `WSA-F4..F6`, decisions `WSA-D2..D3`, amendment rows `WSA-R19..R24`, open `WSA-Q4..Q5`) — this is
@@ -219,12 +236,12 @@ narrowed.
 
 | # | Target | Change | Confidence |
 |---|---|---|---|
-| **R19** | `EF_001` §5 `EntityId` | add a **`Place`/`Locus` variant** (lock-claim + boundary review, as its own rules require) so a locus is addressable in the *same* enum as everything else | **verified** — currently closed to 4 |
-| **R20** | `EF_001` `entity_binding.cell_owner` doc-comment | references `EntityType::Cell`, **which does not exist** in the four-variant enum. Fix the drift, and record it as a `count-assertions` case | **verified** |
-| **R21** | `NPC_001` §2 `ActorId` | add a **`Locus` variant** (WSA-D3) — *not* reusing `Synthetic` | **verified** |
-| **R22** | `ACT_001` `actor.synthetic_actor_forbidden` | narrow it: it must exclude out-of-world synthetics **without** excluding loci, once R21 lands | **verified** |
-| **R23** | `AIT_001` | extend the existence tiering to **loci** (WSA-A9): Untracked cell → Minor → Major (acting) | **verify** |
-| **R24** | [31](31_world_simulation_architecture.md) `WSA-D1` | **superseded by WSA-D2** — continuous fields are back in scope as coarse-cadence conserved transfer; only sub-cell lattice resolution stays refused | **verified** |
+| **WSA-R19** | `EF_001` §5 `EntityId` | add a **`Place`/`Locus` variant** (lock-claim + boundary review, as its own rules require) so a locus is addressable in the *same* enum as everything else | **verified** — currently closed to 4 |
+| **WSA-R20** | `EF_001` `entity_binding.cell_owner` doc-comment | references `EntityType::Cell`, **which does not exist** in the four-variant enum. Fix the drift, and record it as a `count-assertions` case | **verified** |
+| **WSA-R21** | `NPC_001` §2 `ActorId` | add a **`Locus` variant** (WSA-D3) — *not* reusing `Synthetic` | **verified** |
+| **WSA-R22** | `ACT_001` `actor.synthetic_actor_forbidden` | narrow it: it must exclude out-of-world synthetics **without** excluding loci, once R21 lands | **verified** |
+| **WSA-R23** | `AIT_001` | extend the existence tiering to **loci** (WSA-A9): Untracked cell → Minor → Major (acting) | **verify** |
+| **WSA-R24** | [31](31_world_simulation_architecture.md) `WSA-D1` | **superseded by WSA-D2** — continuous fields are back in scope as coarse-cadence conserved transfer; only sub-cell lattice resolution stays refused | **verified** |
 
 The build order from [31 §6](31_world_simulation_architecture.md) is unchanged in sequence, but two
 rows gain content: **W6 (the balancing cell)** becomes the first *locus-actor*, and is therefore the

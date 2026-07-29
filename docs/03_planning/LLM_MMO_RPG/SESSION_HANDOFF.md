@@ -83,6 +83,94 @@ The file store's on-disk shape became a `[[binding]]` list; the old one-binding 
 (version-dispatched decoder, tested), because a legacy file that reads but cannot advance is not
 compatible.
 
+### ✅ Q0b B2a — the island seam, and the guard that could not fail (2026-07-29)
+
+`Island::activate_epoch(epoch, rules)` — `RLS-D8` + `RLS-I1`. The island gains a `RulesetEpoch`
+(a **separate type** from `Gen`: an island generation is bumped by lifecycle churn many times per
+epoch, and one type would let a cascade bump silently satisfy a ruleset monotonicity check).
+
+**`RLS-D8`'s *"applied between two `step()` calls, never inside one"* was not enforced by anything,
+and the obvious mechanism is a mirage.** Taking `&mut self` stops a *host* from calling it mid-step,
+because `step` already holds the borrow — but that is the borrow checker doing bookkeeping. The
+reachable violation is an edit to `island.rs` that calls `activate_epoch` from inside `step`, and no
+signature prevents it. So `step` sets an `in_step` flag for its duration and a switch attempted from
+inside one is refused.
+
+**That guard is unreachable from any host — which would have made it VACUOUS (`NV-2`: the subject
+cannot vary, so nothing could ever redden it and a refactor could delete it for free).** It is
+falsifiable only because `set_in_step_for_test` exists behind the same `test-util` feature as
+`Admitted::unchecked` — absent from a service build, so reaching for it there is a compile error.
+The seam exists *so the test can exist*.
+
+**Three more decisions:**
+- **Equality is refused, not accepted.** At-least-once delivery makes a duplicate switch normal; a
+  silent `Ok` on the second delivery would hide a genuine double-activation carrying *different*
+  bytes behind the common case.
+- **The switch bumps the island generation**, so items admitted under the old ruleset discard as
+  `Superseded` rather than being applied under rules they were never validated against. Stated
+  limit: once the switch arrives as a typed ingress item (`RLS-A14`), those items are legitimately
+  old-epoch work and should *process*. Superseding is the conservative answer available today.
+- **The epoch is carried on the checkpoint** — including through `dissolve`. Without it an island at
+  epoch 3 rebuilds as epoch 1 and then accepts a redelivered epoch-2 switch. A monotonic counter
+  that does not survive the operation that reconstructs it is not monotonic.
+
+**Evidence — 8 tests in `crates/sim/tests/epoch.rs`, all four guards bite-proven:** drop the
+monotonic guard → **3** RED · drop the mid-step guard → 1 RED · skip the generation bump → 1 RED ·
+don't carry the epoch across a checkpoint → 1 RED. The tests define their **own domain**, because
+`TestDomain::rules_digest` answers `UNPINNED` for every ruleset — so *"the digest changed"* would
+have been unfalsifiable under it, the same `NV-2` shape as `QTY-A12`'s `size_of` assertion.
+
+### ✅ Q0b B2b — `RLS-A14`, and the reason ordering is SAFE is not the obvious one (2026-07-29)
+
+The queue gained a second shape: `IngressItem<D> = Input(QueuedInput<D>) | EpochSwitch { seq, epoch,
+rules, admitted_gen }`. `QueuedInput` could not carry a switch — it holds a `D::Payload`, and a
+ruleset switch is not something the domain has an opinion about; a payload variant would push a
+kernel concern into every domain's vocabulary, including the ones that will never switch.
+
+**The load-bearing discovery.** The obvious reading of ordering is *"items ahead run under the old
+rules, items behind under the new"* — and the second half looks unsafe, because those items were
+queued before the switch. It is safe, and only for a reason written at the top of `ingress.rs`:
+**admission stamps `Seq` and does nothing else; every precondition is re-validated at STEP time**
+(spec §5). An item queued before the switch and stepped after it is checked against the rules in
+force *then*.
+
+**So the ordered path does NOT bump the island generation, and that asymmetry is the whole gain.**
+`B2a`'s supersede-everything was the conservative answer to a question ordering answers properly.
+The out-of-band `activate_epoch` still bumps, because it has no position in the queue — the
+asymmetry is deliberate and each path's comment says why.
+
+Other decisions: the switch is **a step's entire work** (no `D::apply` runs on it, so `RLS-D8`'s
+*"between two steps"* still holds — the ordered path is where a switch is *supposed* to happen, and
+`swap_ruleset` deliberately does not check `in_step`) · **not routed through the seen-set** (a
+control item has no `InputId`; its duplicate protection is `RLS-I1` monotonicity, strictly stronger
+than a key that expires out of a TTL window) · **`Lane::Live` is not a default but a decision**
+(`Background` would let a busy island hold a switch behind player work indefinitely, and `RLS-D17`
+forbids the reality-wide barrier that would otherwise force it through) · **a pending switch is
+never transferred by `dissolve`** — counted discarded, never dropped silently, because a successor
+rebuilds from a checkpoint that already carries the epoch.
+
+**Evidence — 13 tests in `crates/sim/tests/epoch.rs`.** The headline one is
+`an_ordered_switch_splits_the_queue_instead_of_superseding_it`: two items under epoch 1's rules,
+two under epoch 2's, asserted as `[1, 1, 9, 9]` — a queue-wide supersede reads `[]`, and applying
+the switch a step early or late shifts the boundary. Bite-proven: make the ordered path bump the
+generation → **3** RED · apply the switch before the generation gate → 2 RED · drop `RLS-I1` from
+the shared core → 4 RED.
+
+**B2 is now complete.** Next is **B3**, whose three constraints are held by
+`scripts/epoch-emit-trigger-gate.py` (`D-Q0B-EMIT-PATH`).
+
+**The ceiling gate paid for itself in the same slice.** `island.rs` went 790 → 919 and `types.rs`
+470 → 530, and `file-ceiling-gate` refused the commit. Both were **split, not allowlisted**:
+
+- `island.rs` → `island/mod.rs` (648) + **`island/epoch.rs`** (119) + **`island/lifecycle.rs`** (196).
+  **Children, not siblings** — a child module reaches its parent's private items, so the epoch
+  switch still reads `in_step`/`rules`/`digest` directly. A sibling would have forced those fields
+  `pub(crate)`, widening the kernel's mutable surface across the whole crate to satisfy a line count.
+- `types.rs` (392) → **`ruleset.rs`** (154), **re-exported from `types`** so no consumer's import
+  path changed. The old allowlist row warned that a split here *"changes every consumer's import
+  paths across four crates"* — that warning was **answered**, not accepted, and the row **tightened
+  470 → 400**. An allowlist that only ever grows is an exemption wearing a budget's clothes.
+
 ### What the gate caught on the day it was written (2026-07-29)
 
 The table above was authored first, then the gate was run against it. **It rejected five of the
@@ -2274,10 +2362,21 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > added to `MAP_001` · `GEO_001` · `CSC_001` · `ACT_001` · `TMP_001` · `EF_001` · doc `32`.
 >
 > **⚠ DELIBERATELY NOT DONE:** `SPG-R1..R12` and the inherited **`WSA-R19..R24`** remain **PROPOSED, not
-> applied** — no feature spec schema was edited, same discipline doc 32 recorded. `SPG-R2` (`DP-Ch1`
-> `level_name` → `MapKind`) and `WSA-R19`/`R21` (closed `EntityId`/`ActorId` enums) each touch a **LOCKED**
-> file and need their own claim. **`SPG-R10` must land WITH `WSA-R19`** — `EntityId::Place` and
-> `SpaceNode.holder` are the same seam from two directions.
+> applied** — no feature spec schema was edited, same discipline doc 32 recorded. `WSA-R19`/`R21`
+> (closed `EntityId`/`ActorId` enums) touch a **LOCKED** file and need their own claim.
+> **`SPG-R10` must land WITH `WSA-R19`** — `EntityId::Place` and `SpaceNode.holder` are the same seam
+> from two directions.
+>
+> **⛔ `SPG-R2` RETIRED the same day it was written ([REC-93](19_reconciliation_register.md)).** It
+> proposed narrowing `DP-Ch1`'s `Channel.level_name: String` to `MapKind` and was marked *verified*.
+> Opening the target before editing it killed the row: [`DP-A13`](06_data_plane/02_invariants.md) states
+> the refusal outright — *"DP is agnostic to `level_name` semantics; feature/book layer interprets level
+> names… the tree shape is per-reality (book-specific)"*. Applying it would have pushed a **game**
+> concept into the **data plane** and destroyed per-reality vocabulary (a wuxia world could no longer
+> name a level `phủ`). **The finding survives, the mechanism was wrong** — same shape as `WSA-R02` and
+> `XST-R6` — and `SPG-R1` already fixes it at the correct layer: `MapKind` on `map_layout`, a *feature*
+> aggregate. **Net: two fields, two jobs; no DP change, no lock claim, and a better design than the
+> amendment would have produced.**
 >
 > **NEXT:** HTML drafts in [`_ui_drafts/`](_ui_drafts/) for the typed-tree navigator (the existing
 > `MAP_GUI_v1/v2` + `CELL_SCENE_v1..v4` are the baseline to extend, not replace) · then the

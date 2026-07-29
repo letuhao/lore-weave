@@ -132,7 +132,30 @@ Each stage is a release with standalone value. V1 might be sufficient for most u
 - **Classic MUDs** — regions, exits, NPC placement, command grammar. Borrow the *world-model discipline*, not the "text-as-interface" medium.
 - **Tabletop RPG play patterns** — DM + players + dice + canon, applied to AI-mediated encounters
 
-## 8. Why this is not on the roadmap
+## 8. ~~Why this is not on the roadmap~~ — ⛔ STALE
+
+> **⛔ CORRECTION 2026-07-30 (`WSA-R13` / [REC-89](19_reconciliation_register.md)) — this section is
+> stale in two ways, and it is corrected here the same way §0 corrected the *"text-based"* framing
+> rather than being deleted.**
+>
+> **(1) The premise no longer holds.** This section explains why the track is *not* on the roadmap. It
+> has been **under active build for months**: `crates/sim-core` (island scheduler, 46 tests, measured at
+> 176 ns/step), `crates/ruleset-core` + `ruleset-loader` (digest-pinned law), `services/commit-service`
+> (with a live LLM driver at ~450 tokens/turn on a local model), `services/tilemap-service`,
+> `crates/world-gen`, and `frontend-game`. The four bullets below were a **decision**, and that decision
+> was reversed by doing the work — but the text was never updated, so the corpus's own vision document
+> still tells a reader the opposite of what the repository contains.
+>
+> **(2) The staging is stale.** The V1 framing as *"solo RP"* is superseded;
+> [`DL_001`](features/12_daily_life/DL_001_daily_life_foundation.md) already had to argue around this
+> table, which is the tell that it was load-bearing text nobody owned. **Current product definition:**
+> [`28_product_definition.md`](28_product_definition.md).
+>
+> **What is still true and worth keeping** — the bullets below are a good statement of the *risks*, and
+> two of them remain live rather than resolved: the research-level unknowns (NPC memory at scale, cost
+> economics) are the same ones tracked today as `SPG-Q6` / `WSA-F5(c)` — **the cost of acting loci has
+> never been measured**, and [doc 21 §7](21_architecture_ceilings.md) forbids inferring headroom. Read
+> the list below as *standing risks*, not as *a reason not to start*.
 
 - The open problems in `01_OPEN_PROBLEMS.md` include research-level unknowns (NPC memory at scale, temporal consistency across parallel sessions, cost economics)
 - LoreWeave V1 goal is a novel-workflow platform, not a game platform — this would be a product pivot, not an extension

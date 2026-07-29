@@ -18,7 +18,7 @@ use crate::metrics::IslandMetrics;
 use crate::rng::DetRng;
 use crate::seen::SeenSet;
 use crate::types::{
-    DissolutionReason, EntityId, Gen, IslandId, Outcome, QueuedInput, RulesetDigest, Seq, Tick,
+    DissolutionReason, EntityId, Gen, IslandId, Outcome, QueuedInput, RulesetDigest, RulesetEpoch, Seq, Tick,
 };
 
 /// Everything needed to rebuild a stepping-identical island: domain state,
@@ -30,6 +30,11 @@ pub struct IslandCheckpoint<D: Domain> {
     pub tick: Tick,
     pub island_gen: Gen,
     pub digest: RulesetDigest,
+    /// RLS-I1 — carried across a rebuild, or `restore` would silently reset an
+    /// island that had reached epoch 3 back to 1 and let an already-applied
+    /// switch re-apply. A monotonic counter that does not survive the one
+    /// operation that reconstructs the counter is not monotonic.
+    pub epoch: RulesetEpoch,
     pub entities: BTreeMap<EntityId, Gen>,
     pub encounters: BTreeMap<EntityId, Gen>,
     pub state: D::State,
@@ -48,6 +53,7 @@ where
             tick: self.tick,
             island_gen: self.island_gen,
             digest: self.digest,
+            epoch: self.epoch,
             entities: self.entities.clone(),
             encounters: self.encounters.clone(),
             state: self.state.clone(),

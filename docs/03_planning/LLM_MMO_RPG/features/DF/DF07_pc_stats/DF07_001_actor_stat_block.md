@@ -156,8 +156,22 @@ It is also the missing home for two orphan bindings: `VitalProfile.max_value` (R
 - **DF7-A4 (Integer determinism).** All resolution runs in **i64 milli-units**; exactly one `floor` at slot
   emit. No `f32` anywhere in the stat path. Same inputs → byte-identical block on any machine (TDIL-A9).
 - **DF7-A5 (Additive percent).** Percent modifiers **sum** into one factor: `(base+flat) × (1000+Σpct)/1000`.
-  They are never chained multiplicatively — this makes the result **order-independent** and kills
-  exponential buff stacking.
+  They are never chained multiplicatively — this kills exponential buff stacking.
+  > **⚠ RATIONALE CORRECTED 2026-07-30 (`WSA-R03` / [REC-88](../../../19_reconciliation_register.md)).**
+  > This axiom previously justified itself with *"this makes the result **order-independent**"*. **That
+  > reason is false: multiplication commutes too**, so chaining `×1.1 × 1.1 × 1.5` in any order also
+  > yields one value. Order-independence was never the thing summing bought.
+  > **The behaviour is correct and unchanged; only its stated reason was wrong** — which is the more
+  > dangerous defect of the two, because a false principle teaches the next author to reach for summing
+  > whenever they want order-independence, and to believe multiplication would have cost it.
+  > **The real rule, stated properly:** *one commutative operator per stage; stages are ordered.*
+  > Order-independence comes from **commutativity within a stage** (both `+` and `×` have it) and from
+  > the stage order being **declared** (§4 steps 4–6), not from the choice of operator. What summing
+  > actually buys is a **linear** rather than exponential response to buff count, and a floor that can
+  > be expressed at all (`max(0, 1000+Σpct)` — a product has no equivalent, since one zero term
+  > annihilates it). See [`XST-F12`](../../../27_extensibility_stress_test.md) for the finding and
+  > [`QTY-D11`](../../../35_quantity_architecture.md) for `combine: Sum | Product`, which makes the
+  > operator a **declared per-stage choice** — the shape this axiom's true rule implies.
 - **DF7-A6 (Playable with zero declaration).** Every slot has an engine default. A reality that declares no
   `progression_kinds` and no `stat_slots` still yields a valid, balanced-enough block (§5.4) — mirrors
   PROG_001 §9.4's default-formula discipline.

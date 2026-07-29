@@ -1,5 +1,32 @@
 # EF_001 — Entity Foundation
 
+> **⚠ TWO PENDING AMENDMENTS CONVERGE HERE 2026-07-30 — [`32`](../../32_locus_as_actor.md) `WSA-R19`/`R20`
+> + [`36`](../../36_map_architecture.md) `SPG-R10`. They are the SAME seam approached from two
+> directions and must land in ONE pass, not separately.**
+> - **From doc 32 (`WSA-A7`):** a locus *is* an entity — so `EntityId` needs a **`Place`/`Locus` variant**
+>   (`WSA-R19`), and `entity_binding.cell_owner`'s doc-comment refers to `EntityType::Cell`, **a variant
+>   this file's four-variant enum does not have** (`WSA-R20`). Doc 32 reads that drift as *evidence for*
+>   the change: `RES_001` needed `cell_owner` and `EntityRef` needed `Cell`, and both reached past the
+>   closed `EntityId` to get it — the economy work discovered the requirement empirically and worked
+>   around the type system.
+> - **From doc 36 (`SPG-A1`):** the converse — an entity may **hold an interior**, via
+>   `SpaceNode.holder`. A chest, a house, a ship, a planet and a cultivator at 神境 are then one
+>   construct, not five special cases.
+> Together: **"entity" and "space" are one kind of thing seen from outside and from inside.**
+> **This file's own split is what makes that precise rather than loose, and it is NOT being collapsed.**
+> `EF_001` states that `EntityId` (*things in the world*) and `ActorId` (*agents that submit turns*) must
+> not merge, *"because collapsing would corrupt either 'things in the world' or 'agents that submit turns'
+> semantics."* Doc 36 `SPG-A4` names that declared split as **two graphs** and gives it a guarantee:
+> **containment** is a strict acyclic tree (A is never inside A) while **control** is free and
+> many-to-many, and no traversal follows control edges. That is what lets a cultivator's inner world
+> contain a 分身 the same player also drives, with no cycle anywhere.
+> **⚠ `SPG-A5b` — a gap this file's guard does not cover:** [`DP-Ch1`](../../06_data_plane/12_channel_primitives.md)
+> prevents cycles on the **parent** relation (depth + referential integrity). A **reference** edge — a node
+> whose interior comes from a shared definition (`SPG-A14`) — is *not* a parent edge and escapes that
+> guard entirely. Reference cycles need their own detection; USD raises exactly this error class.
+> **All rows PROPOSED, not applied.** `WSA-R19` and `WSA-R21` each modify a **closed enum** and require a
+> lock-claim + boundary review, as this file's own rules demand. Annotation only.
+
 > **Conversational name:** "Entity Foundation" (EF). The substrate that defines what counts as an addressable thing in the world — a unified `EntityId` taxonomy, spatial presence (`entity_binding`), lifecycle state machine, affordance enum, and the `EntityKind` trait that PC / NPC / Item / EnvObject aggregates implement.
 > **2026-04-26 RES_001 downstream Phase 2 update:** §3.1 entity_binding extended with `cell_owner: Option<EntityRef>` (Q9 LOCKED — body-bound cell ownership, V1 active) + `inventory_cap: Option<CapacityProfile>` (Q6 LOCKED — schema reservation V1, enforcement V1+30d) + `EntityRef` enum (Actor/Cell/Item/Faction discriminator used by RES_001 ownership semantics).
 >
@@ -91,9 +118,22 @@ pub struct EntityBinding {
     pub last_lifecycle_change_fiction_time: FictionTime,
 
     // ─── RES_001 Resource Foundation extensions (added 2026-04-26 RES_001 DRAFT downstream) ───
-    /// Cell ownership reference (RES_001 Q9 LOCKED). Applies ONLY when `entity_type == EntityType::Cell`
-    /// (V2+ — currently cells live as ChannelId per PF_001, but EF_001 may absorb cell-as-entity in V1+
-    /// migration). For non-Cell entities, MUST be None. Body-bound cell ownership for xuyên không (Q9c):
+    /// Cell ownership reference (RES_001 Q9 LOCKED).
+    ///
+    /// ⚠ PHANTOM VARIANT — corrected 2026-07-30 per `WSA-R20` / REC-84. This comment previously read
+    /// "Applies ONLY when `entity_type == EntityType::Cell`". **`EntityType` has no `Cell` variant** —
+    /// its four are `Pc · Npc · Item · EnvObject`. The reference was aspirational, and it sat here
+    /// describing a guard that no code could implement. It is left recorded rather than silently
+    /// deleted because doc 32 reads it as *evidence*: `RES_001` needed `cell_owner` and `EntityRef`
+    /// needed a `Cell` variant, so the economy work discovered locus-as-entity empirically and reached
+    /// past this closed enum to get it (`WSA-F4`).
+    ///
+    /// Correct statement until `WSA-R19` lands: cells are **not** `EntityId`s today — they live as
+    /// `ChannelId` per PF_001, so this field is populated by the RES_001 path only and has no
+    /// `entity_type` discriminant to test. `WSA-R19` adds the `Place`/`Locus` variant that makes the
+    /// intended guard expressible; `SPG-R10` (doc 36 `SpaceNode.holder`) is the same seam from the
+    /// other side and **must land in the same pass**. For non-Cell entities, MUST be None.
+    /// Body-bound cell ownership for xuyên không (Q9c):
     /// when soul transmigrates into another body, this field follows the body, not the soul.
     /// V1 transfer paths: Author Forge (WA_003 `Forge:EditCellOwnership`) / body-substitution via
     /// PCS_001 mechanic / NPC death → orphan (set to None). V1+30d adds PC-to-PC trade + PC-buy-from-NPC.
@@ -253,6 +293,24 @@ pub enum EntityId {
     Npc(NpcId),
     Item(ItemId),
     EnvObject(EnvObjectId),
+
+    // ── PENDING (boundary review OPENED 2026-07-30; NOT yet a V1 variant) ──
+    // Place(PlaceId),   // WSA-R19 · doc 32 WSA-A7 — a locus is an entity
+    //
+    // Gate: must land in the SAME pass as SPG-R10 (`SpaceNode.holder`, doc 36),
+    // because WSA-A7 ("a locus IS an entity") and SPG-A1 ("an entity MAY HOLD an
+    // interior") are one seam approached from two sides. Adding either alone
+    // leaves it half-built.
+    //
+    // Why it is not "just" a nicety: ownership is a relation to an ENTITY
+    // (EXC-A3). While a place is only a ChannelId, territory cannot be owned,
+    // contested or inherited — so strategy and the world economy are not merely
+    // unimplemented, they are UNREPRESENTABLE (WSA-F6).
+    //
+    // The corpus already reached past this closed enum to get it: `EntityRef`
+    // carries a `Cell` variant, `RES_001` needed `cell_owner`, and that field's
+    // doc-comment cited `EntityType::Cell` — a variant that does not exist
+    // (WSA-R20, corrected 2026-07-30). The drift is evidence FOR the variant.
 }
 
 pub struct PcId(pub Uuid);
@@ -289,6 +347,21 @@ pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind },
 | Admin | ✓ | ✗ | S5 admin actors emit events but aren't in-fiction entities |
 | Item | ✗ | ✓ | Items are addressable (PL_005 tool / target) but don't submit turns — no agency |
 | EnvObject | ✗ | ✓ | Same as Items — passive |
+| **Place / Locus** ⏳ | **(pending `WSA-R21`)** | **(pending `WSA-R19`)** | **BOUNDARY REVIEW OPENED 2026-07-30 — the first thing to belong in BOTH enums, and that is the point.** [`WSA-A7`](../../32_locus_as_actor.md): a locus is an **entity** (addressable, ownable, holds quantities) **and** an **actor** (has a driver, submits turns). A trap is a place reacting; a village can regard you and be regarded. ⚠ `WSA-D3`: it needs its **own** `ActorId` variant — **not** `Synthetic`, which denotes an actor *outside* the fiction and would put an out-of-world escape hatch on the social layer's critical path. `WSA-R21` must land with `WSA-R22` (narrowing `actor.synthetic_actor_forbidden`), or a locus can be an actor yet cannot hold an opinion. Cost is bounded by [`WSA-A9`](../../32_locus_as_actor.md): loci ride the `AIT_001` existence ladder, so an unvisited cell is Untracked and takes no turns |
+
+> **⚠ The split above is LOAD-BEARING and must not be "simplified" away — restated 2026-07-30 as
+> [`SPG-A4`](../../36_map_architecture.md).** This file's own reason (*"collapsing would corrupt either
+> 'things in the world' or 'agents that submit turns' semantics"*) is the same fact as doc 36's **two
+> graphs**: **containment** (what is inside what) is a strict **acyclic** tree — A is never inside A —
+> while **control** (who drives what) is free and many-to-many. No traversal follows control edges, so
+> they cannot interact.
+>
+> That is what makes the hardest case cheap. A cultivator who forms an inner world (内天地) cannot be
+> inside himself — but a 分身 can, and **one controller drives both**, because control lives in the other
+> graph. The PO stated it directly: *"tạo hóa thân rồi điều khiển hóa thân… nó là cơ chế chiếm hữu
+> control gốc của game."* See [`SPG-A10`](../../36_map_architecture.md) for why control must be a
+> **binding** `(controller_id, actor_id, …)` and not `ACT_001`'s current enum-on-the-actor, which cannot
+> name *which* controller nor hold two bodies.
 
 **Conversion contract:** `From<ActorId> for Option<EntityId>` (Pc/Npc → Some; Synthetic/Admin → None) and `From<EntityId> for Option<ActorId>` (Pc/Npc → Some; Item/EnvObject → None). Standard library provides infallible conversion only for the Pc + Npc intersection:
 

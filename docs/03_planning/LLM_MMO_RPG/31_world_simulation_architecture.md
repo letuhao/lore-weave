@@ -62,10 +62,20 @@ slogan.**
 > *not* recoverable that way is **continuous propagation** (gas diffusing, heat spreading, sound
 > travelling), which needs a lattice the island model does not have.
 >
-> **WSA-D1 (proposed): declare continuous fields OUT OF SCOPE, explicitly, in the docs.** Per-cell
-> discrete quantities are in; diffusion is out. [27 §7.1](27_extensibility_stress_test.md) already
+> ~~**WSA-D1 (proposed): declare continuous fields OUT OF SCOPE, explicitly, in the docs.** Per-cell
+> discrete quantities are in; diffusion is out.~~ [27 §7.1](27_extensibility_stress_test.md) already
 > established that promising Dwarf-Fortress-level simulation and shipping less is worse than promising
 > less.
+>
+> **⛔ SUPERSEDED by [`WSA-D2`](32_locus_as_actor.md) (doc 32, SEALED 2026-07-28) — applied 2026-07-30
+> per `WSA-R24` / [REC-85](19_reconciliation_register.md).** `WSA-A7` (a locus is both an entity and an
+> actor) **recovers** the part conceded here: diffusion is **a conserved TRANSFER between adjacent
+> locus-actors** — cell A gives 5 heat to cell B — which is [`EXC-L1`](30_exchange_model_and_dataflow.md)
+> applied to neighbours, not a new mechanism. Its honest cost is a **cadence**: diffusion is time-driven,
+> so it is Class C batch work at a coarse tick, never the 20 Hz hot path.
+> **What stays refused, and is refused BY NAME rather than by omission:** *sub-cell* continuous
+> resolution — a true fluid lattice inside a single cell — which is a genuinely different substrate.
+> The §7.1 principle above is untouched and is exactly why the refusal is explicit.
 
 **One refinement that strengthens the model.** Testing it against knowledge and rumour — *"I know a
 secret"*, *"the village heard about the murder"* — shows that these are not a fourth currency:
@@ -191,14 +201,14 @@ Dependency rules, each mechanically checkable:
 
 | # | Target | Says now | Must say | Why | Confidence |
 |---|---|---|---|---|---|
-| **R01** | `DL_001` **DL-A1 / DL-D1** | ambient sim splits by cost: deterministic ⇒ V1, generative ⇒ V2/V3; routines *"evaluated, never ticked"* | add the **third row — deterministic + accumulating** — and narrow DL-D1 so the world may keep a consequence | [EXC-F3](30_exchange_model_and_dataflow.md): the world acts when a ledger cannot balance. DL-D1 forbids it for **token-cost** reasons that do not apply | **verified** |
-| **R02** ⚠️ | `DF07` **DF7-A1** closed `StatSlot` | 10 slots closed **in the binary** | ~~slot set **declared per ruleset** … closed *head* + open tail~~ **MECHANISM REVISED 2026-07-28 → [QTY-D5](35_quantity_architecture.md).** The **finding stands** (ONT-F2: a person is not ten numbers; the escape hatch is un-validated) but the fix does not: the laws read **9 of 10** slots by name, so an "open tail" of slots is one dead slot. `DF7-A1` **stays closed**. The open layer is **L2 declared quantities** (primary · resources · elements), and laws bind to **roles** ([QTY-A3](35_quantity_architecture.md)) so a reality may bind `Vital → qi` with no engine release | [ONT-F2](29_ontology_existence_self_others.md) + [XST-F9](27_extensibility_stress_test.md): a person is not ten numbers, and the escape hatch is currently un-validated | **verified (finding); mechanism replaced** |
-| **R03** | `DF07` **DF7-A5** percent-sum rationale | sums *"so the result is order-independent"* | rationale is **wrong** — multiplication commutes too. State the real rule: **one commutative operator per stage; stages ordered** | [XST-F12](27_extensibility_stress_test.md) | **verified** |
-| **R04** | `ACT_001` **ACT-A5** | two unilateral rows, because feelings are asymmetric | **add the second, load-bearing reason**: it gives every relationship half exactly one writer under SL-A12. Mark as LOCKED against "simplifying" into one symmetric row | [ONT-A4](29_ontology_existence_self_others.md) / WSA-A3 | **verified** |
-| **R05** | `ACT_001` §3.1.2 `FlexibleState` | *"typed standard fields + extension keys, **NOT engine-validated**, author guidance"* | extension keys become **declared quantities** (L1) — validated, ordinal-pinned. The property bag is retired | [ONT-F2](29_ontology_existence_self_others.md): the self's escape hatch is unvalidated, which is where slot-overloading starts | **verified** |
-| **R06** | `AIT_001` `Forge:PromoteUntrackedToTracked` | **AdminAction only** | add an **in-world trigger**: meaningful interaction promotes, bounded by `TierCapacityCaps`, defer-never-drop on overflow (DL-D6 precedent), as a committed event | [ONT-D1](29_ontology_existence_self_others.md): existence must be earnable by attention, because the author cannot predict who the player will care about | **verified** |
-| **R07** | `ACT_001` `actor_actor_opinion` mutability | **session-end derivation** + Forge admin; V1 pattern is **NPC→PC only** | written **by the transaction**, during play; **NPC→NPC (ACT-D3) promoted into the critical path** | [ONT-F3](29_ontology_existence_self_others.md): with neither, there is no society — only a set of NPCs each holding one number about you | **verified** |
-| **R08** | `ACT_001` `actor_session_memory` | scoped **per session** | needs a durable tier for what is personally remembered; per-session memory cannot support "chúng" | [ONT-F3](29_ontology_existence_self_others.md) | **verified** |
+| **WSA-R01** | `DL_001` **DL-A1 / DL-D1** | ambient sim splits by cost: deterministic ⇒ V1, generative ⇒ V2/V3; routines *"evaluated, never ticked"* | add the **third row — deterministic + accumulating** — and narrow DL-D1 so the world may keep a consequence | [EXC-F3](30_exchange_model_and_dataflow.md): the world acts when a ledger cannot balance. DL-D1 forbids it for **token-cost** reasons that do not apply | **verified** |
+| **WSA-R02** ⚠️ | `DF07` **DF7-A1** closed `StatSlot` | 10 slots closed **in the binary** | ~~slot set **declared per ruleset** … closed *head* + open tail~~ **MECHANISM REVISED 2026-07-28 → [QTY-D5](35_quantity_architecture.md).** The **finding stands** (ONT-F2: a person is not ten numbers; the escape hatch is un-validated) but the fix does not: the laws read **9 of 10** slots by name, so an "open tail" of slots is one dead slot. `DF7-A1` **stays closed**. The open layer is **L2 declared quantities** (primary · resources · elements), and laws bind to **roles** ([QTY-A3](35_quantity_architecture.md)) so a reality may bind `Vital → qi` with no engine release | [ONT-F2](29_ontology_existence_self_others.md) + [XST-F9](27_extensibility_stress_test.md): a person is not ten numbers, and the escape hatch is currently un-validated | **verified (finding); mechanism replaced** |
+| **WSA-R03** | `DF07` **DF7-A5** percent-sum rationale | sums *"so the result is order-independent"* | rationale is **wrong** — multiplication commutes too. State the real rule: **one commutative operator per stage; stages ordered** | [XST-F12](27_extensibility_stress_test.md) | **verified** |
+| **WSA-R04** | `ACT_001` **ACT-A5** | two unilateral rows, because feelings are asymmetric | **add the second, load-bearing reason**: it gives every relationship half exactly one writer under SL-A12. Mark as LOCKED against "simplifying" into one symmetric row | [ONT-A4](29_ontology_existence_self_others.md) / WSA-A3 | **verified** |
+| **WSA-R05** | `ACT_001` §3.1.2 `FlexibleState` | *"typed standard fields + extension keys, **NOT engine-validated**, author guidance"* | extension keys become **declared quantities** (L1) — validated, ordinal-pinned. The property bag is retired | [ONT-F2](29_ontology_existence_self_others.md): the self's escape hatch is unvalidated, which is where slot-overloading starts | **verified** |
+| **WSA-R06** | `AIT_001` `Forge:PromoteUntrackedToTracked` | **AdminAction only** | add an **in-world trigger**: meaningful interaction promotes, bounded by `TierCapacityCaps`, defer-never-drop on overflow (DL-D6 precedent), as a committed event | [ONT-D1](29_ontology_existence_self_others.md): existence must be earnable by attention, because the author cannot predict who the player will care about | **verified** |
+| **WSA-R07** | `ACT_001` `actor_actor_opinion` mutability | **session-end derivation** + Forge admin; V1 pattern is **NPC→PC only** | written **by the transaction**, during play; **NPC→NPC (ACT-D3) promoted into the critical path** | [ONT-F3](29_ontology_existence_self_others.md): with neither, there is no society — only a set of NPCs each holding one number about you | **verified** |
+| **WSA-R08** | `ACT_001` `actor_session_memory` | scoped **per session** | needs a durable tier for what is personally remembered; per-session memory cannot support "chúng" | [ONT-F3](29_ontology_existence_self_others.md) | **verified** |
 
 ---
 
@@ -206,11 +216,11 @@ Dependency rules, each mechanically checkable:
 
 | # | Target | Change |
 |---|---|---|
-| **R09** | `TDIL_001` | **PROMOTED from decoration to load-bearing.** [EXC-A1](30_exchange_model_and_dataflow.md) makes time a currency with its own laws, and TDIL is the only mechanism that lets it be *acquired at a cost*. Its own cited case (a 365× chamber) is now a core-economy mechanic, not a flavour feature. |
-| **R10** | `RES_001` | Its four generators are **declared sources** under [EXC-L1](30_exchange_model_and_dataflow.md), and consumption/spoilage are **declared sinks**. No text is wrong; the framing changes from "generators" to "the only legal points where conservation is broken". |
-| **R11** | `REP_001` | Recorded as **the scalability mechanism of WSA-A4**, not just a reputation feature. A refactor into a live query over opinion rows would reintroduce a cross-island scan. |
-| **R12** | `COMB_001` + `COMB_002/003` + `ABL_001` | **Unchanged and correct**, and **demoted** ([PRD-D3](28_product_definition.md)). Combat depth passes none of [ONT-T1/T2/T3](29_ontology_existence_self_others.md) — an independent confirmation of the same call. |
-| **R13** | `00_VISION.md` | **Stale in two ways**: §8 says this track *"is not on the roadmap"* (it has been built for months) and its staging table frames V1 as *"solo RP"*, which DL_001 already had to argue around. Needs a correction banner pointing at [28](28_product_definition.md), the way its own §0 corrected the "text-based" framing. |
+| **WSA-R09** | `TDIL_001` | **PROMOTED from decoration to load-bearing.** [EXC-A1](30_exchange_model_and_dataflow.md) makes time a currency with its own laws, and TDIL is the only mechanism that lets it be *acquired at a cost*. Its own cited case (a 365× chamber) is now a core-economy mechanic, not a flavour feature. |
+| **WSA-R10** | `RES_001` | Its four generators are **declared sources** under [EXC-L1](30_exchange_model_and_dataflow.md), and consumption/spoilage are **declared sinks**. No text is wrong; the framing changes from "generators" to "the only legal points where conservation is broken". |
+| **WSA-R11** | `REP_001` | Recorded as **the scalability mechanism of WSA-A4**, not just a reputation feature. A refactor into a live query over opinion rows would reintroduce a cross-island scan. |
+| **WSA-R12** | `COMB_001` + `COMB_002/003` + `ABL_001` | **Unchanged and correct**, and **demoted** ([PRD-D3](28_product_definition.md)). Combat depth passes none of [ONT-T1/T2/T3](29_ontology_existence_self_others.md) — an independent confirmation of the same call. |
+| **WSA-R13** | `00_VISION.md` | **Stale in two ways**: §8 says this track *"is not on the roadmap"* (it has been built for months) and its staging table frames V1 as *"solo RP"*, which DL_001 already had to argue around. Needs a correction banner pointing at [28](28_product_definition.md), the way its own §0 corrected the "text-based" framing. |
 
 ---
 
@@ -218,11 +228,11 @@ Dependency rules, each mechanically checkable:
 
 | # | Item | Depends on | Note |
 |---|---|---|---|
-| **R14** | **The ledger** — conservation assertion, declared sources/sinks, and the bite test that a source-less 10 coins goes red | `world-quantities` | [EXC-F2](30_exchange_model_and_dataflow.md): the engine has the transaction, not the ledger. Same retrofit deadline as R02 — impossible once content is balanced against a leaky economy, because then **the leaks are the balance** |
-| **R15** | **Capability derivation** — `(holdings × imprint fold × self) → allowed actions`, epoch-stamped, never stored; plus a `Precondition` variant that reads standing so a social refusal is `Outcome::Discarded{reason}` | `world-quantities`, REP fold | **This closes the ONT loop's missing arrow.** It is a derivation, not a subsystem |
-| **R16** | **The PC time budget** — [EXC-A2](30_exchange_model_and_dataflow.md) makes every action cost time; NPCs have `ScheduledActionDecl` and the player has nothing | TDIL | Answers [PRD-Q3](28_product_definition.md) affirmatively. Without it, living in the world has no cost and therefore no decisions |
-| **R17** | **The balancing cell** — one cell with production, consumption, stockpile and the four-rung escalation (draw down → buy → take → starve → disperse) | R14 | The world-tier equivalent of *"one REAL encounter"*; candidate answer to [PRD-Q2](28_product_definition.md) / [EXC-Q1](30_exchange_model_and_dataflow.md) |
-| **R18** | **The trigger vocabulary** (WSA-F1) — a closed `TriggerPoint` set with a depth budget, generalising the ONE seam that exists (`TrainingRuleDecl.source`) rather than adding a second dialect | R14, R15 | [XST-R9](27_extensibility_stress_test.md)/[R10](27_extensibility_stress_test.md). This is E3; everything above is E2 |
+| **WSA-R14** | **The ledger** — conservation assertion, declared sources/sinks, and the bite test that a source-less 10 coins goes red | `world-quantities` | [EXC-F2](30_exchange_model_and_dataflow.md): the engine has the transaction, not the ledger. Same retrofit deadline as R02 — impossible once content is balanced against a leaky economy, because then **the leaks are the balance** |
+| **WSA-R15** | **Capability derivation** — `(holdings × imprint fold × self) → allowed actions`, epoch-stamped, never stored; plus a `Precondition` variant that reads standing so a social refusal is `Outcome::Discarded{reason}` | `world-quantities`, REP fold | **This closes the ONT loop's missing arrow.** It is a derivation, not a subsystem |
+| **WSA-R16** | **The PC time budget** — [EXC-A2](30_exchange_model_and_dataflow.md) makes every action cost time; NPCs have `ScheduledActionDecl` and the player has nothing | TDIL | Answers [PRD-Q3](28_product_definition.md) affirmatively. Without it, living in the world has no cost and therefore no decisions |
+| **WSA-R17** | **The balancing cell** — one cell with production, consumption, stockpile and the four-rung escalation (draw down → buy → take → starve → disperse) | R14 | The world-tier equivalent of *"one REAL encounter"*; candidate answer to [PRD-Q2](28_product_definition.md) / [EXC-Q1](30_exchange_model_and_dataflow.md) |
+| **WSA-R18** | **The trigger vocabulary** (WSA-F1) — a closed `TriggerPoint` set with a depth budget, generalising the ONE seam that exists (`TrainingRuleDecl.source`) rather than adding a second dialect | R14, R15 | [XST-R9](27_extensibility_stress_test.md)/[R10](27_extensibility_stress_test.md). This is E3; everything above is E2 |
 
 ---
 
@@ -261,7 +271,7 @@ rows from [27 §11.6](27_extensibility_stress_test.md).
 | Was open | Closed by |
 |---|---|
 | [PRD-Q1](28_product_definition.md) — may the world act deterministically? | **Yes** — [EXC-F3](30_exchange_model_and_dataflow.md), when a ledger cannot balance. R01 amends DL-A1/D1 to permit it |
-| [PRD-Q2](28_product_definition.md) — smallest world-acting mechanic | **R17**, the balancing cell |
+| [PRD-Q2](28_product_definition.md) — smallest world-acting mechanic | **WSA-R17**, the balancing cell |
 | [PRD-Q3](28_product_definition.md) — does the PC spend time? | **Yes, required** — [EXC-A2](30_exchange_model_and_dataflow.md); R16 |
 | [ONT-Q1](29_ontology_existence_self_others.md) — what does opinion gate? | **Capability derivation** — [EXC-A4](30_exchange_model_and_dataflow.md); R15 |
 | [XST-F9](27_extensibility_stress_test.md) — closed 10 slots? | **No** — R02, on ontology grounds, not performance grounds |

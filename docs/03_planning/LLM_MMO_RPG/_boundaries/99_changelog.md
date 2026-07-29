@@ -6,6 +6,124 @@
 
 ---
 
+## 2026-07-30 (4th claim) — `SPG-R2` RETIRED: a row that pointed at work which must not happen
+
+- **Lock CLAIMED 01:15, `Owner:` set BEFORE the first edit, released after.**
+- **No boundary surface changed.** This claim exists only to correct a row *I wrote earlier today*: the
+  `SPG-*` entry asserted that `SPG-R2` *"touches a **LOCKED** file and needs its own claim"* — i.e. it
+  pointed a future claimant at an edit that must never be made.
+- **Why the row died.** `SPG-R2` proposed narrowing `DP-Ch1`'s `Channel.level_name: String` to the
+  closed `MapKind` set, and was marked **verified**. Opening the target before editing it killed it:
+  [`DP-A13`](../06_data_plane/02_invariants.md) states the refusal outright — *"**DP is agnostic to
+  `level_name` semantics; feature/book layer interprets level names**… the tree shape is **per-reality**
+  (book-specific)"*. Applying it would have (a) pushed a **game-domain** concept into the **data plane**,
+  breaking the exact invariant DP-A13 exists to state, and (b) destroyed per-reality vocabulary — a
+  wuxia reality could no longer name a level `phủ` or `châu`. DP's agnosticism is systematic: `DP-A17`
+  for turn semantics, `metadata` as *"a feature-level bag; DP does not interpret"*, `CausalityToken`
+  opaque by construction.
+- **The finding survives; only the mechanism was wrong** — the shape of `WSA-R02` and `XST-R6`. A free
+  string where a closed set is required *is* a defect; it was diagnosed one layer too low. `SPG-R1`
+  already fixes it correctly, on the **feature** aggregate `map_layout`. Net: **two fields, two jobs** —
+  `Channel.level_name` is the reality's own word, `map_layout.kind` is the structural kind the engine
+  understands. No DP change, no claim, and a better design than the amendment would have produced.
+- **Recorded as REC-93** — the first row in that register retired by its own author on the day of
+  writing. Every prior instance of this class (`GDA-A5` prohibited by `DP-X1`, `GDA-A6` deleting the
+  locked `t1_read`, `RBS`'s `*Born` mis-typed as EVT-T4) was found by a verification agent reading specs
+  the docs had only been **grepped** against. Same root cause, caught one layer earlier.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+
+---
+
+## 2026-07-30 (3rd claim) — `TRG-*`: the seventh orphan prefix, found by a gate rather than a person
+
+- **Lock CLAIMED 01:05, `Owner:` set BEFORE the first edit, released after.**
+- **Registered `TRG-*`** (`33_trigger_group_order.md`). Owns no aggregate.
+- **⚠️ Why this claim exists is the whole point.** `scripts/amendment-rot-gate.py` was written **this
+  session**, because two manual sweeps had just found six unregistered prefixes and 15 ungreppable
+  amendment ids. On its **first real run** the gate found:
+  - a **seventh** unregistered prefix (`TRG-*`) that both manual sweeps had walked past;
+  - **nine more** bare `**R25**..**R29**` / `**R32**..**R35**` ids in docs `33` and `34` — after the
+    same sweeps had already fixed exactly this defect in docs `31` and `32`;
+  - and **one false positive of its own** — `TMP_008b`'s `| Rule | Check |` table, whose `**R1**..**R5**`
+    are validation rules correctly scoped to that table. Narrowed by arming the check only inside a
+    table whose header names `Target`, **with the narrowing itself bite-tested** so it cannot silently
+    disarm the check it narrows (`NV-1`).
+- **This is the third independent arrival at the standing conclusion in `_LOCK.md`:** the convention is
+  the failure point. `boundaries-lock-gate` reached it for the mutex, `deferral-gate` for the code
+  tier, and now `amendment-rot-gate` for the design corpus. In each case a careful human had just
+  looked and had just missed something.
+- Wired into `.githooks/pre-commit` next to `deferral-gate`. `--selftest` green (all 3 checks red on
+  their defect, green without it). Corpus-wide greppable amendment ids: **37 → 59**.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+  Outside: `scripts/amendment-rot-gate.py`, `.githooks/pre-commit`, docs `33` + `34` (id prefixing).
+
+---
+
+## 2026-07-30 (2nd claim) — REC-92 discharge + closed-enum boundary review opened
+
+- **Lock CLAIMED 00:45, `Owner:` set BEFORE the first edit, released after.**
+- **⚠️ This claim exists because the PREVIOUS claim — 35 minutes earlier, in this same session — missed
+  a batch that [REC](../19_reconciliation_register.md) §15 had explicitly routed to it.** §15 wrote:
+  *"next `_boundaries` lock claim — one batch"*. My `SPG` claim **was** that next claim and did not do
+  it. Discharged now: **`Item:TakeSpoils`** (COMB_004) and the **`ruleset.*` reject-rule namespace**
+  (REC-67) are registered. Verified already-present: `agent_decision` intent, `ability.*` counts.
+  Still correctly **blocked**: `RulesetEpochActivated`, on the REC-29 ownership knot.
+- **Root cause, recorded as REC-92 and it is not "carelessness":** *"the next lock claim"* names an
+  **occasion**, not an **owner**. An occasion-gated item belongs to nobody, and the claimant has no
+  reason to open the file that gated it. This is §14's process finding arriving again, and it argues
+  for the same remedy the `_LOCK.md` bullets already reach for: **a check, not a convention.** The
+  concrete shape here would be a gate that reads REC's gated queues and reds on any `_boundaries` diff
+  that leaves a queue-item undone.
+- **Boundary review OPENED (not applied)** for two closed-enum variant additions, because EF_001's own
+  rule requires a lock-claim + boundary review *before* the edit: **`EntityId::Place`/`Locus`**
+  (`WSA-R19` + `SPG-R10`) and **`ActorId::Locus`** (`WSA-R21`, per `WSA-D3` — explicitly **not**
+  reusing `Synthetic`, which denotes an actor outside the fiction). Both rows state their **pairing
+  gate**: `WSA-R19` must land with `SPG-R10` or the entity↔interior seam is half-built; `WSA-R21` must
+  land with `WSA-R22` (narrowing `actor.synthetic_actor_forbidden`) or a locus can be an actor yet
+  cannot hold an opinion.
+- **Not done:** the variants themselves. Opening the review is the gated step; applying it is the next
+  one, and it edits feature specs rather than `_boundaries/`.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+
+---
+
+## 2026-07-30 — map-architecture registration (`SPG`) + **six-prefix backfill** (`XST` `PRD` `ONT` `EXC` `WSA` `QTY`)
+
+- **Lock CLAIMED 00:10, `Owner:` set BEFORE the first edit, released after.** A genuine
+  `[boundaries-lock-claim+release]` cycle.
+- **Registered `SPG-*`** — `36_map_architecture.md`, the space-graph / map architecture seal.
+  **Owns NO aggregate.** Defines the closed **`MapKind`** set + the **containment matrix** replacing
+  `MAP_001`'s `ChannelTier` ordinal ladder; parent-relative coordinates (`SPG-A5`); the **two-graph
+  separation** (`SPG-A4` — containment strict-acyclic, control free, never interacting); **control as
+  a first-class binding** (`SPG-A10`); **collision as topology, not dynamics** (`SPG-A8`); and an
+  explicit **refusal** of inter-frame rigid-body physics (`SPG-A9`). `SPG-A1` is the deliberate
+  converse of doc 32's `WSA-A7` — a locus is an entity, *and* an entity may hold an interior — which
+  is why `SPG-R10` must land in the same pass as `WSA-R19`.
+- **⚠️ FINDING, surfaced by this claim: six stable-ID prefixes introduced by docs 27–35 were never
+  registered at all.** `XST-*` (27) · `PRD-*` (28) · `ONT-*` (29) · `EXC-*` (30) · `WSA-*` (31/32/34) ·
+  `QTY-*` (35). Unlike the four prior RECORD CORRECTIONs — where a doc header *falsely asserted* a
+  registration that had not happened — these docs made **no claim either way**, so nothing in the
+  corpus was false; the prefixes were simply invisible to the ownership matrix, which is the file that
+  is supposed to be the inventory. **Backfilled all six in this cycle**, each marked
+  *"registered 2026-07-30, backfill"* with its true doc-add date, so the gap stays legible rather than
+  being smoothed over. This is the **fifth** occurrence in the class the `_LOCK.md` bullets describe,
+  and the first found by a *routine check during an unrelated claim* rather than by an audit — which
+  supports the same standing conclusion those bullets reach: **the convention is the failure point.**
+  The recommended pre-commit hook (any diff touching `_boundaries/*` requires `Owner:` ≠ `None` in the
+  same commit) would not have caught *this* variant, since these docs never touched `_boundaries/` at
+  all; the complementary check is **a prefix appearing in a doc header with no matrix row**.
+- **NOT done, deliberately:** `SPG-R1..R12` and the inherited `WSA-R19..R24` remain **PROPOSED, not
+  applied** — no feature spec was edited by this cycle, same discipline doc 32 recorded. Two of them
+  (`SPG-R2` narrowing `DP-Ch1`'s `level_name: String` to `MapKind`; `WSA-R19`/`R21` adding variants to
+  the closed `EntityId`/`ActorId` enums) touch **LOCKED** files and each needs its own claim.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+  Files outside: none in this cycle (doc 36 itself is outside the boundary folder).
+- **NEXT:** annotate the affected feature docs with dated cross-reference notes (the
+  CLOSURE-PASS-EXTENSION convention `MAP_001`/`CSC_001` already carry) · then the `SPG-R*` + `WSA-R*`
+  application pass as its own claim.
+
+---
+
 ## 2026-07-26 — data-architecture registration (`RLS` / `GDA` / `RBS` / `REC`) + ⚠️ **fourth** record correction
 
 - **Lock CLAIMED 21:47, `Owner:` set BEFORE the first edit, released after.** A genuine

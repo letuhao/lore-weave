@@ -167,6 +167,20 @@ fi
 # fire when nobody is looking, which is when they matter.
 "$PY" "$ROOT/scripts/deferral-gate.py"
 
+# amendment-rot-gate — deferral-gate's sibling, for the DESIGN corpus rather than
+# the code tier. Same conclusion reached a third time, from a third direction:
+# 15 of 25 WSA amendment ids were UNGREPPABLE (written `**R19**`, no prefix), six
+# stable-ID prefixes from docs 27-35 had never been registered in the ownership
+# matrix at all, and a batch the reconciliation register routed to "next
+# `_boundaries` lock claim" was missed by the next claim -- because that phrasing
+# names an OCCASION, not an OWNER.
+#
+# Its own first run is the argument for it: after two manual sweeps the same day
+# had fixed docs 31/32 and registered six prefixes, the gate immediately found a
+# SEVENTH orphan prefix and NINE more bare ids in docs 33/34 that both sweeps had
+# walked past. Unconditional, and cheap (docs-only scan).
+"$PY" "$ROOT/scripts/amendment-rot-gate.py"
+
 # Q0b B3's asserted trigger. Greens while the RulesetEpochActivated emit path is
 # unbuilt; reds the day any producer appears, printing the three unresolved
 # constraints (DP-A16 lease, the S5 chokepoint, dp::channel_pause) so the path
@@ -251,4 +265,27 @@ if command -v gitleaks >/dev/null 2>&1; then
   gitleaks protect --staged --redact --config "$ROOT/.gitleaks.toml"
 else
   echo "pre-commit: gitleaks not installed — skipping staged secret scan (install: https://github.com/gitleaks/gitleaks; CI still scans on push)." >&2
+fi
+
+# ESLint for the pnpm workspace (added 2026-07-30). This gate exists because
+# linting had been DEAD for months and nothing noticed: TypeScript was upgraded
+# to 7.x (the native Go port, which ships no classic `ts.*` compiler API), so
+# @typescript-eslint/typescript-estree threw at module load and every eslint run
+# aborted before reading a single file. `tsc` still passed, tests still passed.
+# A hook makes the linter's absence loud instead of silent.
+#
+# Staged-scoped for speed: runs only when a workspace TS/TSX file is staged, and
+# lints only those files. `--max-warnings` is deliberately NOT set to 0 — there
+# are 6 pre-existing advisory warnings (setState-in-effect, array-index keys)
+# that are tracked, not blocking. ERRORS fail the commit.
+# Bypass in a true emergency with `git commit --no-verify`.
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '^(frontend-game/(src|tests)|packages/[^/]+/src)/.*\.(ts|tsx)$' || true)
+if [ -n "$STAGED_TS" ]; then
+  echo "pre-commit: eslint on $(echo "$STAGED_TS" | wc -l | tr -d ' ') staged file(s)"
+  # shellcheck disable=SC2086
+  (cd "$ROOT" && npx --no-install eslint --config eslint.config.mjs $STAGED_TS) || {
+    echo "pre-commit: eslint FAILED — fix the errors above (or 'npm run lint:fix')." >&2
+    exit 1
+  }
 fi

@@ -493,6 +493,122 @@ candidate list must therefore offer **`{id, condition}` as separate fields**, wi
 already comply (commit `e94fb6650`); COMB_003's candidate-list shape gains the field split when
 that doc next opens (owner: COMB track).
 
+## 15b. Contradiction sweep — 2026-07-30 (map-architecture arc, doc [36](36_map_architecture.md))
+
+**Why this section exists.** The PO asked a direct question — *"mấy cái PROPOSED đó là gì? có ảnh hưởng
+tới chúng ta không? PROPOSED rồi chả dùng, có khi lại bị trôi và kiến trúc thì rot"* — and then set the
+scope precisely: ***"clear là clear spec cho rõ ràng chứ không phải implement; có mấy cái quyết định nó
+bị mâu thuẫn giữa các spec."*** This section is that clearing. **It resolves TEXT, not code.**
+
+**Numbering continues from REC-79** (§15a). Rows here are contradictions **between specs** — one doc
+saying one thing and another doc, or the shipped code, saying the opposite.
+
+### Live contradictions found
+
+| # | The two sides | Resolution | State |
+|---|---|---|---|
+| **REC-80** | `GEO_001` §2 scopes `world_geometry` **per CONTINENT channel** ⟷ [`GEO_WORLD_TIER_REDESIGN`](GEO_WORLD_TIER_REDESIGN.md) (LOCKED 2026-05-20) says the generator *"is structurally a **region** generator; this spec defines the **world** tier above it"* ⟷ shipped `crates/world-gen/src/hierarchy.rs` emits **one sphere containing many continents** | **The redesign and the code win.** `world_geometry` belongs to a `MapKind::World` node; a continent is a *product* of world generation, not its container. `GEO_001` is still **DRAFT**, so no lock claim is needed | ⬜ annotation applied 2026-07-30; §2 text edit is `SPG-R3` |
+| **REC-81** | **Four** different tier ladders: shipped geographic (World→Continent→Subcontinent→Region) ⟷ shipped political (World→Realm→State→Province→County) ⟷ `MAP_001` `ChannelTier` (Continent→Country→District→Town→Cell) ⟷ its own demo `MAP_GUI_v2.html` (continent→country→**region**→cell) | **All four retired in favour of a relation.** Closed `MapKind` set + a **containment matrix** validated on write (`SPG-A3`). Political structure is an `owner_*` **attribute**, not a tier — the split [`FLAT_TO_3D`](FLAT_TO_3D_MIGRATION_PLAN.md) §C already chose and the code already implements | ⬜ annotation applied; `SPG-R1` |
+| **REC-82** | `RTM-D Q4` **instanced dedicated combat scene** ⟷ `SPG-A16`/`SPG-D1` **fight in place where the space allows** (PO decision 2026-07-29) | **Reversed, on the `AUD-F1` precedent** — that reversal's justification applies verbatim: the original reason was *token cost*, and the medium correction dissolved it. Combat always resolves on a tactical grid; only the grid's **source** varies (Domain floor plan vs derived world field), so it is one mechanism, not two code paths | ⬜ recorded; `SPG-R8` |
+| **REC-83** | `WSA-D3` *"a locus is **NOT** `ActorId::Synthetic`"* ⟷ `ACT_001`'s `actor.synthetic_actor_forbidden`, which as written blocks a locus from being observer or target of an opinion | **`WSA-D3` wins** — `Synthetic` denotes an actor *outside* the fiction; a village is inside it, can be regarded and can regard. The rule must be **narrowed**, not the axiom weakened | ⬜ `WSA-R21` (new `ActorId::Locus`) + `WSA-R22` (narrow the rule); both touch closed enums ⇒ own claim |
+| **REC-84** | Three identity enums with **three different variant sets** (`EntityId` = Pc·Npc·Item·EnvObject ⟷ `EntityRef` = Actor·**Cell**·Item·Faction ⟷ `ActorId` = Pc·Npc·Synthetic·Admin), **plus** `entity_binding.cell_owner`'s doc-comment referencing `EntityType::Cell` — **a variant that does not exist** | **Phantom reference** (this register's §6 class). The drift is *evidence for* the change, not against it: `RES_001` needed `cell_owner` and `EntityRef` needed `Cell`, so the economy work discovered locus-as-entity empirically and worked around the type system | ⬜ `WSA-R19` (add `EntityId::Place`) + `WSA-R20` (fix the comment). **`SPG-R10` must land WITH `WSA-R19`** — `EntityId::Place` and `SpaceNode.holder` are one seam from two directions |
+| **REC-85** | `WSA-D1` *"continuous fields are out of scope"* (doc 31) ⟷ `WSA-D2` *"no longer out of scope — coarse-cadence conserved transfer between locus-actors"* (doc 32) | **`WSA-D2` supersedes.** Only **sub-cell** continuous resolution (a true fluid lattice inside one cell) stays refused, and it is refused **by name** rather than by omission | ⬜ `WSA-R24` — doc 31 still states `WSA-D1` unqualified |
+| **REC-86** | `DL-D1` routines *"evaluated, never ticked"* ⟷ `EXC-F3` *"the world acts when a ledger cannot balance"* | **Both survive.** DL-D1's ban was for **token-cost** reasons that do not apply to a deterministic accumulator; the fix is a **third row** (deterministic + accumulating), not a weakening | ⬜ `WSA-R01` |
+| **REC-87** | `PCS-A4` *"single `pc_user_binding` V1"* + the PC concept-note `cap=1` validator ⟷ **possession is a core mechanic** (PO 2026-07-29: *"kiến trúc ban đầu không giới hạn ở chỗ điều khiển phải strict với 1 actor"*) | **Cardinality opens.** `ACT_001`'s L3 is already *dynamic* and `AGT-A3`'s drivers are already runtime-swappable — the seam is right; the shape is wrong. `control_source` is an **enum on the actor** and cannot name *which* controller nor hold two bodies. Required: a binding `(controller_id, actor_id, since, authority)` | ⬜ `SPG-R6` + `SPG-R7` |
+| **REC-88** | `DF7-A5`'s stated rationale — percentages sum *"so the result is order-independent"* | **The rationale is simply wrong**: multiplication commutes too. The real rule is *one commutative operator per stage; stages ordered*. The **behaviour is correct**; only the justification is false — which is worse than a wrong behaviour, because it teaches the next author the wrong principle | ⬜ `WSA-R03` — cheap, no lock |
+| **REC-89** | `00_VISION.md` §8 says this track *"is not on the roadmap"* and stages V1 as *"solo RP"* ⟷ the track has been **built for months** and `DL_001` already had to argue around the staging table | **Stale in two ways.** Needs a correction banner pointing at [28](28_product_definition.md) — exactly the way its own §0 corrected the *"text-based"* framing | ⬜ `WSA-R13` — cheap, no lock |
+
+### Process findings from the same sweep
+
+| # | Finding | State |
+|---|---|---|
+| **REC-90** | **15 of 25 `WSA-R*` amendment ids were ungreppable.** Docs 31 and 32 wrote their rows as bare `**R01**` … `**R24**`, without the `WSA-` prefix. **An id that cannot be grepped cannot be tracked** — this is rot at the infrastructure layer, not the discipline layer, and no amount of care fixes it. Corpus-wide greppable amendment ids: **37 → 52** | ✅ **FIXED 2026-07-30** — both files re-prefixed |
+| **REC-91** | **Three rows were already SHIPPED while still reading as open.** `XST-R1` (`resolve.rs:110`, `factor = (1000+pct).max(0)`, with its kill-mutation named inline) · `XST-R2` (`combat.rs:49`, `i128` chain + `MAX_HIT` as a digest-hashed ruleset constant) · `XST-R3` (`combat.rs:32`, band inclusive `850..=1150`). All three were delivered by the `ruleset-core` F1/F2 arc, **not** by anyone working these rows. This is the `D-PUBLISHER-DROPS-RULESET-PIN` class — **debt already paid that keeps ringing** — and it is worse than unpaid debt, because it makes real work look like backlog and hides how much is genuinely left | ✅ **CLOSED 2026-07-30** with file:line evidence in doc 27 |
+| **REC-92** ⚙️ **PARTLY DISCHARGED 2026-07-30 00:5x** — second `_boundaries` claim, made specifically to fix this: **`Item:TakeSpoils` and the `ruleset.*` namespace are now registered**; `agent_decision` + `ability.*` verified already present; `RulesetEpochActivated` correctly still blocked on the REC-29 knot. **What remains open is the MECHANISM**, not the batch. | **§15's own gated batch did not run at its gate.** §15 routed five boundary registrations to *"next `_boundaries` lock claim — one batch"*. A `_boundaries` claim **did** occur (2026-07-30, `SPG` registration) and **did not do the batch**: `Item:TakeSpoils` and the `ruleset.*` namespace (REC-67) are still absent from the matrix (`agent_decision` and `ability.*` are present; `RulesetEpochActivated` remains correctly blocked on the REC-29 ownership knot). **Root cause is the gate's shape, not the claimant's care:** *"the next lock claim"* names an **occasion**, not an **owner**, so it is nobody's, and the claimant has no reason to read this file. This is §14's finding arriving one more time, and it argues for the same remedy — a check, not a convention | ⬜ **OPEN** — 2 registrations owed, plus a mechanism so an occasion-gated item cannot be missed again |
+
+### REC-93 — an amendment row retired the day it was written, by checking it before applying it
+
+`SPG-R2` proposed narrowing `DP-Ch1`'s `Channel.level_name: String` to the closed `MapKind` set. It was
+marked **verified** and queued for a lock claim, because `12_channel_primitives.md` is LOCKED. Reading
+the target before editing it killed the row:
+
+> [`DP-A13`](06_data_plane/02_invariants.md): *"**DP is agnostic to `level_name` semantics; feature/book
+> layer interprets level names**… The tree shape is **per-reality** (book-specific) — a reality declares
+> its own levels via a book schema."*
+
+Applying it would have (a) pushed a **game-domain** concept into the **data plane**, breaking the exact
+invariant DP-A13 exists to state, and (b) destroyed **per-reality vocabulary** — a wuxia reality could
+no longer name a level `phủ` or `châu`. And DP's agnosticism is systematic, not incidental: `DP-A17` is
+agnostic to turn semantics, `metadata` is *"a feature-level bag; DP does not interpret"*, and
+`CausalityToken` is opaque to feature code by construction.
+
+**The finding survives; only the mechanism was wrong** — the same shape as `WSA-R02` (finding stands,
+mechanism replaced) and `XST-R6` (retired in favour of a better home). A free string where a closed set
+is required *is* a defect; it was diagnosed one layer too low. **`SPG-R1` already fixes it correctly**:
+`MapKind` lives on `map_layout`, a *feature* aggregate keyed by `channel_id` — the same layer that
+`SPG-A2`'s ruleset-extensible whitelist occupies.
+
+**Net result: two fields, two jobs.** `Channel.level_name` is the reality's own word (DP, untouched);
+`map_layout.kind` is the structural kind the engine understands (feature layer). **No DP change, no lock
+claim, and the design is better than the amendment would have made it.**
+
+> **Process note.** This is the first row in this register **retired by its own author on the day of
+> writing**, and it is worth stating why it was caught: the row was not applied from the table. The
+> target was opened first. Every prior instance of this class in the corpus — `GDA-A5` prohibited by
+> `DP-X1`, `GDA-A6` deleting the locked `t1_read`, `RBS`'s `*Born` mis-typed as EVT-T4 — was found by a
+> **verification agent reading specs the docs had only been *grepped* against.** Same root cause, same
+> remedy, one layer earlier.
+
+### What "clear" means for the rest
+
+The 52 amendment rows split four ways, and **only three of the four can be cleared by editing text**:
+
+- **Already resolved** (~6) — `XST-R1/R2/R3` (above), `XST-R6` retired → `QTY-D4`, `XST-R7` adopted → `QTY-D11`, `WSA-R02` mechanism replaced → `QTY-D5`. **Mark and stop re-reading them.**
+- **Cheap text corrections** (~12) — `WSA-R03`/`R13`/`R20`/`R24`, `WSA-R09..R12` (recontextualisations), `SPG-R4/R8/R9`. No lock, no schema.
+- **Schema / locked-file edits** (~18) — `SPG-R1/R2/R3/R5/R6/R7/R10/R11/R12`, `WSA-R01/R05/R06/R07/R08/R19/R21/R22/R23`. Each needs its owning claim; `SPG-R2` (`DP-Ch1` `level_name: String` → `MapKind`) and `WSA-R19`/`R21` touch **LOCKED** files.
+- **⚠ NOT amendments at all** (~13) — `WSA-R14` **the ledger** · `WSA-R15` capability derivation · `WSA-R16` **the PC time budget** · `WSA-R17` the balancing cell · `WSA-R18` the trigger vocabulary · `XST-R4/R5/R8/R9/R10/R11/R12/R13`. Verified absent from the codebase (`TriggerPoint`, `StatusInstance`, `HasTags`, `replacement_priority`, `Reproject`, `sub_index` — **zero occurrences**). **These are unbuilt subsystems wearing the costume of a table row**, and that mislabelling is the likeliest reason they have not moved: a *row* reads like a ten-minute edit, so nobody schedules it as the multi-week work it is. **They must be re-homed as build-track items under their real names — not ticked, not silently carried.** Clearing the *spec* here means saying plainly that they are undesigned-and-unbuilt; it does not mean implementing them.
+
+## 15c. Re-homed — rows that are NOT amendments (2026-07-30)
+
+**The mislabelling is the finding.** Thirteen rows sit in amendment tables while being **unbuilt
+subsystems**. Every subject below was grepped against the codebase on 2026-07-30 and is **absent**:
+`TriggerPoint`, `StatusInstance`, `HasTags`, `replacement_priority`, `Reproject`, `sub_index` — zero
+occurrences each.
+
+A *row in a table* reads like a ten-minute edit. Nobody schedules a row as the multi-week work it
+actually is, and that — not neglect — is the likeliest reason none of these moved in the two days
+since they were written. **They are re-homed here under their real names.** They are not ticked, not
+closed, and not silently carried; they are **restated as build-track items** so the amendment tables
+stop overstating how much is a text edit away.
+
+| Was | Real name | Size | Note |
+|---|---|---|---|
+| `WSA-R14` | **The ledger** — conservation assertion, declared sources/sinks, and the bite test that a source-less 10 coins goes red | **large, new subsystem** | [`EXC-F2`](30_exchange_model_and_dataflow.md): the engine has the *transaction*, not the *ledger*. **Has a retrofit deadline** — impossible once content is balanced against a leaky economy, because then *the leaks are the balance* |
+| `WSA-R15` | **Capability derivation** — `(holdings × imprint fold × self) → allowed actions`, epoch-stamped, never stored | medium | Closes the ONT loop's missing arrow. A derivation, not a subsystem — but still unwritten |
+| `WSA-R16` | **The PC time budget** | medium | [`EXC-A2`](30_exchange_model_and_dataflow.md) makes every action cost time; NPCs have `ScheduledActionDecl` and **the player has nothing**. Without it, living in the world has no cost and therefore no decisions |
+| `WSA-R17` | **The balancing cell** — one locus with production, consumption, stockpile, four-rung escalation | medium | The world-tier equivalent of *"one REAL encounter"*. Depends on `WSA-R14` |
+| `WSA-R18` | **The trigger vocabulary** | medium-large | ⚠ **DUPLICATE of `XST-R9`** — see below |
+| `XST-R4` | RNG `sub_index` + reserved roles (`shuffle`/`draw`/`cost`/`trigger_order`/`ailment`) | small **now**, expensive later | The reservation is the cheap part and it has not been taken |
+| `XST-R5` | Saturation / negative-Σpct / clamp-fired **signals** | small | Partially present: saturation signals exist in `dp-kernel`, **not** in the stat path where the silent class lives. Directly the repo's own [non-vacuity discipline](../../standards/non-vacuity.md) |
+| `XST-R8` | Interned tag bitset `[u64; 4]` + `Precondition::HasTags(mask)` | medium | |
+| `XST-R9` | Closed `TriggerPoint` + `Reaction { when, guard, then }` with a **depth budget** | medium-large | ⚠ **Same work as `WSA-R18`** |
+| `XST-R10` | `EffectOp` **combinators** (`Seq` / `Repeat` / `IfElse`) in a flat arena | medium | *"The only proposal that actually answers `XST-F7`"* — a closed `match` becomes a closed **grammar**. Tightening cannot fix F7 |
+| `XST-R11` | A `REPLACE` stage + declared `replacement_priority: i16` | medium | Keeps the locked 4-step chain intact. **`WSA-F5(a)` says reaction ORDER still has to be declared** even after doc 32 — so this stays required |
+| `XST-R12` | Status **instances** (severity / stacks / expiry), `StatusFlag` bitmask **derived** | medium | Bitmask stays the ~1 ns hot path |
+| `XST-R13` | Typed side-tables + a budgeted `Reproject { dirty_slots }` step | medium | *"Converts a rotting invariant into a visible cost"* — and then **measure** it |
+
+> **⚠ `WSA-R18` and `XST-R9` are the same work under two ids, proposed by two registers three days
+> apart.** Doc 31's own row even cites `XST-R9`/`R10` as its reference — so the duplication was visible
+> at the moment of writing and still produced two ids. This is `XST-F1`'s class in the *register*
+> layer: two indexes of the same corpus, neither reading the other. **One must be retired in favour of
+> the other before either is scheduled**, or the work gets estimated twice and done zero times.
+
+**What "clear the spec" means for these thirteen:** stating plainly, where a reader will hit it, that
+they are **undesigned-and-unbuilt** — not implementing them, and not leaving them dressed as pending
+edits. Two carry a *deadline* rather than a priority (`WSA-R14`'s retrofit window; `XST-R4`'s
+reservation) and those two are the ones that get more expensive by waiting rather than merely staying
+undone.
+
 ## 14. The process finding
 
 Two of the four sweeps found the same thing at different layers, and it is not carelessness:

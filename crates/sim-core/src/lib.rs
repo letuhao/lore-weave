@@ -26,6 +26,7 @@ pub mod ingress;
 pub mod metrics;
 pub mod island;
 pub mod rng;
+mod ruleset;
 pub mod seen;
 pub mod types;
 
@@ -38,7 +39,8 @@ pub use rng::DetRng;
 pub use seen::{SeenSet, SeenWindow};
 pub use types::{
     Admitted,
-    Class, DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, IslandId,
-    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest, RulesetMismatch,
+    Class, DiscardReason, DissolutionReason, EntityId, EpochSwitchRefused, Fallback, Gen, InputId,
+    IslandId,
+    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest, RulesetEpoch, RulesetMismatch,
     Seq, Tick, Violation,
 };

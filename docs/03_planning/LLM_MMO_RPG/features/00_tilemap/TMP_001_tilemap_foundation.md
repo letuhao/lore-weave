@@ -1,5 +1,23 @@
 # TMP_001 — Tilemap Foundation
 
+> **⚠ TIER RESTATEMENT 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`), row `SPG-R9`:**
+> `TMP-A1` currently draws its boundary against `MAP_001`'s retired `ChannelTier` ladder (*"cell tier has
+> no `tilemap_view`; every non-cell tier may have one"*). Restated in `MapKind` terms, the split is
+> **sharper, not different**: a **`Locale`** carries the tilemap (this doc); a **`Domain`** carries the
+> interior composition ([`CSC_001`](../00_cell_scene/CSC_001_cell_scene_composition.md)). The drill-down
+> arrow still points FROM here TO there — clicking a `Domain`-holding object on a Locale tilemap enters
+> its interior — and nothing in the pipeline, the modificators or the placement engine changes.
+> **`zone` needs NO rename, and that is the point.** Doc 36 §6 found `zone` carrying three live meanings
+> (the frozen flat-track `plate→zone→subzone`, this doc's HoMM3 partition *inside one tilemap*, and an
+> informal word for a world subdivision). Because the tier ladder that used the third meaning is being
+> deleted anyway and the flat track is frozen, **this doc's `zone` survives as the single live meaning**.
+> `ZoneRole` / `ZoneSpec` / `ZoneEdge` are unaffected.
+> **New neighbour:** `MapKind::Passage` (`SPG-A13`) — the road *between* Locales is now a node with
+> derived geometry, not a bare edge. It is generated from the world field it crosses (reusing
+> `COMB_002`'s `TG-D7` wilderness generator), so it costs this doc nothing and gives `TVL_002`/`TVL_004`
+> a spatial substrate they previously lacked.
+> **CANDIDATE-LOCK preserved**; `SPG-R9` is PROPOSED, not applied. Annotation only.
+
 > **Conversational name:** "Tilemap Foundation" (TMP). The procedural-generation visual layer for the world map. **MAP_001** owns the author-positioned logical graph; **TMP_001** owns the procedurally-generated tilemap rendered on top. Both ship; both are canonical at their layer; TMP_001 derives positions from MAP_001 (subscribe pattern).
 >
 > **Category:** TMP — Tilemap Foundation (foundation tier; sibling of MAP_001 + CSC_001 + EF_001 + PF_001)

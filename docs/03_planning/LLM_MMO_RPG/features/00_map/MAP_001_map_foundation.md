@@ -1,5 +1,25 @@
 # MAP_001 — Map Foundation
 
+> **⚠ SCOPE SUPERSEDED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`):**
+> **§3.1 `ChannelTier` (`Continent | Country | District | Town | Cell`) is RETIRED** and replaced by the
+> closed **`MapKind`** set plus a **containment matrix** validated on write (`SPG-A3`, amendment row
+> `SPG-R1`). Three reasons, each verified against code rather than against a handoff note:
+> (a) the ladder mixes a **geographic** rung (Continent) with **political** ones (Country/District/Town),
+> the exact conflation [`FLAT_TO_3D_MIGRATION_PLAN`](../../FLAT_TO_3D_MIGRATION_PLAN.md) §C diagnosed and
+> the shipped `crates/world-gen` avoided by keeping two independent hierarchies (`SPG-F2`);
+> (b) it has **no World and no Universe rung**, so a multi-world / multi-plane map has nowhere to sit;
+> (c) it was a *feature-level narrowing of an already-general substrate* — [`DP-Ch1`](../../06_data_plane/12_channel_primitives.md)
+> has always been an arbitrary tree with a free-form `level_name` (`SPG-F1`).
+> Also superseded: **`MapPosition` is now a parent-relative transform** (`SPG-A5` — no node stores an
+> absolute position, which is what lets a frame move at all), and this doc's own demo
+> [`_ui_drafts/MAP_GUI_v2.html`](../../_ui_drafts/MAP_GUI_v2.html) already used `region` where the enum
+> says `District`/`Town` — a fourth ladder, and evidence the enum was never load-bearing.
+> **Everything else in MAP_001 stands**: the node-link drill-down concept, image asset slots,
+> `distance_units` + `default_fiction_duration` on edges, and the PF_001 composition at the interior
+> tier. The **lazy-cell `map_layout`** fix (closure S2.6) is generalized by `SPG-A12` rather than
+> replaced. **CANDIDATE-LOCK status preserved** — `SPG-R1` is **PROPOSED, not applied**; no schema in
+> this file was edited by that arc. Annotation only.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > TMP_001 is a **derived consumer** of MAP_001. TMP_001 §7 subscribes to `map_layout` deltas via DP-Ch24; on each delta TMP_001 re-derives `child_cell_anchors` (partial update — not full regenerate). MAP_001 remains canonical; TMP_001's tile-coord derivation is `(map_pos × grid_size) / 1000`. No MAP_001 surface change — annotation only. See §17 row for cross-reference. WA_003 Forge gains 3 TMP-owned AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` + `Forge:OverridePlacement`) that are orthogonal to existing `Forge:EditMapLayout` — TMP regen does not modify `map_layout`.
 
@@ -71,8 +91,8 @@ One aggregate owned by MAP_001:
 #[dp(type_name = "map_layout", tier = "T2", scope = "channel")]
 pub struct MapLayout {
     pub channel_id: ChannelId,                            // primary key — covers ALL tiers (continent through cell)
-    pub tier: ChannelTier,                                // denormalized: Continent | Country | District | Town | Cell
-    pub position: MapPosition,                            // (x, y) within parent viewport (0..1000 normalized; Q3-a author-positioned)
+    pub kind: MapKind,                                    // SPG-R1: was `tier: ChannelTier` (retired below)
+    pub position: MapPosition,                            // parent-RELATIVE transform (SPG-A5) — see the note on MapPosition
     pub tier_metadata: Option<TierMetadata>,              // Some for non-cell tiers; None for cell (PF_001 supplies — Q1-a invariant)
     pub icon_asset: Option<ImageAssetRef>,                // V1: None (Q5-a slot reservation); V1+ author/LLM populates
     pub background_asset: Option<ImageAssetRef>,          // shown when this node IS the current map view
@@ -82,16 +102,79 @@ pub struct MapLayout {
 }
 
 pub struct MapPosition {
-    pub x: u32,                                           // 0..1000 within parent viewport
-    pub y: u32,                                           // 0..1000 within parent viewport
+    pub x: u32,                                           // 0..1000 within PARENT frame
+    pub y: u32,                                           // 0..1000 within PARENT frame
 }
+// ⚠ REINTERPRETED 2026-07-30 — SPG-A5. The numbers are unchanged; what they MEAN
+// is now a hard rule rather than a convention: a node stores its position
+// RELATIVE TO ITS PARENT ONLY, and absolute position is DERIVED by accumulating
+// transforms from the root. NO NODE EVER STORES AN ABSOLUTE POSITION.
+//
+// This was already how MAP_001 worked ("within parent viewport"), which is why
+// the change costs nothing today — but it must be stated as an invariant, because
+// the day a parent MOVES (a ship, a cart, a flying 洞府) the two readings diverge
+// completely: relative keeps every descendant correct for free, absolute breaks
+// all of them at once and the repair is a migration through the spine.
+//
+// Same rule as USD's `Xform` and Star Citizen's Local Physics Grids, whose zone
+// system states it exactly: "an entity's absolute world position [is] the
+// accumulation of the transforms of each zone host above it… if a zone host moves
+// all the hosted entities move relative to it."
+//
+// Consequence for the wire (doc 36 §5, SPG-N2): the frame's transform and the
+// occupant's position replicate as SEPARATE streams. Sending absolute positions
+// adds the frame's motion error to the occupant's — which is the jitter every
+// moving-platform netcode thread is about.
 
-pub enum ChannelTier {                                    // closed enum; matches DP channel hierarchy
-    Continent,
-    Country,
-    District,
-    Town,
-    Cell,
+// ⛔ RETIRED 2026-07-30 — SPG-R1 / REC-81. Replaced by `MapKind` + a containment
+// matrix (doc 36 §3, SPG-A3). Kept here struck-through rather than deleted so a
+// reader arriving from an old cross-reference learns WHY, not just that it is gone.
+//
+// pub enum ChannelTier {                 // closed enum; "matches DP channel hierarchy"
+//     Continent, Country, District, Town, Cell,
+// }
+//
+// Three defects, each verified against code rather than against a handoff note:
+//
+// 1. IT MIXES TWO HIERARCHIES. `Continent` is geographic; `Country`/`District`/
+//    `Town` are political. FLAT_TO_3D §C already diagnosed this conflation
+//    ("'lift the zone tree as a political hierarchy' silently merges two DIFFERENT
+//    things") and chose geometry-first, politics-anchored-on-top. The shipped
+//    `crates/world-gen` implements that choice as TWO independent ladders
+//    (World→Continent→Subcontinent→Region, and World→Realm→State→Province→County).
+//    This enum is neither of them.
+//
+// 2. IT HAS NO WORLD AND NO UNIVERSE RUNG. Its top is `Continent`, positioned
+//    "within reality root viewport" — so a multi-world / multi-plane map has
+//    nowhere to sit, and `Universe → World` cannot be expressed at all.
+//
+// 3. IT NARROWED A SUBSTRATE THAT WAS ALREADY GENERAL. The comment above claimed
+//    it "matches DP channel hierarchy". It does not: DP-Ch1 has ALWAYS been an
+//    arbitrary tree with a free-form `level_name: String` (SPG-F1). The ladder was
+//    a feature-level invention, not a reflection of the data plane.
+//
+// Evidence it was never load-bearing: this feature's OWN demo, `MAP_GUI_v2.html`,
+// navigates continent → country → REGION → cell — a fourth ladder, matching none
+// of the three above (REC-81).
+//
+// REPLACEMENT: `MapKind` (Universe · World · Region · Locale · Domain · Passage ·
+// Arena, + reserved Vessel) with legality decided by `allowed(parent_kind,
+// child_kind)` VALIDATED ON WRITE — a relation, not an ordinal. Political
+// structure becomes an `owner_*` ATTRIBUTE on a node, so territory changes hands
+// by rebinding an ownership relation instead of restructuring the tree.
+//
+// See doc 36 §3 for the set and the matrix. `SPG-R2` narrows `DP-Ch1`'s
+// `level_name: String` to `MapKind` and touches a LOCKED file, so it carries its
+// own claim.
+pub enum MapKind {                                        // SPG-A3 — closed; legality from the matrix, not from order
+    Universe,
+    World,
+    Region,
+    Locale,
+    Domain,
+    Passage,
+    Arena,
+    // Vessel,                                            // RESERVED — a Domain whose parent changes over time (doc 36 §3)
 }
 
 pub struct TierMetadata {
@@ -402,8 +485,8 @@ pub struct RealityManifest {
 
 pub struct MapLayoutDecl {
     pub channel_id: ChannelId,
-    pub tier: ChannelTier,
-    pub position: MapPosition,
+    pub kind: MapKind,                                    // SPG-R1 (was `tier: ChannelTier`)
+    pub position: MapPosition,                            // parent-relative (SPG-A5)
     pub tier_metadata: Option<TierMetadata>,              // Some for non-cell; None for cell
     pub initial_icon_asset: Option<ImageAssetRef>,        // V1 always None; reservation
     pub initial_background_asset: Option<ImageAssetRef>,  // V1 always None

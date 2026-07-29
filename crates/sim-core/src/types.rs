@@ -35,77 +35,7 @@ pub struct Seq(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Gen(pub u32);
 
-/// Content digest of the resolved `RealityRuleset` this island runs under
-/// (RLS-A13). Pinned at construction; the host stamps it into every emitted
-/// event's envelope at the S3 boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RulesetDigest(pub [u8; 32]);
-
-impl RulesetDigest {
-    /// An island running a domain that has **no content ruleset to hash** — the
-    /// kernel's own harness domains (`crates/sim`'s `TestDomain`, benches,
-    /// stress bins). Their rules are Rust structs invented by the test, not a
-    /// resolved artifact, so there is nothing for a digest to address.
-    ///
-    /// **This exists so the zero is DECLARED rather than emergent.** The bare
-    /// `RulesetDigest([0u8; 32])` literal used to appear in 15 places — four of
-    /// them production paths — and read identically in all of them: in a bin it
-    /// meant *"we have not wired the loader yet"*, and nothing distinguished
-    /// that from *"this domain genuinely has no ruleset."* Same move as
-    /// `MAX_HIT` in the damage chain: a declared value has a name and a reason;
-    /// an emergent one is a number nobody can explain.
-    ///
-    /// `scripts/zero-digest-gate.py` bans the anonymous literal repo-wide, and
-    /// bans this constant outside `crates/sim` and test files — so reaching for
-    /// it in a service binary is a gate finding, not a shortcut.
-    pub const UNPINNED: Self = Self([0u8; 32]);
-
-    /// Lowercase hex, 64 chars — the ONE spelling this value has outside Rust.
-    ///
-    /// The DB column (`events.ruleset_digest CHAR(64)`), the wire schema
-    /// (`game-wire/common.schema.json#/$defs/Digest`, `^[0-9a-f]{64}$`) and both
-    /// language envelopes all use it, so a second spelling anywhere means two
-    /// producers write the same rules under different keys and nothing matches.
-    /// Hand-rolled rather than a hex crate: 8 lines, and `sim-core` takes no
-    /// runtime dependencies.
-    pub fn to_hex(&self) -> String {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut out = String::with_capacity(64);
-        for b in self.0 {
-            out.push(HEX[(b >> 4) as usize] as char);
-            out.push(HEX[(b & 0x0f) as usize] as char);
-        }
-        out
-    }
-}
-
-/// A checkpoint's ruleset pin does not describe the rules it is being restored
-/// under (RLS-A13).
-///
-/// Carries BOTH digests rather than a bare "mismatch": the operator's first
-/// question is *which* ruleset the island was checkpointed under, and an error
-/// that cannot answer it turns a five-minute lookup into an archaeology
-/// session. Once F2's immutable ruleset store exists, `checkpoint` is the
-/// digest to resolve the correct rules BY.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RulesetMismatch {
-    /// What the checkpoint was written under.
-    pub checkpoint: RulesetDigest,
-    /// What the rules handed to `restore` actually hash to.
-    pub supplied: RulesetDigest,
-}
-
-impl core::fmt::Display for RulesetMismatch {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "ruleset mismatch: checkpoint pinned {} but the supplied rules hash to {} - \
-             refusing to resume under rules the log does not describe",
-            self.checkpoint.to_hex(),
-            self.supplied.to_hex()
-        )
-    }
-}
+pub use crate::ruleset::{EpochSwitchRefused, RulesetDigest, RulesetEpoch, RulesetMismatch};
 
 /// SL-A2 execution classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

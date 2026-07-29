@@ -176,10 +176,10 @@ part of the ruleset declaration, which fits the [E2 tier](28_product_definition.
 
 | # | Target | Change | Confidence |
 |---|---|---|---|
-| **R32** | `DL_001` DL-D1 | narrow from *"evaluated, never ticked"* to **"evaluated or woken at a computed crossing — never ticked"**. This is the amendment [R01](31_world_simulation_architecture.md) asked for, now in its precise form: **the thing DL-D1 was protecting (no polling, no cold-cell cost) is fully preserved** | **verified** |
-| **R33** | `TDIL_001` TDIL-A11 | recognise lazy-advance-at-observation as an instance of WSA-A12, not a clock-specific trick | **verified** |
-| **R34** | `RES_001` generators | publish a `next_wake` when a stockpile is draining toward 0 or filling toward `cap`; a capped/equilibrium stockpile publishes none | **verify** |
-| **R35** | ruleset loader (F2) | refuse a continuously-varying rate (WSA-A15); validate that every declared threshold is closed-form solvable | **verify** |
+| **WSA-R32** | `DL_001` DL-D1 | narrow from *"evaluated, never ticked"* to **"evaluated or woken at a computed crossing — never ticked"**. This is the amendment [R01](31_world_simulation_architecture.md) asked for, now in its precise form: **the thing DL-D1 was protecting (no polling, no cold-cell cost) is fully preserved** | **verified** |
+| **WSA-R33** | `TDIL_001` TDIL-A11 | recognise lazy-advance-at-observation as an instance of WSA-A12, not a clock-specific trick | **verified** |
+| **WSA-R34** | `RES_001` generators | publish a `next_wake` when a stockpile is draining toward 0 or filling toward `cap`; a capped/equilibrium stockpile publishes none | **verify** |
+| **WSA-R35** | ruleset loader (F2) | refuse a continuously-varying rate (WSA-A15); validate that every declared threshold is closed-form solvable | **verify** |
 
 **Build-order impact.** [31 §6](31_world_simulation_architecture.md)'s **W6 (the balancing cell)** is
 now fully specified: a locus with a declared trajectory, declared thresholds, a published `next_wake`,
