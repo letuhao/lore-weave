@@ -265,6 +265,21 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-LEDGER-BEFORE-BALANCE": (
+        "TRIGGER: the first commit that BALANCES content against the economy — a "
+        "price table, a drop table, a production/consumption rate, a reward curve. "
+        "This is the only row in the registry with a DEADLINE rather than a "
+        "priority, and the deadline is one-way: WSA-R14 states that the ledger "
+        "becomes impossible to retrofit once content is balanced against a leaky "
+        "economy, BECAUSE AT THAT POINT THE LEAKS ARE THE BALANCE — removing them "
+        "later breaks every number an author tuned. Today EXC-F2 is true: the "
+        "engine has the TRANSACTION but not the LEDGER, so nothing asserts "
+        "conservation and a source-less 10 coins is silently legal. No mechanism "
+        "yet because the subject does not exist — there is no ledger to assert "
+        "against, so a check would have no possible violation (the NV-2 shape). "
+        "What makes it mechanisable is the ledger itself: the bite test named in "
+        "WSA-R14 is that a source-less 10 coins goes RED. Until then this row's "
+        "job is to be printed on every run so the deadline cannot pass quietly"),
     "D-META-ALLOWLIST-NO-DRIFT-GATE": (
         "TRIGGER: the next meta table added. The Rust and Go allowlists are "
         "hand-mirrored and already drifted once — the Rust side silently dropped "

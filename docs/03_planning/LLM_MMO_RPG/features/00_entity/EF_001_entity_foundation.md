@@ -294,27 +294,40 @@ pub enum EntityId {
     Item(ItemId),
     EnvObject(EnvObjectId),
 
-    // ── PENDING (boundary review OPENED 2026-07-30; NOT yet a V1 variant) ──
-    // Place(PlaceId),   // WSA-R19 · doc 32 WSA-A7 — a locus is an entity
+    // ── ADDED 2026-07-30 — WSA-R19, applied with SPG-R10 in one pass ──
+    Place(PlaceId),
+
+    // WHY. `WSA-A7` (doc 32): a locus is BOTH an entity and an actor. `SPG-A1`
+    // (doc 36): an entity may HOLD an interior. Those are one seam approached
+    // from two sides, which is why the two rows carried a PAIRING GATE and
+    // landed together — adding either alone leaves it half-built.
     //
-    // Gate: must land in the SAME pass as SPG-R10 (`SpaceNode.holder`, doc 36),
-    // because WSA-A7 ("a locus IS an entity") and SPG-A1 ("an entity MAY HOLD an
-    // interior") are one seam approached from two sides. Adding either alone
-    // leaves it half-built.
+    // It is not a nicety. Ownership is a relation to an ENTITY (EXC-A3). While
+    // a place was only a `ChannelId`, territory could not be owned, contested
+    // or inherited — so strategy and the world economy were not merely
+    // unimplemented, they were UNREPRESENTABLE (WSA-F6).
     //
-    // Why it is not "just" a nicety: ownership is a relation to an ENTITY
-    // (EXC-A3). While a place is only a ChannelId, territory cannot be owned,
-    // contested or inherited — so strategy and the world economy are not merely
-    // unimplemented, they are UNREPRESENTABLE (WSA-F6).
-    //
-    // The corpus already reached past this closed enum to get it: `EntityRef`
+    // The corpus had already reached past this closed enum to get it: `EntityRef`
     // carries a `Cell` variant, `RES_001` needed `cell_owner`, and that field's
-    // doc-comment cited `EntityType::Cell` — a variant that does not exist
-    // (WSA-R20, corrected 2026-07-30). The drift is evidence FOR the variant.
+    // doc-comment cited `EntityType::Cell` — a variant that did not exist
+    // (WSA-R20, corrected 2026-07-30). The drift was evidence FOR the variant,
+    // not against it: the economy work discovered the requirement empirically
+    // and worked around the type system.
+    //
+    // BOUNDS. A `Place` entity does NOT become chatty by existing: `WSA-A9`
+    // puts loci on the AIT_001 existence ladder, so an unvisited cell is
+    // Untracked, holds no aggregate and takes no turns. The cost is paid on
+    // attention, exactly as `SPG-A12` pays for an interior on entry.
 }
 
 pub struct PcId(pub Uuid);
 pub struct NpcId(pub Uuid);
+/// WSA-R19 (2026-07-30). Identity of a locus AS AN ENTITY — distinct from the
+/// `ChannelId` under which that locus's *channel* lives, and distinct from
+/// `GeoCell`'s per-world dense u32 (doc 36 §6). A place has all three faces and
+/// they are not interchangeable: a channel is where events are ordered, a
+/// GeoCell is where geometry is indexed, a PlaceId is what can be OWNED.
+pub struct PlaceId(pub Uuid);
 pub struct ItemId(pub Uuid);
 pub struct EnvObjectId(pub Uuid);
 ```
@@ -333,10 +346,11 @@ pub struct EnvObjectId(pub Uuid);
 
 ```rust
 // EF_001 §5 — addressable things in the world
-pub enum EntityId { Pc(PcId), Npc(NpcId), Item(ItemId), EnvObject(EnvObjectId) }
+pub enum EntityId { Pc(PcId), Npc(NpcId), Item(ItemId), EnvObject(EnvObjectId), Place(PlaceId) }
 
 // NPC_001 §2 — actors with turn-submission capability
-pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId) }
+pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId),
+                   Locus(PlaceId) }   // WSA-R21 (2026-07-30) — NOT Synthetic; see WSA-D3
 ```
 
 | Variant | In ActorId | In EntityId | Reason |
@@ -347,7 +361,7 @@ pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind },
 | Admin | ✓ | ✗ | S5 admin actors emit events but aren't in-fiction entities |
 | Item | ✗ | ✓ | Items are addressable (PL_005 tool / target) but don't submit turns — no agency |
 | EnvObject | ✗ | ✓ | Same as Items — passive |
-| **Place / Locus** ⏳ | **(pending `WSA-R21`)** | **(pending `WSA-R19`)** | **BOUNDARY REVIEW OPENED 2026-07-30 — the first thing to belong in BOTH enums, and that is the point.** [`WSA-A7`](../../32_locus_as_actor.md): a locus is an **entity** (addressable, ownable, holds quantities) **and** an **actor** (has a driver, submits turns). A trap is a place reacting; a village can regard you and be regarded. ⚠ `WSA-D3`: it needs its **own** `ActorId` variant — **not** `Synthetic`, which denotes an actor *outside* the fiction and would put an out-of-world escape hatch on the social layer's critical path. `WSA-R21` must land with `WSA-R22` (narrowing `actor.synthetic_actor_forbidden`), or a locus can be an actor yet cannot hold an opinion. Cost is bounded by [`WSA-A9`](../../32_locus_as_actor.md): loci ride the `AIT_001` existence ladder, so an unvisited cell is Untracked and takes no turns |
+| **Place / Locus** ✅ | ✓ `Locus(PlaceId)` | ✓ `Place(PlaceId)` | **ADDED 2026-07-30 (`WSA-R19` + `WSA-R21`, applied together with `SPG-R10`/`WSA-R22`) — the first thing to belong in BOTH enums, and that is the point.** [`WSA-A7`](../../32_locus_as_actor.md): a locus is an **entity** (addressable, ownable, holds quantities) **and** an **actor** (has a driver, submits turns). A trap is a place reacting; a village can regard you and be regarded. ⚠ `WSA-D3`: it needs its **own** `ActorId` variant — **not** `Synthetic`, which denotes an actor *outside* the fiction and would put an out-of-world escape hatch on the social layer's critical path. `WSA-R21` must land with `WSA-R22` (narrowing `actor.synthetic_actor_forbidden`), or a locus can be an actor yet cannot hold an opinion. Cost is bounded by [`WSA-A9`](../../32_locus_as_actor.md): loci ride the `AIT_001` existence ladder, so an unvisited cell is Untracked and takes no turns |
 
 > **⚠ The split above is LOAD-BEARING and must not be "simplified" away — restated 2026-07-30 as
 > [`SPG-A4`](../../36_map_architecture.md).** This file's own reason (*"collapsing would corrupt either

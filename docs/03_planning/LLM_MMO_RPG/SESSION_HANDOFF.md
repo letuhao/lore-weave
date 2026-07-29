@@ -43,6 +43,7 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-GAME-WS-EDGE-CONTROLS` | 1 | PRR-20's second public entry point must inherit the gateway's auth/rate-limit/audit controls. | **prose-only.** ⚠ First claimed as "guarded across the three `ws/` implementations" — the id appears there only in **JSDoc headers**, which is provenance, not a check: nothing reds if parity breaks. Trigger: a parity test, which needs both transports up. |
 | `D-META-ALLOWLIST-NO-DRIFT-GATE` | 2 | Rust and Go meta allowlists are hand-mirrored and **already drifted once** — the Rust side silently dropped `xreality_topic` because serde ignores unknown fields while Go reads it. | **prose-only** — declared in `deferral-gate.py`. Trigger: the next meta table added. |
 | `D-S04-1` | 3 | The S04 provisioner slice. | **prose-only** — the subject is an unbuilt service, so there is no file for a check to hold. |
+| `D-LEDGER-BEFORE-BALANCE` | 3 | **The ledger** (`WSA-R14`) — conservation assertion + declared sources/sinks. **The only row here carrying a DEADLINE rather than a priority, and it is one-way.** `WSA-R14`: the ledger becomes *impossible* to retrofit once content is balanced against a leaky economy, **because at that point the leaks ARE the balance** — removing them later breaks every number an author tuned. Today [`EXC-F2`](30_exchange_model_and_dataflow.md) holds: the engine has the **transaction**, not the **ledger**, so a source-less 10 coins is silently legal. | **prose-only** — declared in `deferral-gate.py`. **TRIGGER: the first commit that balances content against the economy** (a price table, a drop table, a production rate, a reward curve). No mechanism today because the subject does not exist: with no ledger to assert against, a check would have no possible violation (`NV-2`). The ledger itself is what makes it mechanisable — `WSA-R14`'s own bite test is *a source-less 10 coins goes red*. |
 | `D-DEFERRAL-GATE-PLATFORM-SCOPE` | 1 | This gate governs the game tier only; ~360 ids in `docs/sessions/` + `docs/deferred/` are ungoverned and printed as a hole on every run. | **prose-only** — widening is a triage of which of those are still open, which cannot be mechanised in advance. |
 
 <!-- deferral-registry:end -->
@@ -158,6 +159,41 @@ the shared core → 4 RED.
 
 **B2 is now complete.** Next is **B3**, whose three constraints are held by
 `scripts/epoch-emit-trigger-gate.py` (`D-Q0B-EMIT-PATH`).
+
+### 🔴→✅ AUDIT FINDING (HIGH) — `RLS-I1` was computed against a default (2026-07-29)
+
+Found by auditing `B2` against `B1b` immediately after both shipped, asking one question: **what
+connects the two epoch counters?** The answer was **nothing**.
+
+```
+bindings.load()  ->  RealityBinding { epoch: 5, digest }
+load_reality()   ->  calls digest_for(), THROWS THE EPOCH AWAY -> (Ruleset, RulesetDigest)
+spine            ->  Island::new(...)  ->  epoch: RulesetEpoch(1)   // hardcoded
+```
+
+A reality durably bound at **epoch 5** ran on an island claiming **epoch 1**. `RLS-I1` monotonicity
+was then computed against 1, so a redelivered switch to **epoch 3** is `3 > 1` and **accepted** —
+moving the island onto rules the reality had already moved past. *The guard written to prevent
+exactly that, defeated by the constructor.*
+
+Two individually correct decisions — the binding carries the epoch, a brand-new reality starts at 1
+— which together defeat a check. **`NV-4`**, register row 25.
+
+**Fixed, and the fix is structural rather than careful:**
+- `load_reality` returns `(Ruleset, RealityBinding)` — the epoch travels **with** the rules, so a
+  caller cannot drop it by writing `let (r, digest) = …`.
+- **`Island::new` takes the epoch as a REQUIRED parameter.** Not a default, not a
+  `new_at_epoch` sibling: a default that can be wrong is the footgun, so the hole is a **compile
+  error** at all 20 call sites. Each site now says which epoch it means and why.
+- Bite-proven both halves: restore the epoch-drop in `load_reality` → `loading_a_reality_surfaces_
+  the_epoch_not_just_the_digest` RED; make `Island::new` ignore its argument → `an_island_starts_at_
+  the_epoch_it_is_given_not_at_one` RED.
+
+**Bonus from the same pass:** three copies of the hex→digest parser had accumulated
+(`binding::parse_digest`, `epoch::parse_hex`, and a third added the same afternoon), **two of which
+accepted upper-case and one did not** — the drift a duplicated parser always produces. Collapsed to
+`RulesetDigest::from_hex`, which rejects upper-case, because lowercase is the one spelling this value
+has outside Rust (the DB `CHAR(64)`, the wire schema's `^[0-9a-f]{64}$`).
 
 **The ceiling gate paid for itself in the same slice.** `island.rs` went 790 → 919 and `types.rs`
 470 → 530, and `file-ceiling-gate` refused the commit. Both were **split, not allowlisted**:
@@ -2293,6 +2329,14 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > struct, F3's *edit-a-constant-then-the-digest-moves* test cannot be written at all.
 
 > **🗺️ MAP ARCHITECTURE SEALED (2026-07-30) — [`36_map_architecture.md`](36_map_architecture.md), `SPG-*`.**
+>
+> **⚠️ WHERE TO FIND IT IN HISTORY: commit `056961f80`, whose subject says `feat(sim-core): Q0b B2 — the
+> ruleset epoch switch`.** A concurrent session committed while this arc was composing its message, and
+> git's index — shared, no mutex — was swept wholesale: all 23 files of this arc went in under that
+> `sim-core` subject. **Nothing was lost, only mislabelled** (verified file-by-file, not assumed). PO
+> chose record-correction over history rewrite, since the SHA was unpushed but a peer may be working
+> from it. Full account in [`_boundaries/99_changelog.md`](_boundaries/99_changelog.md). **`git log` on
+> the subject line will not find this work — search the paths.**
 > A design-only arc, taken deliberately **before any schema exists**, at PO direction (*"thiết kế đầy đủ
 > toàn bộ các loại bản đồ và kiến trúc dữ liệu, không nên build cái gì bây giờ"*). **Nothing was built.**
 >

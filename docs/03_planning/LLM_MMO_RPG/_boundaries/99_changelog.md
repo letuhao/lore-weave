@@ -6,6 +6,51 @@
 
 ---
 
+## 2026-07-30 — ⚠️ RECORD CORRECTION: the day's four cycles landed under a commit that names none of them
+
+**The four `[boundaries-lock-claim+release]` cycles recorded below (`SPG` registration · six-prefix
+backfill · REC-92 discharge + closed-enum boundary review · `TRG` backfill · `SPG-R2` retirement) were
+committed as:**
+
+```
+056961f80  feat(sim-core): Q0b B2 — the ruleset epoch switch, out-of-band and ordered
+```
+
+**That subject describes a different session's work.** A concurrent session ran `git commit` while this
+session was composing its own message, and git's index — a **shared** resource with **no mutex** — was
+swept wholesale into their commit: 23 files belonging to this arc (21 design docs, the new
+`scripts/amendment-rot-gate.py`, and its `.githooks/pre-commit` wiring) went in under a `sim-core`
+subject. This session's own commit then found nothing left to commit.
+
+**Not a claim-discipline failure, and worth separating from the four RECORD CORRECTIONs below.** Those
+were about cycles *asserted but never performed*. Here every cycle was performed correctly — `Owner:`
+set before the first edit, cleared after, evidence in each release note — and the staging was done by
+**explicit pathspec** precisely to avoid touching the peer's files. Pathspec protects the peer from
+this session. **Nothing protects this session from the peer**, because `git add` writes to one index
+that both sessions share. The `_LOCK.md` mutex governs `_boundaries/` *content*; it says nothing about
+the index.
+
+**Content verified intact before writing this entry** (checked, not assumed): all 23 files present in
+`056961f80`; `36_map_architecture.md` carries its 54 `SPG-A*` references; `amendment-rot-gate.py`
+runs from committed content with `--selftest` green. **Nothing was lost — only mislabelled.**
+
+**PO decision (2026-07-30): record-correct, do NOT rewrite.** `056961f80` is unpushed, so a
+`reset --soft` split was technically available — but a concurrent session had just created that SHA and
+may still be working from it, and destroying a peer's commit to improve a label is the wrong trade. This
+is also how this folder has handled the class four times already: correct the record, keep the history.
+
+**Where to find the work:** the map-architecture seal is `docs/03_planning/LLM_MMO_RPG/36_map_architecture.md`
+(prefix `SPG-*`), introduced in `056961f80`, with its narrative in that folder's `SESSION_HANDOFF.md` §1
+and its contradiction register in `19_reconciliation_register.md` §15b/§15c/REC-93.
+
+**The mechanism this argues for**, consistent with every other bullet in `_LOCK.md`: the repo's
+convention of *"stage only changed files (no `git add -A`)"* is a rule about **what you add**, and this
+failure is about **what someone else already added**. A commit-time check that the staged set matches
+the pathspec the committer intended — or simply committing by pathspec in the same shell breath as the
+`add` — is the shape that would have caught it. Convention did not, and could not.
+
+---
+
 ## 2026-07-30 (4th claim) — `SPG-R2` RETIRED: a row that pointed at work which must not happen
 
 - **Lock CLAIMED 01:15, `Owner:` set BEFORE the first edit, released after.**

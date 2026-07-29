@@ -597,11 +597,50 @@ stop overstating how much is a text edit away.
 | `XST-R12` | Status **instances** (severity / stacks / expiry), `StatusFlag` bitmask **derived** | medium | Bitmask stays the ~1 ns hot path |
 | `XST-R13` | Typed side-tables + a budgeted `Reproject { dirty_slots }` step | medium | *"Converts a rotting invariant into a visible cost"* — and then **measure** it |
 
-> **⚠ `WSA-R18` and `XST-R9` are the same work under two ids, proposed by two registers three days
-> apart.** Doc 31's own row even cites `XST-R9`/`R10` as its reference — so the duplication was visible
-> at the moment of writing and still produced two ids. This is `XST-F1`'s class in the *register*
-> layer: two indexes of the same corpus, neither reading the other. **One must be retired in favour of
-> the other before either is scheduled**, or the work gets estimated twice and done zero times.
+### REC-94 — the duplicate resolved, and the survivor turned out to be much smaller
+
+**`WSA-R18` RETIRED 2026-07-30 → `XST-R9`.** They were the same work under two ids, proposed by two
+registers three days apart, and doc 31's own row *cites* `XST-R9` in its reference column — so the
+duplication was visible at the moment of writing and still produced a second id. `XST-F1`'s class in
+the **register** layer: two indexes of one corpus, neither reading the other.
+
+**And retiring it exposed that the survivor had already shrunk.** `XST-R9` was scoped *medium-large*
+as *"design a closed `TriggerPoint` + `Reaction` with a depth budget"*. [`WSA-A11`](32_locus_as_actor.md)
+(SEALED) collapses the trigger problem into the actor problem — *"every WHEN is **some actor took a
+turn**"* — so:
+
+- **there is no second dialect to design**; the existing turn seam generalises, which is exactly what
+  `WSA-R18` said it wanted and what `PRD-F2` warned a bespoke trigger dialect would violate;
+- **the depth budget is discharged by unification, not construction** — a reaction *is* a turn, turns
+  are budgeted, so reaction depth is bounded by machinery that already exists;
+- **`WSA-Q4`/`Q5` (when a locus takes its turn) are RESOLVED** in [`34`](34_when_the_world_runs.md):
+  `next_wake` in closed form, no tick, no cadence, and a locus at equilibrium costs nothing.
+
+**Residue, re-scoped to small-medium:** (a) `XST-R11`'s declared `replacement_priority` — still
+required, because [`WSA-F5(a)`](32_locus_as_actor.md) states plainly that interleaved turns give *an*
+order, not the *right* one (the Gisela case: two reactions, two orders, 7 vs 8); (b) naming the closed
+`TriggerPoint` set the scheduler dispatches on. **Net: one id retired, and the surviving estimate fell
+by roughly a tier** — which is the payoff of deduplicating before scheduling rather than after.
+
+### REC-95 — the ledger's deadline given a mechanism instead of an adjective
+
+`WSA-R14` is the only Class-D row carrying a **deadline** rather than a priority, and the deadline is
+one-way: *"impossible once content is balanced against a leaky economy, because then **the leaks are the
+balance**"* — remove them afterwards and every number an author tuned breaks. Calling that *"urgent"* in
+prose is precisely the intent-not-mechanism failure this corpus keeps paying for.
+
+**Registered as `D-LEDGER-BEFORE-BALANCE`** in the machine-read registry (game handoff §0) with a
+`PROSE_ONLY` row in `scripts/deferral-gate.py` naming its wake-up trigger: **the first commit that
+balances content against the economy** — a price table, a drop table, a production rate, a reward curve.
+
+It is honestly prose-only rather than mechanised, and the reason is the `NV-2` shape: **there is no
+ledger to assert against, so a check would have no possible violation.** What makes it mechanisable is
+the ledger itself — `WSA-R14`'s own bite test is *a source-less 10 coins goes red*. Until then the row's
+job is to be **printed on every run** so the deadline cannot pass quietly.
+
+**Bite-tested, not asserted:** with the declaration in place `deferral-gate` exits **0**; with it removed
+it exits **1** and names `D-LEDGER-BEFORE-BALANCE` as *"NO mechanism and no declared reason"*. Registry
+now tracks **13** ids, 4 mechanised.
 
 **What "clear the spec" means for these thirteen:** stating plainly, where a reader will hit it, that
 they are **undesigned-and-unbuilt** — not implementing them, and not leaving them dressed as pending

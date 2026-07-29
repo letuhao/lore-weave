@@ -177,13 +177,16 @@ pub struct ActorCore {
 - Field `current_session_id: Option<SessionId>` SEMANTICS preserved: None = actor not in session (NPC idle/ambient; PC offline)
 - All other fields preserved; semantics preserved (current_region_id + glossary_entity_id + core_beliefs + flexible_state)
 
-**Synthetic actors forbidden V1 (ACT-A7):**
-- Reject `actor.synthetic_actor_forbidden` Stage 0 schema for actor.kind == ActorKind::Synthetic.
+**Out-of-world actors forbidden V1 (ACT-A7) — NARROWED 2026-07-30 (`WSA-R22`):**
+- Reject `actor.synthetic_actor_forbidden` Stage 0 schema for actor.kind == ActorKind::**Synthetic**.
+- **`ActorKind::Locus` is NOT rejected.** The rule tests the *out-of-world* property, not
+  "is not a person".
 
-> **⚠ NARROWING REQUIRED — `WSA-R22` / [REC-83](../../19_reconciliation_register.md). Boundary review
-> opened 2026-07-30; not yet applied.** As written, this rule tests `kind == Synthetic` and therefore
-> also excludes any actor that is *not a person*. Once [`WSA-R21`](../../32_locus_as_actor.md) adds
-> `ActorId::Locus`, that is exactly wrong:
+> **✅ NARROWED 2026-07-30 — `WSA-R22` / [REC-83](../../19_reconciliation_register.md), applied in the
+> same pass as [`WSA-R21`](../../32_locus_as_actor.md) (`ActorId::Locus`).** The pairing was the point:
+> applying the narrowing alone would have been **vacuous** (no `Locus` variant existed for it to admit),
+> and applying `WSA-R21` alone would have given loci turn-submission while still forbidding them any
+> opinion. Why the old wording was wrong:
 >
 > - **`WSA-D3` — a locus is NOT `Synthetic`.** `Synthetic` means an actor **outside** the fiction (the
 >   orchestrator, the scheduler, `RealityBootstrapper`). A village is **inside** it.
@@ -192,11 +195,16 @@ pub struct ActorCore {
 >   subject; familiarity and notoriety *here* have a place as their object. This rule as written makes
 >   both unrepresentable.
 >
-> **The narrowing must exclude out-of-world synthetics WITHOUT excluding loci** — i.e. test the
-> out-of-world property, not "is not a person". Applying it before `WSA-R21` lands would be vacuous
-> (no `Locus` variant exists to admit); applying `WSA-R21` before it would give loci turn-submission
-> while still forbidding them any opinion. **The two must land in one pass** — recorded as the pairing
-> gate on the `ActorId` row of [`01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md).
+> **Applied form:** the rule now names **`Synthetic`** only, and `ActorKind::Locus` passes. It tests the
+> *out-of-world* property rather than "is not a person" — which is what `WSA-D3` demanded and why
+> `Synthetic` could not simply be reused for loci.
+>
+> **Still open, deliberately:** `ACT-A5`'s bilateral `actor_actor_opinion` now *admits* a locus as
+> observer or target, but the **V1 active pattern** is still NPC→PC (`WSA-R07` proposes promoting
+> NPC→NPC into the critical path, and remains unapplied). So a village *may* hold standing as of this
+> change; nothing yet *writes* it. That gap is real and is the honest state — recorded rather than
+> papered over, because a variant that is admitted but never populated is exactly the shape that reads
+> as coverage later.
 
 **Cross-reality strict V1 (ACT-A8):**
 - Reject `actor.cross_reality_mismatch` Stage 0 schema for cross-reality reads.
