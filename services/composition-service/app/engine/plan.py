@@ -46,11 +46,6 @@ from app.engine.llm_json import call_json, enum_of
 
 logger = logging.getLogger(__name__)
 
-# Disable hidden thinking on reasoning-model planners (mirrors select.py).
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 _L2_CONCURRENCY = 4  # bounded chapter fan-out (don't open C calls at once)
 

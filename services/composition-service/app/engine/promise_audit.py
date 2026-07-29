@@ -26,6 +26,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -33,11 +34,6 @@ from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
 
 logger = logging.getLogger(__name__)
-
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 
 def build_audit_messages(arc_text: str, source_language: str) -> tuple[str, str]:
@@ -121,7 +117,7 @@ async def audit_promises(
                     "json_schema": {"name": "promise_audit", "schema": _AUDIT_SCHEMA},
                 },
                 "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": "promise_audit"}, trace_id=trace_id,
             cancel_check=cancel_check,
@@ -264,7 +260,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": tag}, trace_id=trace_id,
             cancel_check=cancel_check,

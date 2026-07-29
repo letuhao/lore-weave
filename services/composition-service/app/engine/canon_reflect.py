@@ -25,6 +25,8 @@ from app.engine.canon_check import (
     reflect_revise,
     scene_at_order,
 )
+from loreweave_llm import ReasoningDirective
+
 from app.engine.cowrite import build_revise_messages, revise_draft
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ async def run_canon_reflect(
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
     prompt_estimate: int, max_output_tokens: int,
-    max_iters: int = 1, reasoning_effort: str | None = None,
+    max_iters: int = 1, reasoning: ReasoningDirective | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, ReflectResult, int]:
@@ -88,7 +90,7 @@ async def run_canon_reflect(
             llm.sdk, user_id=str(user_id), model_source=drafter_source,
             model_ref=drafter_ref, messages=messages,
             prompt_token_estimate=prompt_estimate, max_output_tokens=max_output_tokens,
-            trace_id=trace_id, reasoning_effort=reasoning_effort,
+            trace_id=trace_id, reasoning=reasoning,
         )
         revise_out_tokens += metering.output_tokens
         # Track the stop reason of the LAST pass that actually produced text — that

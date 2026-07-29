@@ -26,6 +26,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from uuid import UUID
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -37,11 +38,6 @@ from app.packer.profile import BookProfile
 
 logger = logging.getLogger(__name__)
 
-# Mirrors self_heal's reasoning-model suppression (plan.py / stitch.py do the same).
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 # A satellite edit must stay local. Same guard self-heal applies, same reason: an "edit" that
 # triples the passage has stopped fixing and started rewriting.
@@ -219,7 +215,7 @@ async def _chat(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": temperature,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "error_block_fix", "extractor": "error_block"},
             trace_id=trace_id, cancel_check=cancel_check,

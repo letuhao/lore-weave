@@ -32,6 +32,7 @@ import logging
 import random
 from typing import Any, Protocol
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -171,10 +172,7 @@ async def judge_motif_conformance(
                 "temperature": 0.0,
                 "max_tokens": max_tokens,
                 # The judge emits tiny JSON — reasoning tokens are pure budget burn.
-                # reasoning_effort is the knob that actually works for LM Studio +
-                # Qwen3; chat_template_kwargs covers models honouring the template.
-                "reasoning_effort": "none",
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+                **no_thinking_fields(),
             },
             job_meta={"extractor": "motif_conformance"},
             trace_id=trace_id,

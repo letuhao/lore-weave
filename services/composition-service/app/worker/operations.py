@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_llm import ReasoningDirective, directive_from_parts
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
@@ -46,6 +47,20 @@ logger = logging.getLogger("composition.worker.operations")
 class UnsupportedOperationError(RuntimeError):
     """The job's operation has no worker handler (a config/enqueue bug — the
     endpoint should only enqueue operations the worker can run)."""
+
+
+def _reasoning_of(input: dict[str, Any]) -> ReasoningDirective:
+    """Rebuild the reasoning directive the ENDPOINT resolved, from the job's stored parts.
+
+    Every worker handler used to re-derive this by hand (`None if
+    input["reasoning_passthrough"] else input["reasoning_effort"]`), which threw away
+    `chat_template_kwargs` and let the endpoint's decision arrive half-applied. One reader,
+    one shape."""
+    return directive_from_parts(
+        source=input.get("reasoning"),
+        effort=input.get("reasoning_effort"),
+        passthrough=input.get("reasoning_passthrough"),
+    )
 
 
 async def _maybe_narrative_threads(
@@ -261,7 +276,7 @@ async def run_stitch(
     drafts = prepend_scene_headings(rows)
 
     max_out = input["max_out"]
-    reasoning_effort = input.get("reasoning_effort")  # already None when passthrough
+    reasoning = _reasoning_of(input)
 
     # Model-context-aware input sizing — a flat 24K-char cap tuned for a mid-size
     # model shouldn't cap a genuinely bigger model at the same number.
@@ -271,7 +286,7 @@ async def run_stitch(
         llm, user_id=user_id, model_source=input["model_source"], model_ref=input["model_ref"],
         scene_drafts=drafts, chapter_intent=input["chapter_intent"], profile=profile,
         max_tokens=max_out, max_input_chars=_stitch_chars,
-        reasoning_effort=reasoning_effort, cancel_check=cancel_check,
+        reasoning=reasoning, cancel_check=cancel_check,
     )
     degraded = not stitched
     final_text = stitched or "\n\n".join(drafts)
@@ -291,7 +306,7 @@ async def run_stitch(
             judge_source=input.get("critic_source"), judge_ref=input.get("critic_ref"),
             prompt_estimate=0, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=reasoning_effort, cancel_check=cancel_check,
+            reasoning=reasoning, cancel_check=cancel_check,
         )
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
@@ -343,7 +358,7 @@ async def run_generate(
     max_out = input["max_out"]
     # reasoning: stored resolved — passthrough (adaptive model) → omit the effort.
     effort = input.get("reasoning_effort")
-    effort_arg = None if input.get("reasoning_passthrough") else effort
+    reasoning = _reasoning_of(input)
     # critic_*: the DISTINCT critic (anti-self-reinforcement) or None. select falls
     # back to the drafter when there's no distinct critic; reflect keeps None.
     critic_source = input.get("critic_source")
@@ -363,7 +378,7 @@ async def run_generate(
             judge_ref=critic_ref or model_ref,
             packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
             k=k, prompt_est=prompt_estimate, max_tokens=max_out,
-            temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+            temperature=settings.compose_diverge_temperature, reasoning=reasoning,
             cancel_check=cancel_check,
         )
     except Exception as exc:  # noqa: BLE001 — mirror inline: diverge produced
@@ -386,7 +401,7 @@ async def run_generate(
             judge_source=critic_source, judge_ref=critic_ref,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=effort_arg, cancel_check=cancel_check,
+            reasoning=reasoning, cancel_check=cancel_check,
         )
         canon = {"violations": [v.model_dump() for v in reflect.violations],
                  "resolved": reflect.resolved, "iterations": reflect.iterations,
@@ -467,7 +482,7 @@ async def run_chapter_generate(
     prompt_estimate = input["prompt_estimate"]
     max_out = input["max_out"]
     effort = input.get("reasoning_effort")
-    effort_arg = None if input.get("reasoning_passthrough") else effort
+    reasoning = _reasoning_of(input)
     critic_source = input.get("critic_source")
     critic_ref = input.get("critic_ref")
     cast_glossary_ids = input.get("present_entity_ids") or []
@@ -478,7 +493,7 @@ async def run_chapter_generate(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
             k=1, prompt_est=prompt_estimate, max_tokens=max_out,
-            temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+            temperature=settings.compose_diverge_temperature, reasoning=reasoning,
             cancel_check=cancel_check,
             target_words=input.get("target_words"),  # scene LENGTH directive (else drafts short)
         )
@@ -500,7 +515,7 @@ async def run_chapter_generate(
             judge_source=critic_source, judge_ref=critic_ref,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=effort_arg, cancel_check=cancel_check,
+            reasoning=reasoning, cancel_check=cancel_check,
         )
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
@@ -556,7 +571,7 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
     prompt_estimate = input["prompt_estimate"]
     max_out = input["max_out"]
     effort = input.get("reasoning_effort")
-    effort_arg = None if input.get("reasoning_passthrough") else effort
+    reasoning = _reasoning_of(input)
 
     final: dict[str, Any] | None = None
     async for ev in stream_draft(
@@ -564,7 +579,7 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
         model_source=input["model_source"], model_ref=input["model_ref"],
         messages=messages, prompt_token_estimate=prompt_estimate,
         max_output_tokens=max_out, hard_cap_output=max_out * 2,
-        reasoning_effort=effort_arg,
+        reasoning=reasoning,
     ):
         if ev["type"] == "usage":
             final = ev

@@ -49,10 +49,10 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
-from app.engine.compress import _NO_THINK
 from app.engine.plan_forge.structure import resolve_structure
 from app.services.intent_fsm import engine
 from app.services.intent_fsm.repo import IntentRepo
@@ -114,7 +114,7 @@ class IntentFSMService:
                 model_source=model_source, model_ref=model_ref,
                 input={"messages": messages,
                        "response_format": response_format or {"type": "text"},
-                       "temperature": 0.5, "max_tokens": max_tokens, **_NO_THINK},
+                       "temperature": 0.5, "max_tokens": max_tokens, **no_thinking_fields()},
                 job_meta={"usage_purpose": "intent_fsm"},
             )
             if getattr(job, "status", None) != "completed":

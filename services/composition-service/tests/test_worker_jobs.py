@@ -329,8 +329,10 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
     assert out["canon"]["status"] == "ok"
     assert out["reasoning_effort"] == "medium" and out["reinjected_promise_count"] == 2
     assert out["persisted"] is False
-    # no distinct critic → judge falls back to the drafter; passthrough False → effort passed
-    assert seen["judge_ref"] == "m1" and seen["reasoning_effort"] == "medium"
+    # no distinct critic → judge falls back to the drafter. The worker must rebuild the
+    # ENDPOINT's directive from the stored parts, not re-derive a bare effort string.
+    assert seen["judge_ref"] == "m1"
+    assert seen["reasoning"].effort == "medium" and seen["reasoning"].passthrough is False
 
 
 async def test_run_generate_select_failure_is_terminal(monkeypatch):
@@ -427,7 +429,8 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
     assert out["open_promise_count"] is None  # narrative_thread off
     assert out["max_output_tokens"] == 4000
     assert seen["k"] == 1  # single pass
-    assert seen["reasoning_effort"] is None  # passthrough → omit effort
+    # passthrough (an adaptive model) survives the job round-trip and still omits both knobs.
+    assert seen["reasoning"].passthrough is True and seen["reasoning"].effort is None
 
 
 async def test_run_job_dispatches_selection_edit_via_worker_op(monkeypatch):

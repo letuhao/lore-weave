@@ -1,5 +1,77 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧠 REASONING WIRE FIELDS — back to one SSOT (2026-07-30)
+
+Plan + full write-up: [`docs/plans/2026-07-30-reasoning-wire-fields-ssot.md`](../plans/2026-07-30-reasoning-wire-fields-ssot.md)
+
+**The symptom:** clicking Generate returned `text=""`, **800 output tokens billed**, `status:
+completed`. The same model, same scene, through the **auto** path returned prose.
+
+**The cause was not the model.** composition held **three dialects** of one decision:
+
+| Dialect | Count |
+|---|---|
+| hand-copied `_NO_THINK` dicts (+3 inline, +4 cross-module imports of a sibling's PRIVATE constant) | **16** |
+| hand-rolled collapses in the router, each silently dropping `chat_template_kwargs` | **9** |
+| re-derives of the same job row in the worker | **3** |
+
+They disagreed on the only case that mattered: `select.py` read a missing effort as *suppress*,
+`cowrite.stream_draft` read it as *send nothing*. The SDK's `reasoning_fields` docstring says it
+"replaces … **composition's inline copies**" — every service it names adopted it **except the one
+it names specifically**. chat / translation / knowledge / lore-enrichment: adopted. composition: 0
+call sites.
+
+**Now:** one producer (`loreweave_llm` → `app.reasoning.wire_fields`), the resolved
+`ReasoningDirective` threaded end-to-end instead of a bare effort string (a string structurally
+cannot carry `chat_template_kwargs`), and an **AST drift gate** that proves itself by firing on
+synthetic offending source. No job_input migration — in-flight jobs rebuild to an identical no-op.
+
+### The upstream half: a guess that failed OPEN
+
+`gemma-4-26b-a4b-qat` matches no pattern in `_EFFORT_LOCAL`, so it classified as
+`"none"` → nothing sent → its own chat template kept thinking ON → the whole budget went to hidden
+reasoning. **The lesson is not "widen the regex"** — no name list is ever complete. It is that a
+guess must fail SAFE. New `ReasoningControl` value **`"suppress"`**: an unclassified LOCAL model
+gets thinking turned off explicitly, with `source="suppress_unclassified"` so telemetry shows a
+*decision* rather than an absence. Fail-open was correct once (real OpenAI 400s on
+`reasoning_effort`); LOOM-71 moved that guard to the gateway and nobody flipped the default back.
+
+### What the review pass caught — the fix was resting on a client hint
+
+`model_kind`/`model_name` are OPTIONAL request fields the FE spreads conditionally
+(`...(args.modelKind ? {…} : {})`) from `selectedModel?.provider_kind`. A generate fired before the
+model metadata resolves omits both → "not a local model" → **the empty draft, back through the
+front door**. The registry already answers this (`/internal/models/{source}/{ref}/info` returns
+kind + name — its own test says it exists "so worker-ai can run the reasoning-model advisory") and
+was never wired up. Now the server asks the registry; the client hint is only the degraded
+fallback.
+
+### Two blockers found INSIDE the verification (not in the plan, fixed not deferred)
+
+- **The SDK suite's counts were lying** — `test_loreweave_parse_roundtrip` popped `loreweave_*`
+  from `sys.modules` and never restored them, so a later test compared an exception class against
+  a second copy of itself: red in the suite, green alone.
+- **Rebuilding composition-service broke it** — the SDK declared `"mcp>=1.27"` unbounded; `mcp`
+  2.0.0 removed `mcp.server.fastmcp` → crash-loop with no repo change but the calendar.
+  chat/knowledge survived only because they re-pin `mcp==1.28.1` themselves. Capped `<2`.
+
+**Evidence:** composition **2,992 pass / 0 fail** · SDK **910** · chat **1,928** · translation
+**1,055** · ruff on all changed files = 7 errors, all byte-identical at HEAD (zero new) ·
+`ai-provider-gate` OK · deployed image sha256-verified against source.
+**Live smoke** (gemma-4 26B-A4B QAT, the exact model that returned silence): streaming **3,161
+chars / 0 reasoning deltas** · worker **2,393 chars**, `reasoning_source=suppress_unclassified` ·
+**with both client hints removed: 3,149 chars.**
+
+**NEXT:** write chương 1 through the FE as a real user — the original goal, now unblocked.
+
+### Deferred (new)
+
+| ID | What | Gate | Target |
+|---|---|---|---|
+| `D-REASONING-CAPFLAGS-UNREACHABLE` | `capability_flags.reasoning_control` is the sanctioned way to correct a misclassified model and `infer_reasoning_control` checks it FIRST — but `/internal/models/.../info` returns only kind+name, so the server can never pass it. Works only for a caller that already holds the flags client-side. | #2 cross-service contract (Go handler + response contract + tests + a call on whether flags are safe on an internal route) | when a real model needs the override in the *enable* direction |
+
+---
+
 ## 🌐 MOTIF TRANSLATE — the user-paid path (2026-07-30)
 
 A user can now buy a translation of a motif they authored. Before this, spec §5's policy

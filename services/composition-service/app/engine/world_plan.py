@@ -7,7 +7,7 @@ pass 6 writes scenes that mention places and orders which exist nowhere in the g
 (PF-1).
 
 Deliberately a MIRROR of `cast_plan.py` — same three moves (build messages → tolerant parse →
-degrade-safe empty), same `_NO_THINK` suppression, same `LLMError`/non-completed handling. It is a
+degrade-safe empty), same thinking suppression, same `LLMError`/non-completed handling. It is a
 sibling, not a fork: if the two ever need to diverge, that is a decision to make explicitly, not a
 drift to discover.
 
@@ -25,17 +25,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
-
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 #: The glossary kinds pass 3 may propose (PF-7 names exactly these three). A CLOSED SET: a kind
 #: outside it would be seeded into the quarantine and then rejected by glossary as unknown — a
@@ -327,7 +323,7 @@ async def propose_world(
                 },
                 "temperature": 0.4,
                 "max_tokens": max_tokens,
-                **_NO_THINK,
+                **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_plan", "extractor": "propose_world"},
             trace_id=trace_id,

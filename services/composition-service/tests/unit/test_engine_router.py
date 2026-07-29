@@ -114,6 +114,10 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.routers.engine.pack", fake_pack)
     monkeypatch.setattr("app.routers.engine.stream_draft", fake_stream)
     monkeypatch.setattr("app.routers.engine.judge_prose", judge_stub)
+    # Registry unreachable by default → the reasoning classifier falls back to the request's
+    # model_kind/model_name hints, which is what the tests below pass explicitly. A test that
+    # wants the authoritative path overrides this (see the no-hints test).
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value=None))
 
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
@@ -349,8 +353,9 @@ def test_generate_reasoning_off_is_user_none(ctx):
     # T3.4 lock — the scene generate path must thread grounding_pins_repo into pack.
     assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
     assert '"reasoning_effort": "none"' in r.text
-    # /review-impl MED#1: the resolved effort must actually REACH stream_draft.
-    assert captured["reasoning_effort"] == "none"
+    # /review-impl MED#1: the resolved DIRECTIVE must actually REACH stream_draft. It used to
+    # be collapsed to a bare effort string here, which cannot carry chat_template_kwargs.
+    assert captured["reasoning"].effort == "none"
 
 
 def test_generate_reasoning_auto_on_effort_model_uses_scorer(ctx):
@@ -362,7 +367,7 @@ def test_generate_reasoning_auto_on_effort_model_uses_scorer(ctx):
     assert r.status_code == 200
     assert '"reasoning_source": "rule_based"' in r.text
     # draft_scene + 0 canon → medium, and it must reach stream_draft.
-    assert captured["reasoning_effort"] == "medium"
+    assert captured["reasoning"].effort == "medium"
 
 
 def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
@@ -374,8 +379,28 @@ def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
     assert r.status_code == 200
     assert '"reasoning_source": "adaptive"' in r.text
     assert '"reasoning_effort": null' in r.text
-    # passthrough → stream_draft must receive None (let the model self-decide).
-    assert captured["reasoning_effort"] is None
+    # passthrough → stream_draft must receive a passthrough directive (self-deciding model);
+    # nothing goes on the wire for it.
+    assert captured["reasoning"].passthrough is True and captured["reasoning"].effort is None
+
+
+def test_classification_does_not_depend_on_the_client_sending_hints(ctx, monkeypatch):
+    """The FE spreads model_kind/model_name CONDITIONALLY, so a generate fired before the model
+    metadata resolves omits them. While the classifier only picked an effort level that was
+    harmless; now that it also decides suppression, "no hint" would mean "not a local model" →
+    nothing sent → the drafter's chat template keeps thinking on → the empty draft returns.
+    The registry is authoritative and must be consulted."""
+    c, *_, captured = ctx
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value={
+        "provider_kind": "lm_studio", "provider_model_name": "google/gemma-4-26b-a4b-qat"}))
+    body = _gen_body()
+    body.pop("model_kind", None)
+    body.pop("model_name", None)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**body, "reasoning": "auto"})
+    assert r.status_code == 200
+    # gemma matches no reasoning-name pattern, but it IS local → suppress, not omit.
+    assert captured["reasoning"].effort == "none"
+    assert captured["reasoning"].source == "suppress_unclassified"
 
 
 def test_generate_cancels_in_flight_job_s2(ctx):

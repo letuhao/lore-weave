@@ -18,8 +18,11 @@ import math
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
+from loreweave_llm import ReasoningDirective
 from loreweave_llm.errors import LLMError
 from loreweave_llm.models import DoneEvent, ReasoningEvent, StreamRequest, TokenEvent, UsageEvent
+
+from app.reasoning import wire_fields
 
 from app.packer.profile import BookProfile, style_directive
 
@@ -248,7 +251,7 @@ async def revise_draft(
     sdk: Any, *, user_id: str, model_source: str, model_ref: str,
     messages: list[dict[str, Any]], prompt_token_estimate: int,
     max_output_tokens: int, temperature: float = 0.7,
-    trace_id: str | None = None, reasoning_effort: str | None = None,
+    trace_id: str | None = None, reasoning: ReasoningDirective | None = None,
 ) -> tuple[str, "DraftMetering"]:
     """One-shot (non-stream) revise: drives `stream_draft` and harvests the
     terminal usage frame. Returns (revised_text, metering). Empty text on LLM
@@ -259,7 +262,7 @@ async def revise_draft(
         sdk, user_id=user_id, model_source=model_source, model_ref=model_ref,
         messages=messages, prompt_token_estimate=prompt_token_estimate,
         max_output_tokens=max_output_tokens, hard_cap_output=max_output_tokens * 2,
-        temperature=temperature, trace_id=trace_id, reasoning_effort=reasoning_effort,
+        temperature=temperature, trace_id=trace_id, reasoning=reasoning,
     ):
         if ev["type"] == "usage":
             text, metering = ev["text"], ev["metering"]
@@ -271,7 +274,7 @@ async def stream_draft(
     messages: list[dict[str, Any]], prompt_token_estimate: int,
     max_output_tokens: int, hard_cap_output: int | None = None,
     temperature: float = 0.7, trace_id: str | None = None,
-    reasoning_effort: str | None = None,
+    reasoning: ReasoningDirective | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Async generator of stream events for the router to relay as SSE:
       {"type":"token","delta":...} · {"type":"reasoning","delta":...}
@@ -282,10 +285,12 @@ async def stream_draft(
         model_source=model_source, model_ref=model_ref, messages=messages,
         temperature=temperature, max_tokens=max_output_tokens or None,
         trace_id=trace_id,
-        # Expose the reasoning knob (model-default when None). reasoning_effort
-        # ="none" disables hidden thinking on reasoning-model drafters so the
-        # whole budget doesn't get spent on reasoning_tokens (empty ghost).
-        reasoning_effort=reasoning_effort,
+        # BOTH reasoning knobs, or neither — via the one seam. This call site used to take a
+        # bare effort string, which structurally could not carry `chat_template_kwargs`, and
+        # treated "no directive" as "send nothing". A local drafter the platform had
+        # misclassified as non-reasoning then kept its template's thinking ON and spent the
+        # entire budget on hidden reasoning: an empty draft, billed, reported as success.
+        **wire_fields(reasoning),
     )
     parts: list[str] = []
     measured = False

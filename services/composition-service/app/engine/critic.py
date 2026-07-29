@@ -23,6 +23,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -152,13 +153,8 @@ async def judge_prose(
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens,
-                # Disable hidden thinking: reasoning_effort="none" is the knob
-                # that actually works for LM Studio + Qwen3.6 (chat_template_kwargs
-                # alone is a no-op there). The critic emits JSON, so reasoning
-                # tokens are pure budget-burn. Kept chat_template_kwargs for models
-                # that honor the template flag instead.
-                "reasoning_effort": "none",
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+                # The critic emits JSON, so reasoning tokens are pure budget-burn.
+                **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_critic", "extractor": "judge_prose"}, trace_id=trace_id,
             cancel_check=cancel_check,

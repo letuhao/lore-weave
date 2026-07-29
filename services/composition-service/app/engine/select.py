@@ -26,6 +26,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from loreweave_llm import ReasoningDirective, no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -33,15 +34,9 @@ from app.clients.llm_client import LLMClient
 from app.engine.cowrite import DraftMetering, build_messages, char_estimate
 from app.engine.critic import parse_critique_json
 from app.packer.profile import BookProfile
+from app.reasoning import wire_fields
 
 logger = logging.getLogger(__name__)
-
-# Disable hidden thinking on reasoning-model drafters/judges (the working knob for
-# LM Studio + Qwen3.6; chat_template_kwargs kept for models that honor the flag).
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 
 @dataclass
@@ -62,7 +57,7 @@ class Selection:
 async def _one_draft(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     messages: list[dict[str, str]], prompt_est: int, max_tokens: int,
-    temperature: float, reasoning_effort: str | None, trace_id: str | None,
+    temperature: float, reasoning: ReasoningDirective | None, trace_id: str | None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> Candidate | None:
     """One blocking draft completion. Returns None (dropped) on error / non-completed
@@ -73,7 +68,10 @@ async def _one_draft(
             input={
                 "messages": messages, "temperature": temperature, "max_tokens": max_tokens,
                 "response_format": {"type": "text"},
-                **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
+                # Both knobs or neither. The old form sent a bare `reasoning_effort` and
+                # dropped `chat_template_kwargs`, so an effort resolved for a template-driven
+                # local model only half-applied.
+                **wire_fields(reasoning),
             },
             job_meta={"usage_purpose": "prose_draft", "extractor": "diverge_draft"}, trace_id=trace_id,
             cancel_check=cancel_check,
@@ -101,7 +99,7 @@ async def diverge(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     packed_prompt: str, profile: BookProfile, operation: str, guide: str,
     k: int, prompt_est: int, max_tokens: int, temperature: float = 0.8,
-    reasoning_effort: str | None = None, trace_id: str | None = None,
+    reasoning: ReasoningDirective | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     target_words: int | None = None,
 ) -> list[Candidate]:
@@ -115,7 +113,7 @@ async def diverge(
         _one_draft(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             messages=messages, prompt_est=prompt_est, max_tokens=max_tokens,
-            temperature=temperature, reasoning_effort=reasoning_effort, trace_id=trace_id,
+            temperature=temperature, reasoning=reasoning, trace_id=trace_id,
             cancel_check=cancel_check,
         )
         for _ in range(max(1, k))
@@ -162,7 +160,7 @@ async def score(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_rerank", "extractor": "rerank"}, trace_id=trace_id,
             cancel_check=cancel_check,
@@ -187,7 +185,7 @@ async def select_draft(
     drafter_source: str, drafter_ref: str, judge_source: str, judge_ref: str,
     packed_prompt: str, profile: BookProfile, operation: str, guide: str,
     k: int, prompt_est: int, max_tokens: int, temperature: float = 0.8,
-    reasoning_effort: str | None = None, trace_id: str | None = None,
+    reasoning: ReasoningDirective | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> Selection:
     """diverge(k) → score → Selection. The auto-loop's converge step; the winner
@@ -196,7 +194,7 @@ async def select_draft(
         llm, user_id=user_id, model_source=drafter_source, model_ref=drafter_ref,
         packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
         k=k, prompt_est=prompt_est, max_tokens=max_tokens, temperature=temperature,
-        reasoning_effort=reasoning_effort, trace_id=trace_id, cancel_check=cancel_check,
+        reasoning=reasoning, trace_id=trace_id, cancel_check=cancel_check,
     )
     idx, reason, measured = await score(
         judge, user_id=user_id, model_source=judge_source, model_ref=judge_ref,

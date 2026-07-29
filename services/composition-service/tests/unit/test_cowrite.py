@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from loreweave_llm import ReasoningDirective
 from loreweave_llm.errors import LLMError
 from loreweave_llm.models import DoneEvent, TokenEvent, UsageEvent
 
@@ -79,17 +80,41 @@ def test_selection_messages_carry_voice_and_grounding():
 
 # ── reasoning knob ──
 
-async def test_reasoning_effort_threaded_into_stream_request():
-    sdk = FakeSDK([TokenEvent(delta="x"), UsageEvent(input_tokens=1, output_tokens=1), DoneEvent()])
-    await _collect(sdk, reasoning_effort="none")
-    assert sdk.last_req.reasoning_effort == "none"
+def _ok_events():
+    return [TokenEvent(delta="x"), UsageEvent(input_tokens=1, output_tokens=1), DoneEvent()]
 
 
-async def test_reasoning_effort_defaults_to_model_default():
-    sdk = FakeSDK([TokenEvent(delta="x"), UsageEvent(input_tokens=1, output_tokens=1), DoneEvent()])
-    await _collect(sdk)  # not passed → None (model default), absent from the wire
-    assert sdk.last_req.reasoning_effort is None
-    assert "reasoning_effort" not in sdk.last_req.to_request_body()
+async def test_a_resolved_directive_puts_BOTH_knobs_on_the_wire():
+    """`reasoning_effort` alone is not the decision. `chat_template_kwargs` is the knob
+    LM Studio / llama.cpp / vLLM actually honour, so sending one without the other applies
+    the author's choice to some backends and not others."""
+    sdk = FakeSDK(_ok_events())
+    await _collect(sdk, reasoning=ReasoningDirective(effort="none", passthrough=False, source="user"))
+    body = sdk.last_req.to_request_body()
+    assert body["reasoning_effort"] == "none"
+    assert body["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}
+
+
+async def test_a_missing_directive_SUPPRESSES_rather_than_inheriting_the_template():
+    """REGRESSION LOCK — this test previously asserted the exact opposite ("not passed →
+    absent from the wire"), and that assertion is what the empty-draft incident was made of:
+    with no knobs sent, a local drafter the platform had misclassified as non-reasoning kept
+    its chat template's thinking ON, spent 800 output tokens on hidden reasoning, and returned
+    `text=""` with status `completed`. A forgotten directive must fail SAFE."""
+    sdk = FakeSDK(_ok_events())
+    await _collect(sdk)  # no directive threaded at all
+    body = sdk.last_req.to_request_body()
+    assert body["reasoning_effort"] == "none"
+    assert body["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}
+
+
+async def test_a_passthrough_directive_still_sends_nothing():
+    """The one case where silence IS the decision: a self-orchestrating model (Anthropic) has
+    no such knob, and suppressing it would be out-thinking a model that decides for itself."""
+    sdk = FakeSDK(_ok_events())
+    await _collect(sdk, reasoning=ReasoningDirective(effort=None, passthrough=True, source="adaptive"))
+    body = sdk.last_req.to_request_body()
+    assert "reasoning_effort" not in body and "chat_template_kwargs" not in body
 
 
 # ── metering ──

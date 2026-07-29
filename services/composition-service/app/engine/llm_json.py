@@ -54,23 +54,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Sequence
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 
 logger = logging.getLogger(__name__)
-
-#: The thinking suppressor every JSON-expecting call in this service already uses. Imported lazily
-#: at call time (see `_no_think`) to avoid a package-load cycle through `app.engine.compress`.
-_NO_THINK_CACHE: dict[str, Any] | None = None
-
-
-def _no_think() -> dict[str, Any]:
-    global _NO_THINK_CACHE
-    if _NO_THINK_CACHE is None:
-        from app.engine.compress import _NO_THINK
-        _NO_THINK_CACHE = dict(_NO_THINK)
-    return _NO_THINK_CACHE
 
 
 def json_format(name: str, schema: dict[str, Any]) -> dict[str, Any]:
@@ -129,7 +118,7 @@ async def call_json(
             "temperature": temperature, "max_tokens": max_tokens,
         }
         if no_think:
-            body.update(_no_think())
+            body.update(no_thinking_fields())
         if seed is not None:
             body["seed"] = seed
         return body

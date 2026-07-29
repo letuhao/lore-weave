@@ -117,7 +117,7 @@ async def test_one_draft_captures_finish_reason_from_job_result():
     cand = await _one_draft(
         _FakeLLM("length"), user_id="u", model_source="user_model", model_ref="m",
         messages=[{"role": "user", "content": "x"}], prompt_est=10, max_tokens=100,
-        temperature=0.8, reasoning_effort=None, trace_id=None,
+        temperature=0.8, reasoning=None, trace_id=None,
     )
     assert cand is not None and cand.metering.finish_reason == "length"
 
@@ -126,6 +126,6 @@ async def test_one_draft_none_finish_reason_when_absent():
     cand = await _one_draft(
         _FakeLLM(None), user_id="u", model_source="user_model", model_ref="m",
         messages=[{"role": "user", "content": "x"}], prompt_est=10, max_tokens=100,
-        temperature=0.8, reasoning_effort=None, trace_id=None,
+        temperature=0.8, reasoning=None, trace_id=None,
     )
     assert cand is not None and cand.metering.finish_reason is None

@@ -84,6 +84,7 @@ from .reasoning import (
     ReasoningDirective,
     UserReasoningPref,
     bucket_effort,
+    directive_from_parts,
     infer_reasoning_control,
     reasoning_fields,
     resolve_reasoning,
@@ -113,6 +114,7 @@ __all__ = [
     "bucket_effort",
     "resolve_reasoning",
     "reasoning_fields",
+    "directive_from_parts",
     # AI-Task Standard — single-shot structured generate (shared plumbing)
     "structured_generate",
     "parse_json_object",

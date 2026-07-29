@@ -7,6 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -14,10 +15,6 @@ from app.clients.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 #: ANTI-REPETITION — the fix for the failure that made this path look unreliable.
 #:
@@ -129,7 +126,7 @@ class ProviderPlanForgeLLM:
                     "response_format": fmt,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
-                    **_NO_THINK,
+                    **no_thinking_fields(),
                     **anti_loop,
                 },
                 job_meta={"usage_purpose": self._usage_purpose, "extractor": step},

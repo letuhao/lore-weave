@@ -30,7 +30,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_corrections import (
     GenerationCorrectionsRepo, count_changed_blocks,
 )
-from app.clients.model_name import resolve_model_name
+from app.clients.model_name import resolve_model_info, resolve_model_name
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
@@ -75,7 +75,7 @@ from app.engine.critic_override import (
 from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_context import scale_by_window
-from loreweave_llm import infer_reasoning_control, resolve_reasoning
+from loreweave_llm import ReasoningControl, infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
 from app.grant_client import GrantClient, GrantLevel
@@ -273,6 +273,28 @@ def _empty_draft_error(text: str, output_tokens: int, finish_reason: str | None)
             f"model. Nothing was written."
         )
     return "the model returned no prose at all. Nothing was written."
+
+
+async def _reasoning_control_for(body: Any) -> ReasoningControl:
+    """How this request's model wants reasoning controlled — asking the REGISTRY, not the client.
+
+    `model_kind` / `model_name` arrive as optional hints the FE spreads conditionally
+    (`...(args.modelKind ? {model_kind: args.modelKind} : {})`), so a generate fired before the
+    model metadata resolves omits them entirely. That was harmless while the classifier only
+    chose an effort LEVEL. It stopped being harmless once the classifier also decides whether
+    hidden thinking is disabled: no hint → "not a local model" → nothing sent → the drafter's
+    own chat template decides → the empty-draft failure, re-entered through the front door.
+
+    The registry already answers this (`/internal/models/{source}/{ref}/info` returns kind +
+    name, added for exactly this advisory). It is best-effort, so the client hint stays as the
+    fallback — a degraded classification is still better than none.
+    """
+    kind, name = getattr(body, "model_kind", None), getattr(body, "model_name", None)
+    info = await resolve_model_info(body.model_source, str(body.model_ref))
+    if info:
+        kind = info.get("provider_kind") or kind
+        name = info.get("provider_model_name") or name
+    return infer_reasoning_control(kind, name)
 
 
 async def _maybe_detect_narrative_threads(
@@ -485,7 +507,7 @@ async def generate(
         tension=node.tension,
         guide=body.guide,
     )
-    control = infer_reasoning_control(body.model_kind, body.model_name)
+    control = await _reasoning_control_for(body)
     reasoning = resolve_reasoning(
         user_pref=body.reasoning, model_control=control,
         auto_effort=score_effort(signals),
@@ -594,7 +616,7 @@ async def generate(
                              high_threshold=settings.plan_high_tension_threshold),
                 prompt_est=prompt_estimate,
                 max_tokens=body.max_output_tokens, temperature=settings.compose_diverge_temperature,
-                reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+                reasoning=reasoning,
             )
         except Exception as exc:  # diverge produced nothing / transport — fail the job, 502
             logger.warning("auto select failed: %s", exc)
@@ -628,7 +650,7 @@ async def generate(
                 # a typo'd/abusive reflect_max_iters can't fan out N revise LLM
                 # calls per generate (the §10.1 backtrack budget bound).
                 max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
-                reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+                reasoning=reasoning,
             )
             canon = {
                 "violations": [v.model_dump() for v in reflect.violations],
@@ -698,8 +720,9 @@ async def generate(
             model_ref=str(body.model_ref), messages=messages,
             prompt_token_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
             hard_cap_output=body.max_output_tokens * 2,
-            # passthrough (adaptive model) → omit, let the model self-decide.
-            reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+            # The whole directive, not a collapsed effort — passthrough/suppress/omit are
+            # decided once by the resolver and rendered once by `wire_fields`.
+            reasoning=reasoning,
         ):
             if ev["type"] == "usage":
                 final = ev
@@ -859,7 +882,7 @@ async def selection_edit(
     signals = ReasoningSignals(
         operation=body.operation, n_canon_rules=0, n_present_entities=0,
         has_reveal_gate=False, tension=None, guide=body.guide)
-    control = infer_reasoning_control(body.model_kind, body.model_name)
+    control = await _reasoning_control_for(body)
     reasoning = resolve_reasoning(
         user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
@@ -919,7 +942,7 @@ async def selection_edit(
             model_ref=str(body.model_ref), messages=messages,
             prompt_token_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
             hard_cap_output=body.max_output_tokens * 2,
-            reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+            reasoning=reasoning,
         ):
             if ev["type"] == "usage":
                 final = ev
@@ -1089,7 +1112,7 @@ async def generate_chapter(
         n_present_entities=len(pack_node["present_entity_ids"]),
         has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
         tension=None, guide=body.guide)
-    control = infer_reasoning_control(body.model_kind, body.model_name)
+    control = await _reasoning_control_for(body)
     reasoning = resolve_reasoning(
         user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
@@ -1185,7 +1208,7 @@ async def generate_chapter(
             model_ref=str(body.model_ref), packed_prompt=pc.prompt, profile=pc.profile,
             operation=body.operation, guide=body.guide, k=1, prompt_est=prompt_estimate,
             max_tokens=max_out, temperature=settings.compose_diverge_temperature,
-            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+            reasoning=reasoning)
     except Exception as exc:  # no candidate / transport — fail the job, 502
         logger.warning("chapter draft failed: %s", exc)
         await jobs.update_status(job.id, "failed")
@@ -1212,7 +1235,7 @@ async def generate_chapter(
             judge_ref=str(c_ref) if distinct else None,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
-            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+            reasoning=reasoning)
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
                    "status": reflect.status}
@@ -1322,7 +1345,7 @@ async def stitch_chapter_endpoint(
         n_present_entities=len(union_cast(scenes)),
         has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
         tension=None, guide="")
-    control = infer_reasoning_control(body.model_kind, body.model_name)
+    control = await _reasoning_control_for(body)
     reasoning = resolve_reasoning(
         user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
@@ -1348,8 +1371,13 @@ async def stitch_chapter_endpoint(
             "chapter_id": str(chapter_id), "chapter_intent": chapter_intent,
             "cast_glossary_ids": [str(e) for e in union_cast(scenes)],
             "chapter_sort": chapter_sort, "max_out": max_out,
+            # Store the directive's three parts RAW, exactly as the other job_input builders
+            # do. This site used to pre-collapse the effort while its siblings stored it raw
+            # and let the worker collapse — two serialization conventions for one directive,
+            # in one file. `directive_from_parts` is now the only reader.
             "reasoning": reasoning.source,
-            "reasoning_effort": None if reasoning.passthrough else reasoning.effort,
+            "reasoning_effort": reasoning.effort,
+            "reasoning_passthrough": reasoning.passthrough,
             "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
             "critic_source": str(c_src) if distinct else None,
             "critic_ref": str(c_ref) if distinct else None,
@@ -1412,7 +1440,7 @@ async def stitch_chapter_endpoint(
         llm, user_id=str(user_id), model_source=body.model_source, model_ref=str(body.model_ref),
         scene_drafts=drafts, chapter_intent=chapter_intent, profile=profile,
         max_tokens=max_out, max_input_chars=_stitch_chars,
-        reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+        reasoning=reasoning)
     degraded = not stitched
     final_text = stitched or "\n\n".join(drafts)
     # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the stitch pass hit the cap. Only
@@ -1442,7 +1470,7 @@ async def stitch_chapter_endpoint(
             judge_ref=str(c_ref) if distinct else None,
             prompt_estimate=0, max_output_tokens=max_out,
             max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
-            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+            reasoning=reasoning)
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
                    "status": reflect.status}

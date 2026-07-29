@@ -19,13 +19,13 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 # The QAT thinking-model suppressor — same fields compress/draft use. Private by
 # convention but one source of truth beats a drifting copy.
-from app.engine.compress import _NO_THINK
 from app.services.glossary_build import engine
 from app.services.glossary_build.prompts import BATCH_MAX, NARROW_THRESHOLD, select_fields
 
@@ -161,7 +161,7 @@ class GlossaryBuildService:
                 user_id=user_id, operation="chat",
                 model_source=model_source, model_ref=model_ref,
                 input={"messages": messages, "response_format": {"type": "text"},
-                       "temperature": 0.4, "max_tokens": max_tokens, **_NO_THINK},
+                       "temperature": 0.4, "max_tokens": max_tokens, **no_thinking_fields()},
                 job_meta={"usage_purpose": "glossary_build"},
             )
             if getattr(job, "status", None) != "completed":

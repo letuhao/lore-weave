@@ -22,6 +22,7 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -29,11 +30,6 @@ from app.clients.llm_client import LLMClient
 from app.engine.plan import DecomposeResult
 
 logger = logging.getLogger(__name__)
-
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 
 @dataclass
@@ -109,7 +105,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
         job = await llm.submit_and_wait(
             user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
             input={"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                   "response_format": {"type": "text"}, "temperature": 0.3, "max_tokens": max_tokens, **_NO_THINK},
+                   "response_format": {"type": "text"}, "temperature": 0.3, "max_tokens": max_tokens, **no_thinking_fields()},
             job_meta={"usage_purpose": purpose, "extractor": "plan_heal"}, trace_id=trace_id,
             cancel_check=cancel_check)
     except LLMError as exc:

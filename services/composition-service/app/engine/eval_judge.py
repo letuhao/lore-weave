@@ -24,6 +24,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
@@ -32,10 +33,6 @@ from app.engine.critic import parse_critique_json
 
 logger = logging.getLogger(__name__)
 
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 _DEFECT_KEYS = ("continuity_breaks", "dropped_threads", "contradictions", "repetition")
 
@@ -109,7 +106,7 @@ async def pairwise_judge(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_eval", "extractor": "pairwise_judge"}, trace_id=trace_id,
             cancel_check=cancel_check,
