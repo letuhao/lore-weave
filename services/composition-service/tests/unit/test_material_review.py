@@ -154,3 +154,72 @@ async def test_the_read_block_is_carried_so_thin_is_distinguishable_from_unread(
     assert packet["read"]["unclassified"] == ["Giọt nước tràn ly"]
     # every not-recovered kind is `unknown` here, and that status rides through to the question
     assert all(a["status"] == "unknown" for a in packet["ask"])
+
+
+# ── what the author KEPT actually has to reach the plan ──────────────────────────────────────────
+
+def test_a_kept_STRING_kind_lands_in_its_slot_verbatim():
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    spec = _spec()
+    out, report = apply_kept_material(spec, {
+        "writing_principles": ["No omniscient narrator. Ever."],
+        "open_questions": ["Does she remember the first cycle?"],
+    })
+    assert out["charter"]["style_constraints"] == ["No omniscient narrator. Ever."]
+    assert out["meta"]["open_questions"] == ["Does she remember the first cycle?"]
+    assert report["applied_to_slot"] == {"writing_principles": 1, "open_questions": 1}
+    assert report["carried_as_author_notes"] == {}
+
+
+def test_a_kept_STRUCTURED_kind_is_carried_as_a_note_not_guessed_into_shape():
+    """A variable is {code, name} and an arc is {id, title}; a raw sentence is neither. Inventing the
+    missing fields is how a quote stops being a quote — the exact move `post_normalize_spec` and
+    `_pad_traits_from_analyze` were removed for."""
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    out, report = apply_kept_material(_spec(), {
+        "planner_variables": ["Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh"],
+    })
+    assert out["layers"]["variables"] == [], "a raw line was guessed into a variable object"
+    notes = out["author_notes"]
+    assert notes[0]["text"] == "Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh"
+    assert "planner_variables" in notes[0]["title"]
+    assert report["carried_as_author_notes"] == {"planner_variables": 1}
+    assert report["applied_to_slot"] == {}
+
+
+def test_the_report_distinguishes_filed_from_added():
+    """"We filed it as a note" must never read as "we added your variable"."""
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    _, report = apply_kept_material(_spec(), {
+        "writing_principles": ["Cold, procedural."],
+        "mechanics": ["Salt only moves by sea."],
+    })
+    assert report["applied_to_slot"] == {"writing_principles": 1}
+    assert report["carried_as_author_notes"] == {"mechanics": 1}
+
+
+def test_apply_is_idempotent_and_does_not_mutate_the_input():
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    spec = _spec()
+    kept = {"writing_principles": ["Cold, procedural."], "mechanics": ["Salt only moves by sea."]}
+    once, _ = apply_kept_material(spec, kept)
+    twice, report2 = apply_kept_material(once, kept)
+    assert twice["charter"]["style_constraints"] == ["Cold, procedural."]
+    assert len(twice["author_notes"]) == 1
+    assert report2 == {"applied_to_slot": {}, "carried_as_author_notes": {}}
+    assert spec["charter"]["style_constraints"] == [], "the input spec was mutated"
+
+
+def test_no_model_is_involved():
+    """Deterministic by construction — the module must not reach for an LLM on this path."""
+    import inspect
+
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    src = inspect.getsource(apply_kept_material)
+    for tell in ("call_json", "await", "llm", "search_material"):
+        assert tell not in src, f"apply_kept_material reaches for {tell!r}"

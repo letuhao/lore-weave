@@ -33,6 +33,7 @@ from app.engine.plan_forge.coverage import (
     load_coverage_context,
     spec_coverage_board,
 )
+from app.engine.plan_forge.material_review import apply_kept_material
 from app.engine.plan_forge.material_review import (
     find_missing_material as engine_find_missing_material,
 )
@@ -1386,6 +1387,33 @@ class PlanForgeService:
             self._llm, user_id=str(created_by), model_source="user_model",
             model_ref=str(resolved), spec=spec_art.content, document_markdown=doc_md,
         )
+
+    async def keep_material(
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, kept: dict[str, list[str]],
+    ) -> dict[str, Any] | None:
+        """Write what the author kept into the run's spec — deterministically, in their own words.
+
+        No model runs: these lines already passed a grounding gate precisely because they are the
+        author's text, and routing them through the LLM refine path would invite it to rewrite them.
+
+        Writes a NEW `spec` artifact rather than editing in place — `save_artifact` appends and
+        `latest_artifact` reads the newest, so the previous spec stays recoverable and this is
+        undoable by re-proposing.
+        """
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        if spec_art is None:
+            raise ValueError("no spec to apply kept material to")
+        new_spec, report = apply_kept_material(spec_art.content, kept)
+        if not report["applied_to_slot"] and not report["carried_as_author_notes"]:
+            # Nothing changed — do NOT write a duplicate artifact just to report a no-op. Said out
+            # loud rather than returning a success that looks identical to a real one.
+            return {"run_id": str(run_id), "changed": False, **report,
+                    "note": "nothing was kept, or everything kept was already in the spec"}
+        await self._runs.save_artifact(created_by, run_id, "spec", new_spec)
+        return {"run_id": str(run_id), "changed": True, **report}
 
     async def self_check(
         self, created_by: UUID, book_id: UUID, run_id: UUID,

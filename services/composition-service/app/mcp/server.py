@@ -5017,6 +5017,42 @@ async def plan_find_missing_material(
 
 
 @mcp_server.tool(
+    name="plan_keep_material",
+    description=(
+        "PlanForge: write the lines the author KEPT from plan_find_missing_material into the run's "
+        "spec, verbatim. Pass kept as {kind: [exact quote, ...]} using ONLY quotes the author "
+        "explicitly kept — never a line they dropped, and never one you wrote. No model runs; the "
+        "text goes in unchanged. writing_principles and open_questions land in their spec slot; the "
+        "other kinds are filed under author_notes (a raw line is not a structured variable or arc, "
+        "and guessing the missing fields would stop it being the author's words) — the reply's "
+        "applied_to_slot vs carried_as_author_notes says which happened. EDIT on the book required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["keep this line", "yes add that to the plan", "accept material"],
+        tool_name="plan_keep_material",
+    ),
+)
+async def plan_keep_material(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    kept: Annotated[
+        dict[str, list[str]],
+        "{planning kind: [exact quotes the author kept]}. Quotes must be copied from the "
+        "plan_find_missing_material response, character for character.",
+    ],
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    out = await _plan_svc().keep_material(tc.user_id, bid, UUID(run_id), kept=kept)
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
     name="plan_self_check",
     description=(
         "PlanForge: what a run's spec is MISSING. Returns coverage_board — for each planning kind "

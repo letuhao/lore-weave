@@ -147,6 +147,7 @@ EXPECTED_TOOLS = {
     "plan_validate", "plan_self_check", "plan_find_missing_material",
     # Tier A
     "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
+    "plan_keep_material",
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
     # 27 V2-F1 — the compiler-pass surface. The agent CANNOT skip a checkpoint through these:
     # `plan_run_pass` refuses with its blockers named, and only `plan_review_checkpoint` (which a

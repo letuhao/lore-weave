@@ -284,8 +284,40 @@ The `[unknown]` status rides all the way through, so the agent knows the read wa
 asks. Gated on **EDIT, not VIEW** — it spends the author's LLM budget, which a read grant does not
 entitle. The tool-catalog allowlist caught the new tool immediately, as designed.
 
-**POC §6e/6f is now built.** What remains is not this loop: persisting the author's keep/drop
-decisions, and the FE surface for it (the agent currently carries both in conversation).
+**And a keep now CHANGES the plan** — `apply_kept_material` + **`plan_keep_material`**. Without it the
+loop ended in a shrug: the author keeps a line and nothing happens.
+
+**No model runs on this path.** These lines survived a grounding gate precisely because they are the
+author's own text; routing them through the LLM refine path to be "structured" would invite exactly
+the rewriting that `post_normalize_spec` and `_pad_traits_from_analyze` were removed for. A keep is a
+keep.
+
+Two destinations, because a line is not always a slot. `writing_principles` and `open_questions` are
+plain string lists, so a kept line goes straight in. The rest need a structured object (a variable is
+`{code, name}`, an arc `{id, title}`) and a raw sentence is not one — so rather than invent the
+missing fields they are filed under **`author_notes`**, which `compile` already threads into
+`planning_package.author_notes` where the passes read it. The reply's `applied_to_slot` vs
+`carried_as_author_notes` says which happened, so "we filed it as a note" can never read as "we added
+your variable".
+
+**Live, whole loop, verified by EFFECT rather than by the tool's success reply:**
+
+```
+1 FIND   review planner_variables → 'Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh'
+         ask    writing_principles → the author answers
+2 KEEP   changed: true
+         applied_to_slot {writing_principles: 1} · carried_as_author_notes {planner_variables: 1}
+3 BOARD  writing_principles  present n=1  ['Lạnh, tiết chế, không bao giờ có người kể toàn tri.']
+         planner_variables   unknown n=0  []      ← correct: filed as a note, not guessed into shape
+         recovered: 3 kinds → 4
+```
+
+Nothing in that chain lies: the report said "filed as a note" and the board still says `unknown`.
+A new `spec` artifact is appended rather than edited in place, so the previous one stays recoverable.
+
+**POC §6e/6f is built and closed.** Remaining, and NOT part of this loop: the FE surface for the
+keep-or-drop (the agent carries it in conversation today), and the original session goal — the author
+dogfood into chương 1, which now has a clean pipeline under it.
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 

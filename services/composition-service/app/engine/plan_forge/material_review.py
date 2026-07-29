@@ -135,6 +135,78 @@ async def find_missing_material(
     }
 
 
+#: Kinds whose spec slot is a plain list of strings, so a kept line lands there AS the author wrote
+#: it. Everything else needs a structured object (`{code, name}`, `{id, title}`) that a raw line is
+#: not, and guessing that structure is how a quote stops being a quote.
+_DIRECT_SLOT: dict[str, tuple[str, str]] = {
+    "writing_principles": ("charter", "style_constraints"),
+    "open_questions": ("meta", "open_questions"),
+}
+
+
+def apply_kept_material(
+    spec: dict[str, Any], kept: dict[str, list[str]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Put what the author KEPT into the plan — deterministically, in their exact words.
+
+    Returns `(new_spec, report)`. The input spec is not mutated.
+
+    ## No model runs here, and that is the point
+
+    These lines survived a grounding gate precisely because they are the author's own text. Sending
+    them through the LLM refine path to be "structured" would invite the model to rewrite them, which
+    is the thing every other fix this cycle has been undoing (`post_normalize_spec` replacing authored
+    mechanic rules; `_pad_traits_from_analyze` inventing a protagonist). A keep must be a keep.
+
+    ## Two destinations, because a line is not always a slot
+
+    `writing_principles` and `open_questions` are plain string lists in the spec, so a kept line goes
+    straight in. The others need a structured object — a variable is `{code, name}`, an arc is
+    `{id, title}` — and a raw sentence is not one. Rather than invent the missing fields, those lines
+    are carried into **`author_notes`**, the existing channel `compile` already threads into
+    `planning_package.author_notes` where the LLM passes read them. Nothing is dropped, nothing is
+    guessed, and the next propose sees material the author has explicitly confirmed.
+
+    The report says which of the two happened per kind, so "we filed it as a note" can never be
+    mistaken for "we added your variable".
+    """
+    import copy
+
+    out = copy.deepcopy(spec)
+    applied: dict[str, int] = {}
+    noted: dict[str, int] = {}
+
+    for kind, quotes in (kept or {}).items():
+        lines = [q.strip() for q in quotes if isinstance(q, str) and q.strip()]
+        if not lines:
+            continue
+        slot = _DIRECT_SLOT.get(kind)
+        if slot:
+            parent, key = slot
+            bucket = out.setdefault(parent, {}).setdefault(key, [])
+            if not isinstance(bucket, list):
+                bucket = []
+                out[parent][key] = bucket
+            existing = {str(x).strip() for x in bucket}
+            added = [ln for ln in lines if ln not in existing]
+            bucket.extend(added)
+            if added:
+                applied[kind] = applied.get(kind, 0) + len(added)
+            continue
+
+        notes = out.setdefault("author_notes", [])
+        if not isinstance(notes, list):
+            notes = []
+            out["author_notes"] = notes
+        have = {(n.get("text") or "").strip() for n in notes if isinstance(n, dict)}
+        added_notes = [ln for ln in lines if ln not in have]
+        notes.extend({"title": f"{kind} — kept by the author", "text": ln} for ln in added_notes)
+        if added_notes:
+            noted[kind] = noted.get(kind, 0) + len(added_notes)
+
+    return out, {"applied_to_slot": applied, "carried_as_author_notes": noted}
+
+
 def kinds_to_ask(packet: dict[str, Any], kept: dict[str, list[str]] | None = None) -> list[dict[str, str]]:
     """What is STILL worth asking once the author has kept or dropped the candidates.
 
