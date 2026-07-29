@@ -19,6 +19,36 @@ _NO_THINK = {
     "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
 }
 
+#: ANTI-REPETITION — the fix for the failure that made this path look unreliable.
+#:
+#: Root-caused 2026-07-28 by capturing an actual failing response instead of theorising about it.
+#: The tail was `0_0_0_0_0_0_0…` repeated to the token cap: the model falls into a DEGENERATE
+#: REPETITION INSIDE A JSON STRING, runs out of budget mid-string, and leaves unbalanced JSON.
+#:
+#: A grammar cannot prevent this, and that is the important part. A JSON string is
+#: quote-anything-quote, so an unbounded repetition is grammar-LEGAL — **schema enforcement
+#: guarantees SHAPE, never TERMINATION.** Which is also why `maxItems` did nothing when it was
+#: tried: the loop is inside ONE value, not across array members. Wrong lever.
+#:
+#: `provider-registry.forwardOptionalChatFields` has always passed `frequency_penalty` through. The
+#: capability was there and unused, exactly as `response_format` was. Measured over 4 attempts at
+#: the materialize step:
+#:
+#:     no penalty            2/4 valid   response sizes [819, 819, 12484, 32619]
+#:     frequency_penalty .3  4/4 valid   response sizes [907, 1110, 1127, 2757]
+#:
+#: Strength measured per step rather than guessed. 0.3 cleared the materialize step (4/4) and did
+#: NOT clear analyze, which is the longer generation:
+#:
+#:     analyze · none            2/3 valid   sizes [4095, 5146, 43447]
+#:     analyze · frequency 0.3   2/3 valid   sizes [3314, 5794, 45453]
+#:     analyze · frequency 0.8   3/3 valid   sizes [4474, 4609, 5614]
+#:
+#: 0.8 is high for structured output — the worry is that penalising repetition pushes the model away
+#: from the repeated KEY NAMES a schema requires — so the content was checked, not assumed: arcs 3-4
+#: and events 3-4 at 0.8, identical to the healthy runs at lower settings. No degradation observed.
+_ANTI_LOOP = {"frequency_penalty": 0.8}
+
 
 class PlanForgeLLMError(RuntimeError):
     """Non-retryable PlanForge LLM failure (caller maps to job failed)."""
@@ -92,6 +122,7 @@ class ProviderPlanForgeLLM:
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                     **_NO_THINK,
+                    **_ANTI_LOOP,
                 },
                 job_meta={"usage_purpose": self._usage_purpose, "extractor": step},
                 cancel_check=check,

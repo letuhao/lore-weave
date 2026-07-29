@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 from app.engine.plan_forge.existing_state import (
@@ -25,6 +26,19 @@ from app.engine.plan_forge.prompts import (
 )
 from app.engine.plan_forge.refine import accept_refine, artifact_json_for_refine, merge_refine_output
 from app.engine.plan_forge.schemas import ANALYZE_SCHEMA, SPEC_SCHEMA
+
+logger = logging.getLogger(__name__)
+
+
+#: A response is DEGENERATE — a repetition loop rather than a formatting slip — when it is far
+#: larger than these prompts ever legitimately produce. Measured: healthy responses land at
+#: 3.3-6.5k characters; every loop observed exceeded 12k. The threshold sits between them with room
+#: on both sides, and it only decides RETRY-vs-REPAIR, so an occasional misjudgement costs one call.
+_DEGENERATE_CHARS = 12000
+
+
+def _is_degenerate(content: str) -> bool:
+    return len(content) >= _DEGENERATE_CHARS
 
 
 async def _parse_with_repair(
@@ -52,6 +66,28 @@ async def _parse_with_repair(
     try:
         return extract_json_object(content)
     except (json.JSONDecodeError, ValueError) as exc:
+        if _is_degenerate(content):
+            # A REPAIR CANNOT FIX A REPETITION LOOP, and pretending otherwise is worse than failing.
+            #
+            # Root-caused 2026-07-28: the failing responses were 33-43k characters ending in
+            # `0_0_0_0_0…` repeated to the token cap. Handing that to a repair prompt does not
+            # produce the author's plan — it produces a minimal valid object (1 arc, 0 events,
+            # 0 variables), which then flows downstream as if it were a real read of their
+            # document. That is a repair SUCCEEDING INTO GARBAGE, with nothing anywhere saying the
+            # content was lost.
+            #
+            # Regenerating is the right move because it is the one that works: the same call
+            # succeeds most attempts, while repair-of-degenerate succeeded none.
+            logger.warning(
+                "plan_forge %s: degenerate response (%d chars) — regenerating rather than "
+                "repairing; a repetition loop cannot be repaired into content",
+                step, len(content),
+            )
+            content = await client.chat(
+                step=f"{step}_retry", system=system, user=user,
+                temperature=min(temperature + 0.2, 1.0), max_tokens=max_tokens, schema=schema,
+            )
+            return extract_json_object(content)
         repair_content = await client.chat(
             step=repair_step,
             system="Output only valid JSON. No markdown.",
