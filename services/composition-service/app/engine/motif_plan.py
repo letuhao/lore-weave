@@ -75,9 +75,22 @@ def build_select_motifs_messages(
 
 def parse_selected_motifs(
     content: str, by_code: dict[str, dict[str, str]],
+    *, dropped: list[str] | None = None,
 ) -> list[SelectedArcMotif]:
     """Map the model's chosen codes back onto the catalog (drop an unknown/invented code,
-    dedup, never raise). `by_code` = {code: {code, name, summary}}."""
+    dedup, never raise). `by_code` = {code: {code, name, summary}}.
+
+    `dropped` — an out-param the caller passes to LEARN which codes were discarded. The drop was
+    silent, and silence here is a lie: 30 candidates went to the model, it answered with codes that
+    were not in the catalog, every one was dropped, and the pass then reported "no motif matched
+    this arc — the library had no candidate for its language/genre". The author reads that as an
+    empty library. It was a selection failure wearing a retrieval failure's message.
+
+    Catalog codes are machine-ugly (`3b.faceslap.1784257099`, `bs.bound.1784278101`), so a model
+    asked to echo them verbatim really does fumble them — this is the expected failure, not an
+    exotic one. Matching is therefore case-insensitive and whitespace-trimmed, which recovers a
+    genuine near-miss WITHOUT ever inventing: an unrecognised code is still dropped, just loudly.
+    """
     if not content:
         return []
     m = re.search(r"\[.*\]", content, re.DOTALL)
@@ -87,14 +100,24 @@ def parse_selected_motifs(
         arr = json.loads(m.group(0))
     except (json.JSONDecodeError, ValueError):
         return []
+    # Fold once, so a case/whitespace near-miss resolves to the REAL catalog code.
+    folded = {c.strip().casefold(): c for c in by_code}
     out: list[SelectedArcMotif] = []
     seen: set[str] = set()
     for row in arr if isinstance(arr, list) else []:
         if not isinstance(row, dict):
             continue
-        code = row.get("code")
-        if not isinstance(code, str) or code not in by_code or code in seen:
-            continue  # unknown/invented/duplicate code → drop (never invent a motif)
+        raw = row.get("code")
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        code = by_code.get(raw) and raw or folded.get(raw.strip().casefold())
+        if code is None:
+            # INVENTED — record it so the caller can say so instead of blaming the library.
+            if dropped is not None:
+                dropped.append(raw.strip()[:80])
+            continue
+        if code in seen:
+            continue
         seen.add(code)
         cat = by_code[code]
         out.append(SelectedArcMotif(
@@ -147,4 +170,13 @@ async def select_arc_motifs(
     if job.status != "completed":
         logger.info("select_arc_motifs status=%s → degraded", job.status)
         return []
-    return parse_selected_motifs(extract_judge_content(job.result), by_code)
+    dropped: list[str] = []
+    selected = parse_selected_motifs(extract_judge_content(job.result), by_code, dropped=dropped)
+    if dropped:
+        # Loud on purpose. This is the difference between "your library is empty" and "the model
+        # answered with codes that do not exist", and only one of those is the author's problem.
+        logger.warning(
+            "select_arc_motifs: %d of %d chosen code(s) were NOT in the catalog of %d and were "
+            "dropped — %s", len(dropped), len(dropped) + len(selected), len(catalog), dropped[:5],
+        )
+    return selected

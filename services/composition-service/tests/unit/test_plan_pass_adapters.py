@@ -279,8 +279,12 @@ async def test_a_retriever_that_MATCHED_NOTHING_warns_too_not_just_a_missing_one
     ))
     assert art["motifs"] == []
     assert "degraded" not in art                  # it is not degraded — it worked and found none
-    assert "no motif matched this arc" in art["warning"]
+    assert "no motif was selected for this arc" in art["warning"]
     assert "no motif layer" in art["warning"]     # says what it COSTS, not just what happened
+    # …and it must NOT blame the library alone. Live, this exact sentence said "the library had no
+    # candidate" while retrieval had returned 30 and the MODEL answered with codes that were not in
+    # the catalog. A message that misattributes sends the author to fix something that is not broken.
+    assert "did not match the catalog" in art["warning"]
 
 
 @pytest.mark.asyncio

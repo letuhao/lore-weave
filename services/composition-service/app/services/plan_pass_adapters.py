@@ -169,9 +169,17 @@ async def run_motifs(ctx: PassContext) -> dict[str, Any]:
         # D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL hid: `language="auto"` matched 0 of 147 rows, every
         # motif_plan in the database was empty, and pass 6 planned every scene with no motif layer
         # while the checkpoint looked healthy. An empty RESULT must be as loud as an empty LOOK.
+        # …and it must not blame the wrong stage. This sentence named the LIBRARY, and on live data
+        # it was wrong: retrieval returned 30 candidates, the model answered with codes that were
+        # not in the catalog, every one was dropped silently, and the author was told their library
+        # had nothing. A message that misattributes is worse than a vague one — it sends the reader
+        # to fix something that is not broken. `select_arc_motifs` now logs the dropped codes; this
+        # stays honest about not knowing which stage lost them.
         out["warning"] = (
-            "no motif matched this arc — the library had no candidate for its language/genre, or "
-            "none scored above the similarity floor. Scenes will be planned with no motif layer."
+            "no motif was selected for this arc — either the library had no candidate for its "
+            "language/genre, none scored above the similarity floor, or the model's choices did "
+            "not match the catalog it was given (the service log names the dropped codes). "
+            "Scenes will be planned with no motif layer."
         )
     return out
 

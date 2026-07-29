@@ -94,3 +94,54 @@ async def test_select_arc_motifs_degrades_on_non_completion():
         book_id=BOOK, project_id=PROJ, premise="p", genre_tags=["xianxia"],
         model_source="user_model", model_ref="m")
     assert out == []
+
+
+# ── the silent drop that read as an empty library ────────────────────────────────────────────────
+
+def test_an_INVENTED_code_is_reported_not_just_dropped():
+    """Live: retrieval handed the model 30 candidates, it answered with codes that were not in the
+    catalog, every one was dropped by a bare `continue`, and the pass reported "the library had no
+    candidate for its language/genre". A selection failure wearing a retrieval failure's message —
+    which sends the author to fix a library that is fine."""
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"real.one": {"code": "real.one", "name": "Real", "summary": "s"}}
+    dropped: list[str] = []
+    out = parse_selected_motifs(
+        '[{"code":"cultivation.dao_heart_temper","why":"w","arc_role":"spine"},'
+        ' {"code":"real.one","why":"w2","arc_role":"echo"}]',
+        by_code, dropped=dropped)
+    assert [m.code for m in out] == ["real.one"]          # never invents
+    assert dropped == ["cultivation.dao_heart_temper"]    # …and says what it threw away
+
+
+def test_a_CASE_or_WHITESPACE_near_miss_is_recovered_not_discarded():
+    """Catalog codes are machine-ugly (`3b.faceslap.1784257099`), so a model echoing them fumbles
+    case and padding. That is a near-miss, not an invention, and discarding it cost a real motif."""
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"3b.FaceSlap.1784257099": {"code": "3b.FaceSlap.1784257099", "name": "N", "summary": "s"}}
+    dropped: list[str] = []
+    out = parse_selected_motifs(
+        '[{"code":"  3b.faceslap.1784257099 ","why":"w","arc_role":"r"}]', by_code, dropped=dropped)
+    assert [m.code for m in out] == ["3b.FaceSlap.1784257099"]   # the REAL catalog code
+    assert dropped == []
+
+
+def test_recovery_never_becomes_invention():
+    """The tolerance must not widen into fuzzy matching — a code that merely LOOKS similar is still
+    an invention, and binding it would put a motif in the plan the model never chose."""
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"a.real.code": {"code": "a.real.code", "name": "N", "summary": "s"}}
+    dropped: list[str] = []
+    assert parse_selected_motifs('[{"code":"a.real.cod"}]', by_code, dropped=dropped) == []
+    assert dropped == ["a.real.cod"]
+
+
+def test_dropped_is_OPTIONAL_so_existing_callers_are_unchanged():
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"x": {"code": "x", "name": "N", "summary": "s"}}
+    assert len(parse_selected_motifs('[{"code":"x"}]', by_code)) == 1
+    assert parse_selected_motifs('[{"code":"nope"}]', by_code) == []

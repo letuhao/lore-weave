@@ -482,8 +482,12 @@ async def test_retrieve_passes_ceiling_to_sql(monkeypatch):
 
 
 async def test_retrieve_genreless_omits_overlap_clause(monkeypatch):
-    """MD-2: a genre-less book ([]) must still retrieve — the && clause is OMITTED
-    (an empty array && is always false → would zero out retrieval)."""
+    """MD-2, as amended by D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY.
+
+    The genre term now lives in the ORDER BY, never the WHERE. As a filter it could only subtract,
+    and on live data it subtracted 52% of the library — `'{}' && '{fantasy}'` is false, so every
+    untagged motif was unreachable by any genre-tagged book. As a RANK it still puts in-genre rows
+    at the front of the ceiling, which is what the bound is actually for."""
     from app.db.repositories.motif_retrieve import MotifRetriever
 
     _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
@@ -494,8 +498,10 @@ async def test_retrieve_genreless_omits_overlap_clause(monkeypatch):
         genre_tags=[], language="en", beat_role="hook", tension=50,
     )
     sql = pool.conn.fetched_sql[0].lower()
-    assert "genre_tags &&" not in sql                  # omitted for a genre-less call
-    assert "status = 'active'" in sql                  # but still bounded by status/lang
+    where, _, order_by = sql.partition("order by")
+    assert "genre_tags &&" not in where, "genre must never gate the candidate set"
+    assert "genre_tags &&" in order_by, "…but it must still RANK it, so the ceiling stays relevant"
+    assert "status = 'active'" in where                # status/visibility still bound
 
 
 async def test_retrieve_respects_limit(monkeypatch):
@@ -652,13 +658,20 @@ async def test_auto_language_does_NOT_filter_and_still_retrieves(monkeypatch):
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
         genre_tags=[], language="auto", beat_role="hook", tension=50, user_model=None)
 
-    sql = pool.conn.fetched_sql[0]
-    assert "language =" not in sql, "an `auto` language must not be used as a filter"
+    sql = pool.conn.fetched_sql[0].lower()
+    where, _, order_by = sql.partition("order by")
+    assert "language =" not in where, "language must never gate the candidate set"
+    assert "language =" in order_by, "…it ranks instead — bge-m3 vectors are multilingual"
     assert out, "a book with no declared language must still get motif candidates"
 
 
-async def test_a_real_language_STILL_filters(monkeypatch):
-    """The guard must not throw the filter away for a book that genuinely declares one."""
+async def test_a_real_language_STILL_RANKS(monkeypatch):
+    """Renamed with the behaviour it now guards. A declared language must still REACH the query —
+    but as a rank term, not a filter.
+
+    Left as `"language =" in sql` this test would have kept passing for the wrong reason: the
+    ORDER BY satisfies that substring just as well as the old WHERE did. An assertion that cannot
+    tell the two apart is not guarding the thing it is named after."""
     from app.db.repositories.motif_retrieve import MotifRetriever
 
     caller = uuid.uuid4()
@@ -670,8 +683,10 @@ async def test_a_real_language_STILL_filters(monkeypatch):
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
         genre_tags=[], language="vi", beat_role="hook", tension=50, user_model=None)
 
-    sql, args = pool.conn.fetched_sql[0], pool.conn.fetched_args[0]
-    assert "language =" in sql
+    sql, args = pool.conn.fetched_sql[0].lower(), pool.conn.fetched_args[0]
+    where, _, order_by = sql.partition("order by")
+    assert "language =" in order_by, "a declared language must still steer the ceiling"
+    assert "language =" not in where, "…but never exclude a cross-language candidate"
     assert "vi" in args
 
 

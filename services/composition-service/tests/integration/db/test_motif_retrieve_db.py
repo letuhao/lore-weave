@@ -91,8 +91,15 @@ def _patch_query_embed(monkeypatch, vector=_VEC):
 
 
 async def test_prefilter_bounds_the_load(stack, monkeypatch):
-    """data-R1: only active + en + cultivation-overlapping + visible rows are candidates.
-    A draft, a vi row, a disjoint-genre row, and a foreign-private row are NOT loaded."""
+    """data-R1, as amended by D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY.
+
+    STATUS and VISIBILITY still bound the load — a draft is not a candidate, and a foreign-private
+    row must never have its vector read. GENRE and LANGUAGE no longer do: they moved to the
+    pre-RANK, because as WHERE clauses they could only subtract, and on live data they subtracted
+    52% of the library (`'{}' && '{fantasy}'` is false, so 21 untagged motifs were unreachable by
+    any genre-tagged book, and 40 more were tagged `hook`/`connective` — genre-agnostic by design).
+    The vectors are multilingual (bge-m3), so a `vi` row is a legitimate candidate for an `en`
+    book; the 0.30 cosine floor is the quality gate, not the tag columns."""
     pool = stack
     u1 = uuid.uuid4()
     u2 = uuid.uuid4()
@@ -113,9 +120,15 @@ async def test_prefilter_bounds_the_load(stack, monkeypatch):
         genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=50,
     )
     codes = {c.motif.code for c in out}
-    assert codes == {"sys.hit", "pub.hit", "own.hit"}     # ONLY the in-bound rows
-    for miss in ("draft.miss", "vi.miss", "genre.miss", "foreign.miss"):
-        assert miss not in codes
+    # STATUS + VISIBILITY still exclude, and that is the part that matters for safety.
+    assert "draft.miss" not in codes
+    assert "foreign.miss" not in codes
+    # The in-genre, in-language, visible rows are all there.
+    assert {"sys.hit", "pub.hit", "own.hit"} <= codes
+    # …and the cross-language / cross-genre rows are now CANDIDATES rather than invisible. This is
+    # the whole fix: they rank lower, they do not vanish.
+    assert "vi.miss" in codes, "a vi motif must be reachable — the vectors are multilingual"
+    assert "genre.miss" in codes, "an out-of-genre motif must be reachable — genre is a rank, not a gate"
 
 
 async def test_tier_predicate_matches_get_visible(stack, monkeypatch):
@@ -162,8 +175,12 @@ async def test_no_embedding_projected(stack, monkeypatch):
 
 
 async def test_genreless_call_still_retrieves(stack, monkeypatch):
-    """MD-2: a genre-less book ([]) still retrieves (the && clause is omitted) — a
-    language+tier bound still applies. A wrong-language row is still excluded."""
+    """MD-2: a genre-less book ([]) still retrieves.
+
+    Amended by D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY: the tier bound still applies, but a
+    wrong-language row is no longer EXCLUDED — it is merely ranked below same-language ones. The
+    vectors are bge-m3 (multilingual), so a Vietnamese motif is a real candidate for an English
+    book, and the cosine floor decides."""
     pool = stack
     u1 = uuid.uuid4()
     await _insert_motif(pool, owner=u1, code="en.hit", language="en", genres=("scifi",))
@@ -175,7 +192,7 @@ async def test_genreless_call_still_retrieves(stack, monkeypatch):
     )
     codes = {c.motif.code for c in out}
     assert "en.hit" in codes        # retrieved despite no genre constraint
-    assert "vi.miss" not in codes   # language bound still applies
+    assert "vi.miss" in codes       # …and so is the vi row: language RANKS, it no longer gates
 
 
 async def test_null_embedding_row_skipped_and_queued(stack, monkeypatch):
@@ -196,3 +213,81 @@ async def test_null_embedding_row_skipped_and_queued(stack, monkeypatch):
     assert "seed" not in codes
     queued = retr.drain_backfill_queue()
     assert any(q["code"] == "seed" for q in queued)
+
+
+# ── D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY ───────────────────────────────────────────────────
+# Genre and language were WHERE clauses, so they could only SUBTRACT. On live data they subtracted
+# 52% of the library: `'{}' && '{fantasy}'` is false, so 21 untagged motifs were unreachable by any
+# genre-tagged book, and 40 more carry structural tags (`hook`, `connective`, `emotion_arc` — rows
+# like "Cliff Question", genre-agnostic by design) that no author would ever tag a book with.
+# Measured per genre: fantasy 0 · scifi 0 · romance 0 · mystery 0 · thriller 0 · literary 0.
+
+async def test_an_UNTAGGED_motif_is_reachable_at_all(stack, monkeypatch):
+    """The sharpest case, and the one that was impossible: an empty `genre_tags` array can never
+    overlap anything, so these rows could not be retrieved by ANY genre-tagged book. Ever."""
+    pool = stack
+    u1 = uuid.uuid4()
+    await _insert_motif(pool, owner=None, code="untagged.one", genres=())
+
+    _patch_query_embed(monkeypatch)
+    out = await MotifRetriever(pool).retrieve(
+        u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["fantasy"], language="en", beat_role="hook", tension=50, limit=50,
+    )
+    assert "untagged.one" in {c.motif.code for c in out}
+
+
+async def test_a_book_in_an_UNREPRESENTED_genre_still_gets_candidates(stack, monkeypatch):
+    """A fantasy book used to match zero motifs and plan every scene with no motif layer — the
+    library is xianxia/court-heavy, and nothing carries `fantasy`. The structural motifs it should
+    have been able to use were sitting right there, tagged `hook`."""
+    pool = stack
+    u1 = uuid.uuid4()
+    await _insert_motif(pool, owner=None, code="structural.hook", genres=("hook", "connective"))
+    await _insert_motif(pool, owner=None, code="xianxia.one", genres=("xianxia",))
+
+    _patch_query_embed(monkeypatch)
+    out = await MotifRetriever(pool).retrieve(
+        u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["fantasy"], language="en", beat_role="hook", tension=50, limit=50,
+    )
+    assert "structural.hook" in {c.motif.code for c in out}
+
+
+async def test_in_genre_and_in_language_still_win_the_CEILING(stack, monkeypatch):
+    """The bound is what the ceiling is FOR, so relaxing the filter must not cost relevance: an
+    in-genre, in-language row has to outrank an out-of-genre or cross-language one when the
+    candidate set is truncated. Proven by squeezing the ceiling to 1."""
+    from app.config import settings
+
+    pool = stack
+    u1 = uuid.uuid4()
+    await _insert_motif(pool, owner=None, code="off.genre", genres=("scifi",))
+    await _insert_motif(pool, owner=None, code="cross.lang", language="vi", genres=("xianxia",))
+    await _insert_motif(pool, owner=None, code="on.target", genres=("xianxia",))
+
+    monkeypatch.setattr(settings, "motif_candidate_ceiling", 1, raising=False)
+    _patch_query_embed(monkeypatch)
+    out = await MotifRetriever(pool).retrieve(
+        u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=50,
+    )
+    assert {c.motif.code for c in out} == {"on.target"}
+
+
+async def test_a_DRAFT_and_a_FOREIGN_PRIVATE_row_are_still_excluded(stack, monkeypatch):
+    """The bounds that were never about relevance stay hard. Relaxing genre/language must not have
+    quietly widened the VISIBILITY predicate — that would be a tenancy defect, not a tuning change."""
+    pool = stack
+    u1, u2 = uuid.uuid4(), uuid.uuid4()
+    await _insert_motif(pool, owner=u1, code="draft.x", status="draft")
+    await _insert_motif(pool, owner=u2, code="foreign.x", visibility="private")
+    await _insert_motif(pool, owner=None, code="ok.x")
+
+    _patch_query_embed(monkeypatch)
+    codes = {c.motif.code for c in await MotifRetriever(pool).retrieve(
+        u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["fantasy"], language="en", beat_role="hook", tension=50, limit=50,
+    )}
+    assert "ok.x" in codes
+    assert "draft.x" not in codes and "foreign.x" not in codes

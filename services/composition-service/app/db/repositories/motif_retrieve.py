@@ -243,10 +243,12 @@ class MotifRetriever:
         min_score = settings.motif_min_score
         ceiling = settings.motif_candidate_ceiling
 
-        # (1) SQL pre-filter → BOUNDED candidate rows (with vectors). data-R1.
+        # (1) SQL BOUND → candidate rows (with vectors). data-R1. Genre/language now PRE-RANK
+        #     rather than pre-filter, so this is empty only when the library itself is (or the
+        #     caller can see none of it) — not because a book's genre happened to be unrepresented.
         rows = await self._fetch_candidates(caller_id, genre_tags, language, ceiling)
         if not rows:
-            return []  # no in-genre/in-language motif → W2 falls back to invent
+            return []  # nothing visible to rank → W2 falls back to invent
 
         # (2) Query vectors — ONE PER SPACE (platform + the caller's own model). Embed-DOWN
         #     → that space degrades (R4); EmbedConfigError (unset platform model) degrades
@@ -563,23 +565,49 @@ class MotifRetriever:
         had 0 motifs, so pass 6 has always decomposed scenes with no motif layer at all.
 
         `auto` means "unspecified", so the honest query is "any language" — exactly the treatment
-        an empty genre list already got. A REAL language code still filters."""
+        an empty genre list already got.
+
+        D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY — the `auto` fix above treated the SENTINEL but
+        left the mechanism, and the mechanism is what does the damage. Both clauses were WHERE, so
+        both could only ever subtract:
+
+        · GENRE. `genre_tags && $genres` is array overlap, and `'{}' && '{fantasy}'` is FALSE — so
+          the 21 untagged motifs could never match any genre-tagged book, ever. Worse, 40 more are
+          tagged with what they ARE rather than what they suit (`hook`, `connective`, `emotion_arc`
+          — rows like "Cliff Question" and "Betrayal Hinted", which are genre-AGNOSTIC by design),
+          so reaching them required a book literally tagged `genre_tags=['hook']`. 61 of 118 active
+          motifs, 52% of the library, unreachable by construction. Measured per genre on live data:
+          fantasy 0 · scifi 0 · romance 0 · mystery 0 · thriller 0 · literary 0 — only xianxia (14)
+          and intrigue/court (6) matched anything at all.
+        · LANGUAGE. The vectors are all `platform-bge-m3`, which is MULTILINGUAL: equivalent text in
+          different languages lands in the same space, so cross-language cosine already works. The
+          `language = $lang` clause was throwing that away and hiding 48 Vietnamese motifs from
+          every English book and vice versa. A motif is a STRUCTURAL pattern, not prose — its
+          stored language is incidental to what it matches.
+
+        So both move from PRE-FILTER to PRE-RANK. In-genre and same-language candidates still win
+        the ceiling, which is what the bound is actually for; nothing is excluded outright. The
+        quality gate was never the genre column — it is `motif_min_score` (0.30 cosine), which drops
+        a semantically distant motif whatever its tags say. And the ceiling is 500 against 118
+        active rows, so today this widens the candidate set without binding at all."""
         params: list[Any] = [caller_id, max(0, ceiling)]
-        lang_clause = ""
-        if language and language.strip().lower() not in ("auto", "unknown", "und"):
-            params.append(language)
-            lang_clause = f"  AND language = ${len(params)}\n"
-        genre_clause = ""
-        if genre_tags:
-            params.append(list(genre_tags))
-            genre_clause = f"  AND genre_tags && ${len(params)}::text[]\n"
+        # `$3::text[]` / `$4` are always bound (possibly to a no-match value) so the ORDER BY can
+        # reference them unconditionally — a rank term that vanishes with its clause would silently
+        # re-order the ceiling depending on what the caller happened to supply.
+        params.append(list(genre_tags) if genre_tags else [])
+        genre_param = f"${len(params)}::text[]"
+        real_lang = (language or "").strip().lower() not in ("", "auto", "unknown", "und")
+        params.append(language if real_lang else "")
+        lang_param = f"${len(params)}"
         sql = f"""
         SELECT {_RETRIEVE_COLS}
         FROM motif
         WHERE status = 'active'
-{lang_clause}{genre_clause}          AND {_VISIBLE_PREDICATE}
+          AND {_VISIBLE_PREDICATE}
         ORDER BY
           (owner_user_id = $1) DESC NULLS LAST,
+          (genre_tags && {genre_param}) DESC,
+          (language = {lang_param}) DESC,
           mining_support DESC NULLS LAST,
           judge_score DESC NULLS LAST,
           updated_at DESC
