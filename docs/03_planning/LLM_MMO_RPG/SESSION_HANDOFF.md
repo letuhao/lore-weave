@@ -774,6 +774,76 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> 🔶 **`Q1a` — THE L2 TYPE ENTERS THE HASHED BYTES (2026-07-29, /loom XL, CHECKPOINT 1 of 3).**
+>
+> PO chose the **larger** Q1 scope: the ledger too, so Q1 absorbs `Q0b`'s blocker. Three risk
+> boundaries — **B1 substrate (this) · B2 ledger+meta pool · B3 doc sweep**. Plan:
+> [`docs/plans/2026-07-29-q1-l2-declared-quantities.md`](../../plans/2026-07-29-q1-l2-declared-quantities.md).
+>
+> **The §12 sweep the PO asked for: 3 of 6 verifiable claims were STALE.** Q1's *"blocked on
+> `D-PUBLISHER-DROPS-RULESET-PIN`"* (cleared in Q-1) and S2's line counts (shipped). All three of
+> `Q0b`'s claims are **still true** — `RulesetEpochActivated` 0 occurrences, `BindingStore` has no
+> mutating method, `create` hardcodes `RulesetEpoch(1)`.
+>
+> **`const fn` forced the shape, and it is the shape `QTY-A6` asked for.** `engine_default()` is
+> `const`, a `Vec` cannot be, so the table is `[QuantityName; 32]` + `n: u16` — fixed `N` in the
+> binary, `n` in the hashed bytes. **Only `0..n` is encoded**, so the unused tail cannot influence the
+> digest and **raising `N` later moves nothing**. Encoding the full array would have made a capacity
+> bump a rules change for every reality alive.
+>
+> **No map, no pragma.** `ordinal_of` is a linear scan over ≤32 entries run once at `create_reality`.
+> A `BTreeMap<String, u16>` would have allocated, bought nothing, and landed in `hot-path-gate` —
+> where the honest answer would have been a pragma. `hot-path-gate` reports **OK**.
+>
+> **The identifier is ASCII `[a-z][a-z0-9_]*` and that is NOT an English-only rule.** These bytes are
+> hashed, and Unicode has several byte sequences that render identically — an unrestricted name would
+> let a normalizing editor change a reality's digest on a whitespace-only save. The label for `qi` —
+> *khí*, 氣, *ki* — is localized display content and lives outside the digest, which is exactly what
+> lets it be translated without moving a ruleset.
+>
+> **THREE GUARDS FIRED SIMULTANEOUSLY ON THE FIRST BUILD, ALL BY DESIGN:**
+> 1. `E0027` at `classification.rs:139` — S1a's totality proof demanding a class row for `quantities`.
+> 2. `E0080` — **`QTY-A12` bit**: `size_of::<Ruleset>()` 224 → **1280**. Repinned with the reason, and
+>    the old comment had **predicted this growth by name**. Affordable because `QTY-A6.1`: `O(n)` per
+>    ACTOR, `O(n²)` per RULESET — a ruleset is interned once per reality. **Boxing to keep the number
+>    small is forbidden** (that is `A6 ⊥ A12`, register row 6, and would blind the assertion forever).
+> 3. `E0027` in the canon encoder's exhaustive destructure.
+>
+> **AND `S1b`'S TRIGGER FIRED — the one written a slice earlier specifically to red on this day.**
+> `quantities` is `AdditiveOnly` **and declarable**, the first refusable subject this ruleset has ever
+> had. It reddened without anyone remembering to look, which is why it was an assertion and not a
+> note. Converted into `s1b_subjects_are_exactly_the_declarable_non_tunable_fields`, which now pins
+> both properties S1b's enforcement rests on and names what is owed for each.
+>
+> **The golden digest moved `76d7045e…` → `7b75c111…`, deliberately, with a repin-log entry.** Answer
+> to *"what rule did I change for every reality?"* — **none**: schema 2 → 3 and an `n = 0` table.
+> Old artifacts keep their digests and keep loading (v1/v2 decode at their own offsets, `QTY-A11`).
+>
+> **The ceiling gate bit ON ME and I did not bump the cap.** My repin-log entry pushed `digest.rs`
+> 550 → 567, past its allowlisted 560 — the *"allowlisted debt that GROWS reds again"* rule, one slice
+> after it was written. Bumping on first contact would have made it theatre, so the version-machinery
+> tests were split into `tests/versioning.rs` and **the cap was RETIGHTENED 560 → 455**: a cap left at
+> its old value after a split is a silent licence to regrow into it.
+>
+> **VERIFY:** workspace **1958 / 0** (+5) · 6/6 gates · clippy clean.
+>
+> **REMAINING IN Q1 — B1's loader half, then B2, then B3:**
+> * `QuantityPatch` + **union merge** across layers (`Ruleset`'s FIRST collection — F2 deferred
+>   `UnionById` as "a mechanism with no consumer"; it has one now). `AdditiveOnly` is then enforced
+>   **by construction**, since a union cannot express removal — proven by
+>   `a_lower_layers_declaration_survives_every_higher_layer`, not by a validator.
+> * S1b's **floor** arm: `engine_default` may not declare quantities (floor `pre`).
+> * Validators with a subject: duplicate across layers, `n > N`, bad identifier.
+> * **Triggers, not builds** (`NV-2` — no subject yet): `QTY-A5` never-reuse → **`Q0b`** (a binding is
+>   write-once, so a declared set cannot change until an epoch switch) · `QTY-A13` contribution-to-an-
+>   undeclared-ordinal → **`Q4`** (there are no L3 sources to contribute).
+> * **B2:** migration + `contracts/meta/events_allowlist.yaml` row (**both** Go and Rust mirrors read
+>   it) + sqlx adapter for `meta-rs` + `--meta-url` on the spine + `BindingStore` file → `reality_registry`.
+>
+> **A pattern worth recording against doc 35 §12 itself:** its rows bundle *mechanism + enforcement*,
+> and the enforcement's subject often arrives one or two rows later. That is now **three times**
+> (S1b, `QTY-A5` never-reuse, `QTY-A13`). Size a row by what it can PROVE, not by what it names.
+
 > ✅ **`S1a` + `S2` — THE LAWS BECOME A CRATE THAT CANNOT READ A FILE, AND A RULES FIELD CANNOT
 > ARRIVE UNCLASSIFIED (2026-07-29, /loom XL).**
 >

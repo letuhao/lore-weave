@@ -194,6 +194,7 @@ classify!(Ruleset {
     law_version    => Floor::EngineDefault, Mutability::Frozen, Strategy::Forbidden, "schema_version";
     combat         => Floor::Preset, Mutability::Tunable, Strategy::Replace, "(group)";
     stats          => Floor::Preset, Mutability::Tunable, Strategy::Replace, "(group)";
+    quantities     => Floor::Preset, Mutability::AdditiveOnly, Strategy::Union, "(L2 declared)";
 });
 
 /// Top-level keys **no layer may declare**, with the reason an author gets told.
@@ -248,58 +249,57 @@ mod tests {
 
         assert_eq!(CombatRules::CLASSES.len(), 15);
         assert_eq!(StatRules::CLASSES.len(), 5);
-        assert_eq!(Ruleset::CLASSES.len(), 4);
+        assert_eq!(Ruleset::CLASSES.len(), 5);
     }
 
-    /// If this ever fails, S1b has a subject and the enforcement arms become
-    /// buildable — that is the trigger, asserted rather than remembered.
+    /// **THE S1b TRIGGER FIRED, 2026-07-29, on `Q1`. This is what it became.**
     ///
-    /// **It scans the RULES structs and deliberately not `Ruleset::CLASSES`**,
-    /// which already carries two `Frozen` rows. That exclusion is load-bearing
-    /// and was nearly left unexplained: `schema_version` and `law_version` are
-    /// *identity*, not rules, and they are refused outright by
-    /// `Strategy::Forbidden` — **a stronger refusal than any mutability check
-    /// could apply.** A class check exists to police what an author may CHANGE
-    /// about a field they are allowed to declare; these two may never be
-    /// declared at all, so counting them here would fire the trigger for a
-    /// subject S1b would have nothing to say about.
+    /// Its previous form asserted that no rules field was non-`Tunable` and that
+    /// no floor sat above `preset` — the two conditions under which a floor or
+    /// mutability check could refuse *anything*. While both held, building those
+    /// checks would have been `NV-2`: a validator returning *permitted* for every
+    /// input that can exist.
+    ///
+    /// `Q1` added `Ruleset::quantities`, an ID-keyed registry that is
+    /// `AdditiveOnly` and **declarable** — the first refusable subject this
+    /// ruleset has ever had. The trigger reddened without anyone remembering to
+    /// look, which is the whole reason it was written as an assertion instead of
+    /// a note.
+    ///
+    /// What it guards NOW: the two properties S1b's enforcement rests on.
     #[test]
-    fn s1b_has_no_subject_yet_and_says_so() {
-        // The exclusion above is only sound while every identity row is also
-        // `Forbidden`. If someone adds a `Frozen`-but-declarable field to
-        // `Ruleset`, this catches it rather than letting the scan skip it.
-        for c in Ruleset::CLASSES {
-            if c.mutability != Mutability::Tunable {
-                assert_eq!(
-                    c.strategy,
-                    Strategy::Forbidden,
-                    "`{}` is non-Tunable but DECLARABLE, so it is a real S1b subject that this \
-                     test's exclusion of Ruleset::CLASSES would hide — build the class check",
-                    c.name
-                );
-            }
+    fn s1b_subjects_are_exactly_the_declarable_non_tunable_fields() {
+        // 1. The L1 scalars are still uniformly Tunable/preset. If that ever
+        //    stops being true, a per-field check is owed for them too — and this
+        //    is what would say so.
+        for c in CombatRules::CLASSES.iter().chain(StatRules::CLASSES.iter()) {
+            assert_eq!(
+                c.mutability,
+                Mutability::Tunable,
+                "`{}` is no longer Tunable — the L1 scalars were uniform, and a per-field                  mutability check now has a subject among them",
+                c.name
+            );
+            assert_eq!(c.floor, Floor::Preset, "`{}` moved off the preset floor", c.name);
         }
 
-        let non_tunable = CombatRules::CLASSES
+        // 2. Every non-Tunable field on `Ruleset` is either FORBIDDEN (refused
+        //    outright, which is stronger than any class check) or is a genuine
+        //    S1b subject with enforcement owed. `quantities` is the latter, and
+        //    its enforcement lives in the loader:
+        //      * floor  — `engine_default` may not declare quantities
+        //      * class  — AdditiveOnly, enforced BY CONSTRUCTION: the layer fold
+        //                 is a union, so removal is inexpressible rather than
+        //                 checked. Proven by `a_lower_layers_declaration_survives_
+        //                 every_higher_layer` in ruleset-loader.
+        let subjects: Vec<&str> = Ruleset::CLASSES
             .iter()
-            .chain(StatRules::CLASSES.iter())
-            .filter(|c| c.mutability != Mutability::Tunable)
-            .count();
+            .filter(|c| c.mutability != Mutability::Tunable && c.strategy != Strategy::Forbidden)
+            .map(|c| c.name)
+            .collect();
         assert_eq!(
-            non_tunable, 0,
-            "a non-Tunable rules field now exists — S1b's mutability check has a subject that \
-             can fail, so build it (see 16a §6 and QTY-A5)"
-        );
-
-        let above_preset = CombatRules::CLASSES
-            .iter()
-            .chain(StatRules::CLASSES.iter())
-            .filter(|c| c.floor != Floor::Preset)
-            .count();
-        assert_eq!(
-            above_preset, 0,
-            "a rules field now declares a floor above `preset` — S1b's floor check has a subject \
-             that can fail, so build it (see 16a §3.2 / RLS-A16)"
+            subjects,
+            vec!["quantities"],
+            "the set of fields needing S1b enforcement changed. Every entry here must have a              floor rule and a mutability rule in `ruleset-loader::validate`, or it is a class              the table CLAIMS to govern and nothing enforces"
         );
     }
 

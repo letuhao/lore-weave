@@ -5,13 +5,14 @@ use sim_core::RulesetDigest;
 use crate::canon::{Canon, CanonEncode, CanonError, CanonReader};
 use crate::combat::CombatRules;
 use crate::provenance::{Provenance, RulesetEpoch};
+use crate::quantity::QuantityTable;
 use crate::stats::StatRules;
 
 /// Bumped when the canonical ENCODING or the field set changes in a way that
 /// is not itself a rules change. Written first into every canonical stream, so
 /// an encoding change can never be mistaken for a rules change: both move the
 /// digest, but only one of them moves it for every reality at once.
-pub const RULESET_SCHEMA_VERSION: u32 = 2;
+pub const RULESET_SCHEMA_VERSION: u32 = 3;
 
 /// The oldest schema version this engine can still DECODE.
 ///
@@ -77,6 +78,14 @@ pub struct Ruleset {
     pub law_version: u32,
     pub combat: CombatRules,
     pub stats: StatRules,
+    /// **Q1 — the L2 layer, and the first thing in this struct an AUTHOR names.**
+    ///
+    /// Everything above is engine vocabulary with author-set values. This is
+    /// author-set *identity*: a reality declares `qi` and the engine, which has
+    /// never heard of `qi`, assigns it ordinal 0 and hashes the assignment
+    /// (QTY-A5). That is what makes the ordinal stable across edits instead of
+    /// a function of file order.
+    pub quantities: QuantityTable,
 }
 
 // QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in
@@ -89,13 +98,29 @@ pub struct Ruleset {
 // `digest()` recomputes BLAKE3 on every call and justifies that with "the whole
 // artifact is ~200 bytes". Watch this number.
 //
-// 216 -> 224, repinned 2026-07-29 for `law_version` (QTY-D13). Four bytes of
-// field, eight of struct after alignment. Recorded rather than silently raised
-// because that is the entire mechanism: the assertion is not here to forbid
-// growth, it is here to make growth a DECISION someone wrote down. It bit on the
-// very next slice after it was added, which is the only evidence that a guard
-// works.
-const _: () = assert!(core::mem::size_of::<Ruleset>() <= 224);
+// REPIN LOG — each entry is a decision someone had to write down, which is the
+// entire mechanism. The assertion is not here to forbid growth.
+//
+// * 216 -> 224, 2026-07-29 (`Q0a`), for `law_version` (QTY-D13). Four bytes of
+//   field, eight of struct after alignment. It bit on the very next slice after
+//   it was added, which is the only evidence that a guard works.
+// * 224 -> 1280, 2026-07-29 (`Q1`), for `quantities: QuantityTable` — and this
+//   is the growth the paragraph above PREDICTED BY NAME. A 32-entry table of
+//   32-byte identifiers is ~1 KB.
+//
+//   **Why that is affordable here and would not be on `Actor`:** QTY-A6.1 —
+//   `O(n)` per ACTOR, `O(n²)` per RULESET. A `Ruleset` is interned once per
+//   reality; ten thousand resident actors pay nothing for it. The same 1 KB on
+//   `Actor` would be 10 MB and would be the exact mistake chaos made, where a
+//   `[[f64;50];50]` interaction matrix sat INLINE on every actor and consumed
+//   47 % of the struct.
+//
+//   **Boxing the table to keep the number small is FORBIDDEN.** That is
+//   `QTY-A6 ⊥ QTY-A12` (non-vacuity register row 6): a heap pointer makes
+//   `size_of` 16 bytes for every `n`, so this assertion would compile, always
+//   pass, and never be able to fire again — for every future slice, not just
+//   this one.
+const _: () = assert!(core::mem::size_of::<Ruleset>() <= 1280);
 
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
@@ -106,6 +131,10 @@ impl Ruleset {
             law_version: LAW_VERSION,
             combat: CombatRules::engine_default(),
             stats: StatRules::engine_default(),
+            // The engine declares NO quantities. Every reality created before
+            // Q1 resolves to exactly this, so their digests move (a field
+            // entered the bytes) but their BEHAVIOUR does not.
+            quantities: QuantityTable::EMPTY,
         }
     }
 
@@ -193,13 +222,18 @@ impl Ruleset {
 
         let combat = CombatRules::decode(&mut r)?;
         let stats = StatRules::decode(&mut r)?;
+        // v1 and v2 predate L2 entirely. An artifact from before Q1 declared
+        // nothing, and `EMPTY` states that rather than guessing it.
+        let quantities =
+            if schema_version >= 3 { QuantityTable::decode(&mut r)? } else { QuantityTable::EMPTY };
         r.finish()?;
 
         // Upcast: the value handed back is always the current shape. Note it
         // does NOT adopt the current `LAW_VERSION` — an old artifact ran under
         // whatever laws it ran under, and overwriting that would erase the one
         // fact this field exists to record.
-        let upcast = Self { schema_version: RULESET_SCHEMA_VERSION, law_version, combat, stats };
+        let upcast =
+            Self { schema_version: RULESET_SCHEMA_VERSION, law_version, combat, stats, quantities };
         Ok((upcast, schema_version))
     }
 
@@ -222,13 +256,16 @@ impl Ruleset {
         // EXHAUSTIVE destructuring, same discipline as `canon` — a new field
         // must be considered here too, if only to decide it is not written at
         // an older version.
-        let Self { schema_version: _, law_version, combat, stats } = self;
+        let Self { schema_version: _, law_version, combat, stats, quantities } = self;
         c.u32(version);
         if version >= 2 {
             c.u32(*law_version);
         }
         combat.canon(&mut c);
         stats.canon(&mut c);
+        if version >= 3 {
+            quantities.canon(&mut c);
+        }
         Some(c.finish())
     }
 
@@ -254,11 +291,12 @@ impl CanonEncode for Ruleset {
         // `law_version` broke this line until it was named here, which is the
         // mechanism doing its job: a new field cannot silently stay out of the
         // digest.
-        let Self { schema_version, law_version, combat, stats } = self;
+        let Self { schema_version, law_version, combat, stats, quantities } = self;
         c.u32(*schema_version);
         c.u32(*law_version);
         combat.canon(c);
         stats.canon(c);
+        quantities.canon(c);
     }
 }
 

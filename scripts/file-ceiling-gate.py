@@ -83,8 +83,11 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
         445, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
              "one linear sequence that reads worse cut in half"),
     "crates/ruleset-core/tests/digest.rs": (
-        560, "the digest verification suite; the per-field mutation tables are "
-             "long by design (v2_every_*_field_reaches_the_digest)"),
+        455, "the digest verification suite; the per-field mutation tables are "
+             "long by design (v2_every_*_field_reaches_the_digest). RETIGHTENED "
+             "560 -> 455 after Q1 split the version-machinery tests into "
+             "tests/versioning.rs: an allowlist cap left at its old value is a "
+             "silent licence to regrow into it"),
     "crates/game-rules/tests/combat_rules.rs": (
         530, "the COMB_001 law suite, one test per spec clause; moved here with the "
              "laws in S2"),
