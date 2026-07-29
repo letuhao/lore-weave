@@ -191,6 +191,38 @@ async def test_cd2_plan_propose_spec_declares_draft_and_stays_async():
     assert not _contains_any(desc, ("confirm_token", "confirm token"))
 
 
+async def test_plan_propose_spec_DEFAULTS_to_the_path_that_generalises():
+    """The agent surface must default to the read, not to the heading matcher.
+
+    Measured 2026-07-29 over every distinct `source_markdown` ever submitted to `plan_run` — 17 real
+    documents, head-to-head on two local models. The LLM read is >= the rules path on **10/10**,
+    strictly better on **8/10**, tied on 1 — and the tie is the parser's own template. Even on the two
+    documents where rules does best (10 events) it extracts **zero characters**, while the LLM matches
+    the events and recovers the cast. **There is no document shape where rules wins.**
+
+    It nonetheless defaulted to `rules` here, and that default is where the damage came from: rules is
+    **251 of 281** live runs, and the author's own planning document is one of the ones it read as
+    nothing (`plan_run` shows `rules | proposed | 4278`, an entirely empty spec, no error — they
+    silently switched to `llm` to get around it).
+
+    `rules` stays reachable on purpose: it is synchronous and free, which is the right pick when the
+    author asks for a fast deterministic pass on a document written in its vocabulary. It is just not
+    what you get when nobody says.
+    """
+    import inspect
+
+    from app.mcp.server import plan_propose_spec
+
+    fn = getattr(plan_propose_spec, "fn", plan_propose_spec)
+    default = inspect.signature(fn).parameters["mode"].default
+    assert default == "llm", (
+        f"plan_propose_spec defaults to mode={default!r}. The rules path is a heading matcher that "
+        f"read 6 of 17 real documents as nothing; it must be opt-in, never the silent default."
+    )
+    _, desc = (await _list_with_descriptions())["plan_propose_spec"]
+    assert "DEFAULT" in desc, "the description must tell the model which mode it gets by omission"
+
+
 def test_cd2_marker_predicate_discriminates():
     """A lint whose predicate matches everything is a rubber stamp. Prove it doesn't."""
     assert not _contains_any("Propose a merge of two entities. The merge happens.", _CD2_CONFIRM_MARKERS)

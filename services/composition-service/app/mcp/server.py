@@ -3410,7 +3410,9 @@ class _MotifSearchArgs(ForbidExtra):
     q: str | None = None
     scope: Literal["mine", "public", "system", "all"] = "all"
     status: Literal["draft", "active", "archived"] | None = None
-    language: str | None = None
+    # The language to READ the motifs in — a re-wording, never a filter. A motif with no
+    # translation falls back to the language it was authored in and reports text_fallback.
+    display_language: str | None = None
     limit: int = 20
     # L1/L2 reference-first (Context Budget Law §6b). Default "summary" (K38 — OUT-2; a
     # lightweight ref list, no roles/beats/preconditions/effects); "full" is an opt-in.
@@ -3446,7 +3448,7 @@ async def composition_motif_search(ctx: MCPContext, args: _MotifSearchArgs) -> d
     repo_scope = "user" if args.scope == "mine" else args.scope
     motifs = await repo.list_for_caller(
         tc.user_id, scope=repo_scope, genre=args.genre, kind=args.kind,
-        status=args.status, q=args.q, language=args.language, limit=args.limit,
+        status=args.status, q=args.q, display_language=args.display_language, limit=args.limit,
     )
     # MD-1: uniform allow-list projection in search (owner reads full via _get) — no
     # per-row branch, no embedding/examples leak in a list view. On top of that,
@@ -3529,7 +3531,7 @@ async def composition_motif_book_list(
     kind: Annotated[_MotifKind | None, "Filter by motif kind."] = None,
     q: Annotated[str | None, "Free-text filter on name/summary."] = None,
     status: Annotated[Literal["draft", "active", "archived"] | None, "Status filter."] = "active",
-    language: Annotated[str | None, "Language filter."] = None,
+    display_language: Annotated[str | None, "Language to read the motifs in (re-words them; never filters)."] = None,
     limit: Annotated[int, "Max rows (a small default page; raise for more)."] = 25,
     detail: Annotated[
         Literal["summary", "full"],
@@ -3543,7 +3545,7 @@ async def composition_motif_book_list(
     repo = MotifRepo(get_pool())
     motifs = await repo.list_in_book(
         tc.user_id, bid, genre=genre, kind=kind, status=status, q=q,
-        language=language, limit=limit,
+        display_language=display_language, limit=limit,
     )
     # L1/L2 reference-first: keep the shared-tier badges (_MOTIF_BOOK_REF_FIELDS) at
     # summary. limit=None — the repo already bounded to `limit` (truncated=0).
@@ -3603,7 +3605,7 @@ async def composition_motif_suggest_for_chapter(
     candidates = await retriever.retrieve(
         tc.user_id, book_id=meta.book_id, project_id=pid,
         genre_tags=list(getattr(meta, "genre_tags", []) or []),
-        language=getattr(meta, "language", None) or "en",
+        display_language=getattr(meta, "language", None) or "en",
         # The node's OWN text + beat_role seed the query (see `node_query_text`); passing
         # None here forced every candidate onto the degrade path with cosine=0.0.
         beat_role=getattr(node, "beat_role", None),
@@ -3715,7 +3717,9 @@ class _MotifCreateArgs(ForbidExtra):
     book_id: str | None = None
     code: str
     name: str
-    language: str = "en"
+    # The language YOU are authoring in. Your motifs are never machine-translated on the
+    # platform's dime — exactly like your book.
+    original_language: str = "en"
     kind: _MotifKind = "sequence"
     summary: str = ""
     genre_tags: list[str] = []
@@ -3766,7 +3770,7 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
     from app.db.models import MotifCreateArgs as _RepoCreateArgs
     try:
         create_args = _RepoCreateArgs(
-            code=args.code, name=args.name, language=args.language, kind=args.kind,
+            code=args.code, name=args.name, original_language=args.original_language, kind=args.kind,
             summary=args.summary, genre_tags=args.genre_tags, roles=args.roles,
             beats=args.beats, preconditions=args.preconditions, effects=args.effects,
             tension_target=args.tension_target, emotion_target=args.emotion_target,
@@ -3781,7 +3785,7 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
     except asyncpg.UniqueViolationError:
         return {
             "success": False, "outcome": "applied_conflict",
-            "error": "a motif with this code + language already exists in your library",
+            "error": "a motif with this code already exists in your library",
         }
     out = motif.model_dump(mode="json")
     # MD-2: create carries an honest undo via the reverse-op _archive tool (soft,
@@ -3979,7 +3983,7 @@ async def composition_motif_patch(ctx: MCPContext, args: _MotifPatchToolArgs) ->
         }
     except asyncpg.UniqueViolationError:
         return {"success": False, "outcome": "applied_conflict",
-                "error": "a motif with this code + language already exists"}
+                "error": "a motif with this code already exists"}
     if motif is None:
         raise uniform_not_accessible()
 
@@ -4316,7 +4320,7 @@ class _MotifEditArgs(ForbidExtra):
     target: Literal["user", "book_shared"] | None = None  # create
     code: str | None = None              # create (required)
     name: str | None = None              # create (required), patch
-    language: str | None = None          # create
+    original_language: str | None = None  # create
     kind: _MotifKind | None = None       # create, patch
     category: str | None = None          # patch
     summary: str | None = None           # create, patch
@@ -4362,7 +4366,8 @@ async def composition_motif_edit(ctx: MCPContext, args: _MotifEditArgs) -> dict:
         return await composition_motif_create(ctx, _MotifCreateArgs(
             code=args.code, name=args.name,
             **_present(
-                target=args.target, book_id=args.book_id, language=args.language, kind=args.kind,
+                target=args.target, book_id=args.book_id,
+                original_language=args.original_language, kind=args.kind,
                 summary=args.summary, genre_tags=args.genre_tags, roles=args.roles, beats=args.beats,
                 preconditions=args.preconditions, effects=args.effects, examples=args.examples,
                 tension_target=args.tension_target, emotion_target=args.emotion_target,
@@ -4897,9 +4902,11 @@ def _opt_uuid(v: str | None) -> UUID | None:
         "PlanForge: turn a novel-system source document into a structured "
         "NovelSystemSpec + analysis. Writes a DRAFT proposal — the run lands at "
         "status='proposed' and a human must approve it before anything becomes "
-        "canonical; nothing canonical changes at call time. mode='rules' proposes "
-        "synchronously; mode='llm' enqueues an async job (poll the run). model_ref is "
-        "optional for mode='llm' — omit it to use the author's default planner model "
+        "canonical; nothing canonical changes at call time. mode='llm' (the DEFAULT) READS "
+        "the document and enqueues an async job (poll the run); mode='rules' is a synchronous "
+        "HEADING MATCHER that only fits documents whose headings use its vocabulary — pass it "
+        "only when the author explicitly asks for the fast deterministic pass. model_ref is "
+        "optional — omit it to use the author's default planner model "
         "(their pinned 'planner' default, else their best chat model); pass one only "
         "when the author names a specific model. Set ground_on_existing=true to CONTINUE "
         "the book — the proposer reads its existing cast/arcs/recent chapters and references "
@@ -4917,7 +4924,11 @@ async def plan_propose_spec(
     ctx: MCPContext,
     book_id: Annotated[str, "The book to plan (UUID)."],
     source_markdown: Annotated[str, "The novel-system source document (markdown)."],
-    mode: Annotated[Literal["rules", "llm"], "rules = sync; llm = async job."] = "rules",
+    mode: Annotated[
+        Literal["rules", "llm"],
+        "llm (default) = reads the document, async job. rules = heading matcher, sync, "
+        "only fits documents written in its vocabulary.",
+    ] = "llm",
     model_ref: Annotated[
         str | None,
         "optional user_model id for mode='llm' — omit to use the author's default planner model.",

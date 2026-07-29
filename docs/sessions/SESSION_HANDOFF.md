@@ -94,10 +94,30 @@ events) it extracts **zero characters** while the LLM matches the events and rec
 **Evidence:** 2,612 pass / 0 fail outside the motif track · provider-gate green · both containers
 rebuilt and verified to match source · live re-measurement on the rebuilt async path.
 
-**Still NOT done — the actual next step:** the default is still `mode="rules"`
-(`app/mcp/server.py` `plan_propose_spec`), i.e. the path measured not to generalise, and it is 251 of
-281 live runs. Flipping it was deliberately held until this cleanup landed, because flipping first
-would have amplified bugs #2 and #3 onto every author.
+## ✅ THE AGENT SURFACE NOW DEFAULTS TO THE PATH THAT GENERALISES (2026-07-29)
+
+`plan_propose_spec` defaulted to `mode="rules"` — the heading matcher — which is **251 of 281** live
+runs and is where the author's own document was read as nothing. Flipped to `mode="llm"`, deliberately
+only AFTER the cleanup above, because flipping first would have amplified the invented-cast and
+rewritten-rules bugs onto every author. The planner GUI already defaulted to `llm`
+([PlannerPanel.tsx:43](../../frontend/src/features/plan-forge/components/PlannerPanel.tsx#L43)), so the
+agent surface was the whole gap.
+
+`rules` stays reachable and is now described for what it is (synchronous, free, fits only documents
+written in its vocabulary) instead of as a peer alternative.
+
+**Live-proven through the real MCP endpoint on a throwaway book, `mode` deliberately omitted:**
+
+```
+async: True   mode: llm   status: proposed
+spec : Seraphine · 4 arcs · 3 events · 1 mechanic · 2 variables
+```
+
+Pinned by `test_plan_propose_spec_DEFAULTS_to_the_path_that_generalises`, which carries the 10/10
+measurement in its docstring so the next person to flip it back has to argue with the data.
+
+**Next:** build the read → coverage-board → review → ask loop (POC §6e/6f). Its shape is measured but
+it lives only in throwaway harnesses — nothing of it is in the repo.
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 
