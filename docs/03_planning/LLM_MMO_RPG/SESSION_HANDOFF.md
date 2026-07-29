@@ -992,6 +992,53 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 >   `events_allowlist.yaml` row. A missing row fails at RUNTIME (`table not allowlisted`), not at
 >   commit. Pre-existing, surfaced here.
 >
+> 🧯 **GATE-ROT ROWS: 7 → 1 (2026-07-29). And the diagnosis in three of them was WRONG.**
+>
+> **`dep-pinning` and `capacity-budget` were never "CI-only environment differences".** The real cause:
+> `d67e8cd02` — *"green the last two ci-local lints"* — exists **only on `feat/game-logic`**. `main`
+> does not have it, and every CI run examined was on `main` or a dependabot branch cut from it. So the
+> branch is ahead and main is red for want of a merge. The `CI-ONLY:` marker invented for that case is
+> **removed**, not kept: with the true cause understood it had zero users, and an unused escape hatch
+> in a security-adjacent registry is worse than none.
+> `capacity-budget` still wanted one real row — **commit-service**, now added with the fact that
+> actually governs its scaling: a replica holds a WRITER LEASE per (reality, channel), so replicas do
+> **not** share a channel and `max_replicas` bounds concurrent channels rather than throughput.
+> The numbers are marked **unvalidated** — zero production realities exist.
+>
+> **`logging-discipline` was NOT "advisory in wording, blocking in exit code".** I had read only its
+> first line. It prints advisory `WARN`s for `println!` in Rust drill binaries **and** a genuine
+> blocking `ERROR`: `composition-service/app/db/arc_lift.py` called `logging.basicConfig`, so that
+> migration's log lines came out unstructured, with no service name and no trace id, into a pipeline
+> every other line in the service feeds. Fixed via `app.logging_config.setup_logging`. The gate was
+> right the whole time.
+>
+> **`pagination-cap`: 4 findings, all four already bounded** — the lint recognises a clamp by the NAME
+> of the helper (`clampLimit`/`parseLimitOffset`) and misses an inline one. Three baselined with the
+> trace (two are background sweepers whose `batchSize` is an operator-set boot parameter — not routes
+> at all, which is outside the lint's own stated subject; one clamps inline and completely).
+> **The fourth was a real bug and got fixed**: `mcp_worlds.go`'s inline clamp *disagreed* with the
+> `clampLimit` sitting in the same package — over-max fell back to **20** where the helper caps at
+> **100**, so `world_list` and `book_list` answered the same over-request differently on one MCP surface.
+>
+> **`language-bias` stays red, deliberately — and the classification is the deliverable.** 13 offenders,
+> four classes, and **two of them change bytes that are already persisted**: a `json.dumps(...).encode()`
+> feeding a DIGEST ×2 (flipping `ensure_ascii` changes every hash → a cache/dedup invalidation
+> decision), and `casefold()` used as a PERSISTED IDENTITY KEY ×5 (normalizing changes lookups against
+> rows already keyed the old way → needs a backfill plan or it orphans them). Plus `\w{4,}` word
+> tokenizing ×2 that cannot work for CJK (a design choice), 3 trivially-safe DB writes, and one false
+> positive (`tool_surface.py` lowercases an ASCII-by-contract MCP tool name). **Defer gate #2** — a
+> sweep here would have been the anti-pattern, not the fix.
+>
+> **VERIFY:** book-service `go build ./...` + `go test ./internal/api/` ok · composition-service
+> **2384 passed, 0 skipped** · 6 of the 7 gates GREEN · gate-wiring OK (63 discovered, 7 exempt,
+> **1** tracked-red, down from 7).
+>
+> **Also cleared:** the composition-service test that **skipped on every run** —
+> `test_route_403_when_grant_below_view` asserted a 403 for a grant tier that cannot exist
+> (`GrantLevel` is `NONE=0 < VIEW=1`, and this route needs only VIEW). NV-2: its subject could not
+> vary. Converted into an assertion on the ENUM, so adding a tier between NONE and VIEW reds and tells
+> the next author the 403 case is now reachable.
+>
 > 🔒 **BOTH SECURITY ROWS CLEARED (2026-07-29) — one false positive, one REAL hole.**
 >
 > **`D-GATE-ROT-INJECTION` was real.** `knowledge-service/app/extraction/canon_check.py` built an

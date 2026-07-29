@@ -324,7 +324,21 @@ async def _amain() -> None:
     dsn = os.environ.get("COMPOSITION_DB_URL") or os.environ.get("TEST_COMPOSITION_DB_URL")
     if not dsn:
         raise SystemExit("set COMPOSITION_DB_URL to the target composition DB")
-    logging.basicConfig(level=logging.INFO)
+
+    # `logging.basicConfig` here installed a bare root handler, so this migration's
+    # `logger.info` lines came out as unstructured text with no service name and no
+    # trace id — invisible to the log pipeline every other line in this service
+    # feeds. It is the one blocking finding `logging-discipline-lint` reports (the
+    # rest of its output is `println!` WARNs in Rust drill binaries), and it kept
+    # that gate red on `main`.
+    #
+    # Imported here rather than at module scope on purpose: this is the CLI entry
+    # point, and `run_arc_lift` is also called in-process by the service, which has
+    # already configured logging. A module-level import would be fine; configuring
+    # at import time would not.
+    from app.logging_config import setup_logging
+
+    setup_logging("INFO")
     conn = await asyncpg.connect(dsn)
     try:
         applied = await run_arc_lift(conn)

@@ -200,10 +200,13 @@ func (s *Server) toolWorldList(ctx context.Context, _ *mcp.CallToolRequest, in w
 	if !ok {
 		return nil, worldListOut{}, errMissingIdentity
 	}
-	limit := in.Limit
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
+	// Was an inline clamp duplicating clampLimit()'s constants — and it did not
+	// agree with it. `limit <= 0 || limit > 100 → 20` silently hands back a
+	// SMALLER page than asked for when a client over-asks, while clampLimit caps
+	// at mcpMaxLimit. So `world_list` answered limit=500 with 20 rows and
+	// `book_list` answered the same request with 100, on the same MCP surface,
+	// in the same package. One concept, one name (mcp-tool-io IN-*).
+	limit := clampLimit(in.Limit)
 	offset := in.Offset
 	if offset < 0 {
 		offset = 0

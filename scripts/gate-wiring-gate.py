@@ -186,26 +186,25 @@ TOO_SLOW: dict[str, str] = {
 KNOWN_RED: dict[str, tuple[str, str]] = {
     "scripts/language-bias-gate.py": (
         "D-GATE-ROT-LANGUAGE-BIAS",
-        "NEW offenders in chat-service + composition-service (json.dumps without "
-        "ensure_ascii=False, \\w-based tokenizing). Platform track, not the game tier"),
-    "scripts/pagination-cap-lint.py": (
-        "D-GATE-ROT-PAGINATION",
-        "RED ON MAIN in CI since >=2026-07-26. NEW unbounded list routes (PERF). "
-        "Platform track"),
-    "scripts/dep-pinning-lint.sh": (
-        "D-GATE-ROT-DEP-PINNING",
-        "CI-ONLY: RED ON MAIN in CI since >=2026-07-26 but GREEN locally (22s). An "
-        "environment difference, so the finding cannot be read off a laptop — start "
-        "from the CI log, not from a local run"),
-    "scripts/logging-discipline-lint.sh": (
-        "D-GATE-ROT-LOGGING-EXIT-CODE",
-        "prints WARN and exits 1 — advisory in wording, BLOCKING in exit code. Either "
-        "the message or the exit is wrong, and a gate whose severity you cannot read "
-        "off its output is how a suite becomes noise. One look; probably a one-line fix"),
-    "scripts/capacity-budget-lint.sh": (
-        "D-GATE-ROT-CAPACITY-BUDGET",
-        "RED ON MAIN in CI since >=2026-07-26. commit-service has no capacity-budget "
-        "entry. Predates the Q1 work (verified RED at 86eb42da2)"),
+        "13 offenders in chat-service + composition-service. NOT A SWEEP, and the "
+        "classification below is the deliverable so the next pass starts from "
+        "analysis rather than a list — TWO of the four classes change bytes that "
+        "are already persisted. "
+        "(1) json.dumps -> a DB column, x3 (internal.py, work_chapter_drafts.py, "
+        "pg_task_store.py): safe, `ensure_ascii=False` and done. "
+        "(2) json.dumps(...).encode() -> a DIGEST, x2 (stream_service.py:3749, "
+        "arc_conformance_orchestrate.py:214): flipping it changes EVERY hash, so "
+        "it is a cache/dedup invalidation decision, not an edit. "
+        "(3) casefold() as a PERSISTED IDENTITY KEY, x5 (plan_forge_service x3, "
+        "world_plan, operations): wants NFC/NFKC first — and normalizing changes "
+        "lookups against rows ALREADY keyed the old way, so it needs a backfill "
+        "plan or it orphans them. "
+        "(4) re.findall(r'\\w{4,}') x2 (propose.py): space-delimited word "
+        "tokenizing, which cannot work for CJK at all — a design choice, not a fix. "
+        "Plus ONE FALSE POSITIVE: tool_surface.py:103 lowercases an MCP tool name, "
+        "ASCII by contract (closed-set snake_case), where casefold() is identical. "
+        "Defer gate #2 (large/structural — needs a plan) + #1 (platform track, not "
+        "the game tier)"),
 }
 
 
@@ -382,19 +381,9 @@ def run_all() -> int:
 
     for n, (ok, secs, out) in zip(runnable, results):
         expected_red = n in KNOWN_RED
-        # A `CI-ONLY:` row is red only in CI, so a green LOCAL run is not evidence
-        # the debt is paid and must not demand the row's deletion. Deliberately
-        # narrow: the marker is opt-in per row, the self-test requires it to be
-        # spelled exactly, and it suppresses ONLY the stale-row complaint — the
-        # gate is still expected to fail where the row says it does. Without it,
-        # every local run would report a false "STALE", and a stale-row warning
-        # that cries wolf is how the shrink-the-list rule stops working.
-        ci_only = expected_red and KNOWN_RED[n][1].startswith("CI-ONLY:")
-        if ok and expected_red and not ci_only:
+        if ok and expected_red:
             unexpected_green.append(n)
             print(f"  {n:<44} GREEN  ({secs:5.1f}s)  <- KNOWN_RED row is now STALE")
-        elif ok and ci_only:
-            print(f"  {n:<44} GREEN  ({secs:5.1f}s)  (CI-ONLY row: still red in CI)")
         elif ok:
             print(f"  {n:<44} GREEN  ({secs:5.1f}s)")
         elif expected_red:
