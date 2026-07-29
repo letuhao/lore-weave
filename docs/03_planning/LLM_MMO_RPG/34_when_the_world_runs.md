@@ -494,7 +494,7 @@ tự biết nó là bịa đặt."*
 > (*"a farmer, busy with the harvest"*), the player reads it as ambience, and **no commitment is
 > created.**
 
-This is the repo's own **non-vacuity discipline** turned onto storage: *a check that cannot fail is
+This is the repo's own **[non-vacuity discipline](../../standards/non-vacuity.md)** (NV-1..6) turned onto storage: *a check that cannot fail is
 not a check* becomes **a fact that cannot be contradicted is not a fact worth storing.** It gives a
 crisp, testable criterion for the flavor/canon boundary that EVT-A8 previously left to per-category
 judgement — and it derives a *UI rule* from a *storage rule*, which is the right direction of travel.

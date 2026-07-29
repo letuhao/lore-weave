@@ -319,7 +319,7 @@ deterministic replay.
 | **XST-R2** | Widen damage intermediates to **i128**; replace `saturating_mul` with a **declared** `MAX_HIT` cap that is observable | XST-D2 | small; **prerequisite** for R6/R7 |
 | **XST-R3** | Fix the roll band to be inclusive of 1150 | XST-D3 | one line |
 | **XST-R4** | Add `sub_index` to the RNG coordinate; **reserve** roles `shuffle`/`draw`/`cost`/`trigger_order`/`ailment` now | convergence #6 | small now, expensive later |
-| **XST-R5** | Emit a signal when a slot saturates, when Σpct goes negative, or when a clamp fires | XST-D1/D2 and the whole silent class | small; directly the repo's non-vacuity discipline |
+| **XST-R5** | Emit a signal when a slot saturates, when Σpct goes negative, or when a clamp fires | XST-D1/D2 and the whole silent class | small; directly the repo's [non-vacuity discipline](../../standards/non-vacuity.md) |
 | ~~**XST-R6**~~ | ~~`SLOT_COUNT` becomes a **ruleset** constant; `[i64; MAX_SLOTS]`, ordinals pinned by digest~~ **RETIRED 2026-07-28 → [QTY-D4](35_quantity_architecture.md).** Opening the slot set is the wrong fix: the laws read **9 of 10** slots by name, so the "open tail" is one dead slot while every pressure case needs a *head* slot. The pressures are real and are re-homed — pools → [QTY-A4](35_quantity_architecture.md), capacities/mood → L2 declared quantities, law binding → [QTY-A3](35_quantity_architecture.md) roles. **Also: the "medium" cost here was self-authored and contradicted by "cheap now (two accessors, ~11 tests)" at §11.6 — two estimates of two different designs, never reconciled; the real surface is 102 `StatSlot::` references across 6 files** | convergence #2 (⚠️ misattributed — §6.1) | ~~medium~~ **retired** |
 | **XST-R7** ✅ | `StatSlotDecl { …, combine: Sum \| Product }` — stage-scoped operator. **ADOPTED 2026-07-28 → [QTY-D11](35_quantity_architecture.md).** Because terms in one slot's pool carry **distinct `kind_id`s**, `Product` is a genuine *cross-quantity* product — which is what `mị ma song tu` (qi × body) and `ngự khí` require. **Three edges it does not solve are now [QTY-Q8](35_quantity_architecture.md):** `combine` is per-decl not per-term (so a mixed polynomial `2×str + qi×body` is inexpressible, and `stat.duplicate_slot_decl` forbids the two-decl workaround); any zero term **annihilates** the slot; and the n-ary milli divisor is unspecified corpus-wide | convergence #3 | one enum field |
 | **XST-R8** | Interned tag bitset `[u64; 4]` + one `Precondition::HasTags(mask)` variant | convergence #1 | medium |
@@ -502,6 +502,11 @@ summation already is. The only orderings that are actually observable today are
 
 > The "inviolable layer order" invariant has **no test capable of failing**. The mechanism does not
 > merely pass the check — it makes the check unfalsifiable.
+
+**This is [`NV-2`](../../standards/non-vacuity.md) — *the subject cannot vary* — and it is row 8 of
+that standard's register, still open.** The register exists because this shape had shipped **ten**
+times by 2026-07-29 and had no authoritative page until then; the sentence above was one of three
+places in the corpus citing a "non-vacuity discipline" that lived nowhere.
 
 That is tolerable until someone adds a genuinely order-sensitive op (a multiplicative modifier, a
 `SetTo`), at which point the invariant becomes load-bearing with zero regression coverage behind it.

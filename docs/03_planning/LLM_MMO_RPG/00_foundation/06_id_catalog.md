@@ -129,6 +129,7 @@
 | `EXC-*` | Exchange model — three currencies, the transaction dataflow, ledger laws | [`30_exchange_model_and_dataflow.md`](../30_exchange_model_and_dataflow.md) | next free per family | EXC-A1 = time / resource / imprint obey different laws |
 | `WSA-*` | World-simulation architecture + spec reconciliation (4 layers, local writes, near/far reads) | [`31_world_simulation_architecture.md`](../31_world_simulation_architecture.md) | next free per family | WSA-A3 = every write is local and unilateral |
 | `TRG-*` | Trigger group order + failure tolerance (8 locked groups, aspect lifecycle) | [`33_trigger_group_order.md`](../33_trigger_group_order.md) | next free per family | TRG-A1 = ordered groups, commutative within |
+| `NV-*` | **Non-vacuity** — a check must be ABLE to fail, and you must have watched it. Repo-wide, **not** track-scoped: the authoritative file lives outside this folder | [`docs/standards/non-vacuity.md`](../../../standards/non-vacuity.md) | next free | NV-1 = a check that cannot fail is a claim in the costume of evidence · NV-4 = an adjacent decision defeats it |
 | `QTY-*` | Quantity architecture — the four layers (laws · roles+derived · declared quantities · sources), who may add a quantity, and what growth costs | [`35_quantity_architecture.md`](../35_quantity_architecture.md) | next free per family | QTY-A3 = laws bind to **roles**, not to quantities · QTY-A1 = arithmetic is code, arrangement is data |
 
 ---

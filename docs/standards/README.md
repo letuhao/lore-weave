@@ -44,6 +44,7 @@ When you build something new, the question is not "is there a rule?" but "**whic
 | **Any perf-sensitive path** | [Performance Standard](./performance.md) — timeouts, pagination, no-blocking-async, SLOs |
 | **Sending a user notification** | [Notification Standard](./notification.md) |
 | **A stat / correction / feedback event** | [Analytics & Learning Standard](./analytics-and-learning.md) |
+| **A gate, lint, test, `const` assertion, validator, or an axiom that constrains code** | **[Non-Vacuity](./non-vacuity.md)** (NV-1..6) — a check that cannot fail is a claim in the costume of evidence, and is **worse** than no check because it reports coverage. Break the thing, watch it red, put it back, paste the output. Four shapes with real occurrences: the subject cannot vary · the scope never reaches it · **an adjacent decision defeats it** · the escape hatch cannot reach its reason |
 | **Any task, start to finish** | [Task Workflow v2.2](../../agentic-workflow/WORKFLOW.md) (+ opt-in [AMAW](../amaw-workflow.md)) |
 
 ---
@@ -145,6 +146,17 @@ Durable `INV-<id>` rules cited **at the enforcement site and in a proving test**
 ## D. Enforcement mechanisms
 
 <a id="d-enforcement-mechanisms"></a>
+
+> ⚠️ **Read [Non-Vacuity](./non-vacuity.md) (NV-1..6) before adding or changing anything in this
+> section.** Every script below is only worth its row if it can actually fail; **ten recorded
+> instances** in this repo shipped a checker that could not — including the pragma window of **three
+> sibling gates in this very table**, each fixed in place by someone who had just understood it, with
+> the understanding not travelling. That discipline was cited by three design documents and had **no
+> home in this index** until 2026-07-29, which is precisely why it kept recurring.
+>
+> The obligation is `NV-6`: **break the guarded thing, watch it red, put it back, and paste the
+> output** into the VERIFY evidence. A `--self-test` proves a checker bites on a *fixture*; only a run
+> against the real tree proves its **scope** is right.
 
 **Scripts / gates** (all verified present 2026-07-04):
 
