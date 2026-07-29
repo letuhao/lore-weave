@@ -38,6 +38,7 @@
 //! producing one from canonical bytes needs `blake3` and is this crate's job.
 
 mod canon;
+mod classification;
 mod combat;
 mod provenance;
 mod ruleset;
@@ -45,6 +46,10 @@ mod slots;
 mod stats;
 
 pub use canon::{Canon, CanonEncode, CanonError, CanonReader};
+// S1a — the field classification (RLS-A4/A16/A17, 16a). `FORBIDDEN_KEYS` is
+// what the loader refuses a layer with; the rest is the classified table whose
+// totality is a compile error to break.
+pub use classification::{FieldClass, Floor, Mutability, Strategy, FORBIDDEN_KEYS};
 pub use combat::CombatRules;
 pub use provenance::{Provenance, RulesetEpoch};
 pub use ruleset::{

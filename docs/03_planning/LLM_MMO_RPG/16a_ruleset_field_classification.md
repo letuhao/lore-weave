@@ -272,6 +272,26 @@ and `places` + `map_layout` + `scene_skeleton_overrides` scale with it. Those ar
 
 ---
 
+> ✅ **WIRED IN CODE 2026-07-29 (`S1a`), and the wiring produced a finding this table could not
+> see.** `crates/ruleset-core/src/classification.rs` carries the 20 fields that exist, each with a
+> `parent` naming its row here — the shipped fields are **finer-grained than this table** (`av_base`
+> is one constant of the row §3.2 calls `initiative_system`), so recording the parent is what keeps
+> the transcription auditable against 16a rather than merely asserted.
+>
+> **The finding: neither the floor nor the class can refuse anything today.** Every one of the 40 rows
+> in §3.2 carries floor `pre`, and `preset` is the lowest *authorable* layer — a floor every field
+> already satisfies refuses nothing. All 3 `Frozen` and all 13 `AdditiveOnly` fields below are
+> collections `Ruleset` does not have. So the 20 that exist are uniformly `Tunable` / `pre`, and a
+> validator over them would return *permitted* for every input that can exist — `NV-2`
+> ([non-vacuity](../../standards/non-vacuity.md)), *the subject cannot vary*.
+>
+> `S1a` therefore ships the **registration mechanism** (a field with no row is a compile error, which
+> inverts doc 16's *"default for an unclassified field: `Tunable`"* — default-allow — into
+> default-deny) and the one strategy that bites: `Forbidden` on `schema_version`/`law_version`.
+> The **enforcement arms are `S1b`, triggered by `Q1`**, whose ordinal registry is the first
+> `AdditiveOnly` field this ruleset will ever have. `s1b_has_no_subject_yet_and_says_so` reds the day
+> that stops being true, so the trigger is asserted rather than remembered.
+
 ## 6. Mutability class — all 40 Ruleset fields (RLS-Q9)
 
 Per RLS-A17, the deciding question is **not** importance. It is: *does stored state reference this

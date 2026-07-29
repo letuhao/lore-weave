@@ -124,6 +124,34 @@ fn a_misspelled_key_is_refused_not_ignored() {
     ));
 }
 
+/// …and the diagnostic must carry the LINE, which is the whole reason the
+/// refusal above is worth having.
+///
+/// **This test exists because the property was silently destroyed and nothing
+/// noticed.** S1a's forbidden-key check parsed the document to a `toml::Value`
+/// and then deserialized the patch *from that value*, which looks free and
+/// drops every span — `toml` anchors spans to the source text, so `Value -> T`
+/// can only say *"unknown field `max_hitt` in `combat`"*.
+///
+/// The test above stayed green the whole time: it asserts the key NAME appears,
+/// and it did. An author fixing a typo in a 200-line preset would have been
+/// handed a message with no line number, in a module whose doc justifies the
+/// entire refusal by *"turning twenty minutes of confusion into one line of
+/// diagnostic"*. Found by `/review-impl`, not by the suite.
+#[test]
+fn a_bad_key_is_reported_with_its_line_and_the_source_text() {
+    let src = "[combat]\nmax_hit = 500\nhit_base_pm = 500\nmax_hitt = 9\n";
+    let msg = format!("{}", parse_layer(Layer::Reality, src).unwrap_err());
+    assert!(
+        msg.contains("line 4"),
+        "the diagnostic lost its line number — an author cannot find the key: {msg}"
+    );
+    assert!(
+        msg.contains("max_hitt = 9"),
+        "the diagnostic lost the offending SOURCE LINE: {msg}"
+    );
+}
+
 // ── V6 · the validators (RLS-A10) ───────────────────────────────────────────
 
 fn bad(toml: &str) -> Vec<ValidationError> {

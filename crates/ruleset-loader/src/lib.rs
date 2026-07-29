@@ -63,6 +63,20 @@ pub enum LoadError {
     /// authoring mistake is a misspelling, and ignoring it means the author's
     /// edit silently does nothing while they tune the number that had no effect.
     Parse { layer: Layer, source: toml::de::Error },
+    /// S1a — the layer declares a key **no layer may declare** (RLS-A4
+    /// `Strategy::Forbidden`, `ruleset_core::FORBIDDEN_KEYS`).
+    ///
+    /// Distinct from `Parse`'s unknown-key refusal on purpose. `deny_unknown_fields`
+    /// already stops these keys today, but it answers *"unknown field"* — wrong
+    /// twice: the field is not unknown, and the author is not told **why** they
+    /// may never set it. That guarantee is also incidental, holding only while
+    /// the field happens to be absent from `RulesetPatch`, which is `NV-4`
+    /// waiting to happen. Named and tested instead.
+    ForbiddenField { layer: Layer, field: &'static str, reason: &'static str },
+    /// The document's root is not a table. TOML has no other root shape, so
+    /// this is unreachable today — it exists so that the forbidden-key scan
+    /// FAILS rather than silently skipping if that ever stops being true.
+    NotATable { layer: Layer },
     /// The resolved ruleset is not loadable (RLS-A10). Carries EVERY reason,
     /// not the first — an author fixing one number per round trip is how a
     /// validator earns the reputation that gets it bypassed.
@@ -78,6 +92,15 @@ impl core::fmt::Display for LoadError {
             Self::Parse { layer, source } => {
                 write!(f, "layer `{}`: {source}", layer.name())
             }
+            Self::ForbiddenField { layer, field, reason } => {
+                write!(f, "layer `{}` declares `{field}`: {reason}", layer.name())
+            }
+            Self::NotATable { layer } => write!(
+                f,
+                "layer `{}`: the document root is not a table, so its keys could not be \
+                 checked against the forbidden set",
+                layer.name()
+            ),
             Self::Invalid(errs) => {
                 writeln!(f, "ruleset is unloadable ({} problem(s)):", errs.len())?;
                 for e in errs {
@@ -97,7 +120,60 @@ pub struct LayerSource {
 }
 
 /// Parse a TOML layer document.
+///
+/// **Two passes over one parse (S1a).** The document becomes a `toml::Value`
+/// first so the `Forbidden` keys can be refused with a diagnostic that names
+/// the field and the reason, *before* `deny_unknown_fields` gets to answer
+/// "unknown field" — which is the wrong answer to a key that is very well
+/// known and simply not the author's to set.
+///
+/// The rejected alternative was adding `schema_version`/`law_version` to
+/// `RulesetPatch` so the validator could see them. That would make
+/// `missing_fields`' totality check demand them in `engine_default.toml`:
+/// **adding a field so it can be declared, in order to refuse declaring it.**
 pub fn parse_layer(layer: Layer, toml_src: &str) -> Result<LayerSource, LoadError> {
+    // Pass 1 — a permissive `Value`, ONLY to answer "does this document declare a
+    // forbidden key?". Nothing is built from it.
+    let doc: toml::Value =
+        toml::from_str(toml_src).map_err(|source| LoadError::Parse { layer, source })?;
+    // `as_table()` on a parsed TOML root cannot be `None` — the format has no
+    // other root shape. Written as an explicit refusal rather than
+    // `if let Some(t) = … {}` because that form makes the failure case **skip
+    // the check silently**: if the assumption ever stopped holding, every
+    // forbidden key would be quietly admitted and the gate would report nothing.
+    // A guard whose else-branch is "do nothing" is not a guard.
+    let table = doc.as_table().ok_or(LoadError::NotATable { layer })?;
+    for (field, reason) in ruleset_core::FORBIDDEN_KEYS {
+        if table.contains_key(*field) {
+            return Err(LoadError::ForbiddenField { layer, field, reason });
+        }
+    }
+
+    // Pass 2 — deserialize from the STRING, not from `doc`.
+    //
+    // **This costs a second parse and buys back the error spans.** Deserializing
+    // the already-parsed `Value` looked free and silently destroyed every
+    // diagnostic in this path: `toml`'s spans live on the source text, so
+    // `Value -> T` reports
+    //
+    //     unknown field `max_hitt`, expected one of ... in `combat`
+    //
+    // where parsing the string reports
+    //
+    //     TOML parse error at line 4, column 1
+    //       |
+    //     4 | max_hitt = 9
+    //       | ^^^^^^^^
+    //
+    // The module doc above justifies `deny_unknown_fields` by *"turning twenty
+    // minutes of confusion into one line of diagnostic"* — so losing the line
+    // number defeats the reason the refusal exists. Nothing caught it either:
+    // `a_misspelled_key_is_refused_not_ignored` only asserts the key NAME is in
+    // the message, which stayed true. `a_bad_key_is_reported_with_its_LINE` now
+    // pins the span itself.
+    //
+    // The cost is one extra parse of a small file on the COLD path — layers are
+    // resolved once at reality creation (RLS-A3 early binding), never in a step.
     let patch: RulesetPatch =
         toml::from_str(toml_src).map_err(|source| LoadError::Parse { layer, source })?;
     Ok(LayerSource { layer, patch })
