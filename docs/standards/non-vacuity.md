@@ -12,7 +12,7 @@
 > returned **zero hits**.
 >
 > That is the repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing**. The
-> consequence is measurable: the same defect shipped **twenty-one times** (§4), each fixed locally in the
+> consequence is measurable: the same defect shipped **twenty-four times** (§4), each fixed locally in the
 > place it happened, because the next person had no page to read. This is that page.
 
 ---
@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — twenty-one occurrences, one caught by a test
+## 4. The register — twenty-four occurrences, one caught by a test
 
-Kept because the count is the argument. **Twenty of the twenty-one were found by a human or an agent
+Kept because the count is the argument. **Twenty-three of the twenty-four were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -154,6 +154,9 @@ that inspects the check itself can see it.
 | 19 | four **meta** lints existed and **none was wired into pre-commit** — `service-acl-matrix-lint` was RED for a whole commit and nothing said so | NV-3 | `/review-impl`'s standards gate, running it by hand | 3 wired 2026-07-29; `meta-write-discipline` left out at ~74s, CI's job |
 | 20 | **six `lint-foundation` legs RED on `main` since ≥2026-07-26, blocking, ignored** — `raw-sql-lint`, `injection-coverage-lint`, `language-bias-gate`, `pagination-cap-lint`, `dep-pinning-lint`, `capacity-budget-lint`. The gates ran, blocked and reported; nobody read the result | NV-3 (degenerate) | `gh run list` during the drift audit row 19 prompted | `scripts/gate-wiring-gate.py` + `.github/workflows/gates.yml` 2026-07-29; each failure now carries a `KNOWN_RED` row naming a deferral, and a row that turns GREEN fails the run |
 | 21 | the drift audit's own first number — *"26 of 58 gates run nowhere"* — was **wrong**: `lint-foundation.yml` wires lints as matrices of BARE NAMES and a path-only search saw none of them. True figure: **3** | NV-3, committed BY the check | re-deriving it before writing it down | fixed same run; `_is_wired` matches stems as well as paths |
+| 22 | **`deferral-gate` satisfied its own requirement by existing.** It demands every tracked deferral be named by non-comment source; its own `PROSE_ONLY` dict keys are string literals in a `.py` file, so on the first run every prose-only row reported STALE — *"the id is now named by scripts/deferral-gate.py"*. A registry that mechanises a debt by declaring it has no mechanism | NV-2, self-inflicted | running it once, before believing it | fixed 2026-07-29 — the gate excludes its own file |
+| 23 | **a docstring is not a comment, and the stripper did not know.** The same gate stripped only LINE comments and certified **three** prose-only deferrals as MECHANISED: `D-META-LIVE-SMOKE-NOT-IN-CI` + `D-PUBLISHER-SMOKE-NOT-IN-CI` (whose sole non-`#` mention in the tree is `gate-wiring-gate`'s **module docstring**, where they are stated as a scope *limit*) and `D-GAME-WS-EDGE-CONTROLS` (three **JSDoc** headers). The first version had shipped a comment calling block comments "a known and stated limit" — the limit was the bug | NV-3 | bite-testing the discriminator instead of trusting it | fixed 2026-07-29 — `_strip` removes triple-quoted and `/* */` spans; the self-test reds if either arm is removed |
+| 24 | **the two-segment id predicate could not see `D-START`.** Requiring `D-<WORD>-<WORD>` is what keeps `READ-ONLY`/`LOAD-BEARING` out (the naive version reported `D-ONLY` 54 times), but single-segment ids exist on the platform track and would have been **silently skipped inside a governed block** | NV-3 | comparing strict vs loose predicates on the real file | fixed 2026-07-29 — the shape is now ENFORCED: an unparseable backticked `D-…` inside a block FAILS with a rename instruction, so the hole is loud instead of confessed |
 | 18 | migration 033's append-only trigger was an ORIGIN trigger, so `session_replication_role = replica` (`pg_restore --disable-triggers`, logical-replication apply) skipped it — the UPDATE rewrote a bound digest and the DELETE removed the epoch | NV-3 | probing the guard in the one mode that turns triggers off, before writing the test that asserts it | fixed 2026-07-29 (`Q1 B2a`) — `ENABLE ALWAYS` |
 
 **Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest

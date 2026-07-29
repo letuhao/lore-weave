@@ -323,3 +323,4 @@ frontend/dist-s01/
 .playwright-cli/
 
 frontend/dist-jamie/
+services/publisher/pub.exe~

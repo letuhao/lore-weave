@@ -152,6 +152,27 @@ fi
 # the commit that adds scripts/foo-gate.py while touching nothing else.
 "$PY" "$ROOT/scripts/gate-wiring-gate.py"
 
+# A DEFERRAL NOBODY MECHANISED IS A WISH. Same family as the line above, one
+# level up: gate-wiring asks "does every gate run?", this asks "does every
+# tracked deferral have something that changes colour by itself?". Measured
+# 2026-07-29 — 9 of 19 game-tier deferrals were prose only, and in that same day
+# the project produced four rows fixed in the morning and still listed as open
+# in the afternoon, plus one fixed deferral cited as an open blocker in four
+# places (including the row of the task that was fixing it).
+#
+# Unconditional for the same reason as gate-wiring: the trigger is "someone
+# opened a deferral", which can happen in a docs-only commit. Measured 1.8s (it
+# reads every tracked source file once, short-circuiting on files with no `D-`);
+# the epoch trigger below is 1.0s. That ~3s is the price of the two checks that
+# fire when nobody is looking, which is when they matter.
+"$PY" "$ROOT/scripts/deferral-gate.py"
+
+# Q0b B3's asserted trigger. Greens while the RulesetEpochActivated emit path is
+# unbuilt; reds the day any producer appears, printing the three unresolved
+# constraints (DP-A16 lease, the S5 chokepoint, dp::channel_pause) so the path
+# cannot be built without them being answered in a diff a human reads.
+"$PY" "$ROOT/scripts/epoch-emit-trigger-gate.py"
+
 # The FAST gates the audit un-orphaned (each <500ms; the slower ones run in
 # gates.yml). Conditioned so an unrelated commit does not pay for them.
 if git diff --cached --name-only | grep -qE '\.(py|go|rs|ts|tsx|sql|ya?ml)$'; then

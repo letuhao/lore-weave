@@ -8,6 +8,67 @@
 
 ---
 
+## 0. OPEN DEFERRALS — the machine-read registry
+
+**This block is parsed by `scripts/deferral-gate.py`.** Everything else in this file is
+narrative and is *not* read by anything. That distinction is the point: `open` cannot be
+inferred from 7,800 lines of prose that also mention closed ids, quoted ids, and history —
+so the markers make it machine-readable at the cost of one HTML comment.
+
+The gate requires every id below to be **MECHANISED** — named by non-comment source, so it
+changes colour by itself — or to carry a `PROSE_ONLY` row in the gate naming **what would
+wake it up**. A `// TODO(D-…)` comment does *not* count: it has no colour, nothing runs it,
+and it reads as coverage to the next person who greps.
+
+**Why:** measured on 2026-07-29, **9 of 19** tracked deferrals were prose only — and in that
+same day this project produced, unaided, `D-PUBLISHER-DROPS-RULESET-PIN` cited as an open
+blocker in **four** places *after it was fixed* (including the `Q1` row that was fixing it),
+six CI legs red on `main` for four days, a test that could never un-skip, and four rows fixed
+in the morning and still listed as open in the afternoon. What survived instead was
+mechanical, without exception: `s1b_has_no_subject_yet_and_says_so` reded on the exact day
+its subject arrived. **Intent is not a mechanism.**
+
+<!-- deferral-registry:begin — machine-read by scripts/deferral-gate.py; ids OUTSIDE this block are history, not obligations. -->
+
+| ID | Gate # | What is owed | Mechanism — what changes colour |
+|---|---|---|---|
+| `D-Q0B-EMIT-PATH` | 2 | Q0b B3: nothing emits `RulesetEpochActivated`. Three unresolved constraints — Go `admin-cli` **cannot append** (`ChannelWriter::append` fences on the `DP-A16` writer lease), the `S5` chokepoint `RLS-A14` names as producer is unimplemented, and `dp::channel_pause` has **0** occurrences so the N-events-one-per-channel shape cannot be delivered without the reality-wide barrier `RLS-D17` forbids. | `scripts/epoch-emit-trigger-gate.py` — asserted trigger. Greens while the path is unbuilt; **reds the day any producer or `ruleset.*` registry entry appears**, printing the three constraints. Also reds on a *rename* (`ruleset.epoch_switched`), so an adjacent decision cannot walk past it. |
+| `D-GATE-ROT-LANGUAGE-BIAS` | 2 | 13 offenders in chat + composition; classified into 4 classes, **2 of which change bytes that are already persisted** (a digest input, and `casefold()` used as a persisted identity key) — so it is a migration decision, not an edit. | `KNOWN_RED` row in `gate-wiring-gate.py`; `--run-all` names it every run **and fails if it turns green** without the row being deleted. |
+| `D-GATE-SLOW-META-WRITE-DISCIPLINE` | 4 | `meta-write-discipline-lint.sh` is quadratic (re-greps the tree once per meta table, 33 of them): 74s alone, >900s shared. Wants its own CI leg or a single-walk rewrite. | `TOO_SLOW` row in `gate-wiring-gate.py` — printed as a SKIP with its reason on every run, never silent. |
+| `D-GATE-ROT-ENV-AT-IMPORT` | 4 | Three gates import service code that reads `JWT_SECRET` at module level, so they need an environment rather than a checkout. | `NEEDS_STACK` rows in `gate-wiring-gate.py`, printed on every run. |
+| `D-META-LIVE-SMOKE-NOT-IN-CI` | 4 | `meta-rs-pg-live-smoke.sh` proves the polyglot write path against real Postgres and runs only by hand. | **prose-only.** ⚠ First claimed as "named in `gates.yml`" — it is, in a `#` comment; and in `gate-wiring-gate.py`'s **docstring**, where it is stated as a scope *limit*. Documenting a hole is not covering it. Trigger: `is_gate()` widening to `-smoke`, which needs a stack-up CI job. |
+| `D-PUBLISHER-SMOKE-NOT-IN-CI` | 4 | Same shape for the publisher live smoke. | **prose-only** — same, same trigger. |
+| `D-EMPTY-PORTABLE-SIDE` | 2 | `Actor`'s portable side can be empty; the shape needs a decision, not a patch. | **prose-only.** ⚠ This row first claimed *"guarded in `actor.rs`"* — the gate refused it, and it was right: the only mention there is a `///` doc comment. An empty portable side is currently **legal**, so a check would have no possible violation (`NV-2`). Trigger: F2 giving the portable side a required field. |
+| `D-WIRE-DIGEST-ZERO` | 2 | The wire digest ships zero until the reality binding reaches the transport. | **prose-only.** ⚠ Also first claimed as guarded. The `// zero-digest-gate: ok — D-WIRE-DIGEST-ZERO` pragma in `ChannelRoom.ts` is an **exemption, not a mechanism** — it *silences* a finding and would keep silencing it after the digest became real. `zero-digest-gate` has no shrink rule (verified). Trigger: that shrink rule, or the binding reaching the transport. |
+| `D-GAME-WS-EDGE-CONTROLS` | 1 | PRR-20's second public entry point must inherit the gateway's auth/rate-limit/audit controls. | **prose-only.** ⚠ First claimed as "guarded across the three `ws/` implementations" — the id appears there only in **JSDoc headers**, which is provenance, not a check: nothing reds if parity breaks. Trigger: a parity test, which needs both transports up. |
+| `D-META-ALLOWLIST-NO-DRIFT-GATE` | 2 | Rust and Go meta allowlists are hand-mirrored and **already drifted once** — the Rust side silently dropped `xreality_topic` because serde ignores unknown fields while Go reads it. | **prose-only** — declared in `deferral-gate.py`. Trigger: the next meta table added. |
+| `D-S04-1` | 3 | The S04 provisioner slice. | **prose-only** — the subject is an unbuilt service, so there is no file for a check to hold. |
+| `D-DEFERRAL-GATE-PLATFORM-SCOPE` | 1 | This gate governs the game tier only; ~360 ids in `docs/sessions/` + `docs/deferred/` are ungoverned and printed as a hole on every run. | **prose-only** — widening is a triage of which of those are still open, which cannot be mechanised in advance. |
+
+<!-- deferral-registry:end -->
+
+**Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
+3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
+
+### What the gate caught on the day it was written (2026-07-29)
+
+The table above was authored first, then the gate was run against it. **It rejected five of the
+twelve rows.** Every "Mechanism" column now marked ⚠ originally claimed a guard that does not exist:
+
+| Row | Claimed | Actually |
+|---|---|---|
+| `D-EMPTY-PORTABLE-SIDE` | "guarded in `actor.rs`" | a `///` doc comment |
+| `D-WIRE-DIGEST-ZERO` | "guarded in `ChannelRoom.ts`" | a **pragma** — an exemption that *silences* a finding and keeps silencing it after the debt is paid |
+| `D-GAME-WS-EDGE-CONTROLS` | "guarded across three `ws/` files" | three **JSDoc headers** — provenance, not a check |
+| `D-META-LIVE-SMOKE-NOT-IN-CI` | "named in `gates.yml`" | a `#` comment, plus a **module docstring** where it is stated as a scope *limit* |
+| `D-PUBLISHER-SMOKE-NOT-IN-CI` | same | same |
+
+That is the argument for the gate, made by the gate, against its own author, within minutes — and
+three of the five needed the stripper to be **rewritten** first (a docstring is not a line comment;
+the first version certified them as covered). Recorded as non-vacuity register rows **22–24**.
+
+---
+
 ## 1. What this track is
 
 An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-realtime avatar movement + turn-based combat; LLM text is the dialogue/narration sub-layer, not the medium) built on top of LoreWeave's existing knowledge + glossary + book infrastructure. Status: **Exploratory — NOT approved for implementation.** Nothing here gates current Phase 1–5 work.
@@ -1117,8 +1178,22 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > **while `Q1` was being built and shipped**. §12's `Q-1`/`S2`/`Q1` rows are now ticked with evidence,
 > and S2's stale line counts (`592`/`456` — they had grown to 609 before the split) are corrected.
 >
-> **NEW DEFERRALS (8) — every one is a tracked row against a NAMED GATE, not a note. `--run-all`
-> fails if any of them turns green without the row being deleted, so this list can only shrink:**
+> **DEFERRALS OPENED (8) — and 6 CLOSED the same day, which is the point of the shrink rule.
+> `--run-all` fails if a tracked-red gate turns green without its row being deleted:**
+>
+> ✅ **CLOSED 2026-07-29:** `D-GATE-ROT-RAW-SQL` · `D-GATE-ROT-INJECTION` (both security, see above) ·
+> `D-GATE-ROT-CAPACITY-BUDGET` (commit-service budget added) · `D-GATE-ROT-LOGGING-EXIT-CODE`
+> (`arc_lift.py` basicConfig fixed — the row's *premise* was also wrong, see above) ·
+> `D-GATE-ROT-PAGINATION` (4 findings: 3 verified non-defects baselined, 1 real clamp bug fixed) ·
+> `D-GATE-ROT-DEP-PINNING` (never real rot — main is simply behind this branch).
+> **The rows are DELETED from `gate-wiring-gate.py`, not annotated.** Struck through here only so the
+> history reads correctly; do not re-open them from this block.
+>
+> 🔴 **STILL OPEN (2):** `D-GATE-ROT-LANGUAGE-BIAS` (classified, needs a plan — 2 of 4 classes touch
+> persisted bytes) · `D-GATE-SLOW-META-WRITE-DISCIPLINE` (quadratic; wants its own CI leg).
+> Both carry a `KNOWN_RED`/`TOO_SLOW` row, so `--run-all` names them on every run.
+>
+> <details><summary>the 8 as opened</summary>
 > `D-GATE-ROT-RAW-SQL` **(SECURITY, triage first — 4 interpolated SQL values in
 > `composition-service/app/db/package_rekey.py`)** · `D-GATE-ROT-INJECTION` **(SECURITY)** ·
 > `D-GATE-ROT-LANGUAGE-BIAS` · `D-GATE-ROT-PAGINATION` · `D-GATE-ROT-DEP-PINNING` (red in CI, GREEN
@@ -1127,7 +1202,9 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > `D-GATE-ROT-ENV-AT-IMPORT` (3 harnesses die on `KeyError: JWT_SECRET` at import) ·
 > `D-GATE-ROT-LOGGING-EXIT-CODE` (`logging-discipline-lint` prints **WARN** and exits **1** —
 > advisory in wording, blocking in exit code; a gate whose severity you cannot read off its own
-> output is how a suite becomes noise) · `D-GATE-SLOW-META-WRITE-DISCIPLINE`
+> output is how a suite becomes noise)
+>
+> </details> · `D-GATE-SLOW-META-WRITE-DISCIPLINE`
 > (`meta-write-discipline-lint` re-greps the whole tree **once per meta table** — 33 of them — so it
 > is quadratic: 74s standalone, >900s under a shared runner. Wants its own CI leg or a one-pass
 > rewrite; classified `TOO_SLOW`, skipped with the reason printed, not called red).
