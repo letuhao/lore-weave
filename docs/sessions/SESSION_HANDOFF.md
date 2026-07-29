@@ -1,5 +1,75 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧭 SESSION OVERVIEW + DRIFT CHECK (2026-07-29)
+
+**The goal we started with:** dogfood the platform by simulating a real author writing *Mị Đế*. It
+failed because the planner read the author's own document as nothing.
+
+**Where we ended:** the pipeline is clean and the loop is built — **and the original goal has still
+not been attempted.** That is the honest headline.
+
+### What shipped (7 commits, plan-forge)
+
+| | |
+|---|---|
+| `1d70dc104` | 4 bugs: title-swallows-document · normalize rewriting authored rules · engine inventing a cast · the honesty block's hole |
+| `67018bba8` | the agent surface defaults to the READ, not the heading matcher |
+| `81cbcbeb9` | flipping the default made a planned component redundant (cold-start reconstruction — **not built**) |
+| `e968b25de` | coverage board, computed from the SPEC |
+| `ecc9a9eda` | quote-first grounded search |
+| `9dd4e77ff` | review / ask / **unavailable** |
+| `7aad3c0c7` | a keep changes the plan, in the author's exact words |
+| `a173e271f` | the GUI, by reusing `PassArtifactEditor` rather than a new panel |
+
+**Two through-lines.** One disease four times — the POC fixture's shape welded into the shared engine
+(`ingest`, `normalize`, `propose_llm`, `coverage`). One bug class at every layer — a degrade that
+looks like the normal state; hence `empty_read`, `unknown`, `unavailable`, `carried_as_author_notes`:
+four distinct ways to say *"I do not know"* instead of nodding.
+
+**State:** composition **2,892 pass / 0 fail** (no exclusions — the parallel motif-i18n track landed
+green in `1381370c7` + `c7d6b3dd2`) · FE plan-forge 169 pass · provider-gate + language-rule green ·
+every step live-smoked, the GUI smoked in a real browser.
+
+### DRIFT — three findings, stated plainly
+
+**1 · Scope drift: only the first two commits were unblocking. The other five are new features.**
+`1d70dc104` and `67018bba8` were genuinely required — an author whose plan reads as empty cannot be
+simulated. Everything after is the material-review loop, which is valuable and was directed step by
+step by the PO, but **was never needed to resume the original goal.** The dogfood could have restarted
+after the default flip. Sanctioned scope is still scope: the goal has now been idle for a full session.
+
+**2 · Process drift: classified once as `M`, then kept building under it.** The whole arc — 4 bug
+fixes, 5 features, a GUI surface, two new MCP tools, two REST routes — is L/XL, which per CLAUDE.md
+requires a written plan file and no skipped phases. There was no CLARIFY or DESIGN phase for the
+loop; it went build-first each time, with only VERIFY recorded. The quality gates that *were* run
+(tests, live smoke, mutation checks) held — this is a process gap, not a quality one, but it is
+exactly how an XL effort ends up with no design record.
+
+**3 · Two claims of mine were wrong and needed correction mid-flight** — recorded because a clean
+drift log is a dishonest one. I reported the motif track as abandoned work when it was an actively
+parallel session; and I reported the engine's invented protagonist as a *model* hallucination when it
+was one deterministic line. Both were caught, both corrected in the commits.
+
+### NOT done
+
+- **The original goal** — the author dogfood into chương 1. Nothing of it started.
+- **Review state does not survive a reload** — the packet is component state; re-opening re-searches
+  (and re-spends). No persistence, by choice, not yet revisited.
+- **4 of 6 kinds cannot land structurally.** Only `writing_principles` / `open_questions` have string
+  slots; a kept character/variable/mechanic/arc is filed as an author note. Deliberate (a raw line is
+  not a `{code, name}`), but it means "keep" is weaker for those four than it looks.
+- **No retry affordance for `unavailable`** — the bucket says "could not check" and offers no button.
+- **No independent third corpus.** Both measured corpora trace to this project; one I wrote myself.
+  The strongest arm — a real planning document by someone else — was never obtained.
+- **`D-PLANFORGE-NO-PREMISE-KIND`** still open.
+
+### Recommended next
+
+**Go back to the original goal.** The blockers are gone and the tooling is more than sufficient; every
+further feature widens the gap between what we built and what we have proven anyone can use. If the
+dogfood surfaces a real gap, that is the honest signal to build the next thing — not the plan.
+
+
 ## ✅ MOTIF-I18N — landed (2026-07-29). Language is no longer part of a motif's identity.
 
 **The defect.** `motif.language` sat inside every identity key (`uq_motif_system(code, language)`),
@@ -363,8 +433,13 @@ Re-keeping the same line reported `{}` — idempotence, proven rather than assum
 **mutation-verified** (making the component send the original list instead of the survivors reds
 exactly the two tests that must red).
 
-**Not done:** no browser smoke — the baked FE image at :5174 was not rebuilt, so this is proven at the
-REST/component level, not through a rendered page.
+**Browser smoke: DONE.** FE image rebuilt, `:5174`, real page. Command palette (`⌘⇧P`, *not* the
+`⌘P` go-to palette — I opened the wrong one first) → *Studio: Open Planner* → run `019fa932` → **Check
+my plan** → the row renders with the author's line in an editable input
+(`Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh`), `kind` read-only → **Save edits** → *"Nothing
+changed — everything you kept was already in the plan."* That is the **idempotent branch rendering
+honestly** rather than claiming a success. Only console error is the pre-existing
+`/v1/notifications/stream` chunked-encoding one.
 
 **Remaining:** the original session goal — the author dogfood into chương 1, which now has a clean
 pipeline under it.
