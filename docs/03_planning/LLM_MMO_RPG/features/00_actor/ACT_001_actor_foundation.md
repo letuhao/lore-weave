@@ -12,16 +12,41 @@
 > holding several actors at once** — which is not an exotic edge case but, per PO decision 2026-07-29,
 > **a core mechanic of this game**: control is possession, and the controller is the persistent identity
 > while the body is not.
-> **Required shape (`SPG-A10`): a first-class binding** — `(controller_id, actor_id, since, authority)`,
-> many-to-many, rebindable. Promoting the attribute to a relation collapses features currently designed
-> separately into one mechanism: 分身 (one controller, two actors, two frames) · a dying elder **seizing a
-> disciple's body** (rebind + the `body_memory` already in `pc_user_binding`) · logout→LLM handover
-> (`ACT-D1`) · `pc_mortality_state`'s **Ghost** state (a controller between bodies) · demonic puppetry ·
-> mounts (`TVL_003`) · **and a captain steering a ship** — possessing an entity whose interior is a map
-> (`SPG-A1`). Steering a vessel and cultivating an inner world become the *same* operation.
-> **The blocking constraint is not in this file:** [`PCS-A4`](../06_pc_systems/PCS_001_pc_substrate.md)
-> locks a *"single `pc_user_binding` V1"* and the PC concept notes recommend *"`Vec<PcId>` with a V1
-> cap=1 validator"*. `SPG-R7` relaxes that cardinality; `SPG-R6` promotes the enum here.
+> **✅ REGISTERED 2026-07-30 (`SPG-R6`) — new aggregate `control_binding` (T2 / Reality), owned here:**
+>
+> ```rust
+> #[dp(type_name = "control_binding", tier = "T2", scope = "reality")]
+> pub struct ControlBinding {
+>     pub controller_id: ControllerId,   // the persistent identity; the BODY is not
+>     pub actor_id: ActorId,             // may be Pc, Npc, or (since WSA-R21) Locus
+>     pub since: FictionTime,
+>     pub authority: ControlAuthority,   // closed enum — Full | Pilot | Puppet { expires_at } | …
+> }
+> ```
+>
+> **Many-to-many by construction.** One controller may hold several actors at once, in different frames.
+> `control_source` stays useful as an L3 *classification*; `AGT-A3`'s runtime-swappable drivers are
+> untouched — this names **who the driver serves**. Collapses into one mechanism: 分身 (one controller,
+> two actors, two frames) · a dying elder **seizing a disciple's body** (rebind + the `body_memory`
+> already in `pc_user_binding`) · logout→LLM handover (`ACT-D1`) · `pc_mortality_state`'s **Ghost** (a
+> controller between bodies) · demonic puppetry · mounts (`TVL_003`) · **and a captain steering a ship**
+> — possessing an entity whose interior is a map (`SPG-A1`). Steering a vessel and cultivating an inner
+> world become the *same* operation.
+>
+> **⚠ NOT the blocker I first claimed — `SPG-R7` RETIRED, [REC-96](../../19_reconciliation_register.md).**
+> My own `REC-87` said [`PCS-A4`](../06_pc_systems/PCS_001_pc_substrate.md) and the `cap=1` validator
+> closed this off. Reading them shows otherwise: `PCS-A4` is *"single `pc_user_binding` **aggregate**"*
+> (a packaging decision, silent on control cardinality), and `Q9`'s `cap=1` is **PC-per-REALITY** for
+> *"single PC narrative"* vs *"multi-PC charter coauthors"* — a narrative scope call, already shaped as
+> `Vec<PcId>` + a validator so relaxing it needs **no migration** (`PCS-D3`). And a 分身 need not be a
+> `Pc` at all: with a binding it can be `ActorId::Npc` driven by a **User** controller, never touching
+> Q9. **The real blocker was a `user_id` FIELD ON THE BODY** — extract the relation and possession works
+> with Q9 left exactly as locked.
+>
+> **⚠ Consequence that is NOT optional (`SPG-A11`):** interest/AOI keys on the **controlled actor**,
+> never on the account. A controller with two actors in two frames has **two independent interest sets**
+> — key it on the account and the 分身 never receives its own frame's updates. A **per-controller** rate
+> limit must also exist beside per-actor validation, or possession is sanctioned multiboxing.
 > **Also relevant:** [`WSA-D3`](../../32_locus_as_actor.md) requires a **`Locus` variant** on `ActorId`
 > rather than reusing `Synthetic`, and correspondingly requires narrowing this file's
 > `actor.synthetic_actor_forbidden` so a village may hold and be the subject of an opinion

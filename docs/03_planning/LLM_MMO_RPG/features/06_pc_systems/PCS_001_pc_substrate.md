@@ -111,6 +111,25 @@ After this lock: world-service can scaffold pc_user_binding + pc_mortality_state
 - **PCS-A2 (Identity unified at L1 via ACT_001):** PCS_001 does NOT own actor identity (canonical_traits, flexible_state, knowledge_tags, voice_register, core_beliefs_ref, mood). All identity at ACT_001 actor_core; PCS_001 reads + extends.
 - **PCS-A3 (PcId Uuid + DP-A12 constructor):** Per Q1 LOCKED; module-private constructor enforces forge-controlled PC creation only.
 - **PCS-A4 (Single pc_user_binding aggregate V1):** Per Q2 LOCKED; user_id + current_session + body_memory in 1 cohesive aggregate. V1+ split if NPC body-substitution PCS-D5 ships.
+  > **⚠ `user_id` MOVES OUT — `SPG-R6` (2026-07-30), [REC-96](../../19_reconciliation_register.md).**
+  > A new aggregate **`control_binding`** `(controller_id, actor_id, since, authority)` is registered to
+  > [`ACT_001`](../00_actor/ACT_001_actor_foundation.md) per [`SPG-A10`](../../36_map_architecture.md):
+  > **control is a relation, not a field on the body.** `pc_user_binding.user_id` encoded that relation
+  > **1:1 inside the body's own aggregate**, which makes one controller holding two bodies
+  > unrepresentable — and possession is a core mechanic (PO, 2026-07-29: *"nó là cơ chế chiếm hữu
+  > control gốc của game"*). `body_memory` and `current_session` are unaffected and stay here: they
+  > describe the BODY and the login, not the controller relation. This is the V1+ split `PCS-A4` itself
+  > anticipates, arriving through possession rather than through `PCS-D5`.
+  >
+  > **⚠ `PCS-A4` and Q9 were NOT the blocker — a correction of my own earlier claim.** `REC-87` asserted
+  > that this axiom plus the `cap=1` validator *"closes it exactly where possession needs it open"*.
+  > That was imprecise on both halves: `PCS-A4` is a **packaging** decision (one cohesive aggregate) and
+  > says nothing about control cardinality; and `Q9`'s `cap=1` is **PC-per-REALITY**, recorded reason
+  > *"single PC narrative"* vs *"multi-PC for charter coauthors"* — a **narrative scope** call, already
+  > shaped as `Vec<PcId>` + a validator so relaxing it is *"a single-line validator change, no schema
+  > migration"* (`PCS-D3`). **Q9 stays exactly as locked**, and `SPG-R7` (which proposed relaxing it) is
+  > **retired**. A 分身 need not even be a `Pc`: with a binding it can be `ActorId::Npc` driven by a
+  > **User** controller, which never touches Q9 at all.
 - **PCS-A5 (Body-soul split via PcBodyMemory):** Full schema per Q5 REFINEMENT — SoulLayer + BodyLayer + LeakagePolicy 4-variant. native_skills + motor_skills V1 empty Vec reserved (V1+ A6 detector populates).
 - **PCS-A6 (4-state mortality V1 schema):** Per Q7 LOCKED; Alive/Dying/Dead/Ghost. V1 active death transitions per mortality_config.mode; V1+ Respawn + Resurrection + GhostDispersed deferred PCS-D2.
 - **PCS-A7 (Synthetic actor PC forbidden V1):** Universal substrate discipline; reject `pc.synthetic_actor_forbidden`.

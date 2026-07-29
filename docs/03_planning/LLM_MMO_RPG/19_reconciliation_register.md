@@ -514,7 +514,7 @@ saying one thing and another doc, or the shipped code, saying the opposite.
 | **REC-84** | Three identity enums with **three different variant sets** (`EntityId` = Pc·Npc·Item·EnvObject ⟷ `EntityRef` = Actor·**Cell**·Item·Faction ⟷ `ActorId` = Pc·Npc·Synthetic·Admin), **plus** `entity_binding.cell_owner`'s doc-comment referencing `EntityType::Cell` — **a variant that does not exist** | **Phantom reference** (this register's §6 class). The drift is *evidence for* the change, not against it: `RES_001` needed `cell_owner` and `EntityRef` needed `Cell`, so the economy work discovered locus-as-entity empirically and worked around the type system | ⬜ `WSA-R19` (add `EntityId::Place`) + `WSA-R20` (fix the comment). **`SPG-R10` must land WITH `WSA-R19`** — `EntityId::Place` and `SpaceNode.holder` are one seam from two directions |
 | **REC-85** | `WSA-D1` *"continuous fields are out of scope"* (doc 31) ⟷ `WSA-D2` *"no longer out of scope — coarse-cadence conserved transfer between locus-actors"* (doc 32) | **`WSA-D2` supersedes.** Only **sub-cell** continuous resolution (a true fluid lattice inside one cell) stays refused, and it is refused **by name** rather than by omission | ⬜ `WSA-R24` — doc 31 still states `WSA-D1` unqualified |
 | **REC-86** | `DL-D1` routines *"evaluated, never ticked"* ⟷ `EXC-F3` *"the world acts when a ledger cannot balance"* | **Both survive.** DL-D1's ban was for **token-cost** reasons that do not apply to a deterministic accumulator; the fix is a **third row** (deterministic + accumulating), not a weakening | ⬜ `WSA-R01` |
-| **REC-87** | `PCS-A4` *"single `pc_user_binding` V1"* + the PC concept-note `cap=1` validator ⟷ **possession is a core mechanic** (PO 2026-07-29: *"kiến trúc ban đầu không giới hạn ở chỗ điều khiển phải strict với 1 actor"*) | **Cardinality opens.** `ACT_001`'s L3 is already *dynamic* and `AGT-A3`'s drivers are already runtime-swappable — the seam is right; the shape is wrong. `control_source` is an **enum on the actor** and cannot name *which* controller nor hold two bodies. Required: a binding `(controller_id, actor_id, since, authority)` | ⬜ `SPG-R6` + `SPG-R7` |
+| **REC-87** ⚠️ **PARTLY WRONG — corrected by [REC-96](#rec-96--the-second-row-retired-by-reading-its-target)**. The contradiction is real but this row named the wrong obstacle: `PCS-A4` and `Q9`'s `cap=1` are **not** it. See REC-96 for the precise finding. | `PCS-A4` *"single `pc_user_binding` V1"* + the PC concept-note `cap=1` validator ⟷ **possession is a core mechanic** (PO 2026-07-29: *"kiến trúc ban đầu không giới hạn ở chỗ điều khiển phải strict với 1 actor"*) | **Cardinality opens.** `ACT_001`'s L3 is already *dynamic* and `AGT-A3`'s drivers are already runtime-swappable — the seam is right; the shape is wrong. `control_source` is an **enum on the actor** and cannot name *which* controller nor hold two bodies. Required: a binding `(controller_id, actor_id, since, authority)` | ⬜ `SPG-R6` + `SPG-R7` |
 | **REC-88** | `DF7-A5`'s stated rationale — percentages sum *"so the result is order-independent"* | **The rationale is simply wrong**: multiplication commutes too. The real rule is *one commutative operator per stage; stages ordered*. The **behaviour is correct**; only the justification is false — which is worse than a wrong behaviour, because it teaches the next author the wrong principle | ⬜ `WSA-R03` — cheap, no lock |
 | **REC-89** | `00_VISION.md` §8 says this track *"is not on the roadmap"* and stages V1 as *"solo RP"* ⟷ the track has been **built for months** and `DL_001` already had to argue around the staging table | **Stale in two ways.** Needs a correction banner pointing at [28](28_product_definition.md) — exactly the way its own §0 corrected the *"text-based"* framing | ⬜ `WSA-R13` — cheap, no lock |
 
@@ -558,6 +558,34 @@ claim, and the design is better than the amendment would have made it.**
 > `DP-X1`, `GDA-A6` deleting the locked `t1_read`, `RBS`'s `*Born` mis-typed as EVT-T4 — was found by a
 > **verification agent reading specs the docs had only been *grepped* against.** Same root cause, same
 > remedy, one layer earlier.
+
+### REC-96 — the second row retired by reading its target
+
+**`SPG-R7` RETIRED, and `REC-87` above is corrected.** That row asserted that `PCS-A4` plus the `cap=1`
+validator *"closes it exactly where possession needs it open"*. Opening both sources shows **neither
+half held**:
+
+| Claimed obstacle | What it actually is |
+|---|---|
+| `PCS-A4` *"single `pc_user_binding` V1"* | A **packaging** decision — one cohesive aggregate holding `user_id` + `current_session` + `body_memory`. It says nothing about control cardinality. |
+| `Q9` `cap=1` | **PC-per-REALITY**, not per-controller. Recorded reason: *"single PC narrative"* vs *"multi-PC for charter coauthors"* — a **narrative scope** call. It was even shaped as `Vec<PcId>` + a validator *specifically* so relaxing it is *"a single-line validator change, no schema migration"* (`PCS-D3`). |
+
+And possession does not need Q9 touched at all: **a 分身 need not be a `Pc`.** With a binding it can be
+`ActorId::Npc` driven by a **User** controller — `ActorId` is L2 *kind* (stable), control is L3
+*dynamic*, and `ACT-A2` already separates them.
+
+**The real blocker was narrower and different: a `user_id` FIELD ON THE BODY.** `pc_user_binding`
+encoded the control relation **1:1 inside the body's own aggregate**, which makes one controller
+holding two bodies unrepresentable regardless of any cap. `SPG-R6` removes exactly that by extracting
+`control_binding` — and **Q9 stays locked**, untouched.
+
+> **Process note — this is the second time in one arc.** `SPG-R2` died the same way (REC-93): written,
+> marked *verified*, queued for a claim, then killed by opening `DP-A13`. Both rows were **mine**, both
+> were **marked verified**, and both were wrong in the same specific manner — **a plausible reading of a
+> target that was grepped rather than read**. That is the exact root cause the corpus already recorded
+> for `GDA-A5`, `GDA-A6` and `RBS`'s mis-typed `*Born`, where verification agents caught it *after* the
+> docs shipped. Two catches now argue the habit is worth naming: **open the target before you act on the
+> row, not after** — the amendment table is an index, never evidence.
 
 ### What "clear" means for the rest
 

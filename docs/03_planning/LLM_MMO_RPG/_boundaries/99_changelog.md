@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-07-30 (5th claim) — NEW aggregate `control_binding`, and `SPG-R7` retired as a mis-diagnosis
+
+- **Lock CLAIMED 02:10, `Owner:` set BEFORE the first edit, released after.**
+- **Registered `control_binding` (T2 / Reality, owned by ACT_001)** — `SPG-A10`. Per-`(controller_id,
+  actor_id)`, **many-to-many by construction**. Extracted from `pc_user_binding.user_id`, which encoded
+  the control relation 1:1 inside the body's own aggregate. `ACT_001`'s L3 `control_source` enum stays
+  useful but answers a different question (*what kind of thing drives this*, never *which controller*),
+  and `AGT-A3`'s runtime-swappable drivers are untouched — this names **who the driver serves**.
+- **⚠️ SELF-CORRECTION — `SPG-R7` RETIRED, and my own `REC-87` was imprecise.** That row claimed
+  `PCS-A4` + the `cap=1` validator *"closes it exactly where possession needs it open"*. Reading the
+  source before acting on it shows otherwise:
+  - `PCS-A4` is *"single `pc_user_binding` **aggregate**"* — one cohesive aggregate holding
+    user_id + session + body_memory. It says nothing about control cardinality.
+  - `Q9`'s `cap=1` is **PC-per-REALITY**, and its recorded reason is *"single PC narrative"* vs
+    *"multi-PC for charter coauthors"* — a **narrative scope** decision. It was even designed as
+    `Vec<PcId>` + a validator precisely so relaxing it is *"a single-line validator change, no schema
+    migration"* (`PCS-D3`).
+  - And a 分身 need not be a `Pc` at all: with a control binding it can be `ActorId::Npc` driven by a
+    **User** controller, which never touches Q9.
+  **So Q9 was never the blocker.** The real one is narrower and different: a `user_id` **field on the
+  body**. Extract the relation and possession works with Q9 left exactly as locked. Recorded as
+  **REC-96**; this is the second row this session retired by reading its target instead of acting on
+  the table (after `SPG-R2`/REC-93).
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+
+---
+
 ## 2026-07-30 — ⚠️ RECORD CORRECTION: the day's four cycles landed under a commit that names none of them
 
 **The four `[boundaries-lock-claim+release]` cycles recorded below (`SPG` registration · six-prefix
