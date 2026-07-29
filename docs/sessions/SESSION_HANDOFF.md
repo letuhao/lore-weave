@@ -214,9 +214,45 @@ survives no-source-document, no-rubric and a raising coverage step; the old payl
 `{"gaps": [], "fidelity_score": None}` in all three, which reads as "your plan is fine" and means "we
 computed nothing".
 
-**Next, from POC §6e/6f — what genuinely remains:** quote-first search over the author's own text for
-an absent kind (no yes/no gate, no worked example — both measured to hurt), the review surface that
-shows what was retrieved for a keep-or-drop, and asking only what survives it.
+## ✅ QUOTE-FIRST SEARCH — the loop looks before it asks (2026-07-29)
+
+`engine/plan_forge/material_search.py`. For a kind the board did not recover, find the lines
+**already in the author's document**. Three constraints, each a measured result: quotes copied
+verbatim (so they can be checked), **no yes/no gate** (three framings each collapsed to a constant),
+**no worked example** (one took recall to zero). A **grounding gate** drops any line not present in
+the source — an invented line shown under "here is what you already wrote" is worse than showing
+nothing, because the author keeps it and it enters their plan as their own.
+
+**Live, both corpora, `dropped_ungrounded = 0` everywhere — zero invention:**
+
+| document | kind | found |
+|---|---|---|
+| Mị Đế (real author) | `planner_variables` | `Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh` |
+| grimdark | `planner_variables` | all four declared: `LEV` · `DEBT` · `AIR` · `COMP` |
+| grimdark | `writing_principles` | 5 real style rules, verbatim |
+| both | `open_questions` | correctly nothing |
+
+The Mị Đế result **beats the POC arm it reproduces**: §6e Arm 1 retrieved *"Chỉ có Chân Linh là bất
+biến"* — a rule about soul layers, a false positive — where this finds the author's actual variable
+list. Their variables were written all along; the read missed them.
+
+**Two errors of mine that only a LIVE run could catch, both now guarded:**
+
+- `kinds_worth_searching` returned `absent` only, excluding `unknown` on the reasoning that such a
+  kind is probably in a section the matcher could not place. That inverts itself: if it is probably
+  there, **finding it is the job**. On the author's real document all three empty kinds are `unknown`,
+  so the loop searched *nothing*. **The unit test asserted the same wrong contract**, which is exactly
+  why only the live run found it. `unknown` is a bar on **asking**, never on **looking**.
+- The schema was passed **pre-wrapped** into `call_json`, which wraps it itself — nesting `json_schema`
+  inside `json_schema`, so the provider rejected it and every search silently fell back to free-form
+  and returned nothing. Mock-based tests cannot see this (a stub ignores the input shape);
+  `test_the_schema_reaches_the_provider_wrapped_EXACTLY_once` asserts what goes on the wire.
+
+**Still shows, never concludes** — grimdark offered `DEBT — what they owe the lease` for *both*
+`mechanics` and `planner_variables`. Not invention, over-retrieval, and precisely the case the review
+surface exists for.
+
+**Next:** the review surface (keep-or-drop over these candidates), then asking only what survives it.
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 
