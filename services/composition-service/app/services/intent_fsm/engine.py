@@ -16,12 +16,22 @@ the model would answer a question the machine is no longer asking.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Awaitable, Callable
 
-from app.services.intent_fsm.slots import SlotSpec, choices_for, render
+from app.services.intent_fsm.slots import (
+    SlotSpec,
+    candidates_response_format,
+    choices_for,
+    render,
+)
 
-Llm = Callable[[list[dict], int], Awaitable[str]]
+#: `(messages, max_tokens, response_format)` — the third argument is what lets the closed set be a
+#: DECODER constraint rather than a post-filter. `None` means the caller's default (plain text).
+logger = logging.getLogger(__name__)
+
+Llm = Callable[..., Awaitable[str]]
 
 _CAND_MAX = 24  # a candidate is a phrase, not a paragraph — a long one is a rewrite, not a choice
 
@@ -186,12 +196,25 @@ async def propose(
     choices = choices_for(spec.name, beats=beats)
     messages = build_messages(spec, node=node, filled=filled, canon=canon, beats=beats,
                               n=n, lang=lang)
-    raw_text = await llm(messages, 700)
+    # GRAMMAR-CONSTRAINED first. `provider-registry` forwards `response_format` verbatim to
+    # LM Studio, so a closed-set slot cannot emit an invalid beat key at all — the constraint moves
+    # from `clean_candidates` (which drops it afterwards, silently) into the decoder. The
+    # post-filter stays regardless: a provider that ignores the field must not become a hole.
+    fmt = candidates_response_format(spec.name, n=n, beats=beats)
+    try:
+        raw_text = await llm(messages, 700, fmt)
+    except Exception:  # noqa: BLE001 — a provider that REJECTS the schema must not fail the slot
+        logger.warning("intent_fsm: provider rejected the response schema for slot=%s; "
+                       "falling back to free-form", spec.name, exc_info=True)
+        raw_text = await llm(messages, 700, None)
     parsed = parse_json_block(raw_text)
     cands = clean_candidates(parsed, spec, choices=choices, n=n)
     if cands:
         return cands, 1, False
 
+    # The retry drops the schema deliberately. If the first call came back unusable WITH a grammar
+    # enforcing the shape, repeating it with the same grammar would fail the same way — the model
+    # is not disagreeing about the format, it has nothing to say in it.
     retry = messages + [
         {"role": "assistant", "content": raw_text[-1200:]},
         {"role": "user", "content": (
@@ -199,5 +222,6 @@ async def propose(
             "no markdown, no commentary."
         )},
     ]
-    cands = clean_candidates(parse_json_block(await llm(retry, 700)), spec, choices=choices, n=n)
+    cands = clean_candidates(parse_json_block(await llm(retry, 700, None)),
+                             spec, choices=choices, n=n)
     return cands, 2, True

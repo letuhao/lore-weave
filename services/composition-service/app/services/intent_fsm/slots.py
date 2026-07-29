@@ -251,6 +251,69 @@ def effective_class(slot: str, *, beats: list[dict[str, Any]] | None = None) -> 
     return s.constraint_class
 
 
+def value_schema(slot: str, *, beats: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The JSON-schema fragment for ONE candidate's `value`, derived from the registry.
+
+    Sent to the gateway as part of `response_format`, which `provider-registry`'s
+    `forwardOptionalChatFields` passes straight through to LM Studio, where llama.cpp enforces it at
+    the GRAMMAR layer. That moves the closed-set rule from a post-filter to a decoder constraint: a
+    model cannot emit a beat key the book does not have, rather than emitting one that
+    `clean_candidates` then silently drops.
+
+    Measured 2026-07-28 on the same 18 labelled lines: enforcement took parse failures 2 → 0, left
+    quality unchanged (macro F1 0.88 → 0.86, within noise), and made a fixed-seed run reproducible
+    18/18 — which matters more than it sounds, because three of this POC's wrong conclusions came
+    from a hand parser failing and being read as a model failure.
+    """
+    s = spec(slot)
+    choices = choices_for(slot, beats=beats)
+    if choices:
+        # A closed set the DECODER enforces. Rendered, because the wire form is JSON: an int choice
+        # stays an int in the enum, a string stays a string.
+        return {"type": "integer" if s.pg_cast in ("smallint", "int") else "string",
+                "enum": list(choices)}
+    if s.pg_cast in ("smallint", "int"):
+        return {"type": "integer"}
+    if s.pg_cast == "jsonb":
+        return {"type": "object"}
+    return {"type": "string"}
+
+
+def candidates_response_format(slot: str, *, n: int,
+                               beats: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """`response_format` for one propose call.
+
+    `additionalProperties: False` and a `required` list are deliberate — a loose schema still
+    permits the shape drift the hand parser used to absorb. `maxItems` is the cap the caller asked
+    for, so over-generation cannot happen rather than being trimmed afterwards.
+    """
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "intent_candidates",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "candidates": {
+                        "type": "array", "minItems": 1, "maxItems": max(1, n),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "value": value_schema(slot, beats=beats),
+                                "why": {"type": "string"},
+                            },
+                            "required": ["value", "why"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["candidates"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
 def render(slot: str, value: Any) -> str:
     """The canonical TEXT rendering used for metric B's `exact`/`drifted`/`dropped` comparison.
 

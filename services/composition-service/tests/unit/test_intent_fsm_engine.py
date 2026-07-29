@@ -21,12 +21,15 @@ _BEATS = [{"key": "hook"}, {"key": "midpoint"}, {"key": "climax"}]
 def _llm(*replies: str):
     """A scripted model + a call log, so the BOUND is asserted on the count, not on a docstring."""
     calls: list[list[dict]] = []
+    formats: list = []
     seq = list(replies)
 
-    async def call(messages, max_tokens):
+    async def call(messages, max_tokens, response_format=None):
         calls.append(messages)
+        formats.append(response_format)
         return seq.pop(0) if seq else ""
-    call.calls = calls  # type: ignore[attr-defined]
+    call.calls = calls        # type: ignore[attr-defined]
+    call.formats = formats    # type: ignore[attr-defined]
     return call
 
 
@@ -132,3 +135,68 @@ async def test_json_wrapped_in_a_markdown_fence_survives():
     cands, calls, _ = await engine.propose(
         llm, spec("beat_role"), node={"title": "C1"}, filled={}, canon=[], beats=_BEATS, n=3)
     assert [c["value"] for c in cands] == ["hook"] and calls == 1
+
+
+# ── grammar-constrained decoding ─────────────────────────────────────────────────────────────────
+
+async def test_a_closed_slots_enum_reaches_the_DECODER_not_just_the_prompt():
+    """`provider-registry` forwards `response_format` to LM Studio, where llama.cpp enforces it at
+    the grammar layer — so an invalid beat key becomes unemittable rather than emitted-then-dropped.
+
+    Measured 2026-07-28 on 18 labelled lines: parse failures 2 → 0, quality unchanged, and a fixed
+    seed reproduces 18/18. That last one is why this matters beyond tidiness: three of this POC's
+    wrong conclusions came from a hand parser failing and being read as a model failure.
+    """
+    llm = _llm(_ok("hook"))
+    await engine.propose(llm, spec("beat_role"), node={"title": "C1"}, filled={},
+                         canon=[], beats=_BEATS, n=3)
+    fmt = llm.formats[0]
+    assert fmt["type"] == "json_schema"
+    item = fmt["json_schema"]["schema"]["properties"]["candidates"]["items"]
+    assert item["properties"]["value"]["enum"] == ["hook", "midpoint", "climax"]
+    assert item["additionalProperties"] is False
+
+
+async def test_an_open_slot_constrains_the_TYPE_but_carries_no_enum():
+    llm = _llm(_ok("she wants out"))
+    await engine.propose(llm, spec("goal"), node={"title": "C1"}, filled={},
+                         canon=[], beats=[], n=3)
+    value = llm.formats[0]["json_schema"]["schema"]["properties"]["candidates"]["items"] \
+        ["properties"]["value"]
+    assert value == {"type": "string"}
+
+    num = _llm(_ok(3))
+    await engine.propose(num, spec("tension"), node={"title": "C1"}, filled={},
+                         canon=[], beats=[], n=3)
+    v2 = num.formats[0]["json_schema"]["schema"]["properties"]["candidates"]["items"] \
+        ["properties"]["value"]
+    assert v2["type"] == "integer" and v2["enum"] == [1, 2, 3, 4, 5]
+
+
+async def test_a_provider_that_REJECTS_the_schema_still_gets_an_answer():
+    """Not every provider honours `response_format`. A hard failure here would make the slot depend
+    on a capability the platform does not require — so the rejection falls back to free-form, and the
+    post-filter that was always there catches what the grammar would have."""
+    seen = []
+
+    async def call(messages, max_tokens, response_format=None):
+        seen.append(response_format)
+        if response_format is not None:
+            raise RuntimeError("400 unsupported response_format")
+        return _ok("hook", "denouement")
+
+    cands, calls, retried = await engine.propose(
+        call, spec("beat_role"), node={"title": "C1"}, filled={}, canon=[], beats=_BEATS, n=3)
+    assert [c["value"] for c in cands] == ["hook"], "the post-filter must still drop the bad key"
+    assert (calls, retried) == (1, False), "a schema rejection is not a failed proposal"
+    assert seen[0] is not None and seen[1] is None
+
+
+async def test_the_retry_drops_the_schema():
+    """Repeating a grammar-constrained call that came back unusable would fail the same way — the
+    model is not disagreeing about the format, it has nothing to say in it."""
+    llm = _llm("not json at all", _ok("hook"))
+    await engine.propose(llm, spec("beat_role"), node={"title": "C1"}, filled={},
+                         canon=[], beats=_BEATS, n=3)
+    assert llm.formats[0] is not None
+    assert llm.formats[1] is None

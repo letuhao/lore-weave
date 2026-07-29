@@ -286,6 +286,46 @@ Recorded because it is the more useful lesson:
 labels overlap. Propose-to-the-author remains right, but for the reason the FSM spec gave in the
 first place (authorial taste, and trust), **not** because the model is incapable of judging.
 
+## 6d · Constrain the output (the PO's correction) — and an arm I had dismissed twice comes back
+
+Every call in this POC used `response_format: {"type": "text"}` and then hand-parsed the reply. That
+single decision produced **three measurement bugs** — and twice I scored an arm 0.00 and dismissed a
+working method because my own parser failed.
+
+`provider-registry`'s `forwardOptionalChatFields` passes `response_format` **and `seed`** straight
+through to LM Studio, where llama.cpp enforces the schema at the **grammar layer**. Parse failure
+stops being a possible outcome.
+
+| | text + hand parser | `json_schema` enforced |
+|---|---|---|
+| parse failures | **2** (in this run alone) | **0** |
+| macro F1 | 0.88 | 0.86 — *unchanged, within noise* |
+| same seed, second run | — | **identical 18/18** |
+| RANK arm, precision@4 | 1/4 | **3/4** |
+
+Three things worth separating:
+
+1. **Enforcement does not cost quality.** The worry that constrained decoding fights the model's own
+   next-token preference did not materialise here.
+2. **Determinism is the real prize.** A fixed seed reproducing 18/18 means a change in a number is a
+   change in the system, not sampling noise. Given how much of this POC turned out to be *my
+   instrument* rather than the model, that matters more than the F1.
+3. **The rank arm was never broken.** It failed to emit an ordering; with a schema forcing a full
+   permutation it puts 3 of the 4 true lines in the top 4. I had dismissed a working method twice.
+
+**Shipped into the intent FSM** (`slots.value_schema` / `candidates_response_format`): a closed-set
+slot's enum is now a **decoder constraint** rather than a post-filter, derived from the registry so
+`beat_role` carries the book's own beat keys and `tension` carries an *integer* enum. Live-proven —
+`beat_role` returned 2 valid keys in 1.3 s, `tension` returned real integers in 2.1 s, `llm_calls 1`
+on both.
+
+Two deliberate limits, because the constraint must not become a new hole:
+- the post-filter **stays** — a provider that ignores `response_format` must not silently pass an
+  invalid value through;
+- a provider that **rejects** the schema falls back to free-form instead of failing the slot, since
+  `response_format` support is not a platform requirement. Same shape as
+  `translation-service._entity_response_format`, which already does enum + fallback.
+
 ## 7 · Deferred / follow-ups this produced
 
 | id | finding | gate |
@@ -293,3 +333,4 @@ first place (authorial taste, and trust), **not** because the model is incapable
 | `D-PLANFORGE-RULES-INGEST-SILENT-ZERO` | a 0-section ingest produces an empty spec with no signal — the author cannot tell a failed read from an empty book | fix-now candidate: it is a guard, not a refactor |
 | `D-PLANFORGE-RULES-FORMAT-BOUND` | `_characters` caps at one; arcs need `Arc N:`; the extractors only fit the original fixture | large/structural (gate 2) — the LLM read is the replacement, not a patch |
 | `D-PLANFORGE-NO-PREMISE-KIND` | the six ingest kinds have no home for premise/genre/tone; the author's opening section is dropped as `other` | small — widen `SECTION_KIND_MAP` |
+| `D-LLM-TEXT-FORMAT-HAND-PARSE` | **26 call sites** still pass `response_format: {"type":"text"}` and hand-parse; `glossary_build/engine.py` carries the same parse-then-retry shape the intent FSM just replaced. Its one-retry bound exists *because* JSON can fail to parse — with a grammar it largely cannot, so the retry becomes a fallback for schema rejection rather than for malformed output | not blocked, just unbuilt — do it per-engine with the enum derived from that engine's own closed sets, never a blanket sweep |

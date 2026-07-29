@@ -104,11 +104,16 @@ class IntentFSMService:
 
     # ── LLM binding — the platform job seam (never a provider SDK, never a literal model) ───────
     def _llm_fn(self, *, user_id: str, model_source: str, model_ref: str):
-        async def call(messages: list[dict], max_tokens: int) -> str:
+        async def call(messages: list[dict], max_tokens: int,
+                       response_format: dict | None = None) -> str:
+            # `response_format` rides straight through provider-registry to LM Studio's grammar
+            # layer, so a closed-set slot's enum is enforced at DECODE time. Measured 2026-07-28:
+            # parse failures 2 -> 0, quality unchanged, and a fixed seed reproduces 18/18.
             job = await self._llm.submit_and_wait(
                 user_id=user_id, operation="chat",
                 model_source=model_source, model_ref=model_ref,
-                input={"messages": messages, "response_format": {"type": "text"},
+                input={"messages": messages,
+                       "response_format": response_format or {"type": "text"},
                        "temperature": 0.5, "max_tokens": max_tokens, **_NO_THINK},
                 job_meta={"usage_purpose": "intent_fsm"},
             )
