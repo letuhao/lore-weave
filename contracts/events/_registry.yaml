@@ -49,6 +49,15 @@ events:
     shipped_cycle: 8
     owner: world-service
 
+  - name: ruleset.epoch_activated
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    go_struct: RulesetEpochActivatedV1
+    description: A reality's ruleset epoch switched; one per affected channel, appended by that channel's own lease-holding writer (RLS-A14).
+    shipped_cycle: 8
+    owner: commit-service
+
   # ────────────────────────────────────────────────────────────────────
   # npc.* — NPC behavior + utterances
   # ────────────────────────────────────────────────────────────────────

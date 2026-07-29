@@ -42,6 +42,9 @@ var EventDispatch = map[string]map[uint32]string{
 	"reality.created": {
 		1: "RealityCreatedV1",
 	},
+	"ruleset.epoch_activated": {
+		1: "RulesetEpochActivatedV1",
+	},
 	"world.tick": {
 		1: "WorldTickV1",
 	},
@@ -67,6 +70,7 @@ var EventTypesGenerated = []string{
 	"canon.entry.updated",
 	"npc.said",
 	"reality.created",
+	"ruleset.epoch_activated",
 	"world.tick",
 	"xreality.canon.promoted",
 	"xreality.user.erased",

@@ -13,6 +13,7 @@ export * from './canon-entry-updated-v1';
 export * from './npc-said-v1';
 export * from './npc-said-v2';
 export * from './reality-created-v1';
+export * from './ruleset-epoch-activated-v1';
 export * from './world-tick-v1';
 export * from './x-reality-canon-promoted-v1';
 export * from './x-reality-user-erased-v1';

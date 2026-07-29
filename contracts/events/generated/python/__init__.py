@@ -13,6 +13,7 @@ from .canon_entry_updated_v1 import CanonEntryUpdatedV1
 from .npc_said_v1 import NpcSaidV1
 from .npc_said_v2 import NpcSaidV2
 from .reality_created_v1 import RealityCreatedV1
+from .ruleset_epoch_activated_v1 import RulesetEpochActivatedV1
 from .world_tick_v1 import WorldTickV1
 from .x_reality_canon_promoted_v1 import XRealityCanonPromotedV1
 from .x_reality_user_erased_v1 import XRealityUserErasedV1
@@ -30,6 +31,7 @@ __all__ = [
     "NpcSaidV1",
     "NpcSaidV2",
     "RealityCreatedV1",
+    "RulesetEpochActivatedV1",
     "WorldTickV1",
     "XRealityCanonPromotedV1",
     "XRealityUserErasedV1",

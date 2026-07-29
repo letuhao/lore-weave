@@ -32,7 +32,7 @@ its subject arrived. **Intent is not a mechanism.**
 
 | ID | Gate # | What is owed | Mechanism — what changes colour |
 |---|---|---|---|
-| `D-Q0B-EMIT-PATH` | 2 | Q0b B3: nothing emits `RulesetEpochActivated`. Three unresolved constraints — Go `admin-cli` **cannot append** (`ChannelWriter::append` fences on the `DP-A16` writer lease), the `S5` chokepoint `RLS-A14` names as producer is unimplemented, and `dp::channel_pause` has **0** occurrences so the N-events-one-per-channel shape cannot be delivered without the reality-wide barrier `RLS-D17` forbids. | `scripts/epoch-emit-trigger-gate.py` — asserted trigger. Greens while the path is unbuilt; **reds the day any producer or `ruleset.*` registry entry appears**, printing the three constraints. Also reds on a *rename* (`ruleset.epoch_switched`), so an adjacent decision cannot walk past it. |
+| `D-Q0B-EMIT-PATH` | 3 | **B3a DONE** — `ruleset.epoch_activated` is registered in the events SoT with `RulesetEpochActivatedV1` (per-channel, carrying `AuthorisedBy` so an auditor can join the committed event back to the `reality_ruleset_binding` row). **B3b/B3c remain**: the spine consuming the binding signal off `lw.meta.events`, and the writer appending. All three original "blockers" were answered or wrong — see the gate's docstring. | `scripts/epoch-emit-trigger-gate.py`, **re-pointed**: it no longer asserts "nothing produces this" (that trigger fired and did its job) but **who may APPEND** — only `contracts/events` + `commit-service`, where the channel writer lease is held. It also prints the outstanding B3b/B3c work on every run and says to delete this row the day commit-service constructs the event. |
 | `D-GATE-ROT-LANGUAGE-BIAS` | 2 | 13 offenders in chat + composition; classified into 4 classes, **2 of which change bytes that are already persisted** (a digest input, and `casefold()` used as a persisted identity key) — so it is a migration decision, not an edit. | `KNOWN_RED` row in `gate-wiring-gate.py`; `--run-all` names it every run **and fails if it turns green** without the row being deleted. |
 | `D-GATE-SLOW-META-WRITE-DISCIPLINE` | 4 | `meta-write-discipline-lint.sh` is quadratic (re-greps the tree once per meta table, 33 of them): 74s alone, >900s shared. Wants its own CI leg or a single-walk rewrite. | `TOO_SLOW` row in `gate-wiring-gate.py` — printed as a SKIP with its reason on every run, never silent. |
 | `D-GATE-ROT-ENV-AT-IMPORT` | 4 | Three gates import service code that reads `JWT_SECRET` at module level, so they need an environment rather than a checkout. | `NEEDS_STACK` rows in `gate-wiring-gate.py`, printed on every run. |
@@ -157,8 +157,49 @@ the switch a step early or late shifts the boundary. Bite-proven: make the order
 generation → **3** RED · apply the switch before the generation gate → 2 RED · drop `RLS-I1` from
 the shared core → 4 RED.
 
-**B2 is now complete.** Next is **B3**, whose three constraints are held by
-`scripts/epoch-emit-trigger-gate.py` (`D-Q0B-EMIT-PATH`).
+**B2 is now complete.**
+
+### ✅ Q0b B3a — B3 was never blocked, and all three "constraints" were wrong (2026-07-30)
+
+Re-measured instead of trusting the note. **The entire pipeline already exists**; it was never built
+because it was labelled *blocked* — which `CLAUDE.md`'s own rule calls the lazy tell:
+
+```
+admin-cli (Go)   → activate_reality_epoch → reality_ruleset_binding INSERT
+                 → meta_outbox { event_name: "reality.ruleset.bound" }   ← B1b already writes this
+meta-outbox-relay → XADD lw.meta.events
+spine (holds the channel writer lease) → ProposalBus is already on Redis
+                 → island.submit_epoch_switch()                          ← B2b already built
+                 → the writer appends RulesetEpochActivated to ITS channel
+```
+
+| "Constraint" | What it actually was |
+|---|---|
+| *admin-cli cannot append* | **True and irrelevant.** It does not need to. It writes the **binding**; the lease-holder transcribes that into its channel. **That IS the authorise→lease-holder-appends seam** — the plumbing existed, unconnected. |
+| *`dp::channel_pause` = 0* | **Dissolved.** It was on the list because the first reading assumed the admin had to coordinate one switch across N channels. It does not: each channel's own writer appends its own event, so there is no barrier and `RLS-D17` holds **by construction**. `channel_pause` should not be built. |
+| *S5 chokepoint unbuilt* | The chokepoint's job is to **authorise**; `activate_reality_epoch` + admin-cli's auth already do it. |
+
+**Shipped:** `ruleset.epoch_activated` / `RulesetEpochActivatedV1` in the events SoT, regenerated
+across all four languages. It carries `ChannelID` (two events differing only there are ONE switch
+seen twice) and **`AuthorisedBy`**, which pins the `reality_ruleset_binding` row — so a writer cannot
+invent a switch the meta DB does not support.
+
+**The asserted trigger fired exactly as designed** the moment the event was registered, printed its
+three constraints, and was then **re-pointed rather than deleted** — the producer does not exist yet,
+so deleting it would have removed the guard mid-flight. Its new claim is *who may APPEND*: only
+`contracts/events` + `commit-service`. Bite-proven four ways: a Go producer in `admin-cli` → RED · a
+**string-only** producer in `game-server` (how a Python/TS service would emit, naming no struct) →
+RED · a consumer stays legal · de-registering the event → RED.
+
+> ⚠️ **The bite found the gate was VACUOUS.** Its tree walk used a bare `git ls-files`, blind to
+> untracked files — so both real producers read **GREEN** while the self-test passed, because the
+> self-test only exercised regexes in memory. **The identical defect had been fixed in `deferral-gate`
+> hours earlier and was not carried across.** Register row **26**; the self-test now writes a real
+> untracked probe file, so a third copy cannot repeat it.
+
+**Remaining: B3b** (spine consumes the binding signal) **+ B3c** (writer appends). The gate prints
+them as outstanding on every run and says to delete `D-Q0B-EMIT-PATH` the day commit-service
+constructs the event.
 
 ### 🔴→✅ AUDIT FINDING (HIGH) — `RLS-I1` was computed against a default (2026-07-29)
 
