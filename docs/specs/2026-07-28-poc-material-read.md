@@ -419,6 +419,59 @@ swallowed that question on exactly this class of false positive.
 That is the whole argument for the propose-to-author step, now visible rather than asserted: the
 retrieval is good enough to be worth showing and not good enough to be worth trusting.
 
+## 6g · A SECOND corpus — and the earlier numbers WERE corpus-biased
+
+The PO's objection, and it was the right one: everything above ran on **one** document — Vietnamese,
+xianxia, one author. Worse, the `SECTION_KIND_MAP` vocabulary I widened this session was widened
+**while looking at that document**.
+
+So: a grimdark horror sci-fi planning document, English, written to be hostile on every axis Mị Đế
+was not — `## ` as the top level, no title heading, a cast as **bold names inside prose paragraphs**,
+a metabolic/economic power system, state variables in a bespoke notation, "Never…" style rules, an
+explicit unresolved list, and section names that are ordinary phrases (`Crew`, `The setup`,
+`Shape of it`, `Still open`) rather than keywords. Committed as
+`tests/fixtures/plan-forge/corpus-grimdark-scifi.md`. Labels fixed before the run.
+
+### The READ generalises
+
+| | Mị Đế (vi, xianxia) | grimdark (en, sci-fi) |
+|---|---|---|
+| LLM classify, true kind recovered | 8/9 | **8/9 = 89%** |
+| kinds covered | 5/6 *(one absent from the doc)* | **6/6** |
+| extraction, grounded | 4/4 over 4 runs | **4/4, zero invention** |
+
+The cast came back exactly — `Odile Marchetti`, `Teodor "Ash" Aszkiewicz`, `Ruth Okonjo-Vance`,
+`The Passenger` — from **bold names inside prose**, a format that shares nothing with Mị Đế's
+`## 1. Name (Role)`.
+
+The single "miss" was my label, not the model: I marked `Notes to self` as `other`; it returned
+`writing_principles`, and the section says *"Reread Blindsight for how to do the not-interested-in-you
+thing"*. **Its answer is better than my ground truth.** Fourth time this POC's instrument was the
+problem.
+
+### The VOCABULARY does not generalise — and that is the bias, found
+
+The corpus first parsed to **0 sections**: it opens at `## `, and the parser was still bound to `# `.
+Hardcoding `# ` was the same level-binding as hardcoding `# <n>. `, one step less obvious. Fixed by
+taking the **shallowest heading level the document itself uses**, which needs no guessing and leaves
+every `# `-document byte-identical (a `## ` sub-block must stay a sub-block, or one protagonist's
+profile becomes six people).
+
+With that fixed it parses 9 sections — and the classifier recovers **exactly one kind, and it is
+wrong**: `Things I track per character` matches on the substring *"character"* and files a
+state-variable section as cast. `The setup`, `Crew`, `Shape of it`, `How I want it written`,
+`Still open` match **nothing**.
+
+**I did not widen the map again**, and the test pins that: adding this corpus's words would be the
+identical over-fitting that produced the problem, one corpus later. The measurement says the
+vocabulary approach does not generalise and the model read does — 89% on both. What the map owes is
+not more words, it is the `unread` block naming what it missed, which it now does.
+
+**Caveat that stays attached: I wrote this corpus.** It was written to be structurally hostile rather
+than to pass, and the labels were fixed first, but a corpus by the same hand that widened the
+classifier is not an independent test. The strongest version of this arm is a real planning document
+from someone else.
+
 ## 7 · Deferred / follow-ups this produced
 
 | id | finding | gate |

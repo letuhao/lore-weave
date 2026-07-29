@@ -67,14 +67,45 @@ def _classify_section(title: str) -> str:
 #
 # Loosening can only ADD sections, never change an existing one: a numbered heading still matches and
 # still yields the same id, so a document written the old way parses byte-identically.
-_HEADING = re.compile(r"^#\s+(?:(\d+)\.\s*)?(.+)$")
-
-
 _FENCE = re.compile(r"^\s*(?:```|~~~)")
+
+_HEADING = re.compile(r"^(#{1,6})\s+(?:(\d+)\.\s*)?(.+)$")
+
+
+def _section_level(lines: list[str]) -> int:
+    """The heading level THIS document uses for its sections — the shallowest one present.
+
+    Hardcoding `# ` was the same level-binding as hardcoding `# <n>. `, one step less obvious. A
+    grimdark sci-fi planning document written for this test opens at `## ` (as plenty of people do,
+    especially when the title is plain text) and parsed to ZERO sections even after the numbering
+    fix — nine headings, none readable.
+
+    The shallowest level present is the document's own answer and needs no guessing. It also keeps
+    every existing document identical: a document with `# ` sections and `## ` sub-blocks resolves
+    to 1, so its character sub-headings stay sub-headings rather than being promoted into sections
+    (which would split one protagonist's profile into six people — the exact bug the dotted-number
+    rule in `propose._characters` exists to prevent).
+
+    Fences are respected here too: a `#` comment inside a code block must not drag the level down to
+    something no real heading uses.
+    """
+    in_fence = False
+    best = 7
+    for line in lines:
+        if _FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _HEADING.match(line.strip())
+        if m and m.group(3).strip():
+            best = min(best, len(m.group(1)))
+    return best if best <= 6 else 1
 
 
 def _parse_top_sections(text: str) -> list[dict[str, Any]]:
     lines = text.splitlines()
+    level = _section_level(lines)
     headers: list[tuple[str, str, int]] = []
     in_fence = False
     for i, line in enumerate(lines, start=1):
@@ -90,10 +121,10 @@ def _parse_top_sections(text: str) -> list[dict[str, Any]]:
         if in_fence:
             continue
         m = _HEADING.match(line.strip())
-        if m and m.group(2).strip():
+        if m and len(m.group(1)) == level and m.group(3).strip():
             # Keep the author's own number when they wrote one (ids stay stable for existing
             # documents); fall back to reading order when they did not.
-            headers.append((m.group(1) or str(len(headers) + 1), m.group(2).strip(), i))
+            headers.append((m.group(2) or str(len(headers) + 1), m.group(3).strip(), i))
 
     sections: list[dict[str, Any]] = []
     for idx, (num, title, start) in enumerate(headers):

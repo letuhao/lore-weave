@@ -19,6 +19,8 @@ this and the golden tests caught — they are pinned so nobody has to catch them
 """
 from __future__ import annotations
 
+import pathlib
+
 from app.engine.plan_forge.ingest import ingest_markdown
 from app.engine.plan_forge.propose import propose_spec
 
@@ -239,3 +241,55 @@ def test_the_whole_document_produces_a_NON_empty_spec():
     assert len(layers["characters"]) == 3
     assert len(layers["mechanics"]) >= 1
     assert len(spec["arcs"]) >= 2
+
+
+# ── generalisation: a SECOND corpus, chosen to break the first one's assumptions ──────────────────
+
+_GRIMDARK = (pathlib.Path(__file__).resolve().parents[1]
+             / "fixtures" / "plan-forge" / "corpus-grimdark-scifi.md")
+
+
+def test_a_document_whose_top_level_is_double_hash_still_parses():
+    """Every number this project measured came from ONE document — Vietnamese, xianxia, one author.
+    A grimdark sci-fi corpus written to be structurally hostile opens at `## ` (as plenty of people
+    do when the title is plain text) and parsed to ZERO sections even after the numbering fix.
+
+    Hardcoding `# ` was the same level-binding as hardcoding `# <n>. `, one step less obvious. The
+    document's own shallowest heading level is the answer and needs no guessing."""
+    doc = ingest_markdown(_GRIMDARK.read_text(encoding="utf-8"))
+    assert len(doc["sections"]) == 9
+    assert [s["title"] for s in doc["sections"]][:3] == ["What this is", "The setup", "Crew"]
+
+
+def test_a_hash_document_is_UNCHANGED_by_the_level_rule():
+    """The rule may only help. A document with `# ` sections and `## ` sub-blocks must resolve to
+    level 1, or its character sub-headings get promoted into sections and one protagonist's profile
+    becomes six people."""
+    doc = ingest_markdown(REAL_SHAPED)
+    assert [s["title"] for s in doc["sections"]][:3] == ["Truyện của tôi", "MỤC LỤC", "Bối cảnh"]
+    chars = (propose_spec(doc)["layers"] or {})["characters"]
+    assert [c["name"] for c in chars] == ["Lâm Uyên", "Tô Thanh Dao", "Lâm Trạch"]
+
+
+def test_the_KIND_VOCABULARY_does_not_generalise_and_the_guard_says_so():
+    """The decisive generalisation result, pinned so it is not quietly "fixed" by adding grimdark
+    words to the map.
+
+    On this corpus the vocabulary matcher recovers exactly ONE kind, and it is WRONG: "Things I
+    track per character" matches on the substring "character" and files a state-variable section as
+    cast. Ordinary English section names — "The setup", "Shape of it", "How I want it written",
+    "Still open" — match nothing at all.
+
+    Widening the map again would be chasing an infinite tail with the same mistake that produced
+    this: fitting the vocabulary to whichever document is in front of me. A local model classifying
+    the same nine sections scores 8/9 across BOTH corpora. What matters here is that the `unread`
+    block reports the shortfall by name rather than letting an almost-empty read look successful."""
+    doc = ingest_markdown(_GRIMDARK.read_text(encoding="utf-8"))
+    kinds = {s["kind"] for s in doc["sections"]} - {"other", "front_matter"}
+    assert kinds == {"character_seed"}, (
+        "if this now recovers more kinds, check WHY — adding this corpus's words to the map is the "
+        "over-fitting this test exists to prevent"
+    )
+    unread = doc["unread"]
+    assert len(unread["unclassified"]) >= 6
+    assert "The setup" in unread["unclassified"] and "Still open" in unread["unclassified"]
