@@ -1,5 +1,57 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✅ #6 — THE REVIEW SURVIVES A RELOAD, AND SAYS WHEN IT IS STALE (2026-07-29)
+
+The search **spends the author's budget**, so throwing the packet away when they closed the panel
+meant re-opening paid for it again — and a review surface you cannot leave and come back to is not a
+review surface.
+
+Persisted as a `material_review` **plan artifact** rather than a new table: the packet is *what a step
+produced, belonging to a run*, which is that table's definition, and `latest_artifact` gives the
+read-back free. Widened in BOTH closed sets (the `PlanArtifactKind` Literal and the DB CHECK) with a
+test that pins them together — they are in different files and drifted once before.
+
+**`stale` matters more than the persistence.** The packet is computed FROM a spec; a keep, a refine or
+a re-propose moves the spec on. It is stamped with the spec artifact it was computed from, and a
+later read compares. A stale packet is **still returned** — those are the author's own words — but it
+is labelled, in the API and in the panel.
+
+**Live, end to end:**
+
+```
+GET  before any search   204          "never checked" ≠ "checked and found nothing"
+POST search              200          spends
+GET  again (the reload)  200, 0.040s  free · identical · stale:false · computed_at
+keep (moves the spec)    applied_to_slot {premise: 1}
+GET  again               stale:true
+board                    premise present n=1 · recovered 7/7
+```
+
+### A no-op I introduced fixing the previous no-op, caught by a live call
+
+`premise` / `writing_principles` / `open_questions` land as plain strings and have no use for a label.
+But a **labelled** entry was routed to the labelled branch, found no structured slot there, and was
+**silently discarded** — `changed:false, applied_to_slot:{}` and the author's line gone. The label is
+surplus; it is not a reason to drop the words. Now guarded three ways: the behaviour, a test that the
+two slot maps do not overlap, and a test that **every board kind can be kept somewhere** — a kind the
+board reports missing, the search finds, and `keep` silently drops is this whole bug class in one
+sentence.
+
+**Evidence:** composition **2,919 pass / 0 fail** · FE plan-forge **177 pass** · tsc clean.
+
+### The debt list is now clear except one item
+
+- ✅ #2 PF-7 decoy · ✅ #3 `blocked_at` (+ `runnable_now`) · ✅ #4 `unknown` on the LLM path ·
+  ✅ #5 `arc_id` · ✅ #6 persistence + staleness · ✅ #7 labelled keeps land structurally ·
+  ✅ `D-PLANFORGE-NO-PREMISE-KIND` · ✅ author_notes reach the prompts · #1 dropped by the PO
+- **#9 no independent third corpus — the only one left, and it cannot be built, only obtained.**
+  Both measured corpora trace to this project and one I wrote myself. A real planning document from
+  someone else is the strongest arm we have never had.
+
+**Next:** write chương 1 from the scene plan the dogfood produced (book `019f9f2d`, run
+`019fadb5`, 3 scenes, tension 65→85, every entity resolved).
+
+
 ## ✅ THE DOGFOOD'S FINDINGS, RESOLVED (2026-07-29)
 
 **The worst one was mine, and it was a silent no-op I shipped the same day.**

@@ -300,3 +300,40 @@ def test_a_string_entry_and_a_labelled_entry_can_share_one_call():
     assert any("unlabelled line" == n["text"] for n in out["author_notes"])
     assert report == {"applied_to_slot": {"mechanics": 1},
                       "carried_as_author_notes": {"mechanics": 1}}
+
+
+def test_a_LABEL_on_a_string_slot_kind_does_not_swallow_the_line():
+    """A no-op I introduced fixing the previous no-op, caught by a live call.
+
+    `premise` / `writing_principles` / `open_questions` land as plain strings and have no use for a
+    label. But a labelled entry was routed to the labelled branch, found no structured slot there,
+    and was silently discarded — `changed: false, applied_to_slot: {}` and the author's line gone.
+    The label is surplus; it is not a reason to drop the words.
+    """
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    out, report = apply_kept_material(_spec(), {
+        "open_questions": [{"quote": "Does she remember?", "label": "memory"}],
+        "writing_principles": [{"quote": "Cold, procedural.", "label": "tone"}],
+    })
+    assert out["meta"]["open_questions"] == ["Does she remember?"]
+    assert out["charter"]["style_constraints"] == ["Cold, procedural."]
+    assert report["applied_to_slot"] == {"open_questions": 1, "writing_principles": 1}
+
+
+def test_the_two_slot_maps_do_not_overlap():
+    """A kind in both maps would be applied twice — once as a row and once as a string."""
+    from app.engine.plan_forge.material_review import _DIRECT_SLOT, _LABELLED_SLOT
+
+    assert not (set(_DIRECT_SLOT) & set(_LABELLED_SLOT))
+
+
+def test_every_board_kind_can_be_kept_somewhere():
+    """A kind the board reports missing, the search finds, and `keep` silently drops is the whole
+    bug class in one sentence."""
+    from app.engine.plan_forge.coverage import _BOARD_KINDS
+    from app.engine.plan_forge.material_review import _DIRECT_SLOT, _LABELLED_SLOT
+
+    homed = set(_DIRECT_SLOT) | set(_LABELLED_SLOT)
+    missing = {k for k, _, _ in _BOARD_KINDS} - homed
+    assert not missing, f"these kinds can be found but never kept: {missing}"

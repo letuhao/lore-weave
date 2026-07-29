@@ -1391,10 +1391,42 @@ class PlanForgeService:
         if self._llm is None:
             raise ValueError("LLM unavailable — cannot search the document")
         resolved = await self._resolve_model_ref(created_by, model_ref)
-        return await engine_find_missing_material(
+        packet = await engine_find_missing_material(
             self._llm, user_id=str(created_by), model_source="user_model",
             model_ref=str(resolved), spec=spec_art.content, document_markdown=doc_md,
         )
+        # PERSIST. The search SPENDS the author's budget, so throwing the result away when they
+        # close the panel means re-opening pays for it again — and a review surface you cannot leave
+        # and come back to is not a review surface. Stamped with the spec artifact it was computed
+        # from, so a later read can say STALE rather than quietly show a packet about an older plan.
+        packet["spec_artifact_id"] = str(spec_art.id)
+        await self._runs.save_artifact(created_by, run_id, "material_review", packet)
+        return packet
+
+    async def get_material_review(
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
+    ) -> dict[str, Any] | None:
+        """The last material packet for this run — WITHOUT searching, and honest about staleness.
+
+        Free and instant: this is the read the panel does on mount, and it must never spend. The
+        search is the explicit action.
+
+        `stale` is true when the spec has moved on since the packet was computed (a keep, a refine, a
+        re-propose). A stale packet is still RETURNED rather than hidden — the candidates are still
+        the author's own words and still worth seeing — but it is labelled, because silently showing
+        a review of a plan that no longer exists is the same class of lie as every other one this
+        cycle removed.
+        """
+        art = await self._runs.latest_artifact(book_id, run_id, "material_review")
+        if art is None:
+            return None
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        packet = dict(art.content or {})
+        packet["stale"] = bool(
+            spec_art is not None and packet.get("spec_artifact_id") != str(spec_art.id)
+        )
+        packet["computed_at"] = art.created_at.isoformat() if art.created_at else None
+        return packet
 
     async def keep_material(
         self, created_by: UUID, book_id: UUID, run_id: UUID, *, kept: dict[str, list[Any]],

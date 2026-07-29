@@ -5017,6 +5017,33 @@ async def plan_find_missing_material(
 
 
 @mcp_server.tool(
+    name="plan_get_missing_material",
+    description=(
+        "PlanForge: the LAST material packet for a run, without running a new search — free, and it "
+        "spends nothing. Use this before plan_find_missing_material so the author does not pay twice "
+        "for the same answer. Returns null if none was ever computed. `stale: true` means the plan "
+        "has changed since; the lines are still the author's own words, but say so before acting. "
+        "VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["last material check", "what did we find before"],
+        tool_name="plan_get_missing_material",
+    ),
+)
+async def plan_get_missing_material(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+    out = await _plan_svc().get_material_review(tc.user_id, bid, UUID(run_id))
+    return out or {"packet": None, "note": "no material check has been run for this plan yet"}
+
+
+@mcp_server.tool(
     name="plan_keep_material",
     description=(
         "PlanForge: write the lines the author KEPT from plan_find_missing_material into the run's "

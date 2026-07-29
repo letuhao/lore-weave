@@ -182,6 +182,13 @@ export const planForgeApi = {
       method: 'POST', token,
     });
   },
+  /** The LAST packet, without searching. Free — this is what the panel does on mount, so it must
+   *  never spend. `null` when the run was never checked, which is NOT the same as "found nothing". */
+  async getMissingMaterial(bookId: string, runId: string, token: string): Promise<MaterialPacket | null> {
+    const out = await apiJson<MaterialPacket | null>(
+      `${BASE}/books/${bookId}/plan/runs/${runId}/missing-material`, { token });
+    return out && Object.keys(out).length ? out : null;
+  },
   findMissingMaterial(bookId: string, runId: string, token: string, modelRef?: string): Promise<MaterialPacket> {
     const q = modelRef ? `?model_ref=${encodeURIComponent(modelRef)}` : '';
     return apiJson<MaterialPacket>(`${BASE}/books/${bookId}/plan/runs/${runId}/missing-material${q}`, {

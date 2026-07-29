@@ -225,6 +225,17 @@ def apply_kept_material(
                     continue
                 (labelled.append((q, lab)) if lab else lines.append(q))
 
+        if labelled and kind not in _LABELLED_SLOT:
+            # A LABEL ON A STRING-SLOT KIND IS SURPLUS, NOT A REASON TO DROP THE LINE.
+            # `premise` / `writing_principles` / `open_questions` land as plain strings, so they have
+            # no use for a label — but routing the entry to the labelled branch and finding no slot
+            # there silently discarded it. Caught live: a labelled `premise` keep returned
+            # `changed: false, applied_to_slot: {}` and the author's line simply vanished. Exactly
+            # the silent-no-op class this whole cycle has been removing, introduced by the fix for
+            # the previous one. The label is dropped; the author's words are not.
+            lines.extend(q for q, _ in labelled)
+            labelled = []
+
         if labelled and kind in _LABELLED_SLOT:
             parent, key, label_field, body_field, id_field = _LABELLED_SLOT[kind]
             bucket = (out.setdefault(parent, {}) if parent else out).setdefault(key, [])

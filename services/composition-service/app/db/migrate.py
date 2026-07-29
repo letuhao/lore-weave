@@ -1654,7 +1654,10 @@ ALTER TABLE plan_artifact ADD CONSTRAINT plan_artifact_kind_chk CHECK (
     'heal_report', 'link_report',
     -- close-21-28 P-O1a: the rules-mode pre-flight collision report (a mid-book propose held the
     -- auto-compile). Widen-only; every kind above stays writable (the backfill-all rule).
-    'preflight'
+    'preflight',
+    -- the material keep-or-drop packet. Persisted because the search SPENDS the author's budget:
+    -- without it, closing the panel threw the result away and re-opening paid for it again.
+    'material_review'
   )
 );
 

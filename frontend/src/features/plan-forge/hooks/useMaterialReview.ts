@@ -3,7 +3,7 @@
 // The step sits in the PROPOSE/SPEC phase, not in the pass rail: it improves the spec that `compile`
 // reads, whereas every pass reads the package `compile` produces. Putting it in the rail would run
 // it after compile and lose the entire point.
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { planForgeApi } from '../api';
 import type { KeepMaterialResult, MaterialPacket } from '../types';
 
@@ -28,6 +28,23 @@ export function useMaterialReview(
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KeepMaterialResult | null>(null);
   const [kept, setKeptState] = useState<Record<string, string[]>>({});
+
+  // Load the LAST packet on mount — a synchronisation with server state, which is what useEffect is
+  // for (the repo rule bans it for reacting to user actions, not for this). Free: the GET never
+  // searches. Without it, closing the panel threw away a result the author had already paid for.
+  useEffect(() => {
+    if (!bookId || !runId || !token) return;
+    let live = true;
+    void planForgeApi.getMissingMaterial(bookId, runId, token)
+      .then((p) => {
+        if (!live || !p) return;
+        setPacket(p);
+        setKeptState(Object.fromEntries(
+          (p.review ?? []).map((r) => [r.kind, r.candidates.map((c) => c.quote)])));
+      })
+      .catch(() => { /* a missing prior packet is not an error worth showing */ });
+    return () => { live = false; };
+  }, [bookId, runId, token]);
 
   const find = useCallback(async (modelRef?: string) => {
     if (!bookId || !runId || !token) return;

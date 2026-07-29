@@ -97,6 +97,16 @@ export function MaterialReview({ state, disabled }: Props) {
         {t('planner.material.title', { defaultValue: 'What is this plan missing?' })}
       </p>
 
+      {packet.stale && (
+        // Shown, not hidden: the candidates are still the author's own words. Labelled, because
+        // silently reviewing a plan that has moved on is the same lie as every other one removed here.
+        <p data-testid="material-stale" className="text-muted-foreground">
+          {t('planner.material.stale', {
+            defaultValue: 'Your plan has changed since this check — run it again for an up-to-date answer.',
+          })}
+        </p>
+      )}
+
       {packet.read.failed && (
         <p data-testid="material-read-failed" className="text-destructive">
           {t('planner.material.readFailed', {

@@ -142,3 +142,16 @@ it('no retry button when nothing was unavailable', () => {
   render(<MaterialReview state={state({ packet: { ...PACKET, unavailable: [] } })} />);
   expect(screen.queryByTestId('material-retry-btn')).toBeNull();
 });
+
+it('a STALE packet is shown, not hidden — and says so', () => {
+  // The candidates are still the author's own words, so hiding them helps nobody. Silently
+  // reviewing a plan that has moved on is the lie.
+  render(<MaterialReview state={state({ packet: { ...PACKET, stale: true } })} />);
+  expect(screen.getByTestId('material-stale')).toBeInTheDocument();
+  expect(screen.getByTestId('material-review-editor')).toBeInTheDocument();
+});
+
+it('a fresh packet shows no stale banner', () => {
+  render(<MaterialReview state={state()} />);
+  expect(screen.queryByTestId('material-stale')).toBeNull();
+});

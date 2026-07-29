@@ -294,6 +294,10 @@ export interface MaterialPacket {
    *  they may already have written, because a model call failed, is the bug this bucket exists for. */
   unavailable: MaterialUnavailableRow[];
   read: { failed: boolean; unclassified: string[]; note: string };
+  /** The plan has moved on since this was computed (a keep, a refine, a re-propose). The lines are
+   *  still the author's own words, so it is still shown — but never silently. */
+  stale?: boolean;
+  computed_at?: string | null;
 }
 
 export interface KeepMaterialResult {

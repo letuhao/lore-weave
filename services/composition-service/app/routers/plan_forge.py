@@ -532,6 +532,26 @@ async def find_missing_material(
     return out
 
 
+@router.get("/books/{book_id}/plan/runs/{run_id}/missing-material")
+async def get_missing_material(
+    book_id: UUID,
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """The last material packet, WITHOUT searching. VIEW, not EDIT — this one spends nothing.
+
+    204 when there is none, so "never checked" is distinguishable from "checked and found nothing";
+    a `{}` would collapse those two into one.
+    """
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    out = await svc.get_material_review(user_id, book_id, run_id)
+    if out is None:
+        return JSONResponse(status_code=204, content=None)
+    return out
+
+
 @router.post("/books/{book_id}/plan/runs/{run_id}/keep-material")
 async def keep_material(
     book_id: UUID,
