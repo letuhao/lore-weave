@@ -1,6 +1,6 @@
 //! COMB_001 §4 — the combat laws, asserted as laws.
 //!
-//! These test the engine (`commit_service::combat`) directly rather than
+//! These test the engine (`game_rules::combat`) directly rather than
 //! through the island, because a law is a property of the rule and not of the
 //! plumbing: `hit_chance` clamps, the damage chain floors at 1, initiative
 //! picks the lowest AV. Driving each through a full island step would make a
@@ -10,11 +10,11 @@
 //! The domain-level behaviour (rounds, KO, win/lose through `apply`) is
 //! covered in `combat_encounter.rs`.
 
-use commit_service::combat::{
+use game_rules::combat::{
     action_value, evaluate_outcome, hit_chance_pm, next_actor, resolve_attack, role_rng, AvStatus,
     CombatStats, EncounterOutcome, SeedRole, Side,
 };
-use commit_service::{CombatRules, StatRules};
+use ruleset_core::{CombatRules, StatRules};
 use sim_core::EntityId;
 
 const SEED: u64 = 0xC0FFEE;
@@ -285,7 +285,7 @@ fn misses_occur_at_the_archetype_rate() {
 /// per-mille slots stay per-mille rather than being silently divided twice.
 #[test]
 fn the_combat_view_maps_the_df07_slots() {
-    use commit_service::stats::{resolve_block, StatBlock, StatSlot};
+    use game_rules::stats::{resolve_block, StatBlock, StatSlot};
 
     let mut arch = StatBlock::from_defaults(&srules());
     arch.set(StatSlot::StrikePower, 33);
@@ -504,7 +504,7 @@ fn an_extreme_ruleset_degrades_predictably_instead_of_overflowing() {
 /// the speed term overflowed `i32`.
 #[test]
 fn an_extreme_move_tuning_stays_inside_i32() {
-    use commit_service::stats::{resolve_block, StatBlock, StatSlot};
+    use game_rules::stats::{resolve_block, StatBlock, StatSlot};
 
     let mut r = srules();
     r.move_base = i32::MAX;

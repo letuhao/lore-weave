@@ -16,19 +16,23 @@
 
 pub mod admission;
 pub mod bus;
-pub mod combat;
 pub mod domain;
 pub mod llm_driver;
 pub mod manager;
 pub mod producer;
 pub mod recovery;
-pub mod stats;
 pub mod vocabulary;
 pub mod wire;
 
 pub use domain::{
     Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, Stance,
 };
+// S2 — the laws moved to `crates/game-rules` (IMP-A5). Re-exported under their
+// original paths so every `commit_service::combat::…` / `::stats::…` import
+// keeps working: ONE definition, two paths, which is the same call `StatSlot`
+// already made when the slot vocabulary moved to `ruleset-core`. The host may
+// depend on the laws; the laws may not depend on the host.
+pub use game_rules::{combat, stats};
 // F1 — the domain's rules slice IS the resolved ruleset now. Re-exported here
 // so a host wiring an island does not need a direct `ruleset-core` dependency
 // just to name the type it passes to `Island::new`.

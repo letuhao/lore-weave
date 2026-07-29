@@ -527,6 +527,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "dp-kernel",
+ "game-rules",
  "hmac",
  "loreweave_llm",
  "redis",
@@ -1225,6 +1226,15 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "game-rules"
+version = "0.1.0"
+dependencies = [
+ "ruleset-core",
+ "serde",
+ "sim-core",
 ]
 
 [[package]]

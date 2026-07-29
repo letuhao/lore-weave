@@ -124,10 +124,13 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — ten occurrences, none caught by a test
+## 4. The register — fourteen occurrences, one caught by a test
 
-Kept because the count is the argument. **Every one was found by a human or an agent reading
-carefully; not one was caught by the suite**, which is exactly what NV-1 predicts.
+Kept because the count is the argument. **Thirteen of the fourteen were found by a human or an agent
+reading carefully.** The other was caught by clippy — not by the test suite, which was green
+throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
+predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
+that inspects the check itself can see it.
 
 | # | Occurrence | Shape | Found by | Status |
 |---|---|---|---|---|
@@ -141,10 +144,31 @@ carefully; not one was caught by the suite**, which is exactly what NV-1 predict
 | 8 | LOCKED layer order is unfalsifiable ([`27 §9.5`](../03_planning/LLM_MMO_RPG/27_extensibility_stress_test.md)) | NV-2 | stress test | **open** |
 | 9 | replay-correctness is vacuous ([`27:408`](../03_planning/LLM_MMO_RPG/27_extensibility_stress_test.md)) | NV-2 | stress test | **open** — F3 |
 | 10 | artifact-matches-code test was HALF a test (a deleted field still passed) | NV-2 | deleting a field to see | fixed `4ac03cace` |
+| 11 | `hot-path-gate`'s `LOOKUP_SCOPE` named three files a refactor then renamed — the read check matched **nothing** and reported OK | NV-3 | reading the gate while moving the files it named | fixed 2026-07-29 (`S2`) — directory prefixes |
+| 12 | `assert!(!FORBIDDEN_KEYS.is_empty())` on a `const` — folded at compile time, could never fail | NV-2 | **clippy** (`const_is_empty`) | fixed 2026-07-29 (`S1a`) |
+| 13 | `crate-purity-gate` R3 stripped `//` with a line regex, so a `//` **inside a string literal** ate the violation after it — the check never saw the code | NV-3 | `/review-impl` | fixed 2026-07-29 — one shared `gatelib.strip_comments` |
+| 14 | the same gate's R2 checked only **direct** external deps, so an I/O crate added to `ruleset-core` reached the laws past R1 and R2 | NV-3 | `/review-impl` | fixed 2026-07-29 — widened to the workspace closure |
 
-**Three of the ten (1, 2, 3) are the same defect in three sibling files.** That is the strongest
+**Three of the fourteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
 evidence for this page existing: each was fixed correctly, in place, by someone who had just
 understood it — and the understanding did not travel.
+
+**Rows 11 and 12 both landed on 2026-07-29, the day after this page was written, and both are worth
+the ink.** Row 11 is NV-3 *committed by a refactor*: the gate was correct, and moving the files it
+named emptied its scope in silence — a check can be broken by an edit that never touches it, which is
+why the scope must be a predicate over a directory rather than a list of names. Row 12 is blunter:
+the author had this standard actively in mind, was writing the file that argues against vacuous
+checks, and still wrote one — **caught by a linter, not by intent.** Intent is not a mechanism. That
+is the case for §6's honest gap: until something *checks*, this page is a discipline, and disciplines
+are what this register is a list of failures of.
+
+**Rows 13 and 14 sharpen NV-3 past "an enumerated list".** Neither was a list. Row 13's scope was the
+*text the checker got to see* — a stripper handed it code with the violation already removed. Row 14's
+was the *dependency depth it walked*. Both are the same question asked structurally rather than
+lexically: **is there an input that reaches the guarded thing without passing the guard?** Row 13 also
+carries a second lesson worth more than the fix — the gate had two correct sibling implementations in
+the same directory, and the buggy one was the newly written copy. The duplication was not a tidiness
+complaint; **it was the defect.** All three now share `scripts/gatelib.py`.
 
 ---
 

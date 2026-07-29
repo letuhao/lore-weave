@@ -1,0 +1,35 @@
+[package]
+name = "game-rules"
+version = "0.1.0"
+description = "LoreWeave game LAWS (26_implementation_architecture.md IMP-A5): the COMB_001 damage chain, initiative, and DF07 stat resolution. PURE — no I/O, no filesystem, no clock, no format crate. IMP-D2: laws take a resolved `&Rules` by reference (RLS-A12) and know nothing about where it came from. Enforced by scripts/crate-purity-gate.py, not by good intentions."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "game_rules"
+path = "src/lib.rs"
+
+[dependencies]
+# The resolved ruleset. IMP-D2 — `ruleset-core` has NO I/O, so depending on it
+# cannot make a law fallible. Depending on `ruleset-loader` would, and is what
+# the purity gate exists to refuse.
+ruleset-core = { path = "../ruleset-core" }
+# `DetRng` + `EntityId`. sim-core has ZERO dependencies of its own.
+sim-core = { path = "../sim-core" }
+# Derive ONLY, on `Side`/`EncounterOutcome`, which cross the wire as committed
+# event payloads. Doc 26's "no serde of external formats" bans the FORMAT
+# crates (serde_json / toml / bincode) from the laws — a trait impl is not a
+# format, and R2 of the purity gate enforces the distinction by omission.
+serde = { workspace = true }
+
+[dev-dependencies]
+# The law tests moved here with the laws (S2 code review): `cargo test -p
+# game-rules` ran ZERO tests after the extraction — the laws had moved and their
+# proof had not, so the crate shipped a boundary with nothing asserting across
+# it. `combat_encounter.rs` stayed with commit-service on purpose: its own doc
+# says it drives the laws THROUGH the island, which is domain behaviour.
+ruleset-core = { path = "../ruleset-core" }
+sim-core = { path = "../sim-core" }

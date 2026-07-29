@@ -82,6 +82,26 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # doc 26's "this distinction must be ENCODED, not assumed", encoded.
 "$PY" "$ROOT/scripts/hot-path-gate.py" --staged
 
+# A LAW MUST NOT BE ABLE TO READ A FILE (IMP-D2). `game-rules` was extracted as a CRATE rather than
+# a module precisely so this is a link error instead of a promise (IMP-Q2: "leaning crate, because
+# the gate is the point") — but a crate boundary only means a violation needs one extra line in a
+# Cargo.toml, so the boundary needs a gate to mean anything. Four rules, three of them deny-by-
+# default: R1 workspace-internal deps TRANSITIVELY (game-rules -> ruleset-core -> ruleset-loader is
+# the case a direct-deps check waves through), R2 direct external deps (serde yes, serde_json/toml
+# no — a derive is not a format), R3 no std::fs/net/process/env/clock in the source, which is the
+# rule that actually states IMP-D2 because it is about the CAPABILITY, and R4 an I/O-runtime
+# denylist. Scans the whole tree, so it does not need a staged-file trigger.
+"$PY" "$ROOT/scripts/crate-purity-gate.py"
+
+# IMP-D3's 400-line ceiling, which had NO gate and decayed exactly as IMP-A7 predicts: doc 26
+# recorded domain.rs at 592 as already over, and by the time S2 came to split it it had reached 609
+# while everyone was working on something else. Nothing noticed because nothing was watching. Scope
+# is DIRECTORIES (a file created tomorrow is covered on its first line — an enumerated list is
+# default-uncovered, NV-3) over the game-logic tier only; world-gen alone would red 20+ times from
+# another track, and a gate that cries wolf gets switched off. The allowlist is visible debt: each
+# row carries a reason AND its real size, so an allowlisted file that GROWS reds again.
+"$PY" "$ROOT/scripts/file-ceiling-gate.py"
+
 # The EVENT ENVELOPE is ONE shape in TWO languages: contracts/events/envelope.go is the SSOT and
 # crates/dp-kernel/src/envelope.rs is its mirror. Both files SAY they must move together and
 # NOTHING checked it — a rule with three of the four parts of rule+SoT+gate+test. The failure it

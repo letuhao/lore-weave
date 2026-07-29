@@ -5,7 +5,7 @@
 //! is the strongest signal they are worth testing: someone already got them
 //! backwards once.
 
-use commit_service::stats::{
+use game_rules::stats::{
     resolve_block, Clamp, ModifierOp, ModifierSource, StatBlock, StatEpoch, StatModifier, StatSlot,
     StatRules, StatSnapshot,
 };

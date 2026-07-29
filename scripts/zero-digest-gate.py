@@ -66,6 +66,15 @@ import os
 import re
 import sys
 
+# S2 — the ONE shared source stripper (scripts/gatelib.py). Three gates had grown
+# three copies and the newest was the buggy one, precisely because it was written
+# rather than reused: a `//` inside a string literal silently ate the code after
+# it. `gatelib.strip_comments` blanks IN PLACE, so line numbers survive, and
+# `keep_strings` is REQUIRED at every call site because getting it backwards
+# blinds one gate or makes the other cry wolf.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gatelib import strip_comments  # noqa: E402
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ROOTS = ["crates", "services", "frontend/src"]
 SKIP_DIRS = {"target", "node_modules", ".git", "__pycache__", ".claude"}
@@ -96,48 +105,6 @@ def is_test_file(rel: str) -> bool:
         or rel.endswith("/tests.rs")
         or "/benches/" in rel
     )
-
-
-def strip_comments(src: str, keep_strings: bool = False) -> str:
-    """Blank out // and /* */ (and string literals unless `keep_strings`).
-
-    `keep_strings` exists for TypeScript, where the zero digest IS a string
-    literal — stripping strings there would blind the gate to the only thing it
-    is looking for.
-    """
-    out = list(src)
-    i, n = 0, len(src)
-    while i < n:
-        c = src[i]
-        if c == '"' and not keep_strings:
-            j = i + 1
-            while j < n:
-                if src[j] == "\\":
-                    j += 2
-                    continue
-                if src[j] == '"':
-                    break
-                j += 1
-            for k in range(i, min(j + 1, n)):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j + 1
-        elif src.startswith("//", i):
-            j = src.find("\n", i)
-            j = n if j < 0 else j
-            for k in range(i, j):
-                out[k] = " "
-            i = j
-        elif src.startswith("/*", i):
-            j = src.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-            for k in range(i, j):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j
-        else:
-            i += 1
-    return "".join(out)
 
 
 def pragma_near(lines: list[str], line_no: int) -> bool:
@@ -176,7 +143,7 @@ def pragma_near(lines: list[str], line_no: int) -> bool:
 def check_source(rel: str, src: str) -> list[tuple[str, int, str]]:
     if "RulesetDigest" not in src:
         return []
-    clean = strip_comments(src)
+    clean = strip_comments(src, keep_strings=False)
     lines = src.split("\n")
     findings: list[tuple[str, int, str]] = []
 

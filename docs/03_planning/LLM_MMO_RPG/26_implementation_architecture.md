@@ -232,8 +232,9 @@ Nothing advances on "the code is written".
 |---|---|---|---|
 | **F1** ✅ **2026-07-28** | `ruleset-core` | Ruleset + REAL digest + Provenance. **No `Manifest`** — a manifest with no resolver is a shape with no consumer; it lands with F2. **`D1`'s constant sourcing was pulled forward into F1**: a digest over a struct holding no game constants is *worse* than an inert one, because it answers "did the rules change?" with a confident No | **met** — `v3_two_different_rulesets_are_distinguishable`; zero-digest count is **0 everywhere**, not just outside tests (the harness case is the NAMED `RulesetDigest::UNPINNED`, scope-checked by `scripts/zero-digest-gate.py`) |
 | **F2.1** ✅ **2026-07-28** | `ruleset-loader` | layer stack · TOML artifacts · normalization · load-time validation · the content-addressed **immutable store** · the canonical **decoder**. **Deferred with reasons:** tombstones + `UnionById*` (no collections in `Ruleset` to merge yet), presets-as-scoped-DB-resource, the `(reality, epoch)` registry, `forge_override`-as-event | **met** — `a_reality_loads_its_ruleset_from_a_file_and_the_digest_follows` reads a real `.toml` from disk; the digest was already landing in the envelope since the `B` slice |
-| **S1** | field classification | 16a's 64 fields wired: layer floors, `Tunable` vs `AdditiveOnly` | an over-reaching override is REFUSED, with a test |
-| **S2** | `game-rules` extraction | laws move out of `domain.rs`, take `Rules` by ref | `game-rules` has no I/O dependency, enforced by a gate |
+| **S1a** ✅ **2026-07-29** | field classification — the MECHANISM | every rules field carries `{floor, mutability, strategy}`, and a field with no row is **error E0027**. `Strategy::Forbidden` refuses `schema_version`/`law_version` at every layer with a diagnostic that says why | **met** — bite-proven both ways: a 16th field on `CombatRules` fails the build pointing at `classify!`; removing the refusal reds 2 tests while the negative control stays green |
+| ~~**S1**~~ **S1b** | field classification — the ENFORCEMENT arms | floor + mutability CHECKS | **deferred with a named trigger, not a date.** Building them today would ship two checks that cannot fail: **all 40 rows in [16a §3.2](16a_ruleset_field_classification.md) carry floor `pre`**, which is the lowest *authorable* layer, and all 20 fields that exist are `Tunable` — the 3 `Frozen` + 13 `AdditiveOnly` fields are collections `Ruleset` does not have. That is `NV-2` ([non-vacuity](../../standards/non-vacuity.md)). **Trigger: `Q1`**, whose L2 declared quantities are an ID-keyed registry with ordinals assigned and never reused ([QTY-A5](35_quantity_architecture.md)) — `AdditiveOnly` under another name, and the first subject a class check can refuse. Asserted, not remembered: `s1b_has_no_subject_yet_and_says_so` reds the day it arrives |
+| **S2** ✅ **2026-07-29** | `game-rules` extraction | laws move out of `commit-service`, take `Rules` by ref | **met** — `crates/game-rules` (`ruleset-core` + `sim-core` + serde-derive only), `scripts/crate-purity-gate.py` R1–R4, and `cargo test -p game-rules` runs **32 tests** because the laws' proof moved with the laws. `domain.rs` 609 → `src/domain/` (largest 317); `scripts/file-ceiling-gate.py` now holds IMP-D3 |
 | **D1** | detail | `default_value` / `archetype_melee` / `CombatRules` read from the ruleset | the magic-constant allowlist is empty for combat + stats |
 
 **IMP-D7 — slices 1–2 are kept, not reverted.** The laws are correct, spec-quoted and covered by 28
@@ -251,9 +252,14 @@ real risk in keeping them, and it is a discipline problem rather than a technica
 > the ten slot defaults, the move-range tuning and the melee archetype all resolve from
 > `Ruleset::engine_default()` and are hashed. **`scripts/no-magic-game-constant.py` (IMP-D5) is still
 > unbuilt** — it is now *possible*, which it was not before, and it is what would keep the count at
-> zero. Also unbuilt: **IMP-D4** `hot-path-gate.py`, and **IMP-D3**'s 400-line ceiling has no gate
+> zero. ~~Also unbuilt: **IMP-D4** `hot-path-gate.py`, and **IMP-D3**'s 400-line ceiling has no gate
 > (`domain.rs` 592 · `combat.rs` 456 today — both already over before F1, and F1 grew them; the split
-> is `S2`).
+> is `S2`).~~
+>
+> ✅ **IMP-D4 built 2026-07-28 (`Q-1`); IMP-D3 built 2026-07-29 (`S2`).** And the delay proved the
+> point better than the rule did: this paragraph recorded `domain.rs` at **592**, and by the time `S2`
+> came to split it, it had reached **609** — it grew while everyone was working on something else,
+> and nothing noticed, because nothing was watching. `scripts/file-ceiling-gate.py` is now watching.
 
 **IMP-D9 — no new game feature until F1+F2 land.** Slices 3–5 of the encounter plan (threat, grid,
 abilities) are on hold. Each would otherwise add its own literals to the pile, and each is a
@@ -282,5 +288,5 @@ that prompted this document.
 | Id | Question |
 |---|---|
 | ~~**IMP-Q1**~~ ✅ | Ruleset format. **RESOLVED 2026-07-28: TOML** (`IMP-D10`). YAML rejected — its scalar coercion (`no` → bool, `1.0` vs `1`, sexagesimals) is a determinism hazard in an artifact whose whole job is to be hashed, and it is what the prior project drowned in. JSON rejected — **no comments**, and a rules file's most valuable content is *why this number*. RON rejected — unreadable to anyone who does not already write Rust, and rulesets are meant to be authored by non-engineers. TOML: comments, unambiguous scalars, **line-oriented diffs** (the stated criterion), already a pinned workspace dep. Its weakness is deep nesting — a real cost the day `Ruleset` grows collections, and cheaper than any of the three failure modes above |
-| **IMP-Q2** | Is `game-rules` a crate or a module of commit-service? A crate enforces IMP-D2 mechanically; a module is cheaper. Leaning crate, because the gate is the point |
+| ~~**IMP-Q2**~~ ✅ | **RESOLVED 2026-07-29 (S2): a CRATE.** The lean was right and the reason held on contact — a module makes IMP-D2 a promise that one `use` quietly breaks; a crate makes it a **link error**. Nothing had to be weakened to get there: `sim-core` has zero dependencies and `ruleset-core` is `sim-core + blake3` with no `fs`/`net`/`io` in its source, so the pure boundary already existed. But a crate boundary alone only means a violation needs one extra line in a `Cargo.toml` — `scripts/crate-purity-gate.py` is what makes it bite, and its strongest rule is not the dependency allowlist but the **capability scan** (no `std::fs`/`net`/`process`/`env`/clock in the source), because that is what IMP-D2 actually says |
 | **IMP-Q3** | Hot-reload of rules — out of scope for V1? Digest-pinning (RLS-A13) implies rules change only between realities/versions, which suggests no |

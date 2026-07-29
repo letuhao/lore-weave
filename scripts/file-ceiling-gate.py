@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""file-ceiling-gate — IMP-D3's 400-line ceiling, enforced instead of aspired.
+
+THE RULE
+--------
+26_implementation_architecture.md, IMP-D3:
+
+  > "A source file over **400 lines**, or a module with more than one of
+  >  {types, laws, I/O, orchestration}, is a gate finding. Ceilings are
+  >  arbitrary; **having** one is not — an unbounded file has no moment at which
+  >  anyone is obliged to split it."
+
+Only the line half is mechanical, and this gate implements that half. The
+"more than one concern" half stays a review question, said out loud here rather
+than quietly dropped.
+
+WHY IT EXISTS AT ALL
+--------------------
+IMP-A7: *"aspirational rules decay."* The evidence is in this repo's own history
+— doc 26 recorded `domain.rs` at 592 and `combat.rs` at 456 as already over the
+ceiling, and by the time S2 came to split them `domain.rs` had grown to **609**
+while everyone was working on something else. Nothing noticed, because nothing
+was watching.
+
+SCOPE — a DIRECTORY, never a file list
+--------------------------------------
+`TIER` names directories. A file created tomorrow anywhere under them is covered
+on its first line. This is deliberate and it is the correction of a mistake this
+repo has now made several times: an enumerated file list is **default-uncovered**
+(docs/standards/non-vacuity.md, NV-3 — the `hot-path-gate` scope bug, the
+publisher smoke's hand-picked 2-of-16 migrations).
+
+The scope is the game-logic tier, not the repo. `crates/world-gen` alone has 20+
+files over 400 from a different track, and a gate that reds 67 times on its first
+run is a gate someone turns off. Stated as a limit rather than presented as
+coverage.
+
+THE ALLOWLIST IS VISIBLE DEBT (IMP-D8)
+--------------------------------------
+Every row carries a reason and a real line count. That count is checked: if an
+allowlisted file GROWS past its recorded size, it reds again. An allowlist entry
+buys amnesty for the debt that exists, never for more of it.
+
+    python scripts/file-ceiling-gate.py
+    python scripts/file-ceiling-gate.py --self-test
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+CEILING = 400
+
+# Whole directories — a new file under any of these is covered from line one.
+TIER = [
+    "crates/game-rules",
+    "crates/ruleset-core",
+    "crates/ruleset-loader",
+    "crates/sim-core",
+    "services/commit-service",
+]
+
+# path -> (max_lines_permitted, reason). Amnesty for what exists, never for more.
+#
+# Every row here predates S2. `load.rs` is NOT on this list on purpose: S1a's
+# tests pushed it to 428, and allowlisting a violation created by the same commit
+# that builds this gate would have started the gate's life compromised. They were
+# moved to `tests/classification.rs` instead.
+ALLOWLIST: dict[str, tuple[int, str]] = {
+    "crates/sim-core/src/island.rs": (
+        790, "the island scheduler — the kernel's core loop; splitting it is a "
+             "sim-core task with its own risk profile, not S2's to do in passing"),
+    "crates/sim-core/src/types.rs": (
+        470, "the kernel's shared type vocabulary; a split here changes every "
+             "consumer's import paths across four crates"),
+    "services/commit-service/src/bin/ceilings.rs": (
+        610, "a measurement binary — one long table of scenarios, which is the "
+             "shape that file is FOR"),
+    "services/commit-service/src/bin/spine.rs": (
+        445, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
+             "one linear sequence that reads worse cut in half"),
+    "crates/ruleset-core/tests/digest.rs": (
+        560, "the digest verification suite; the per-field mutation tables are "
+             "long by design (v2_every_*_field_reaches_the_digest)"),
+    "crates/game-rules/tests/combat_rules.rs": (
+        530, "the COMB_001 law suite, one test per spec clause; moved here with the "
+             "laws in S2"),
+}
+
+
+def offenders() -> tuple[list[tuple[str, int]], list[str]]:
+    """(findings, notes). A finding is (path, lines)."""
+    found, notes = [], []
+    for d in TIER:
+        root = REPO / d
+        if not root.is_dir():
+            # A tier directory that vanished is a SCOPE failure, not a long file:
+            # the gate would otherwise report OK for a directory it never read,
+            # which is the default-uncovered shape this whole file exists to
+            # avoid. Surfaced as a note + a non-zero exit, never as silence.
+            notes.append(f"tier directory is missing, so nothing under it was checked: {d}")
+            continue
+        for f in sorted(root.rglob("*.rs")):
+            if "target" in f.parts:
+                continue
+            rel = str(f.relative_to(REPO)).replace("\\", "/")
+            n = len(f.read_text(encoding="utf-8", errors="replace").splitlines())
+            if rel in ALLOWLIST:
+                cap, _ = ALLOWLIST[rel]
+                if n > cap:
+                    found.append((rel, n))
+                continue
+            if n > CEILING:
+                found.append((rel, n))
+    # An allowlist row for a file that no longer exists is dead policy: it makes
+    # the list look like it is doing more work than it is.
+    for rel in ALLOWLIST:
+        if not (REPO / rel).is_file():
+            notes.append(f"stale allowlist row (file is gone): {rel}")
+    return found, notes
+
+
+def _check_tree(files: dict[str, int], allow: dict[str, tuple[int, str]], ceiling: int):
+    """Pure core, so the self-test can drive it without touching the repo."""
+    out = []
+    for rel, n in sorted(files.items()):
+        if rel in allow:
+            if n > allow[rel][0]:
+                out.append((rel, n))
+        elif n > ceiling:
+            out.append((rel, n))
+    return out
+
+
+def self_test() -> int:
+    fails = []
+    allow = {"old/big.rs": (500, "pre-existing")}
+
+    if not _check_tree({"a/new.rs": 401}, allow, 400):
+        fails.append("did not bite on a 401-line file")
+    if _check_tree({"a/new.rs": 400}, allow, 400):
+        fails.append("bit on a file exactly at the ceiling (400 is permitted)")
+    if _check_tree({"old/big.rs": 500}, allow, 400):
+        fails.append("bit on an allowlisted file at its recorded size")
+    if not _check_tree({"old/big.rs": 501}, allow, 400):
+        fails.append("did NOT bite on an allowlisted file that GREW — amnesty must "
+                     "cover the debt that exists, not more of it")
+
+    # The scope must be a directory walk, not a list. If TIER ever becomes a
+    # list of files this assertion is the thing that notices (NV-3).
+    for d in TIER:
+        if d.endswith(".rs"):
+            fails.append(f"TIER contains a FILE ({d}); the scope must be directories, "
+                         f"or a file created tomorrow is default-uncovered")
+
+    if fails:
+        print("file-ceiling-gate SELF-TEST FAILED:")
+        for x in fails:
+            print(f"  - {x}")
+        return 1
+    print("file-ceiling-gate: self-test OK — bites at ceiling+1, silent at the "
+          "ceiling, silent on allowlisted debt, bites when that debt GROWS")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--self-test", action="store_true")
+    args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+
+    found, notes = offenders()
+    for n in notes:
+        print(f"file-ceiling-gate: NOTE — {n}")
+    if notes and not found:
+        print("file-ceiling-gate: the notes above mean the scan was INCOMPLETE or the "
+              "policy is stale — a clean result cannot be claimed from a partial scan.")
+        return 1
+    if found:
+        print(f"file-ceiling-gate: {len(found)} finding(s) — IMP-D3, ceiling {CEILING} lines\n")
+        for rel, n in found:
+            if rel in ALLOWLIST:
+                print(f"  {rel}: {n} lines — allowlisted at {ALLOWLIST[rel][0]}, it GREW")
+            else:
+                print(f"  {rel}: {n} lines")
+        print("\nSplit it, or add an allowlist row WITH A REASON and its real size.")
+        print("An unbounded file has no moment at which anyone is obliged to split it.")
+        return 1
+
+    scanned = sum(1 for d in TIER for f in (REPO / d).rglob("*.rs") if "target" not in f.parts)
+    print(f"file-ceiling-gate: OK — {scanned} file(s) across {len(TIER)} tier directories, "
+          f"{len(ALLOWLIST)} carrying recorded debt")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

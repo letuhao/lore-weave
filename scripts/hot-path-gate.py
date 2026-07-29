@@ -91,6 +91,13 @@ import os
 import re
 import sys
 
+# S2 — the ONE shared source stripper (scripts/gatelib.py). Three gates had grown
+# three copies and the newest was the buggy one, precisely because it was written
+# rather than reused: a `//` inside a string literal silently ate the code after
+# it. `gatelib.strip_comments` blanks IN PLACE, so line numbers survive.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gatelib import strip_comments  # noqa: E402
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_DIRS = {"target", "node_modules", ".git", "__pycache__", ".claude"}
 
@@ -127,10 +134,23 @@ DECL_SCOPE = (
 )
 
 #: NARROW — where a lookup BY STRING LITERAL is a finding: the step itself.
+#:
+#: ⚠ **S2 2026-07-29 — this list had already been defeated once, silently.** It
+#: named `services/commit-service/src/{domain,combat,stats}.rs`. S2 moved the
+#: laws to `crates/game-rules/` and split `domain.rs` into `src/domain/`, at
+#: which point `startswith("…/src/domain.rs")` matched **nothing** — the read
+#: check lost the domain entirely and reported OK, because a scope that names
+#: files cannot survive the files being renamed.
+#:
+#: That is NV-3 (docs/standards/non-vacuity.md) for the fifth recorded time, and
+#: it is why the entries below are DIRECTORY prefixes even where only one file
+#: lives there today: a rename inside the directory cannot silently empty it.
+#: The narrowness that matters is *which directories*, not *which files* —
+#: `admission.rs`/`vocabulary.rs`/`wire.rs` are excluded by living outside
+#: `domain/`, which is a property of where they are rather than a list someone
+#: has to remember to update.
 LOOKUP_SCOPE = (
-    "services/commit-service/src/domain.rs",
-    "services/commit-service/src/combat.rs",
-    "services/commit-service/src/stats.rs",
+    "services/commit-service/src/domain/",
     "crates/sim-core/src/island.rs",
     "crates/sim-core/src/domain.rs",
     "crates/game-rules/",
@@ -179,35 +199,6 @@ def is_test_file(rel: str) -> bool:
     )
 
 
-def strip_comments(src: str) -> str:
-    """Blank out `//` and `/* */`, KEEP string literals.
-
-    Strings are kept because half of what this gate looks for — `.get("qi")` —
-    *is* a string literal. Comments are stripped because a lint that fires on
-    its own documentation gets switched off; that is how `design-lint`'s count
-    check spent its entire first life.
-    """
-    out = list(src)
-    i, n = 0, len(src)
-    while i < n:
-        if src.startswith("//", i):
-            j = src.find("\n", i)
-            j = n if j < 0 else j
-            for k in range(i, j):
-                out[k] = " "
-            i = j
-        elif src.startswith("/*", i):
-            j = src.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-            for k in range(i, j):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j
-        else:
-            i += 1
-    return "".join(out)
-
-
 def pragma_near(lines: list[str], line_no: int) -> bool:
     """A reason on this line, or anywhere in the comment block attached to it.
 
@@ -237,7 +228,7 @@ def pragma_near(lines: list[str], line_no: int) -> bool:
 def check_source(rel: str, src: str) -> list[tuple[str, int, str]]:
     if not in_scope(rel) or is_test_file(rel):
         return []
-    clean = strip_comments(src)
+    clean = strip_comments(src, keep_strings=True)
     lines = src.split("\n")
     findings: list[tuple[str, int, str]] = []
 
@@ -317,7 +308,7 @@ pub struct Loader {
 
 def self_test() -> int:
     ok = True
-    hot = "services/commit-service/src/domain.rs"
+    hot = "services/commit-service/src/domain/law.rs"
 
     bad = check_source(hot, BROKEN)
     if not any("string-keyed-map" in f[2] for f in bad):

@@ -51,6 +51,11 @@ members = [
     # Depends on sim-core for `RulesetDigest` alone — the kernel CARRIES the
     # digest and keeps its zero-runtime-dependency invariant; blake3 lives here.
     "crates/ruleset-core",
+    # S2 (2026-07-29) — the LAWS, extracted from commit-service per IMP-A5/D2
+    # and IMP-Q2 (resolved: crate, "because the gate is the point"). PURE: a
+    # crate, not a module, so "a law cannot read a file" is a link error rather
+    # than a promise. Guarded by scripts/crate-purity-gate.py.
+    "crates/game-rules",
     # F2 (2026-07-28) — the loader: layer stack, TOML artifacts, normalization,
     # load-time validation, and the content-addressed immutable ruleset store.
     # The I/O half `ruleset-core` deliberately has none of (IMP-D2).

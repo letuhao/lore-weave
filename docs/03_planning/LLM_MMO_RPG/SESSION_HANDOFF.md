@@ -774,6 +774,140 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **`S1a` + `S2` — THE LAWS BECOME A CRATE THAT CANNOT READ A FILE, AND A RULES FIELD CANNOT
+> ARRIVE UNCLASSIFIED (2026-07-29, /loom XL).**
+>
+> PO chose full scope + `S1`-then-`S2` as **one continuous run**. Doc 26 orders `S1` first and it was
+> unbuilt (`Tunable`/`AdditiveOnly`: **zero occurrences** in the game tier), which is why the order
+> was surfaced rather than quietly jumped.
+>
+> **CLARIFY killed `S1` as written, before a line was built.** Its exit criterion is *"an
+> over-reaching override is REFUSED, with a test"* — **and that test cannot fail.** All 40 Ruleset
+> rows in [16a §3.2](16a_ruleset_field_classification.md) carry floor `pre`, which is the lowest
+> *authorable* layer (`engine_default` is the totality base), so a floor every field already
+> satisfies refuses nothing. The 3 `Frozen` and 13 `AdditiveOnly` fields are collections `Ruleset`
+> does not have — `ruleset-loader`'s own module doc says so. What exists is **20 scalars, uniformly
+> `Tunable` / `pre`**. That is `NV-2`, *the subject cannot vary*, one day after that standard was
+> written.
+>
+> **`S1a` (built)** — the registration MECHANISM, at the opposite polarity to doc 16 line 652's
+> *"default for an unclassified field: `Tunable`"* (default-**allow**, which would let the other 44
+> rows and everything after them arrive freely mutable). A `classify!` macro emits the class table
+> **from an exhaustive destructure with no `..`**, so a new field is **E0027** — bite-proven by adding
+> a 16th field to `CombatRules` and watching the build fail *pointing at the class table*. Plus the
+> one strategy that bites today: `Strategy::Forbidden` on `schema_version`/`law_version`. Those were
+> already refused — incidentally, by `deny_unknown_fields`, answering *"unknown field"*, which is
+> wrong twice: the field is not unknown, and the author is not told why they may never set it. Since
+> `Q0a`, `law_version` is a claim about **which engine laws produced a ruleset**, inside the hashed
+> bytes; an author who could set it could ship an artifact asserting laws it was never built with.
+> Refusal is now named, reasoned and tested — and bite-proven by deleting it, which printed the old
+> misleading diagnostic while the negative control stayed green.
+>
+> **`S1b` (deferred with a TRIGGER, not a date)** — the floor + class enforcement arms. `Q1`'s L2
+> declared quantities are an ID-keyed registry with ordinals assigned and never reused (`QTY-A5`) —
+> `AdditiveOnly` under another name, and the first subject a class check can refuse.
+> `s1b_has_no_subject_yet_and_says_so` **reds the day that becomes true**, so the trigger is asserted
+> rather than remembered.
+>
+> **`S2` — `IMP-Q2` RESOLVED: a CRATE.** *"Leaning crate, because the gate is the point."* Nothing
+> had to be weakened: `sim-core` has **zero** dependencies, `ruleset-core` is `sim-core + blake3` with
+> no `fs`/`net`/`io` in its source. `crates/game-rules` = combat `{rng,stats,attack,initiative,
+> outcome}` + stats `{block,modifier,resolve,snapshot}`; `domain.rs` **609 → `src/domain/`**
+> `{payload,actor,state,law}`, largest file now **317**. `commit-service` re-exports
+> `game_rules::{combat, stats}` under their old paths, so blast radius was 3 files rather than 30.
+>
+> **`crate-purity-gate.py`** — the first draft was *"transitive deps ⊆ {ruleset-core, sim-core}"* and
+> **design review killed it**: `Side`/`EncounterOutcome` derive serde and `ruleset-core` pulls blake3,
+> so it would have had to enumerate two external crate trees and would red on a patch bump. Four
+> rules instead, three deny-by-default: **R1** workspace-internal *transitively* (`game-rules →
+> ruleset-core → ruleset-loader` is the case a direct-deps check waves through), **R2** direct
+> external (serde yes; serde_json/toml/bincode refused **by omission** — a derive is not a format),
+> **R3** no `std::fs`/`net`/`process`/`env`/clock in the source — **the rule that actually states
+> IMP-D2, because it is about the CAPABILITY**, and **R4** an I/O-runtime denylist, the only
+> default-allow rule and labelled as such.
+>
+> **`file-ceiling-gate.py`** — IMP-D3 at last. The delay proved the rule: doc 26 recorded `domain.rs`
+> at **592** as already over, and it reached **609** while everyone worked on something else. Scope is
+> **directories**, allowlist rows carry a reason **and their real size** so allowlisted debt that
+> GROWS reds again.
+>
+> **THREE FINDINGS AGAINST MY OWN WORK, ALL FIXED, ALL WORTH RECORDING:**
+> 1. **`hot-path-gate`'s `LOOKUP_SCOPE` had been silently emptied — by this very refactor.** It named
+>    `src/{domain,combat,stats}.rs`; the laws moved and `domain.rs` became `domain/`, so
+>    `startswith` matched **nothing** and the read check reported OK over no files at all. `NV-3`,
+>    **eleventh** recorded instance — and the first committed *by a refactor rather than by an
+>    author*: a check can be destroyed by an edit that never touches it. Now directory prefixes. Its
+>    own `--self-test` caught its fixture going stale.
+> 2. **`cargo test -p game-rules` ran ZERO tests.** The laws moved; their proof did not. `combat_rules.rs`
+>    + `stats_resolution.rs` moved with them (**32 tests** now run against the crate);
+>    `combat_encounter.rs` stayed, because its own doc says it drives the laws *through* the island.
+> 3. **clippy caught `assert!(!FORBIDDEN_KEYS.is_empty())`** — a `const`, folded at compile time,
+>    **could never fail** — in the file arguing against exactly that. Row **12**. The author had the
+>    standard in mind and wrote a vacuous line anyway: **intent is not a mechanism**, which is the case
+>    for the standard's own §6 honest gap.
+>
+> **VERIFY:** workspace **1952 / 0** (was 1945; +7, zero regressions) · **golden digest `76d7045e`
+> UNCHANGED**, which is the proof the code motion moved no hashed byte · **10/10 gates** · clippy clean
+> · both new gates pass `--self-test` · **5 bite-proofs pasted**, 3 of them against the *real* tree,
+> not a fixture.
+>
+> **`/review-impl` FOUND SIX MORE, ALL AGAINST THIS RUN'S OWN CODE. FIVE FIXED, ONE TRACKED:**
+> 1. **MED — the forbidden-key check silently destroyed every TOML error span.** Parsing to
+>    `toml::Value` and then deserializing the patch *from that value* looked free; `toml` anchors
+>    spans to the **source text**, so `unknown field` went from *"line 4, column 1"* with a caret and
+>    the offending source line down to a bare sentence. `a_misspelled_key_is_refused_not_ignored`
+>    stayed green throughout — it asserts the key NAME appears, which stayed true. The module doc
+>    justifies the whole refusal by *"turning twenty minutes of confusion into one line of
+>    diagnostic"*, so the feature degraded the exact property it was justified by. Fixed (deserialize
+>    from the string; one extra parse on a cold path) and pinned by
+>    `a_bad_key_is_reported_with_its_line_and_the_source_text`.
+> 2. **MED — `crate-purity-gate` R3 could be defeated by a string literal.**
+>    `let p = format!("{}//{}", a, b); std::fs::write(p, x);` was **silent**: the naive
+>    `re.sub("//.*$")` treated the `//` inside the string as a comment and ate the violation after it.
+>    On the one rule that actually states IMP-D2. Fixed with a real left-to-right scanner (raw
+>    strings, char literals vs lifetimes, both comment forms) + 4 new self-test cases.
+> 3. **LOW — the same regex bit on `/* … std::fs … */`**, so documenting the rule reddened the gate.
+>    Same fix. *(Worth noting: `hot-path-gate` and `zero-digest-gate` already had correct scanners —
+>    I wrote a weaker one from scratch instead of reusing theirs. See row 6.)*
+> 4. **MED — R2 checked only DIRECT external deps.** `reqwest` added to `ruleset-core` would pass R1
+>    (that crate is allowed) and pass R2, leaving only R4's **default-ALLOW** denylist between an I/O
+>    crate and the laws. Widened to every workspace crate in the closure; `blake3` is now listed with
+>    its reason instead of being silently reachable.
+> 5. **LOW — `s1b_has_no_subject_yet_and_says_so` silently skipped `Ruleset::CLASSES`**, which
+>    carries two `Frozen` rows. The exclusion is correct (identity fields are `Forbidden`, a stronger
+>    refusal than any class check) but was unexplained — and unsound if a `Frozen`-but-declarable
+>    field is ever added. Now asserted, not assumed. Also pinned: a **dotted** `FORBIDDEN_KEYS` entry
+>    would be registered-but-unenforced, since the loader scans top-level keys only.
+> 6. **LOW → CLEARED, not deferred.** Three gates each carried their own comment/string stripper
+>    (`hot-path-gate`, `zero-digest-gate`, `crate-purity-gate`) — the copy-paste
+>    [SDK-First](../../standards/sdk-first.md) names. It was first written up as a defer row; the PO
+>    rejected that (*"tránh silent no-ops và debt bị drift"*) and was right: **the duplication was not
+>    a tidiness complaint, it WAS the defect** — the newest copy was the buggy one precisely because
+>    it was written rather than reused. `scripts/gatelib.py` is now the single stripper, and it is the
+>    **union of the best of all three**, not a pick: the two older copies blanked **in place** (so
+>    line numbers survive — a collapsing stripper would have silently misreported every finding they
+>    make), and neither handled raw strings or `'a` lifetimes vs `'x'` char literals. `keep_strings`
+>    is a **required** argument, because `hot-path-gate` must KEEP strings (`.get("qi")` *is* what it
+>    hunts) while `crate-purity-gate` must drop them. Proof the swap changed nothing: all four
+>    `--self-test`s pass, **and both older gates were re-bitten against the real tree** —
+>    `hot-path-gate` reported `domain/law.rs:320`, `zero-digest-gate` reported `ruleset-core/src/lib.rs:66`,
+>    correct line numbers in both, which is the in-place contract holding.
+>
+> **TWO MORE SILENT NO-OPS, FOUND BY SWEEPING THIS RUN'S OWN CODE FOR THEM:**
+> * `parse_layer` used `if let Some(table) = doc.as_table() { … }`. TOML has no non-table root, so the
+>   else-branch is unreachable — but its behaviour was **"skip the forbidden-key scan entirely"**. A
+>   guard whose failure mode is *do nothing* is not a guard. Now `ok_or(LoadError::NotATable)`.
+> * the totality proof was `#[allow(dead_code)] fn _classification_is_total`. Dead code is what a
+>   tidy-up deletes, and deleting it would have removed **the only guard** while every test stayed
+>   green. It is now `pub`, called from a test, and re-bitten: adding a field still hard-errors at
+>   `classification.rs:139`.
+>
+> **Re-verified after the fixes: workspace green · 12/12 gates (incl. the new shared `gatelib`) ·
+> clippy clean · 9 bite-proofs against the REAL tree, not fixtures.**
+>
+> **NEXT: `S2` is done, so `Q1` is unblocked** — the L2 declared-quantity substrate. It is also
+> `S1b`'s trigger, so the two land together. Nothing from this run is deferred.
+
 > ✅ **NON-VACUITY BECOMES A STANDARD — the pattern had been cited by three docs and lived in none
 > (2026-07-29).**
 >
