@@ -312,3 +312,53 @@ fn a_reality_loads_its_ruleset_from_a_file_and_the_digest_follows() {
         Err(LoadError::Io { layer: Layer::Reality, .. })
     ));
 }
+
+// ── V6 · QTY-A11 — an artifact written before the last schema bump still loads ─
+
+/// **The store must be able to read its own history.**
+///
+/// `get` verifies content against name by RE-ENCODING the decoded value, which
+/// is deliberately stricter than hashing the raw bytes — it checks the decoder
+/// too. But re-encoding an OLD artifact at the CURRENT layout produces different
+/// bytes and a different digest, so a naive version of that check reports the
+/// store's own file as corrupt and turns every pre-bump reality `Unloadable`.
+///
+/// That is not hypothetical: it is what the first draft of QTY-A11 would have
+/// caused, and the axiom's whole purpose was to prevent exactly that outcome.
+/// `digest_at(source_version)` is the fix, and this is the test that says so.
+///
+/// The v1 bytes here come from the frozen v1 encoder rather than a hand-written
+/// fixture — a byte array would test my typing, not the codec.
+#[test]
+fn a_v1_artifact_survives_put_and_get() {
+    let store = tmp_store("v1-artifact");
+
+    let mut rules = Ruleset::engine_default();
+    rules.combat.max_hit = 4242;
+    let v1_bytes = rules.canon_bytes_at(1).expect("v1 codec exists");
+    // Digest the v1 bytes the same way the store will, via the codec itself.
+    let v1_digest = rules.digest_at(1).expect("v1 codec exists");
+
+    // Write the artifact the way F2 wrote it before the bump: raw bytes under
+    // their own digest. `put` would encode at the CURRENT version, which is a
+    // different file — this is the pre-existing one.
+    store.ensure_root().expect("root");
+    std::fs::write(
+        store.path_for(&v1_digest),
+        &v1_bytes,
+    )
+    .expect("place the historical artifact");
+
+    let loaded = store.get(&v1_digest).expect("v1 artifact verifies").expect("present");
+    assert_eq!(loaded.combat.max_hit, 4242, "the rules must survive");
+    assert_eq!(
+        loaded.law_version,
+        ruleset_core::LAW_VERSION_UNVERSIONED,
+        "and it must still say it makes no claim about the laws"
+    );
+
+    // The upcast value's CURRENT digest is a different artifact — QTY-D14. That
+    // is why moving a reality onto it is an epoch switch and not a side effect.
+    assert_ne!(loaded.digest(), v1_digest);
+    assert!(!store.contains(&loaded.digest()), "and it is not in the store until someone puts it");
+}

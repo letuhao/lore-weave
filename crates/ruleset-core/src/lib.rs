@@ -47,7 +47,10 @@ mod stats;
 pub use canon::{Canon, CanonEncode, CanonError, CanonReader};
 pub use combat::CombatRules;
 pub use provenance::{Provenance, RulesetEpoch};
-pub use ruleset::{RULESET_SCHEMA_VERSION, ResolvedRuleset, Ruleset};
+pub use ruleset::{
+    LAW_VERSION, LAW_VERSION_UNVERSIONED, RULESET_SCHEMA_VERSION, ResolvedRuleset, Ruleset,
+    SCHEMA_VERSION_OLDEST,
+};
 pub use slots::{SLOT_COUNT, StatSlot};
 pub use stats::StatRules;
 

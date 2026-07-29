@@ -101,7 +101,15 @@ impl RulesetStore {
         Ok(())
     }
 
-    fn path_for(&self, digest: &RulesetDigest) -> PathBuf {
+    /// Where a digest is filed: `<root>/<digest>.canon`.
+    ///
+    /// Public because in a CONTENT-ADDRESSED store the path is derivable from
+    /// the content by definition — there is nothing to encapsulate. It was
+    /// private, and the consequence was that tests hand-rolled
+    /// `format!("{}.canon", …)` themselves (`tests/early_binding.rs`), so the
+    /// layout lived in two places and a change here would have left them
+    /// silently testing a path the store no longer uses.
+    pub fn path_for(&self, digest: &RulesetDigest) -> PathBuf {
         self.root.join(format!("{}.canon", digest.to_hex()))
     }
 
@@ -139,12 +147,27 @@ impl RulesetStore {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
         };
-        let ruleset = Ruleset::from_canon_bytes(&bytes).map_err(StoreError::Malformed)?;
+        let (ruleset, src_version) =
+            Ruleset::from_canon_bytes_versioned(&bytes).map_err(StoreError::Malformed)?;
         // Re-digest the DECODED value rather than hashing the raw bytes: this
         // checks the decoder too. Bytes that hash correctly but decode into
         // something whose re-encoding differs would slip past a raw-bytes check
         // and are exactly the asymmetry the round-trip test hunts.
-        let actual = ruleset.digest();
+        //
+        // AT THE ARTIFACT'S OWN VERSION, not the engine's (QTY-A11). An older
+        // artifact is upcast on decode, so re-encoding it at the CURRENT layout
+        // yields different bytes and a different digest — and this check would
+        // then reject every artifact written before the last schema bump, which
+        // is precisely the `Unloadable` outcome the growth path exists to
+        // prevent. `digest_at` reproduces the digest the file was filed under.
+        // `src_version` came out of a SUCCESSFUL decode, so a codec for it
+        // provably exists — `from_canon_bytes_versioned` refuses anything
+        // outside `SCHEMA_VERSION_OLDEST..=RULESET_SCHEMA_VERSION` before
+        // returning. Fabricating a `DigestMismatch` for the impossible arm would
+        // report a confusing lie; this states the invariant instead.
+        let actual = ruleset
+            .digest_at(src_version)
+            .expect("a version that decoded must have a codec to re-encode with");
         if actual != *digest {
             return Err(StoreError::DigestMismatch { requested: *digest, actual });
         }

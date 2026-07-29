@@ -11,7 +11,32 @@ use crate::stats::StatRules;
 /// is not itself a rules change. Written first into every canonical stream, so
 /// an encoding change can never be mistaken for a rules change: both move the
 /// digest, but only one of them moves it for every reality at once.
-pub const RULESET_SCHEMA_VERSION: u32 = 1;
+pub const RULESET_SCHEMA_VERSION: u32 = 2;
+
+/// The oldest schema version this engine can still DECODE.
+///
+/// Versions in `SCHEMA_VERSION_OLDEST..=RULESET_SCHEMA_VERSION` each keep a
+/// frozen codec (QTY-A11); anything below is gone and anything above is the
+/// future, and both are refusals rather than guesses.
+pub const SCHEMA_VERSION_OLDEST: u32 = 1;
+
+/// The version of the LAWS this binary implements — the damage chain's
+/// arithmetic and order, initiative, the stat resolution order.
+///
+/// **Bump this by hand when a law changes behaviour**, and never for a refactor
+/// that cannot change a number. See [`Ruleset::law_version`] for why it exists
+/// and why it is not derived from the build.
+pub const LAW_VERSION: u32 = 1;
+
+/// What a pre-`LAW_VERSION` artifact is deemed to carry.
+///
+/// Zero rather than one, deliberately: a v1 artifact does not assert *"I ran
+/// under law version 1"* — it asserts nothing, because the concept did not
+/// exist when it was written. Calling that `1` would manufacture a claim the
+/// bytes never made, which is the same species as an anonymous zero digest
+/// (`scripts/zero-digest-gate.py`): a declared unknown has a name, an emergent
+/// one is a number nobody can explain.
+pub const LAW_VERSION_UNVERSIONED: u32 = 0;
 
 /// A reality's resolved rules — hot, ~KB, versioned, immutable (doc 16 §2).
 ///
@@ -35,6 +60,21 @@ pub const RULESET_SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ruleset {
     pub schema_version: u32,
+    /// **QTY-D13 — the digest must cover the LAW, not just the numbers.**
+    ///
+    /// Before this field, `digest()` hashed `schema_version + combat + stats`
+    /// and nothing else, so **two engine builds with different `resolve_attack`
+    /// arithmetic produced the IDENTICAL digest for identical rules.** RLS-A13
+    /// claims an event is pinned to *the rules that produced it*; a law change
+    /// moved nothing, which meant a behavioural change was **undetectable** and
+    /// therefore could not trigger any boundary — neither a checkpoint nor a
+    /// refusal. The pin was covering the config and calling it the rules.
+    ///
+    /// Bumped **by hand** whenever a law's arithmetic or its order changes
+    /// (QTY-A10(b)). It is not derived from the build: a rebuild with no
+    /// behavioural change must not move every reality's digest, and only a human
+    /// can say which of the two happened.
+    pub law_version: u32,
     pub combat: CombatRules,
     pub stats: StatRules,
 }
@@ -47,8 +87,15 @@ pub struct Ruleset {
 // ordinal table, the O(n^2) element interaction table which QTY-A6.1 places
 // HERE and not on the actor). It also backs a claim with an expiry date:
 // `digest()` recomputes BLAKE3 on every call and justifies that with "the whole
-// artifact is ~200 bytes". True at 216. Watch this number.
-const _: () = assert!(core::mem::size_of::<Ruleset>() <= 216);
+// artifact is ~200 bytes". Watch this number.
+//
+// 216 -> 224, repinned 2026-07-29 for `law_version` (QTY-D13). Four bytes of
+// field, eight of struct after alignment. Recorded rather than silently raised
+// because that is the entire mechanism: the assertion is not here to forbid
+// growth, it is here to make growth a DECISION someone wrote down. It bit on the
+// very next slice after it was added, which is the only evidence that a guard
+// works.
+const _: () = assert!(core::mem::size_of::<Ruleset>() <= 224);
 
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
@@ -56,6 +103,7 @@ impl Ruleset {
     pub const fn engine_default() -> Self {
         Self {
             schema_version: RULESET_SCHEMA_VERSION,
+            law_version: LAW_VERSION,
             combat: CombatRules::engine_default(),
             stats: StatRules::engine_default(),
         }
@@ -102,26 +150,113 @@ impl Ruleset {
     /// reinterpreted — and reading a v2 artifact with v1 field offsets would be
     /// reinterpretation of the worst kind: silent, and numerically plausible.
     pub fn from_canon_bytes(bytes: &[u8]) -> Result<Self, CanonError> {
+        Self::from_canon_bytes_versioned(bytes).map(|(r, _)| r)
+    }
+
+    /// Decode, and report WHICH schema version the bytes were written at
+    /// (QTY-A11).
+    ///
+    /// The returned `Ruleset` is always in the CURRENT shape — upcast if the
+    /// artifact was older — so callers never branch on layout. The version is
+    /// returned separately because one caller genuinely needs it:
+    /// [`RulesetStore::get`] verifies content against name by RE-ENCODING, and
+    /// it must re-encode at the artifact's own version or every older artifact
+    /// looks corrupt.
+    ///
+    /// ## Why this is a dispatch and not a tolerant read
+    ///
+    /// The refusal this replaces carried the right reasoning and it is kept:
+    /// *reading a v2 artifact with v1 field offsets would be reinterpretation of
+    /// the worst kind — silent, and numerically plausible.* So a version NEWER
+    /// than this engine is still a refusal; only versions whose layout is frozen
+    /// in code may be read, and each is read at its own offsets.
+    ///
+    /// The first draft of QTY-A11 said something else — accept a short array and
+    /// fill the tail — and that was **self-defeating**: `get` re-digests the
+    /// DECODED value, so a widened decode re-encodes to different bytes and the
+    /// store rejects its own artifact. The axiom written to stop a reality
+    /// becoming `Unloadable` would have made every reality `Unloadable` on the
+    /// first slot addition.
+    pub fn from_canon_bytes_versioned(bytes: &[u8]) -> Result<(Self, u32), CanonError> {
         let mut r = CanonReader::new(bytes, Self::CANON_DOMAIN)?;
         let schema_version = r.u32()?;
-        if schema_version != RULESET_SCHEMA_VERSION {
+        if !(SCHEMA_VERSION_OLDEST..=RULESET_SCHEMA_VERSION).contains(&schema_version) {
             return Err(CanonError::UnknownSchemaVersion {
                 found: schema_version,
                 known: RULESET_SCHEMA_VERSION,
             });
         }
+
+        // v1 had no `law_version`. Reading zero here would be a guess; the
+        // NAMED constant says the artifact makes no claim (see its docs).
+        let law_version = if schema_version >= 2 { r.u32()? } else { LAW_VERSION_UNVERSIONED };
+
         let combat = CombatRules::decode(&mut r)?;
         let stats = StatRules::decode(&mut r)?;
         r.finish()?;
-        Ok(Self { schema_version, combat, stats })
+
+        // Upcast: the value handed back is always the current shape. Note it
+        // does NOT adopt the current `LAW_VERSION` — an old artifact ran under
+        // whatever laws it ran under, and overwriting that would erase the one
+        // fact this field exists to record.
+        let upcast = Self { schema_version: RULESET_SCHEMA_VERSION, law_version, combat, stats };
+        Ok((upcast, schema_version))
+    }
+
+    /// Encode at a SPECIFIC schema version, for verification of a stored
+    /// artifact against the name it is filed under.
+    ///
+    /// `None` for a version this engine has no codec for. The round-trip
+    /// property every frozen version must satisfy —
+    /// `encode_at(v, decode(b)) == b` for any `b` written at `v` — is what makes
+    /// [`Self::digest_at`] meaningful, and it holds only while an upcast is
+    /// purely ADDITIVE: a field with no representation at `v` is simply not
+    /// written there. A future upcast that CHANGED an existing field would break
+    /// it, and that is the signature of a behavioural change (QTY-A10(b)), which
+    /// is supposed to be loud.
+    pub fn canon_bytes_at(&self, version: u32) -> Option<Vec<u8>> {
+        if !(SCHEMA_VERSION_OLDEST..=RULESET_SCHEMA_VERSION).contains(&version) {
+            return None;
+        }
+        let mut c = Canon::new(Self::CANON_DOMAIN);
+        // EXHAUSTIVE destructuring, same discipline as `canon` — a new field
+        // must be considered here too, if only to decide it is not written at
+        // an older version.
+        let Self { schema_version: _, law_version, combat, stats } = self;
+        c.u32(version);
+        if version >= 2 {
+            c.u32(*law_version);
+        }
+        combat.canon(&mut c);
+        stats.canon(&mut c);
+        Some(c.finish())
+    }
+
+    /// The digest this ruleset WOULD have if written at `version`.
+    ///
+    /// For the current version this equals [`Self::digest`]. For an older one it
+    /// reproduces the digest the artifact was originally filed under, which is
+    /// exactly what a content-addressed store needs to check a name it did not
+    /// choose.
+    pub fn digest_at(&self, version: u32) -> Option<RulesetDigest> {
+        self.canon_bytes_at(version)
+            .map(|b| RulesetDigest(*blake3::hash(&b).as_bytes()))
     }
 }
 
 impl CanonEncode for Ruleset {
+    /// The CURRENT (v2) layout. Historical layouts live in
+    /// [`Ruleset::canon_bytes_at`], which is the only other place a `Ruleset`
+    /// may be encoded — keeping this impl the single definition of "current"
+    /// while still letting an old artifact be re-encoded for verification.
     fn canon(&self, c: &mut Canon) {
-        // EXHAUSTIVE destructuring, no `..` — see `CanonEncode`.
-        let Self { schema_version, combat, stats } = self;
+        // EXHAUSTIVE destructuring, no `..` — see `CanonEncode`. Adding
+        // `law_version` broke this line until it was named here, which is the
+        // mechanism doing its job: a new field cannot silently stay out of the
+        // digest.
+        let Self { schema_version, law_version, combat, stats } = self;
         c.u32(*schema_version);
+        c.u32(*law_version);
         combat.canon(c);
         stats.canon(c);
     }

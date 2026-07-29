@@ -2,7 +2,12 @@
 
 > **Status:** DESIGN 2026-07-28, **revised the same day after an adversarial red-team round**.
 > Governs **which quantities exist**, who may add one, and what it costs.
-> Axioms `QTY-A1..A14`, decisions `QTY-D1..D13`, open `QTY-Q5..Q11` (`Q1..Q4` closed — §13.1).
+> Axioms `QTY-A1..A14`, decisions `QTY-D1..D15`, open `QTY-Q5..Q11` (`Q1..Q4` closed — §13.1).
+>
+> ⚠️ **`QTY-A11` was CORRECTED 2026-07-29** — its first form (length-tolerance within one schema
+> version) would have made *every* reality `Unloadable` on the first slot addition, because
+> `RulesetStore::get` re-digests the **decoded** value. Replaced by version-dispatched codecs (§6.3).
+> Found while reading the code to build it; neither the draft nor the red team caught it.
 >
 > ⚠️ **`QTY-A6` was REVERSED by the red team** — per-reality array width is out; fixed width with
 > declared identities inside it is in. **§4.2 is the section to read first**, and §10 records
@@ -497,7 +502,8 @@ Engine v2 adds slot #11.
 1. **`B1` is never touched.** It stays in the append-only store (RLS-D6) and still hashes to `D1`, so
    `store.get` re-digest verification still passes (`crates/ruleset-loader/src/store.rs`) and every
    event already pinned to `D1` still resolves to the exact bytes that produced it (RLS-D18).
-2. **The decoder learns to read a narrower artifact** — QTY-A11 below.
+2. **The engine keeps `v1`'s codec** and dispatches on the version in the bytes — QTY-A11 below.
+   Verification re-encodes at **`v1`'s** layout, which is what lets step 1's claim hold.
 3. **Upcast is explicit**: `upcast_rules(v1 → v2)` fills slot #11 from its declared engine default.
    The upcast runs **after** digest verification, in memory. The stored bytes and their digest are
    untouched.
@@ -512,33 +518,88 @@ Engine v2 adds slot #11.
 > **The result: adding a derived slot is a bounded, auditable, four-artifact operation — not a
 > teardown.** That is the direct answer to *"derived phải có khả năng mở rộng"*.
 
-### 6.3 QTY-A11 — the canonical encoding must be length-declared
+### 6.3 QTY-A11 — decode is VERSION-DISPATCHED, and every version keeps its own codec
 
-> **QTY-A11.** A canonically-encoded sequence carries its own length. The decoder accepts
-> `n ≤ N_current` and fills `[n..N_current]` from declared engine defaults; `n > N_current` is a
-> refusal.
+> **QTY-A11 — CORRECTED 2026-07-29. The first form of this axiom was self-defeating; the paragraph
+> after the box says why, and it is worth reading before the box.**
+>
+> **Every historical schema version keeps BOTH a decoder and an encoder.** Decoding dispatches on the
+> version written in the bytes: a *known older* version decodes at **its own** field offsets and
+> widths, then upcasts to the current shape. A version **newer** than the engine is a refusal, and so
+> is `n > N` for that version's declared width. Verification re-encodes **at the artifact's own
+> version**, never at the current one.
 
-Today `canon.rs:213-226` errors on **any** length mismatch, with the correct reasoning — *"an artifact
-written when `SLOT_COUNT` was 10 must not silently half-fill an 11-slot array"*. The guard is right;
-its **strictness is what makes growth fatal**. Length-declaring keeps the guard (a truncated or
-corrupt artifact is still caught, because the declared `n` must match the bytes present) while making
-the widening case legal and explicit.
+#### Why the first form was wrong — and it is a good illustration of the class
 
-**This is the highest-leverage code change in the whole document**, because it is what turns every
+A11 originally read: *"the decoder accepts `n ≤ N_current` and fills `[n..N_current]` from declared
+engine defaults."* That is length-tolerance **within one version**, and it breaks the store:
+
+```rust
+// crates/ruleset-loader/src/store.rs — get()
+let ruleset = Ruleset::from_canon_bytes(&bytes)?;
+let actual = ruleset.digest();          // ← RE-ENCODES the decoded value
+if actual != *digest { return Err(StoreError::DigestMismatch { .. }) }
+```
+
+`get` deliberately re-digests the **decoded value** rather than hashing the raw bytes — its own
+comment says this *"checks the decoder too"*, and it is right to. But under length-tolerance a
+10-slot artifact decodes into an 11-slot struct, re-encodes to **11-slot bytes**, produces a
+**different digest**, and the store refuses it as corrupt. **The axiom written to stop a reality
+becoming `Unloadable` would have made every reality `Unloadable` on the first slot addition.**
+
+Neither the original draft nor the four-agent red team caught this; it surfaced only when the code
+was read to build it. Recorded rather than quietly amended, because *"the guard is defeated by the
+thing that was supposed to strengthen it"* is the same shape as `QTY-A6 ⊥ QTY-A12` (§4.2) and as
+`hot-path-gate`'s original scope (§10.6) — **three occurrences in two days**, all of them a checker
+made vacuous by an adjacent decision.
+
+> **That pattern now has a home:
+> [`docs/standards/non-vacuity.md`](../../standards/non-vacuity.md) (`NV-1..6`)**, written because the
+> tally reached **ten** and the discipline was cited by three documents while living in none. This
+> case is `NV-4` — *an adjacent decision defeats it* — the hardest of the four shapes to see, because
+> both decisions are individually correct.
+
+#### What the strictness was protecting, and why it survives
+
+`canon.rs`'s existing refusal carries the right reasoning and this correction **keeps** it:
+
+> *"An unknown schema version is a REFUSAL and not a best-effort read … reading a v2 artifact with v1
+> field offsets would be reinterpretation of the worst kind: **silent, and numerically plausible**."*
+
+Version dispatch does not weaken that. It says: *you may read an artifact whose shape you know
+exactly* — never *you may guess*. Forward compatibility remains impossible on purpose; only
+**backward** compatibility is added, and only for versions whose layout is frozen in code.
+
+#### QTY-D14 — the upcast produces a DIFFERENT digest, and that is the point
+
+`digest(upcast(v1_artifact)) ≠ digest(v1_artifact)`, necessarily — the byte layout changed. That is
+not a failure mode, it is [§6.2](#62-qty-d3--the-additive-path-end-to-end)'s steps 4–5 arriving on
+schedule: the upcast result is stored as **new bytes `B2` with digest `D2`**, and the reality's
+binding moves `D1 → D2` **via an epoch-switch event**. `B1` and `D1` remain valid forever for the
+events already pinned to them.
+
+So the two halves fit: this axiom lets an old artifact be *read and verified*; the epoch switch is
+what makes the resulting *rules change* an auditable event rather than a silent one.
+
+#### QTY-D15 — `LAW_VERSION` is the first real migration, not a hypothetical one
+
+There is exactly **one** schema version today. Building a dispatch with one arm and an upcast with
+nothing to upcast from would be a mechanism with no consumer — the anti-pattern this document has
+refused three times already.
+
+It has a consumer the moment `LAW_VERSION` (§13.1, `QTY-D13`) enters the hashed bytes, because that
+**is** a field-set change: `RULESET_SCHEMA_VERSION` 1 → 2. So the same slice that closes *"the digest
+does not cover the law"* also supplies the version machinery's first genuine exercise — a v1 artifact
+that really exists, a v2 engine that really must read it, and an upcast with a real decision to make
+(what `LAW_VERSION` a pre-`LAW_VERSION` artifact is deemed to have).
+
+**The golden digest moves, deliberately.** That is not collateral damage; it is the proof that
+`LAW_VERSION` is inside the hashed bytes rather than beside them.
+
+**This remains the highest-leverage code change in the document**, because it is what turns every
 future L1 addition from a spine break into an epoch switch.
 [27 §11.6](27_extensibility_stress_test.md) already stated the deadline: *"Slot ordinals must be
 decided **before** they are serialised into replay logs."*
-
-**Two corrections from the red team, both of which make it cheaper and one of which makes it bigger:**
-
-* **The encoding is ALREADY length-prefixed.** `crates/ruleset-core/src/canon.rs:205-226` reads
-  `let n = self.u32()?` and errors only on `n != N`. A11 is a **one-branch policy change** — accept
-  `n ≤ N`, fill the tail from engine defaults — **not** an encoding change, and **it moves no existing
-  digest**. Calling it a rewrite overstated it.
-* **A11 alone is insufficient.** `Ruleset::from_canon_bytes` refuses on
-  `schema_version != RULESET_SCHEMA_VERSION` (`crates/ruleset-core/src/ruleset.rs:94-101`) **before**
-  you ever hold a struct to upcast. `Q0` needs **version-dispatched decode** as well; §6.2 step 2 did
-  not say so.
 
 ### 6.3.1 — REMOVAL is the third kind of change, and the first build order committed it
 
@@ -787,7 +848,8 @@ to a derived set that cannot yet grow.
 | # | Slice | Done when |
 |---|---|---|
 | **Q-1** | **The two mechanical gates, FIRST** — `IMP-D4 hot-path-gate.py` (keyed on the KEY type, per §5.3) + the `QTY-A12` `size_of` assertion | each gate reds against a deliberately-introduced violation. **Hours, and both must exist before the code they guard, not after** |
-| **Q0** | **[QTY-A11](#63-qty-a11--the-canonical-encoding-must-be-length-declared) length-tolerant decode + version-dispatched decode + `LAW_VERSION` + `upcast_rules` + the epoch-switch path** (§6.2) | an artifact written at 10 slots loads on an 11-slot engine, the old digest still verifies, the transition appears as an event in the reality's log — **bite-proven**. See the two prerequisites below; this slice is bigger than the first draft said |
+| **Q0a** ✅ **2026-07-29** | **[QTY-A11](#63-qty-a11--decode-is-version-dispatched-and-every-version-keeps-its-own-codec) version-dispatched codec + `LAW_VERSION` into the hashed bytes + `upcast v1→v2`.** No DB, no event, no unbuilt prerequisite | **met** — `a_v1_artifact_survives_put_and_get` places a genuine v1 artifact in the store and `get` verifies it; `a_v1_artifact_re_encodes_to_exactly_its_original_bytes` pins the property that check stands on; `a_future_schema_version_is_refused` keeps forward-compat impossible; the golden digest moved `807d5b52…` → `76d7045e…` and **that move is the proof `LAW_VERSION` is inside the bytes**. Bite-proven: reverting `get` to `digest()` reds with `DigestMismatch` — the store rejecting its own file, which is the `Unloadable` outcome the axiom exists to prevent |
+| **Q0b** | **The epoch switch as an ordered event** (§6.2 steps 4–6) | the `D1 → D2` transition appears as an event in the reality's own log. **Split from Q0a deliberately** — it needs three things that do not exist (below), and pairing them would make one slice with two unrelated failure surfaces. Nothing forces it early: **zero production realities exist** |
 | **S2** | **`game-rules` extraction** ([IMP-A5](26_implementation_architecture.md)) — laws move out of `domain.rs`, take `Rules` by ref | `game-rules` has no I/O dependency, enforced by a gate. **A hard prerequisite for Q2–Q4**: role plumbing must not be written into files that are about to be split (`domain.rs` 592 lines, `combat.rs` 456 — both already over the IMP-D3 ceiling) |
 | **Q1** | **L2 substrate** — declared-quantity registry, ordinal table inside the hashed ruleset, the assignment ledger, `QTY-A13` validator | a reality declares a quantity that does not exist in the engine and it survives create → store → load → digest with ordinals unchanged. **Blocked on `D-PUBLISHER-DROPS-RULESET-PIN`** (§4.5) |
 | **Q2** | **Resources** ([QTY-A4](#41-qty-a4--a-pool-is-not-a-stat)) + the `Vital` binding **+ the caps arm** ([QTY-A8](#52-qty-a8--contributions-carry-caps-not-just-values)) | a reality binds `Vital → qi` and the defeat law is **unchanged**. `MaxHp`/`MaxStamina` **stay** and become ceiling-binding targets (§6.3.1). **The caps arm moved here from Q4** — a pool's max *is* a ceiling, so building resources without it means every max lands as a formula edit and Q4 then retrofits it |

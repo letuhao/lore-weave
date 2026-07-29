@@ -774,6 +774,115 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > refusal) → **F3 make the digest BITE**. XST-D2 (silent saturation above ~1.6 M) is deliberately NOT
 > in X1 — it needs i128 intermediates (XST-R2) and is its own slice.
 
+> ✅ **NON-VACUITY BECOMES A STANDARD — the pattern had been cited by three docs and lived in none
+> (2026-07-29).**
+>
+> The PO's observation is the finding: *"three times in two days, the same shape — a checker defeated
+> by an adjacent decision. `QTY-A6 ⊥ QTY-A12` · `hot-path-gate` scope · `QTY-A11 ⊥ store.get`. All
+> three were GREEN until someone read carefully."* Then: *"did you update the old spec to avoid
+> misconcept in the future?"* — and the honest answer was **no**.
+>
+> **The evidence for why it kept recurring.** Docs [`27:322`], [`27:504`] and [`34:497`] cite *"the
+> repo's non-vacuity discipline"* as though it were a standard. A grep of `docs/standards/README.md`
+> and `CLAUDE.md` for *non-vacuity / vacuous / unfalsifiable / bite-test* returned **zero hits**. That
+> is this repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing** — so each
+> instance was fixed locally, correctly, by whoever had just understood it, and **the understanding
+> did not travel**. The strongest proof: **three sibling gates shipped the identical one-line pragma
+> window**, one after another.
+>
+> **[`docs/standards/non-vacuity.md`](../../standards/non-vacuity.md) — `NV-1..6`, LOCKED.** The four
+> shapes, ordered by how hard they are to see, each with a real occurrence: **NV-2** the subject
+> cannot vary (`size_of` on a boxed payload is 16 bytes for every `n`) · **NV-3** the scope never
+> reaches it (an enumerated file list is *default-uncovered*; the publisher smoke picked 2 of 16
+> migrations) · **NV-4** an adjacent decision defeats it (**the hardest — both decisions are
+> individually correct**) · **NV-5** the escape hatch cannot reach its reason. **NV-6** makes the
+> obligation mechanical: *"I added a test"* is not evidence; *"I broke X, the check said Y, I put X
+> back"* is — with a table of what discharges it per artifact kind.
+>
+> **The register is the argument: ten occurrences, and NOT ONE was caught by the suite** — all ten by
+> a human or an agent reading. Rows 8 and 9 are recorded **open** rather than quietly fixed, because a
+> known-vacuous check with a row is honest and the unrecorded one is the failure mode. §6 states
+> plainly that this is **not yet mechanical** — no script detects a vacuous check today, and the
+> cheapest step (require `--self-test` on every gate) would be partial, since a fixture proves the
+> checker bites but not that its **scope** is right.
+>
+> **Anchored in three places so it cannot be missed:** `CLAUDE.md`'s **always-loaded** subset (reaches
+> every session with no lookup) · a quick-nav row **plus a banner on §D, the gate table itself** —
+> exactly where the three pragma cases happened · and the three orphaned citations now point home.
+> `design-lint` **bit on this change** (`unregistered-prefix NV×4`) and `NV-*` is registered in
+> [`06_id_catalog.md`](00_foundation/06_id_catalog.md), marked repo-wide rather than track-scoped.
+
+> ✅ **`Q0a` — THE DIGEST NOW COVERS THE LAW, AND AN OLD ARTIFACT STILL LOADS (2026-07-29, /loom M).**
+>
+> **A spec defect surfaced while reading the code to build it, and the PO's call was *"update spec and
+> fix, avoid drift"* — so `QTY-A11` was corrected before a line was written.**
+>
+> **What was wrong.** A11 said *"the decoder accepts `n ≤ N_current` and fills the tail from engine
+> defaults"* — length-tolerance within one schema version. But `RulesetStore::get` re-digests the
+> **DECODED** value (its own comment: *"this checks the decoder too"*, and it is right to). Under
+> length-tolerance a 10-slot artifact decodes into an 11-slot struct, re-encodes to 11-slot bytes,
+> hashes differently, and the store refuses it as corrupt. **The axiom written to stop a reality
+> becoming `Unloadable` would have made EVERY reality `Unloadable` on the first slot addition.**
+> Neither the draft nor the four-agent red team caught it. That is the **third** instance in two days
+> of *a checker defeated by an adjacent decision* — after `QTY-A6 ⊥ QTY-A12` and `hot-path-gate`'s
+> original scope.
+>
+> **The correction: decode is VERSION-DISPATCHED and every version keeps its own CODEC.** A known
+> older version decodes at its own offsets then upcasts; a newer version is still a refusal, so the
+> original reasoning survives intact — *"reading a v2 artifact with v1 field offsets would be
+> reinterpretation of the worst kind: silent, and numerically plausible."* Verification re-encodes at
+> **the artifact's own version** (`digest_at(src)`), which is the whole fix in one call.
+>
+> **`QTY-D14`** — the upcast necessarily has a DIFFERENT digest, and that is the point: it is a new
+> artifact `B2`/`D2`, which is why moving a binding onto it is an epoch switch rather than a silent
+> side effect. **`QTY-D15`** — with only one schema version, a dispatch would have been a mechanism
+> with no consumer. `LAW_VERSION` *is* a field-set change, so it doubles as the version machinery's
+> first genuine exercise: a v1 that really exists, a v2 engine that really must read it.
+>
+> **What shipped.** `RULESET_SCHEMA_VERSION` 1→2 · `LAW_VERSION` + `LAW_VERSION_UNVERSIONED`
+> (zero, deliberately — a v1 artifact asserts *nothing* about the laws; calling it `1` would
+> manufacture a claim the bytes never made) · `from_canon_bytes_versioned` · `canon_bytes_at` /
+> `digest_at` · `store.get` verifies at the source version · `path_for` made public because tests were
+> hand-rolling `format!("{}.canon", …)` and the layout lived in two places.
+>
+> **Why `LAW_VERSION` mattered:** the digest hashed `schema_version + combat + stats` and nothing
+> else, so **two engine builds with different `resolve_attack` arithmetic produced the IDENTICAL
+> digest for identical rules.** A behavioural change moved nothing, so it could trigger nothing —
+> neither a checkpoint nor a refusal. The pin was covering the config and calling it the rules. It is
+> bumped **by hand**, never derived from the build: a rebuild with no behavioural change must not move
+> every reality's digest, and only a human can say which of the two happened.
+>
+> **`QTY-A12` BIT — one day after it was added, on the very next slice.** `size_of::<Ruleset>()`
+> 216 → 224 failed the build. Repinned with the reason written down, which is the entire mechanism:
+> the assertion does not forbid growth, it makes growth a decision someone recorded.
+>
+> **VERIFY:** **workspace 1945 / 0 — the whole suite green, and `failed=0` for the first time in this
+> session** (it was 1932/6, then 1939/6 with Q0a's seven new tests, then 1945/0 once the auth break
+> above was fixed). ruleset-core 21/21 · ruleset-loader 22/22 · 8/8 gates + language-rule · clippy
+> clean · design-lint clean.
+> **Bite-proofs:** revert `get` to `digest()` → `DigestMismatch`, the store rejecting its own file;
+> the golden digest moved and the move is the proof; `an_upcast_does_not_claim_the_current_law_version`
+> carries its own anti-vacuity assertion (`LAW_VERSION != 0`).
+>
+> **AND THE SIX "PRE-EXISTING" FAILURES TURNED OUT TO BE A PRODUCTION AUTH BREAK.**
+> They had been reported as *"the six pre-existing `service-http` `jsonwebtoken` panics"* in **three**
+> separate handoff blocks and tracked in **none** — mentioned every time, owned by nobody, which is
+> exactly the *"we'll come back to it"* trap. Reading the panic instead of restating it:
+> `jsonwebtoken = "10"` was declared **bare**, and that crate's `default = ["use_pem"]` ships **no
+> crypto provider**, so the first crypto call panics with *"Could not automatically determine the
+> process-level CryptoProvider."*
+>
+> **The tests were the symptom, not the disease.** `crates/service-http/src/auth.rs:75` calls `decode`
+> in the request middleware, so **any binary linking `service-http` would panic on its first token
+> verification.** A permanently-red test is how a production break becomes wallpaper. Fixed with one
+> line — `features = ["rust_crypto"]` (pure Rust, no cmake/nasm on the build host, covers the HS256
+> the middleware actually validates with). **`service-http` 5/11 → 11/11.**
+>
+> **NEXT: `Q0b`** — the epoch switch as an ordered event. Still gated on three things that do not
+> exist: `RulesetEpochActivated` (**zero code occurrences**), `reality_registry.ruleset_digest`, and a
+> `BindingStore` with any mutating method (it is write-once and a node-local TOML file). Nothing forces
+> it early — **zero production realities exist**.
+
 > ✅ **`Q-1` — THE GUARDS EXIST BEFORE THE CODE THEY GUARD (2026-07-28, /loom M).**
 > Doc 35's build order opens with two mechanical gates and one live defect, deliberately ahead of
 > every L2 slice. All three claims were **verified against source before acting on them** — the
