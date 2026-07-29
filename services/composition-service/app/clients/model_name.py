@@ -10,6 +10,8 @@ tolerates a null model.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from loreweave_internal_client import resolve_model_info as _resolve_info
 from loreweave_internal_client import resolve_model_name as _resolve
 
@@ -28,10 +30,11 @@ async def resolve_model_name(model_source: str | None, model_ref: str | None) ->
 
 async def resolve_model_info(
     model_source: str | None, model_ref: str | None,
-) -> dict[str, str] | None:
-    """Same call, but returns `{provider_kind, provider_model_name}` — the registry's own
-    answer about what this `model_ref` is. Used by the reasoning classifier, which must not
-    decide "is this a local model?" from a client-supplied hint."""
+) -> dict[str, Any] | None:
+    """Same call, but returns `{provider_kind, provider_model_name, capability_flags}` — the
+    registry's own answer about what this `model_ref` is. Used by the reasoning classifier,
+    which must not decide "is this a local model?" from a client-supplied hint, and which
+    honours `capability_flags.reasoning_control` ahead of its own model-name heuristic."""
     return await _resolve_info(
         settings.llm_gateway_internal_url,
         model_source,

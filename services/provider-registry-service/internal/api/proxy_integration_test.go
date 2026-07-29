@@ -638,6 +638,48 @@ func TestGetInternalModelInfo(t *testing.T) {
 		t.Error("info endpoint must NOT return secrets")
 	}
 
+	// capability_flags must be present even when the column is NULL (the seed leaves it so),
+	// and it must be an OBJECT — callers treat it as a map.
+	flags, ok := out["capability_flags"].(map[string]any)
+	if !ok {
+		t.Fatalf("capability_flags must be a JSON object, got %T (%+v)", out["capability_flags"], out)
+	}
+	if len(flags) != 0 {
+		t.Errorf("NULL capability_flags should render as {}, got %+v", flags)
+	}
+
+	// A bare JSON `null` is a real shape in this column (live data holds several) — it must
+	// degrade to {} rather than reaching the caller as a null they have to defend against.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE user_models SET capability_flags='null'::jsonb WHERE user_model_id=$1`,
+		userModelID); err != nil {
+		t.Fatalf("set json-null flags: %v", err)
+	}
+	rr = infoReq("user_model", userModelID.String())
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode json-null case: %v", err)
+	}
+	if flags, ok := out["capability_flags"].(map[string]any); !ok || len(flags) != 0 {
+		t.Errorf("json-null capability_flags should render as {}, got %+v", out["capability_flags"])
+	}
+
+	// The payload case this endpoint exists for: `reasoning_control` is the documented override
+	// the shared classifier checks BEFORE its model-name heuristic. Until this field was
+	// returned, no server could ever pass it — the override was documented but unreachable.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE user_models SET capability_flags='{"reasoning_control":"effort","vision":true}'::jsonb
+		 WHERE user_model_id=$1`, userModelID); err != nil {
+		t.Fatalf("set flags: %v", err)
+	}
+	rr = infoReq("user_model", userModelID.String())
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode flags case: %v", err)
+	}
+	flags, _ = out["capability_flags"].(map[string]any)
+	if flags["reasoning_control"] != "effort" || flags["vision"] != true {
+		t.Errorf("capability_flags did not round-trip: %+v", out["capability_flags"])
+	}
+
 	// 404: unknown id.
 	if rr := infoReq("user_model", uuid.New().String()); rr.Code != http.StatusNotFound {
 		t.Errorf("unknown id: want 404, got %d", rr.Code)

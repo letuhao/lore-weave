@@ -403,6 +403,38 @@ def test_classification_does_not_depend_on_the_client_sending_hints(ctx, monkeyp
     assert captured["reasoning"].source == "suppress_unclassified"
 
 
+def test_registry_capability_flags_override_the_name_heuristic(ctx, monkeypatch):
+    """`capability_flags.reasoning_control` is the SANCTIONED way to correct a model the name
+    heuristic gets wrong — and `infer_reasoning_control` has always checked it first. It was
+    unreachable from any server until the internal model-info route started returning the flags:
+    the only caller that could supply it was one that already had them client-side.
+
+    Here it corrects gemma in the ENABLE direction: without the flag it suppresses, with
+    `reasoning_control=effort` the rule-based scorer decides instead."""
+    c, *_, captured = ctx
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value={
+        "provider_kind": "lm_studio", "provider_model_name": "google/gemma-4-26b-a4b-qat",
+        "capability_flags": {"reasoning_control": "effort"}}))
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate",
+               json={**_gen_body(), "reasoning": "auto"})
+    assert r.status_code == 200
+    assert captured["reasoning"].source == "rule_based"   # the scorer, not the suppressor
+    assert captured["reasoning"].effort == "medium"       # draft_scene + 0 canon
+
+
+def test_absent_capability_flags_do_not_disturb_the_classification(ctx, monkeypatch):
+    """The column is nullable and holds a bare JSON null on live rows; the route renders both as
+    {}. An empty mapping must mean "no override", never "override to nothing"."""
+    c, *_, captured = ctx
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value={
+        "provider_kind": "lm_studio", "provider_model_name": "google/gemma-4-26b-a4b-qat",
+        "capability_flags": {}}))
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate",
+               json={**_gen_body(), "reasoning": "auto"})
+    assert r.status_code == 200
+    assert captured["reasoning"].source == "suppress_unclassified"
+
+
 def test_generate_cancels_in_flight_job_s2(ctx):
     c, _, _, _, jobs, _, _ = ctx
     prior = uuid.uuid4()

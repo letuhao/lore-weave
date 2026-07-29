@@ -64,11 +64,34 @@ chars / 0 reasoning deltas** · worker **2,393 chars**, `reasoning_source=suppre
 
 **NEXT:** write chương 1 through the FE as a real user — the original goal, now unblocked.
 
-### Deferred (new)
+### Recently cleared
 
-| ID | What | Gate | Target |
-|---|---|---|---|
-| `D-REASONING-CAPFLAGS-UNREACHABLE` | `capability_flags.reasoning_control` is the sanctioned way to correct a misclassified model and `infer_reasoning_control` checks it FIRST — but `/internal/models/.../info` returns only kind+name, so the server can never pass it. Works only for a caller that already holds the flags client-side. | #2 cross-service contract (Go handler + response contract + tests + a call on whether flags are safe on an internal route) | when a real model needs the override in the *enable* direction |
+**`D-REASONING-CAPFLAGS-UNREACHABLE` — CLEARED same session.** It was deferred under gate #2
+(cross-service contract) and then challenged rather than left to age. The whole cost was one
+column in two SELECTs: `/internal/models/{source}/{ref}/info` now returns `capability_flags`
+alongside kind + name, so the override the classifier had *always* checked first is finally
+reachable from a server.
+
+Two things the fix had to get right, neither of them the obvious part:
+
+- **The flags are a jsonb that is not always an object.** Live data holds 58 objects and **5 bare
+  JSON `null`s** — a shape that had already broken an ad-hoc `jsonb_object_keys` query during this
+  very investigation. The route renders anything non-object as `{}` so no consumer re-derives that
+  defence per language, and the Python side re-checks the type anyway rather than trusting the peer.
+- **Nothing sensitive is exposed.** Checked against live rows, not assumed: the column holds
+  `_capability`, `_display_name`, `_is_recommended`, `vision`, `extended_thinking`. Secrets live on
+  `provider_credentials` and are untouched; the route stays internal-token-gated.
+
+**Proven live, in both directions, with no code change and no client hint** — setting
+`reasoning_control: "effort"` on the real gemma row flipped the classification from
+`suppress / suppress_unclassified / none` to `effort / rule_based / medium`, and removing it flipped
+it back. The Go integration test was **actually run** (against the throwaway
+`loreweave_provider_test`), covering NULL flags, the bare json-null, and a `reasoning_control`
+round-trip.
+
+Evidence: Go suite ok · composition **2,995** · SDK **923** · translation **1,055** · knowledge
+**4,098** — 0 fail. ruff + gofmt findings all byte-identical at HEAD; gofmt has no diff in the new
+hunk.
 
 ---
 

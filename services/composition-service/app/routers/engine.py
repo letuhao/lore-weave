@@ -286,15 +286,23 @@ async def _reasoning_control_for(body: Any) -> ReasoningControl:
     own chat template decides → the empty-draft failure, re-entered through the front door.
 
     The registry already answers this (`/internal/models/{source}/{ref}/info` returns kind +
-    name, added for exactly this advisory). It is best-effort, so the client hint stays as the
-    fallback — a degraded classification is still better than none.
+    name + capability_flags). It is best-effort, so the client hint stays as the fallback — a
+    degraded classification is still better than none.
+
+    `capability_flags.reasoning_control` is the SANCTIONED per-model override, and
+    `infer_reasoning_control` checks it before its own model-name heuristic — which is the
+    supported answer for a model the heuristic gets wrong, in either direction. It only reaches
+    here because the internal route now returns the flags; until then the override was
+    documented but unreachable from any server (D-REASONING-CAPFLAGS-UNREACHABLE).
     """
     kind, name = getattr(body, "model_kind", None), getattr(body, "model_name", None)
+    flags: dict[str, Any] | None = None
     info = await resolve_model_info(body.model_source, str(body.model_ref))
     if info:
         kind = info.get("provider_kind") or kind
         name = info.get("provider_model_name") or name
-    return infer_reasoning_control(kind, name)
+        flags = info.get("capability_flags") or None
+    return infer_reasoning_control(kind, name, flags)
 
 
 async def _maybe_detect_narrative_threads(

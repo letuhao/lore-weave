@@ -172,9 +172,26 @@ wrong, and `infer_reasoning_control` checks it FIRST — but `/internal/models/.
 `provider_kind` + `provider_model_name`, so the server can never actually pass it. The override
 works only for a caller that already has the flags client-side.
 
-Deferring under gate #2 (cross-service contract): it needs a Go handler + response-contract change
-in provider-registry, its own tests, and a decision about whether the flags are safe to expose on
-an internal route. Tracked as **D-REASONING-CAPFLAGS-UNREACHABLE** in SESSION_HANDOFF.
+~~Deferring under gate #2 (cross-service contract)~~ — **CLEARED in the same session.** The row was
+challenged instead of left to age, and the "cross-service contract change" turned out to be one
+column added to two SELECTs.
+
+`/internal/models/{source}/{ref}/info` now returns `capability_flags`. Two things the fix had to
+get right:
+
+- **The column is a jsonb that is not always an object** — live data holds 58 objects and **5 bare
+  JSON `null`s**, the shape that had already broken an ad-hoc `jsonb_object_keys` query during this
+  investigation. `jsonObjectOrEmpty` renders anything non-object as `{}` so no consumer re-derives
+  that defence per language; the Python side re-checks the type rather than trusting the peer.
+- **Nothing sensitive is exposed** — checked against live rows, not assumed: `_capability`,
+  `_display_name`, `_is_recommended`, `vision`, `extended_thinking`. Secrets live on
+  `provider_credentials`; the route stays internal-token-gated.
+
+Proven live in both directions: setting `reasoning_control: "effort"` on the real gemma row flipped
+the classification from `suppress / suppress_unclassified / none` to `effort / rule_based / medium`
+**with no code change and no client hint**, and removing it flipped it back. The Go integration
+test was actually run against the throwaway `loreweave_provider_test`, covering NULL flags, the bare
+json-null, and a `reasoning_control` round-trip.
 
 **Not a blocker for this change:** with the registry now supplying the kind, the heuristic's
 local-unknown branch fails safe, so a wrong guess costs a disabled `think` rather than an empty
