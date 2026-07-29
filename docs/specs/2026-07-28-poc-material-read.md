@@ -326,6 +326,59 @@ Two deliberate limits, because the constraint must not become a new hole:
   `response_format` support is not a platform requirement. Same shape as
   `translation-service._entity_response_format`, which already does enum + fallback.
 
+## 6e · The loop rebuilt on what won, and the cold-start arm
+
+Both run with **only** the framings that won their controlled arm — multi-label classify,
+quote-first search with no gate and no example, the constrained-and-grounded question — every call
+grammar-enforced at a fixed seed, and **no model verification step at all** (three framings of it
+each collapsed to a constant, and the one tie-break rule I hand-wrote cost 0.26 F1).
+
+### Arm 1 · the author's structured document — **zero questions asked**
+
+Multi-label covers **5 of 6 kinds**, against 3 under the single-label read. The lift comes entirely
+from letting a section be two things: `Mị Đế — Ý tưởng khởi đầu` is *mechanics AND
+writing_principles*; `Hàng vạn năm sau` is *arc AND character AND open_questions*.
+
+`planner_variables` was the only kind reported absent — and the search found it **already written**.
+So the loop asks the author **nothing**. Everything they needed was in the document; the machine
+simply could not read it.
+
+**And that result is partly too good, which the record has to say.** Removing the yes/no gate bought
+recall at a measured cost in precision, and here is that cost at loop level: the line retrieved for
+`planner_variables` (*"Chỉ có Chân Linh là bất biến"*) is a rule about soul layers, **not a state
+variable**. The loop concluded "nothing to ask" on a false positive.
+
+So the failure mode has *inverted*, not vanished: it used to **over-ask** (3 questions, 2 off-topic);
+it now **under-asks**. Both are wrong, and which is worse is an author's call — which is precisely
+why the retrieved lines must be shown for a keep-or-drop rather than acted on.
+
+### Arm 2 · cold start — a wall of prose, every heading stripped
+
+Same content, 3,204 chars, no headings, no bullets. The real ingest reads **0 sections** and now
+*says so* (the guard shipped in `6bc2ed59a`). Segmented into 18 four-sentence groups — there is no
+structure to lean on — and classified: **5 of 6 kinds reconstructed.**
+
+Fed back through the **real** `ingest` + `propose_spec`, against the author's own document:
+
+| | author's doc | cold-start reconstruction |
+|---|---|---|
+| sections | 9 | **5** |
+| characters | 4 | **1** ← |
+| mechanics | 2 | 1 |
+| arcs | 1 | 1 |
+
+**Cold start half-works, and the gap is exact.** From nothing readable at all it produces a document
+PlanForge parses — but the four named characters collapse to one.
+
+The cause is not the model. The reconstruction files every character group under one `# Nhân vật`
+heading as flowing prose, and `propose._characters` needs `## ` sub-blocks to see more than one
+person. **The format-binding fixed for the author's hand-written document bites again on
+machine-written text.**
+
+⇒ Grouping by kind is not enough: the reconstruction must emit the **sub-structure the extractors
+read**, not merely the right heading. That is a bounded, known piece of work rather than an open
+question — and it is measurable to the character.
+
 ## 7 · Deferred / follow-ups this produced
 
 | id | finding | gate |
@@ -333,4 +386,6 @@ Two deliberate limits, because the constraint must not become a new hole:
 | `D-PLANFORGE-RULES-INGEST-SILENT-ZERO` | a 0-section ingest produces an empty spec with no signal — the author cannot tell a failed read from an empty book | fix-now candidate: it is a guard, not a refactor |
 | `D-PLANFORGE-RULES-FORMAT-BOUND` | `_characters` caps at one; arcs need `Arc N:`; the extractors only fit the original fixture | large/structural (gate 2) — the LLM read is the replacement, not a patch |
 | `D-PLANFORGE-NO-PREMISE-KIND` | the six ingest kinds have no home for premise/genre/tone; the author's opening section is dropped as `other` | small — widen `SECTION_KIND_MAP` |
+| `D-COLDSTART-SUBSTRUCTURE` | a reconstruction from headingless prose files each kind under one heading, so `_characters` (which needs `## ` sub-blocks) reads 1 person where the author's own document yields 4. Measured exactly: sections 9→5, characters 4→1 | not blocked — emit the sub-structure the extractors read |
+| `D-SEARCH-OVER-RETRIEVES` | removing the yes/no gate bought recall at a measured precision cost; at loop level that turned "over-ask 3 questions" into "under-ask zero" on a false positive. The retrieved lines must be shown to the author for keep-or-drop, never acted on | design, not a bug — the propose-to-author step already planned |
 | ~~`D-LLM-TEXT-FORMAT-HAND-PARSE`~~ | **CLEARED** — not deferred: it was unbuilt work, not debt. A shared `engine/llm_json.call_json` (schema-first, free-form fallback, post-filter retained) plus every site with a REAL closed set migrated: `plan` beat_keys · `world_plan` WORLD_KINDS · `promise_audit` verdicts · `motif_mine` kinds+actants · the intent FSM's slot enums. All four production schemas live-verified against the real provider. The shape-only sites keep text+tolerant-parse **on purpose**: with no enum, enforcement buys shape alone, and the measured win was the enum | — |
