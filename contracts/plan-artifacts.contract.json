@@ -3,6 +3,9 @@
   "artifacts": {
     "beat_plan": {
       "list_field": "chapters",
+      "optional_top_level_fields": [
+        "warning"
+      ],
       "produced_by_pass": "beats",
       "row_fields": [
         "beat_role",
@@ -50,6 +53,10 @@
     },
     "motif_plan": {
       "list_field": "motifs",
+      "optional_top_level_fields": [
+        "degraded",
+        "warning"
+      ],
       "produced_by_pass": "motifs",
       "row_fields": [
         "arc_role",
@@ -74,6 +81,9 @@
         "synopsis",
         "tension",
         "title"
+      ],
+      "optional_top_level_fields": [
+        "heal"
       ],
       "produced_by_pass": "scenes,self_heal",
       "row_fields": [

@@ -268,9 +268,19 @@ async def _capture_degraded(out: dict[str, Any], degraded: PassContext) -> None:
             body = await adapter(degraded)
         except Exception:  # noqa: BLE001 — a pass that cannot run degraded simply adds no keys
             continue
-        out[kind]["top_level_fields"] = sorted(
-            set(out[kind]["top_level_fields"]) | set(body.keys())
-        )
+        healthy_keys = set(out[kind]["top_level_fields"])
+        degraded_keys = set(body.keys())
+        out[kind]["top_level_fields"] = sorted(healthy_keys | degraded_keys)
+        # OPTIONALITY, derived rather than declared. A key present on only ONE of the two runs is
+        # conditional; a key on both is always there. Without this the contract listed `warning`
+        # exactly like `chapters`, and a consumer could not tell that one of them may simply be
+        # absent — so a FE reading it defensively and a FE reading it as guaranteed both looked
+        # equally correct against the same contract.
+        symmetric_difference = (healthy_keys | degraded_keys) - (healthy_keys & degraded_keys)
+        if symmetric_difference:
+            out[kind]["optional_top_level_fields"] = sorted(
+                set(out[kind].get("optional_top_level_fields", [])) | symmetric_difference
+            )
 
 
 async def test_plan_artifact_contract_matches_the_producers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -323,3 +333,36 @@ async def test_the_two_regressions_this_guard_exists_for(monkeypatch: pytest.Mon
     cast = artifacts["cast_plan"]
     assert "trait" not in cast["row_fields"], "the FE exposed a `trait` the producer never emits"
     assert {"archetype", "summary"} <= set(cast["row_fields"])
+
+
+async def test_the_contract_EXPRESSES_optionality_not_just_captures_it(monkeypatch):
+    """The gap the degraded capture did NOT close.
+
+    Capturing a conditional key made it visible; it did not make it distinguishable. `warning` sat
+    in `top_level_fields` exactly like `chapters`, so a consumer reading the contract defensively
+    and one reading it as guaranteed both looked correct against the same document — which means
+    the contract could not adjudicate between them.
+
+    Derived, never declared: a key present on only ONE of the healthy/degraded runs is conditional.
+    """
+    _install_stubs(monkeypatch)
+    artifacts = await _capture()
+
+    beat = artifacts["beat_plan"]
+    assert "warning" in beat["optional_top_level_fields"]
+    assert "chapters" not in beat.get("optional_top_level_fields", [])
+    assert "chapters" in beat["top_level_fields"]        # always there, and says so
+
+    # motif_plan degrades with BOTH a flag and a message; scene_plan's `heal` is emitted only by
+    # pass 7, so it is conditional on which pass wrote the artifact — the same kind, two producers.
+    assert set(artifacts["motif_plan"]["optional_top_level_fields"]) == {"degraded", "warning"}
+    assert artifacts["scene_plan"]["optional_top_level_fields"] == ["heal"]
+
+
+async def test_a_kind_with_no_conditional_key_carries_NO_optional_list(monkeypatch):
+    """Absent, not empty. An empty list would read as "checked, and nothing is optional" for a kind
+    whose degraded path was never exercised — the same absent-vs-zero confusion this guard exists
+    to stop one level down."""
+    _install_stubs(monkeypatch)
+    artifacts = await _capture()
+    assert "optional_top_level_fields" not in artifacts["cast_plan"]
