@@ -1,0 +1,772 @@
+[
+  {
+    "code": "mystery.impossible_detail",
+    "language": "en",
+    "kind": "sequence",
+    "category": "mystery.opening",
+    "name": "The Detail That Should Not Be There",
+    "summary": "A disturbance is discovered — a body on a floor, a theft, a disappearance, a ledger that does not balance — and among the ordinary facts sits one small physical thing that no innocent account explains: a second cup washed and back on its hook, a key on the wrong side of a door, a coat too dry for the weather. That single wrongness is what converts a misfortune into a question, and the question is what the investigation is actually about.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the one who notices",
+        "constraints": [
+          "sees what others walk past"
+        ]
+      },
+      {
+        "key": "question",
+        "actant": "object",
+        "label": "the question that opens",
+        "constraints": [
+          "is sharper than 'who did it'"
+        ]
+      },
+      {
+        "key": "scene",
+        "actant": "sender",
+        "label": "the disturbance itself",
+        "constraints": [
+          "presents mostly ordinary facts"
+        ]
+      },
+      {
+        "key": "authority",
+        "actant": "receiver",
+        "label": "those who want it closed",
+        "constraints": [
+          "prefer the ordinary account"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "discover",
+        "label": "The disturbance is found",
+        "intent": "something is discovered that has an obvious innocent reading",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "detail",
+        "label": "One detail refuses to fit",
+        "intent": "a single fact cannot be explained by the innocent reading",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "fix",
+        "label": "The question is fixed",
+        "intent": "the wrongness is stated precisely enough to be pursued",
+        "tension_target": 2,
+        "order": 3
+      },
+      {
+        "key": "open",
+        "label": "The investigation opens",
+        "intent": "someone commits to answering it against the preference for closure",
+        "tension_target": 3,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "an event with a readily available innocent explanation"
+      }
+    ],
+    "effects": [
+      {
+        "text": "a specific unanswered question now governs what follows"
+      },
+      {
+        "text": "at least one party would prefer the question not be asked"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "curiosity",
+    "examples": [
+      {
+        "text": "Everything in the room said he had been drinking alone; only the second cup, washed and dry and back on its hook, disagreed."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.false_lead",
+    "language": "en",
+    "kind": "sequence",
+    "category": "mystery.misdirection",
+    "name": "The Lead That Fits Too Well",
+    "summary": "A suspect emerges whom the evidence fits cleanly — the letters are in the one drawer that was searched first, the debts are on record, the alibi is thin — and the investigation commits to that fit publicly, expensively, or emotionally. It collapses not from new evidence but from noticing the fit was too clean: someone arranged for these documents to be found in this order, and that someone is the actual subject.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation",
+      "misdirection"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the investigator who commits",
+        "constraints": [
+          "invests before verifying"
+        ]
+      },
+      {
+        "key": "suspect",
+        "actant": "object",
+        "label": "the too-convenient suspect",
+        "constraints": [
+          "is genuinely implicated by the facts"
+        ]
+      },
+      {
+        "key": "arranger",
+        "actant": "opponent",
+        "label": "whoever arranged the fit",
+        "constraints": [
+          "stays offstage while the lead runs"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "emerge",
+        "label": "A clean suspect emerges",
+        "intent": "evidence converges on one person with unusual tidiness",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "commit",
+        "label": "The investigation commits",
+        "intent": "resources, reputation or feeling are staked on the lead",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "seam",
+        "label": "The fit is too clean",
+        "intent": "a seam shows where the evidence was arranged rather than left",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "collapse",
+        "label": "The lead collapses upward",
+        "intent": "the false trail becomes the strongest evidence about who laid it",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "an investigation under pressure to produce a name"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the investigator has lost standing and must proceed with less"
+      },
+      {
+        "text": "the existence of a deliberate arranger is now established"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "unease",
+    "examples": [
+      {
+        "text": "Every document they needed was in the one drawer they searched first, which was exactly what finally bothered her about it."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.impossible_circumstance",
+    "language": "en",
+    "kind": "situation",
+    "category": "mystery.locked",
+    "name": "It Could Not Have Happened",
+    "summary": "The crime is bounded by constraints that make it impossible — a room bolted from the inside, a stair watched all night, an alibi sworn to by strangers, a distance no one could ride in the hours available. The constraints are enumerated honestly, one by one, and the answer comes from finding the one that was never a checked fact at all but an assumption everybody in the house shared.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "locked-room",
+      "investigation"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the one enumerating constraints",
+        "constraints": [
+          "must state them honestly to break them"
+        ]
+      },
+      {
+        "key": "constraint",
+        "actant": "object",
+        "label": "the impossibility",
+        "constraints": [
+          "holds until one item is reclassified"
+        ]
+      },
+      {
+        "key": "assumption",
+        "actant": "sender",
+        "label": "the shared assumption",
+        "constraints": [
+          "was never verified by anyone"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "bound",
+        "label": "The impossibility is stated",
+        "intent": "the crime is shown to be excluded by the known constraints",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "enumerate",
+        "label": "The constraints are listed",
+        "intent": "each condition is set out so it can be tested rather than felt",
+        "tension_target": 2,
+        "order": 2
+      },
+      {
+        "key": "identify",
+        "label": "One is only an assumption",
+        "intent": "a constraint is found that no one ever actually checked",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "dissolve",
+        "label": "The impossibility dissolves",
+        "intent": "with the assumption removed the sequence becomes ordinary",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a set of conditions treated as facts by everyone present"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the method is now known even if the hand is not"
+      },
+      {
+        "text": "who benefited from the shared assumption is a new question"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "curiosity",
+    "examples": [
+      {
+        "text": "Four people swore the door was watched all night, and every one of them was telling the truth about a different night."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.witness_who_lies",
+    "language": "en",
+    "kind": "situation",
+    "category": "mystery.testimony",
+    "name": "The Witness Whose Lie Is Not the Crime",
+    "summary": "A statement is given that contradicts one small checkable thing — the hour on a receipt, which train was running, whose window faces the yard — and pressing the contradiction produces not a confession to the crime but a confession to something else entirely: a debt, an affair, a night spent at a hospital they will not name. The lie is real, the reason is unrelated, and that unrelated reason is what unlocks the case.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation",
+      "testimony"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the one who presses",
+        "constraints": [
+          "must press without assuming guilt"
+        ]
+      },
+      {
+        "key": "witness",
+        "actant": "opponent",
+        "label": "the lying witness",
+        "constraints": [
+          "is lying about something, but not this"
+        ]
+      },
+      {
+        "key": "secret",
+        "actant": "object",
+        "label": "the unrelated secret",
+        "constraints": [
+          "is shameful enough to lie for"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "testify",
+        "label": "The account is given",
+        "intent": "a witness supplies an account that is mostly consistent",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "contradict",
+        "label": "A small fact contradicts it",
+        "intent": "a checkable detail does not match the account",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "press",
+        "label": "The lie is pressed",
+        "intent": "the contradiction is put to the witness directly",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "reason",
+        "label": "The reason is the find",
+        "intent": "the witness confesses to something unrelated that reframes the case",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a witness with something to lose that is not the crime"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the case file holds a new established fact — a hidden relationship — set beside nothing yet"
+      },
+      {
+        "text": "the witness's timeline is corrected, moving someone else"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {
+        "text": "He had not been at the warehouse and he would not say where he had been, and it took two more days to learn it was a hospital."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.second_death",
+    "language": "en",
+    "kind": "sequence",
+    "category": "mystery.escalation",
+    "name": "The Investigation Provokes a Second",
+    "summary": "The asking of questions makes someone dangerous to somebody, and a second body follows — characteristically the person who had agreed to talk in the morning and was found before the morning came. The interview that never happened says more than the answer would have: only those who knew what was about to be said could have moved, the field narrows to them, and the investigator now carries a death their own questions provoked.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation",
+      "dark"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the one whose questions provoked it",
+        "constraints": [
+          "bears responsibility for the provocation"
+        ]
+      },
+      {
+        "key": "silenced",
+        "actant": "object",
+        "label": "the second victim",
+        "constraints": [
+          "was about to say something useful"
+        ]
+      },
+      {
+        "key": "killer",
+        "actant": "opponent",
+        "label": "whoever moved to silence",
+        "constraints": [
+          "must have known what was coming"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "provoke",
+        "label": "The questions land close",
+        "intent": "an inquiry reaches someone who now becomes a liability",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "silence",
+        "label": "The witness is silenced",
+        "intent": "the person about to speak is removed",
+        "tension_target": 5,
+        "order": 2
+      },
+      {
+        "key": "narrow",
+        "label": "The field narrows",
+        "intent": "only those who knew what was coming could have acted",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "carry",
+        "label": "The investigator carries it",
+        "intent": "responsibility for provoking the death changes how they proceed",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "an inquiry that has become visible to its subject"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the case file now holds established facts about who had foreknowledge, still unconnected to each other"
+      },
+      {
+        "text": "the suspect pool is reduced to those who knew what the dead witness was about to say"
+      },
+      {
+        "text": "the investigator now has a personal stake they did not choose"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 5,
+    "emotion_target": "dread",
+    "examples": [
+      {
+        "text": "She had asked him to come in the morning; he was found before the morning, which told her more than his answer would have."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.hidden_connection",
+    "language": "en",
+    "kind": "situation",
+    "category": "mystery.pattern",
+    "name": "Two Facts, One Origin",
+    "summary": "Two things that have sat in the case file as unrelated — two names, two dates, a sum in a ledger and a village in a letter — turn out to share one origin, and the shape of the case redraws itself around it. Nothing new is found; a fact already in hand simply becomes the centre, and people who had been cleared are back in scope.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation",
+      "pattern"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the one who joins them",
+        "constraints": [
+          "already had both facts"
+        ]
+      },
+      {
+        "key": "origin",
+        "actant": "object",
+        "label": "the shared origin",
+        "constraints": [
+          "was in plain sight, uncentred"
+        ]
+      },
+      {
+        "key": "source",
+        "actant": "sender",
+        "label": "what prompts the join",
+        "constraints": [
+          "is incidental, not evidential"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "separate",
+        "label": "Two facts sit unrelated",
+        "intent": "both are known and neither is connected to the other",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "join",
+        "label": "A shared origin appears",
+        "intent": "something incidental reveals they come from one place",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "redraw",
+        "label": "The case redraws",
+        "intent": "the known facts rearrange around the new centre",
+        "tension_target": 4,
+        "order": 3
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a case file that holds established facts which have never been set beside each other"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the centre of the case has moved without new evidence"
+      },
+      {
+        "text": "previously dismissed parties are back in scope"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "curiosity",
+    "examples": [
+      {
+        "text": "The bank in the ledger and the village in the letter turned out to be a hundred paces apart, and everything else rearranged itself around that."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.assembled_confrontation",
+    "language": "en",
+    "kind": "sequence",
+    "category": "mystery.reveal",
+    "name": "The Chain Laid Out",
+    "summary": "The household is gathered in one room and the sequence is walked through in front of all of them, step by step, each step resting only on things already shown — the timetable, the ledger, who could have known the hour. The denial comes, as it must, and is answered by the one item that needs no interpretation, after which what remains is not the question of guilt but the question of what is now done about it.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation",
+      "reveal"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the one laying it out",
+        "constraints": [
+          "uses only what has been shown"
+        ]
+      },
+      {
+        "key": "culprit",
+        "actant": "opponent",
+        "label": "the one named",
+        "constraints": [
+          "denies before conceding"
+        ]
+      },
+      {
+        "key": "assembled",
+        "actant": "receiver",
+        "label": "the assembled parties",
+        "constraints": [
+          "each had a plausible reason to be suspected"
+        ]
+      },
+      {
+        "key": "proof",
+        "actant": "object",
+        "label": "the unarguable proof",
+        "constraints": [
+          "needs no interpretation to land"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "assemble",
+        "label": "The parties are gathered",
+        "intent": "everyone with a stake is put in one room",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "lay",
+        "label": "The chain is laid out",
+        "intent": "the sequence is walked through using only shown facts",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "deny",
+        "label": "The denial",
+        "intent": "the named party refuses and offers the strongest counter",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "prove",
+        "label": "The proof that cannot be argued",
+        "intent": "one item lands that requires no interpretation",
+        "tension_target": 5,
+        "order": 4
+      },
+      {
+        "key": "consequence",
+        "label": "What follows is consequence",
+        "intent": "the question turns from guilt to what is now done about it",
+        "tension_target": 3,
+        "order": 5
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "enough established facts to build a chain without new evidence"
+      }
+    ],
+    "effects": [
+      {
+        "text": "responsibility is publicly fixed"
+      },
+      {
+        "text": "the cost of the reveal falls on people who were not guilty"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 5,
+    "emotion_target": "catharsis",
+    "examples": [
+      {
+        "text": "He walked them through it twice, and the second time he stopped at the part where only one person in the room could have known the hour."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "mystery.investigator_compromised",
+    "language": "en",
+    "kind": "situation",
+    "category": "mystery.compromise",
+    "name": "The Investigator Has a Stake",
+    "summary": "The one asking the questions turns out to be inside the case — related to a party, owed money by one, or the reason the thing happened at all — and did not say so. Judgement bends before anyone notices it bending, and once the connection surfaces every conclusion already entered in the file must be re-earned in front of people who now have grounds to doubt all of it.",
+    "genre_tags": [
+      "mystery",
+      "trinh-tham",
+      "detective",
+      "investigation",
+      "moral-choice"
+    ],
+    "roles": [
+      {
+        "key": "investigator",
+        "actant": "subject",
+        "label": "the compromised investigator",
+        "constraints": [
+          "did not choose the stake"
+        ]
+      },
+      {
+        "key": "stake",
+        "actant": "object",
+        "label": "the personal stake",
+        "constraints": [
+          "is genuine and disqualifying"
+        ]
+      },
+      {
+        "key": "doubters",
+        "actant": "receiver",
+        "label": "those who now doubt them",
+        "constraints": [
+          "are right to doubt"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "stake",
+        "label": "The stake exists unseen",
+        "intent": "the investigator is connected to the case without acknowledging it",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "bend",
+        "label": "Judgement bends",
+        "intent": "a decision is made that the stake explains better than the evidence does",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "expose",
+        "label": "The connection surfaces",
+        "intent": "the stake becomes known to the others",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "reearn",
+        "label": "Everything must be re-earned",
+        "intent": "prior conclusions must be re-proved to a doubting audience",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "an investigator with a prior connection to a party in the case"
+      }
+    ],
+    "effects": [
+      {
+        "text": "prior conclusions carry no authority until re-proved"
+      },
+      {
+        "text": "the investigator's continued involvement is itself contested"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "unease",
+    "examples": [
+      {
+        "text": "It was not that he lied about knowing the family; it was that nobody had thought to ask, and he had let that stand for three weeks."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  }
+]

@@ -112,7 +112,7 @@ def test_kind_matches_pack():
                 # D1: also mirrored onto annotations for W5's motif-level read.
                 assert r.get("annotations", {}).get("info_asymmetry"), \
                     f"{r['code']} annotations.info_asymmetry missing (D1)"
-            else:  # cultivation / revenge
+            else:  # every GENRE pack (cultivation/revenge/romance/mystery/rebirth/wuxia/survival)
                 assert kind in {"sequence", "situation", "pattern"}, f"{r['code']} bad kind {kind}"
 
 
@@ -235,11 +235,14 @@ def test_inventory_counts(rows, edges):
     counts = {pack: len(_read_pack(pack)) for pack in _MOTIF_PACKS}
     # en base packs (§2 inventory) — and each `*_vi` sibling mirrors its base 1:1.
     for base, n in (("cultivation", 11), ("revenge", 8), ("intrigue", 6),
-                    ("hooks", 13), ("emotion_arcs", 6)):
+                    ("hooks", 13), ("emotion_arcs", 6),
+                    ("romance", 9), ("mystery", 8), ("rebirth", 8),
+                    ("wuxia", 8), ("survival", 7)):
         assert counts[base] == n, f"{base} count {counts[base]} != {n}"
         assert counts[f"{base}_vi"] == n, f"{base}_vi count {counts[f'{base}_vi']} != {n}"
-    assert len(rows) == 88  # (11 + 8 + 6 + 13 + 6) × 2 languages (en + vi)
+    # (11+8+6+13+6) original + (9+8+8+8+7) genre-breadth 2026-07-29 = 84, × 2 languages.
+    assert len(rows) == 168
     # links.json is one manifest; the loader emits it per shared language → both the
-    # en and vi chains are wired (D-W7-VI-PACK): 12 precedes + 7 composed_of, ×2.
-    assert sum(1 for e in edges if e["kind"] == "precedes") == 24
-    assert sum(1 for e in edges if e["kind"] == "composed_of") == 14
+    # en and vi chains are wired (D-W7-VI-PACK): 12+34 precedes + 7+2 composed_of, ×2.
+    assert sum(1 for e in edges if e["kind"] == "precedes") == 92
+    assert sum(1 for e in edges if e["kind"] == "composed_of") == 18

@@ -21,5 +21,46 @@
 
   {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.fortuitous_encounter", "kind": "composed_of", "ord": 1},
   {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.closed_door_breakthrough", "kind": "composed_of", "ord": 2},
-  {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.face_slap", "kind": "composed_of", "ord": 3}
+  {"from_code": "cultivation.trash_to_genius", "to_code": "cultivation.face_slap", "kind": "composed_of", "ord": 3},
+
+  {"from_code": "romance.forced_proximity", "to_code": "romance.confession_interrupted", "kind": "precedes", "ord": 1},
+  {"from_code": "romance.contract_bond", "to_code": "romance.confession_interrupted", "kind": "precedes", "ord": 1},
+  {"from_code": "romance.confession_interrupted", "to_code": "romance.misunderstanding_rift", "kind": "precedes", "ord": 2},
+  {"from_code": "romance.status_gap", "to_code": "romance.protective_sacrifice", "kind": "precedes", "ord": 1},
+  {"from_code": "romance.protective_sacrifice", "to_code": "romance.misunderstanding_rift", "kind": "precedes", "ord": 2},
+  {"from_code": "romance.misunderstanding_rift", "to_code": "romance.rival_forces_the_question", "kind": "precedes", "ord": 3},
+  {"from_code": "romance.slow_thaw", "to_code": "romance.forced_proximity", "kind": "composed_of", "ord": 1},
+  {"from_code": "romance.slow_thaw", "to_code": "romance.protective_sacrifice", "kind": "composed_of", "ord": 2},
+
+  {"from_code": "mystery.impossible_detail", "to_code": "mystery.false_lead", "kind": "precedes", "ord": 1},
+  {"from_code": "mystery.impossible_detail", "to_code": "mystery.witness_who_lies", "kind": "precedes", "ord": 1},
+  {"from_code": "mystery.impossible_circumstance", "to_code": "mystery.assembled_confrontation", "kind": "precedes", "ord": 4},
+  {"from_code": "mystery.false_lead", "to_code": "mystery.second_death", "kind": "precedes", "ord": 2},
+  {"from_code": "mystery.witness_who_lies", "to_code": "mystery.investigator_compromised", "kind": "precedes", "ord": 2},
+  {"from_code": "mystery.witness_who_lies", "to_code": "mystery.hidden_connection", "kind": "precedes", "ord": 3},
+  {"from_code": "mystery.second_death", "to_code": "mystery.hidden_connection", "kind": "precedes", "ord": 3},
+  {"from_code": "mystery.hidden_connection", "to_code": "mystery.assembled_confrontation", "kind": "precedes", "ord": 4},
+
+  {"from_code": "rebirth.second_chance_wake", "to_code": "rebirth.foreknowledge_leverage", "kind": "precedes", "ord": 1},
+  {"from_code": "rebirth.second_chance_wake", "to_code": "rebirth.known_traitor_untouchable", "kind": "precedes", "ord": 1},
+  {"from_code": "rebirth.second_chance_wake", "to_code": "rebirth.inherited_debts", "kind": "precedes", "ord": 1},
+  {"from_code": "rebirth.second_chance_wake", "to_code": "rebirth.save_what_was_lost", "kind": "precedes", "ord": 2},
+  {"from_code": "rebirth.foreknowledge_leverage", "to_code": "rebirth.slip_of_the_impossible", "kind": "precedes", "ord": 2},
+  {"from_code": "rebirth.outsider_knowledge", "to_code": "rebirth.slip_of_the_impossible", "kind": "precedes", "ord": 2},
+  {"from_code": "rebirth.known_traitor_untouchable", "to_code": "rebirth.butterfly_divergence", "kind": "precedes", "ord": 3},
+  {"from_code": "rebirth.save_what_was_lost", "to_code": "rebirth.butterfly_divergence", "kind": "precedes", "ord": 3},
+
+  {"from_code": "wuxia.contested_manual", "to_code": "wuxia.forbidden_shortcut", "kind": "precedes", "ord": 1},
+  {"from_code": "wuxia.righteous_debt", "to_code": "wuxia.escort_under_watch", "kind": "precedes", "ord": 1},
+  {"from_code": "wuxia.retired_blade_recalled", "to_code": "wuxia.inherited_feud", "kind": "precedes", "ord": 1},
+  {"from_code": "wuxia.inherited_feud", "to_code": "wuxia.tavern_provocation", "kind": "precedes", "ord": 2},
+  {"from_code": "wuxia.tavern_provocation", "to_code": "wuxia.recognition_between_equals", "kind": "precedes", "ord": 3},
+
+  {"from_code": "survival.rules_of_the_new_world", "to_code": "survival.not_enough_for_everyone", "kind": "precedes", "ord": 1},
+  {"from_code": "survival.rules_of_the_new_world", "to_code": "survival.mercy_at_the_door", "kind": "precedes", "ord": 1},
+  {"from_code": "survival.not_enough_for_everyone", "to_code": "survival.someone_has_to_decide", "kind": "precedes", "ord": 2},
+  {"from_code": "survival.not_enough_for_everyone", "to_code": "survival.relic_of_before", "kind": "precedes", "ord": 2},
+  {"from_code": "survival.someone_has_to_decide", "to_code": "survival.shelter_has_a_price", "kind": "precedes", "ord": 3},
+  {"from_code": "survival.mercy_at_the_door", "to_code": "survival.one_of_us_is_compromised", "kind": "precedes", "ord": 3},
+  {"from_code": "survival.shelter_has_a_price", "to_code": "survival.one_of_us_is_compromised", "kind": "precedes", "ord": 4}
 ]

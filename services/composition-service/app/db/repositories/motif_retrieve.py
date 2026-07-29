@@ -95,13 +95,60 @@ _TENSION_BAND_MID = {1: 10.0, 2: 30.0, 3: 50.0, 4: 70.0, 5: 90.0}
 # docstring here); both now import the one shared implementation.
 
 
-def _build_query_text(beat_role: str | None, prev_effects: list[str] | None) -> str:
-    """Join the beat intent + the prior-motif effects into one short chapter-intent
-    string so the query vector reflects BOTH what this beat is for and the state that
-    precedes it. Mirrors the references router's auto-query seed; drops empties."""
-    parts: list[str] = [beat_role or ""]
+def _build_query_text(
+    beat_role: str | None, prev_effects: list[str] | None, query: str | None = None,
+) -> str:
+    """Join the free-text query + the beat intent + the prior-motif effects into one short
+    intent string so the query vector reflects BOTH what this beat is for and the state that
+    precedes it. Mirrors the references router's auto-query seed; drops empties.
+
+    `query` is the ARC-level seed (the premise) — see `select_arc_motifs`. Without it an
+    arc-level retrieve has no query text at all and every candidate falls to the degrade
+    path, where ranks tie and the cap is handed out by the tie-break (below)."""
+    parts: list[str] = [query or "", beat_role or ""]
     parts.extend(prev_effects or [])
     return " ".join(p for p in parts if p).strip()
+
+
+def node_query_text(node: Any) -> str:
+    """The retrieval query for a per-NODE motif suggest — the node's own text, joined.
+
+    Both node-level suggest surfaces (the `composition_motif_suggest` MCP tool and the
+    `/nodes/{id}/motif-candidates` route) called `retrieve(beat_role=None, …)` with no query
+    at all, so `_build_query_text` returned "" → no query vector → EVERY candidate took the
+    degrade path with `cosine=0.0`, ranked on genre+tension alone. The node was carrying
+    `title`, `synopsis`, `goal` and `conflict` the whole time — and `beat_role`, which the
+    call site was explicitly passing as None. Semantic suggest was never actually running."""
+    parts = [str(getattr(node, f, "") or "") for f in ("title", "synopsis", "goal", "conflict")]
+    return " ".join(p for p in parts if p.strip()).strip()
+
+
+def _pack_of(code: str) -> str:
+    """The pack/genre prefix of a motif code (`romance.slow_thaw` → `romance`). Codes
+    without a dot (user-authored rows) are their own pack."""
+    return code.split(".", 1)[0]
+
+
+def _round_robin_index(items: list[tuple[float, str, int, float, MotifCandidate]]) -> dict[int, int]:
+    """`id(candidate) → its 0-based position within its own PACK`, used as a tie-break so a
+    tied rank never lets one pack take the whole cap.
+
+    Why this exists: in the degrade path every candidate scores `0.6*genre + 0.4*tension`,
+    and with no genre supplied (measured live: 286 of 292 plan runs carry `genre_tags: []`)
+    and no chapter tension, genre=0.0 and tension=0.5 for EVERY row — so all 198 rows tie at
+    0.2 and the cap was handed out by the final tie-break, `code ASC`. `cultivation.*` sorts
+    first, so the arc selector's entire library section was 15/15 cultivation and the model
+    correctly reported that "the catalog consists entirely of cultivation-genre tropes". That
+    is an ORDERING artefact, not a library gap — removing the hard genre filter did not touch
+    it. Interleaving by pack at equal rank makes the tie honest. Rank still dominates, so the
+    cosine path is unaffected."""
+    seen: dict[str, int] = {}
+    out: dict[int, int] = {}
+    for _rank, code, _ms, _js, cand in sorted(items, key=lambda t: t[1]):
+        pack = _pack_of(code)
+        out[id(cand)] = seen.get(pack, 0)
+        seen[pack] = out[id(cand)] + 1
+    return out
 
 
 def _genre_overlap(motif_genres: list[str] | None, query_genres: list[str] | None) -> float:
@@ -147,6 +194,25 @@ def _precond_overlap(preconditions: list[dict[str, Any]] | None,
 
 def _tokens(text: str) -> set[str]:
     return {t for t in text.lower().split() if t}
+
+
+def _text_unchanged(stored_hash: str | None, current_text: str) -> bool:
+    """Does the stored vector still describe the row's CURRENT text?
+
+    `embedded_summary_hash` was written on every embed and then never read by the ranking
+    path — `_shared_vector_fresh` compares the MODEL only. So `patch()`'s
+    `embedded_summary_hash = NULL  # W3 re-embeds on next retrieve` was a no-op: the row kept
+    a non-NULL `embedding` with a matching `embedding_model`, the re-embed trigger is
+    `vec is None`, and it never fired. **Editing a motif's summary left it retrievable
+    forever by the text it used to have** — and `beats` (also part of `motif_summary_text`)
+    did not even clear the hash, so beat edits were doubly invisible.
+
+    Comparing the hash here fixes the whole class at the read side, which is where the
+    decision is actually made: any change to name, summary or beats now yields a different
+    hash and re-embeds on next touch. A NULL/absent hash is treated as stale (it is exactly
+    what `patch` writes to request a re-embed), and legacy rows embedded before hashes were
+    stored simply re-embed once."""
+    return bool(stored_hash) and stored_hash == summary_hash(current_text)
 
 
 def _shared_vector_fresh(stored_model: str | None, platform_ref: str | None) -> bool:
@@ -219,6 +285,7 @@ class MotifRetriever:
         beat_role: str | None, tension: int | None,
         prev_effects: list[str] | None = None, limit: int = 10,
         user_model: tuple[str, str] | None = None,
+        query: str | None = None,
     ) -> list[MotifCandidate]:
         """Tier-merged, SQL-pre-filtered, cosine-ranked motif candidates for a chapter's
         beat — split into TWO embedding SPACES (2026-07-17 tenancy re-design; mirrors
@@ -253,7 +320,7 @@ class MotifRetriever:
         # (2) Query vectors — ONE PER SPACE (platform + the caller's own model). Embed-DOWN
         #     → that space degrades (R4); EmbedConfigError (unset platform model) degrades
         #     the READ path too (the WRITE path is where a config gap fails closed).
-        qtext = _build_query_text(beat_role, prev_effects)
+        qtext = _build_query_text(beat_role, prev_effects, query)
         qvec_p = await self._embed_query_safe(qtext, None, caller_id)            # P-space
         qvec_u = await self._embed_query_safe(qtext, user_model, caller_id) if user_model else None
         platform_ref = self._platform_ref()
@@ -263,6 +330,7 @@ class MotifRetriever:
         mine: list[tuple[float, str, int, float, MotifCandidate]] = []
         library: list[tuple[float, str, int, float, MotifCandidate]] = []
         for r in rows:
+            motif = _row_to_motif(r)          # WITHOUT embedding (server-side only)
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
             tension_s = _tension_band(r["tension_target"], tension)
             precond_s = _precond_overlap(_loads(r["preconditions"]), prev_effects)
@@ -275,6 +343,10 @@ class MotifRetriever:
             else:
                 section, qvec, bucket = "library", qvec_p, library
                 fresh = _shared_vector_fresh(r["embedding_model"], platform_ref)
+            # …and the vector must still describe the row's CURRENT text, not the text it had
+            # when it was embedded (see `_text_unchanged` — the hash was written, never read).
+            fresh = fresh and _text_unchanged(
+                r["embedded_summary_hash"], motif_summary_text(motif))
 
             # A stored vector counts only if it is in THIS row's space (keeps a P-vector off
             # a U-query); else treat as absent + (re-)embed inline in the row's own space.
@@ -304,7 +376,6 @@ class MotifRetriever:
                 rank = 0.6 * genre_s + 0.4 * tension_s
                 degraded = True
 
-            motif = _row_to_motif(r)  # WITHOUT embedding (server-side only)
             reason: dict[str, Any] = {
                 "tension": tension_s, "genre": genre_s,
                 "precond": precond_s, "cosine": cos, "section": section,
@@ -318,10 +389,13 @@ class MotifRetriever:
             ))
 
         # (4) Rank each SECTION independently (intra-space), cap PER section, concat
-        # mine-first. Deterministic tie-break: rank DESC, mining_support DESC, judge DESC,
-        # code ASC. No cross-space sort — a U-space 0.8 ≠ a P-space 0.8.
+        # mine-first. Deterministic tie-break: rank DESC, then PACK ROUND-ROBIN (so a tied
+        # rank cannot let one pack take the whole cap — see `_round_robin_index`), then
+        # mining_support DESC, judge DESC, code ASC. No cross-space sort — a U-space 0.8 ≠
+        # a P-space 0.8.
         def _top(items: list[tuple[float, str, int, float, MotifCandidate]]) -> list[MotifCandidate]:
-            items.sort(key=lambda t: (-t[0], -t[2], -t[3], t[1]))
+            nth = _round_robin_index(items)
+            items.sort(key=lambda t: (-t[0], nth[id(t[4])], -t[2], -t[3], t[1]))
             return [c for _rank, _code, _ms, _js, c in items[: max(0, limit)]]
 
         return _top(mine) + _top(library)
@@ -406,6 +480,7 @@ class MotifRetriever:
         mine: list[tuple[float, str, ArcCandidate]] = []
         library: list[tuple[float, str, ArcCandidate]] = []
         for r in rows:
+            arc = _row_to_arc(r)              # WITHOUT embedding (server-side only)
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
             private = is_strictly_private(
                 owner_user_id=r["owner_user_id"], visibility=r.get("visibility"))
@@ -421,6 +496,12 @@ class MotifRetriever:
                 # published arc is re-embedded/skipped, never cross-space cosined.
                 section, qvec, bucket = "library", qvec_p, library
                 fresh = _shared_vector_fresh(r["embedding_model"], platform_ref)
+            # …and it must still describe the arc's CURRENT text (`_text_unchanged`): the arc
+            # repo clears `embedded_summary_hash` on a summary change with the same
+            # "re-embeds on next retrieve" comment the motif repo had, and it was equally a
+            # no-op until the read path started comparing the hash.
+            fresh = fresh and _text_unchanged(
+                r["embedded_summary_hash"], arc_summary_text(arc))
 
             # A stored vector is only usable if it is in THIS row's space; otherwise treat it
             # as absent and (re-)embed below. This is what keeps a P-vector off a U-query.
@@ -440,7 +521,6 @@ class MotifRetriever:
                 rank, degraded = cos, False
             else:
                 cos, rank, degraded = 0.0, genre_s, True  # genre order (R4 / unembedded / no U-model)
-            arc = _row_to_arc(r)
             reason: dict[str, Any] = {"genre": genre_s, "cosine": cos, "section": section}
             if degraded:
                 reason["degraded"] = True

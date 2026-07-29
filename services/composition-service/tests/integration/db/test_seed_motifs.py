@@ -151,4 +151,108 @@ async def test_reseed_updates_authored_system_row(pool):
             "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code = 'cultivation.face_slap'"
         )
     assert restored != "TAMPERED", "reseed=True did not restore the pack summary"
-    # default reseed=False is a no-op on an existing row (proven by test #12's stable count).
+
+
+# ── the BOOT path must SHIP a pack edit (2026-07-29) ─────────────────────────────────────────
+# This used to read "default reseed=False is a no-op on an existing row" — stated as if it were
+# the design. It was the bug: `ON CONFLICT DO NOTHING` meant an edit to an existing row could
+# never reach any environment that had already seeded it, so a whole round of content-quality
+# work lived in git and nowhere else. The boot path is now gated on `source_version` rising.
+
+async def test_boot_seed_ships_an_edit_when_source_version_rises(pool):
+    """A row whose pack content changed AND whose `source_version` was bumped must update."""
+    await run_migrations(pool)
+    code = "cultivation.face_slap"
+    async with pool.acquire() as c:
+        pack_summary = await c.fetchval(
+            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND language='en'",
+            code)
+        # Stand in for an environment seeded BEFORE the edit: old text, older version.
+        await c.execute(
+            "UPDATE motif SET summary='OLD TEXT', source_version=0 "
+            "WHERE owner_user_id IS NULL AND code=$1 AND language='en'", code)
+
+        await seed_motif_packs(c)                       # the EXACT boot-path call (reseed=False)
+
+        after = await c.fetchval(
+            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND language='en'",
+            code)
+    assert after == pack_summary, (
+        "the boot seed did not apply the pack edit — pack content is undeployable again")
+
+
+async def test_boot_seed_leaves_a_row_alone_when_the_version_did_not_rise(pool):
+    """The gate is a gate in both directions: without a bump, boot must not rewrite the row.
+
+    Otherwise every restart would clobber whatever an admin had adjusted in place, and the
+    seeder would stop being idempotent in the sense test #12 relies on."""
+    await run_migrations(pool)
+    code = "cultivation.face_slap"
+    async with pool.acquire() as c:
+        await c.execute(
+            "UPDATE motif SET summary='ADMIN EDIT' WHERE owner_user_id IS NULL "
+            "AND code=$1 AND language='en'", code)      # source_version left as the pack's
+        await seed_motif_packs(c)
+        after = await c.fetchval(
+            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND language='en'",
+            code)
+    assert after == "ADMIN EDIT", "boot rewrote a row whose source_version had not risen"
+
+
+async def test_boot_seed_can_never_touch_a_user_owned_motif(pool):
+    """TENANCY: a user's own motif — an adopted copy carrying the same code and a low
+    source_version, exactly what the version gate would otherwise match — comes through
+    untouched.
+
+    What actually protects it is the KEYING, not the scope clause: a user row's id is random,
+    and the seeder's `ON CONFLICT (id)` target is the deterministic `_motif_id(code, language)`,
+    so a user row is never a conflict candidate at all. Removing the `WHERE owner_user_id IS
+    NULL` scope does NOT break this test — verified by mutation — which is why the claim here is
+    about the outcome rather than the mechanism. The regression this does catch is a future
+    change of the conflict target to a natural key like `(code, language)`, which would suddenly
+    put user rows in range. The scope clause is defence-in-depth for that day; the test below
+    exercises the half of it that is reachable."""
+    await run_migrations(pool)
+    owner = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+    async with pool.acquire() as c:
+        await c.execute(
+            """
+            INSERT INTO motif (id, owner_user_id, code, language, visibility, kind, name,
+                               summary, source, source_version)
+            VALUES (gen_random_uuid(), $1, 'cultivation.face_slap', 'en', 'private',
+                    'situation', 'My Copy', 'MY OWN WORDS', 'adopted', 0)
+            """, owner)
+
+        await seed_motif_packs(c)
+
+        mine = await c.fetchrow(
+            "SELECT summary, source_version FROM motif WHERE owner_user_id=$1 "
+            "AND code='cultivation.face_slap'", owner)
+        # Scoped cleanup (CLAUDE.md destructive-DB rule): this owner's row only, never bare.
+        await c.execute("DELETE FROM motif WHERE owner_user_id=$1", owner)
+    assert mine["summary"] == "MY OWN WORDS", "the seeder overwrote a USER's motif"
+    assert mine["source_version"] == 0, "the seeder re-pinned a user's source_version"
+
+
+async def test_boot_seed_will_not_clobber_a_row_that_is_no_longer_authored(pool):
+    """The reachable half of the scope clause: `AND motif.source = 'authored'`.
+
+    A seeded id whose `source` has since become something else — re-imported, promoted from a
+    mining run, re-provenanced by an admin — is no longer the seeder's to rewrite, even with a
+    version bump. This one IS mutatable: drop `source = 'authored'` from the WHERE and it reds,
+    which is what makes it a gate rather than a comment."""
+    await run_migrations(pool)
+    code = "cultivation.face_slap"
+    async with pool.acquire() as c:
+        await c.execute(
+            "UPDATE motif SET summary='RE-PROVENANCED', source='imported', source_version=0 "
+            "WHERE owner_user_id IS NULL AND code=$1 AND language='en'", code)
+
+        await seed_motif_packs(c)                       # boot path, version WOULD allow it
+
+        row = await c.fetchrow(
+            "SELECT summary, source FROM motif WHERE owner_user_id IS NULL AND code=$1 "
+            "AND language='en'", code)
+    assert row["summary"] == "RE-PROVENANCED", (
+        "the seeder rewrote a row it no longer owns (source is not 'authored')")
+    assert row["source"] == "imported", "the seeder reset a row's provenance"

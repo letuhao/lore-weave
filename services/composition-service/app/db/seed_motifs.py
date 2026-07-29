@@ -52,9 +52,21 @@ _PACK_DIR = Path(__file__).resolve().parent / "seed_motif_packs"
 # Vietnamese SOURCE-OF-TRUTH siblings — SAME codes, `language:"vi"` → distinct ids via
 # `_motif_id(code, language)` (R1.1.3 dedup/embed key). links.json is shared: the
 # loader emits one edge PER language whose endpoints both exist (see load_link_edges).
+#
+# 2026-07-29 GENRE BREADTH (`romance` … `survival`): the first five packs left the library
+# covering xianxia/cultivation, revenge, court-intrigue + the genre-agnostic connective
+# kinds — and NOTHING else, so a non-cultivation premise got told, in the selector's own
+# words, that "the catalog consists entirely of cultivation-genre tropes". Note the packs
+# below are tagged generously but do NOT lean on `genre_tags` to be found: measured live,
+# 286 of 292 plan runs carry `genre_tags: []` and every active book carries none, so
+# `_genre_overlap` is 0.0 in practice and the real matcher is cosine over
+# `motif_summary_text` = name + summary + beat labels + beat intents. Those four fields
+# are therefore written to be discoverable FROM A PREMISE, not merely labelled correctly.
 _MOTIF_PACKS = (
     "cultivation", "revenge", "intrigue", "hooks", "emotion_arcs",
+    "romance", "mystery", "rebirth", "wuxia", "survival",
     "cultivation_vi", "revenge_vi", "intrigue_vi", "hooks_vi", "emotion_arcs_vi",
+    "romance_vi", "mystery_vi", "rebirth_vi", "wuxia_vi", "survival_vi",
 )
 _LINKS_PACK = "links"
 
@@ -65,6 +77,24 @@ _MOTIF_NS = uuid.UUID("6d0746f0-0000-5000-8000-000000000001")
 # System tier: owner NULL, unlisted (D6), embedding NULL (D4), authored.
 _SYSTEM_VISIBILITY = "unlisted"
 
+# The BOOT path. It used to be `ON CONFLICT (id) DO NOTHING`, which made a pack edit
+# UNDEPLOYABLE: a new `code` inserts fine, but an edit to an EXISTING row is silently dropped
+# in every environment that has already seeded it — for good. Proven against the live dev DB
+# by writing an "old" summary and running this exact call: the old text survived. So the
+# 2026-07-29 content-quality work (rewritten mystery/rebirth summaries, repaired
+# effect→precondition handshakes) would have reached nobody, while the JSON in git said
+# otherwise — the worst shape of bug this repo keeps re-learning.
+#
+# Now the update is gated on `source_version` INCREASING, which is the field's existing
+# meaning: `motif_sync` already compares an adopted copy's pinned `source_version` against
+# upstream to report drift, so bumping it is exactly the "the base changed" signal it is for.
+# **Edit a pack row ⇒ bump its `source_version`**, or the edit does not ship.
+#
+# The scope clause is what keeps this safe: it can only ever touch a SYSTEM (`owner_user_id
+# IS NULL`) AUTHORED row. A user's motif — including an adopted copy of one of these — is
+# untouchable by the seeder. Content only; `source` and identity are never rewritten. The
+# stored vector goes stale on update, which the retrieve path now detects on its own via
+# `embedded_summary_hash` (see `_text_unchanged`), so the two fixes compose.
 _INSERT_MOTIF_SQL = """
 INSERT INTO motif (
   id, owner_user_id, code, language, visibility, kind, category, name, summary,
@@ -75,7 +105,18 @@ INSERT INTO motif (
   $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb,
   $16, $17, $18::jsonb, $19, $20
 )
-ON CONFLICT (id) DO NOTHING
+ON CONFLICT (id) DO UPDATE SET
+  kind = EXCLUDED.kind, category = EXCLUDED.category, name = EXCLUDED.name,
+  summary = EXCLUDED.summary, genre_tags = EXCLUDED.genre_tags,
+  roles = EXCLUDED.roles, beats = EXCLUDED.beats,
+  preconditions = EXCLUDED.preconditions, effects = EXCLUDED.effects,
+  info_asymmetry = EXCLUDED.info_asymmetry, annotations = EXCLUDED.annotations,
+  tension_target = EXCLUDED.tension_target, emotion_target = EXCLUDED.emotion_target,
+  examples = EXCLUDED.examples, source_version = EXCLUDED.source_version,
+  updated_at = now()
+WHERE motif.owner_user_id IS NULL
+  AND motif.source = 'authored'
+  AND coalesce(motif.source_version, 0) < coalesce(EXCLUDED.source_version, 0)
 """
 
 # Dev-only re-seed: update the curated content of an already-seeded SYSTEM AUTHORED

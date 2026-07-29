@@ -89,6 +89,9 @@ def test_build_query_text():
     assert _build_query_text(None, ["loss"]) == "loss"
     assert _build_query_text(None, None) == ""
     assert _build_query_text("", ["", "x"]) == "x"      # drops empties
+    # the ARC-level seed (the premise) leads, so an arc retrieve has query text at all.
+    assert _build_query_text(None, None, "a premise") == "a premise"
+    assert _build_query_text("hook", ["loss"], "a premise") == "a premise hook loss"
 
 
 def test_summary_text_and_hash_stable():
@@ -253,8 +256,16 @@ class _FakePool:
 
 
 def _row(code, *, embedding, tension_target=3, genre_tags=("xianxia",),
-         mining_support=0, judge_score=None, owner=None):
-    """A motif row dict shaped like the retrieve SELECT (incl. embedding)."""
+         mining_support=0, judge_score=None, owner=None, stale_text=False,
+         embedding_model="m"):
+    """A motif row dict shaped like the retrieve SELECT (incl. embedding).
+
+    `embedded_summary_hash` is the REAL hash of this row's summary text, because the ranking
+    path now compares it (`_text_unchanged`). It used to be the literal `"h"`, which is why
+    no test here could ever have caught the stale-vector bug: a placeholder hash is
+    indistinguishable from a matching one when nothing reads it. `stale_text=True` opts into
+    the mismatch on purpose — that is a row whose text was edited after it was embedded."""
+    text = f"{code}\ns"                       # == motif_summary_text(name=code, summary="s")
     return {
         "id": uuid.uuid4(), "owner_user_id": owner, "code": code, "language": "en",
         "visibility": "public" if owner is None else "private", "kind": "sequence",
@@ -263,10 +274,13 @@ def _row(code, *, embedding, tension_target=3, genre_tags=("xianxia",),
         "info_asymmetry": None, "annotations": "{}", "tension_target": tension_target,
         "emotion_target": None, "examples": "[]", "abstraction_confidence": None,
         "source": "authored", "imported_derived": False, "source_ref": None,
-        "source_version": None, "embedding_model": "m", "embedding_dim": 3,
+        "source_version": None, "embedding_model": embedding_model, "embedding_dim": 3,
         "judge_score": judge_score, "mining_support": mining_support,
         "status": "active", "version": 1, "created_at": None, "updated_at": None,
-        "embedded_summary_hash": None if embedding is None else "h", "embedding": embedding,
+        "embedded_summary_hash": (
+            None if embedding is None else ("stale-hash" if stale_text else summary_hash(text))
+        ),
+        "embedding": embedding,
     }
 
 
@@ -502,6 +516,117 @@ async def test_retrieve_genreless_omits_overlap_clause(monkeypatch):
     assert "genre_tags &&" not in where, "genre must never gate the candidate set"
     assert "genre_tags &&" in order_by, "…but it must still RANK it, so the ceiling stays relevant"
     assert "status = 'active'" in where                # status/visibility still bound
+
+
+async def test_degrade_tiebreak_round_robins_across_packs(monkeypatch):
+    """A TIED rank must not let one pack take the whole cap.
+
+    The arc selector retrieves with no beat_role/tension/genre, so every candidate scores
+    `0.6*0.0 + 0.4*0.5 = 0.2` and the cap was handed out by the final tie-break, `code ASC`.
+    Measured live against the seeded library, that made the selector's entire library section
+    15/15 `cultivation.*` — and the model then reported, accurately, that the catalog was all
+    cultivation tropes. The catalog was not; the ORDERING was. Rank still dominates (see the
+    cosine tie-break test above); this only governs the tie."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    rows = [_row(f"{pack}.m{i}", embedding=None, genre_tags=())
+            for pack in ("aaa", "mmm", "zzz") for i in range(6)]
+    # No query text at all → the degrade path (this is exactly the arc-level call shape).
+    retr = MotifRetriever(_FakePool(rows))
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], language="auto", beat_role=None, tension=None, limit=6,
+    )
+    assert all(c.match_reason.get("degraded") for c in out)      # confirms the tied path
+    packs = {c.motif.code.split(".")[0] for c in out}
+    assert packs == {"aaa", "mmm", "zzz"}, f"one pack monopolised the cap: {packs}"
+    # …and it is still deterministic: strict round-robin in code order.
+    assert [c.motif.code for c in out] == [
+        "aaa.m0", "mmm.m0", "zzz.m0", "aaa.m1", "mmm.m1", "zzz.m1",
+    ]
+
+
+async def test_arc_query_is_embedded_so_the_library_ranks_semantically(monkeypatch):
+    """`query=` must reach the embedded query text — otherwise an arc-level retrieve has
+    no vector and silently falls to the tied degrade path above."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    seen: list[str] = []
+
+    async def _fake_embed_query(text):
+        seen.append(text)
+        return [1.0, 0.0, 0.0]
+
+    monkeypatch.setattr("app.db.repositories.motif_retrieve.embed_query", _fake_embed_query)
+    retr = MotifRetriever(_FakePool([_row("romance.slow_thaw", embedding=[1.0, 0.0, 0.0])]))
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], language="auto", beat_role=None, tension=None,
+        query="a physician's daughter and the heir who ruined her family",
+    )
+    assert seen == ["a physician's daughter and the heir who ruined her family"]
+    assert [c.match_reason.get("degraded") for c in out] == [None]   # cosine path, not degrade
+
+
+def test_node_query_text_joins_the_node_fields_the_suggest_call_was_discarding():
+    """Both node-level suggest surfaces passed `beat_role=None` and no query, so the cosine
+    path never ran for them at all — they ranked on genre+tension with cosine=0.0, while the
+    node carried title/synopsis/goal/conflict AND a beat_role the whole time."""
+    from types import SimpleNamespace
+
+    from app.db.repositories.motif_retrieve import node_query_text
+
+    node = SimpleNamespace(title="The Second Cup", synopsis="A washed cup contradicts the account.",
+                           goal="fix the question", conflict="", beat_role="inciting")
+    assert node_query_text(node) == (
+        "The Second Cup A washed cup contradicts the account. fix the question")
+    assert node_query_text(SimpleNamespace()) == ""                      # nothing to say
+    assert node_query_text(SimpleNamespace(title=None, synopsis="  ")) == ""   # blanks dropped
+
+
+async def test_edited_text_re_embeds_instead_of_ranking_on_the_old_vector(monkeypatch):
+    """A row whose text changed after it was embedded must NOT rank on the stale vector.
+
+    `patch()` cleared `embedded_summary_hash` with the comment "W3 re-embeds on next
+    retrieve", but the re-embed trigger is `vec is None` and freshness was decided by
+    `_shared_vector_fresh`, which reads the MODEL only. The hash was written and never read,
+    so the clear was a no-op and an edited motif stayed retrievable by the text it used to
+    have — for good. (`beats` are part of `motif_summary_text` too and did not even clear the
+    hash, so beat edits were doubly invisible.)"""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    _patch_platform_backfill_embed(monkeypatch, [0.6, 0.8, 0.0])   # what the NEW text embeds to
+    # The MODEL matches the platform ref, so the hash is the ONLY thing that can be stale here.
+    pool = _FakePool([_row("edited", embedding=[1.0, 0.0, 0.0], stale_text=True,
+                           embedding_model="platform-embed-v1")])
+    retr = MotifRetriever(pool)
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50)
+
+    # It re-embedded (a persist fired) and ranked on the NEW vector — 0.6 against the query,
+    # NOT the stale vector's 1.0.
+    assert pool.conn.executed, "no re-embed persisted — the stale vector was used as-is"
+    assert "UPDATE motif SET embedding" in pool.conn.executed[0][0]
+    assert out and out[0].match_reason["cosine"] == pytest.approx(0.6)
+
+
+async def test_unedited_text_keeps_its_vector_and_does_not_re_embed(monkeypatch):
+    """The other half: a row whose hash still matches must NOT pay a re-embed on every read."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    _patch_platform_backfill_embed(monkeypatch, [0.6, 0.8, 0.0])
+    pool = _FakePool([_row("intact", embedding=[1.0, 0.0, 0.0],
+                           embedding_model="platform-embed-v1")])
+    retr = MotifRetriever(pool)
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50)
+
+    assert not pool.conn.executed, "re-embedded an unchanged row — every read would pay for it"
+    assert out and out[0].match_reason["cosine"] == pytest.approx(1.0)
 
 
 async def test_retrieve_respects_limit(monkeypatch):

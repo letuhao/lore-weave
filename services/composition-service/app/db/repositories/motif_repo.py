@@ -19,14 +19,30 @@ to W1, which EXTENDS it with adopt/publish/catalog (it does not re-key the CRUD)
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 
+from loreweave_vecmath import cosine_similarity as _cosine
+
+from app.clients.embedding_client import EmbeddingError
+from app.config import settings
 from app.db.models import Motif, MotifCreateArgs, MotifPatchArgs
 from app.db.repositories import VersionMismatchError
+from app.engine.motif_embed import (
+    EmbedConfigError, _platform_embed_model, embed_motif_summary, embed_query,
+    motif_summary_text, summary_hash,
+)
+
+logger = logging.getLogger(__name__)
+
+# How many rows a text query may pull into Python to cosine against. Same bound the planner's
+# retrieve uses — one ceiling for "how much of the library do we brute-force at once".
+_SEARCH_CEILING = 500
 
 # vector + hash deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
@@ -36,6 +52,10 @@ _SELECT_COLS = """
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
   judge_score, mining_support, status, version, created_at, updated_at
 """
+
+# The SEARCH projection — `_SELECT_COLS` plus the vector, loaded ONLY for the bounded
+# candidate set of a text query. The vector never leaves this module (`_row_to_motif` drops it).
+_SEARCH_COLS = _SELECT_COLS.rstrip() + ",\n  embedding, embedded_summary_hash\n"
 # JSONB columns json.loads'd on read (asyncpg returns them as str).
 _JSONB_FIELDS = (
     "roles", "beats", "preconditions", "effects", "info_asymmetry",
@@ -47,6 +67,8 @@ _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_u
 
 def _row_to_motif(row: asyncpg.Record) -> Motif:
     data = dict(row)
+    data.pop("embedding", None)              # server-side only; never leaves the repo
+    data.pop("embedded_summary_hash", None)
     for f in _JSONB_FIELDS:
         v = data.get(f)
         if isinstance(v, str):
@@ -76,6 +98,37 @@ def _dump_models(items: list[Any]) -> list[dict[str, Any]]:
     for it in items:
         out.append(it.model_dump(mode="json") if hasattr(it, "model_dump") else it)
     return out
+
+
+# A search box is INTERACTIVE — it runs per debounced keystroke, and a user waiting on a
+# provider is a worse outcome than a slightly worse ranking. So the embed gets a hard wall-clock
+# budget and degrades to the literal filter past it. This is deliberately unlike the planning
+# pipelines, which must NOT be timeout-bounded (a long generate is legitimate); the difference is
+# that nobody is watching a plan run, and someone is always watching a search field.
+_SEARCH_EMBED_BUDGET_S = 2.0
+
+# How many unjudgeable rows one search may re-embed, and the wall-clock it may spend doing it.
+# Gathered concurrently, so the budget is roughly one round-trip regardless of the cap.
+_WARM_CAP = 12
+_WARM_BUDGET_S = 4.0
+
+
+async def _query_vector(q: str) -> list[float] | None:
+    """Embed the user's search text in the PLATFORM space, or None when that is impossible.
+
+    None is the honest "we cannot rank semantically" signal — the caller then falls back to the
+    literal ILIKE filter, i.e. exactly the behaviour that shipped before. A browse must never
+    fail, and must never HANG, because of the embed provider."""
+    if not q or not q.strip():
+        return None
+    try:
+        return await asyncio.wait_for(embed_query(q.strip()), timeout=_SEARCH_EMBED_BUDGET_S)
+    except (EmbeddingError, EmbedConfigError) as exc:
+        logger.info("motif search: no query vector (%r) → literal filter", exc)
+        return None
+    except TimeoutError:
+        logger.info("motif search: embed exceeded %.1fs → literal filter", _SEARCH_EMBED_BUDGET_S)
+        return None
 
 
 class MotifRepo:
@@ -518,6 +571,11 @@ class MotifRepo:
             params.append(language)
             where.append(f"language = ${len(params)}")
         if q:
+            ranked = await self._rank_by_query(
+                where, params, q, limit, "book_shared DESC, owner_user_id NULLS FIRST, name",
+                caller_id=caller_id)
+            if ranked is not None:
+                return ranked
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
         params.append(max(0, limit))
@@ -545,6 +603,158 @@ class MotifRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, caller_id, book_id, motif_id)
         return _row_to_motif(row) if row is not None else None
+
+    async def _warm_stale_vectors(
+        self, rows: list[asyncpg.Record], caller_id: UUID | None, platform_ref: str | None,
+    ) -> dict[UUID, list[float]]:
+        """Re-embed, bounded and concurrently, the rows a search could not judge.
+
+        Returns {motif_id: vector} for the ones that succeeded; a failure is simply absent (the
+        row then rides on its literal hit alone — never invented into the results).
+
+        BOUNDED because this rides an interactive request: at most `_WARM_CAP` rows, and they
+        are gathered so the wall-clock is about one round-trip rather than N of them. The
+        library therefore self-heals over the first few searches after a deploy instead of
+        staying semantically dark until an unrelated planning run happens to touch it.
+
+        TENANCY: the UPDATE is scoped `owner_user_id IS NULL OR owner_user_id = $2`, so a read
+        by one user can never rewrite another tenant's vector — the same scope the retrieve
+        path's back-fill uses."""
+        if platform_ref is None:
+            return {}                          # no platform model → nothing legitimate to write
+        stale = [
+            r for r in rows
+            if (r["embedding"] is None
+                or r["embedding_model"] != platform_ref
+                or r["embedded_summary_hash"] != summary_hash(
+                    motif_summary_text(_row_to_motif(r))))
+            and (r["owner_user_id"] is None or r["owner_user_id"] == caller_id)
+        ][:_WARM_CAP]
+        if not stale:
+            return {}
+
+        async def _one(row) -> tuple[UUID, list[float]] | None:
+            try:
+                text = motif_summary_text(_row_to_motif(row))
+                if not text:
+                    return None
+                res = await embed_motif_summary(text)
+                vec = res.embeddings[0]
+                async with self._pool.acquire() as c:
+                    await c.execute(
+                        "UPDATE motif SET embedding = $3::real[], embedding_model = $4, "
+                        "embedding_dim = $5, embedded_summary_hash = $6 "
+                        "WHERE id = $1 AND (owner_user_id IS NULL OR owner_user_id = $2)",
+                        row["id"], caller_id, list(vec), platform_ref, len(vec),
+                        summary_hash(text))
+                return row["id"], vec
+            except (EmbeddingError, EmbedConfigError, TimeoutError) as exc:
+                logger.info("motif search: warm skipped for %s (%r)", row["id"], exc)
+                return None
+
+        try:
+            done = await asyncio.wait_for(
+                asyncio.gather(*(_one(r) for r in stale), return_exceptions=True),
+                timeout=_WARM_BUDGET_S)
+        except TimeoutError:
+            logger.info("motif search: vector warm exceeded %.1fs — ranking on what is fresh",
+                        _WARM_BUDGET_S)
+            return {}
+        out: dict[UUID, list[float]] = {}
+        for res in done:
+            if isinstance(res, tuple):
+                out[res[0]] = res[1]
+            elif isinstance(res, BaseException):
+                # `return_exceptions=True` must not become a silent swallow — an unexpected
+                # failure here is a defect to see in the logs, not a quietly missing motif.
+                logger.warning("motif search: unexpected warm failure: %r", res)
+        return out
+
+    async def _rank_by_query(
+        self, where: list[str], params: list[Any], q: str, limit: int, order_by: str,
+        *, caller_id: UUID | None = None,
+    ) -> list[Motif] | None:
+        """THE text-query ranker, shared by every list surface. Returns None when it cannot
+        rank (no query vector) so the caller keeps its literal-ILIKE behaviour.
+
+        WHY THIS EXISTS. `q` was an ILIKE in the WHERE clause on all three list methods — and a
+        WHERE clause can only ever SUBTRACT. Type a phrase whose words are not literally in a
+        name or summary and you get nothing: searching `witness contradicts testimony` returned
+        0 rows while `mystery.witness_who_lies` sat right there, because the user has to guess
+        which words the author happened to use. The PLANNER, meanwhile, has been ranking the
+        same library by cosine since the premise-seeding fix — so the human had a strictly
+        weaker instrument than the model did. This is the same bug shape as the genre/language
+        hard filters on retrieval, and it gets the same treatment: move `q` from FILTER to RANK.
+
+        The rules, in order:
+          · a LITERAL hit always outranks a semantic one (+1.0). Someone typing an exact name or
+            code wants that row, not something merely similar — precision beats fuzziness, and
+            this is what makes the change purely ADDITIVE: every row the old ILIKE returned is
+            still returned, still at the top.
+          · a semantic hit below `motif_min_score` is dropped. Same knob the planner uses — the
+            question ("is this motif actually about that?") is the same question, so it gets one
+            name and one home rather than a second threshold to keep in sync.
+          · a row whose vector is MISSING or STALE cannot be judged semantically, so it rides on
+            its literal hit alone and is never invented into the results. A just-created motif is
+            therefore findable by its own words immediately, and semantically once the retrieve
+            path's back-fill has embedded it.
+        """
+        qvec = await _query_vector(q)
+        if qvec is None:
+            return None
+        platform_ref = None
+        try:
+            platform_ref = _platform_embed_model()[1]
+        except EmbedConfigError:
+            pass
+        rank_params = [*params, _SEARCH_CEILING]
+        sql = f"""
+        SELECT {_SEARCH_COLS} FROM motif
+        WHERE {" AND ".join(where)}
+        ORDER BY {order_by}
+        LIMIT ${len(rank_params)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(sql, *rank_params)
+
+        # Rows whose vector is missing or no longer describes their text cannot be judged
+        # semantically. That is now a ROUTINE state, not an edge case: the boot seeder updates
+        # pack content on a `source_version` bump, which by design leaves the stored vector
+        # stale — so after every deploy that edits a pack, exactly the motifs whose wording was
+        # just improved would be invisible to semantic search until some unrelated planning run
+        # happened to back-fill them. Warm them here, bounded and CONCURRENTLY (so the cost is
+        # about one round-trip, not N), and the library self-heals on the first search.
+        needle = q.strip().casefold()
+        floor = settings.motif_min_score
+        warmed = await self._warm_stale_vectors(rows, caller_id, platform_ref)
+        # TWO TIERS, not one arithmetic score. A literal hit scoring `1.0 + cosine` can TIE a
+        # perfect semantic match at 1.0 (and cosine may be negative, putting a literal hit
+        # BELOW one), at which point the winner is decided by alphabetical tie-break — which is
+        # exactly the accidental-ordering bug this session already fixed once in retrieval.
+        # Ranking by (tier, score) says the rule instead of encoding it in a magic constant.
+        scored: list[tuple[int, float, str, Motif]] = []
+        for r in rows:
+            motif = _row_to_motif(r)
+            literal = needle in f"{motif.name} {motif.summary} {motif.code}".casefold()
+            # A stored vector counts only if it is a platform vector AND still describes the
+            # row's CURRENT text (the same staleness rule the retrieve path enforces).
+            usable = (
+                r["embedding"] is not None
+                and (platform_ref is None or r["embedding_model"] == platform_ref)
+                and r["embedded_summary_hash"] == summary_hash(motif_summary_text(motif))
+            )
+            vec = list(r["embedding"]) if usable else warmed.get(r["id"])
+            usable = vec is not None
+            cos = _cosine(qvec, vec) if usable else 0.0
+            if literal:
+                tier = 1                       # precise: always above anything merely similar
+            elif usable and cos >= floor:
+                tier = 0
+            else:
+                continue                       # unjudgeable and not a literal hit → never invented
+            scored.append((tier, cos, motif.code, motif))
+        scored.sort(key=lambda t: (-t[0], -t[1], t[2]))
+        return [m for _t, _s, _c, m in scored[: max(0, limit)]]
 
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
@@ -592,6 +802,14 @@ class MotifRepo:
             params.append(book_id)
             where.append(f"(book_id = ${len(params)} OR book_id IS NULL)")
         if q:
+            # RANK, not filter (see `_rank_by_query`). Offset is meaningless on a ranked set,
+            # so paging past page 1 keeps the literal path — the ranked answer is the top-N.
+            if not offset:
+                ranked = await self._rank_by_query(
+                    where, params, q, limit, "owner_user_id NULLS FIRST, name",
+                    caller_id=caller_id)
+                if ranked is not None:
+                    return ranked
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
         params.append(max(0, limit))

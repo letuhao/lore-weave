@@ -664,6 +664,146 @@ but does not belong to this run:
 </details>
 
 **▶ NEXT (see [`CHECKLIST.md`](../specs/2026-07-26-atom-edit/CHECKLIST.md) for the full board):**
+- ✅ **MOTIF ENRICHMENT — DONE (2026-07-29).** The library went 118 → **198 active** (system tier
+  88 → 168), and the content was the *smaller* half of the job.
+  - **Five new genre packs, en + vi, hand-authored** (`source='authored'`): `romance` (9),
+    `mystery` (8), `rebirth` (8, trọng sinh / xuyên không), `wuxia` (8, distinct from cultivation —
+    jianghu, not immortality), `survival` (7, mạt thế). 41 codes × 2 languages, + 34 `precedes`
+    chains and 2 `composed_of` patterns. The five old packs covered xianxia/revenge/court-intrigue
+    and nothing else, which is why a non-cultivation premise was told — accurately — that "the
+    catalog consists entirely of cultivation-genre tropes".
+  - **Genre tags are a near-dead signal and the packs do not lean on them.** Measured live: **286
+    of 292 plan runs carry `genre_tags: []`** and every one of 172 active books carries none, so
+    `_genre_overlap` is 0.0 in practice. The real matcher is cosine over `motif_summary_text` =
+    name + summary + beat labels + beat intents, so those four fields are written to be findable
+    FROM A PREMISE rather than merely labelled correctly.
+  - 🔴 **Enrichment alone would have changed nothing, and the probe is what proved it.** With no
+    genre supplied, every candidate scores `0.6*0.0 + 0.4*0.5 = 0.2` — a total tie — and the
+    `candidate_limit` was handed out by the final tie-break, **`code ASC`**. `cultivation` sorts
+    first, so the arc selector's library section was **15/15 cultivation regardless of the book**.
+    Removing the hard genre filter (2026-07-28) never touched this; it is an ORDERING artefact
+    wearing a library gap's clothes. Fixed two ways: a **pack round-robin** at equal rank
+    (`_round_robin_index`), and — the real fix — **`select_arc_motifs` now seeds retrieval with
+    the premise it was already holding**. It had passed `beat_role=None`, so no query vector was
+    ever built and the whole arc-level path was permanently degraded.
+  - **The same defect was live at two more call sites**, found by auditing every `retrieve()`
+    caller rather than assuming: the MCP `composition_motif_suggest_for_chapter` tool and the REST
+    `/nodes/{id}/motif-candidates` route both passed `beat_role=None` and no query — while the node
+    carried `title`, `synopsis`, `goal`, `conflict` **and a `beat_role`** the whole time. Semantic
+    suggest had never actually run on either surface. `node_query_text` now joins the node's own
+    text at both.
+  - An empty premise-seeded result **retries unseeded**, so adding the cosine floor can only ever
+    ADD reach, never subtract it.
+  - **The packs were then AUDITED, not assumed** — `scripts/motif_quality_audit.py` (new) plus
+    `tests/unit/test_motif_pack_quality.py` (new, in CI). Three defects the audit found in the
+    content I had just written and called good:
+    - **`mystery` was the worst pack in the library after `hook`: 0% rank-1, 50% recall@15.**
+      Its summaries were written in epistemic-abstract register ("the question is fixed", "the
+      fit was too clean") while the 100%-scoring original packs write concretely ("A preening
+      heir sneers at the 'trash'"). Rewritten with the physical objects an investigation premise
+      actually names → **38% / 88% / 100%**. `rebirth` got the same treatment: **62% → 88% @15**.
+      Across the new packs: recall@5 **48% → 75%**, recall@15 **75% → 88%**.
+    - **`rebirth.butterfly_divergence` shipped an example that illustrated a DIFFERENT motif** —
+      "the man who was supposed to die was alive" is `save_what_was_lost`, not "the memory stops
+      matching". Self-retrieval put it at rank 59 and that is how it was caught; it reads
+      perfectly fine to a human.
+    - **My `precedes` chains averaged 0.056 effect→precondition token overlap against the
+      original packs' 0.127, with 6 dead (0.00) edges to their 1.** `_precond_overlap` is not
+      part of ranking but IS rendered to the author as the "Setup" chip, so a 0.00 tells them
+      two explicitly-chained motifs have no connection. Now **0 dead edges** — and a unit test
+      holds the bar, so the next pack author cannot repeat it. (It also caught the one
+      pre-existing dead edge, `revenge.patient_infiltration → blood_debt_collection`.)
+    - Honest negatives: `wuxia` pack SEPARATION did not move (+0.035 → +0.036) — rewriting it
+      lowered inter- and intra-pack similarity equally, because wuxia is a **setting**, not a
+      situation-type (`cultivation` scores the same +0.034 for the same reason). Separation is
+      the wrong target for that kind of pack and the script now says so. Overall rank-1 is
+      roughly flat (48%) because strengthening one pack steals top slots from adjacent ones —
+      zero-sum, and not worth chasing; reachability is the gate.
+  - 🔎 **PRE-EXISTING, NOT FROM THIS WORK: the `hook` pack is the least reachable thing in the
+    library — 0% rank-1, 31% recall@15, worst rank 77 of 84.** Single-beat hooks have almost no
+    text to embed. They were never reachable at arc-select (before this change the library
+    section was 100% cultivation; after it, they rank low on cosine), so nothing regressed — but
+    if hooks are meant to be selectable rather than attached by rule, they need more body text.
+  **VERIFY:** composition **2797 passed / 380 skipped**; 7 mutation cuts (round-robin, query
+  plumbing, premise seed, fallback, dead-handshake, flat-curve, vi-drift) each proven RED.
+  **live smoke:** MCP `composition_motif_suggest_for_chapter` on a real node ("a traveller gives
+  a frantic, contradictory account") returns `mystery.witness_who_lies` at cosine **0.539**,
+  `degraded=False` — where every candidate was `cosine=0.000 degraded=True` before.
+- ✅ **THE USER'S MOTIF SEARCH WAS WEAKER THAN THE MODEL'S — FIXED (2026-07-29).** Motifs are
+  loaded by the author on purpose, so the manual path matters as much as the planner's. All
+  three layers of it turned out to be wired and were live-proven: **find** (studio panel
+  `motif-library`, `catalog.ts:368`) → **load** (`composition_motif_bind`, which materialises the
+  motif's beats into real scene nodes — binding `mystery.witness_who_lies` created 4 scenes
+  matching its beat labels) → **reach the model** (`gather_motif` → `pack()` prepends a `<motif>`
+  block; the rewritten mystery summary was printed out of the real prompt).
+  - 🔴 **But `q` was an ILIKE in the WHERE clause of all three list methods — and a WHERE clause
+    can only SUBTRACT.** `witness contradicts testimony` returned **0 rows** while
+    `mystery.witness_who_lies` sat right there; only `witness` worked. Meanwhile the planner had
+    been cosine-ranking the same library since the premise-seeding fix, so the human had a
+    strictly weaker instrument than the model. **Exactly the bug shape as the genre/language hard
+    filters, and it got the same treatment: `q` moves from FILTER to RANK.**
+  - **Two tiers, not one arithmetic score** — a literal hit always outranks a merely similar one
+    (typing an exact name or code must return that row). `1.0 + cosine` was the first attempt and
+    it TIED a perfect semantic match, handing the decision to the alphabetical tie-break — the
+    same accidental-ordering bug this session already fixed once in retrieval.
+  - **Purely additive + degrade-equal**: every row the old filter returned still comes back, still
+    first; with no query vector the behaviour is byte-for-byte the old one. Below-floor semantic
+    hits are dropped on the planner's `motif_min_score` (one knob for one question).
+  - **The interactive budget** — a search box runs per debounced keystroke, so the embed is
+    wall-clock bounded (2s) and degrades to literal. Deliberately unlike the planning pipelines,
+    which must NOT be timeout-bounded: nobody watches a plan run, someone always watches a field.
+  - 🔴 **Shipping it revealed a second defect, caught only because the live smoke was re-run.**
+    The seeder's content update (above) leaves stored vectors stale BY DESIGN, so after every
+    deploy that edits a pack the just-improved motifs are invisible to semantic search — live,
+    `witness contradicts testimony` still missed. Search now **warms** unjudgeable rows: bounded
+    (12), concurrent (≈one round-trip), tenancy-scoped (`owner IS NULL OR owner = caller`).
+    Observed self-heal: 29/50 vectors → 45/50 → **168/168**, and the query went from missing to
+    returning `mystery.witness_who_lies` first.
+  - **Not done, said out loud:** `/motifs/catalog` (public discovery) is still literal-only — it
+    returns `(rows, total)` with a separate COUNT, and "total" of a ranked set is a different
+    contract. The two surfaces the studio actually searches (`list_for_caller`, `list_in_book`)
+    are both ranked.
+  - 15 unit tests; 5 mutation cuts (semantic wiring, literal tier, min_score floor, stale-vector
+    guard, interactive budget) each proven RED. A tenancy test proves a search never rewrites
+    another user's vector.
+- ✅ **PACK CONTENT WAS UNDEPLOYABLE — FIXED (2026-07-29). The bug that would have made every
+  line of the quality work above invisible.** Boot calls `seed_motif_packs(conn)` with
+  `reseed=False`, i.e. `ON CONFLICT (id) DO NOTHING`: a NEW code inserts, but an EDIT to an
+  existing row is silently dropped in every environment that has already seeded it — forever.
+  The rewritten mystery/rebirth summaries and the repaired effect→precondition handshakes would
+  have shipped to nobody while the JSON in git said otherwise. **Proven, not inferred:** wrote an
+  "old" summary into the live dev row, ran the exact boot-path call, the old text survived.
+  (The existing integration test's closing comment even documented it as intended — *"default
+  reseed=False is a no-op on an existing row"*.)
+  - The boot path is now an `ON CONFLICT DO UPDATE` gated on **`source_version` rising**, which
+    is that field's existing meaning — `motif_sync` already compares an adopted copy's pinned
+    `source_version` against upstream to report drift, so bumping it is exactly the "the base
+    changed" signal it exists for. **Edit a pack row ⇒ bump its `source_version`, or the edit
+    does not ship.** Scoped `owner_user_id IS NULL AND source='authored'`.
+  - **Live end-to-end proof:** a row set to `PRE-EDIT TEXT / source_version 0` was replaced with
+    the real pack text at `v2` by a plain container restart — no manual reseed.
+  - It composes with the stale-vector fix below: the update makes the stored embedding stale, and
+    the retrieve path now notices that by itself.
+  - 4 DB-gated tests (throwaway `loreweave_composition_test`), 3 of them mutation-proven RED.
+    The 4th — "the seeder can never touch a user's motif" — is honest about *not* being
+    mutation-proven: a user row's id is random and the conflict target is the deterministic
+    `_motif_id`, so the keying protects it and removing the scope clause does not red the test.
+    Its docstring says so rather than claiming credit for the `WHERE`; a separate test covers the
+    half of that clause (`source='authored'`) that IS reachable, and that one reds on cut.
+- ✅ **STALE MOTIF/ARC VECTORS — FIXED (2026-07-29), found while checking whether the content
+  edits above would even take effect.** `patch()` set `embedded_summary_hash = NULL` with the
+  comment *"W3 re-embeds on next retrieve"* — but the re-embed trigger is `vec is None`, and
+  freshness was decided by `_shared_vector_fresh`, which compares the **model only and never
+  reads the hash**. So the clear was a no-op: an edited motif kept a non-NULL `embedding` with a
+  matching `embedding_model` and **stayed retrievable forever by the text it used to have**.
+  `beats` are part of `motif_summary_text` too and did not even clear the hash, so beat edits
+  were doubly invisible. Same defect on the arc path (`arc_template_repo` + `retrieve_arcs`,
+  identical comment). Both now compare the hash at the READ side, where the decision is actually
+  made, so any change to name/summary/beats re-embeds on next touch.
+  **No existing test could have caught it** — both row fixtures hard-coded
+  `embedded_summary_hash: "h"`, a placeholder that is indistinguishable from a matching hash
+  when nothing reads it. The fixtures now compute the real hash, with `stale_text=True` to opt
+  into the mismatch deliberately.
 - ✅ **`D-GLOSSARY-UNKNOWN-REVIEW-405` — CLEARED (2026-07-28).** See below; the "needs a tier
   decision" framing was wrong.
 - **`D-KG-SCHEMA-RETIRE-NEEDS-REVERSE`** — if retiring a whole graph-schema is ever wanted, the

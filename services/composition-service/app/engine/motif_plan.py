@@ -137,13 +137,31 @@ async def select_arc_motifs(
 ) -> list[SelectedArcMotif]:
     """Pick the arc's thematic motifs from the in-genre library. Returns [] when there are
     no candidates or on any LLM/parse failure (degrade-safe — the caller proceeds motif-less)."""
-    # Arc-level retrieve: no beat / tension / query → the degrade path returns the full
-    # in-genre pool (no min-score floor), which is exactly the catalog the LLM should pick from.
-    cands = await retriever.retrieve(
-        UUID(str(user_id)), book_id=book_id, project_id=project_id,
-        genre_tags=genre_tags, language=source_language,
-        beat_role=None, tension=None, prev_effects=None, limit=candidate_limit,
-    )
+    # Arc-level retrieve, SEEDED WITH THE PREMISE.
+    #
+    # This used to pass no query at all, on the reasoning that "the LLM sees the whole catalog
+    # and does the semantic pick". That held when the library was ~44 codes; it stopped being
+    # true silently. With no query the degrade path scores every row `0.6*genre + 0.4*tension`,
+    # and the real calls supply neither (286 of 292 plan runs carry `genre_tags: []`), so every
+    # row tied and the `candidate_limit` was handed out by the tie-break — alphabetically, which
+    # meant 15/15 `cultivation.*`. The model then reported, accurately, that the catalog was all
+    # cultivation tropes; the catalog was not, the ORDERING was. The premise was sitting right
+    # here in the signature the whole time, used only for the prompt.
+    #
+    # Seeding it makes the library section rank by actual semantic fit to THIS arc across every
+    # pack. If the cosine floor (`motif_min_score`) admits nothing — a premise unlike anything
+    # in the library — fall back to the unseeded call, so this can only ever ADD reach.
+    async def _retrieve(query: str | None) -> list[Any]:
+        return await retriever.retrieve(
+            UUID(str(user_id)), book_id=book_id, project_id=project_id,
+            genre_tags=genre_tags, language=source_language,
+            beat_role=None, tension=None, prev_effects=None, limit=candidate_limit,
+            query=query,
+        )
+
+    cands = await _retrieve(premise)
+    if not cands:
+        cands = await _retrieve(None)
     if not cands:
         logger.info("select_arc_motifs: no in-genre candidates → motif-less plan")
         return []

@@ -98,7 +98,7 @@ from app.db.repositories.structure_templates import (
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
-from app.db.repositories.motif_retrieve import MotifRetriever
+from app.db.repositories.motif_retrieve import MotifRetriever, node_query_text
 from app.db.repositories.entity_references import EntityReferencesRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
@@ -3604,8 +3604,11 @@ async def composition_motif_suggest_for_chapter(
         tc.user_id, book_id=meta.book_id, project_id=pid,
         genre_tags=list(getattr(meta, "genre_tags", []) or []),
         language=getattr(meta, "language", None) or "en",
-        beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
-        user_model=user_model,
+        # The node's OWN text + beat_role seed the query (see `node_query_text`); passing
+        # None here forced every candidate onto the degrade path with cosine=0.0.
+        beat_role=getattr(node, "beat_role", None),
+        tension=getattr(node, "tension_target", None), limit=limit,
+        user_model=user_model, query=node_query_text(node),
     )
     # L1/L2 reference-first on the ranked candidates: project each candidate's (heavy)
     # motif body through the contract, keeping the score + match_reason wrapper. The

@@ -37,7 +37,7 @@ from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.motif_application import MotifApplicationRepo
 from app.db.repositories.motif_repo import MotifRepo
-from app.db.repositories.motif_retrieve import MotifRetriever
+from app.db.repositories.motif_retrieve import MotifRetriever, node_query_text
 from app.db.pool import get_pool
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.references import ReferencesRepo, reference_embed_model
@@ -1479,8 +1479,12 @@ async def suggest_motifs(
         user_id, book_id=work.book_id, project_id=project_id,
         genre_tags=list(getattr(work, "genre_tags", []) or []),
         language=getattr(work, "language", None) or "en",
-        beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
+        # The node's OWN text + beat_role seed the query (see `node_query_text`); passing
+        # None here forced every candidate onto the degrade path with cosine=0.0.
+        beat_role=getattr(node, "beat_role", None),
+        tension=getattr(node, "tension_target", None), limit=limit,
         user_model=reference_embed_model(getattr(work, "settings", None)),
+        query=node_query_text(node),
     )
     return {"candidates": [
         {"motif": c.motif.model_dump(mode="json"), "score": c.score, "match_reason": c.match_reason}

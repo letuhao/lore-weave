@@ -1,0 +1,787 @@
+[
+  {
+    "code": "wuxia.contested_manual",
+    "language": "en",
+    "kind": "sequence",
+    "category": "wuxia.manual",
+    "name": "The Manual Everyone Wants",
+    "summary": "Half a scroll surfaces at an inn or out of a grave-robber's bundle, and every school that ever claimed descent from its author converges on the road at once — because the argument is not really about the pages, it is about whose lineage is the legitimate one. Blood is spent over paper. Whoever walks away holding it finds that the text was written for a body trained the way its author's students were trained, and reading it is not the same as owning it.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "martial",
+      "contest"
+    ],
+    "roles": [
+      {
+        "key": "seeker",
+        "actant": "subject",
+        "label": "the one who takes it",
+        "constraints": [
+          "lacks the foundation the text assumes"
+        ]
+      },
+      {
+        "key": "manual",
+        "actant": "object",
+        "label": "the martial treatise",
+        "constraints": [
+          "is incomplete or conditional"
+        ]
+      },
+      {
+        "key": "factions",
+        "actant": "opponent",
+        "label": "the converging factions",
+        "constraints": [
+          "each have a legitimate claim"
+        ]
+      },
+      {
+        "key": "jianghu",
+        "actant": "receiver",
+        "label": "the wider martial world",
+        "constraints": [
+          "will judge how it was taken"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "surface",
+        "label": "The manual surfaces",
+        "intent": "word of the treatise reaches the martial world",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "converge",
+        "label": "Everyone converges",
+        "intent": "factions with competing claims arrive at the same place",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "blood",
+        "label": "Blood over paper",
+        "intent": "the contest is settled by force at a cost out of proportion to the prize",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "unread",
+        "label": "Holding is not mastering",
+        "intent": "the winner finds the text unusable without what it presumes",
+        "tension_target": 3,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a martial world in which a technique confers real standing"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the holder is now a target rather than a possessor"
+      },
+      {
+        "text": "the true prerequisite for the technique has become the new problem"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {
+        "text": "Eleven men died for the second half of it, and the man who walked out with it could not read the hand it was written in."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.righteous_debt",
+    "language": "en",
+    "kind": "situation",
+    "category": "wuxia.debt",
+    "name": "The Debt the Code Demands",
+    "summary": "A stranger on the road is helped without calculation — a bowl of rice shared at an inn, a wound bound, a name spoken for before a magistrate — and the code of the rivers-and-lakes binds the HELPER, not the helped: having once stood for this person, they may not now stand aside. The claim is called in at the worst possible hour, and it is paid in reputation among strangers who will retell the choice at every inn from here to the provincial border.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "honor",
+      "martial"
+    ],
+    "roles": [
+      {
+        "key": "helper",
+        "actant": "subject",
+        "label": "the one who helped without calculating",
+        "constraints": [
+          "acted before knowing who it was"
+        ]
+      },
+      {
+        "key": "debtor",
+        "actant": "object",
+        "label": "the one helped",
+        "constraints": [
+          "turns out to be costly to be owed by"
+        ]
+      },
+      {
+        "key": "interest",
+        "actant": "opponent",
+        "label": "the interest honouring it costs",
+        "constraints": [
+          "is real and substantial"
+        ]
+      },
+      {
+        "key": "witnesses",
+        "actant": "receiver",
+        "label": "the jianghu watching",
+        "constraints": [
+          "will remember the choice"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "aid",
+        "label": "A stranger on the road is helped",
+        "intent": "rice is shared or a name is spoken for, before anyone knows whose it is",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "bind",
+        "label": "The code of the rivers-and-lakes binds the helper",
+        "intent": "having once stood for this person, the helper may not stand aside",
+        "tension_target": 2,
+        "order": 2
+      },
+      {
+        "key": "call",
+        "label": "The claim comes at the worst hour",
+        "intent": "standing by the stranger now costs the helper their own interest",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "choose",
+        "label": "Paid in reputation, in front of strangers",
+        "intent": "the choice is made where travellers will carry it to every inn on the road",
+        "tension_target": 5,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a martial world where reputation is enforceable currency"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the helper's standing in the jianghu is fixed by the choice"
+      },
+      {
+        "text": "a concrete interest has been surrendered or a code has been broken"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "resolve",
+    "examples": [
+      {
+        "text": "He had shared his rice with a beggar in the rain, and the beggar came back in silks with an escort, at exactly the wrong moment."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.inherited_feud",
+    "language": "en",
+    "kind": "sequence",
+    "category": "wuxia.feud",
+    "name": "A Grudge Older Than the Holder",
+    "summary": "A feud is handed down with the sword — two houses, two schools, two families who have killed each other's people for longer than anyone alive can properly account for. Forced to take a side, the inheritor goes looking for the original wrong and finds it either smaller than the killing warranted or already avenged, and must then choose between the cycle and the truth.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "feud",
+      "revenge"
+    ],
+    "roles": [
+      {
+        "key": "inheritor",
+        "actant": "subject",
+        "label": "the one who inherits the grudge",
+        "constraints": [
+          "did not choose the side they were born to"
+        ]
+      },
+      {
+        "key": "wrong",
+        "actant": "object",
+        "label": "the original wrong",
+        "constraints": [
+          "is smaller or older than the feud requires"
+        ]
+      },
+      {
+        "key": "elders",
+        "actant": "opponent",
+        "label": "those who keep the feud alive",
+        "constraints": [
+          "believe they are keeping faith with the dead"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "inherit",
+        "label": "The grudge is handed down",
+        "intent": "a feud is inherited along with position and blade",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "side",
+        "label": "Forced to take a side",
+        "intent": "an incident makes neutrality impossible",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "origin",
+        "label": "The original wrong is found",
+        "intent": "the founding grievance is traced and turns out not to justify the ledger",
+        "tension_target": 3,
+        "order": 3
+      },
+      {
+        "key": "break",
+        "label": "Continue the cycle or break it",
+        "intent": "the inheritor chooses between the dead and the living",
+        "tension_target": 5,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "an old enmity, live again, whose origin nobody alive witnessed"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the feud is either renewed with full knowledge or publicly repudiated"
+      },
+      {
+        "text": "the inheritor is estranged from one side of their own house"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "melancholy",
+    "examples": [
+      {
+        "text": "Four generations of dead men, and at the bottom of it a dispute over a well that had run dry before any of them were born."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.tavern_provocation",
+    "language": "en",
+    "kind": "situation",
+    "category": "wuxia.provocation",
+    "name": "An Insult in a Public House",
+    "summary": "A slight is offered in a room full of people who will carry the story — a name mocked, a school insulted, a cup knocked over deliberately. Restraint is tested in front of witnesses, one brief exchange settles it, and the account of what happened travels faster and further than either party intended.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "reputation",
+      "martial"
+    ],
+    "roles": [
+      {
+        "key": "insulted",
+        "actant": "subject",
+        "label": "the one slighted",
+        "constraints": [
+          "must weigh restraint against reputation"
+        ]
+      },
+      {
+        "key": "provoker",
+        "actant": "opponent",
+        "label": "the one who offers the slight",
+        "constraints": [
+          "is testing rather than fighting"
+        ]
+      },
+      {
+        "key": "room",
+        "actant": "receiver",
+        "label": "the room that will retell it",
+        "constraints": [
+          "carries the story outward"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "slight",
+        "label": "The slight is offered",
+        "intent": "an insult is made where it cannot be ignored privately",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "restraint",
+        "label": "Restraint is tested",
+        "intent": "the insulted party weighs what answering will cost",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "exchange",
+        "label": "One exchange settles it",
+        "intent": "a single brief demonstration ends the question",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "travel",
+        "label": "The story travels",
+        "intent": "the account spreads and alters both reputations",
+        "tension_target": 3,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a public setting where reputation is made and unmade by report"
+      }
+    ],
+    "effects": [
+      {
+        "text": "both parties' standing has shifted by report rather than by outcome"
+      },
+      {
+        "text": "someone in the room now knows a capability that was not advertised"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {
+        "text": "The cup did not fall. Nobody in the room could say afterwards which of them had moved, only that the wine had not spilled."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.forbidden_shortcut",
+    "language": "en",
+    "kind": "sequence",
+    "category": "wuxia.temptation",
+    "name": "The Method No One Practises Any More",
+    "summary": "A school's proscribed manual — the kind the righteous sects burned copies of and still whisper about — is offered by someone who does not lie about what it does. It works exactly as promised. What it charges is not measured in rank: the body changes in ways other practitioners can read across a room, the orthodox schools that trained them disown the name, and the practitioner ends up belonging to the demonic side of a line they never meant to cross.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "temptation",
+      "dark",
+      "martial"
+    ],
+    "roles": [
+      {
+        "key": "practitioner",
+        "actant": "subject",
+        "label": "the one at the wall",
+        "constraints": [
+          "has genuinely exhausted the orthodox route"
+        ]
+      },
+      {
+        "key": "method",
+        "actant": "object",
+        "label": "the forbidden method",
+        "constraints": [
+          "works exactly as advertised"
+        ]
+      },
+      {
+        "key": "offerer",
+        "actant": "sender",
+        "label": "the one who offers it",
+        "constraints": [
+          "does not lie about the effect, only omits the price"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "wall",
+        "label": "The school's own way runs out",
+        "intent": "what the master taught stops being enough for what is coming",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "offer",
+        "label": "A proscribed manual is offered",
+        "intent": "someone honest about its effects puts the burned book in reach",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "take",
+        "label": "It is practised in secret",
+        "intent": "the demonic method is learned and delivers exactly what was promised",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "price",
+        "label": "The body reads it before words do",
+        "intent": "the change becomes legible to other practitioners and the orthodox schools disown the name",
+        "tension_target": 5,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a practitioner blocked by a wall the orthodox path cannot pass"
+      }
+    ],
+    "effects": [
+      {
+        "text": "capability has genuinely increased and cannot be given back"
+      },
+      {
+        "text": "a cost is now accruing that others can eventually see"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "dread",
+    "examples": [
+      {
+        "text": "It did everything the old man said it would. It was two winters before anyone remarked that he no longer felt the cold."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.recognition_between_equals",
+    "language": "en",
+    "kind": "situation",
+    "category": "wuxia.bond",
+    "name": "Two Strangers of Matching Skill",
+    "summary": "Two people who owe each other nothing exchange blows or words as a test rather than a quarrel, and each finds in the other the first opponent in years who does not have to be handled gently. Recognition arrives before names do, and the bond formed over wine afterwards will outlast most of the loyalties either of them was born into.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "bond",
+      "martial"
+    ],
+    "roles": [
+      {
+        "key": "first",
+        "actant": "subject",
+        "label": "the one who initiates",
+        "constraints": [
+          "tests without malice"
+        ]
+      },
+      {
+        "key": "second",
+        "actant": "object",
+        "label": "the matching stranger",
+        "constraints": [
+          "answers in kind"
+        ]
+      },
+      {
+        "key": "world",
+        "actant": "opponent",
+        "label": "the loyalties they were born into",
+        "constraints": [
+          "will eventually contest this bond"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "meet",
+        "label": "Two strangers meet",
+        "intent": "an encounter between parties who owe each other nothing",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "test",
+        "label": "An exchange without malice",
+        "intent": "skill is measured as a test rather than a quarrel",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "recognize",
+        "label": "Recognition before names",
+        "intent": "each finds the first equal they have met in years",
+        "tension_target": 3,
+        "order": 3
+      },
+      {
+        "key": "swear",
+        "label": "Sworn over wine",
+        "intent": "a bond is made that cuts across existing loyalties",
+        "tension_target": 2,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "two parties of comparable skill and no prior obligation, each having seen in the other a capability that was not advertised"
+      }
+    ],
+    "effects": [
+      {
+        "text": "a loyalty now exists that does not run along faction lines"
+      },
+      {
+        "text": "both have a claim on the other that their own houses did not sanction"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "warmth",
+    "examples": [
+      {
+        "text": "Neither of them asked the other's name until the third cup, and by then it hardly mattered what the answer was."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.escort_under_watch",
+    "language": "en",
+    "kind": "sequence",
+    "category": "wuxia.escort",
+    "name": "The Cargo That Must Arrive",
+    "summary": "Something must be moved from here to there — a chest, a witness, a bride, a coffin — along a road that everyone with an interest already knows about. The ambush is not a surprise but a schedule, and delivery is achieved by paying in exactly the coin the escort could least afford to spend.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "escort",
+      "journey"
+    ],
+    "roles": [
+      {
+        "key": "escort",
+        "actant": "subject",
+        "label": "the one responsible for delivery",
+        "constraints": [
+          "has given their word"
+        ]
+      },
+      {
+        "key": "cargo",
+        "actant": "object",
+        "label": "what must arrive",
+        "constraints": [
+          "cannot defend itself"
+        ]
+      },
+      {
+        "key": "watchers",
+        "actant": "opponent",
+        "label": "those waiting on the road",
+        "constraints": [
+          "know the route already"
+        ]
+      },
+      {
+        "key": "consignor",
+        "actant": "sender",
+        "label": "the one who entrusted it",
+        "constraints": [
+          "has not disclosed everything"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "charge",
+        "label": "The charge is accepted",
+        "intent": "responsibility for safe delivery is given and taken",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "watched",
+        "label": "The road is already known",
+        "intent": "it becomes clear the route was compromised before departure",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "ambush",
+        "label": "The ambush on schedule",
+        "intent": "the attack comes where and when it was always going to",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "deliver",
+        "label": "Delivered at cost",
+        "intent": "the charge arrives, paid for with something the escort valued more",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a charge whose route and value are known to interested parties"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the word given has been kept and something else has been lost"
+      },
+      {
+        "text": "who leaked the route is now an open question"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "grim resolve",
+    "examples": [
+      {
+        "text": "They knew which ford, and roughly which hour, and the only thing left to decide was what he was willing to leave on the bank."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "wuxia.retired_blade_recalled",
+    "language": "en",
+    "kind": "situation",
+    "category": "wuxia.return",
+    "name": "The One Who Put the Blade Down",
+    "summary": "Someone who swore off the martial world is living quietly under another name when the past arrives at the door — an old enemy, a former student, a debt with legs. The vow is broken not for glory but because the alternative is worse, and the jianghu recognises the hand within days of it being raised.",
+    "genre_tags": [
+      "wuxia",
+      "vo-hiep",
+      "jianghu",
+      "return",
+      "martial"
+    ],
+    "roles": [
+      {
+        "key": "retired",
+        "actant": "subject",
+        "label": "the one who put it down",
+        "constraints": [
+          "swore off and meant it"
+        ]
+      },
+      {
+        "key": "arrival",
+        "actant": "opponent",
+        "label": "the past at the door",
+        "constraints": [
+          "cannot be turned away"
+        ]
+      },
+      {
+        "key": "quiet_life",
+        "actant": "object",
+        "label": "the life being lost",
+        "constraints": [
+          "is genuinely valued"
+        ]
+      },
+      {
+        "key": "jianghu",
+        "actant": "receiver",
+        "label": "the world that recognises the hand",
+        "constraints": [
+          "remembers the technique"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "quiet",
+        "label": "The quiet life",
+        "intent": "a former practitioner lives unrecognised and content",
+        "tension_target": 1,
+        "order": 1
+      },
+      {
+        "key": "arrive",
+        "label": "The past at the door",
+        "intent": "something from before arrives that cannot be turned away",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "raise",
+        "label": "The vow breaks",
+        "intent": "the blade is taken up because the alternative is worse",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "recognized",
+        "label": "The jianghu recognises the hand",
+        "intent": "the technique is identified and the quiet life ends",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a renounced past that others can still identify by technique"
+      }
+    ],
+    "effects": [
+      {
+        "text": "an old enmity that long outlived its origin is live again, and knows where they are"
+      },
+      {
+        "text": "the assumed identity no longer protects them"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "melancholy",
+    "examples": [
+      {
+        "text": "He had been a ferryman for nine years, and it took one evening and one stroke for three provinces to learn he was not."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  }
+]

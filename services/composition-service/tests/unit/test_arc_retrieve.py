@@ -52,8 +52,16 @@ class _FakePool:
         return _FakeAcquire(self.conn)
 
 
-def _arc(code, *, embedding, genre_tags=("xianxia",), owner=None):
-    """An arc_template row dict shaped like _ARC_RETRIEVE_COLS (incl. embedding)."""
+def _arc(code, *, embedding, genre_tags=("xianxia",), owner=None, stale_text=False):
+    """An arc_template row dict shaped like _ARC_RETRIEVE_COLS (incl. embedding).
+
+    `embedded_summary_hash` is the REAL hash of this row's arc-summary text — the ranking path
+    now compares it, so an edited arc re-embeds instead of ranking on the vector its old text
+    produced (see `_text_unchanged`). It was the literal `"h"`, which is precisely why nothing
+    here could catch that. `stale_text=True` opts into the mismatch."""
+    from app.engine.motif_embed import summary_hash
+
+    text = f"{code}\nan arc"                  # == arc_summary_text(name=code, summary="an arc")
     return {
         "id": uuid.uuid4(), "owner_user_id": owner, "code": code, "language": "en",
         "visibility": "public" if owner is None else "private", "name": code,
@@ -63,7 +71,10 @@ def _arc(code, *, embedding, genre_tags=("xianxia",), owner=None):
         "source_version": None, "embedding_model": "m" if embedding else "",
         "embedding_dim": 3 if embedding else None, "status": "active", "version": 1,
         "created_at": None, "updated_at": None,
-        "embedded_summary_hash": "h" if embedding else None, "embedding": embedding,
+        "embedded_summary_hash": (
+            ("stale-hash" if stale_text else summary_hash(text)) if embedding else None
+        ),
+        "embedding": embedding,
     }
 
 

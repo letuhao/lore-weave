@@ -1,0 +1,283 @@
+[
+  {
+    "code": "romance.forced_proximity",
+    "language": "en",
+    "kind": "situation",
+    "category": "romance.proximity",
+    "name": "Forced Proximity",
+    "summary": "Two people who would never choose each other's company are shut into the same space with no exit — a storm, a shared assignment, a locked house, one bed — and the friction of being unable to leave wears the guard down until an involuntary intimacy surfaces that neither planned and neither can now unsee.",
+    "genre_tags": ["romance", "ngon-tinh", "relationship", "slow-burn"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "the point-of-view lead", "constraints": ["cannot leave the shared space"]},
+      {"key": "other", "actant": "object", "label": "the other party", "constraints": ["is the reason leaving matters"]},
+      {"key": "circumstance", "actant": "sender", "label": "the circumstance that traps them", "constraints": ["is external and not either party's doing"]}
+    ],
+    "beats": [
+      {"key": "trapped", "label": "Shut in together", "intent": "an external circumstance removes the option of leaving", "tension_target": 2, "order": 1},
+      {"key": "friction", "label": "Friction under confinement", "intent": "proximity forces the irritation and the difference into the open", "tension_target": 3, "order": 2},
+      {"key": "crack", "label": "The guard slips", "intent": "an unguarded moment shows the person behind the posture", "tension_target": 3, "order": 3},
+      {"key": "intimacy", "label": "Involuntary intimacy", "intent": "a closeness neither intended becomes undeniable to both", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "two parties with a reason to keep distance from each other"}],
+    "effects": [
+      {"text": "the distance between them can no longer be maintained by habit"},
+      {"text": "each has seen something of the other that was not offered"}
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "yearning",
+    "examples": [{"text": "The road washes out and the only shelter is one room with one lamp; by the third night the arguing has stopped and neither of them wants to say why."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.misunderstanding_rift",
+    "language": "en",
+    "kind": "sequence",
+    "category": "romance.rift",
+    "name": "The Misunderstanding That Hardens",
+    "summary": "One party sees a fragment of something true — an embrace, a letter, a payment — and draws the conclusion the fragment invites. Pride or fear keeps the question unasked, silence sets like cement, and by the time the whole picture arrives the damage is no longer about the misunderstanding at all but about what the silence proved.",
+    "genre_tags": ["romance", "ngon-tinh", "relationship", "conflict"],
+    "roles": [
+      {"key": "witness", "actant": "subject", "label": "the one who sees the fragment", "constraints": ["draws a conclusion without asking"]},
+      {"key": "accused", "actant": "object", "label": "the one misread", "constraints": ["has an explanation they are not asked for"]},
+      {"key": "fragment", "actant": "sender", "label": "the partial evidence", "constraints": ["is genuinely true and genuinely incomplete"]}
+    ],
+    "beats": [
+      {"key": "glimpse", "label": "The partial truth is seen", "intent": "a real but incomplete thing is witnessed out of context", "tension_target": 3, "order": 1},
+      {"key": "conclude", "label": "The wrong conclusion sets", "intent": "the fragment is completed by fear rather than by asking", "tension_target": 3, "order": 2},
+      {"key": "silence", "label": "The silence hardens", "intent": "pride keeps the question unspoken until distance becomes the new normal", "tension_target": 4, "order": 3},
+      {"key": "truth", "label": "The whole picture arrives", "intent": "the missing context lands, too late to be free", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "an attachment strong enough that being wrong about it hurts"}],
+    "effects": [
+      {"text": "the attachment between them is left unstated out loud, and unrepaired"},
+      {"text": "trust must now be rebuilt rather than assumed"},
+      {"text": "the habit of not asking is exposed as the real fault"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "heartache",
+    "examples": [{"text": "She sees the ring pressed into another woman's hand and turns away before the sentence that would have explained it is finished."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.contract_bond",
+    "language": "en",
+    "kind": "sequence",
+    "category": "romance.contract",
+    "name": "The Arrangement That Stops Being One",
+    "summary": "A binding is entered for reasons that have nothing to do with feeling — a debt, an inheritance, a family's face, a visa, a treaty — and the terms are set out plainly so that no one mistakes it for more. The rules are then broken one small clause at a time, until admitting the truth costs more than the arrangement was ever worth.",
+    "genre_tags": ["romance", "ngon-tinh", "contract-marriage", "relationship"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "the party who needs the arrangement", "constraints": ["enters for a stated non-romantic reason"]},
+      {"key": "partner", "actant": "object", "label": "the contracted partner", "constraints": ["has their own reason for agreeing"]},
+      {"key": "pressure", "actant": "sender", "label": "the family, debt or institution forcing it", "constraints": ["makes refusal costlier than agreement"]},
+      {"key": "watchers", "actant": "receiver", "label": "those the arrangement is performed for", "constraints": ["must be convinced it is real"]}
+    ],
+    "beats": [
+      {"key": "strike", "label": "The bargain is struck", "intent": "a binding is agreed for openly transactional reasons", "tension_target": 2, "order": 1},
+      {"key": "rules", "label": "The terms are set", "intent": "explicit rules mark out what this is not allowed to become", "tension_target": 2, "order": 2},
+      {"key": "breach", "label": "The rules give way", "intent": "the terms are broken in small private ways neither party reports", "tension_target": 3, "order": 3},
+      {"key": "admit", "label": "The truth costs more than the lie", "intent": "keeping up the pretence becomes more painful than confessing", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "a pressure that makes a loveless binding the rational choice"}],
+    "effects": [
+      {"text": "the transactional frame no longer describes what exists"},
+      {"text": "ending the arrangement now has an emotional price neither anticipated"}
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "yearning",
+    "examples": [{"text": "Clause four said separate rooms; by winter neither of them could remember which night it had stopped being observed."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.rival_forces_the_question",
+    "language": "en",
+    "kind": "situation",
+    "category": "romance.rival",
+    "name": "The Rival Who Forces the Question",
+    "summary": "A third party makes a claim on someone whose place in the lead's life had never needed naming. The jealousy arrives before the admission does, the comfortable ambiguity becomes untenable, and the lead is made to either stake a claim out loud or watch the question be answered by someone else.",
+    "genre_tags": ["romance", "ngon-tinh", "rival", "relationship"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "the one who never had to say it", "constraints": ["has relied on ambiguity"]},
+      {"key": "beloved", "actant": "object", "label": "the one being claimed", "constraints": ["is free to choose"]},
+      {"key": "rival", "actant": "opponent", "label": "the rival claimant", "constraints": ["is a genuine option, not a strawman"]}
+    ],
+    "beats": [
+      {"key": "claim", "label": "A rival stakes a claim", "intent": "a third party openly pursues what the lead assumed was settled", "tension_target": 3, "order": 1},
+      {"key": "jealousy", "label": "Jealousy arrives first", "intent": "the feeling surfaces before the lead has words for it", "tension_target": 3, "order": 2},
+      {"key": "untenable", "label": "Ambiguity becomes untenable", "intent": "staying unspoken is now itself an answer", "tension_target": 4, "order": 3},
+      {"key": "stake", "label": "Speak or lose the chance", "intent": "the lead claims it aloud or concedes by silence", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "an attachment between them that has been left unstated out loud"}],
+    "effects": [
+      {"text": "the relationship's status is now explicit, whichever way it fell"},
+      {"text": "the rival's presence has permanently changed what can be taken for granted"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "anxiety",
+    "examples": [{"text": "He had never once called her anything in particular — until someone else did, at a table full of people, and the word landed like a door closing."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.protective_sacrifice",
+    "language": "en",
+    "kind": "situation",
+    "category": "romance.sacrifice",
+    "name": "The Cost Paid in Silence",
+    "summary": "Harm falls toward the beloved and the other absorbs it without telling them — a debt settled, a reputation taken, a wound hidden under a sleeve, a name signed away. The concealment is meant as protection but functions as a withholding, so the discovery lands as both devotion and betrayal at once.",
+    "genre_tags": ["romance", "ngon-tinh", "sacrifice", "relationship"],
+    "roles": [
+      {"key": "protector", "actant": "subject", "label": "the one who pays", "constraints": ["conceals the payment"]},
+      {"key": "beloved", "actant": "receiver", "label": "the one shielded", "constraints": ["is not told, and would have refused"]},
+      {"key": "threat", "actant": "opponent", "label": "the harm being absorbed", "constraints": ["is real and would have landed"]}
+    ],
+    "beats": [
+      {"key": "threat", "label": "The harm falls toward the beloved", "intent": "a real cost is about to land on the wrong person", "tension_target": 4, "order": 1},
+      {"key": "absorb", "label": "It is absorbed in silence", "intent": "the protector takes the cost and hides that they did", "tension_target": 3, "order": 2},
+      {"key": "discover", "label": "The concealment breaks", "intent": "the beloved learns what was paid and when", "tension_target": 5, "order": 3},
+      {"key": "reckon", "label": "Devotion and betrayal at once", "intent": "the beloved must hold gratitude and anger in the same hand", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "one party is positioned to intercept a harm meant for the other"}],
+    "effects": [
+      {"text": "an unrepayable debt now sits between them"},
+      {"text": "the protector's habit of deciding alone is on the table"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "heartache",
+    "examples": [{"text": "The creditors stopped coming in the spring; it was two years before she learned whose name had replaced hers on the note."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.past_lover_returns",
+    "language": "en",
+    "kind": "situation",
+    "category": "romance.past",
+    "name": "The One Who Came Back",
+    "summary": "An earlier attachment reappears with the unfinished thing still unfinished, and the present relationship is measured against a memory it never agreed to compete with. What is really tested is not who is preferred but whether the old story was ever actually closed or merely left.",
+    "genre_tags": ["romance", "ngon-tinh", "past", "relationship"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "the one caught between", "constraints": ["never formally ended the earlier thing"]},
+      {"key": "present", "actant": "object", "label": "the present attachment", "constraints": ["is compared without consenting to be"]},
+      {"key": "returner", "actant": "opponent", "label": "the one who came back", "constraints": ["carries the unresolved ending"]}
+    ],
+    "beats": [
+      {"key": "return", "label": "The past walks back in", "intent": "an earlier attachment reappears without warning", "tension_target": 3, "order": 1},
+      {"key": "compare", "label": "Comparison is forced", "intent": "the present is measured against a memory it cannot answer", "tension_target": 3, "order": 2},
+      {"key": "name", "label": "The unfinished thing is named", "intent": "what was never actually ended is finally said aloud", "tension_target": 4, "order": 3},
+      {"key": "choose", "label": "Close it or reopen it", "intent": "the past is ended properly or the present is given up", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "an earlier attachment that ended without being concluded"}],
+    "effects": [
+      {"text": "the earlier story is closed rather than merely dormant"},
+      {"text": "the present attachment knows exactly where it stands"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "melancholy",
+    "examples": [{"text": "Seven years and he still ordered her tea the way she had stopped taking it, and that — not the apology — was what undid the evening."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.status_gap",
+    "language": "en",
+    "kind": "sequence",
+    "category": "romance.status",
+    "name": "Across the Line",
+    "summary": "Attachment forms across a boundary the world enforces — rank, clan, wealth, caste, species, faction, the wrong side of a war — and the enforcement is done by people who mean well. The lovers are made to price the crossing in something concrete: an inheritance, a family, a post, a life.",
+    "genre_tags": ["romance", "ngon-tinh", "status", "forbidden", "relationship"],
+    "roles": [
+      {"key": "lower", "actant": "subject", "label": "the one who would lose least materially", "constraints": ["has the most to gain and the least standing"]},
+      {"key": "higher", "actant": "object", "label": "the one bound by position", "constraints": ["their position is real and costly to give up"]},
+      {"key": "guardians", "actant": "opponent", "label": "those enforcing the line", "constraints": ["act out of duty or affection, not malice"]}
+    ],
+    "beats": [
+      {"key": "attraction", "label": "Attachment across the line", "intent": "a bond forms where the world says it should not", "tension_target": 2, "order": 1},
+      {"key": "enforce", "label": "The line is enforced", "intent": "family or institution moves to separate them for their own good", "tension_target": 3, "order": 2},
+      {"key": "price", "label": "The crossing is priced", "intent": "exactly what must be surrendered is made concrete", "tension_target": 4, "order": 3},
+      {"key": "pay", "label": "Pay it or break", "intent": "the price is paid, refused, or someone pays it for them", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "a social boundary with real enforcement behind it"}],
+    "effects": [
+      {"text": "one or both have surrendered something that cannot be recovered"},
+      {"text": "the enforcing party's authority over them is settled either way"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "yearning",
+    "examples": [{"text": "Her father did not forbid it; he simply laid out what marrying down would cost her brothers, and let her do the arithmetic herself."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.slow_thaw",
+    "language": "en",
+    "kind": "pattern",
+    "category": "romance.thaw",
+    "name": "Slow Thaw",
+    "summary": "A cold or closed party is warmed not by declaration but by accumulation — repeated small mercies that are never remarked on, offered without expectation, until a moment of real pressure reveals how much ground has quietly been given. The arc is the sum of unremarkable kindnesses, and its payoff is retrospective.",
+    "genre_tags": ["romance", "ngon-tinh", "slow-burn", "relationship"],
+    "roles": [
+      {"key": "warm", "actant": "subject", "label": "the one who keeps offering", "constraints": ["offers without demanding acknowledgement"]},
+      {"key": "cold", "actant": "object", "label": "the closed party", "constraints": ["refuses on principle, not from dislike"]},
+      {"key": "pressure", "actant": "opponent", "label": "the pressure that reveals the change", "constraints": ["forces an unconsidered reaction"]}
+    ],
+    "beats": [
+      {"key": "refusal", "label": "Refusal as a settled habit", "intent": "the closed party rebuffs contact as a matter of course", "tension_target": 2, "order": 1},
+      {"key": "mercies", "label": "Small mercies, unremarked", "intent": "repeated quiet kindness that asks for nothing back", "tension_target": 2, "order": 2},
+      {"key": "pressure", "label": "Pressure removes the guard", "intent": "a crisis forces a reaction before the guard can be raised", "tension_target": 4, "order": 3},
+      {"key": "warmth", "label": "How much ground was given", "intent": "both see, retrospectively, how far the thaw had already gone", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [{"text": "a party whose coldness is a defence rather than a verdict"}],
+    "effects": [
+      {"text": "the closed party can no longer claim indifference"},
+      {"text": "the change is visible to others who knew them before"}
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "tenderness",
+    "examples": [{"text": "He had never once thanked her for the tea, and he had never once let it go cold, and that was the whole of it."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.confession_interrupted",
+    "language": "en",
+    "kind": "situation",
+    "category": "romance.confession",
+    "name": "The Words That Did Not Land",
+    "summary": "The admission is finally ready and the moment is finally right, and then something arrives that is more urgent than it — a summons, an injury, a departure, a lie already in motion — and the unsaid thing goes back into the pocket. What it costs is measured in what happens next while the words are still unspent.",
+    "genre_tags": ["romance", "ngon-tinh", "timing", "relationship"],
+    "roles": [
+      {"key": "speaker", "actant": "subject", "label": "the one about to say it", "constraints": ["has finally decided to speak"]},
+      {"key": "listener", "actant": "object", "label": "the one who does not hear it", "constraints": ["would have answered"]},
+      {"key": "interruption", "actant": "opponent", "label": "what arrives instead", "constraints": ["is legitimately more urgent in the moment"]}
+    ],
+    "beats": [
+      {"key": "ready", "label": "The words are ready", "intent": "the admission is finally decided on and begun", "tension_target": 3, "order": 1},
+      {"key": "interrupt", "label": "Something more urgent arrives", "intent": "an event with a real claim cuts the moment off", "tension_target": 4, "order": 2},
+      {"key": "pocket", "label": "The words go back unsaid", "intent": "the admission is deferred and the moment does not return", "tension_target": 3, "order": 3},
+      {"key": "cost", "label": "What the silence costs", "intent": "events proceed on the assumption the words were never true", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "a feeling that has become ready to be stated"}],
+    "effects": [
+      {"text": "the unspoken thing now distorts every decision that follows"},
+      {"text": "the next chance to say it will cost more than this one would have"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "longing",
+    "examples": [{"text": "He got as far as her name before the messenger came through the door, and by the time the room emptied she was already on the road."}],
+    "source": "authored",
+    "source_version": 1
+  }
+]

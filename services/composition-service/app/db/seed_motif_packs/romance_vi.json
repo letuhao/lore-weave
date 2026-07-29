@@ -1,0 +1,283 @@
+[
+  {
+    "code": "romance.forced_proximity",
+    "language": "vi",
+    "kind": "situation",
+    "category": "romance.proximity",
+    "name": "Buộc Phải Ở Cạnh Nhau",
+    "summary": "Hai người vốn chẳng bao giờ tự nguyện ở gần nhau lại bị nhốt chung một không gian không lối thoát — một trận bão, một nhiệm vụ chung, một căn nhà khóa trái, chỉ một chiếc giường — và sự cọ xát của việc không thể bỏ đi bào mòn dần lớp phòng bị, cho tới khi một thứ thân mật ngoài ý muốn trồi lên mà cả hai đều không tính trước và từ đó không thể giả vờ chưa từng thấy.",
+    "genre_tags": ["romance", "ngon-tinh", "relationship", "slow-burn"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "nhân vật góc nhìn", "constraints": ["không thể rời khỏi không gian chung"]},
+      {"key": "other", "actant": "object", "label": "người kia", "constraints": ["chính là lý do khiến việc rời đi trở nên quan trọng"]},
+      {"key": "circumstance", "actant": "sender", "label": "hoàn cảnh giam giữ họ", "constraints": ["đến từ bên ngoài, không do bên nào sắp đặt"]}
+    ],
+    "beats": [
+      {"key": "trapped", "label": "Bị nhốt chung", "intent": "một hoàn cảnh bên ngoài tước mất lựa chọn rời đi", "tension_target": 2, "order": 1},
+      {"key": "friction", "label": "Cọ xát trong không gian hẹp", "intent": "sự gần gũi ép cái khó chịu và cái khác biệt phải lộ ra", "tension_target": 3, "order": 2},
+      {"key": "crack", "label": "Lớp phòng bị sứt mẻ", "intent": "một khoảnh khắc lơi lỏng để lộ con người thật sau lớp vỏ", "tension_target": 3, "order": 3},
+      {"key": "intimacy", "label": "Thân mật ngoài ý muốn", "intent": "một sự gần gũi không ai định trước trở thành điều cả hai không chối được", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "hai bên có lý do để giữ khoảng cách với nhau"}],
+    "effects": [
+      {"text": "khoảng cách giữa họ không còn duy trì được bằng thói quen nữa"},
+      {"text": "mỗi người đã thấy ở người kia một điều vốn không được phép thấy"}
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "khắc khoải",
+    "examples": [{"text": "Đường sạt lở, chỗ trú duy nhất là một gian phòng với một ngọn đèn; tới đêm thứ ba thì hết cãi nhau, mà chẳng ai muốn nói vì sao."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.misunderstanding_rift",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "romance.rift",
+    "name": "Hiểu Lầm Đóng Băng",
+    "summary": "Một bên chỉ nhìn thấy một mảnh của sự thật — một cái ôm, một phong thư, một khoản tiền — rồi rút ra đúng cái kết luận mà mảnh ấy gợi ra. Lòng tự trọng hoặc nỗi sợ giữ cho câu hỏi không được hỏi, im lặng đông cứng lại, và tới khi toàn cảnh hiện ra thì vết thương đã không còn nằm ở chỗ hiểu lầm nữa mà ở chỗ sự im lặng ấy đã chứng minh điều gì.",
+    "genre_tags": ["romance", "ngon-tinh", "relationship", "conflict"],
+    "roles": [
+      {"key": "witness", "actant": "subject", "label": "người nhìn thấy mảnh vụn", "constraints": ["kết luận mà không hỏi"]},
+      {"key": "accused", "actant": "object", "label": "người bị hiểu sai", "constraints": ["có lời giải thích mà không ai hỏi tới"]},
+      {"key": "fragment", "actant": "sender", "label": "chứng cứ nửa vời", "constraints": ["vừa thật vừa thiếu"]}
+    ],
+    "beats": [
+      {"key": "glimpse", "label": "Thấy nửa sự thật", "intent": "một điều có thật nhưng thiếu bối cảnh bị bắt gặp", "tension_target": 3, "order": 1},
+      {"key": "conclude", "label": "Kết luận sai đóng khuôn", "intent": "chỗ khuyết được lấp bằng nỗi sợ thay vì bằng một câu hỏi", "tension_target": 3, "order": 2},
+      {"key": "silence", "label": "Im lặng đông cứng", "intent": "lòng tự trọng giữ câu hỏi không thốt ra cho tới khi xa cách thành lẽ thường", "tension_target": 4, "order": 3},
+      {"key": "truth", "label": "Toàn cảnh hiện ra", "intent": "phần bối cảnh còn thiếu ập tới, muộn hơn mức có thể cứu vãn dễ dàng", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "một tình cảm đủ sâu để việc hiểu sai về nó gây đau"}],
+    "effects": [
+      {"text": "tình cảm giữa hai người bị bỏ lại đó, chưa từng nói thành lời, và chưa hàn gắn"},
+      {"text": "lòng tin từ nay phải xây lại chứ không còn mặc định"},
+      {"text": "thói quen không hỏi bị vạch ra mới chính là cái lỗi thật"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "đau lòng",
+    "examples": [{"text": "Nàng thấy chiếc nhẫn được đặt vào tay một người đàn bà khác rồi quay đi, trước khi câu nói đáng lẽ giải thích tất cả kịp dứt."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.contract_bond",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "romance.contract",
+    "name": "Giao Kèo Thôi Còn Là Giao Kèo",
+    "summary": "Một ràng buộc được ký vì những lý do chẳng liên quan gì tới tình cảm — một món nợ, một phần gia sản, thể diện của gia tộc, một tờ giấy phép, một hòa ước — và các điều khoản được bày ra rành mạch để không ai nhầm nó thành thứ khác. Rồi từng điều khoản một bị phá vỡ trong lặng lẽ, cho tới lúc thừa nhận sự thật lại đắt hơn cả cái giao kèo ban đầu.",
+    "genre_tags": ["romance", "ngon-tinh", "contract-marriage", "relationship"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "bên cần tới giao kèo", "constraints": ["bước vào vì một lý do phi tình cảm đã nói rõ"]},
+      {"key": "partner", "actant": "object", "label": "bên ký kết cùng", "constraints": ["có lý do riêng để gật đầu"]},
+      {"key": "pressure", "actant": "sender", "label": "gia tộc, món nợ hoặc thể chế thúc ép", "constraints": ["khiến từ chối tốn kém hơn đồng ý"]},
+      {"key": "watchers", "actant": "receiver", "label": "những kẻ mà vở diễn nhắm tới", "constraints": ["phải tin rằng đó là thật"]}
+    ],
+    "beats": [
+      {"key": "strike", "label": "Giao kèo được ký", "intent": "một ràng buộc được lập vì lý do thuần trao đổi", "tension_target": 2, "order": 1},
+      {"key": "rules", "label": "Điều khoản được bày ra", "intent": "luật lệ rõ ràng vạch giới hạn thứ này không được phép trở thành", "tension_target": 2, "order": 2},
+      {"key": "breach", "label": "Điều khoản vỡ dần", "intent": "các giới hạn bị phá trong những khoảnh khắc riêng tư mà không ai kể lại", "tension_target": 3, "order": 3},
+      {"key": "admit", "label": "Sự thật đắt hơn lời giả", "intent": "giữ vở diễn trở nên đau hơn là thú nhận", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "một sức ép khiến ràng buộc không tình cảm trở thành lựa chọn hợp lý"}],
+    "effects": [
+      {"text": "cái khung trao đổi không còn mô tả đúng thứ đang tồn tại"},
+      {"text": "chấm dứt giao kèo bây giờ phải trả một cái giá tình cảm không ai lường trước"}
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "khắc khoải",
+    "examples": [{"text": "Điều bốn ghi rõ phòng riêng; tới mùa đông thì chẳng ai còn nhớ nó đã thôi được tuân thủ từ đêm nào."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.rival_forces_the_question",
+    "language": "vi",
+    "kind": "situation",
+    "category": "romance.rival",
+    "name": "Kẻ Thứ Ba Ép Phải Trả Lời",
+    "summary": "Một người thứ ba công khai giành lấy kẻ mà vị trí trong đời nhân vật chính vốn chưa từng cần gọi tên. Ghen tuông tới trước lời thừa nhận, sự mập mờ dễ chịu bấy lâu không còn đứng vững, và nhân vật chính buộc phải hoặc nói thẳng ra hoặc đứng nhìn câu hỏi ấy được người khác trả lời hộ.",
+    "genre_tags": ["romance", "ngon-tinh", "rival", "relationship"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "kẻ chưa từng phải nói ra", "constraints": ["vẫn dựa vào sự mập mờ"]},
+      {"key": "beloved", "actant": "object", "label": "người đang bị giành", "constraints": ["hoàn toàn có quyền chọn"]},
+      {"key": "rival", "actant": "opponent", "label": "kẻ tranh giành", "constraints": ["là một lựa chọn thật sự, không phải bù nhìn"]}
+    ],
+    "beats": [
+      {"key": "claim", "label": "Kẻ thứ ba lên tiếng giành", "intent": "một người ngoài công khai theo đuổi thứ nhân vật chính tưởng đã yên vị", "tension_target": 3, "order": 1},
+      {"key": "jealousy", "label": "Ghen tới trước", "intent": "cảm xúc trồi lên trước khi nhân vật chính kịp có chữ để gọi nó", "tension_target": 3, "order": 2},
+      {"key": "untenable", "label": "Mập mờ hết chỗ đứng", "intent": "tiếp tục im lặng tự nó đã là một câu trả lời", "tension_target": 4, "order": 3},
+      {"key": "stake", "label": "Nói ra hoặc mất", "intent": "nhân vật chính nói thẳng hoặc nhường bằng cách im lặng", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "một tình cảm giữa hai người bị bỏ lại đó, chưa từng nói thành lời"}],
+    "effects": [
+      {"text": "quan hệ giữa họ từ nay đã rõ ràng, ngả về phía nào cũng vậy"},
+      {"text": "sự xuất hiện của kẻ thứ ba đã thay đổi vĩnh viễn những gì được phép mặc định"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "bồn chồn",
+    "examples": [{"text": "Chàng chưa từng gọi nàng là gì cả — cho tới khi một người khác gọi, giữa bàn tiệc đông người, và cái danh xưng ấy đóng sập lại như một cánh cửa."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.protective_sacrifice",
+    "language": "vi",
+    "kind": "situation",
+    "category": "romance.sacrifice",
+    "name": "Cái Giá Trả Trong Im Lặng",
+    "summary": "Tai họa nhắm vào người mình thương, và người kia âm thầm hứng lấy mà không hé một lời — trả thay một món nợ, gánh thay một tiếng xấu, giấu vết thương dưới tay áo, ký đi cái tên của mình. Việc giấu giếm vốn định là che chở nhưng thực chất là một sự cắt phần, nên lúc bị phát hiện nó vừa là ân tình vừa là phản bội.",
+    "genre_tags": ["romance", "ngon-tinh", "sacrifice", "relationship"],
+    "roles": [
+      {"key": "protector", "actant": "subject", "label": "người trả giá", "constraints": ["giấu chuyện mình đã trả"]},
+      {"key": "beloved", "actant": "receiver", "label": "người được che chở", "constraints": ["không được cho biết, và nếu biết sẽ từ chối"]},
+      {"key": "threat", "actant": "opponent", "label": "tai họa bị hứng thay", "constraints": ["là thật và chắc chắn sẽ giáng xuống"]}
+    ],
+    "beats": [
+      {"key": "threat", "label": "Tai họa nhắm vào người mình thương", "intent": "một cái giá thật sắp giáng xuống nhầm người", "tension_target": 4, "order": 1},
+      {"key": "absorb", "label": "Âm thầm hứng lấy", "intent": "người che chở gánh cái giá và giấu luôn việc mình đã gánh", "tension_target": 3, "order": 2},
+      {"key": "discover", "label": "Chuyện giấu vỡ lở", "intent": "người kia biết được đã trả những gì và trả từ bao giờ", "tension_target": 5, "order": 3},
+      {"key": "reckon", "label": "Vừa ân vừa oán", "intent": "người kia phải cầm cùng lúc cả lòng biết ơn lẫn cơn giận", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "một bên ở vị trí có thể chặn lấy tai họa vốn nhắm vào bên kia"}],
+    "effects": [
+      {"text": "một món nợ không thể trả nổi nằm chắn giữa hai người"},
+      {"text": "thói quen tự mình quyết định của người che chở bị đặt lên bàn"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "đau lòng",
+    "examples": [{"text": "Bọn chủ nợ thôi không tới nữa từ mùa xuân; hai năm sau nàng mới biết tên ai đã thay tên nàng trên tờ khế."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.past_lover_returns",
+    "language": "vi",
+    "kind": "situation",
+    "category": "romance.past",
+    "name": "Người Cũ Quay Lại",
+    "summary": "Một mối tình cũ trở lại với cái điều dang dở vẫn còn dang dở, và mối quan hệ hiện tại bị đem ra đọ với một ký ức mà nó chưa từng đồng ý tranh đua. Thứ thật sự bị thử không phải là ai được chọn, mà là câu chuyện cũ kia rốt cuộc đã khép lại hay chỉ đơn giản là bị bỏ đó.",
+    "genre_tags": ["romance", "ngon-tinh", "past", "relationship"],
+    "roles": [
+      {"key": "lead", "actant": "subject", "label": "kẻ kẹt ở giữa", "constraints": ["chưa từng chính thức kết thúc chuyện cũ"]},
+      {"key": "present", "actant": "object", "label": "mối quan hệ hiện tại", "constraints": ["bị đem ra so mà không hề đồng ý"]},
+      {"key": "returner", "actant": "opponent", "label": "người quay lại", "constraints": ["mang theo cái kết chưa từng có"]}
+    ],
+    "beats": [
+      {"key": "return", "label": "Quá khứ bước trở vào", "intent": "một mối tình cũ xuất hiện lại không báo trước", "tension_target": 3, "order": 1},
+      {"key": "compare", "label": "Bị ép phải so sánh", "intent": "hiện tại bị đo bằng một ký ức mà nó không thể đáp lời", "tension_target": 3, "order": 2},
+      {"key": "name", "label": "Gọi tên điều dang dở", "intent": "cái chưa từng thật sự kết thúc rốt cuộc được nói ra", "tension_target": 4, "order": 3},
+      {"key": "choose", "label": "Khép lại hay mở lại", "intent": "quá khứ được kết thúc đàng hoàng hoặc hiện tại bị buông", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "một mối tình cũ kết thúc mà chưa từng được kết luận"}],
+    "effects": [
+      {"text": "câu chuyện cũ đã khép hẳn thay vì chỉ nằm im"},
+      {"text": "mối quan hệ hiện tại biết chính xác mình đang đứng ở đâu"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "bùi ngùi",
+    "examples": [{"text": "Bảy năm rồi mà chàng vẫn gọi trà theo kiểu nàng đã bỏ uống từ lâu, và chính điều đó — chứ không phải lời xin lỗi — mới làm hỏng cả buổi tối."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.status_gap",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "romance.status",
+    "name": "Bên Kia Lằn Ranh",
+    "summary": "Tình cảm nảy ra vắt qua một lằn ranh mà cả thế gian ra sức giữ — thân phận, gia tộc, tiền bạc, đẳng cấp, chủng tộc, phe phái, phía sai của một cuộc chiến — và những kẻ giữ lằn ranh ấy đều thật lòng muốn tốt. Hai người bị buộc phải định giá cái việc bước qua bằng một thứ cụ thể: một phần gia sản, một gia đình, một chức phận, một mạng người.",
+    "genre_tags": ["romance", "ngon-tinh", "status", "forbidden", "relationship"],
+    "roles": [
+      {"key": "lower", "actant": "subject", "label": "kẻ mất ít của cải nhất", "constraints": ["được nhiều nhất mà đứng thấp nhất"]},
+      {"key": "higher", "actant": "object", "label": "người bị thân phận trói", "constraints": ["thân phận ấy là thật và bỏ đi rất đắt"]},
+      {"key": "guardians", "actant": "opponent", "label": "những kẻ giữ lằn ranh", "constraints": ["hành xử vì bổn phận hoặc thương yêu, không phải vì ác ý"]}
+    ],
+    "beats": [
+      {"key": "attraction", "label": "Tình cảm vắt qua lằn ranh", "intent": "một mối gắn bó hình thành ở nơi thế gian bảo là không được", "tension_target": 2, "order": 1},
+      {"key": "enforce", "label": "Lằn ranh được siết lại", "intent": "gia tộc hoặc thể chế ra tay chia rẽ vì muốn tốt cho họ", "tension_target": 3, "order": 2},
+      {"key": "price", "label": "Định giá việc bước qua", "intent": "chính xác phải bỏ lại thứ gì được bày ra rành rành", "tension_target": 4, "order": 3},
+      {"key": "pay", "label": "Trả hoặc gãy", "intent": "cái giá được trả, bị chối, hoặc có kẻ trả thay", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [{"text": "một lằn ranh xã hội có sức cưỡng chế thật đứng phía sau"}],
+    "effects": [
+      {"text": "một hoặc cả hai đã bỏ lại thứ không lấy lại được"},
+      {"text": "quyền uy của kẻ giữ lằn ranh với họ đã ngã ngũ theo một hướng"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "khắc khoải",
+    "examples": [{"text": "Cha nàng không cấm; ông chỉ bày ra việc lấy kẻ dưới sẽ tốn của các em trai nàng những gì, rồi để nàng tự làm con tính ấy."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.slow_thaw",
+    "language": "vi",
+    "kind": "pattern",
+    "category": "romance.thaw",
+    "name": "Tan Băng Chậm",
+    "summary": "Một kẻ lạnh nhạt hoặc khép kín được sưởi ấm không phải bằng lời tỏ bày mà bằng sự tích tụ — những cử chỉ tử tế nhỏ nhặt lặp đi lặp lại, không ai nhắc tới, không đòi hồi đáp — cho tới khi một biến cố thật sự phơi ra bao nhiêu đất đã lặng lẽ nhường đi. Mạch truyện là tổng của những tử tế chẳng đáng kể, và phần trả công của nó chỉ nhìn thấy khi ngoái lại.",
+    "genre_tags": ["romance", "ngon-tinh", "slow-burn", "relationship"],
+    "roles": [
+      {"key": "warm", "actant": "subject", "label": "kẻ cứ lặng lẽ trao đi", "constraints": ["trao mà không đòi được ghi nhận"]},
+      {"key": "cold", "actant": "object", "label": "kẻ khép kín", "constraints": ["cự tuyệt vì nguyên tắc, không phải vì ghét"]},
+      {"key": "pressure", "actant": "opponent", "label": "biến cố làm lộ ra thay đổi", "constraints": ["ép một phản ứng chưa kịp cân nhắc"]}
+    ],
+    "beats": [
+      {"key": "refusal", "label": "Cự tuyệt như một nếp quen", "intent": "kẻ khép kín gạt đi mọi tiếp cận như lẽ đương nhiên", "tension_target": 2, "order": 1},
+      {"key": "mercies", "label": "Những tử tế nhỏ, không ai nhắc", "intent": "sự tử tế lặng lẽ lặp lại mà chẳng đòi lại gì", "tension_target": 2, "order": 2},
+      {"key": "pressure", "label": "Biến cố gỡ mất lớp phòng bị", "intent": "một cơn nguy ép phản ứng bật ra trước khi kịp dựng hàng rào", "tension_target": 4, "order": 3},
+      {"key": "warmth", "label": "Hóa ra đã nhường bấy nhiêu", "intent": "cả hai ngoái lại và thấy băng đã tan tới đâu tự lúc nào", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [{"text": "một bên mà sự lạnh nhạt là lớp phòng thân chứ không phải một phán quyết"}],
+    "effects": [
+      {"text": "kẻ khép kín không còn viện được cớ dửng dưng"},
+      {"text": "sự thay đổi ấy hiện rõ trước mắt những người từng biết họ trước kia"}
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "dịu dàng",
+    "examples": [{"text": "Chàng chưa từng một lần cảm ơn nàng vì chén trà, và cũng chưa từng một lần để nó nguội, và câu chuyện chỉ có vậy."}],
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "romance.confession_interrupted",
+    "language": "vi",
+    "kind": "situation",
+    "category": "romance.confession",
+    "name": "Lời Chưa Kịp Tới",
+    "summary": "Lời thú nhận rốt cuộc đã sẵn sàng và khoảnh khắc rốt cuộc cũng vừa vặn, rồi có thứ khẩn cấp hơn ập tới — một lệnh triệu, một vết thương, một chuyến đi, một lời dối đã lăn bánh — và điều chưa nói lại được nhét trở vào túi áo. Cái giá của nó đo bằng những gì xảy ra tiếp theo trong lúc lời ấy vẫn còn chưa tiêu.",
+    "genre_tags": ["romance", "ngon-tinh", "timing", "relationship"],
+    "roles": [
+      {"key": "speaker", "actant": "subject", "label": "kẻ sắp nói ra", "constraints": ["rốt cuộc đã quyết định mở lời"]},
+      {"key": "listener", "actant": "object", "label": "người không kịp nghe", "constraints": ["lẽ ra đã đáp lời"]},
+      {"key": "interruption", "actant": "opponent", "label": "thứ ập tới thay vào đó", "constraints": ["ngay lúc ấy quả thật khẩn cấp hơn"]}
+    ],
+    "beats": [
+      {"key": "ready", "label": "Lời đã sẵn trên môi", "intent": "lời thú nhận rốt cuộc được quyết và được bắt đầu", "tension_target": 3, "order": 1},
+      {"key": "interrupt", "label": "Thứ khẩn cấp hơn ập tới", "intent": "một biến cố có lý do chính đáng cắt ngang khoảnh khắc", "tension_target": 4, "order": 2},
+      {"key": "pocket", "label": "Lời lại nuốt vào", "intent": "lời thú nhận bị hoãn và khoảnh khắc ấy không quay lại", "tension_target": 3, "order": 3},
+      {"key": "cost", "label": "Cái giá của im lặng", "intent": "mọi chuyện tiếp diễn trên giả định rằng lời ấy chưa bao giờ có thật", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [{"text": "một tình cảm đã chín tới mức sẵn sàng được nói ra"}],
+    "effects": [
+      {"text": "điều chưa nói từ đây bóp méo mọi quyết định sau đó"},
+      {"text": "cơ hội nói ra lần sau sẽ đắt hơn lần này"}
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "day dứt",
+    "examples": [{"text": "Chàng mới gọi được tên nàng thì người đưa tin đã đẩy cửa bước vào, và tới lúc gian phòng vắng lại thì nàng đã lên đường."}],
+    "source": "authored",
+    "source_version": 1
+  }
+]
