@@ -163,8 +163,39 @@ pub trait BindingStore {
         digest: &RulesetDigest,
     ) -> Result<RealityBinding, BindingError>;
 
-    /// Read a reality's binding. `Ok(None)` = never created.
+    /// Read a reality's CURRENT binding — the newest epoch. `Ok(None)` = never
+    /// created.
     fn load(&self, reality_id: &str) -> Result<Option<RealityBinding>, BindingError>;
+
+    /// **Every** epoch this reality has ever been bound to, ASCENDING.
+    ///
+    /// Not a convenience. `QTY-A5`'s never-reuse arm is computed over the union
+    /// of *every* prior epoch, not the previous one — an ordinal freed at epoch
+    /// 2 is still not available at epoch 3, because epoch 1's committed events
+    /// still mean the old quantity by that number. Checking only against the
+    /// current binding finds the ordinal free and hands it out, which is the
+    /// trap `an_ordinal_freed_two_epochs_ago_is_still_not_available` exists to
+    /// name. **This method is why the binding is one row per epoch instead of
+    /// one mutable column** (`QTY-Q6`).
+    fn history(&self, reality_id: &str) -> Result<Vec<RealityBinding>, BindingError>;
+
+    /// Append the next epoch, binding the reality to `digest`.
+    ///
+    /// **Durability only — this method enforces no law.** The never-reuse
+    /// refusal lives one layer up in [`crate::activate_reality_epoch`], which
+    /// can reach the content store to fetch the prior rulesets the check needs.
+    /// A store that tried to enforce it would have to load rulesets, which is
+    /// how a storage seam grows a dependency on everything.
+    ///
+    /// Refuses [`BindingError::NotBound`] for a reality that was never created:
+    /// an epoch switch moves an existing binding, and creating one by switching
+    /// would re-open the RLS-A3 hole from the other side.
+    fn activate_epoch(
+        &self,
+        reality_id: &str,
+        digest: &RulesetDigest,
+        reason: &str,
+    ) -> Result<RealityBinding, BindingError>;
 
     /// The digest a reality is bound to, or [`BindingError::NotBound`].
     ///
@@ -182,6 +213,13 @@ pub trait BindingStore {
     }
 }
 
+/// The on-disk shape: an APPEND-ONLY list, mirroring `reality_ruleset_binding`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct BindingHistory {
+    #[serde(default)]
+    binding: Vec<RealityBinding>,
+}
+
 /// Durable `reality -> ruleset digest` bindings, one small TOML per reality.
 #[derive(Debug, Clone)]
 pub struct FileBindingStore {
@@ -197,6 +235,61 @@ impl FileBindingStore {
         self.root.join(format!("{reality_id}.toml"))
     }
 
+    /// Read the whole file as a history, tolerating the ONE-BINDING shape this
+    /// file used to write.
+    ///
+    /// A version-dispatched decoder rather than a migration, and the reason is
+    /// `QTY-A11`'s lesson from three days ago: a decoder tolerance that changes
+    /// what a re-encode produces breaks anything that re-digests the decoded
+    /// value. Nothing re-digests a binding file, so tolerance is safe *here* —
+    /// but it is written down because the same shape was NOT safe one crate
+    /// over, and the difference is worth a sentence rather than a rediscovery.
+    fn read_history(&self, reality_id: &str) -> Result<Vec<RealityBinding>, BindingError> {
+        let src = match fs::read_to_string(self.path_for(reality_id)) {
+            Ok(s) => s,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+        let malformed = |e: toml::de::Error| BindingError::Malformed {
+            reality_id: reality_id.to_string(),
+            detail: e.to_string(),
+        };
+        // New shape first. An empty `binding` array is indistinguishable from a
+        // file that has neither key, so the fallback runs on empty too.
+        if let Ok(h) = toml::from_str::<BindingHistory>(&src) {
+            if !h.binding.is_empty() {
+                return Ok(h.binding);
+            }
+        }
+        Ok(vec![toml::from_str::<RealityBinding>(&src).map_err(malformed)?])
+    }
+
+    fn write_history(
+        &self,
+        reality_id: &str,
+        history: &[RealityBinding],
+    ) -> Result<(), BindingError> {
+        let body = format!(
+            "# RLS-A3 early binding: which ruleset THIS reality resolved to, once,\n\
+             # plus every epoch it has been switched to since. The load path reads\n\
+             # the NEWEST digest and fetches those exact bytes from the content\n\
+             # store; it does NOT re-resolve the layer files.\n\
+             #\n\
+             # The older rows are not archaeology: QTY-A5's never-reuse rule is\n\
+             # computed over ALL of them, because an ordinal freed two epochs ago\n\
+             # is still meant by the committed events of the epoch that declared it.\n\
+             {}",
+            toml::to_string(&BindingHistory { binding: history.to_vec() }).map_err(|e| {
+                BindingError::Malformed {
+                    reality_id: reality_id.to_string(),
+                    detail: e.to_string(),
+                }
+            })?
+        );
+        fs::create_dir_all(&self.root)?;
+        fs::write(self.path_for(reality_id), body)?;
+        Ok(())
+    }
 }
 
 impl BindingStore for FileBindingStore {
@@ -222,34 +315,47 @@ impl BindingStore for FileBindingStore {
             epoch: RulesetEpoch(1).0,
             digest: digest.to_hex(),
         };
-        let body = format!(
-            "# RLS-A3 early binding: which ruleset THIS reality resolved to, once.\n\
-             # The load path reads the digest and fetches those exact bytes from the\n\
-             # content store. It does NOT re-resolve the layer files - editing them\n\
-             # after creation must not change a reality that already exists.\n\
-             {}",
-            toml::to_string(&binding).map_err(|e| BindingError::Malformed {
-                reality_id: reality_id.to_string(),
-                detail: e.to_string(),
-            })?
-        );
-        fs::write(&path, body)?;
+        self.write_history(reality_id, std::slice::from_ref(&binding))?;
         Ok(binding)
     }
 
     fn load(&self, reality_id: &str) -> Result<Option<RealityBinding>, BindingError> {
-        let path = self.path_for(reality_id);
-        let src = match fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(e.into()),
-        };
-        let b: RealityBinding =
-            toml::from_str(&src).map_err(|e| BindingError::Malformed {
+        // The NEWEST epoch, not the first. `history` is ascending, so this is
+        // its tail — the same `ORDER BY epoch DESC LIMIT 1` the Postgres store
+        // does, expressed once rather than twice.
+        Ok(self.history(reality_id)?.pop())
+    }
+
+    fn history(&self, reality_id: &str) -> Result<Vec<RealityBinding>, BindingError> {
+        let mut h = self.read_history(reality_id)?;
+        // Sorted rather than trusted. The file is append-only by convention
+        // only — a human can edit it, and `history` is consumed by the
+        // never-reuse check, where a mis-ordered prior is not a cosmetic bug:
+        // it decides whether an epoch switch is refused.
+        h.sort_by_key(|b| b.epoch);
+        Ok(h)
+    }
+
+    fn activate_epoch(
+        &self,
+        reality_id: &str,
+        digest: &RulesetDigest,
+        _reason: &str,
+    ) -> Result<RealityBinding, BindingError> {
+        let mut history = self.history(reality_id)?;
+        let Some(current) = history.last() else {
+            return Err(BindingError::NotBound {
                 reality_id: reality_id.to_string(),
-                detail: e.to_string(),
-            })?;
-        Ok(Some(b))
+            });
+        };
+        let next = RealityBinding {
+            reality_id: reality_id.to_string(),
+            epoch: current.epoch + 1,
+            digest: digest.to_hex(),
+        };
+        history.push(next.clone());
+        self.write_history(reality_id, &history)?;
+        Ok(next)
     }
 }
 

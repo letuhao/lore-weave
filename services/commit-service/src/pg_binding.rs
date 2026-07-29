@@ -203,4 +203,91 @@ impl BindingStore for PgBindingStore {
             digest,
         }))
     }
+
+    fn history(&self, reality_id: &str) -> Result<Vec<RealityBinding>, BindingError> {
+        let id = Uuid::parse_str(reality_id)
+            .map_err(|_| io(format!("reality id is not a uuid: {reality_id}")))?;
+        // ASCENDING, and no LIMIT. This is the query the never-reuse check is
+        // computed over; a `LIMIT` here would silently narrow the check's scope
+        // to the most recent epochs, and it would still return `Ok` — the
+        // NV-3 shape, in the one place where a partial answer looks identical
+        // to a complete one.
+        let rows: Vec<(i32, String)> = Self::block(
+            sqlx::query_as(
+                "SELECT epoch, ruleset_digest FROM reality_ruleset_binding \
+                 WHERE reality_id = $1 ORDER BY epoch ASC",
+            )
+            .bind(id)
+            .fetch_all(&self.pool),
+        )
+        .map_err(|e| io(format!("read binding history for {reality_id}: {e}")))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(epoch, digest)| RealityBinding {
+                reality_id: reality_id.to_string(),
+                epoch: epoch as u32,
+                digest,
+            })
+            .collect())
+    }
+
+    fn activate_epoch(
+        &self,
+        reality_id: &str,
+        digest: &RulesetDigest,
+        reason: &str,
+    ) -> Result<RealityBinding, BindingError> {
+        Uuid::parse_str(reality_id)
+            .map_err(|_| io(format!("reality id is not a uuid: {reality_id}")))?;
+
+        let current = self.load(reality_id)?.ok_or_else(|| BindingError::NotBound {
+            reality_id: reality_id.to_string(),
+        })?;
+        let epoch = current.epoch + 1;
+
+        let mut conn = PgConnectionWriter::new(self.pool.clone())
+            .map_err(|e| io(format!("meta connection: {e}")))?;
+        let qb = PgQueryBuilder;
+        let outbox = PgOutboxAppender::new(&self.allowlist);
+        let clock = HostClock;
+        let uuid = V4Uuid;
+        let mut cfg = MetaWriteConfig {
+            connection: &mut conn,
+            allowlist: &self.allowlist,
+            query_builder: &qb,
+            outbox: Some(&outbox),
+            clock: &clock,
+            uuid_gen: &uuid,
+        };
+        let intent =
+            bind_ruleset_intent(reality_id, epoch, &digest.to_hex(), reason, self.actor());
+
+        // The read-then-write above is NOT the safety mechanism, and saying so
+        // matters: two nodes switching the same reality concurrently would both
+        // read epoch N and both try N+1. Migration 033's gapless BEFORE INSERT
+        // trigger is what makes the loser lose — the second insert names an
+        // epoch that is no longer `max + 1` and is refused by the database. The
+        // local read only supplies the number and a better error message.
+        match meta_write(&mut cfg, intent) {
+            Ok(_) => Ok(RealityBinding {
+                reality_id: reality_id.to_string(),
+                epoch,
+                digest: digest.to_hex(),
+            }),
+            Err(e) => {
+                let msg = format!("{e}");
+                if msg.contains("must be epoch") || msg.contains("must be 1") {
+                    return Err(BindingError::AlreadyBound {
+                        reality_id: reality_id.to_string(),
+                        existing: format!(
+                            "epoch {} - another writer advanced it first",
+                            current.epoch
+                        ),
+                    });
+                }
+                Err(io(format!("activate epoch {epoch} for {reality_id}: {msg}")))
+            }
+        }
+    }
 }

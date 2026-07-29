@@ -50,6 +50,39 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ Q0b B1b — the epoch switch is real, and the refusal costs nothing (2026-07-29)
+
+`B1a` gave `QTY-A5`'s never-reuse arm a subject; `B1b` wires it to storage. `BindingStore` grows
+**`history()`** (every epoch, ascending) and **`activate_epoch()`** (append-only, durability only,
+enforcing nothing) on the trait and on **both** implementations. The law lives one layer up in
+[`crates/ruleset-loader/src/epoch.rs`](../../../crates/ruleset-loader/src/epoch.rs) —
+`activate_reality_epoch` reads the history, fetches each prior epoch's ruleset **by digest** from
+the content store, and runs the check over the union. A storage trait that had to load rulesets to
+append a row would be a storage trait that depends on everything.
+
+**Three decisions worth re-reading before touching this:**
+1. **The check runs BEFORE the append.** A refused switch leaves the binding table untouched.
+   Validate-after-append would have to *delete* a row from a table whose entire guarantee is that
+   rows are never deleted (`ENABLE ALWAYS` trigger, migration 033).
+2. **A prior epoch's ruleset missing from the store REFUSES, it does not skip.** Skipping would
+   return `Ok` for exactly the reality whose history cannot be verified — a check reporting coverage
+   it does not have. `EpochSwitchError::PriorRulesetMissing`.
+3. **Refuse, never renumber** (PO, 2026-07-29). Renumbering is not even available: ordinals live
+   inside the hashed bytes, so it produces a different digest for the same rules while every
+   committed event keeps referring to the old numbers.
+
+**Evidence — 9 loader tests + 3 new live Postgres tests (7 total in that file, 11 in `pg_live`).**
+Bite-proven three ways, all output in the run: removing the never-reuse call reds 2 loader tests ·
+making `history()` return only the newest epoch reds **5** · and on **real Postgres**, adding
+`ORDER BY epoch DESC LIMIT 1` to the history query reds exactly
+`an_epoch_switch_appends_a_row_and_history_comes_back_ascending` and
+`the_never_reuse_refusal_holds_over_a_history_read_from_postgres` — the realistic way this breaks,
+caught by a test that runs against the wire rather than a TOML the same process wrote.
+
+The file store's on-disk shape became a `[[binding]]` list; the old one-binding TOML still reads
+(version-dispatched decoder, tested), because a legacy file that reads but cannot advance is not
+compatible.
+
 ### What the gate caught on the day it was written (2026-07-29)
 
 The table above was authored first, then the gate was run against it. **It rejected five of the
@@ -2170,6 +2203,89 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > **NEXT:** F1 `ruleset-core` real digest — its hard half is moving the ~15 game constants (`MAX_HIT`
 > now among them, `TODO(IMP-D5)`) out of `combat.rs`/`stats.rs`, because until they live in the hashed
 > struct, F3's *edit-a-constant-then-the-digest-moves* test cannot be written at all.
+
+> **🗺️ MAP ARCHITECTURE SEALED (2026-07-30) — [`36_map_architecture.md`](36_map_architecture.md), `SPG-*`.**
+> A design-only arc, taken deliberately **before any schema exists**, at PO direction (*"thiết kế đầy đủ
+> toàn bộ các loại bản đồ và kiến trúc dữ liệu, không nên build cái gì bây giờ"*). **Nothing was built.**
+>
+> **The PO's opening request was a free tree** — *"n nodes in a tree, each node declares what KIND of map
+> it is, no strict order; a universe map may open straight into a cell map; a universe may contain a
+> universe"* — and the audit found that request **does not fight a lock**: [`DP-Ch1`](06_data_plane/12_channel_primitives.md)
+> has always been an arbitrary tree with a **free-form `level_name: String`**. The fixed 5-rung ladder was
+> `MAP_001`'s `ChannelTier`, a *feature-level narrowing of an already-general substrate* (`SPG-F1`). The
+> answer is neither a ladder nor a free string: a **closed `MapKind` set + a containment matrix validated
+> on write** (`SPG-A3`). Prior art is mainstream and in production — OpenUSD (any prim may contain or
+> *reference* any prim), Star Citizen's zone system, Godot's node tree, `django-polymorphic-tree`
+> (typed nodes + per-type child constraints), HTML's content model.
+>
+> **Four findings, each verified against code rather than a handoff note:** `SPG-F1` (above) · **`SPG-F2`
+> three unreconciled hierarchies** — shipped geographic, shipped political, designed `ChannelTier`, and a
+> fourth in `MAP_GUI_v2.html` · **`SPG-F3` `GEO_001` scopes `world_geometry` to a CONTINENT channel, the
+> inverse of what ships** (the world-tier redesign locked the correction 7 days later; `hierarchy.rs`
+> followed it; the DRAFT never did) · **`SPG-F4` one word, three meanings** (`zone` ×3, `realm` ×2,
+> `cell` ×2). PO chose **decisive rename now** over a mapping layer — doc 36 §6 — and the elegant part is
+> that deleting the ladder leaves `zone` with **exactly one** live meaning, so `TMP_001` needs no rename.
+>
+> **The load-bearing axioms.** `SPG-A1` — **an entity may HOLD an interior**, the deliberate converse of
+> [`WSA-A7`](32_locus_as_actor.md); together they close the circle that *entity* and *space* are one kind
+> of thing seen from outside and inside. This was **the PO's own catch** (*"mấy cái bạn nói hình như là
+> object, vậy nghĩa là object cũng có thể là 1 loại bản đồ"*), and Star Citizen ships exactly it: *"a zone
+> host itself **is an entity**… if a zone host moves all the hosted entities move relative to it."*
+> `SPG-A2` — the capability is an engine primitive but **which kinds may hold one is RULESET data**,
+> forced by the PO's stress case (a cultivator at 神境 forming an inner world: the holder is a *person*,
+> the interior is born *at runtime*, and no hardcoded whitelist could have anticipated it); the repo
+> already ships this pattern twice (`tilemap-service/registry.rs`, `ruleset-core`). `SPG-A4` — **two
+> graphs**: containment is a strict acyclic tree, control is free, **they never interact** — which is how
+> the PO dissolved the A-inside-A paradox (*"tạo hóa thân rồi điều khiển hóa thân"*) without weakening
+> either. `SPG-A5` — **no node stores an absolute position**; one line today, and the difference between
+> "a ship can sail" and a migration through the spine.
+>
+> **`SPG-A10` — control is a first-class binding, not an attribute (PO: possession is a core mechanic).**
+> `ACT_001`'s L3 already makes control **dynamic** and `AGT-A3` makes drivers runtime-swappable — the seam
+> is right — but `control_source: User|AI|Engine` is an *enum on the actor*: it cannot say *which*
+> controller, nor represent one controller holding several bodies. `PCS-A4`'s cap=1 closes it exactly
+> where possession needs it open. Promoting it to `(controller_id, actor_id, since, authority)` collapses
+> 分身 · body-seizing · logout→LLM handover · the Ghost state · puppetry · mounts · **and steering a ship**
+> into one mechanism.
+>
+> **`SPG-A8` — collision is TOPOLOGICAL, not dynamic (the PO's proposal, and it is better than what it
+> replaced).** Four ops: Graft / Merge / Breach / Sever. Decisive evidence: the game that suffered most
+> from networked multi-grid physics *also ships the shortcut and documents it as better-behaved* — Space
+> Engineers' `Merge Block`, *"a merged grid is one mass and easy to handle in flight, whereas… subgrids
+> whose mass throws off the Inertial Dampers."* A collision is then **never synchronized** — only a
+> discrete event is, which is what an event-sourced spine transports natively. `SPG-A9` **explicitly
+> refuses** inter-frame rigid-body physics; frames move kinematically.
+>
+> **`SPG-A13` — a `Passage` is a MapKind with DERIVED geometry.** The journey must be a place or a whole
+> class of emergent play is structurally impossible: EVE's gate camps (*Tama, Uedama, Rancer* became
+> shorthand for danger with nobody programming it), ArcheAge's escorted trade packs; and Black Desert as
+> the counter-example — an ocean over **two fifths of the map** with no sea combat, a vast space that is
+> not a place. Costs ~nothing: the generator is `COMB_002`'s `TG-D7`. **`SPG-A16`/`SPG-D1`** — combat
+> always runs on a tactical grid; only the grid's *source* varies (Domain floor plan vs derived world
+> field), which makes the PO's hybrid siting **one** mechanism, not two, and **reverses `RTM-D Q4`** on
+> the `AUD-F1` precedent (the original reason was token cost; the medium correction dissolved it).
+>
+> **Consistency pass done** (`[boundaries-lock-claim+release]`, `Owner:` set before the first edit):
+> `SPG-*` registered in the ownership matrix + `06_id_catalog`. **⚠️ Found during that claim: six prefixes
+> from docs 27–35 — `XST` `PRD` `ONT` `EXC` `WSA` `QTY` — had NEVER been registered at all.** Unlike the
+> four prior RECORD CORRECTIONs these docs asserted nothing false; they were simply invisible to the file
+> that is the inventory. **All six backfilled**, each dated truthfully. Fifth occurrence in that class,
+> and the first caught by a routine check during an unrelated claim. Dated cross-reference annotations
+> added to `MAP_001` · `GEO_001` · `CSC_001` · `ACT_001` · `TMP_001` · `EF_001` · doc `32`.
+>
+> **⚠ DELIBERATELY NOT DONE:** `SPG-R1..R12` and the inherited **`WSA-R19..R24`** remain **PROPOSED, not
+> applied** — no feature spec schema was edited, same discipline doc 32 recorded. `SPG-R2` (`DP-Ch1`
+> `level_name` → `MapKind`) and `WSA-R19`/`R21` (closed `EntityId`/`ActorId` enums) each touch a **LOCKED**
+> file and need their own claim. **`SPG-R10` must land WITH `WSA-R19`** — `EntityId::Place` and
+> `SpaceNode.holder` are the same seam from two directions.
+>
+> **NEXT:** HTML drafts in [`_ui_drafts/`](_ui_drafts/) for the typed-tree navigator (the existing
+> `MAP_GUI_v1/v2` + `CELL_SCENE_v1..v4` are the baseline to extend, not replace) · then the
+> `SPG-R*` + `WSA-R*` application pass as one claim · **then** decide the first build slice. Six open
+> questions carried: `SPG-Q1` matrix-as-data · `SPG-Q2` universe-recursion bound · `SPG-Q3` scale contract
+> across a scale-skipping edge · `SPG-Q4` two actors of one controller in one fight · `SPG-Q5` `Vessel`
+> trajectory source · `SPG-Q6` **cost of acting loci has never been measured** (carried from `WSA-F5(c)`;
+> doc 21 §7 forbids inferring headroom).
 
 Started 2026-04-23 from a SillyTavern prior-art survey. Evolved through systematic design of:
 - Four product shapes → Shape D (shared persistent world)

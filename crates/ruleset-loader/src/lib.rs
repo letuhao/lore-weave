@@ -29,12 +29,14 @@
 //! `forge_override` as an ordered event (§9, needs epoch-switch-as-ingress).
 
 mod binding;
+mod epoch;
 mod layer;
 mod patch;
 mod store;
 mod validate;
 
 pub use binding::{binding_store, BindingError, BindingStore, FileBindingStore, RealityBinding};
+pub use epoch::{activate_reality_epoch, prior_quantity_tables, EpochSwitchError};
 pub use layer::Layer;
 pub use patch::{CombatPatch, RulesetPatch, StatPatch};
 pub use store::{RulesetStore, StoreError};

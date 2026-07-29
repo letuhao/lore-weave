@@ -26,7 +26,8 @@
 
 use commit_service::pg_binding::PgBindingStore;
 use ruleset_loader::{
-    create_reality, load_reality, parse_layer, BindingError, Layer, RealityError, RulesetStore,
+    activate_reality_epoch, create_reality, load_reality, parse_layer, BindingError,
+    BindingStore, Layer, RealityError, RulesetStore,
 };
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -175,4 +176,122 @@ async fn a_non_uuid_reality_id_is_refused_before_any_sql() {
     let err = create_reality("not-a-uuid", &[layer], &store, &bindings).expect_err("refused");
     let msg = format!("{err}");
     assert!(msg.contains("not a uuid"), "{msg}");
+}
+
+// ═══════════════════ Q0b B1b — the epoch switch, in Postgres ═══════════════════
+//
+// The loader tests prove the law against a TOML file the same process wrote.
+// Everything that can actually defeat the never-reuse check lives on the other
+// side of the wire: `history()` is a QUERY, and a query that comes back short
+// makes every switch trivially permitted while still returning `Ok`.
+
+/// Put a ruleset carrying exactly these quantities into the content store.
+fn put_quantities(store: &RulesetStore, names: &[&str]) -> ruleset_core::RulesetDigest {
+    let toml = format!(
+        "quantities = [{}]\n",
+        names.iter().map(|n| format!("\"{n}\"")).collect::<Vec<_>>().join(", ")
+    );
+    let layer = parse_layer(Layer::Reality, &toml).expect("parses");
+    let resolved = ruleset_loader::resolve(&[layer]).expect("resolves");
+    store.put(&resolved).expect("put")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_epoch_switch_appends_a_row_and_history_comes_back_ascending() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let bindings = store_for(&dsn).await;
+    let store = content_store("switch-append");
+    let reality = Uuid::new_v4().to_string();
+
+    let layer = parse_layer(Layer::Reality, "quantities = [\"qi\"]\n").expect("parses");
+    create_reality(&reality, &[layer], &store, &bindings).expect("created");
+
+    let d2 = put_quantities(&store, &["qi", "karma"]);
+    let d3 = put_quantities(&store, &["qi", "karma", "fire"]);
+    assert_eq!(
+        activate_reality_epoch(&bindings, &store, &reality, &d2, "test switch 2")
+            .expect("additive")
+            .epoch,
+        2
+    );
+    assert_eq!(
+        activate_reality_epoch(&bindings, &store, &reality, &d3, "test switch 3")
+            .expect("additive")
+            .epoch,
+        3
+    );
+
+    // The query, not the in-process value. Three rows, ascending, none lost —
+    // this is what migration 033's one-row-per-epoch shape exists to make true,
+    // and what a mutable `ruleset_digest` column would have destroyed.
+    let history = bindings.history(&reality).expect("history");
+    assert_eq!(history.iter().map(|b| b.epoch).collect::<Vec<_>>(), vec![1, 2, 3]);
+    assert_eq!(history[2].digest, d3.to_hex());
+    assert_eq!(
+        bindings.load(&reality).expect("load").expect("bound").epoch,
+        3,
+        "load must return the NEWEST epoch, or an epoch switch appears to do nothing"
+    );
+}
+
+/// **The refusal, computed over a history that came out of Postgres.**
+///
+/// `karma` is declared at epoch 1, dropped at epoch 2, and epoch 3 tries to put
+/// `fire` on the ordinal it freed. Against epoch 2 alone this looks legal. Only
+/// the union over every row catches it — so this test fails the moment
+/// `history()` grows a `LIMIT`, which is the realistic way this breaks.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_never_reuse_refusal_holds_over_a_history_read_from_postgres() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let bindings = store_for(&dsn).await;
+    let store = content_store("switch-refuse");
+    let reality = Uuid::new_v4().to_string();
+
+    let layer = parse_layer(Layer::Reality, "quantities = [\"qi\", \"karma\"]\n").expect("parses");
+    create_reality(&reality, &[layer], &store, &bindings).expect("created");
+
+    let dropped = put_quantities(&store, &["qi"]);
+    activate_reality_epoch(&bindings, &store, &reality, &dropped, "drop karma")
+        .expect("dropping from the tail is permitted");
+
+    let reused = put_quantities(&store, &["qi", "fire"]);
+    let err = activate_reality_epoch(&bindings, &store, &reality, &reused, "reuse")
+        .expect_err("epoch 1 still means karma by ordinal 1");
+    assert!(
+        matches!(err, ruleset_loader::EpochSwitchError::OrdinalReused(ref r)
+                 if r.ordinal == 1 && r.was == "karma"),
+        "{err}"
+    );
+
+    // The refusal must not have written. `reality_ruleset_binding` is
+    // append-only with an ENABLE ALWAYS trigger, so a row appended by a
+    // validate-after-append design could not be taken back.
+    assert_eq!(bindings.history(&reality).expect("history").len(), 2);
+    assert_eq!(bindings.load(&reality).expect("load").expect("bound").epoch, 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn switching_a_reality_that_was_never_created_is_refused() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let bindings = store_for(&dsn).await;
+    let store = content_store("switch-unbound");
+    let reality = Uuid::new_v4().to_string();
+    let d = put_quantities(&store, &["qi"]);
+
+    let err = activate_reality_epoch(&bindings, &store, &reality, &d, "no create")
+        .expect_err("never created");
+    assert!(
+        matches!(err, ruleset_loader::EpochSwitchError::Binding(BindingError::NotBound { .. })),
+        "{err}"
+    );
+    assert!(bindings.history(&reality).expect("history").is_empty());
 }
