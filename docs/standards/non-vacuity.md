@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — fourteen occurrences, one caught by a test
+## 4. The register — fifteen occurrences, one caught by a test
 
-Kept because the count is the argument. **Thirteen of the fourteen were found by a human or an agent
+Kept because the count is the argument. **Fourteen of the fifteen were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -148,8 +148,9 @@ that inspects the check itself can see it.
 | 12 | `assert!(!FORBIDDEN_KEYS.is_empty())` on a `const` — folded at compile time, could never fail | NV-2 | **clippy** (`const_is_empty`) | fixed 2026-07-29 (`S1a`) |
 | 13 | `crate-purity-gate` R3 stripped `//` with a line regex, so a `//` **inside a string literal** ate the violation after it — the check never saw the code | NV-3 | `/review-impl` | fixed 2026-07-29 — one shared `gatelib.strip_comments` |
 | 14 | the same gate's R2 checked only **direct** external deps, so an I/O crate added to `ruleset-core` reached the laws past R1 and R2 | NV-3 | `/review-impl` | fixed 2026-07-29 — widened to the workspace closure |
+| 15 | the shared stripper was string-blind under `keep_strings=True` — the fork `hot-path-gate` runs — so a `//` inside a string ate the rest of the line and its findings with it | NV-3 | `/review-impl`, reviewing the FIX for row 13 | fixed 2026-07-29 |
 
-**Three of the fourteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
+**Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
 evidence for this page existing: each was fixed correctly, in place, by someone who had just
 understood it — and the understanding did not travel.
 
@@ -169,6 +170,18 @@ lexically: **is there an input that reaches the guarded thing without passing th
 carries a second lesson worth more than the fix — the gate had two correct sibling implementations in
 the same directory, and the buggy one was the newly written copy. The duplication was not a tidiness
 complaint; **it was the defect.** All three now share `scripts/gatelib.py`.
+
+**Row 15 is the one that should change how this page is read.** It is row 13's *fix*, reviewed: the
+shared stripper solved the `//`-inside-a-string problem on one fork of a two-fork function and shipped
+it broken on the other — the fork the most safety-critical consumer actually runs. Two tells were
+sitting there: the raw-string arm immediately above already handled it correctly (**sibling arms
+disagreeing**), and the self-test exercised only one value of the flag (**half a function tested**).
+
+So the register now contains a defect, its fix, and a defect *in* the fix. That is not a story about
+one careless afternoon — six of these landed in a single day, every one NV-3, every one found by
+reading rather than by running. **§6's "not yet mechanical" is no longer a footnote; it is the finding.**
+The cheapest real step is a lint that reds when a boolean-forked function's tests only ever pass one
+value of the fork.
 
 ---
 

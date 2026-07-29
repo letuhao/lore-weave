@@ -905,6 +905,33 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > **Re-verified after the fixes: workspace green · 12/12 gates (incl. the new shared `gatelib`) ·
 > clippy clean · 9 bite-proofs against the REAL tree, not fixtures.**
 >
+> **A SECOND `/review-impl`, ON THE FIXES THEMSELVES — AND IT FOUND THE FIX BROKEN (2026-07-29).**
+>
+> The first `/review-impl` ran before its own repairs were written, so `gatelib` + the widened R2 +
+> the span fix had never been reviewed by anything. Reviewing one's own repairs is where the next bug
+> lives, and it was:
+>
+> * **MED — `gatelib` was string-blind under `keep_strings=True`, the fork `hot-path-gate` actually
+>   runs.** The plain-string arm was gated on `not keep_strings`, so with strings kept the parser
+>   never learned where a string ENDED: `let u = "http://x"; m.get("qi");` stripped to `let u = "http:`
+>   and the `.get("qi")` finding vanished. **That is the same defect `gatelib` was extracted to fix,
+>   surviving in the other branch** — and it is the exact violation `Q1` is predicted to introduce next
+>   slice. Two tells were sitting there: the raw-string arm immediately above already did it right
+>   (**sibling arms disagreeing**), and the self-test only ever probed `keep_strings=False` (**half a
+>   two-fork function tested**). Fixed: a string is now always CONSUMED and `keep_strings` decides only
+>   whether its bytes survive — knowing where a string ends is required to know where a comment begins.
+>   Self-test now runs every lexical case under **both** forks. Bite-proven on the real tree.
+> * **LOW — `file-ceiling-gate` gave a false diagnosis.** A stale allowlist row and a missing tier
+>   directory both printed *"the scan was INCOMPLETE"*. For a stale row that is untrue: the scan was
+>   complete, the POLICY was stale. Same defect class as the loader's *"unknown field"* answer for a
+>   forbidden key, fixed two hours earlier. Now `SCOPE` vs `POLICY`, distinct messages, both exit 1.
+>
+> **Register row 15 — and the register now holds a defect, its fix, and a defect IN the fix.** Six
+> landed in one day, every one `NV-3`, every one found by READING rather than by running. §6's
+> *"not yet mechanical"* has stopped being a footnote and become the finding. The cheapest real step
+> named there now: **a lint that reds when a boolean-forked function's tests only ever pass one value
+> of the fork.**
+
 > **NEXT: `S2` is done, so `Q1` is unblocked** — the L2 declared-quantity substrate. It is also
 > `S1b`'s trigger, so the two land together. Nothing from this run is deferred.
 

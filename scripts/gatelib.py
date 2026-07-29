@@ -81,7 +81,22 @@ def strip_comments(src: str, keep_strings: bool) -> str:
                 i = end
                 continue
 
-        if c == '"' and not keep_strings:
+        # A string is ALWAYS consumed; `keep_strings` decides only whether its
+        # bytes survive.
+        #
+        # **Consuming it unconditionally is the load-bearing part.** The first
+        # version gated the whole branch on `not keep_strings`, so under
+        # `keep_strings=True` — which is exactly how `hot-path-gate` runs — a
+        # `//` INSIDE a string opened a comment and ate the rest of the line:
+        #
+        #     let u = "http://x"; m.get("qi");   ->   let u = "http:
+        #
+        # …silently dropping a real `.get("qi")` finding. That is the same defect
+        # this file was extracted to fix, surviving in the other branch, and the
+        # raw-string arm directly above already did it right — two sibling arms
+        # disagreeing is the tell. Knowing where a string ENDS is required to
+        # know where a comment BEGINS, whatever you then do with its contents.
+        if c == '"':
             j = i + 1
             while j < n:
                 if src[j] == "\\":
@@ -90,7 +105,8 @@ def strip_comments(src: str, keep_strings: bool) -> str:
                 if src[j] == '"':
                     break
                 j += 1
-            blank(i, j + 1)
+            if not keep_strings:
+                blank(i, j + 1)
             i = j + 1
             continue
 
@@ -177,6 +193,26 @@ def self_test() -> int:
          'm.get("qi"); // comment', True, must_keep=('"qi"',), must_drop=("// comment",))
     case("keep_strings=False drops it",
          'm.get("qi");', False, must_drop=('"qi"',))
+
+    # ── every lexical case must hold under BOTH forks, not just one ──
+    #
+    # The first version of this file only probed `keep_strings=False` here, and
+    # the `//`-inside-a-string bug shipped in the True branch — the branch
+    # `hot-path-gate` actually runs. A self-test that exercises one fork of a
+    # two-fork function is testing half a function.
+    for keep in (False, True):
+        case(f"[keep={keep}] a `//` inside a string never opens a comment",
+             'let u = "http://x"; m.get("qi");', keep, must_keep=('m.get',))
+        case(f"[keep={keep}] a `/*` inside a string never opens a block comment",
+             'let u = "a/*b"; m.get("qi");', keep, must_keep=('m.get',))
+        case(f"[keep={keep}] an escaped quote does not end the string early",
+             r'let s = "he said \"hi\" //x"; m.get("qi");', keep, must_keep=('m.get',))
+        case(f"[keep={keep}] a raw string containing // is not a comment",
+             'let u = r"a//b"; m.get("qi");', keep, must_keep=('m.get',))
+    # …and under keep=True the hunted literal must still be readable after one.
+    got = strip_comments('let u = "http://x"; m.get("qi");', True)
+    if '"qi"' not in got:
+        fails.append("keep=True lost the target literal after a URL-ish string: " + repr(got))
 
     if fails:
         print("gatelib SELF-TEST FAILED:")

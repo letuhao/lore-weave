@@ -101,7 +101,7 @@ def offenders() -> tuple[list[tuple[str, int]], list[str]]:
             # the gate would otherwise report OK for a directory it never read,
             # which is the default-uncovered shape this whole file exists to
             # avoid. Surfaced as a note + a non-zero exit, never as silence.
-            notes.append(f"tier directory is missing, so nothing under it was checked: {d}")
+            notes.append(("SCOPE", f"tier directory is missing, so nothing under it was checked: {d}"))
             continue
         for f in sorted(root.rglob("*.rs")):
             if "target" in f.parts:
@@ -119,7 +119,7 @@ def offenders() -> tuple[list[tuple[str, int]], list[str]]:
     # the list look like it is doing more work than it is.
     for rel in ALLOWLIST:
         if not (REPO / rel).is_file():
-            notes.append(f"stale allowlist row (file is gone): {rel}")
+            notes.append(("POLICY", f"allowlist row for a file that no longer exists: {rel}"))
     return found, notes
 
 
@@ -174,11 +174,20 @@ def main() -> int:
         return self_test()
 
     found, notes = offenders()
-    for n in notes:
-        print(f"file-ceiling-gate: NOTE — {n}")
-    if notes and not found:
-        print("file-ceiling-gate: the notes above mean the scan was INCOMPLETE or the "
-              "policy is stale — a clean result cannot be claimed from a partial scan.")
+    # Two different failures, two different messages. Lumping them under one
+    # sentence would tell the reader the scan was INCOMPLETE when in fact it was
+    # complete and the policy was stale — a misleading diagnostic is the same
+    # defect class as the loader's "unknown field" answer for a forbidden key.
+    for kind, msg in notes:
+        print(f"file-ceiling-gate: {kind} — {msg}")
+    if any(k == "SCOPE" for k, _ in notes):
+        print("\nA tier directory was not read, so a clean result cannot be claimed: "
+              "the files that would have been checked were never looked at.")
+        return 1
+    if any(k == "POLICY" for k, _ in notes):
+        print("\nThe scan was complete; the ALLOWLIST is stale. A row for a file that no "
+              "longer exists makes the list look like it is doing more work than it is "
+              "— delete it.")
         return 1
     if found:
         print(f"file-ceiling-gate: {len(found)} finding(s) — IMP-D3, ceiling {CEILING} lines\n")
