@@ -379,6 +379,46 @@ machine-written text.**
 read**, not merely the right heading. That is a bounded, known piece of work rather than an open
 question — and it is measurable to the character.
 
+## 6f · Both fixes, measured
+
+### Fix 1 · cold start recovers the WHOLE cast — from a wall of prose
+
+The reconstruction now emits the sub-structure the extractors actually read (`## N. Name` per
+person, `## Arc N:` per arc), reusing the extraction step already measured at 4/4 grounded with zero
+invention rather than adding a new component. A grounding gate runs before anything is written — a
+name absent from the author's own text is an invention, and an invented character inside the
+reconstruction would be indistinguishable from one they wrote.
+
+| | author's doc | v1 by-kind | **v2 sub-structure** |
+|---|---|---|---|
+| characters | 4 | 1 (`[TBD]`) | **4** |
+| arcs | 1 | 1 | 3 |
+| sections | 9 | 5 | 5 |
+
+`['Lâm Uyên', 'Tô Thanh Dao', 'Lâm Trạch', 'Huyết Vô Thường']` — **identical to the author's own
+document, from input that had no headings at all.** The grounding gate dropped nothing.
+
+Two differences that are NOT improvements and should not be read as such: sections stay at 5 (the
+reconstruction consolidates by kind, where the author's 9 include a title, a TOC and four
+unclassified), and arcs go to **3** where the author's document yields 1 — the extra two are real
+arc-ish material the regex classifier never reached, but over-splitting is equally consistent with
+the number and this run cannot tell them apart.
+
+### Fix 2 · the review surface — and it earns its keep immediately
+
+Instead of concluding, the loop shows what it found for a keep-or-drop. For the one kind still
+reported absent it offered:
+
+> ☐ *Lòng tốt thường bị xem là điểm yếu* · ☐ *Thiên tài quyết định vận mệnh gia tộc* ·
+> ☐ *Oan oan tương báo không bao giờ kết thúc*
+
+**None of those is a state variable.** They are tone and world rules. The author drops all three in
+two seconds — and only then does the machine know it must actually ask. Phase 13's auto-conclude had
+swallowed that question on exactly this class of false positive.
+
+That is the whole argument for the propose-to-author step, now visible rather than asserted: the
+retrieval is good enough to be worth showing and not good enough to be worth trusting.
+
 ## 7 · Deferred / follow-ups this produced
 
 | id | finding | gate |
@@ -386,6 +426,6 @@ question — and it is measurable to the character.
 | `D-PLANFORGE-RULES-INGEST-SILENT-ZERO` | a 0-section ingest produces an empty spec with no signal — the author cannot tell a failed read from an empty book | fix-now candidate: it is a guard, not a refactor |
 | `D-PLANFORGE-RULES-FORMAT-BOUND` | `_characters` caps at one; arcs need `Arc N:`; the extractors only fit the original fixture | large/structural (gate 2) — the LLM read is the replacement, not a patch |
 | `D-PLANFORGE-NO-PREMISE-KIND` | the six ingest kinds have no home for premise/genre/tone; the author's opening section is dropped as `other` | small — widen `SECTION_KIND_MAP` |
-| `D-COLDSTART-SUBSTRUCTURE` | a reconstruction from headingless prose files each kind under one heading, so `_characters` (which needs `## ` sub-blocks) reads 1 person where the author's own document yields 4. Measured exactly: sections 9→5, characters 4→1 | not blocked — emit the sub-structure the extractors read |
-| `D-SEARCH-OVER-RETRIEVES` | removing the yes/no gate bought recall at a measured precision cost; at loop level that turned "over-ask 3 questions" into "under-ask zero" on a false positive. The retrieved lines must be shown to the author for keep-or-drop, never acted on | design, not a bug — the propose-to-author step already planned |
+| ~~`D-COLDSTART-SUBSTRUCTURE`~~ | **ANSWERED in the POC** (§6f) — emitting `## N. Name` / `## Arc N:` recovers 4/4 characters from a headingless wall, exactly matching the author's document, with zero invention. The production build now has a known shape rather than an open question | — |
+| ~~`D-SEARCH-OVER-RETRIEVES`~~ | **ANSWERED** (§6f) — the review surface makes the over-retrieval visible in one glance (all three offered lines were wrong), which is what lets the loop ask the question the auto-conclude had swallowed. Retrieval is good enough to show, not good enough to trust |
 | ~~`D-LLM-TEXT-FORMAT-HAND-PARSE`~~ | **CLEARED** — not deferred: it was unbuilt work, not debt. A shared `engine/llm_json.call_json` (schema-first, free-form fallback, post-filter retained) plus every site with a REAL closed set migrated: `plan` beat_keys · `world_plan` WORLD_KINDS · `promise_audit` verdicts · `motif_mine` kinds+actants · the intent FSM's slot enums. All four production schemas live-verified against the real provider. The shape-only sites keep text+tolerant-parse **on purpose**: with no enum, enforcement buys shape alone, and the measured win was the enum | — |
