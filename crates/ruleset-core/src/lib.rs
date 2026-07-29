@@ -41,6 +41,7 @@ mod canon;
 mod classification;
 mod combat;
 mod provenance;
+mod never_reuse;
 mod quantity;
 mod ruleset;
 mod slots;
@@ -54,6 +55,7 @@ pub use classification::{FieldClass, Floor, Mutability, Strategy, FORBIDDEN_KEYS
 pub use combat::CombatRules;
 // Q1 — L2 declared quantities (QTY-A5/A6): identities an author invents,
 // ordinals the engine assigns, both inside the hashed bytes.
+pub use never_reuse::OrdinalReuse;
 pub use quantity::{
     QuantityError, QuantityName, QuantityTable, MAX_DECLARED_QUANTITIES, MAX_QUANTITY_NAME_LEN,
 };
