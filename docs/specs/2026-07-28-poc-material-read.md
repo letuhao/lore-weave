@@ -482,3 +482,63 @@ from someone else.
 | ~~`D-COLDSTART-SUBSTRUCTURE`~~ | **ANSWERED in the POC** (§6f) — emitting `## N. Name` / `## Arc N:` recovers 4/4 characters from a headingless wall, exactly matching the author's document, with zero invention. The production build now has a known shape rather than an open question | — |
 | ~~`D-SEARCH-OVER-RETRIEVES`~~ | **ANSWERED** (§6f) — the review surface makes the over-retrieval visible in one glance (all three offered lines were wrong), which is what lets the loop ask the question the auto-conclude had swallowed. Retrieval is good enough to show, not good enough to trust |
 | ~~`D-LLM-TEXT-FORMAT-HAND-PARSE`~~ | **CLEARED** — not deferred: it was unbuilt work, not debt. A shared `engine/llm_json.call_json` (schema-first, free-form fallback, post-filter retained) plus every site with a REAL closed set migrated: `plan` beat_keys · `world_plan` WORLD_KINDS · `promise_audit` verdicts · `motif_mine` kinds+actants · the intent FSM's slot enums. All four production schemas live-verified against the real provider. The shape-only sites keep text+tolerant-parse **on purpose**: with no enum, enforcement buys shape alone, and the measured win was the enum | — |
+
+---
+
+## 8 · What flipping the default made REDUNDANT (2026-07-29, measured)
+
+The POC ran when `mode="rules"` was the default, so every component it designed exists to feed the
+heading matcher. With the agent surface flipped to `mode="llm"` (`67018bba8`), that premise has to be
+re-tested rather than assumed — and one whole planned component falls away.
+
+### The cold-start reconstruction is NOT needed. Do not build it.
+
+§6e Arm 2 / §6f Fix 1 designed a reconstruction step: segment a headingless wall of prose, classify
+by kind, and re-emit it with the sub-structure the extractors read (`## N. Name`, `## Arc N:`) behind
+a grounding gate. It was recorded as *"a bounded, known piece of work rather than an open question"*.
+
+The LLM path reads raw text, so the question is simply whether it needs the structure at all. Every
+heading, bullet, table pipe and newline stripped from each corpus, wall fed straight to the production
+`propose_spec_llm_async`:
+
+| | author's doc (Mị Đế) | **wall, 0 headings** | grimdark | **wall, 0 headings** |
+|---|---|---|---|---|
+| characters | 4 | **4** | 4 | **4** |
+| mechanics | 2 | 3 | 2 | 1 |
+| arcs | 2 | 2 | 4 | 3 |
+| events | 2 | 3 | 4 | 3 |
+
+`['Lâm Uyên', 'Tô Thanh Dao', 'Lâm Trạch', 'Huyết Vô Thường']` and `['Odile Marchetti', 'Teodor "Ash"
+Aszkiewicz', 'Ruth Okonjo-Vance', 'The Passenger']` — **full casts, both corpora, from input with no
+structure whatsoever.** That is the exact target §6f set for the reconstruction (4/4), reached without
+it. Building it would add a component, a grounding gate and a test surface to buy nothing.
+
+The regeneration ladder shipped the same day fired live during this arm (analyze 34,014 chars →
+`frequency_penalty=1.2` → 4,212), which is also the first independent confirmation that the escalation
+works on a document it was not tuned on.
+
+### The coverage surface is a REWRITE, not a build — same disease, third instance
+
+`engine/plan_forge/coverage.py` already exists, and `build_section_map_from_text` parses
+`## 1.x / 2.x / 3.x` and `### Event N` — the POC fixture's heading shape, exactly like
+`ingest._parse_top_sections` and `validate.py` before it. Its own docstring records the previous
+failure: *"every caller passed `story-plan-v1.md`: so a user's 'what is missing from my plan' was
+computed against the POC's novel."* Its report functions then route through `eval_fidelity`, which is
+keyed on Mị Đế gap-ids and is inert without a per-run rubric.
+
+So "the coverage board" is not missing infrastructure — it is a **format-bound implementation that
+must be recomputed from the SPEC** (which the LLM path produces for any document) instead of from a
+heading regex. `0 variables` in a spec is a fact; `no section matched '## 2.x'` is an artefact of the
+matcher.
+
+### What genuinely remains of §6e/6f
+
+1. **Coverage board over the spec** — which kinds the read recovered, which are absent. Cheap, general.
+2. **Quote-first search** over the author's own text for an absent kind (no yes/no gate, no worked
+   example — both measured to hurt).
+3. **The review surface** — show what was retrieved for a keep-or-drop. This is the piece that
+   *earned its keep immediately*: all three lines it offered for `planner_variables` were tone/world
+   rules, not state variables, and the auto-conclude had swallowed exactly that question.
+4. **Ask** only what survives review.
+
+Retrieval is good enough to SHOW and not good enough to TRUST — which is why 3 is not optional.
