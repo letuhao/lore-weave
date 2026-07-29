@@ -46,6 +46,16 @@ struct Args {
     /// are separate directories on purpose — a binding MOVES on an epoch switch,
     /// and mutable state inside a content-addressed store is a category error.
     ruleset_state: Option<String>,
+    /// The META DB. Present ⇒ the reality's ruleset binding lives in
+    /// `reality_ruleset_binding` (Q1 B2, append-only, one row per epoch) instead
+    /// of a TOML file. Absent ⇒ files, which is what every offline tool and the
+    /// existing smokes want and is why this is an OPTION rather than a
+    /// replacement: a node with no meta DB reachable should fail loudly at
+    /// startup, not fall back to a private file and run different rules from its
+    /// neighbours.
+    meta_url: Option<String>,
+    /// The polyglot allowlist SoT that MetaWrite validates against.
+    meta_allowlist: String,
     /// Resolve the layer stack, store it, and bind this reality to it — ONCE.
     /// Without this flag the binary only LOADS, which is what a running node
     /// does.
@@ -61,6 +71,8 @@ fn parse_args() -> anyhow::Result<Args> {
     let mut ruleset = None;
     let mut ruleset_state = None;
     let mut create_reality = false;
+    let mut meta_url = None;
+    let mut meta_allowlist = "contracts/meta/events_allowlist.yaml".to_string();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
@@ -73,6 +85,8 @@ fn parse_args() -> anyhow::Result<Args> {
             "--ruleset" => { ruleset = Some(argv[i + 1].clone()); i += 2; }
             "--ruleset-state" => { ruleset_state = Some(argv[i + 1].clone()); i += 2; }
             "--create-reality" => { create_reality = true; i += 1; }
+            "--meta-url" => { meta_url = Some(argv[i + 1].clone()); i += 2; }
+            "--meta-allowlist" => { meta_allowlist = argv[i + 1].clone(); i += 2; }
             other => anyhow::bail!("unknown arg {other}"),
         }
     }
@@ -84,6 +98,8 @@ fn parse_args() -> anyhow::Result<Args> {
         ruleset,
         ruleset_state,
         create_reality,
+        meta_url,
+        meta_allowlist,
         drain_once,
     })
 }
@@ -140,58 +156,29 @@ async fn main() -> anyhow::Result<()> {
 
     // ── resolution side: the island (encounter demo state) ──
     let npc = EntityId(1);
-    // ── F2: the reality's rules come from a FILE ──────────────────────────
+    // ── F2: where this node's rules come from ─────────────────────────────
     //
-    // RLS-A3 EARLY BINDING: the stack is resolved ONCE here, validated, hashed
-    // and then immutable. A later edit to the file never touches a reality that
-    // is already running, so replay-safety is STRUCTURAL rather than
-    // procedural: there is no path by which a reality's rules change without an
-    // event in its own log.
-    //
-    // RLS-D12 — a bad ruleset quarantines ONE reality, never the process. This
-    // binary hosts one channel, so "quarantine" is a clean refusal to start
-    // with the author's diagnostic; a node hosting forty realities marks this
-    // one `Unloadable` and carries on with the other thirty-nine.
+    // RLS-A3 EARLY BINDING: the stack is resolved ONCE at creation, validated,
+    // hashed and then immutable. A later edit to the file never touches a
+    // reality that is already running, so replay-safety is STRUCTURAL rather
+    // than procedural. The two columns live in `ruleset_boot` — see its module
+    // doc for why creation and load must not be one function.
     let ruleset = {
         let state = args.ruleset_state.as_deref().unwrap_or(".loreweave/rulesets");
-        let store = ruleset_loader::RulesetStore::new(std::path::Path::new(state).join("content"));
-        let bindings =
-            ruleset_loader::BindingStore::new(std::path::Path::new(state).join("bindings"));
+        let boot = commit_service::ruleset_boot::RulesetBoot::open(
+            state,
+            args.meta_url.as_deref(),
+            &args.meta_allowlist,
+        )
+        .await?;
+        println!("BINDINGS <- {}", boot.provenance);
         let reality_id = args.reality.to_string();
 
-        // CREATE — the ONLY path that reads a layer file. Resolves once,
-        // validates, stores the bytes, binds the reality to their digest.
-        // Refuses a second creation: RLS-A3 binds early and ONCE.
         if args.create_reality {
-            let mut layers = Vec::new();
-            if let Some(path) = &args.ruleset {
-                layers.push(
-                    ruleset_loader::read_layer(
-                        ruleset_loader::Layer::Reality,
-                        std::path::Path::new(path),
-                    )
-                    .map_err(|e| anyhow::anyhow!("reality NOT created: {e}"))?,
-                );
-            }
-            let (_, binding) =
-                ruleset_loader::create_reality(&reality_id, &layers, &store, &bindings)
-                    .map_err(|e| anyhow::anyhow!("reality NOT created: {e}"))?;
-            println!(
-                "CREATED reality {reality_id} epoch {} -> ruleset {} (from {})",
-                binding.epoch,
-                binding.digest,
-                args.ruleset.as_deref().unwrap_or("engine_default"),
-            );
+            println!("{}", boot.create(&reality_id, args.ruleset.as_deref())?);
         }
 
-        // LOAD — this does NOT look at a layer file, and that is the point.
-        // Editing `reality.toml` after creation, or deploying a binary with a
-        // different `engine_default`, must not change a reality that already
-        // exists. Before this split, spine re-resolved at every start and both
-        // of those silently did (doc 16 §12: creation and Cold->Hot are two
-        // columns; F2.1 built the left one and used it for both).
-        let (r, digest) = ruleset_loader::load_reality(&reality_id, &store, &bindings)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let (r, digest) = boot.load(&reality_id)?;
         println!("RULESET {} <- store (NOT re-resolved)", digest.to_hex());
         std::sync::Arc::new(r)
     };

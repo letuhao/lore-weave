@@ -37,14 +37,30 @@
 //! whose whole guarantee is *"these bytes never change"* would contain
 //! something that must.
 //!
-//! ## Where it will eventually live
+//! ## Where it lives — and the guess this paragraph used to make was wrong
 //!
-//! `reality_registry` in the meta DB, beside the lifecycle `status` the append
-//! guard already reads — a reality's ruleset binding is reality-level state and
-//! belongs with the rest of it. It is a file here because `commit-service`'s
-//! spine has no meta pool (it takes only a per-reality `--pg-url`), and
-//! inventing that wiring to store two fields would be the larger change. The
-//! surface is `create` / `load`; moving it behind a table touches this file.
+//! This said *"`reality_registry` in the meta DB, beside the lifecycle `status`
+//! … it is a file here because `commit-service`'s spine has no meta pool."* The
+//! second half was true and `Q1 B2b` fixed it ([`BindingStore`] is now a trait;
+//! `commit-service::pg_binding` is the Postgres implementation, selected by
+//! `--meta-url`). **The first half was wrong in a load-bearing way.**
+//!
+//! `reality_registry` is one row per reality, so putting the binding there means
+//! one MUTABLE `ruleset_digest` column — and an epoch switch would overwrite the
+//! previous epoch's digest. That history is exactly what `QTY-A5`'s *"an ordinal
+//! is never reused on removal"* is computed over: the high-water ordinal is
+//! `max(n)` across the rulesets of **every** prior epoch, and each is reachable
+//! only through the digest that addressed it. Overwriting the column loses the
+//! only pointer to a ruleset whose ordinals are still referenced by committed
+//! events.
+//!
+//! So the table is `reality_ruleset_binding` (`migrations/meta/033`): one row
+//! per epoch, append-only, enforced by an `ENABLE ALWAYS` trigger. That is the
+//! answer `QTY-Q6` closed with — a *different* answer from the one doc 35 §4.6
+//! proposed, and the reason the difference matters is written above.
+//!
+//! The FILE implementation stays. It is what every test here, and every offline
+//! tool, wants: no container, no pool, no fixture.
 
 use std::fs;
 use std::io;
@@ -124,13 +140,55 @@ fn parse_digest(hex: &str) -> Result<RulesetDigest, BindingError> {
     Ok(RulesetDigest(out))
 }
 
+/// Where a reality's binding lives — **the seam this module was written to
+/// have**, and the file impl is now one implementation of it rather than the
+/// only shape.
+///
+/// The doc comment above used to end *"it is a file here because
+/// `commit-service`'s spine has no meta pool … the surface is `create`/`load`,
+/// and moving it behind a table touches this file."* This is that move. The
+/// file impl stays because it is what every loader test and every offline tool
+/// wants: no Postgres, no container, no fixture.
+///
+/// **Deliberately synchronous.** The Postgres implementation lives in
+/// `commit-service` — the crate that already owns sqlx and tokio — so this
+/// crate keeps its three dependencies and a law still cannot reach a socket
+/// through it (`IMP-D2`, `crate-purity-gate`).
+pub trait BindingStore {
+    /// Bind a reality to a resolved ruleset. **Refuses if already bound**
+    /// (`RLS-A3` binds early and once).
+    fn create(
+        &self,
+        reality_id: &str,
+        digest: &RulesetDigest,
+    ) -> Result<RealityBinding, BindingError>;
+
+    /// Read a reality's binding. `Ok(None)` = never created.
+    fn load(&self, reality_id: &str) -> Result<Option<RealityBinding>, BindingError>;
+
+    /// The digest a reality is bound to, or [`BindingError::NotBound`].
+    ///
+    /// Defaulted because every implementation would write the same three lines,
+    /// and the one thing an implementation could get wrong here — returning
+    /// `Ok` of a default digest for an unbound reality — would silently load
+    /// the wrong rules.
+    fn digest_for(&self, reality_id: &str) -> Result<RulesetDigest, BindingError> {
+        match self.load(reality_id)? {
+            Some(b) => parse_digest(&b.digest),
+            None => Err(BindingError::NotBound {
+                reality_id: reality_id.to_string(),
+            }),
+        }
+    }
+}
+
 /// Durable `reality -> ruleset digest` bindings, one small TOML per reality.
 #[derive(Debug, Clone)]
-pub struct BindingStore {
+pub struct FileBindingStore {
     root: PathBuf,
 }
 
-impl BindingStore {
+impl FileBindingStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
@@ -139,8 +197,10 @@ impl BindingStore {
         self.root.join(format!("{reality_id}.toml"))
     }
 
-    /// Bind a reality to a resolved ruleset. **Refuses if already bound.**
-    pub fn create(
+}
+
+impl BindingStore for FileBindingStore {
+    fn create(
         &self,
         reality_id: &str,
         digest: &RulesetDigest,
@@ -177,8 +237,7 @@ impl BindingStore {
         Ok(binding)
     }
 
-    /// Read a reality's binding. `Ok(None)` = never created.
-    pub fn load(&self, reality_id: &str) -> Result<Option<RealityBinding>, BindingError> {
+    fn load(&self, reality_id: &str) -> Result<Option<RealityBinding>, BindingError> {
         let path = self.path_for(reality_id);
         let src = match fs::read_to_string(&path) {
             Ok(s) => s,
@@ -192,17 +251,9 @@ impl BindingStore {
             })?;
         Ok(Some(b))
     }
-
-    /// The digest a reality is bound to, or [`BindingError::NotBound`].
-    pub fn digest_for(&self, reality_id: &str) -> Result<RulesetDigest, BindingError> {
-        match self.load(reality_id)? {
-            Some(b) => parse_digest(&b.digest),
-            None => Err(BindingError::NotBound { reality_id: reality_id.to_string() }),
-        }
-    }
 }
 
 /// Convenience for callers that hold a `&Path` root.
-pub fn binding_store(root: &Path) -> BindingStore {
-    BindingStore::new(root)
+pub fn binding_store(root: &Path) -> FileBindingStore {
+    FileBindingStore::new(root)
 }

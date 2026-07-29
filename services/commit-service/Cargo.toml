@@ -44,6 +44,10 @@ thiserror = { workspace = true }
 # ── S3a spine (bus → admission → island → epoch-fenced commit) ──
 # The DP SDK: channel-ordered, epoch-fenced event append (DP-A16).
 dp-kernel = { path = "../../crates/dp-kernel" }
+# Q1 B2b — the Meta Access Library's Rust port + its concrete Postgres adapter.
+# Every meta write goes through MetaWrite (I8), so the binding row, its
+# meta_write_audit row and its meta_outbox event land in ONE transaction.
+meta-rs = { path = "../../crates/meta-rs", features = ["sqlx-pg"] }
 redis = { workspace = true }
 sqlx = { workspace = true }
 blake3 = { workspace = true }

@@ -103,8 +103,8 @@ same device as `s1b_has_no_subject_yet_and_says_so`.
 |---|---|---|
 | **B1** | **L2 substrate in the hashed bytes** — `QuantityName`/`QuantityTable`, `Ruleset.quantities`, canon `v2→v3` + upcast, `A12` repin, `UnionById` merge in `RulesetPatch`, the three validators that bite, S1b's floor+mutability arms (forced — the trigger reds), classification rows | a reality declares `qi` (an identity the engine has never heard of) and it survives **create → store → load → digest** with ordinals unchanged; a v2 artifact still loads |
 | **B2a** | **the binding gets a home in the meta DB** — `migrations/meta/033_reality_ruleset_binding`, the `events_allowlist.yaml` row + a mirror test in **each** language, live migration smoke | the table exists, is append-only against every role *including* the mode that turns triggers off, and both parsers agree the row is there |
-| **B2b** | **Rust reaches it** — sqlx adapter for `meta-rs`, `BindingStore` behind a trait, `--meta-url` on the spine, live create → load through Postgres | Q0b's blocker is gone: a reality's binding survives a process restart in a table rather than a file |
-| **B3** | **doc 35 §12 sweep** + 16a/26 cross-refs + handoff | no row in §12 states a fact that contradicts the code |
+| **B2b** ✅ | **Rust reaches it** — `meta-rs::sqlx_pg` (feature-gated), `BindingStore` behind a trait + `commit-service::pg_binding`, `--meta-url` + `ruleset_boot` on the spine, 11 live tests | Q0b's blocker is gone. **Q1's own exit criterion discharged here**: `a_declared_quantity_survives_create_store_load_with_its_ordinals` — B1's tests stopped at create → resolve → digest |
+| **B3** | **doc 35 §12 sweep** + 16a/26 cross-refs + handoff | no row in §12 states a fact that contradicts the code. (The store round-trip test B3 was going to owe landed in B2b instead — it needed the Pg binding to be worth writing.) |
 
 **POST-REVIEW at the end of B1** — it is the load-bearing half (author-declared identities entering
 hashed bytes are permanent once a reality binds), and it is where `/review-impl` earns its keep.

@@ -18,5 +18,16 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 serde_yaml = "0.9"
 
+# ── the `sqlx-pg` adapter (Q1 B2b) ──────────────────────────────────────────
+# Optional: the crate stays driver-agnostic by default, and a caller that wants
+# the concrete Postgres wiring opts in. `tokio` is needed for `block_in_place` —
+# the sync MetaWrite traits over async sqlx.
+sqlx = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[features]
+default = []
+sqlx-pg = ["dep:sqlx", "dep:tokio"]
+
 [dev-dependencies]
 tokio = { workspace = true }

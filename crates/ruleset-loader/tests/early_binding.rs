@@ -10,13 +10,13 @@
 
 use ruleset_core::Ruleset;
 use ruleset_loader::{
-    create_reality, load_reality, parse_layer, BindingError, BindingStore, Layer, RealityError,
-    RulesetStore,
+    create_reality, load_reality, parse_layer, BindingError, FileBindingStore, Layer,
+    RealityError, RulesetStore,
 };
 
 struct Env {
     store: RulesetStore,
-    bindings: BindingStore,
+    bindings: FileBindingStore,
 }
 
 fn env(name: &str) -> Env {
@@ -24,7 +24,7 @@ fn env(name: &str) -> Env {
     let _ = std::fs::remove_dir_all(&dir);
     Env {
         store: RulesetStore::new(dir.join("rulesets")),
-        bindings: BindingStore::new(dir.join("bindings")),
+        bindings: FileBindingStore::new(dir.join("bindings")),
     }
 }
 

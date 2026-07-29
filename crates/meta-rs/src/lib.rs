@@ -48,6 +48,10 @@ pub mod errors;
 pub mod metawrite;
 pub mod routing;
 pub mod sensitive_paths;
+/// Q1 B2b — the concrete sqlx/Postgres adapter. Feature-gated so a caller that
+/// does not want sqlx does not get it.
+#[cfg(feature = "sqlx-pg")]
+pub mod sqlx_pg;
 pub mod transitions;
 
 // ── Cycle 2 surface (unchanged) ──────────────────────────────────────────────

@@ -34,7 +34,7 @@ mod patch;
 mod store;
 mod validate;
 
-pub use binding::{binding_store, BindingError, BindingStore, RealityBinding};
+pub use binding::{binding_store, BindingError, BindingStore, FileBindingStore, RealityBinding};
 pub use layer::Layer;
 pub use patch::{CombatPatch, RulesetPatch, StatPatch};
 pub use store::{RulesetStore, StoreError};
@@ -320,7 +320,7 @@ pub fn create_reality(
     reality_id: &str,
     layers: &[LayerSource],
     store: &RulesetStore,
-    bindings: &BindingStore,
+    bindings: &dyn BindingStore,
 ) -> Result<(Ruleset, RealityBinding), RealityError> {
     let resolved = resolve(layers)?;
     let digest = store.put(&resolved)?;
@@ -342,7 +342,7 @@ pub fn create_reality(
 pub fn load_reality(
     reality_id: &str,
     store: &RulesetStore,
-    bindings: &BindingStore,
+    bindings: &dyn BindingStore,
 ) -> Result<(Ruleset, ruleset_core::RulesetDigest), RealityError> {
     let digest = bindings.digest_for(reality_id)?;
     match store.get(&digest)? {

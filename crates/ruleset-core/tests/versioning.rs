@@ -25,9 +25,6 @@ use ruleset_core::Ruleset;
 // frozen v1 encoder — the same code path `RulesetStore::get` verifies with. A
 // hand-written byte array would test my typing, not the codec.
 
-/// A `v1` artifact — written before `law_version` existed — loads on this
-/// engine, and arrives in the CURRENT shape so no caller branches on layout.
-
 fn hex(d: &[u8; 32]) -> String {
     d.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -37,6 +34,8 @@ fn blake3_of(bytes: &[u8]) -> [u8; 32] {
 }
 
 
+/// A `v1` artifact — written before `law_version` existed — loads on this
+/// engine, and arrives in the CURRENT shape so no caller branches on layout.
 #[test]
 fn a_v1_artifact_loads_on_a_v2_engine() {
     let mut original = Ruleset::engine_default();

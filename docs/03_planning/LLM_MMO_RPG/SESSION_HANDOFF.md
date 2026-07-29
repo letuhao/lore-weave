@@ -877,16 +877,71 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > a real Postgres** (`bash scripts/reality-binding-migration-smoke.sh` — append-only under two session
 > modes, gapless epochs, digest format, down-migration reversibility) · 7 python gates + 4 shell lints OK.
 >
-> * **B2b (next):** sqlx adapter for `meta-rs`'s `ConnectionWriter`/`TransactionExecutor`/`QueryBuilder`
->   (note: those traits are **sync** and sqlx is async — the adapter needs `block_in_place` plus a
->   refusal to construct on a current-thread runtime, or the spine gets a panic instead of an error),
->   `BindingStore` behind a trait with the file impl kept, `--meta-url` on the spine, live create → load
->   through Postgres. Writes MUST go through `meta_write` — `meta-write-discipline-lint` scans `crates/`
->   and `services/`, and a literal `INSERT INTO reality_ruleset_binding` outside `contracts/meta` or
->   `crates/meta-rs` fails it.
-> * **B3:** the doc 35 §12 sweep + 16a/26 cross-refs + a **store round-trip test** proving ordinals
->   survive `create → store → load` (the §12 exit criterion names it; the loader tests stop at
->   create → resolve → digest).
+>
+> ✅ **`Q1 B2b` — RUST REACHES THE TABLE, AND `Q1`'s EXIT CRITERION IS FINALLY DISCHARGED (checkpoint 3).**
+>
+> **The §12 criterion — *"survives create → store → load → digest with ordinals unchanged"* — was
+> still a claim after B1.** B1's loader tests reach create → resolve → digest; they never store and
+> never load. `a_declared_quantity_survives_create_store_load_with_its_ordinals` closes it, and
+> deliberately through the **Postgres** binding rather than the file one: the file store keeps the
+> digest in a TOML the same process just wrote, which is the weakest round trip available. Here the
+> digest leaves the process, becomes a `text` column, comes back, and has to address the same bytes.
+>
+> **The parameter-typing problem, and the answer that avoids a second source of truth.**
+> `TransactionExecutor::exec` hands over `&[serde_json::Value]` — the polyglot intent shape carries no
+> column types — and sqlx always sends a concrete type OID, so a JSON string reaches a `uuid` column
+> as TEXT and Postgres refuses it. (Go does not hit this: pgx sends `any` with an unspecified OID and
+> lets the server infer.) Guessing from the JSON shape is silently wrong for a TEXT column holding a
+> UUID; reading `information_schema` is correct but is a cache and a second source of truth. The
+> adapter instead asks the table: **`jsonb_populate_record(NULL::<table>, $1::jsonb)`** returns a
+> record typed by the table's own row type, so **every parameter is jsonb** and Postgres does the
+> conversion. A column type change cannot drift out from under it.
+>
+> **`MetaWrite`'s traits are SYNC and sqlx is async.** Bridged with `block_in_place` + `block_on`,
+> which **panics on a current-thread runtime** — so `PgConnectionWriter::new` checks the flavour and
+> returns an error instead. Both arms tested, including the negative control that the multi-thread
+> runtime the spine actually uses is accepted.
+>
+> **Two live tests were passing for the wrong reason, and one of them was vacuous.** `pk_as_string`
+> composes a COMPOSITE key as `epoch=1|reality_id=<uuid>`, not the bare value. So the rollback test's
+> `WHERE aggregate_id = <uuid>` matched nothing **whether the rollback worked or not** — it would have
+> reported a clean rollback for a transaction that leaked every row. Both now query
+> `payload->'pk'->>'reality_id'`, and the composite form is pinned so a consumer does not read
+> `aggregate_id` as a reality id.
+>
+> **…and the atomicity proof was weaker than it looked.** "A refused write leaves no audit row" follows
+> from CONTROL FLOW — `meta_write` returns before it ever attempts the audit — and would hold with no
+> transaction at all. That test is now labelled as such, and the real one injects the fault with the
+> schema's own constraint: an empty `actor_id` passes intent validation, lets the binding INSERT
+> **succeed**, then fails `meta_write_audit`'s `CHECK (length(actor_id) > 0)`. The binding row must be
+> gone — a survivor would be a domain write no audit trail records (I8).
+>
+> **The ceiling gate bit again and the cap was not bumped, again.** `--meta-url` pushed `spine.rs`
+> 445 → 482; the `RLS-A3` startup path moved to `src/ruleset_boot.rs` (where the two columns of doc 16
+> §12 are documented as *why creation and load must not be one function*), and **the cap was
+> RETIGHTENED 445 → 425**.
+>
+> **`BindingStore` is now a TRAIT**, `FileBindingStore` is one impl, `commit-service::pg_binding` is
+> the other. The Pg impl lives in the host, not the loader, so the game-logic tier keeps its three
+> dependencies and `crate-purity-gate` stays meaningful. `binding.rs`'s *"where it will eventually
+> live"* paragraph is corrected in place — it named `reality_registry`, which would have been one
+> mutable column and would have destroyed the epoch history never-reuse is computed over.
+>
+> **A second create is refused BY THE DATABASE**, not by a `path.exists()` read-then-write, so unlike
+> the file store it holds between two nodes racing to create the same reality.
+>
+> **VERIFY:** workspace **1987 / 0** (+18) · clippy adds 0 warnings (11 → 10 on the touched crates) ·
+> 7 python gates + 4 shell lints OK · **live smoke: 11 tests on a real Postgres**
+> (`bash scripts/meta-rs-pg-live-smoke.sh` — 7 adapter + 4 create/load).
+>
+> * **B3 (next):** the doc 35 §12 sweep + 16a/26 cross-refs. The store round-trip test §12 asked for
+>   landed in B2b — it needed the Pg binding to be worth writing.
+> * **Q0b is now UNBLOCKED and small:** the table takes epoch N+1 rows already (proved by
+>   `an_epoch_switch_adds_to_the_history_rather_than_replacing_it`), `load` reads
+>   `ORDER BY epoch DESC LIMIT 1`, and `PgBindingStore::create` hardcodes `epoch = 1` — the one place
+>   an `activate_epoch` method has to touch. What is still missing is `RulesetEpochActivated` as an
+>   ordered event in the reality's own log, and the never-reuse check that reads the prior epochs'
+>   rulesets (`QTY-A5`'s trigger fires there).
 >
 > **A pattern worth recording against doc 35 §12 itself:** its rows bundle *mechanism + enforcement*,
 > and the enforcement's subject often arrives one or two rows later. That is now **three times**

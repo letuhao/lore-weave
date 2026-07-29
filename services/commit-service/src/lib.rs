@@ -19,8 +19,14 @@ pub mod bus;
 pub mod domain;
 pub mod llm_driver;
 pub mod manager;
+/// Q1 B2b — `RLS-A3` bindings in the meta DB. Here rather than in
+/// `ruleset-loader` so the game-logic tier keeps its three dependencies.
+pub mod pg_binding;
 pub mod producer;
 pub mod recovery;
+/// How a node gets the rules it runs (RLS-A3 at startup). Split from
+/// `bin/spine.rs` when `--meta-url` pushed that file past its IMP-D3 ceiling.
+pub mod ruleset_boot;
 pub mod vocabulary;
 pub mod wire;
 

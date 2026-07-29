@@ -80,8 +80,11 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
         610, "a measurement binary — one long table of scenarios, which is the "
              "shape that file is FOR"),
     "services/commit-service/src/bin/spine.rs": (
-        445, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
-             "one linear sequence that reads worse cut in half"),
+        425, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
+             "one linear sequence that reads worse cut in half. RETIGHTENED "
+             "445 -> 425 after Q1 B2b moved the RLS-A3 startup path into "
+             "src/ruleset_boot.rs — same rule as digest.rs: a cap left at its old "
+             "value after a split is a silent licence to regrow into it"),
     "crates/ruleset-core/tests/digest.rs": (
         455, "the digest verification suite; the per-field mutation tables are "
              "long by design (v2_every_*_field_reaches_the_digest). RETIGHTENED "
