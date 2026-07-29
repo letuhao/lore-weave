@@ -22,7 +22,7 @@
 //! minutes of confusion into one line of diagnostic. Same reasoning as RLS-A5's
 //! rule that a tombstone against a missing ID is a load error and not a no-op.
 
-use ruleset_core::{CombatRules, Ruleset, SLOT_COUNT, StatRules};
+use ruleset_core::{CombatRules, QuantityError, Ruleset, SLOT_COUNT, StatRules};
 use serde::Deserialize;
 
 /// One layer's contribution to the combat rules.
@@ -194,12 +194,47 @@ pub struct RulesetPatch {
     pub combat: CombatPatch,
     #[serde(default)]
     pub stats: StatPatch,
+    /// Q1 — the L2 identities this layer declares (QTY-A5).
+    ///
+    /// **The first COLLECTION in the ruleset**, which is what finally gives
+    /// RLS-A4's `UnionByIdOverride` a consumer: F2 deferred it with the reason
+    /// *"`Ruleset` has none — building it now would be a mechanism with no
+    /// consumer"*. It has one.
+    ///
+    /// `#[serde(default)]` so a layer that declares nothing writes nothing.
+    /// Unlike a scalar, an absent collection is not an omission — it says
+    /// "this layer adds no quantities", which is a complete statement.
+    #[serde(default)]
+    pub quantities: Vec<String>,
 }
 
 impl RulesetPatch {
-    pub fn apply(&self, base: &mut Ruleset) {
+    /// Fold this layer over `base`.
+    ///
+    /// Fallible only because of `quantities`: a scalar override cannot fail, but
+    /// an identity can be malformed, duplicated within one layer, or push the
+    /// set past the engine's ordinal capacity.
+    pub fn apply(&self, base: &mut Ruleset) -> Result<(), QuantityError> {
         self.combat.apply(&mut base.combat);
         self.stats.apply(&mut base.stats);
+
+        // UNION, in layer-priority order. A quantity's ordinal is fixed by where
+        // it FIRST appears across the merged stack, so a later layer restating
+        // an existing name changes nothing — and there is no verb for removal,
+        // which is how `AdditiveOnly` holds by construction.
+        let mut seen_here: Vec<&str> = Vec::new();
+        for name in &self.quantities {
+            if seen_here.contains(&name.as_str()) {
+                // WITHIN one layer a repeat is an authoring error, even though
+                // ACROSS layers it is a legitimate no-op: one file listing `qi`
+                // twice is a mistake nobody meant, and silently collapsing it
+                // is how an author never learns their edit did nothing.
+                return Err(QuantityError::Duplicate { name: name.clone() });
+            }
+            seen_here.push(name);
+            base.quantities.push(name)?;
+        }
+        Ok(())
     }
 
     pub fn is_empty(&self) -> bool {

@@ -827,13 +827,17 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 >
 > **VERIFY:** workspace **1958 / 0** (+5) · 6/6 gates · clippy clean.
 >
-> **REMAINING IN Q1 — B1's loader half, then B2, then B3:**
-> * `QuantityPatch` + **union merge** across layers (`Ruleset`'s FIRST collection — F2 deferred
->   `UnionById` as "a mechanism with no consumer"; it has one now). `AdditiveOnly` is then enforced
->   **by construction**, since a union cannot express removal — proven by
->   `a_lower_layers_declaration_survives_every_higher_layer`, not by a validator.
-> * S1b's **floor** arm: `engine_default` may not declare quantities (floor `pre`).
-> * Validators with a subject: duplicate across layers, `n > N`, bad identifier.
+> ✅ **B1's LOADER HALF LANDED TOO (same run).** `RulesetPatch.quantities` + **union merge** —
+> `Ruleset`'s FIRST collection, so F2's deferred `UnionByIdOverride` finally has the consumer it was
+> waiting for. **`AdditiveOnly` is enforced BY CONSTRUCTION**: the merge has no verb for removal, so a
+> lower layer's identity cannot be dropped — asserted by
+> `a_lower_layers_declaration_survives_every_higher_layer` rather than left as a claim about the
+> code's shape. Ordinals are fixed by FIRST appearance, so restating an identity is a no-op and not a
+> renumber (the exact defect the prior project had, deriving ordinals from a `sort()` over present
+> files). A repeat WITHIN one layer is still refused — across layers it is legitimate, within one it
+> is a mistake nobody meant. **S1b's floor arm shipped with its first real subject**: `engine_default`
+> may not declare a quantity, and the negative control proves the loader is not simply refusing all of
+> them. 7 new loader tests.
 > * **Triggers, not builds** (`NV-2` — no subject yet): `QTY-A5` never-reuse → **`Q0b`** (a binding is
 >   write-once, so a declared set cannot change until an epoch switch) · `QTY-A13` contribution-to-an-
 >   undeclared-ordinal → **`Q4`** (there are no L3 sources to contribute).

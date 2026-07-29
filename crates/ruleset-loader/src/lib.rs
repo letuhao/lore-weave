@@ -42,7 +42,7 @@ pub use validate::{ValidationError, validate};
 
 use std::path::Path;
 
-use ruleset_core::Ruleset;
+use ruleset_core::{Floor, QuantityError, Ruleset};
 
 /// The shipped `engine_default` artifact (RLS-D2 — *"an artifact, not prose"*).
 ///
@@ -77,6 +77,19 @@ pub enum LoadError {
     /// this is unreachable today — it exists so that the forbidden-key scan
     /// FAILS rather than silently skipping if that ever stops being true.
     NotATable { layer: Layer },
+    /// Q1 — a declared quantity is malformed, repeated within one layer, or
+    /// pushes the set past this engine's ordinal capacity (QTY-A5/A6).
+    Quantity { layer: Layer, source: QuantityError },
+    /// **S1b — the layer-floor arm (RLS-A16), and its FIRST real subject.**
+    ///
+    /// 16a gives every Ruleset field a *lowest permissible layer*. Until `Q1`
+    /// every field's floor was `preset` — the lowest AUTHORABLE layer — so the
+    /// check could refuse nothing and was deliberately not built (`NV-2`).
+    /// `quantities` is the first field where the floor bites: `engine_default`
+    /// ships the engine's own vocabulary and **must not invent world content**,
+    /// or every reality on this binary would silently inherit a quantity nobody
+    /// declared for it.
+    BelowFloor { layer: Layer, field: &'static str, floor: Floor },
     /// The resolved ruleset is not loadable (RLS-A10). Carries EVERY reason,
     /// not the first — an author fixing one number per round trip is how a
     /// validator earns the reputation that gets it bypassed.
@@ -95,6 +108,18 @@ impl core::fmt::Display for LoadError {
             Self::ForbiddenField { layer, field, reason } => {
                 write!(f, "layer `{}` declares `{field}`: {reason}", layer.name())
             }
+            Self::Quantity { layer, source } => {
+                write!(f, "layer `{}`: {source}", layer.name())
+            }
+            Self::BelowFloor { layer, field, floor } => write!(
+                f,
+                "layer `{}` declares `{field}`, but its lowest permissible layer is `{:?}` \
+                 (RLS-A16). The engine default ships engine vocabulary, not world content: a \
+                 quantity declared there would be inherited by every reality on this binary \
+                 without any of them asking for it",
+                layer.name(),
+                floor
+            ),
             Self::NotATable { layer } => write!(
                 f,
                 "layer `{}`: the document root is not a table, so its keys could not be \
@@ -202,7 +227,19 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
 
     let mut out = Ruleset::engine_default();
     for l in ordered {
-        l.patch.apply(&mut out);
+        // S1b floor arm — checked BEFORE the merge, so the diagnostic names the
+        // layer that overstepped rather than the resolved result, which by then
+        // has lost track of who contributed what.
+        if !l.patch.quantities.is_empty() && l.layer.priority() < Layer::Preset.priority() {
+            return Err(LoadError::BelowFloor {
+                layer: l.layer,
+                field: "quantities",
+                floor: Floor::Preset,
+            });
+        }
+        l.patch
+            .apply(&mut out)
+            .map_err(|source| LoadError::Quantity { layer: l.layer, source })?;
     }
 
     validate(&out).map_err(LoadError::Invalid)?;

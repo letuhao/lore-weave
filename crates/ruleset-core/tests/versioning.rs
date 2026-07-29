@@ -11,7 +11,7 @@
 //! field": these tests ask whether an OLD artifact still loads, which is a
 //! property of the codec set rather than of the hash.
 
-use ruleset_core::{Ruleset, RULESET_SCHEMA_VERSION, SCHEMA_VERSION_OLDEST};
+use ruleset_core::Ruleset;
 
 // ── V6 · QTY-A11 — the version machinery, and the proof it is not vacuous ────
 //

@@ -201,6 +201,38 @@ impl QuantityTable {
         Ok(out)
     }
 
+    /// Append one identity if it is not already declared (RLS-A4 `UnionByIdOverride`).
+    ///
+    /// `Ok(true)` = appended and given the next ordinal; `Ok(false)` = already
+    /// declared, so nothing moved.
+    ///
+    /// **Re-declaring is a NO-OP, not an error, and that is what makes the merge
+    /// a union.** A quantity carries no payload beyond its identity, so a higher
+    /// layer "overriding" one has nothing to override — and refusing the re-
+    /// declaration would stop a reality from restating a preset's `qi` while
+    /// adding its own `fire`, which is the ordinary authoring shape.
+    ///
+    /// The important half is what this makes **inexpressible**: there is no
+    /// remove. `AdditiveOnly` (RLS-A17) is therefore enforced BY CONSTRUCTION
+    /// rather than by a validator that could be forgotten — a lower layer's
+    /// declaration cannot be dropped by any higher one, because the merge has no
+    /// verb for it.
+    pub fn push(&mut self, name: &str) -> Result<bool, QuantityError> {
+        let q = QuantityName::new(name)?;
+        if self.names().iter().any(|e| e == &q) {
+            return Ok(false);
+        }
+        if self.n as usize >= MAX_DECLARED_QUANTITIES {
+            return Err(QuantityError::TooMany {
+                found: self.n as usize + 1,
+                capacity: MAX_DECLARED_QUANTITIES,
+            });
+        }
+        self.names[self.n as usize] = q;
+        self.n += 1;
+        Ok(true)
+    }
+
     pub fn len(&self) -> usize {
         self.n as usize
     }
