@@ -8,6 +8,14 @@
   "select": "seç",
   "dismiss": "kapat",
   "createNew": "Yeni oluştur",
+  "createAs": "«{{name}}» öğesini ... olarak oluştur",
+  "kind": {
+    "character": "Karakter",
+    "location": "Mekan",
+    "organization": "Organizasyon",
+    "concept": "Kavram",
+    "item": "Eşya"
+  },
   "filterEntities": "Varlıkları filtrele...",
   "noEntities": "Bu bölümde tespit edilen varlık yok",
   "showHighlights": "Sözlük vurgularını göster",
@@ -118,7 +126,8 @@
     "err_code_format": "Kod yalnızca küçük harf, rakam ve alt çizgi içermelidir",
     "err_save": "Uygulanamadı",
     "toast_merged": "\"{{code}}\" içerisinden {{count}} varlık eşleştirildi",
-    "toast_reassigned": "\"{{name}}\" yeniden atandı"
+    "toast_reassigned": "\"{{name}}\" yeniden atandı",
+    "same_code_note": "{{count}} adet varlık «{{code}}» olarak geldi — her birini buradan çözümleyin."
   },
   "history": {
     "title": "Sürüm geçmişi",
@@ -146,13 +155,5 @@
       "system": "sistem"
     },
     "error": "Sürüm geçmişi yüklenemedi."
-  },
-  "createAs": "«{{name}}» öğesini ... olarak oluştur",
-  "kind": {
-    "character": "Karakter",
-    "location": "Mekan",
-    "organization": "Organizasyon",
-    "concept": "Kavram",
-    "item": "Eşya"
   }
 }

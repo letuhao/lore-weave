@@ -311,50 +311,47 @@
       "orderLabel": "Narrative order",
       "noOrder": "—",
       "chapterLabel": "Chapter",
-      "chapterUnresolved": "Chapter id {{id}} — title unresolved",
       "participantsMore": "+{{count}} more",
       "confidenceLabel": "Confidence",
-      "timeLabel": "In-story time"
+      "chapterUnresolved": "অধ্যায় আইডি {{id}} — শিরোনাম অমীমাংসিত",
+      "timeLabel": "গল্পের সময়কাল"
     },
     "detail": {
       "summary": "Summary",
-      "noSummary": "No summary extracted.",
       "participants": "Participants",
-      "sources": "Sources"
+      "sources": "Sources",
+      "noSummary": "কোনো সারাংশ পাওয়া যায়নি।"
     },
     "pagination": {
       "range": "{{from}}–{{to}} of {{total}}",
       "refreshing": "refreshing…",
       "prev": "Previous",
       "next": "Next",
-      "backToFirst": "Back to first page",
-      "pageSize": "Per page"
-    },
-    "localization": {
-      "sourceMarker": "Shown in source language — translation pending"
+      "pageSize": "Per page",
+      "backToFirst": "প্রথম পৃষ্ঠায় ফিরে যান"
     },
     "search": {
       "placeholder": "Search events…",
       "label": "Search events",
       "clear": "Clear search"
+    },
+    "localization": {
+      "sourceMarker": "মূল ভাষায় দেখানো হয়েছে — অনুবাদ প্রক্রিয়াধীন"
     }
   },
   "entities": {
     "loading": "Loading entities…",
-    "loadFailed": "Couldn't load entities: {{error}}",
-    "empty": "No entities extracted yet — they appear here as the extraction pipeline runs.",
-    "emptyForFilters": "No entities match these filters.",
     "filters": {
       "project": "Project",
       "kind": "Kind",
       "status": "Status",
       "search": "Search",
-      "searchPlaceholder": "Name or alias (min 2 chars)",
       "semantic": "Semantic search",
-      "semanticPlaceholder": "Describe what you're looking for (vector search)",
       "anyProject": "Any project",
       "anyKind": "Any kind",
-      "anyStatus": "Any status"
+      "anyStatus": "Any status",
+      "searchPlaceholder": "নাম বা ছদ্মনাম (ন্যূনতম ২টি অক্ষর)",
+      "semanticPlaceholder": "আপনি কী খুঁজছেন তা বর্ণনা করুন (ভেক্টর সার্চ)"
     },
     "status": {
       "canonical": "Canonical",
@@ -363,13 +360,13 @@
     },
     "legend": {
       "title": "Status",
-      "canonical": "in your glossary",
-      "discovered": "found, not yet promoted",
-      "archived": "hidden from retrieval"
+      "canonical": "আপনার গ্লসারি-তে",
+      "discovered": "পাওয়া গেছে, এখনও প্রমোটেড করা হয়নি",
+      "archived": "অনুসন্ধান থেকে লুকানো"
     },
     "anchor": {
       "badge": "⚓ {{pct}}",
-      "tooltip": "Anchor score {{pct}}% — how strongly this entity is grounded"
+      "tooltip": "অ্যাঙ্কর স্কোর {{pct}}% — এই সত্তাটি কতটা সুদৃঢ়ভাবে প্রতিষ্ঠিত"
     },
     "table": {
       "ariaLabel": "Entities",
@@ -391,23 +388,14 @@
     },
     "detail": {
       "loading": "Loading entity…",
-      "loadFailed": "Couldn't load entity: {{error}}",
       "close": "Close",
       "edit": "Edit",
-      "merge": "Merge into another entity",
       "metadata": "Metadata",
       "description": "Description",
-      "descriptionSource": "From the linked glossary entry",
       "aliases": "Aliases",
       "relations": "Relations ({{count}})",
-      "truncated": "Showing {{shown}} of {{total}} — filter or search in the table",
-      "noRelations": "No relations yet — more will appear as extraction runs.",
       "relationArrow": "→",
       "pendingBadge": "Pending",
-      "pendingValidation": "Pass-1 quarantine — awaiting LLM validation",
-      "unlock": "Unlock (re-enable extractions)",
-      "unlockHint": "This entity is user-edited. Extractions won't re-append removed aliases until you unlock.",
-      "unlockConfirm": "Unlock this entity? Future extractions will be able to add aliases again.",
       "unlockSuccess": "Unlocked.",
       "unlockFailed": "Couldn't unlock: {{error}}",
       "field": {
@@ -418,14 +406,8 @@
         "anchor": "Anchor score",
         "scope": "পরিধি"
       },
-      "promote": "Promote to glossary",
-      "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
       "promotePending": "Promoting…",
-      "promoteSuccess": "Promoted — a glossary draft was created for review.",
       "promoteFailed": "Couldn't promote: {{error}}",
-      "unpin": "Remove from context pin",
-      "unpinHint": "This entity is pinned into extraction context.",
-      "unpinSuccess": "Unpinned from context.",
       "unpinFailed": "Couldn't unpin: {{error}}",
       "facts": "Known facts ({{count}})",
       "factSource": "Chapter {{chapter}}",
@@ -458,7 +440,22 @@
       "replaceFactSave": "পরিবর্তনটি সংরক্ষণ করুন",
       "replaceFactSuccess": "তথ্যটি পরিবর্তন করা হয়েছে",
       "markWrongUndo": "পূর্বাবস্থায় ফিরুন",
-      "markWrongUndoFailed": "পূর্বাবস্থায় ফিরতে ব্যর্থ হয়েছে: {{error}}"
+      "markWrongUndoFailed": "পূর্বাবস্থায় ফিরতে ব্যর্থ হয়েছে: {{error}}",
+      "loadFailed": "সত্তাটি লোড করা সম্ভব হয়নি: {{error}}",
+      "merge": "অন্য একটি সত্তার সাথে মার্জ করুন",
+      "descriptionSource": "লিঙ্ক করা গ্লসারি এন্ট্রি থেকে",
+      "truncated": "{{total}}টির মধ্যে {{shown}}টি দেখানো হচ্ছে — টেবিল থেকে ফিল্টার বা সার্চ করুন",
+      "noRelations": "এখনো কোনো সম্পর্ক নেই — এক্সট্রাকশন রান সম্পন্ন হলে আরও দেখা যাবে।",
+      "pendingValidation": "পাস-১ কোয়ারেন্টাইন — LLM যাচাইকরণের অপেক্ষায়",
+      "unlock": "আনলক করুন (পুনরায় এক্সট্রাকশন সক্ষম করুন)",
+      "unlockHint": "এই সত্তাটি ব্যবহারকারী দ্বারা সম্পাদিত। আপনি আনলক না করা পর্যন্ত এক্সট্রাকশনগুলো মুছে ফেলা ছদ্মনামগুলো (aliases) পুনরায় যুক্ত করবে না।",
+      "unlockConfirm": "এই সত্তাটি কি আনলক করবেন? ভবিষ্যতের এক্সট্রাকশনগুলো পুনরায় ছদ্মনাম যোগ করতে পারবে।",
+      "promote": "গ্লসারিতে উন্নীত করুন",
+      "promoteHint": "এনটিটিটি শনাক্ত করা হয়েছে। পর্যালোচনার জন্য একটি AI-প্রস্তাবিত গ্লসারি ড্রাফট তৈরি করতে এটিকে প্রোমোট করুন।",
+      "promoteSuccess": "প্রোমোট করা হয়েছে — পর্যালোচনার জন্য একটি গ্লসারি ড্রাফট তৈরি করা হয়েছে।",
+      "unpin": "কনটেক্সট পিন থেকে সরান",
+      "unpinHint": "এই এনটিটিটি এক্সট্রাকশন কনটেক্সটে পিন করা আছে।",
+      "unpinSuccess": "কনটেক্সট থেকে আনপিন করা হয়েছে।"
     },
     "edit": {
       "title": "এন্টটি সম্পাদনা করুন",
@@ -533,7 +530,10 @@
     "restore": {
       "success": "এনটিটিটি পুনরুদ্ধার করা হয়েছে।",
       "failed": "পুনরুদ্ধার করা সম্ভব হয়নি — {{error}}"
-    }
+    },
+    "loadFailed": "এনটিটি লোড করা সম্ভব হয়নি: {{error}}",
+    "empty": "এখনো কোনো এনটিটি নিষ্কাশন করা হয়নি — এক্সট্রাকশন পাইপলাইন চলাকালীন এগুলো এখানে প্রদর্শিত হবে।",
+    "emptyForFilters": "এই ফিল্টারগুলোর সাথে মিলে এমন কোনো এনটিটি নেই।"
   },
   "jobs": {
     "loading": "জব লোড হচ্ছে…",

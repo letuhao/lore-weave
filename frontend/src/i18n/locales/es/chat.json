@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "Confirmar acción",
     "batch_count": "{{count}} elementos",
+    "warning": "Por favor, revisa este cambio antes de aplicarlo.",
     "warning_destructive": "Esta acción es destructiva y tiene efectos en cascada; por favor, confirma.",
     "destructive_skipped": "Se omitirán {{count}} op(s) destructiva(s) a menos que los habilites arriba.",
     "confirm": "Confirmar",
@@ -242,8 +243,7 @@
     "cancelled": "Cancelado",
     "reprice": "El coste ha subido a {{cost}} desde la estimación; vuelve a solicitarlo para confirmar al nuevo precio.",
     "reprice_title": "El coste ha cambiado — no se ha aplicado",
-    "reprice_detail": "Estimado {{old}}, ahora {{new}}. No se ha gastado nada; vuelve a solicitarlo para confirmar al nuevo precio.",
-    "warning": "Por favor, revisa este cambio antes de aplicarlo."
+    "reprice_detail": "Estimado {{old}}, ahora {{new}}. No se ha gastado nada; vuelve a solicitarlo para confirmar al nuevo precio."
   },
   "batchConfirm": {
     "title": "Confirmar {{count}} acciones en un solo paso",
@@ -380,7 +380,7 @@
     "approved": "Aprobado — ejecutando ✓",
     "always_allowed": "Permitido siempre — ejecutando ✓",
     "denied": "Denegado",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "Nunca permitido: puedes deshacer esto en Ajustes → Permisos"
   },
   "rack": {
     "label": "Contexto",

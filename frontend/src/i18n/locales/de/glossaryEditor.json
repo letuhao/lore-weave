@@ -8,6 +8,14 @@
   "select": "auswählen",
   "dismiss": "ablehnen",
   "createNew": "Neu erstellen",
+  "createAs": "Erstelle „{{name}}“ als…",
+  "kind": {
+    "character": "Charakter",
+    "location": "Ort",
+    "organization": "Organisation",
+    "concept": "Konzept",
+    "item": "Gegenstand"
+  },
   "filterEntities": "Entitäten filtern...",
   "noEntities": "Keine Entitäten in diesem Kapitel erkannt",
   "showHighlights": "Glossar-Highlights anzeigen",
@@ -118,7 +126,8 @@
     "err_code_format": "Der Code darf nur aus Kleinbuchstaben, Ziffern und Unterstrichen bestehen",
     "err_save": "Anwenden fehlgeschlagen",
     "toast_merged": "{{count}} Entitäten aus „{{code}}“ zugeordnet",
-    "toast_reassigned": "„{{name}}“ neu zugewiesen"
+    "toast_reassigned": "„{{name}}“ neu zugewiesen",
+    "same_code_note": "{{count}} weitere Entitäten sind als „{{code}}“ eingetroffen – löse jede einzelne hier."
   },
   "history": {
     "title": "Versionsverlauf",
@@ -146,13 +155,5 @@
       "system": "System"
     },
     "error": "Versionsverlauf konnte nicht geladen werden."
-  },
-  "createAs": "Erstelle „{{name}}“ als…",
-  "kind": {
-    "character": "Charakter",
-    "location": "Ort",
-    "organization": "Organisation",
-    "concept": "Konzept",
-    "item": "Gegenstand"
   }
 }

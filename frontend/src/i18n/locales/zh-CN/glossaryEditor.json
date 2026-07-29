@@ -8,6 +8,14 @@
   "select": "选择",
   "dismiss": "忽略",
   "createNew": "创建新项",
+  "createAs": "将“{{name}}”创建为…",
+  "kind": {
+    "character": "角色",
+    "location": "地点",
+    "organization": "组织",
+    "concept": "概念",
+    "item": "物品"
+  },
   "filterEntities": "筛选实体...",
   "noEntities": "本章节未检测到实体",
   "showHighlights": "显示术语表高亮",
@@ -118,7 +126,8 @@
     "err_code_format": "代码必须仅由小写字母、数字和下划线组成",
     "err_save": "应用失败",
     "toast_merged": "已从 \"{{code}}\" 映射 {{count}} 个实体",
-    "toast_reassigned": "已重新分配 \"{{name}}\""
+    "toast_reassigned": "已重新分配 \"{{name}}\"",
+    "same_code_note": "又有 {{count}} 个实体以 «{{code}}» 形式到达 — 请在此处逐一解决。"
   },
   "history": {
     "title": "版本历史",
@@ -146,13 +155,5 @@
       "system": "系统"
     },
     "error": "无法加载版本历史。"
-  },
-  "createAs": "将“{{name}}”创建为…",
-  "kind": {
-    "character": "角色",
-    "location": "地点",
-    "organization": "组织",
-    "concept": "概念",
-    "item": "物品"
   }
 }

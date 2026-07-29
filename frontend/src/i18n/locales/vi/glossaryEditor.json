@@ -8,6 +8,14 @@
   "select": "chọn",
   "dismiss": "đóng",
   "createNew": "Tạo mới",
+  "createAs": "Tạo «{{name}}» dưới dạng…",
+  "kind": {
+    "character": "Nhân vật",
+    "location": "Địa điểm",
+    "organization": "Tổ chức",
+    "concept": "Khái niệm",
+    "item": "Vật phẩm"
+  },
   "filterEntities": "Lọc thực thể...",
   "noEntities": "Không phát hiện thực thể nào trong chương này",
   "showHighlights": "Hiện đánh dấu thuật ngữ",
@@ -118,7 +126,8 @@
     "err_code_format": "Mã chỉ gồm chữ thường, chữ số và dấu gạch dưới",
     "err_save": "Áp dụng thất bại",
     "toast_merged": "Đã ánh xạ {{count}} thực thể từ \"{{code}}\"",
-    "toast_reassigned": "Đã gán lại \"{{name}}\""
+    "toast_reassigned": "Đã gán lại \"{{name}}\"",
+    "same_code_note": "Có thêm {{count}} thực thể xuất hiện dưới mã «{{code}}» — hãy giải quyết từng thực thể tại đây."
   },
   "history": {
     "title": "Lịch sử phiên bản",
@@ -146,13 +155,5 @@
       "system": "hệ thống"
     },
     "error": "Không tải được lịch sử phiên bản."
-  },
-  "createAs": "Tạo «{{name}}» dưới dạng…",
-  "kind": {
-    "character": "Nhân vật",
-    "location": "Địa điểm",
-    "organization": "Tổ chức",
-    "concept": "Khái niệm",
-    "item": "Vật phẩm"
   }
 }

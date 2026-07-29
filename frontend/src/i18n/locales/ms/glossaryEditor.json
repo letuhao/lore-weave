@@ -8,6 +8,14 @@
   "select": "pilih",
   "dismiss": "abaikan",
   "createNew": "Cipta baru",
+  "createAs": "Cipta «{{name}}» sebagai…",
+  "kind": {
+    "character": "Watak",
+    "location": "Lokasi",
+    "organization": "Organisasi",
+    "concept": "Konsep",
+    "item": "Item"
+  },
   "filterEntities": "Tapis entiti...",
   "noEntities": "Tiada entiti dikesan dalam bab ini",
   "showHighlights": "Tunjukkan sorotan glosari",
@@ -118,7 +126,8 @@
     "err_code_format": "Kod mesti terdiri daripada huruf kecil, angka, dan garis bawah sahaja",
     "err_save": "Gagal memproses",
     "toast_merged": "Memetakan {{count}} entiti daripada \"{{code}}\"",
-    "toast_reassigned": "Telah ditugaskan semula \"{{name}}\""
+    "toast_reassigned": "Telah ditugaskan semula \"{{name}}\"",
+    "same_code_note": "{{count}} entiti lagi tiba sebagai «{{code}}» — selesaikan setiap satu di sini."
   },
   "history": {
     "title": "Sejarah versi",
@@ -146,13 +155,5 @@
       "system": "sistem"
     },
     "error": "Tidak dapat memuatkan sejarah versi."
-  },
-  "createAs": "Cipta «{{name}}» sebagai…",
-  "kind": {
-    "character": "Watak",
-    "location": "Lokasi",
-    "organization": "Organisasi",
-    "concept": "Konsep",
-    "item": "Item"
   }
 }

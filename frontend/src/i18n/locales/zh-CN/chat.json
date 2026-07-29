@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "确认操作",
     "batch_count": "{{count}} 项",
+    "warning": "应用此更改前请进行确认。",
     "warning_destructive": "此操作具有破坏性且会产生连锁反应 — 请确认。",
     "destructive_skipped": "除非您在上方启用，否则将跳过 {{count}} 个破坏性操作。",
     "confirm": "确认",
@@ -242,8 +243,7 @@
     "cancelled": "已取消",
     "reprice": "由于成本已上升至 {{cost}}，原估算已失效 — 请重新确认新价格。",
     "reprice_title": "价格已变动 — 未应用",
-    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。",
-    "warning": "应用此更改前请进行确认。"
+    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。"
   },
   "batchConfirm": {
     "title": "一键确认 {{count}} 个操作",
@@ -380,7 +380,7 @@
     "approved": "已批准 — 正在运行 ✓",
     "always_allowed": "始终允许 — 正在运行 ✓",
     "denied": "已拒绝",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "永不允许 — 您可以在“设置 → 权限”中撤销此操作"
   },
   "rack": {
     "label": "上下文",

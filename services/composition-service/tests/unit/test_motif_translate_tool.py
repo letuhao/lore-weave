@@ -179,3 +179,64 @@ def test_vi_is_declared_authored_in_both_the_tool_and_the_seeder():
 
     assert mt.AUTHORED_LANGUAGES == _AUTHORED_LANGUAGES
     assert "vi" in mt.AUTHORED_LANGUAGES
+
+
+# ── the committed corpus, audited ──────────────────────────────────────────
+def test_every_committed_translation_is_structurally_sound_and_in_sync():
+    """The gate that makes the staleness signal mean something in CI.
+
+    Editing an English pack without re-translating is invisible: the locale files stay
+    present, non-empty and structurally valid, and the only thing that moved is the
+    source hash they were made from. Nothing else in the suite would notice — a
+    coverage check sees full coverage, a JSON check sees valid JSON. This runs the
+    tool's own audit against the committed corpus so the drift reds here instead of
+    shipping as stale wording under a fresh flag.
+
+    Fix a failure with `python scripts/motif_translate.py` (it self-heals what it can)
+    then `--audit`; do NOT paper over it by regenerating _source_hash.json, which
+    asserts a translation matches source it was never made from.
+    """
+    source = mt.load_source()
+    langs = sorted(d.name for d in mt.TRANSLATION_DIR.iterdir() if d.is_dir())
+    assert langs, "no translations committed at all"
+
+    problems = []
+    for report in mt.audit_all(source, langs):
+        for kind in ("missing", "broken", "stale"):
+            if report[kind]:
+                problems.append(f"{report['lang']}: {len(report[kind])} {kind} "
+                                f"(e.g. {report[kind][:2]})")
+    assert not problems, "committed translations are out of sync with the source:\n" + \
+        "\n".join(f"  {p}" for p in problems)
+
+
+def test_the_audit_can_actually_fail(tmp_path, monkeypatch):
+    """An audit that has never been seen to red is not evidence — the test above would
+    be a rubber stamp. Build a locale whose recorded hash points at English that has
+    moved, and assert the same call reports it.
+
+    Deliberately against a TEMP tree, not the committed one. The first version of this
+    mutated the real `_source_hash.json` and restored it in a finally block, which
+    passed alone and under `-n 2` but failed the full `-n auto` run: another worker read
+    the file mid-mutation. A test that edits shared repo state is a race whatever it
+    cleans up afterwards.
+    """
+    source = mt.load_source()
+    pack, motifs = next(iter(source.items()))
+    code = motifs[0]["code"]
+
+    tdir = tmp_path / "translations" / "xx"
+    tdir.mkdir(parents=True)
+    (tdir / f"{pack}.json").write_text(
+        json.dumps({code: mt.entry_of(motifs[0])}, ensure_ascii=False), encoding="utf-8")
+    (tdir / "_source_hash.json").write_text(
+        json.dumps({code: "made-from-english-that-has-since-moved"}), encoding="utf-8")
+    monkeypatch.setattr(mt, "TRANSLATION_DIR", tmp_path / "translations")
+
+    report = mt.audit_locale("xx", {pack: motifs})
+    assert [i["code"] for i in report["stale"]] == [code], "the audit cannot detect drift"
+
+    # …and says clean once the recorded hash matches again.
+    (tdir / "_source_hash.json").write_text(
+        json.dumps({code: mt.source_hash(motifs[0])}), encoding="utf-8")
+    assert not mt.audit_locale("xx", {pack: motifs})["stale"]

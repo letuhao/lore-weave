@@ -56,6 +56,7 @@ sys.path.insert(0, str(REPO / "services" / "composition-service"))
 
 from i18n_translate import (  # noqa: E402  (path set above)
     TARGETS,
+    is_untranslated_echo,
     chunk_items,
     flatten,
     isolate_retry_soft,
@@ -239,60 +240,6 @@ def _flat_entry(entry, prefix: str = "") -> dict[str, str]:
     return out
 
 
-def echoed_keys(lang: str, pack: str, motifs: list[dict]) -> dict[str, str]:
-    """Leaves the model handed back in ENGLISH, verbatim.
-
-    The inherited soft check only fires for a language with a distinctive script, so
-    every LATIN-script target — de, es, fr, id, ms, pt-BR, tr, half the supported set —
-    had NO signal for this at all: an untranslated string shipped looking exactly like a
-    translated one. Comparing against the English source works for every language.
-
-    Some echoes are CORRECT: proper names, and true cognates (`Triumph` really is the
-    German word; `tension` and `suspense` really are French). So this reports rather
-    than fails, and --retry-echoed gives each one a single isolated second attempt —
-    a legitimate cognate simply comes back the same, which is the right answer.
-    """
-    doc = _existing(TRANSLATION_DIR / lang / f"{pack}.json")
-    out: dict[str, str] = {}
-    for motif in motifs:
-        code = motif["code"]
-        if code not in doc:
-            continue
-        src_flat = _flat_entry(entry_of(motif))
-        for k, v in _flat_entry(doc[code]).items():
-            if src_flat.get(k) == v:
-                out[f"{code}|{k}"] = v
-    return out
-
-
-def strip_echoed(lang: str, pack: str, motifs: list[dict]) -> int:
-    """Remove echoed leaves so gap-fill re-translates exactly those keys."""
-    keys = echoed_keys(lang, pack, motifs)
-    if not keys:
-        return 0
-    path = TRANSLATION_DIR / lang / f"{pack}.json"
-    doc = _existing(path)
-    for compound in keys:
-        code, _, leaf = compound.partition("|")
-        node = doc.get(code)
-        parts = [p for p in leaf.replace("[", ".").replace("]", "").split(".") if p]
-        for part in parts[:-1]:
-            node = node[int(part)] if part.isdigit() else node.get(part)
-            if node is None:
-                break
-        if node is None:
-            continue
-        last = parts[-1]
-        if isinstance(node, list) and last.isdigit():
-            node[int(last)] = ""
-        elif isinstance(node, dict):
-            node.pop(last, None)
-    path.write_text(
-        json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8")
-    return len(keys)
-
-
 def write_source_hashes(lang: str, pack: str, motifs: list[dict]) -> None:
     """Record WHICH source text each translation was made from, in `_source_hash.json`.
 
@@ -314,94 +261,159 @@ def write_source_hashes(lang: str, pack: str, motifs: list[dict]) -> None:
         encoding="utf-8")
 
 
-def check(lang: str, source: dict[str, list[dict]]) -> int:
-    """Verify a language's committed files against the source. No model calls."""
-    problems = 0
+
+
+# ── audit ──────────────────────────────────────────────────────────────────
+# Everything the tool can know about the committed state, in one pass, with no
+# model calls. This is the artifact the run itself is judged by — before it
+# existed the only record was a scratch console log, `_FAILED.json` (which stays
+# empty when nothing fails, so its absence proved nothing), and a per-locale
+# `--check` nobody aggregated.
+#
+# Four independent failure modes, because each is invisible to the others:
+#   MISSING   a motif the locale never got            (coverage)
+#   BROKEN    an entry that would mis-merge           (structural — the loud one)
+#   STALE     translated from English that has moved  (recorded hash vs live)
+#   ECHOED    present, non-empty, and still English   (the silent one)
+# The completeness-check shape most projects have only ever catches MISSING.
+
+def audit_locale(lang: str, source: dict[str, list[dict]]) -> dict:
+    recorded = _existing(TRANSLATION_DIR / lang / "_source_hash.json")
+    out = {"lang": lang, "packs": 0, "motifs": 0, "keys": 0,
+           "missing": [], "broken": [], "stale": [], "echoed": [],
+           "authored": lang in AUTHORED_LANGUAGES}
     for pack, motifs in source.items():
         path = TRANSLATION_DIR / lang / f"{pack}.json"
         doc = _existing(path)
         if not doc:
-            print(f"  {pack:<14} MISSING")
-            problems += 1
+            out["missing"].extend(m["code"] for m in motifs)
             continue
-        src_by_code = {m["code"]: extract_translatable(m) for m in motifs}
-        missing = sorted(set(src_by_code) - set(doc))
-        if missing:
-            print(f"  {pack:<14} {len(missing)} motif(s) untranslated: {missing[:4]}")
-            problems += len(missing)
-        for code, entry in doc.items():
-            if code not in src_by_code:
-                print(f"  {pack:<14} STALE code {code!r} (renamed or removed upstream)")
-                problems += 1
+        out["packs"] += 1
+        src_by_code = {m["code"]: m for m in motifs}
+        for code, motif in src_by_code.items():
+            entry = doc.get(code)
+            if not entry:
+                out["missing"].append(code)
                 continue
+            out["motifs"] += 1
+            src_payload = extract_translatable(motif)
             try:
-                parse_translation_entry(entry, src_by_code[code], where=f"{lang}/{pack}:{code}")
+                parse_translation_entry(entry, src_payload, where=f"{lang}/{pack}:{code}")
             except TranslationFileError as e:
-                print(f"  {pack:<14} {e}")
-                problems += 1
-        recorded = _existing(TRANSLATION_DIR / lang / "_source_hash.json")
-        stale = sorted(c for c, m in {m["code"]: m for m in motifs}.items()
-                       if c in doc and recorded.get(c) not in (None, source_hash(m)))
-        if stale:
-            print(f"  {pack:<14} {len(stale)} translation(s) made from OLDER source "
-                  f"(re-run to refresh): {stale[:4]}")
-            problems += len(stale)
-        echoed = echoed_keys(lang, pack, motifs)
-        if echoed:
-            # Reported, NOT counted as a problem — a cognate is a correct translation.
-            print(f"  {pack:<14} {len(echoed)} leaf/leaves identical to English "
-                  f"(cognate or untranslated — --retry-echoed gives each one an "
-                  f"isolated retry): {sorted(echoed)[:3]}")
-    print(f"{lang}: {problems} problem(s)")
-    return problems
+                out["broken"].append({"code": code, "pack": pack, "why": str(e)[:160]})
+                continue
+            live = source_hash(motif)
+            if recorded.get(code) not in (None, live):
+                out["stale"].append({"code": code, "pack": pack})
+            src_flat = _flat_entry(entry_of(motif))
+            for leaf, val in _flat_entry(entry).items():
+                out["keys"] += 1
+                if leaf in src_flat and is_untranslated_echo(src_flat[leaf], val):
+                    out["echoed"].append({"code": code, "pack": pack, "leaf": leaf,
+                                          "text": val[:70]})
+        for code in set(doc) - set(src_by_code):
+            out["broken"].append({"code": code, "pack": pack,
+                                  "why": "code is not a seeded motif (renamed upstream?)"})
+    return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--langs", help="comma list of target codes (default: all non-authored)")
-    ap.add_argument("--packs", help="comma list of pack stems (default: all)")
-    ap.add_argument("--max-heal", type=int, default=3)
-    ap.add_argument("--max-keys", type=int, default=MAX_KEYS)
-    ap.add_argument("--chunk-chars", type=int, default=CHUNK_CHARS)
-    ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--force", action="store_true", help="re-translate even where output exists")
-    ap.add_argument("--force-authored", action="store_true",
-                    help="allow writing a HUMAN-AUTHORED language (vi). You almost certainly "
-                         "do not want this — it overwrites hand-written literary prose.")
-    ap.add_argument("--retry-echoed", action="store_true",
-                    help="drop every leaf that came back identical to English, so this run "
-                         "re-translates exactly those. One pass, not a loop: a real cognate "
-                         "comes back the same and stays.")
-    ap.add_argument("--check", help="verify one language's committed files and exit")
-    args = ap.parse_args()
+def audit_all(source: dict[str, list[dict]], langs: list[str]) -> list[dict]:
+    return [audit_locale(lang, source) for lang in langs]
 
-    source = load_source()
-    if args.packs:
-        wanted = set(args.packs.split(","))
-        source = {p: m for p, m in source.items() if p in wanted}
 
-    if args.check:
-        return 1 if check(args.check, source) else 0
+def _fmt_report(reports: list[dict], source: dict[str, list[dict]]) -> str:
+    total_motifs = sum(len(m) for m in source.values())
+    lines = [
+        "# Motif translation audit",
+        "",
+        f"Source: {total_motifs} motifs across {len(source)} packs, authored in English.",
+        "",
+        "| locale | source | motifs | keys | missing | broken | stale | echoed |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for r in reports:
+        lines.append(
+            f"| {r['lang']} | {'authored' if r['authored'] else 'machine'} | "
+            f"{r['motifs']}/{total_motifs} | {r['keys']} | {len(r['missing'])} | "
+            f"{len(r['broken'])} | {len(r['stale'])} | {len(r['echoed'])} |")
+    clean = [r for r in reports if not any(
+        (r["missing"], r["broken"], r["stale"], r["echoed"]))]
+    lines += ["", f"**{len(clean)}/{len(reports)} locales clean.**", ""]
+    for r in reports:
+        problems = []
+        for kind in ("broken", "stale", "echoed"):
+            for item in r[kind][:6]:
+                where = f"{item['pack']}:{item['code']}"
+                extra = item.get("leaf") or item.get("why") or ""
+                problems.append(f"  - `{kind.upper()}` {where} {extra}"[:150])
+        if r["missing"]:
+            problems.append(f"  - `MISSING` {len(r['missing'])}: {r['missing'][:5]}")
+        if problems:
+            lines.append(f"### {r['lang']}")
+            lines += problems
+            lines.append("")
+    return "\n".join(lines) + "\n"
 
-    langs = args.langs.split(",") if args.langs else [
-        c for c in TARGETS if c not in AUTHORED_LANGUAGES]
-    for code in list(langs):
-        if code not in TARGETS:
-            print(f"!! unknown lang {code}, skipping")
-            langs.remove(code)
-        elif code in AUTHORED_LANGUAGES and not args.force_authored:
-            print(f"!! {code} is a HUMAN-AUTHORED translation — refusing to overwrite it. "
-                  f"Pass --force-authored only if you really mean to replace hand-written "
-                  f"prose with model output.")
-            langs.remove(code)
-    if not langs:
-        return 1
 
-    if args.retry_echoed:
-        dropped = sum(strip_echoed(lang, pack, motifs)
-                      for lang in langs for pack, motifs in source.items())
-        print(f"--retry-echoed: dropped {dropped} leaf/leaves identical to English")
+def fixable(report: dict) -> dict[str, set[str]]:
+    """Which motif codes this locale should re-translate. Everything except BROKEN —
+    a structural break means the file disagrees with the source about what a motif IS,
+    and re-translating would just re-break it under a human's nose."""
+    codes = set(report["missing"])
+    codes |= {i["code"] for i in report["stale"]}
+    codes |= {i["code"] for i in report["echoed"]}
+    return codes
 
+
+def auto_fix(report: dict, source: dict[str, list[dict]]) -> int:
+    """Drop the offending entries so the next round's gap-fill re-translates exactly
+    them. An ECHOED leaf is dropped leaf-wise (its siblings are fine); a STALE motif is
+    dropped whole, because the English it was made from has moved and every leaf of it
+    is suspect."""
+    lang = report["lang"]
+    if report["authored"]:
+        return 0                      # never machine-touch a human-written locale
+    stale_codes = {i["code"] for i in report["stale"]}
+    dropped = 0
+    by_pack: dict[str, list] = {}
+    for item in report["echoed"]:
+        by_pack.setdefault(item["pack"], []).append(item)
+    for pack in set(by_pack) | {i["pack"] for i in report["stale"]}:
+        path = TRANSLATION_DIR / lang / f"{pack}.json"
+        doc = _existing(path)
+        if not doc:
+            continue
+        for code in stale_codes:
+            if doc.pop(code, None) is not None:
+                dropped += 1
+        for item in by_pack.get(pack, []):
+            if item["code"] in stale_codes:
+                continue              # already dropped whole
+            entry = doc.get(item["code"])
+            if entry is None:
+                continue
+            parts = [p for p in item["leaf"].replace("[", ".").replace("]", "").split(".") if p]
+            node = entry
+            for part in parts[:-1]:
+                node = node[int(part)] if part.isdigit() else node.get(part)
+                if node is None:
+                    break
+            if node is None:
+                continue
+            last = parts[-1]
+            if isinstance(node, list) and last.isdigit():
+                node[int(last)] = ""
+            elif isinstance(node, dict):
+                node.pop(last, None)
+            dropped += 1
+        path.write_text(
+            json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+    return dropped
+
+
+# ── one translation pass ───────────────────────────────────────────────────
+def run_once(langs: list[str], source: dict[str, list[dict]], args) -> int:
     plans = []
     for lang in langs:
         failed_map: dict = {}
@@ -417,14 +429,12 @@ def main() -> int:
 
     work = [p for p in plans if p["chunks"]]
     tasks = [(p, i) for p in work for i in range(len(p["chunks"]))]
-    print(f"planned: {len(work)} pack-language pair(s) / {len(tasks)} chunks; "
-          f"{len(plans) - len(work)} already complete; {args.workers} workers")
     if not tasks:
         for p in plans:
-            assemble(p, source[p["pack"]])          # still re-validate + normalize
-        print("nothing to translate — every file re-validated against source")
+            assemble(p, source[p["pack"]])      # re-validate + refresh the sidecar
         return 0
 
+    print(f"  planned: {len(work)} pack-language pair(s) / {len(tasks)} chunks")
     remaining = {id(p): len(p["chunks"]) for p in work}
     by_lang: dict[str, list[dict]] = {}
     done = grand_failed = 0
@@ -451,16 +461,15 @@ def main() -> int:
                 try:
                     r = assemble(p, source[p["pack"]])
                 except TranslationFileError as e:
-                    print(f"  ✗ {p['lang']:<6} {p['pack']:<14} STRUCTURAL: {e}")
+                    print(f"    x {p['lang']:<6} {p['pack']:<14} STRUCTURAL: {e}")
                     grand_failed += 1
                     continue
                 by_lang.setdefault(p["lang"], []).append(r)
                 grand_failed += r["failed"]
-                flag = f" ⚠{r['soft']}" if r["soft"] else ""
-                fail = f" ✗{r['failed']}" if r["failed"] else ""
-                print(f"  ✓ {p['lang']:<6} {p['pack']:<14} {r['codes']} motifs / "
-                      f"{r['keys']} keys{flag}{fail}  "
-                      f"[{done}/{len(tasks)} chunks, {time.time()-t0:.0f}s]")
+                flag = f" ~{r['soft']}" if r["soft"] else ""
+                fail = f" x{r['failed']}" if r["failed"] else ""
+                print(f"    ok {p['lang']:<6} {p['pack']:<14} {r['codes']} motifs{flag}{fail}"
+                      f"  [{done}/{len(tasks)}, {time.time()-t0:.0f}s]")
 
     for lang, results in by_lang.items():
         report = {r["pack"]: r["failed_keys"] for r in results if r["failed"]}
@@ -469,8 +478,80 @@ def main() -> int:
             fpath.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         elif fpath.exists():
             fpath.unlink()
+    return grand_failed
 
-    print(f"\nDONE in {time.time()-t0:.0f}s. keys left as English needing review: {grand_failed}")
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--langs", help="comma list of target codes (default: all non-authored)")
+    ap.add_argument("--packs", help="comma list of pack stems (default: all)")
+    ap.add_argument("--max-heal", type=int, default=3)
+    ap.add_argument("--max-keys", type=int, default=MAX_KEYS)
+    ap.add_argument("--chunk-chars", type=int, default=CHUNK_CHARS)
+    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--rounds", type=int, default=3,
+                    help="self-healing rounds: translate, audit, re-translate whatever the "
+                         "audit flags, repeat until clean (default 3). --rounds 1 disables it.")
+    ap.add_argument("--force", action="store_true", help="re-translate even where output exists")
+    ap.add_argument("--force-authored", action="store_true",
+                    help="allow writing a HUMAN-AUTHORED language (vi). You almost certainly "
+                         "do not want this — it overwrites hand-written literary prose.")
+    ap.add_argument("--audit", action="store_true",
+                    help="report the committed state and exit. No model calls.")
+    args = ap.parse_args()
+
+    source = load_source()
+    if args.packs:
+        wanted = set(args.packs.split(","))
+        source = {p: m for p, m in source.items() if p in wanted}
+
+    all_langs = [c for c in TARGETS if (TRANSLATION_DIR / c).is_dir()] or list(TARGETS)
+    if args.audit:
+        reports = audit_all(source, sorted(all_langs))
+        text = _fmt_report(reports, source)
+        (TRANSLATION_DIR / "AUDIT.md").write_text(text, encoding="utf-8")
+        print(text)
+        print(f"written: {TRANSLATION_DIR / 'AUDIT.md'}")
+        return 1 if any(r["broken"] for r in reports) else 0
+
+    langs = args.langs.split(",") if args.langs else [
+        c for c in TARGETS if c not in AUTHORED_LANGUAGES]
+    for code in list(langs):
+        if code not in TARGETS:
+            print(f"!! unknown lang {code}, skipping")
+            langs.remove(code)
+        elif code in AUTHORED_LANGUAGES and not args.force_authored:
+            print(f"!! {code} is a HUMAN-AUTHORED translation — refusing to overwrite it. "
+                  f"Pass --force-authored only if you really mean to replace hand-written "
+                  f"prose with model output.")
+            langs.remove(code)
+    if not langs:
+        return 1
+
+    t0 = time.time()
+    for rnd in range(1, max(1, args.rounds) + 1):
+        print(f"── round {rnd}/{args.rounds}")
+        run_once(langs, source, args)
+        reports = audit_all(source, langs)
+        outstanding = {r["lang"]: fixable(r) for r in reports}
+        n = sum(len(v) for v in outstanding.values())
+        broken = sum(len(r["broken"]) for r in reports)
+        print(f"   audit: {n} motif(s) still flagged across {sum(1 for v in outstanding.values() if v)} "
+              f"locale(s); {broken} structural")
+        if n == 0:
+            break
+        if rnd == max(1, args.rounds):
+            print("   rounds exhausted — the remainder is in AUDIT.md for review "
+                  "(a true cognate re-translates to itself and will never clear)")
+            break
+        dropped = sum(auto_fix(r, source) for r in reports)
+        print(f"   auto-resolve: dropped {dropped} entry/leaf for re-translation")
+
+    reports = audit_all(source, sorted(all_langs))
+    text = _fmt_report(reports, source)
+    (TRANSLATION_DIR / "AUDIT.md").write_text(text, encoding="utf-8")
+    print(f"\nDONE in {time.time()-t0:.0f}s. audit written to {TRANSLATION_DIR / 'AUDIT.md'}")
+    print(_fmt_report(reports, source).split("\n\n")[2])
     return 0
 
 

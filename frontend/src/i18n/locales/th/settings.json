@@ -449,11 +449,11 @@
     "cap": {
       "chat": "แชท / LLM",
       "embedding": "Embedding",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
       "image_gen": "การสร้างรูปภาพ",
       "moderation": "การตรวจสอบเนื้อหา",
-      "reranker": "Reranker"
+      "reranker": "Reranker",
+      "tts": "ข้อความเสียง",
+      "stt": "เสียงเป็นข้อความ"
     },
     "add": {
       "aria": "เพิ่มโมเดล",

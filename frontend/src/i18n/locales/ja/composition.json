@@ -428,6 +428,7 @@
   "pacing": "テンポ",
   "canon_consistency": "正典整合",
   "dismiss": "却下",
+  "overrideSlipBlocked": "ブロックされた上書き: 「もしも」バージョンの上書きが、正典の値へと戻ってしまいました。承認する前に再生成してください。",
   "overrideSlipExhausted": "再生成上限に達してもオーバーライドが戻り続けています。確認のため表示します（承認はブロックされません）。",
   "overrideSlipDetail": "{{name}}（{{field}}）：期待値「{{expected}}」、検出値「{{found}}」",
   "deltaInconsistencyDetail": "{{name}}：差分ルール「{{rule}}」と矛盾します",
@@ -645,37 +646,24 @@
       "needsBook": "モチーフを表示するには本を開いてください"
     },
     "search": "Search motifs",
-    "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
     "list": {
-      "noMatch": "No motifs match — clear filters.",
-      "truncated": "最初の100件を表示しています — 残りを見るには検索やフィルターで絞り込んでください。"
-    },
-    "error": {
-      "load": "Couldn't load — please retry."
-    },
-    "permission": {
-      "readOnly": "This is a shared template — clone it to make your own editable copy."
+      "truncated": "最初の100件を表示しています — 残りを見るには検索やフィルターで絞り込んでください。",
+      "noMatch": "一致するモチーフがありません。フィルターをクリアしてください。"
     },
     "action": {
       "open": "Open",
       "adopt": "Adopt",
       "newMotif": "New motif",
-      "cloneToEdit": "Clone to edit",
       "close": "Close",
       "cancel": "Cancel",
       "retry": "Retry",
       "swap": "Swap",
-      "clear": "Free-form"
+      "clear": "Free-form",
+      "cloneToEdit": "クローンを作成して編集"
     },
     "card": {
       "draft": "Mined draft",
       "tension": "Intensity"
-    },
-    "empty": {
-      "title": "Your motif library is ready",
-      "body": "Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.",
-      "browseSystem": "Browse the 12 starters",
-      "hint": "No tokens needed — building a motif by hand is free."
     },
     "facet": {
       "tier": "Tier",
@@ -694,33 +682,30 @@
     "create": {
       "title": "New motif",
       "name": "Name",
-      "code": "Code (a short id, e.g. cultivation.fortuitous_encounter)",
       "kind": "Kind",
-      "summary": "Summary (this is what the planner matches on)",
-      "genres": "Genres (comma-separated)",
-      "beats": "Beats (the ordered shape)",
       "beat": "beat",
       "beatLabel": "Beat label",
       "removeBeat": "Remove beat",
       "save": "Create motif",
       "saving": "Saving…",
+      "code": "コード (短いID、例: cultivation.fortuitous_encounter)",
+      "summary": "概要 (プランナーが照合に使用するテキスト)",
+      "genres": "ジャンル (カンマ区切り)",
+      "beats": "ビート（構成の順序）",
       "err": {
-        "name": "A name is required",
-        "code": "A code is required",
-        "save": "Couldn't save — check the code isn't already used."
+        "name": "名前を入力してください",
+        "code": "コードを入力してください",
+        "save": "保存できませんでした。コードが既に使用されていないか確認してください。"
       }
     },
     "adopt": {
       "title": "Adopt motif",
-      "body": "Adopt makes your own private editable copy. Choose where it goes.",
       "targetLabel": "Adopt into",
       "toUser": "My library",
-      "whatItDoes": "Copy this motif into your library (a private, editable clone).",
       "continue": "Continue",
-      "estimating": "Estimating…"
-    },
-    "quota": {
-      "adopt": "You've adopted {{used}}/{{limit}} this period — archive some or wait."
+      "estimating": "Estimating…",
+      "body": "「採用」すると、編集可能な自分専用のコピーが作成されます。保存先を選択してください。",
+      "whatItDoes": "このモチーフをライブラリにコピーします（編集可能な自分専用のクローンが作成されます）。"
     },
     "cost": {
       "title": "Confirm cost",
@@ -731,48 +716,47 @@
       "confirming": "Working…"
     },
     "match": {
-      "why": "Why this motif?",
       "tension": "Tension fit",
       "genre": "Genre",
       "precond": "Setup",
-      "cosine": "Similarity"
+      "cosine": "Similarity",
+      "why": "なぜこのモチーフなのか？"
     },
     "role": {
-      "pickFor": "Pick cast for {{role}}",
-      "unresolved": "⚠ pick…"
+      "unresolved": "⚠ pick…",
+      "pickFor": "{{role}} の配役を選択"
     },
     "binding": {
-      "freeForm": "No motif matched — this scene is free-form.",
-      "commitGenerate": "Commit + write this scene →",
-      "noWork": "この本のシーンにモチーフを紐付けるためのプランを作成します。"
+      "noWork": "この本のシーンにモチーフを紐付けるためのプランを作成します。",
+      "freeForm": "一致するモチーフがありません。このシーンはフリーフォームです。",
+      "commitGenerate": "確定してこのシーンを執筆する →"
     },
     "swap": {
       "title": "Swap motif",
-      "none": "No other matches."
+      "none": "一致する候補はありません。"
     },
     "chain": {
-      "hint": "Next: \"{{name}}\" follows naturally.",
-      "action": "Chain it"
+      "action": "Chain it",
+      "hint": "次へ: 「{{name}}」へと自然に繋がります。"
     },
     "conf": {
       "title": "Conformance",
       "planned": "Planned",
       "realized": "Realized",
       "conformance": "Conformance",
-      "advisory": "Advisory — unverified self-report",
-      "regenerate": "Regenerate to beat",
       "rerun": "Re-run",
-      "rerunWhat": "Re-check every scene in this chapter against its planned beat.",
-      "empty": "Not generated yet — generate scenes to see conformance.",
       "tone": {
         "ok": "On beat",
         "warn": "Tension drift",
         "bad": "Beat missed"
       },
-      "rerunNeedsModel": "適合性を再計算するモデルを選択してください"
+      "rerunNeedsModel": "適合性を再計算するモデルを選択してください",
+      "advisory": "アドバイザリー — 検証されていない自己申告",
+      "regenerate": "ビートに合わせて再生成",
+      "rerunWhat": "この章のすべてのシーンを、計画されたビートと照らし合わせて再確認します。",
+      "empty": "まだ生成されていません — シーンを生成して適合性を確認してください。"
     },
     "arc": {
-      "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
       "place": "place",
       "chapters": "ch {{from}}-{{to}}",
       "moveLeft": "Move earlier",
@@ -882,17 +866,10 @@
         "error": "チャプターをアークにグループ化できませんでした。",
         "done": "{{chapters}}個のチャプターを{{arcs}}個のアークにグループ化しました。",
         "none": "アークにグループ化するチャプターがまだありません。"
-      }
+      },
+      "mobileNotice": "タイムライン・グリッドは大きな画面で利用可能です — こちらではリスト形式で編集できます。"
     },
     "simple": {
-      "actant": {
-        "subject": "the hero / who acts",
-        "sender": "who sets it in motion",
-        "object": "what's at stake",
-        "receiver": "who it's for",
-        "helper": "who lends a hand",
-        "opponent": "who stands in the way"
-      },
       "kind": {
         "sequence": "a plot shape",
         "situation": "a setup",
@@ -906,11 +883,19 @@
         "tension_target": "intensity",
         "preconditions": "needs before",
         "effects": "leaves after",
-        "info_asymmetry": "who's in the dark"
+        "info_asymmetry": "何を知っていて、何を知らないのか"
       },
-      "infoAsymmetry": "Who's in the dark",
-      "infoKnows": "{{who}} knows the truth",
-      "infoDeceived": "{{who}} is fooled"
+      "infoDeceived": "{{who}} is fooled",
+      "actant": {
+        "subject": "主人公 / 行動する者",
+        "sender": "動機を与える者",
+        "object": "目的 / 賭けられているもの",
+        "receiver": "受け手 / 恩恵を受ける者",
+        "helper": "助けとなる者",
+        "opponent": "妨害する者"
+      },
+      "infoAsymmetry": "何を知っていて、何を知らないのか",
+      "infoKnows": "{{who}} が真実を知っている"
     },
     "expert": {
       "actant": {
@@ -972,6 +957,22 @@
       "degradedLibrary": "適合度順ではありません。共有ライブラリの埋め込みモデルが設定されていないため、これらはスコア化された一致ではなく、ジャンルによるフォールバックです。",
       "sectionMine": "あなたのモチーフ",
       "sectionLibrary": "ライブラリから"
+    },
+    "overuse": "「{{name}}」はすでに {{chapters}} で使用されています。バリエーションを検討してください。",
+    "error": {
+      "load": "読み込みに失敗しました。もう一度お試しください。"
+    },
+    "permission": {
+      "readOnly": "これは共有テンプレートです。編集可能なコピーを作成するには、クローンを作成してください。"
+    },
+    "empty": {
+      "title": "モチーフライブラリの準備ができました",
+      "body": "モチーフは再利用可能なプロットの型です。プランナーは1章につき1つのモチーフを選択するため、簡単な構成でも堅実なシーンを描くことができます。12個のスターターモチーフが用意されています — tu-tiên と báo-thù。",
+      "browseSystem": "12個のスターターを閲覧する",
+      "hint": "トークンは不要です。手動でのモチーフ作成は無料です。"
+    },
+    "quota": {
+      "adopt": "今期の採用数は {{used}}/{{limit}} です。アーカイブするか、期限を待ってください。"
     }
   },
   "authoringRun": {
@@ -1092,6 +1093,5 @@
       "loading": "実行を読み込み中…",
       "back": "← 実行一覧に戻る"
     }
-  },
-  "overrideSlipBlocked": "ブロックされた上書き: 「もしも」バージョンの上書きが、正典の値へと戻ってしまいました。承認する前に再生成してください。"
+  }
 }

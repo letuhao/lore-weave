@@ -790,8 +790,8 @@
           "concurrencyLabel": "समानांतर कॉल",
           "concurrencyApply": "लागू करें",
           "stagesTitle": "निर्माण चरण",
-          "stages": "Entities → Relations · Events · Facts → Summaries",
-          "stagesNote": "पास इस क्रम में चलते हैं। Facts और Summaries, Entities और Relations के पूरा होने के बाद चलते हैं, इसलिए वे पूर्ण निर्माण में बाद में दिखाई देते हैं — जल्दी रुकने पर वे छूट जाते हैं।"
+          "stagesNote": "पास इस क्रम में चलते हैं। Facts और Summaries, Entities और Relations के पूरा होने के बाद चलते हैं, इसलिए वे पूर्ण निर्माण में बाद में दिखाई देते हैं — जल्दी रुकने पर वे छूट जाते हैं।",
+          "stages": "इकाइयाँ → संबंध · घटनाएँ · तथ्य → सारांश"
         },
         "building_paused_user": {
           "body": "आपने इस कार्य को रोक दिया है। तैयार होने पर फिर से शुरू करें, या आंशिक ग्राफ (partial graph) रखने के लिए रद्द करें।"
@@ -804,8 +804,8 @@
           "body": "पुनः प्रयास करने योग्य त्रुटि: {{error}}"
         },
         "complete": {
-          "stats": "{{entities}} entities · {{facts}} facts · {{events}} events · {{passages}} passages",
-          "lastExtracted": "अंतिम निष्कर्षण: {{date}}"
+          "lastExtracted": "अंतिम निष्कर्षण: {{date}}",
+          "stats": "{{entities}} इकाइयाँ · {{facts}} तथ्य · {{events}} घटनाएँ · {{passages}} अंश"
         },
         "stale": {
           "body": "पिछले निष्कर्षण के बाद से {{count}} नए अध्याय। उन्हें अभी निकालें या अनदेखा करें।"

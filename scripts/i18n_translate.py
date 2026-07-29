@@ -78,6 +78,37 @@ TARGETS: dict[str, tuple[str, str | None]] = {
 }
 
 PLACEHOLDER_RE = re.compile(r"\{\{.*?\}\}|\$t\([^)]*\)|<[^>]+>")
+URL_RE = re.compile(r"https?://\S+|\w+://\S+")
+
+# ── the ECHO check: a value handed back in English, verbatim ────────────────
+# The soft check below keys off the target SCRIPT, so for every Latin-script target
+# (de/es/fr/id/ms/pt-BR/tr — half the supported set) an untranslated string had NO
+# signal at all and shipped looking exactly like a translation. Worse, the
+# completeness gate only asserts a key is PRESENT and NON-EMPTY, which English
+# satisfies forever: `chat.toolApproval.never_allowed` was English in all 17 locales,
+# including the script-bearing ones, and nothing anywhere said so.
+#
+# Byte-equality alone is the wrong detector for a UI corpus — most UI strings are one
+# short word (`Status`, `Editor`, `Pause` are all genuinely German) or pure
+# placeholders/URLs (`{{op}} {{status}}`, `https://api.example.com`), and those
+# legitimately match. Measured on the real locales, a raw equality check flagged 339
+# German strings of which ONE was a defect. Counting only translatable PROSE words —
+# placeholders, tags and URLs removed — and requiring a phrase rather than a label
+# brings that to the genuine hits. Calibrated against all 17 locales: >=2 words is
+# still mostly noise, >=3 lands on the real ones.
+ECHO_MIN_WORDS = 3
+
+
+def prose_words(value: str) -> list[str]:
+    """The words a translator could actually have translated."""
+    return re.findall(r"[A-Za-z]{2,}", URL_RE.sub("", PLACEHOLDER_RE.sub("", value)))
+
+
+def is_untranslated_echo(src_val: str, out_val: str) -> bool:
+    """`out_val` is the English `src_val`, verbatim, and long enough that that is a
+    defect rather than a cognate, a proper noun, or a label with nothing to translate."""
+    return (isinstance(out_val, str) and out_val == src_val
+            and len(prose_words(src_val)) >= ECHO_MIN_WORDS)
 _ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
 
 
@@ -211,6 +242,11 @@ def verify_chunk(src: dict[str, str], out: dict, script_re: str | None):
             hard[key] = (f"placeholder drift: src={sorted(placeholders(src_val))} "
                          f"out={sorted(placeholders(val))}")
             continue
+        # soft: the value came back as the English source, verbatim. Works for EVERY
+        # language, unlike the script heuristic below — which is the whole point.
+        if is_untranslated_echo(src_val, val):
+            soft[key] = "possibly untranslated (identical to English)"
+            continue
         # soft: value looks untranslated (has ASCII words but no target-script char)
         if script_re and _ASCII_LETTER_RE.search(val) and not re.search(script_re, val):
             stripped = PLACEHOLDER_RE.sub("", val)
@@ -296,13 +332,15 @@ def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None,
     heal-exhaustion inside a crowded batch doesn't mean the model can't do it
     alone, only that it couldn't while also juggling 11 sibling keys.
     """
-    if not script_re:
-        return  # no target-script signal for Latin-script targets, nothing to detect
+    # NOTE: this used to `return` for a Latin-script target, on the reasoning that
+    # there was no signal to act on. The identical-to-English check above IS that
+    # signal, and it exists for every language — so the isolated retry now runs for
+    # all of them.
     src_by_key: dict[str, str] = {}
     for chunk in p["chunks"]:
         src_by_key.update(chunk)
     candidates = [k for k, v in p["soft"].items()
-                  if k in src_by_key and (v == "possibly untranslated (no target script)"
+                  if k in src_by_key and (v.startswith("possibly untranslated")
                                           or str(v).startswith("FAILED:"))]
     for key in candidates:
         try:
@@ -313,6 +351,8 @@ def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None,
         fixed = out.get(key)
         if not fixed or soft.get(key, "").startswith("FAILED"):
             continue
+        if is_untranslated_echo(src_by_key[key], fixed):
+            continue  # came back as English again — leave the soft flag for review
         if script_re and _ASCII_LETTER_RE.search(fixed) and not re.search(script_re, fixed):
             continue  # still untranslated even isolated — leave the soft flag as-is
         for i, chunk in enumerate(p["chunks"]):
@@ -394,6 +434,67 @@ def assemble_and_write(plan: dict) -> dict:
             "soft": len(plan["soft"]) - len(failed), "failed_keys": list(failed)}
 
 
+def echoed_keys(code: str, ns_path: Path) -> set[str]:
+    """Flat keys in `<code>/<ns>` that came back as the English source verbatim.
+
+    This is the gap a completeness check structurally cannot see: it asserts a key is
+    PRESENT and NON-EMPTY, and English satisfies both forever. Measured live,
+    `chat.toolApproval.never_allowed` was English in ALL 17 locales — script-bearing
+    ones included, because the soft check only fires DURING a translation call and
+    nothing ever re-examined a committed file.
+    """
+    out_path = LOCALES_DIR / code / ns_path.name
+    if not out_path.exists():
+        return set()
+    try:
+        src = flatten(json.loads(ns_path.read_text(encoding="utf-8")))
+        got = flatten(json.loads(out_path.read_text(encoding="utf-8")))
+    except (ValueError, OSError):
+        return set()
+    return {k for k, v in src.items()
+            if isinstance(v, str) and is_untranslated_echo(v, got.get(k))}
+
+
+def audit(langs: list[str], ns_files: list[Path]) -> list[dict]:
+    rows = []
+    for code in langs:
+        missing = echoed = total = 0
+        detail: list[str] = []
+        for ns in ns_files:
+            src = {k: v for k, v in flatten(json.loads(ns.read_text(encoding="utf-8"))).items()
+                   if isinstance(v, str)}
+            total += len(src)
+            out_path = LOCALES_DIR / code / ns.name
+            got = (flatten(json.loads(out_path.read_text(encoding="utf-8")))
+                   if out_path.exists() else {})
+            miss = [k for k in src if not (isinstance(got.get(k), str) and got[k])]
+            ech = sorted(echoed_keys(code, ns))
+            missing += len(miss)
+            echoed += len(ech)
+            detail += [f"  - `ECHOED` {ns.stem}.{k}" for k in ech[:4]]
+            if miss:
+                detail.append(f"  - `MISSING` {ns.stem}: {len(miss)} (e.g. {sorted(miss)[:3]})")
+        rows.append({"lang": code, "total": total, "missing": missing,
+                     "echoed": echoed, "detail": detail})
+    return rows
+
+
+def _fmt_audit(rows: list[dict]) -> str:
+    lines = ["# Frontend i18n audit", "",
+             "`MISSING` = absent or empty. `ECHOED` = present, non-empty, and still the",
+             "English source — which a completeness check cannot see, because English is",
+             "both present and non-empty.", "",
+             "| locale | keys | missing | echoed |", "|---|---:|---:|---:|"]
+    for r in rows:
+        lines.append(f"| {r['lang']} | {r['total']} | {r['missing']} | {r['echoed']} |")
+    clean = [r for r in rows if not r["missing"] and not r["echoed"]]
+    lines += ["", f"**{len(clean)}/{len(rows)} locales clean.**", ""]
+    for r in rows:
+        if r["detail"]:
+            lines += [f"### {r['lang']}"] + r["detail"] + [""]
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--langs", help="comma list of target codes (default: all)")
@@ -409,6 +510,11 @@ def main() -> int:
                          "blocking urllib releases the GIL + LM Studio continuous-batches)")
     ap.add_argument("--force", action="store_true", help="re-translate even if valid output exists")
     ap.add_argument("--check", help="verify one <lang>/<ns>.json against en and exit")
+    ap.add_argument("--audit", action="store_true",
+                    help="report missing + still-English keys per locale and exit. No model calls.")
+    ap.add_argument("--retry-echoed", action="store_true",
+                    help="also re-translate keys that came back as the English source. "
+                         "One pass — a genuine loan word returns unchanged and stays.")
     args = ap.parse_args()
 
     src_dir = LOCALES_DIR / SRC_LANG
@@ -429,6 +535,14 @@ def main() -> int:
         wanted = set(args.ns.split(","))
         ns_files = [f for f in ns_files if f.stem in wanted]
 
+    if args.audit:
+        rows = audit(langs, ns_files)
+        text = _fmt_audit(rows)
+        (LOCALES_DIR / "AUDIT.md").write_text(text, encoding="utf-8")
+        print(text)
+        print(f"written: {LOCALES_DIR / 'AUDIT.md'}")
+        return 0
+
     # PLAN every (lang, namespace): resume-skip up-to-date ones, chunk the rest.
     # A namespace listed in the language's _FAILED.json is force-retried even on
     # a plain resume (its keys currently sit as en fallback, which passes the
@@ -448,8 +562,13 @@ def main() -> int:
                 pass
         for ns in ns_files:
             try:
+                retry = set(failed_map.get(ns.name, []))
+                if args.retry_echoed:
+                    # `retry_keys` already forces a present key to be re-translated, so
+                    # an echo needs no file surgery — it just joins the failed list.
+                    retry |= echoed_keys(code, ns)
                 plans.append(plan_namespace(code, ns, script_re, args.force, args.chunk_chars,
-                                            args.max_keys, frozenset(failed_map.get(ns.name, []))))
+                                            args.max_keys, frozenset(retry)))
             except Exception as e:  # noqa: BLE001
                 print(f"  ✗ {code}/{ns.name} PLAN ERROR: {type(e).__name__}: {e}")
     work = [p for p in plans if p["status"] == "work"]

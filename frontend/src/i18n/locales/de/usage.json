@@ -114,11 +114,11 @@
     "billing": "Abrechnung:",
     "viewed_at": "Gesehen am:",
     "payload_view_aria": "Payload-Ansicht",
-    "tab_input": "Input (System + User)",
     "tab_output": "Output",
     "tab_raw": "Roh-JSON",
     "copy_aria": "In Zwischenablage kopieren",
     "copied": "Kopiert",
-    "copy": "Kopieren"
+    "copy": "Kopieren",
+    "tab_input": "Eingabe (System + Benutzer)"
   }
 }

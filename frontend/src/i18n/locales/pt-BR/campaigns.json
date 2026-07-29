@@ -74,12 +74,12 @@
     "chapters": "Capítulos",
     "stage": "Etapa",
     "status": "Status",
-    "tokens": "Tokens (in/out)",
     "usd": "USD",
     "localFree": "🖥 {{kind}} · grátis",
     "cloud": "☁ {{kind}}",
     "launching": "Lançando…",
-    "launch": "Lançar campanha"
+    "launch": "Lançar campanha",
+    "tokens": "Tokens (entrada/saída)"
   },
   "list": {
     "title": "Campanhas de Rascunho Automático",

@@ -74,3 +74,47 @@ def test_provider_registry_is_probed():
     assert "provider-registry-service" in probed
     pr = next(r for r in g.PROBE_ROUTES if r[0] == "provider-registry-service")
     assert "/internal/embed" in pr[3]
+
+
+# ── the source-dir map: no first-party container may be silently skipped ────
+def test_worker_twins_resolve_to_their_service_source():
+    """The guard used to assume `services/<container-name>` and SKIP anything that did
+    not match. That silently excluded every worker twin — they build from their
+    SERVICE's Dockerfile, not a directory of their own — plus the two frontends. Six
+    first-party build targets it never looked at.
+
+    It cost twice, both times with a green /health and no error anywhere:
+    `composition-worker` ran a 12-hour-old image whose plan path no longer existed in
+    source, and a composition image built mid-run served 12 of 17 motif locales while
+    the repo held all 17. Both were visible only by counting.
+    """
+    smap = g.source_dir_map()
+    for worker, service in (
+        ("composition-worker", "services/composition-service"),
+        ("translation-worker", "services/translation-service"),
+        ("lore-enrichment-worker", "services/lore-enrichment-service"),
+        ("video-gen-worker", "services/video-gen-service"),
+    ):
+        assert smap.get(worker) == service, (
+            f"{worker} must diff against {service} — it is built from that Dockerfile")
+
+
+def test_pulled_images_are_still_skipped():
+    """A third-party image has no repo source, so "behind HEAD" is meaningless for it.
+    Widening the map must not start flagging postgres."""
+    smap = g.source_dir_map()
+    for pulled in ("postgres", "redis", "neo4j", "minio", "rabbitmq"):
+        assert not smap.get(pulled), f"{pulled} is a pulled image and has no source dir"
+
+
+def test_every_compose_built_service_resolves_to_a_real_directory():
+    """The regression guard for the whole class: if the compose parse silently stops
+    matching (an indentation change, a reordered key), every service would fall back to
+    the old assumption and the twins would go dark again — with no error. Assert the map
+    is both non-trivial and pointing at directories that actually exist."""
+    import os
+
+    smap = g.source_dir_map()
+    assert len(smap) >= 30, f"compose parse looks broken — only {len(smap)} services resolved"
+    bad = {svc: d for svc, d in smap.items() if d and not os.path.isdir(d)}
+    assert not bad, f"resolved to non-existent directories: {bad}"

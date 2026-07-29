@@ -428,6 +428,7 @@
   "pacing": "节奏",
   "canon_consistency": "设定一致性",
   "dismiss": "忽略",
+  "overrideSlipBlocked": "接受已拦截：一个“如果”版本的覆盖值已滑回正文数值。请在接受前重新生成。",
   "overrideSlipExhausted": "在达到重新生成上限后覆盖项仍在滑回 — 已提交供您审核（接受不再受阻）。",
   "overrideSlipDetail": "{{name}} ({{field}}): 预期为 “{{expected}}”，实际为 “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: 违反了差异规则 “{{rule}}”",
@@ -1084,14 +1085,13 @@
       "cancel": "取消",
       "reverting": "正在还原…",
       "partialTitle": "还原中途停止",
-      "partialBody": "Unit {{index}} failed to restore ({{error}}). {{count}} unit(s) reverted successfully before the stop; the run is left open (same state as before) so you can retry.",
-      "successBody": "所有 {{count}} 个单元均已还原；运行已关闭。"
+      "successBody": "所有 {{count}} 个单元均已还原；运行已关闭。",
+      "partialBody": "单元 {{index}} 还原失败 ({{error}})。在停止前已成功还原 {{count}} 个单元；运行状态保持开启（与之前状态一致），以便您重试。"
     },
     "mission": {
       "empty": "从“运行”列表中打开一个运行，以查看其任务控制。",
       "loading": "正在加载运行…",
       "back": "← 返回运行列表"
     }
-  },
-  "overrideSlipBlocked": "接受已拦截：一个“如果”版本的覆盖值已滑回正文数值。请在接受前重新生成。"
+  }
 }

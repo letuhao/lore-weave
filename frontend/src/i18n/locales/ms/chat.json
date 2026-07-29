@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "Sahkan tindakan",
     "batch_count": "{{count}} item",
+    "warning": "Sila semak perubahan ini sebelum melaksanakan.",
     "warning_destructive": "Ini adalah tindakan pemadaman bersiri — sila sahkan.",
     "destructive_skipped": "{{count}} op(s) pemadaman akan DIKELUARKAN kecuali anda mengaktifkannya di atas.",
     "confirm": "Sahkan",
@@ -242,8 +243,7 @@
     "cancelled": "Dibatalkan",
     "reprice": "Kos meningkat kepada {{cost}} sejak anggaran dibuat — minta semula untuk mengesahkan pada harga baharu.",
     "reprice_title": "Kos berubah — tidak dilaksanakan",
-    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu.",
-    "warning": "Sila semak perubahan ini sebelum melaksanakan."
+    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu."
   },
   "batchConfirm": {
     "title": "Sahkan {{count}} tindakan dalam satu langkah",
@@ -380,7 +380,7 @@
     "approved": "Diluluskan — sedang berjalan ✓",
     "always_allowed": "Sentiasa dibenarkan — sedang berjalan ✓",
     "denied": "Ditolak",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "Tidak pernah dibenarkan — anda boleh membatalkannya di Tetapan → Kebenaran"
   },
   "rack": {
     "label": "Konteks",

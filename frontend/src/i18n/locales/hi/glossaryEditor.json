@@ -8,6 +8,14 @@
   "select": "चुनें",
   "dismiss": "हटाएं",
   "createNew": "नया बनाएं",
+  "createAs": "«{{name}}» को इस रूप में बनाएँ…",
+  "kind": {
+    "character": "पात्र",
+    "location": "स्थान",
+    "organization": "संगठन",
+    "concept": "अवधारणा",
+    "item": "वस्तु"
+  },
   "filterEntities": "एंटिटीज फ़िल्टर करें...",
   "noEntities": "इस अध्याय में कोई एंटिटी नहीं मिली",
   "showHighlights": "शब्दावली हाइलाइट्स दिखाएं",
@@ -118,7 +126,8 @@
     "err_code_format": "कोड में केवल छोटे अक्षर, अंक और अंडरस्कोर होने चाहिए",
     "err_save": "लागू करने में विफल",
     "toast_merged": "\"{{code}}\" से {{count}} संस्थाओं को मैप किया गया",
-    "toast_reassigned": "\"{{name}}\" को पुन: आवंटित किया गया"
+    "toast_reassigned": "\"{{name}}\" को पुन: आवंटित किया गया",
+    "same_code_note": "{{count}} और संस्थाएँ «{{code}}» के रूप में आईं — प्रत्येक को यहाँ हल करें।"
   },
   "history": {
     "title": "संस्करण इतिहास",
@@ -146,13 +155,5 @@
       "system": "सिस्टम"
     },
     "error": "संस्करण इतिहास लोड नहीं हो सका।"
-  },
-  "createAs": "«{{name}}» को इस रूप में बनाएँ…",
-  "kind": {
-    "character": "पात्र",
-    "location": "स्थान",
-    "organization": "संगठन",
-    "concept": "अवधारणा",
-    "item": "वस्तु"
   }
 }

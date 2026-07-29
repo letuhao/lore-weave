@@ -8,6 +8,14 @@
   "select": "選択",
   "dismiss": "閉じる",
   "createNew": "新規作成",
+  "createAs": "「{{name}}」を…として作成",
+  "kind": {
+    "character": "キャラクター",
+    "location": "場所",
+    "organization": "組織",
+    "concept": "概念",
+    "item": "アイテム"
+  },
   "filterEntities": "エンティティを検索...",
   "noEntities": "この章にエンティティは検出されませんでした",
   "showHighlights": "用語ハイライトを表示",
@@ -118,7 +126,8 @@
     "err_code_format": "コードは小文字・数字・アンダースコアのみです",
     "err_save": "適用に失敗しました",
     "toast_merged": "「{{code}}」から {{count}} 件をマッピングしました",
-    "toast_reassigned": "「{{name}}」を再割り当てしました"
+    "toast_reassigned": "「{{name}}」を再割り当てしました",
+    "same_code_note": "「{{code}}」として、あと{{count}}件のエンティティが到着しました。ここでそれぞれを解決してください。"
   },
   "history": {
     "title": "バージョン履歴",
@@ -146,13 +155,5 @@
       "system": "システム"
     },
     "error": "バージョン履歴を読み込めませんでした。"
-  },
-  "createAs": "「{{name}}」を…として作成",
-  "kind": {
-    "character": "キャラクター",
-    "location": "場所",
-    "organization": "組織",
-    "concept": "概念",
-    "item": "アイテム"
   }
 }

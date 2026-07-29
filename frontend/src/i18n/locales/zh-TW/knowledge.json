@@ -1136,7 +1136,6 @@
     "edit": {
       "cta": "Correct relation",
       "title": "Correct relation",
-      "description": "Fix this relation's predicate, or mark it as wrong so it's removed.",
       "field": {
         "predicate": "Predicate"
       },
@@ -1145,11 +1144,12 @@
       "cancel": "Cancel",
       "correctSuccess": "Relation corrected.",
       "invalidateSuccess": "Relation removed.",
-      "invalidateHint": "If this relation should never have been extracted, mark it wrong to remove it.",
-      "invalidateConfirm": "Mark this relation as wrong and remove it?",
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
-      "failed": "Couldn't save the correction: {{error}}"
+      "description": "修正此關係的謂詞，或將其標記為錯誤以將其移除。",
+      "invalidateHint": "若此關係不應被擷取，請將其標記為錯誤以將其移除。",
+      "invalidateConfirm": "要將此關係標記為錯誤並移除嗎？",
+      "failed": "無法儲存修正內容：{{error}}"
     },
     "create": {
       "title": "連結實體",
@@ -1181,28 +1181,28 @@
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
-      "description": "Adjust this event's title, summary, or timing.",
       "field": {
         "title": "Title",
         "summary": "Summary",
         "timeCue": "Time cue",
         "dateIso": "Date (ISO)"
       },
-      "dateIsoPlaceholder": "YYYY or YYYY-MM-DD",
       "save": "Save",
       "saving": "Saving…",
       "cancel": "Cancel",
       "success": "Event updated.",
-      "conflict": "Another device updated this event. Review the latest and try again.",
-      "failed": "Couldn't update the event: {{error}}",
-      "invalidDate": "Date must be YYYY, YYYY-MM, or YYYY-MM-DD."
+      "description": "調整此事件的標題、摘要或時間。",
+      "dateIsoPlaceholder": "YYYY 或 YYYY-MM-DD",
+      "conflict": "另一台裝置已更新此事件。請檢查最新版本後再試一次。",
+      "failed": "無法更新事件：{{error}}",
+      "invalidDate": "日期格式必須為 YYYY、YYYY-MM 或 YYYY-MM-DD。"
     },
     "archive": {
       "cta": "Delete",
-      "confirm": "Delete (hide) this event?",
       "archiving": "Deleting…",
       "success": "Event deleted.",
-      "failed": "Couldn't delete the event: {{error}}"
+      "confirm": "要刪除（隱藏）此事件嗎？",
+      "failed": "無法刪除事件：{{error}}"
     }
   },
   "mining": {

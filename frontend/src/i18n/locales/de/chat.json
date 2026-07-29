@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "Aktion bestätigen",
     "batch_count": "{{count}} Elemente",
+    "warning": "Bitte überprüfen Sie diese Änderung, bevor Sie sie anwenden.",
     "warning_destructive": "Dies ist eine destruktive Änderung mit Folgewirkungen — bitte bestätigen.",
     "destructive_skipped": "{{count}} destruktive(s) Op(s) wird übersprungen, sofern du sie oben nicht aktivierst.",
     "confirm": "Bestätigen",
@@ -242,8 +243,7 @@
     "cancelled": "Abgebrochen",
     "reprice": "Die Kosten sind seit der Schätzung auf {{cost}} gestiegen — bitte erneut bestätigen.",
     "reprice_title": "Kosten geändert — nicht angewendet",
-    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen.",
-    "warning": "Bitte überprüfen Sie diese Änderung, bevor Sie sie anwenden."
+    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen."
   },
   "batchConfirm": {
     "title": "{{count}} Aktionen in einem Schritt bestätigen",
@@ -380,7 +380,7 @@
     "approved": "Genehmigt — wird ausgeführt ✓",
     "always_allowed": "Immer erlaubt — wird ausgeführt ✓",
     "denied": "Abgelehnt",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "Niemals erlaubt — Sie können dies unter Einstellungen → Berechtigungen rückgängig machen"
   },
   "rack": {
     "label": "Kontext",

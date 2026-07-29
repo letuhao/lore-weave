@@ -62,7 +62,6 @@
     "addEdgeType": "Tambah tipe edge",
     "code": "Kode",
     "label": "Label",
-    "temporalField": "temporal (valid_from + provenance)",
     "cardinality": "Kardinalitas",
     "addButton": "Tambah tipe edge",
     "addSectionTitle": "Tambah ke skema",
@@ -93,7 +92,8 @@
     "emptyTitle": "Skema ini kosong",
     "emptyHelp": "Mulai dengan menambahkan jenis node (karakter, tempat, organisasi…), lalu hubungkan mereka dengan tipe edge.",
     "deleteConfirmTitle": "Hapus komponen ini?",
-    "deleteConfirmBody": "\"{{code}}\" direferensikan oleh {{count}} elemen graf. Menghapus akan membuatnya usang — data tetap dapat dicari. Tetap hapus?"
+    "deleteConfirmBody": "\"{{code}}\" direferensikan oleh {{count}} elemen graf. Menghapus akan membuatnya usang — data tetap dapat dicari. Tetap hapus?",
+    "temporalField": "temporal (valid_from + provenance)"
   },
   "canvas": {
     "list": "Daftar",

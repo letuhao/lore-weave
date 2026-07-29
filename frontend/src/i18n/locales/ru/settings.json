@@ -449,11 +449,11 @@
     "cap": {
       "chat": "Чат / LLM",
       "embedding": "Эмбеддинги",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
       "image_gen": "Генерация изображений",
       "moderation": "Модерация",
-      "reranker": "Reranker"
+      "reranker": "Reranker",
+      "tts": "Преобразование текста в речь",
+      "stt": "Преобразование речи в текст"
     },
     "add": {
       "aria": "Добавить модель",

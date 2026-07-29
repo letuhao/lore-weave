@@ -462,21 +462,21 @@
     },
     "edit": {
       "title": "Edit entity",
-      "description": "Rename or adjust this entity. Your edits lock future extractions from re-adding removed aliases.",
-      "conflict": "Another device updated this entity. Review the latest and try again.",
       "field": {
         "name": "Display name",
         "kind": "Kind",
         "aliases": "Aliases"
       },
-      "aliasesPlaceholder": "One alias per line",
-      "aliasesHint": "One alias per line. Extraction won't silently re-add removed variants after you save.",
-      "userEditedHint": "Saving marks this entity as user-edited.",
       "save": "Save",
       "saving": "Saving…",
       "cancel": "Cancel",
       "success": "Entity updated",
-      "failed": "Couldn't save: {{error}}"
+      "failed": "Couldn't save: {{error}}",
+      "description": "إعادة تسمية هذه الكيان أو تعديله. ستؤدي تعديلاتك إلى قفل عمليات الاستخراج المستقبلية لمنع إعادة إضافة الأسماء المستعارة التي تمت إزالتها.",
+      "conflict": "قام جهاز آخر بتحديث هذا الكيان. راجع أحدث التغييرات وحاول مرة أخرى.",
+      "aliasesPlaceholder": "اسم مستعار واحد في كل سطر",
+      "aliasesHint": "اسم مستعار واحد في كل سطر. لن يقوم الاستخراج بإعادة إضافة المتغيرات التي تمت إزالتها بصمت بعد حفظك للتغييرات.",
+      "userEditedHint": "يؤدي الحفظ إلى تحديد هذا الكيان ككيان تم تعديله بواسطة المستخدم."
     },
     "merge": {
       "title": "Merge entity",

@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "Xác nhận hành động",
     "batch_count": "{{count}} mục",
+    "warning": "Vui lòng xem lại thay đổi này trước khi áp dụng.",
     "warning_destructive": "Hành động này có tính phá hủy và lan truyền — vui lòng xác nhận.",
     "destructive_skipped": "{{count}} thao tác phá hủy sẽ bị BỎ QUA trừ khi bạn bật chúng ở trên.",
     "confirm": "Xác nhận",
@@ -242,8 +243,7 @@
     "cancelled": "Đã hủy",
     "reprice": "Chi phí đã tăng lên {{cost}} so với ước tính — hãy hỏi lại để xác nhận lại theo giá mới.",
     "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
-    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới.",
-    "warning": "Vui lòng xem lại thay đổi này trước khi áp dụng."
+    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới."
   },
   "batchConfirm": {
     "title": "Xác nhận {{count}} hành động trong một bước",
@@ -380,7 +380,7 @@
     "approved": "Đã cho phép — đang chạy ✓",
     "always_allowed": "Luôn cho phép — đang chạy ✓",
     "denied": "Đã từ chối",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "Không bao giờ được phép — bạn có thể hoàn tác điều này trong Cài đặt → Quyền"
   },
   "rack": {
     "label": "Ngữ cảnh",

@@ -449,11 +449,11 @@
     "cap": {
       "chat": "Chat / LLM",
       "embedding": "Embedding",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
       "image_gen": "Image Gen",
       "moderation": "Moderation",
-      "reranker": "Reranker"
+      "reranker": "Reranker",
+      "tts": "টেক্সট-টু-স্পিচ",
+      "stt": "স্পিচ-টু-টেক্সট"
     },
     "add": {
       "aria": "মডেল যোগ করুন",

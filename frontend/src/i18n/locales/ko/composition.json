@@ -428,6 +428,7 @@
   "pacing": "호흡",
   "canon_consistency": "설정",
   "dismiss": "무시",
+  "overrideSlipBlocked": "차단된 오버라이드: ‘만약에’ 버전의 오버라이드가 정사(canon) 값으로 되돌아갔습니다. 수락하기 전에 다시 생성하세요.",
   "overrideSlipExhausted": "재생성 한도 초과 후에도 변형이 지속됨 — 검토를 위해 표시되었습니다 (이제 수락이 차단되지 않음).",
   "overrideSlipDetail": "{{name}} ({{field}}): 예상값 “{{expected}}”, 실제값 “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: 델타 규칙 “{{rule}}”과 충돌함",
@@ -942,7 +943,6 @@
       "gap": "ギャップ"
     },
     "graph": {
-      "title": "Graph — composed of · precedes · variant of",
       "loading": "관계 로딩 중…",
       "error": "모티프 그래프를 불러올 수 없습니다.",
       "retry": "다시 시도",
@@ -959,7 +959,8 @@
       },
       "truncated": "{{cap}}개의 모티프를 표시 중입니다 — 더 많은 모티프를 보려면 티어별로 좁히거나 검색해 보세요.",
       "canvasLoading": "모티프 그래프를 불러오는 중…",
-      "canvasEmpty": "아직 그래프로 표시할 모티프가 없습니다 — 모티프를 생성하거나 가져온 뒤 연결해 보세요."
+      "canvasEmpty": "아직 그래프로 표시할 모티프가 없습니다 — 모티프를 생성하거나 가져온 뒤 연결해 보세요.",
+      "title": "그래프 — ·으로 구성됨 ·의 변형"
     },
     "suggest": {
       "button": "모티프 제안",
@@ -1092,6 +1093,5 @@
       "loading": "실행 로딩 중…",
       "back": "← 실행 목록으로 돌아가기"
     }
-  },
-  "overrideSlipBlocked": "차단된 오버라이드: ‘만약에’ 버전의 오버라이드가 정사(canon) 값으로 되돌아갔습니다. 수락하기 전에 다시 생성하세요."
+  }
 }

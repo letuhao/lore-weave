@@ -70,9 +70,9 @@
     "select_genre": "เลือกแนว",
     "select_kind": "เลือกประเภทเพื่อดูคุณลักษณะ",
     "empty_kinds": "ยังไม่มีประเภทที่เชื่อมโยงกับแนวนี้",
-    "empty_attrs": "No attributes for this kind × genre yet.",
     "count_kinds": "{{count}} ประเภท",
-    "count_attrs": "{{count}} คุณลักษณะ"
+    "count_attrs": "{{count}} คุณลักษณะ",
+    "empty_attrs": "ยังไม่มีคุณลักษณะสำหรับประเภทนี้"
   },
   "attr": {
     "editor_title": "คุณลักษณะ",

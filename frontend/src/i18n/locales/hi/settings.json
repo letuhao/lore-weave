@@ -449,11 +449,11 @@
     "cap": {
       "chat": "Chat / LLM",
       "embedding": "Embedding",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
       "image_gen": "Image Gen",
       "moderation": "Moderation",
-      "reranker": "Reranker"
+      "reranker": "Reranker",
+      "tts": "टेक्स्ट-टू-स्पीच",
+      "stt": "स्पीच-टू-टेक्स्ट"
     },
     "add": {
       "aria": "मॉडल जोड़ें",

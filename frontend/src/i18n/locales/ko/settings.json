@@ -449,11 +449,11 @@
     "cap": {
       "chat": "채팅 / LLM",
       "embedding": "임베딩",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
       "image_gen": "이미지 생성",
       "moderation": "모더레이션",
-      "reranker": "리랭커"
+      "reranker": "리랭커",
+      "tts": "텍스트 읽어주기",
+      "stt": "음성 인식"
     },
     "add": {
       "aria": "모델 추가",
