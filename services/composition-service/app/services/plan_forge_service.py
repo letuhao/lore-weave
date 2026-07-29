@@ -28,7 +28,11 @@ from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.works import WorksRepo
 from app.work_resolution import ensure_work
 from app.engine.plan_forge.compile import compile_artifacts, mock_pipeline_result
-from app.engine.plan_forge.coverage import build_section_map_from_text, load_coverage_context
+from app.engine.plan_forge.coverage import (
+    build_section_map_from_text,
+    load_coverage_context,
+    spec_coverage_board,
+)
 from app.engine.plan_forge.decompose import build_graph
 from app.engine.plan_forge.elaborate import consistency_audit
 from app.engine.plan_forge.eval_fidelity import evaluate_spec_fidelity, load_fidelity_config
@@ -1355,6 +1359,12 @@ class PlanForgeService:
         spec = spec_art.content
         gaps: list[dict[str, Any]] = []
         fidelity_score = None
+        # Computed unconditionally from the SPEC, so it survives everything below it: no source
+        # document (`doc_md` empty), no per-run rubric (`fidelity_score` None, `gaps` empty), or the
+        # own-document coverage raising. In each of those the old payload was `{"gaps": [], ...}` —
+        # "your plan is fine" delivered for "we computed nothing", which is the silent-degrade shape
+        # this whole cycle has been closing.
+        board = spec_coverage_board(spec)
         # 27 PF-19 — the gaps are against THIS RUN'S OWN document. Before this, "what is missing from
         # your plan" answered "what does your plan not have that the POC's novel does" — a fixture
         # constant with extra steps (DA-14), delivered to the user as advice.
@@ -1380,7 +1390,7 @@ class PlanForgeService:
             for r in run_rules(spec):
                 if not r["pass"]:
                     gaps.append({"path": r["rule"], "severity": "warn", "message": r.get("detail", "")})
-        return {"gaps": gaps, "fidelity_score": fidelity_score}
+        return {"gaps": gaps, "fidelity_score": fidelity_score, "coverage_board": board}
 
     # ── 27 PF-19 — fixture severing ─────────────────────────────────────────────────────────
     async def _document_markdown(self, book_id: UUID, run_id: UUID) -> str:

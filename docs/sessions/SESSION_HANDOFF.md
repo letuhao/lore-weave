@@ -132,8 +132,56 @@ spec : Seraphine · 4 arcs · 3 events · 1 mechanic · 2 variables
 Pinned by `test_plan_propose_spec_DEFAULTS_to_the_path_that_generalises`, which carries the 10/10
 measurement in its docstring so the next person to flip it back has to argue with the data.
 
-**Next:** build the read → coverage-board → review → ask loop (POC §6e/6f). Its shape is measured but
-it lives only in throwaway harnesses — nothing of it is in the repo.
+## ✅ THE COVERAGE BOARD — and one planned component deleted before it was built (2026-07-29)
+
+**Re-tested the plan's premise before continuing it, and one whole component fell away.** The POC was
+run when `rules` was the default, so every component it designed exists to feed the heading matcher.
+§6e/§6f specified a **cold-start reconstruction** — segment a headingless wall, classify by kind,
+re-emit `## N. Name` / `## Arc N:` behind a grounding gate — recorded as *"a bounded, known piece of
+work"*. Stripping every heading, bullet, pipe and newline from both corpora and feeding the wall
+straight to the production LLM propose returns the **full cast on both** (`Lâm Uyên · Tô Thanh Dao ·
+Lâm Trạch · Huyết Vô Thường`, `Odile Marchetti · Teodor "Ash" Aszkiewicz · Ruth Okonjo-Vance · The
+Passenger`) — the exact 4/4 target §6f set for it, reached without it. **Not built.** Full arm in
+[the POC spec §8](../specs/2026-07-28-poc-material-read.md).
+
+**What was built instead is `coverage.spec_coverage_board`** — the third instance of the same disease
+had to be rewritten, not extended. `build_section_map_from_text` matches `## 1.x` / `### Event N`,
+the POC fixture's heading shape; its own docstring records where that ended (*a user's "what is
+missing from my plan" was computed against the POC's novel*). The board is computed from the **spec**,
+which both propose paths produce for any document, so `0 variables` is a fact rather than an artefact
+of a matcher.
+
+Two design points, both from measurement rather than taste:
+
+- **`absent` vs `unknown`.** A kind is empty either because the author has not written it or because
+  the read failed and took it with it — identical in a count, and the second is a silent degrade. When
+  the ingest honesty block reports a failed read or unclassified sections, the board says `unknown`
+  and refuses to claim absence. The MCP description tells the model **not** to report an `unknown`
+  kind to the author as missing.
+- **It shows, it never concludes.** Each present kind carries up to six labels of what was actually
+  found. POC §6f measured why: all three lines the loop offered for the one "missing" kind were tone
+  and world rules, not state variables — obvious in a glance, invisible in a count.
+
+Wired into `plan_self_check` and **proven by effect**, live through the real `/mcp` endpoint:
+
+```
+character_seed      present  n=2   ['Seraphine', 'the man she loves']
+mechanics           present  n=1   ['Law of Displacement']
+planner_variables   present  n=2   ["Seraphine's Selfhood", ...]
+arc_overview        present  n=7   ['The Lantern Census', 'The First Cycle', ...]
+writing_principles  absent   n=0   []      fidelity_score: None
+open_questions      absent   n=0   []      gaps: 5
+```
+
+`'the man she loves'` is a description read as a character — which is the evidence-not-counts design
+earning itself in the first live call. The board is computed **before** every degrade branch, so it
+survives no-source-document, no-rubric and a raising coverage step; the old payload returned
+`{"gaps": [], "fidelity_score": None}` in all three, which reads as "your plan is fine" and means "we
+computed nothing".
+
+**Next, from POC §6e/6f — what genuinely remains:** quote-first search over the author's own text for
+an absent kind (no yes/no gate, no worked example — both measured to hurt), the review surface that
+shows what was retrieved for a keep-or-drop, and asking only what survives it.
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 

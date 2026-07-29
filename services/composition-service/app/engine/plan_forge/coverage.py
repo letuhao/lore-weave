@@ -99,6 +99,109 @@ def coverage_report_analyze(
     }
 
 
+#: Each planning kind, and where it lands in a spec. The kinds are `ingest.SECTION_KIND_MAP`'s, so
+#: the board speaks the same vocabulary as the honesty block the author already reads — but it is
+#: computed from the SPEC, never from the document's headings.
+#:
+#: `(kind, dotted path, how to label one item)`. A path of `arcs`/`events` is top-level; anything else
+#: is nested under `layers` or `charter` or `meta`.
+_BOARD_KINDS: list[tuple[str, str, str]] = [
+    ("character_seed", "layers.characters", "name"),
+    ("mechanics", "layers.mechanics", "name"),
+    ("planner_variables", "layers.variables", "name"),
+    ("arc_overview", "arcs", "title"),
+    ("writing_principles", "charter.style_constraints", ""),
+    ("open_questions", "meta.open_questions", ""),
+]
+
+_EVIDENCE_MAX = 6
+
+
+def _dig(spec: dict[str, Any], path: str) -> list[Any]:
+    node: Any = spec
+    for part in path.split("."):
+        if not isinstance(node, dict):
+            return []
+        node = node.get(part)
+    return node if isinstance(node, list) else []
+
+
+def spec_coverage_board(spec: dict[str, Any]) -> dict[str, Any]:
+    """What the read RECOVERED, per planning kind — and, when a kind is empty, whether that is a
+    fact about the book or a failure of the read.
+
+    ## Why this is computed from the spec
+
+    The coverage this module used to report came from `build_section_map_from_text`, which matches
+    `## 1.x` / `### Event N` — the POC fixture's heading shape. That is the same format-binding as
+    `ingest._parse_top_sections` (which read 6 of 17 real documents as nothing) and `validate.py`
+    (which confesses it in its own docstring). This module's own history records where it ends up:
+    *"every caller passed `story-plan-v1.md`: so a user's 'what is missing from my plan' was computed
+    against the POC's novel."*
+
+    A spec has no such binding. Both propose paths produce one, so `0 variables` is a **fact about
+    what was recovered**, where `no section matched '## 2.x'` was only ever a fact about the matcher.
+
+    ## Empty is two different things, and conflating them is the bug class
+
+    A kind can be empty because the author has not written it yet, or because the read failed and
+    took it with it. Those look identical in a count, and the second one is a silent degrade — the
+    same shape as the bug `_note_empty_read` closed on the rules path. So the board carries the
+    ingest honesty block through: when the read is flagged failed or left sections unclassified, an
+    absent kind is reported as `unknown` (*the read did not get far enough to tell you*), never as a
+    confident `absent`.
+
+    ## It shows, it does not conclude
+
+    Every present kind carries up to six *labels of what was actually found*, not just a number.
+    Measured reason (POC §6f): when the loop offered three retrieved lines for the one kind it
+    thought was missing, **all three were wrong** — tone and world rules, not state variables — and
+    the author drops them in two seconds. A count would have hidden that; the labels do not. This
+    function therefore never proposes a fix and never scores. It reports.
+    """
+    unread = ((spec.get("meta") or {}).get("ingest_unread") or {}) if isinstance(spec.get("meta"), dict) else {}
+    read_failed = bool(unread.get("empty_read"))
+    unclassified = list(unread.get("unclassified") or [])
+    # An unclassified section is material the matcher could not place — so anything it might have
+    # contained is unaccounted for, and "absent" would be an overstatement.
+    read_incomplete = read_failed or bool(unclassified)
+
+    kinds: list[dict[str, Any]] = []
+    for kind, path, label_key in _BOARD_KINDS:
+        items = _dig(spec, path)
+        if kind == "arc_overview":
+            items = list(items) + _dig(spec, "events")
+        labels: list[str] = []
+        for it in items[:_EVIDENCE_MAX]:
+            if isinstance(it, dict):
+                labels.append(str(it.get(label_key) or it.get("title") or it.get("name") or "").strip())
+            else:
+                labels.append(str(it).strip())
+        labels = [x for x in labels if x]
+        kinds.append({
+            "kind": kind,
+            "count": len(items),
+            # `unknown` is NOT a third flavour of absent — it is the honest refusal to claim either.
+            "status": "present" if items else ("unknown" if read_incomplete else "absent"),
+            "evidence": labels,
+        })
+
+    return {
+        "version": 1,
+        "kinds": kinds,
+        "recovered": [k["kind"] for k in kinds if k["status"] == "present"],
+        "absent": [k["kind"] for k in kinds if k["status"] == "absent"],
+        "unknown": [k["kind"] for k in kinds if k["status"] == "unknown"],
+        # Echoed, never re-derived: the author reviews the spec, and a spec that came out thin
+        # because half the document was unreadable must not look like a spec for a young book.
+        "read": {
+            "failed": read_failed,
+            "unclassified": unclassified,
+            "note": unread.get("note") or "",
+        },
+    }
+
+
 def coverage_report_spec(
     spec: dict[str, Any],
     section_map: list[dict[str, Any]],
@@ -108,7 +211,11 @@ def coverage_report_spec(
     gaps = list(fidelity.get("gaps") or [])
     return {
         **fidelity,
+        # Kept for the regression harness that still reads the POC fixture. It is a count of
+        # `## 1.x`-shaped headings and means nothing on a document not written that way — `board`
+        # is what a caller should read.
         "section_map_size": len(section_map),
+        "board": spec_coverage_board(spec),
         "gaps": gaps,
         "suggestions": suggest_fixes(gaps),
     }

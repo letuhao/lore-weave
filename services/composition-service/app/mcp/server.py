@@ -4979,7 +4979,14 @@ async def plan_validate(
 
 @mcp_server.tool(
     name="plan_self_check",
-    description="PlanForge: ranked gaps + fidelity score for a run's spec (no user pointing to fields). VIEW required.",
+    description=(
+        "PlanForge: what a run's spec is MISSING. Returns coverage_board — for each planning kind "
+        "(cast, mechanics, variables, arcs, writing principles, open questions) whether the read "
+        "recovered it, up to six examples of what it found, and status 'present'/'absent'/'unknown'. "
+        "'unknown' means the read itself failed or left sections unclassified, so absence cannot be "
+        "claimed — do NOT report an 'unknown' kind to the author as missing. Also returns gaps + "
+        "fidelity_score, both of which are empty/None unless the run has its own rubric. VIEW required."
+    ),
     meta=require_meta("R", "book", synonyms=["self check plan", "plan gaps", "what is missing"], tool_name="plan_self_check"),
 )
 async def plan_self_check(

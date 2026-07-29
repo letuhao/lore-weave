@@ -60,6 +60,13 @@ def run_self_check_on_document(
     suggestions = suggest_fixes(ranked_gaps)
     return {
         "coverage": coverage,
+        # Promoted to the top level because it is the only part of this payload that says something
+        # about the AUTHOR'S book rather than about a rubric. `fidelity` is `None` without a per-run
+        # rubric (correctly — there is no honest score against someone else's), `ranked_gaps` and
+        # `suggestions` are then empty, and `coverage.section_map_size` counts `## 1.x` headings most
+        # real documents do not have. Without the board, `plan_self_check` answers "what is missing
+        # from my plan" with nothing at all.
+        "board": coverage.get("board"),
         "fidelity": fidelity,
         "audit": audit,
         "ranked_gaps": ranked_gaps,
