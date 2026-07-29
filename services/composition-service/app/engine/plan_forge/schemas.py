@@ -110,9 +110,20 @@ _EVENT = _obj({
 
 
 #: PlanAnalyze v1 — step 1, the read of the author's document.
+#: The cast, at the ANALYZE step.
+#:
+#: It was NOT here, and that was a structural information loss rather than a model failure: analyze
+#: emitted no characters at all, so `materialize` had to reconstruct the cast from
+#: `consistency_anchors` — meaning a character survived the boundary only if they happened to have an
+#: anchor line. Measured on the Chinese corpus: three of four characters came through, and the one
+#: lost was 无名者, "the nameless one", whose entire point is that the document describes him by
+#: absence. He had no anchor, so he had no way across.
+_ANALYZE_CHAR = _obj({"name": _STR, "role": _STR, "notes": _STR}, ["name"])
+
 ANALYZE_SCHEMA: dict[str, Any] = _obj({
     "version": {"type": "integer"},
     "document_summary": _STR,
+    "characters": _arr(_ANALYZE_CHAR),
     "consistency_anchors": _STRS,
     "variables": _arr(_VARIABLE),
     "mechanics": _arr(_MECHANIC),
