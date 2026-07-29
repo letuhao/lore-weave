@@ -183,7 +183,23 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # User-facing JWT auth (crates/service-http::require_user; roleplay-service is
 # the first consumer). HS256, `sub` claim → user_id — mirrors book-service.
-jsonwebtoken = "10"
+# A CRYPTO PROVIDER FEATURE IS NOT OPTIONAL — this was declared bare and the
+# result was not a flaky test, it was auth that could not work at all.
+#
+# jsonwebtoken 10 has `default = ["use_pem"]` and NO provider, so the first
+# crypto call panics: "Could not automatically determine the process-level
+# CryptoProvider from jsonwebtoken crate features." Six `service-http::auth`
+# tests had been red on that panic since the 10.x bump, mentioned as
+# "pre-existing" in three session handoffs and tracked in none — and the tests
+# were the symptom, not the disease: `auth.rs`'s middleware calls `decode` on
+# every request, so ANY binary linking service-http would panic on its first
+# token verification. A permanently-red test is how a production break becomes
+# wallpaper.
+#
+# `rust_crypto` over `aws_lc_rs`: pure Rust, no cmake/nasm on the build host, and
+# it covers HS256 (`hmac` + `sha2`) which is what `Validation::new(Algorithm::HS256)`
+# uses. Revisit only with a measurement — aws-lc-rs is faster and needs a toolchain.
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 # Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
 chrono = { version = "0.4", features = ["serde"] }
 
