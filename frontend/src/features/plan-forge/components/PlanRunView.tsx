@@ -170,17 +170,62 @@ export function PlanRunView({
 
       {validation && (
         <div data-testid="plan-validation">
-          <p className="mb-1 text-[10px] uppercase text-muted-foreground">
-            Validate · {validation.passed ? 'passed' : 'failed'} · fidelity {validation.fidelity_score != null ? validation.fidelity_score.toFixed(2) : '—'}
-          </p>
-          <ul className="space-y-0.5">
-            {validation.rules.map((r) => (
+          {/* Three states, not two. A rule that does not APPLY to this book gets no verdict — a
+              vacuous ✓ (pa_not_realm on a book with no PA) misleads as much as a meaningless ✗
+              (vars_four on a book that never had PA/HA/CD/THR). And advisory rules are separated
+              from the blockers, because the whole complaint about this button was that five ✗ of
+              equal weight gave the author no way to tell which one was theirs to fix. */}
+          {(() => {
+            const rules = validation.rules;
+            const na = rules.filter((r) => r.applicable === false);
+            const rest = rules.filter((r) => r.applicable !== false);
+            const blockers = rest.filter((r) => (r.tier ?? 'hard') === 'hard' && !r.passed);
+            const advisory = rest.filter((r) => r.tier === 'advisory');
+            const okHard = rest.filter((r) => (r.tier ?? 'hard') === 'hard' && r.passed);
+            const row = (r: typeof rules[number], muted = false) => (
               <li key={r.id} className="rounded bg-muted/40 px-2 py-0.5">
-                <span className={r.passed ? 'text-success' : 'text-destructive'}>{r.passed ? '✓' : '✗'}</span>{' '}
-                <span className="text-muted-foreground">{r.id}</span> — {r.message}
+                <span className={muted ? 'text-muted-foreground' : r.passed ? 'text-success' : 'text-destructive'}>
+                  {muted ? '—' : r.passed ? '✓' : '✗'}
+                </span>{' '}
+                <span className="text-muted-foreground">{r.id}</span>
+                {r.message ? <> — {r.message}</> : null}
               </li>
-            ))}
-          </ul>
+            );
+            return (
+              <>
+                <p className="mb-1 text-[10px] uppercase text-muted-foreground">
+                  Validate · {validation.passed ? 'passed' : `${blockers.length} blocker(s)`} · fidelity{' '}
+                  {validation.fidelity_score != null ? validation.fidelity_score.toFixed(2) : '—'}
+                </p>
+                {blockers.length > 0 && (
+                  <ul data-testid="plan-validate-blockers" className="space-y-0.5">
+                    {blockers.map((r) => row(r))}
+                  </ul>
+                )}
+                {okHard.length > 0 && (
+                  <ul data-testid="plan-validate-passed" className="space-y-0.5">{okHard.map((r) => row(r))}</ul>
+                )}
+                {advisory.length > 0 && (
+                  <>
+                    <p className="mt-1 text-[10px] uppercase text-muted-foreground">Advisory — never blocks</p>
+                    <ul data-testid="plan-validate-advisory" className="space-y-0.5">
+                      {advisory.map((r) => row(r))}
+                    </ul>
+                  </>
+                )}
+                {na.length > 0 && (
+                  <>
+                    <p className="mt-1 text-[10px] uppercase text-muted-foreground">
+                      Not applicable to this book
+                    </p>
+                    <ul data-testid="plan-validate-na" className="space-y-0.5">
+                      {na.map((r) => row(r, true))}
+                    </ul>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

@@ -50,11 +50,22 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
     # intentionally assert these SAME conditions on the fixture). A genuinely
     # general validator (structural checks that apply to any novel-system
     # spec) is real follow-up work, not a same-session rewrite.
+    # D-PLANFORGE-VALIDATE-NOT-APPLICABLE — demoting these to `advisory` was not enough, because
+    # they were still REPORTED as verdicts. A rule about a NAMED ENTITY has nothing to say about a
+    # book that has no such entity: `vars_four ✗ codes=[]` accuses an author of missing four
+    # variables from someone else's novel, and `pa_not_realm ✓` congratulates every book that has no
+    # PA at all. A vacuous ✓ is exactly as dishonest as a meaningless ✗ — both are the tool claiming
+    # to have checked something it never looked at.
+    #
+    # So they now carry `applicable`. Not applicable ⇒ no verdict, the same shape as `unknown` on the
+    # coverage board and `unavailable` in the material loop: the machine says what it did NOT do.
     variables = spec.get("layers", {}).get("variables", [])
     codes = {v["code"] for v in variables}
+    poc_codes = codes & {"PA", "HA", "CD", "THR"}
     ok_vars = codes >= {"PA", "HA", "CD", "THR"}
     results.append(
-        {"rule": "vars_four", "pass": ok_vars, "detail": f"codes={sorted(codes)}", "tier": "advisory"}
+        {"rule": "vars_four", "pass": ok_vars, "detail": f"codes={sorted(codes)}",
+         "tier": "advisory", "applicable": bool(poc_codes)}
     )
 
     pa_not_realm = True
@@ -81,7 +92,8 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
     # coupling. For any book that does not declare a `PA`, it passes VACUOUSLY — there are no PA
     # deltas to inspect — so as a hard compile gate it was pure theatre: it could only ever block the
     # POC, and only for a mistake the POC's own author defined.
-    results.append({"rule": "pa_not_realm", "pass": pa_not_realm, "detail": "", "tier": "advisory"})
+    results.append({"rule": "pa_not_realm", "pass": pa_not_realm, "detail": "", "tier": "advisory",
+                    "applicable": "PA" in codes})
 
     arc2 = next((a for a in spec.get("arcs", []) if a["id"] == "arc_2"), None)
     arc2_ok = arc2 is not None and arc2.get("arc_kind") == "discovery"
@@ -91,6 +103,9 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             "pass": arc2_ok,
             "detail": arc2.get("theme", "") if arc2 else "missing",
             "tier": "advisory",
+            # A book with no arc literally called `arc_2` is not failing this rule; the rule is about
+            # a different book.
+            "applicable": arc2 is not None,
         }
     )
 
@@ -110,7 +125,7 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
         {
             "rule": "anchors_min",
             "pass": len(anchors) >= 4,
-            "detail": f"count={len(anchors)}",
+            "detail": f"count={len(anchors)} (the >=4 threshold is the POC fixture's, not a standard)",
             "tier": "advisory",
         }
     )
@@ -173,7 +188,8 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
         if "tiền kiếp" in syn and "giải thích" in syn:
             thr_fail = True
     results.append(
-        {"rule": "thr_no_early_explain", "pass": not thr_fail, "detail": "", "tier": "advisory"}
+        {"rule": "thr_no_early_explain", "pass": not thr_fail, "detail": "", "tier": "advisory",
+         "applicable": "THR" in codes}
     )
 
     open_q = spec.get("meta", {}).get("open_questions", [])
@@ -181,7 +197,10 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
         {
             "rule": "open_questions_preserved",
             "pass": len(open_q) >= 6,
-            "detail": f"count={len(open_q)}",
+            # `>= 6` is the POC's own checklist length, not a fact about novels. An author with one
+            # open question is not doing it wrong. Reported as information; the threshold itself is
+            # someone else's and is why this can never be a gate.
+            "detail": f"count={len(open_q)} (the >=6 threshold is the POC fixture's, not a standard)",
             "tier": "advisory",
         }
     )

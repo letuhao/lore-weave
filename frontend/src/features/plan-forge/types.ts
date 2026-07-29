@@ -77,6 +77,13 @@ export interface PlanValidateRule {
   id: string;
   passed: boolean;
   message: string;
+  /** `hard` gates compile; `advisory` is reported and never blocks. The backend has always honoured
+   *  this and the transport used to DROP it, so the panel rendered a fixture rule about another
+   *  novel's variable exactly like "your plan has no events". */
+  tier?: 'hard' | 'advisory';
+  /** False ⇒ the rule is about an entity this book does not have. No verdict: a vacuous ✓ is as
+   *  dishonest as a meaningless ✗. */
+  applicable?: boolean;
 }
 export interface PlanValidateReport {
   passed: boolean;

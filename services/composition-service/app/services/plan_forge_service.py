@@ -75,7 +75,12 @@ def _hard_rules_pass(rules_out: list[dict[str, Any]]) -> bool:
     docs/eval/plan-forge-story-grid-poc-2026-07-06.md) are reported but must
     NEVER block validate()/compile() -- only hard tier (the default) gates.
     """
-    return all(r["pass"] for r in rules_out if r.get("tier", "hard") == "hard")
+    return all(
+        r["pass"] for r in rules_out
+        # …and a rule that does not APPLY cannot fail. A hard rule scoped to an entity this book does
+        # not have would otherwise block a compile over another novel's variable.
+        if r.get("tier", "hard") == "hard" and r.get("applicable", True)
+    )
 
 
 def _work_project_id(work: CompositionWork) -> UUID:
@@ -845,8 +850,18 @@ class PlanForgeService:
         rules_out = run_rules(spec, package)
         passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
+        # CARRY THE TIER. `_hard_rules_pass` above honours it, and then this transport dropped it —
+        # so the panel received eleven flat pass/fail rows and rendered a fixture rule about another
+        # novel's PA variable exactly like "your plan has no events". The author could not tell which
+        # of five ✗ was theirs to fix, which is why the button reads as useless.
+        # `applicable: False` means the rule is about an entity this book does not have; it gets no
+        # verdict at all rather than a vacuous ✓ or a meaningless ✗.
         golden_rules: list[dict[str, Any]] = [
-            {"id": r["rule"], "passed": r["pass"], "message": r.get("detail", "")}
+            {
+                "id": r["rule"], "passed": r["pass"], "message": r.get("detail", ""),
+                "tier": r.get("tier", "hard"),
+                "applicable": r.get("applicable", True),
+            }
             for r in rules_out
         ]
         all_pass = passed_rules
