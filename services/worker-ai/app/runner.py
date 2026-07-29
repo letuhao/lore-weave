@@ -30,6 +30,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
+from loreweave_extraction.name_normalize import normalize_entity_name
 from loreweave_jobs import JobStatus, emit_job_event_safe
 
 # This module otherwise reads os.environ directly (see `_decouple_enabled`), but the
@@ -1672,7 +1673,7 @@ class CanonIndex:
             for surface in (name, *(aliases or ())):
                 if not surface:
                     continue
-                low = surface.lower()
+                low = normalize_entity_name(surface)
                 # A surface form can belong to more than one entity (two entities
                 # legitimately share an alias). The regex checked every entity's own
                 # forms, so BOTH were selected; a form->single-name map would silently
@@ -1697,8 +1698,15 @@ class CanonIndex:
         return self._names
 
     def present(self, text: str) -> set[str]:
-        """Canonical names whose name OR any alias appears in `text`."""
-        low = text.lower()
+        """Canonical names whose name OR any alias appears in `text`.
+
+        ML-2: normalized through the SAME spine `build` uses, and that pairing is the
+        whole correctness condition. Folding only the index turned every traditional-Han
+        name into its simplified form while the text stayed traditional, so 土耳其軍樂隊 /
+        黃照芳 stopped being found at all — caught by `test_known_entities_scale`, which
+        plants exactly those. One side folded is worse than neither.
+        """
+        low = normalize_entity_name(text)
         n = len(low)
         by_form = self._by_form
         lengths_by_first = self._lengths_by_first
@@ -1781,12 +1789,12 @@ def select_known_entities(
     for name in canon.names:
         if name not in present:
             continue
-        if name.casefold() in seen:
+        if normalize_entity_name(name) in seen:
             continue
         if len(out) >= cap:
             dropped += 1
             continue
-        seen.add(name.casefold())
+        seen.add(normalize_entity_name(name))
         out.append(name)
     return out, dropped
 

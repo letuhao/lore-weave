@@ -14,6 +14,8 @@ import json
 import re
 from typing import Any, Awaitable, Callable
 
+from loreweave_extraction.name_normalize import normalize_entity_name
+
 from app.services.glossary_build.prompts import (
     RELATION_TYPES,
     batch_messages,
@@ -69,7 +71,7 @@ async def run_planner(
     )
     if not isinstance(raw, list):
         return []
-    existing_fold = {n.strip().casefold() for n in existing_names}
+    existing_fold = {normalize_entity_name(n) for n in existing_names}
     seen: set[str] = set()
     out: list[dict] = []
     for row in raw:
@@ -79,7 +81,7 @@ async def run_planner(
         kind = str(row.get("kind") or "").strip()
         if not name or kind not in kinds:
             continue
-        fold = name.casefold()
+        fold = normalize_entity_name(name)
         if fold in existing_fold or fold in seen:
             continue
         seen.add(fold)
@@ -159,7 +161,7 @@ def _clean_entity(built: Any, *, name: str, kind: str,
             continue
         target = str(r.get("target_name") or "").strip()
         rtype = r.get("type")
-        if target and rtype in RELATION_TYPES and target.casefold() != name.casefold():
+        if target and rtype in RELATION_TYPES and normalize_entity_name(target) != normalize_entity_name(name):
             relations.append({"target_name": target, "type": rtype,
                               "note": str(r.get("note") or "")[:300]})
     return {"name": name, "kind": kind, "attributes": attrs, "relations": relations,

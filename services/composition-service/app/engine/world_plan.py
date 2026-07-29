@@ -25,6 +25,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from loreweave_extraction.name_normalize import normalize_entity_name
 from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
@@ -245,7 +246,7 @@ def parse_world(content: str) -> list[ProposedWorldEntity]:
             kind = "concept"
         # Dedupe on (name, kind): the same word can legitimately be a place AND a faction
         # ("Ironhold" the fortress, "Ironhold" the house). Deduping on name alone would lose one.
-        key = (name.strip().casefold(), kind)
+        key = (normalize_entity_name(name), kind)
         if key in seen:
             continue
         seen.add(key)

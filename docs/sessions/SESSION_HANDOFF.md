@@ -1,5 +1,47 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🌏 language-bias-gate is GREEN — and a red gate proved its own point (2026-07-30)
+
+The gate had 19 NEW offenders on top of its 41-row baseline, so it failed on every run and
+therefore **protected nothing** — a new violation was indistinguishable from the backlog.
+Proof: **two of the 19 were lines I had written myself hours earlier**
+(`json.dumps(payload.get("threads"))` in `arc_template_repo.upsert_translation`, carrying
+*translated prose*), and they hid in the noise of my own commit.
+
+**16 fixed · 3 baselined with a stated reason · 0 new.**
+
+- **ML-5 (4 real):** the arc-translation JSONB write (mine), the chapter-prose draft write,
+  the MCP task payload, and — a **correctness** bug, not a size one — the chat disclosure
+  screen, which read its input through `json.dumps` and so saw a Vietnamese or Chinese seed
+  as \uXXXX escapes and missed every pattern it looks for.
+- **ML-3 (2 real):** a 4-or-more word-character regex over author notes. It *looks*
+  language-neutral (that class matches Han) and is dead for every script without spaces: a
+  Chinese anchor returns ONE token, so the overlap could only fire on a byte-identical note.
+  Replaced with **`script_tokens`** — word tokens + per-run character n-grams (both widths 2
+  and 3, since most Chinese words are two characters) — added to
+  `loreweave_extraction.name_normalize` per SDK-first, with 9 tests.
+  `loreweave_crypto._tokens` is the same shape and deliberately NOT merged: its widths and
+  containment are frozen by an existing encrypted index, so changing it is a migration.
+- **ML-2 (10 real):** bare `casefold()` to the shared spine. Verified **by effect**, not by
+  a green suite: 沈硯 now matches 沈砚 and Ｕｙển matches Uyển, while má still differs from
+  ma (diacritics preserved, per ML-2).
+- **Baselined (3), each a false positive on INTENT:** two digests over machine values
+  (ids/versions/ints — `ensure_ascii` changes the bytes and nothing else, so flipping it
+  would invalidate every stored fingerprint for no gain; one of them is also the concurrent
+  session's most active file), and a fold of an MCP **tool name**, an ASCII identifier from
+  our own registry.
+
+### Two of my own bugs, both caught by tests rather than by me
+
+1. The patch script inserted an import **inside a parenthesised import** — 509 collection
+   errors. A "last top-level import" regex matched a continuation line.
+2. **A one-side-only Han fold.** I folded the canon index and left `present(text)` on a bare
+   `.lower()`, so every traditional-Chinese name became simplified on one side only and
+   土耳其軍樂隊 / 黃照芳 stopped being found at all. `test_known_entities_scale` plants
+   exactly those. **One side folded is worse than neither** — and this was the pairing hazard
+   I named at design review and then did not check for that file.
+
+
 ## 🚧 CO-WRITER: the rail named a tool the platform had made unreachable (2026-07-30)
 
 Full write-up + refactor proposal: [`docs/specs/2026-07-30-chat-service-control-plane-refactor.md`](../specs/2026-07-30-chat-service-control-plane-refactor.md)

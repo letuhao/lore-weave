@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_extraction.name_normalize import normalize_entity_name
 from loreweave_llm import ReasoningDirective, directive_from_parts
 
 from app.clients.llm_client import LLMClient
@@ -906,7 +907,7 @@ async def _known_entities(pool: asyncpg.Pool, book_id: UUID) -> dict[str, list[s
                 continue
             kind = str(row.get("kind_code") or row.get("kind") or "").strip().casefold()
             kind = kind or _KIND_WHEN_UNSTATED
-            folded = name.casefold()
+            folded = normalize_entity_name(name)
             if folded in seen.setdefault(kind, set()):
                 continue
             seen[kind].add(folded)
@@ -980,7 +981,7 @@ async def _resolve_cast_entity_ids(
     out: list[dict[str, Any]] = []
     for m in members:
         name = str(m.get("name") or "").strip()
-        eid = by_name.get(name.casefold())
+        eid = by_name.get(normalize_entity_name(name))
         if eid:
             resolved += 1
             out.append({**m, "entity_id": eid})

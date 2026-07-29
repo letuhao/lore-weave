@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import logging
 import re
+
+from loreweave_extraction.name_normalize import script_tokens
 from typing import Any
 
 from typing import TYPE_CHECKING
@@ -631,11 +633,12 @@ def propose_spec(
     # vocabulary. Generalised: a note is linked to any variable code THIS document declared, and to
     # the charter when it echoes one of THIS document's own anchors.
     links: list[dict[str, Any]] = []
-    anchor_words = {
-        w.casefold()
-        for a in anchors
-        for w in re.findall(r"\w{4,}", a)
-    }
+    # ML-3: this used a 4-or-more word-character regex, which LOOKED language-neutral
+    # (that class does match Han) and was dead for every script without spaces: a Chinese
+    # anchor comes back as ONE token spanning the whole clause, so the intersection below
+    # could only ever fire on a byte-identical note. `script_tokens` adds per-run character
+    # n-grams, which is what makes an overlap test exist at all for those authors.
+    anchor_words = {t for a in anchors for t in script_tokens(a)}
     for ev in events:
         for nd in ev.get("var_deltas", []):
             links.append({
@@ -653,7 +656,7 @@ def propose_spec(
                         "kind": "event_foreshadows",
                         "note": note,
                     })
-            note_words = {w.casefold() for w in re.findall(r"\w{4,}", note)}
+            note_words = script_tokens(note)
             if anchor_words and note_words & anchor_words:
                 links.append({
                     "from": ev["id"],

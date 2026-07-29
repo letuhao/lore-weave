@@ -96,7 +96,10 @@ class PgTaskStore(TaskStore):
             RETURNING {_COLS}
             """,
             tid, descriptor, _as_uuid(owner_user_id),
-            json.dumps(payload or {}), json.dumps(input_requests) if input_requests is not None else None,
+            # ML-5: a task payload carries the author's own words (a propose body, an
+            # input request's prompt), so it is serialized unescaped.
+            json.dumps(payload or {}, ensure_ascii=False),
+            json.dumps(input_requests, ensure_ascii=False) if input_requests is not None else None,
             ttl_ms, poll_interval_ms,
         )
         return self._row_to_task(row)

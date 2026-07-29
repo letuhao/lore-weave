@@ -643,8 +643,11 @@ class ArcTemplateRepo:
             """,
             arc_id, language_code,
             payload.get("name") or "", payload.get("summary") or "",
-            json.dumps(payload.get("threads") or []),
-            json.dumps(payload.get("arc_roster") or []),
+            # ML-5: this payload IS translated prose — thread labels and roster
+            # constraints in the target language. Escaped, a Japanese label stores as
+            # six bytes per character and reads back as \uXXXX in every log and dump.
+            json.dumps(payload.get("threads") or [], ensure_ascii=False),
+            json.dumps(payload.get("arc_roster") or [], ensure_ascii=False),
             source_content_hash, translated_by,
         )
         # asyncpg returns "INSERT 0 <n>" — n == 0 means the authored guard held.

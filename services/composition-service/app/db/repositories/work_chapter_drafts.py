@@ -40,7 +40,11 @@ def _row(row: asyncpg.Record) -> WorkChapterDraft:
 def _dump(body: Any) -> str:
     # asyncpg has no default codec for a Python dict → JSONB; serialize ourselves
     # (the same reason DerivativesRepo json.dumps its override deltas).
-    return json.dumps(body)
+    # ML-5: `body` is the chapter's PROSE. Escaping inflates every non-ASCII character
+    # six-fold on the wire to Postgres and makes the payload unreadable in any log or
+    # psql dump — for a manuscript written in Vietnamese or Chinese that is the whole
+    # document.
+    return json.dumps(body, ensure_ascii=False)
 
 
 class WorkChapterDraftsRepo:

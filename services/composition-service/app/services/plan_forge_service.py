@@ -52,6 +52,8 @@ from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
 
+from loreweave_extraction.name_normalize import normalize_entity_name
+
 logger = logging.getLogger(__name__)
 
 # 27 PF-19 — the POC fixture is REGRESSION-HARNESS-ONLY from here on (09 §8b). No production path
@@ -1198,7 +1200,7 @@ class PlanForgeService:
             name = (member.get("name") or "").strip()
             if not role or not name:
                 continue
-            entity_id = roster.get(name.casefold())
+            entity_id = roster.get(normalize_entity_name(name))
             if not entity_id:
                 unbound.append(name)
                 continue
@@ -1235,7 +1237,7 @@ class PlanForgeService:
         )
 
     async def _roster_ids_by_name(self, book_id: UUID, run: PlanRun) -> dict[str, UUID]:
-        """name.casefold() → glossary_entity_id, from the applied seed proposal.
+        """normalize_entity_name(name) → glossary_entity_id, from the applied seed proposal.
 
         Read from the proposal's APPLY result, not from glossary directly: composition reads cast
         through the knowledge-gateway roster, never glossary (INV-KAL). The apply step is what
@@ -1260,7 +1262,7 @@ class PlanForgeService:
                 eid = row.get("entity_id")
                 if name and eid:
                     try:
-                        out[name.casefold()] = UUID(str(eid))
+                        out[normalize_entity_name(name)] = UUID(str(eid))
                     except (ValueError, TypeError):
                         continue
         return out
