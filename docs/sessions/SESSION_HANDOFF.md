@@ -1,5 +1,46 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🚧 CO-WRITER: the rail named a tool the platform had made unreachable (2026-07-30)
+
+Full write-up + refactor proposal: [`docs/specs/2026-07-30-chat-service-control-plane-refactor.md`](../specs/2026-07-30-chat-service-control-plane-refactor.md)
+
+A real-user run on a brand-new book. The author asks the co-writer to set up the book's
+categories. The model reasons correctly, names the right tool — and emits **40,597 characters of
+one repeated paragraph** until the author hits Stop.
+
+**Two correct mechanisms cancelled each other.** `filter_intent_gated_setup_tools` (N5a-FULL)
+removes `glossary_adopt_standards` from the turn catalog — *"un-seeded, un-findable, AND
+un-loadable"* — so the co-writer can't rebuild a newcomer's ontology on an unrelated turn. The
+pinned `vision-to-book` rail renders its recipe **by tool name** and computes
+`next=glossary_adopt_standards`. One says *call this*; the other says *this does not exist*.
+
+Three nets that exist for exactly this all missed: `D-RAIL-NEXT-STEP-EXEMPT` is computed **once at
+turn start** (the rail advanced mid-turn); the step-runner only fires after *"a rail step tool
+actually succeeded this turn"* (so it cannot rescue a model that **cannot start**); and
+`ReasoningLoopDetector`'s `max_period=4` cannot see a ~10-segment paragraph cycle.
+
+**Shipped:**
+- a pinned rail's step tools are **exempt from the capability floor** — fresh *and* resume paths
+  (dropping resume would strand a rail at its first confirm gate: the WS-3 failure, re-entered);
+- an off-surface-but-real tool **auto-loads** instead of failing silently;
+- **withheld ≠ invented** — a policy-withheld tool gets an honest "needs your go-ahead", a
+  genuinely fake one gets "you invented it, re-check your reasoning" + nearest real names. (The
+  first draft of this guard would have told the model it hallucinated a tool that *exists* — a new
+  mechanism contradicting an old one, which is the whole disease.)
+- the rail **re-arms its step tools when it advances mid-turn**.
+
+**Measured, same prompt:** ↓80 output tokens (was 40,597 chars of loop) → a proper Confirm card →
+after approval, **4 kinds in the DB** (`character`, `item`, `terminology`, `unknown`). First time
+this session the co-writer changed the book's state through conversation. **1,928 tests pass.**
+
+### Deferred (new)
+
+| ID | What | Gate | Target |
+|---|---|---|---|
+| `D-CHAT-CONTROL-PLANE` | `stream_service.py` is 7,074 lines with **16 independent caps/breakers/gates**, no shared lifecycle, precedence implicit in code order. Needs a **tool-availability SSOT** (8 places answer "is this tool available?" today), a **`TurnState`** owning rail-cursor/active-tools/counters, guards lifted to policies over it, and **cross-mechanism invariant tests** (*"a pinned rail's step tools are always reachable"* — the test that fails today). Plus the anti-rot rule: a new control mechanism must declare what it blocks and register as an availability stage. | #2 large/structural | before the next feature that adds a control mechanism to the turn loop |
+
+---
+
 ## 🗂 BATCH TRANSLATE — the engine's 50-item ceiling is now reachable (2026-07-30)
 
 The engine has always taken 1..50 items per job and the MCP tool has always taken an

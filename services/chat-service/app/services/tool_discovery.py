@@ -452,16 +452,36 @@ SETUP_INTENT_SKILL = "glossary_shaping"
 
 
 def filter_intent_gated_setup_tools(
-    catalog: list[dict], injected_skill_codes: list[str] | set[str],
+    catalog: list[dict],
+    injected_skill_codes: list[str] | set[str],
+    rail_step_tools: "set[str] | frozenset[str] | None" = None,
 ) -> list[dict]:
     """Drop the high-impact world-setup tools from a turn catalog UNLESS the turn is
     world-setup intent (`glossary_shaping` injected). Applied at catalog assembly so the
     tool is simultaneously un-seeded, un-findable (find_tools), AND un-loadable (tool_load)
     — closing the tool_load leak that per-search-function filters missed. Returns the catalog
-    unchanged on a setup turn; returns a filtered copy otherwise. N5a-FULL."""
+    unchanged on a setup turn; returns a filtered copy otherwise. N5a-FULL.
+
+    ``rail_step_tools`` — the step tools of a workflow rail PINNED for this turn. They are
+    exempt, and the exemption is load-bearing rather than a loosening:
+
+    A pinned rail is an authored, ordered recipe rendered into the prompt BY TOOL NAME. When
+    this filter removed a tool the rail names, the two halves of the same intent signal came
+    apart — the guidance said "call ``glossary_adopt_standards``" while the capability floor
+    had made that name unseedable, unfindable AND unloadable. The model then did the only
+    thing left: it reasoned correctly, reached for the right tool, could not have it, and
+    retried forever (measured on the Mị Đế dogfood — 40,597 characters of one repeated
+    paragraph before the author hit Stop). The comment above this gate already states the
+    principle it needs — *"guidance and capability move as ONE signal"* — a pinned rail IS
+    that signal, so honour it here too rather than only via ``glossary_shaping``.
+
+    Scope stays tight: only the steps of a rail actually pinned this turn are exempt, so an
+    unrelated "write chapter 1" turn still cannot reach these tools — which is the over-reach
+    N5a-FULL exists to stop."""
     if SETUP_INTENT_SKILL in injected_skill_codes:
         return catalog
-    return [td for td in catalog if tool_name(td) not in INTENT_GATED_SETUP_TOOLS]
+    _exempt = INTENT_GATED_SETUP_TOOLS - set(rail_step_tools or ())
+    return [td for td in catalog if tool_name(td) not in _exempt]
 
 
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:

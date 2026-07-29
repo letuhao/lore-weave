@@ -2265,25 +2265,30 @@ async def _stream_with_tools(
                 # and loop ONE more pass. Wholly best-effort — any failure falls through to the
                 # normal end-of-turn below, byte-identical to pre-P-1.
                 _verdict = None
-                if (
-                    settings.rail_driver_enabled
-                    and rail_specs
-                    and rail_book_id
-                    and rail_grant_ok
-                    and rail_redrive_count < RAIL_REDRIVE_CAP
-                    and not last_iter
-                    # G2: the deploy strength "off" disables the drive entirely (the pre-drive rail).
-                    and settings.rail_enforcement != "off"
+                # ONE evaluation of the guards, named — so the log below can never disagree with
+                # the branch it explains. (Duplicating the condition to log it is how two copies
+                # of one decision drift apart.)
+                _step_tools_hit = sorted(set(turn_succeeded) & _rail_all_step_tools)
+                # In flight = a rail tool succeeded THIS turn (the model chose to start it),
+                # OR this is a resume that suspended mid-rail (the confirm executes off the
+                # backend chokepoint, so it never lands in turn_succeeded — but the rail is
+                # unambiguously in flight, so the driver must be allowed to continue it).
+                _rail_guards = {
+                    "driver_on": bool(settings.rail_driver_enabled),
+                    "have_specs": bool(rail_specs),
+                    "have_book": bool(rail_book_id),
+                    "grant_ok": bool(rail_grant_ok),
+                    "redrive_left": rail_redrive_count < RAIL_REDRIVE_CAP,
+                    "not_last_iter": not last_iter,
+                    # G2: the deploy strength "off" disables the drive entirely (pre-drive rail).
+                    "strength_on": settings.rail_enforcement != "off",
                     # GOV-13 escape hatch: an explicit "skip the plan" / "just write" releases the
                     # hold this turn — governance serves the author, it never imprisons them.
-                    and not rail_user_abandoned
-                    and write_passes < max_iterations - 1
-                    # In flight = a rail tool succeeded THIS turn (the model chose to start it),
-                    # OR this is a resume that suspended mid-rail (the confirm executes off the
-                    # backend chokepoint, so it never lands in turn_succeeded — but the rail is
-                    # unambiguously in flight, so the driver must be allowed to continue it).
-                    and (rail_in_flight or (set(turn_succeeded) & _rail_all_step_tools))
-                ):
+                    "not_abandoned": not rail_user_abandoned,
+                    "passes_left": write_passes < max_iterations - 1,
+                    "in_flight": bool(rail_in_flight or _step_tools_hit),
+                }
+                if all(_rail_guards.values()):
                     # ACP A2 (RW-3): the drive+enforcement DECISION lives in the SDK harness
                     # (decide_rail_drive) — it unifies the fresh re-probe, next_actionable_step, and
                     # the nudge-cap/strength/give-up logic into one verdict. The probe is INJECTED
@@ -2299,6 +2304,22 @@ async def _stream_with_tools(
                         nudge_counts=rail_nudge_counts,
                         enforcement_strength=settings.rail_enforcement,
                         required_nudge_cap=settings.rail_required_nudge_cap,
+                    )
+                    if not _verdict.should_drive:
+                        logger.info(
+                            "rail step-runner: guards held but no actionable step "
+                            "(every step done, gated on a confirm, or already nudged out)",
+                        )
+                elif _rail_guards["driver_on"] and _rail_guards["have_specs"]:
+                    # A step-runner that silently does not fire is indistinguishable from a rail
+                    # with nothing to do — and that ambiguity cost a live debugging session: the
+                    # rail logged `0/9 steps done, next=…` on every pass while the model improvised
+                    # the wrong tool three times and no nudge was ever injected. Name the guard that
+                    # held, so the next occurrence is one grep instead of a code read.
+                    logger.info(
+                        "rail step-runner SKIPPED — held by: %s (step tools succeeded this turn: %s)",
+                        ", ".join(k for k, v in _rail_guards.items() if not v) or "none",
+                        _step_tools_hit or "—",
                     )
                 if _verdict is not None and _verdict.should_drive:
                     _step = _verdict.step
@@ -3783,6 +3804,94 @@ async def _stream_with_tools(
                     }}
                     continue
 
+                # ── UNRESOLVABLE-TOOL GUARD ──────────────────────────────────────────
+                # Two distinct failures used to look identical here — the call went out,
+                # came back an error, and the model was left to guess why:
+                #
+                #   (a) the tool EXISTS but is not on this turn's surface. The model reached
+                #       for it because something TOLD it to — a rail step, or another tool's
+                #       own error text ("create the categories first (glossary_adopt_standards
+                #       …)"). Nothing ever told it the tool was merely unloaded, so it retried
+                #       forever. Measured live: 40,597 characters of one paragraph repeated,
+                #       until the user hit Stop.
+                #   (b) the tool does NOT exist anywhere — a hallucinated name. Retrying that
+                #       can never succeed, so the only useful reply names real neighbours and
+                #       tells the model its own reasoning is what needs re-checking.
+                #
+                # Both are answered HERE, in code, rather than hoped for in a prompt: the
+                # existing guidance lives in a skill prompt and only covers `plan_*`,
+                # `composition_*` and `book_*` — `glossary_*` (the live wedge) is not in that
+                # list, and a mid-tier model ignores prose guidance under pressure anyway.
+                if discovery and cat_index and c["name"] not in cat_index:
+                    import difflib
+
+                    from app.services.tool_discovery import INTENT_GATED_SETUP_TOOLS
+                    # A name absent from the catalog is NOT automatically invented. The
+                    # capability floor (N5a-FULL) deliberately REMOVES some real tools from the
+                    # turn catalog, so telling the model it hallucinated one of those would be a
+                    # false accusation — and would send it hunting for a different tool when the
+                    # one it named was right all along. Separate the two cases honestly.
+                    _withheld = c["name"] in INTENT_GATED_SETUP_TOOLS
+                    _near = difflib.get_close_matches(c["name"], list(cat_index), n=3, cutoff=0.6)
+                    if _withheld:
+                        _guidance = {
+                            "error": "tool_not_available_this_turn",
+                            "message": (
+                                f"{c['name']!r} is a real tool, but it is not available on this "
+                                "turn: it reshapes the book's whole ontology, so it is only "
+                                "offered when the author has asked for world-setup. Do NOT keep "
+                                "retrying it and do NOT claim you ran it. Tell the author plainly "
+                                "that this step needs their go-ahead to set up the book's "
+                                "categories, and ask for it."
+                            ),
+                        }
+                    else:
+                        _guidance = {
+                            "error": "no_such_tool",
+                            "message": (
+                                f"There is no tool named {c['name']!r}. You invented it — do NOT "
+                                "call it again, and do not tell the user you used it. Re-read your "
+                                "own reasoning: the step you are on needs a tool that exists."
+                                + (f" Closest real names: {', '.join(_near)}." if _near else "")
+                                + " Call tool_list to see what this domain really offers, then "
+                                "tool_load the exact name before using it."
+                            ),
+                        }
+                    logger.warning(
+                        "unresolvable tool %r (session=%s): %s; near=%s",
+                        c["name"], session_id,
+                        "withheld by the capability floor" if _withheld else "not in any catalog",
+                        _near,
+                    )
+                    if trace is not None:
+                        trace.add("compile", "T6", "tools", f"no_such_tool:{c['name']}", is_error=True)
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(_guidance),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False,
+                        "result": None, "error": _guidance["message"],
+                    }}
+                    continue
+                # (a) — real tool, just not advertised this turn. Load it and let the call
+                # proceed: the model already decided correctly, so making it round-trip through
+                # tool_list/tool_load to be told "yes, that one" is ceremony a weak model fails.
+                if discovery and c["name"] in cat_index and c["name"] not in active_tool_names:
+                    from app.services.tool_surface import merge_activated_tools
+                    active_tool_names.add(c["name"])
+                    if activation_state is not None:
+                        activation_state["activated_tools"] = merge_activated_tools(
+                            activation_state["activated_tools"], [c["name"]],
+                            catalog=discovery_catalog, context_length=context_length,
+                        )
+                        activation_state["dirty"] = True
+                    logger.info(
+                        "auto-loaded off-surface tool %r (session=%s) — it is in the catalog and "
+                        "the model asked for it by name", c["name"], session_id,
+                    )
+
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
                 # "lazy man" path); Tier-W/S domain tools MINT a confirm_token and
@@ -3840,6 +3949,33 @@ async def _stream_with_tools(
                 # frontend tools suspend BEFORE this line and are correctly never counted.)
                 if ok and c["name"] in _rail_all_step_tools:
                     turn_succeeded[c["name"]] += 1
+                    # …and the rail just ADVANCED. Its next step's tool is budget-exempt in the
+                    # surface seed (D-RAIL-NEXT-STEP-EXEMPT) — but that seed is computed ONCE, at
+                    # turn start, from the turn-start probe. A rail that advances WITHIN a turn
+                    # therefore leaves the new next step's tool off the wire until the next turn.
+                    # Live wedge: the turn opened at 0/9 (next = glossary_list_system_standards,
+                    # duly exempted), the model called it, the rail moved to 1/9 (next =
+                    # glossary_adopt_standards) — and that tool was never advertised. The model
+                    # correctly worked out which tool it needed, could not reach it, and looped.
+                    # Re-arm the whole (small, author-declared) step set the moment the rail moves.
+                    if discovery and cat_index:
+                        _rearm = [
+                            t for t in _rail_all_step_tools
+                            if t in cat_index and t not in active_tool_names
+                        ]
+                        if _rearm:
+                            from app.services.tool_surface import merge_activated_tools
+                            active_tool_names.update(_rearm)
+                            if activation_state is not None:
+                                activation_state["activated_tools"] = merge_activated_tools(
+                                    activation_state["activated_tools"], _rearm,
+                                    catalog=discovery_catalog, context_length=context_length,
+                                )
+                                activation_state["dirty"] = True
+                            logger.info(
+                                "rail advanced on %s — re-armed step tools now on the wire: %s",
+                                c["name"], ", ".join(sorted(_rearm)),
+                            )
                 # Repeated-FAILURE breaker — record this failure under (tool → error → count) so a
                 # further call that keeps hitting the same error is short-circuited next iteration.
                 # A SUCCESS clears the tool's whole map: the loop is broken, so a later failure
@@ -5218,7 +5354,13 @@ async def stream_response(
                 # N5a-FULL — capability floor: high-impact world-setup tools are dropped from the
                 # turn catalog (all three reach-paths) unless this turn is world-setup intent
                 # (glossary_shaping injected). Request-scoped autonomy for the co-writer.
-                discovery_catalog = filter_intent_gated_setup_tools(catalog, injected_skill_codes)
+                # …with the PINNED rail's own step tools exempt: the rail is rendered into the
+                # prompt naming them, so filtering one out splits guidance from capability and
+                # leaves an instruction the model cannot satisfy (see the filter's docstring —
+                # this is the Mị Đế 40k-character loop).
+                discovery_catalog = filter_intent_gated_setup_tools(
+                    catalog, injected_skill_codes, set(pinned_step_tools or ()),
+                )
                 # GUI-nav tools deprecated 2026-07-25 — only the editor/book_scoped frontend
                 # tools (propose_edit / glossary) are advertised now.
                 discovery_extra_frontend = frontend_tool_defs(editor=editor, book_scoped=book_scoped)
@@ -7004,8 +7146,14 @@ async def resume_stream_response(
         tool_defs = list(catalog)
         if stream_format == "agui" and catalog:
             from app.services.tool_discovery import filter_intent_gated_setup_tools
-            # N5a-FULL — same capability floor on the resume path (mirror the fresh turn).
-            resume_discovery_catalog = filter_intent_gated_setup_tools(catalog, resume_injected_skills)
+            # N5a-FULL — same capability floor on the resume path (mirror the fresh turn),
+            # INCLUDING the pinned rail's step-tool exemption. `susp.pinned_step_tools` exists
+            # precisely because a resume re-derives its surface from scratch (WS-3); dropping
+            # the exemption here would strand a rail at its FIRST confirm gate — the same
+            # failure WS-3 was written to fix, re-entered through the capability floor.
+            resume_discovery_catalog = filter_intent_gated_setup_tools(
+                catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
+            )
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
             # ∪ extra_frontend per pass.
