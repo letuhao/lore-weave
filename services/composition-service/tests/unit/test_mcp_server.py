@@ -124,11 +124,14 @@ EXPECTED_TOOLS = {
     # S3 unified (op-dispatch): motif_edit (create|patch|archive|restore),
     # motif_link_edit (create|delete), motif_bind_edit (bind|unbind)
     "composition_motif_edit", "composition_motif_link_edit", "composition_motif_bind_edit",
-    # Tier W (motif). `motif_translate` is the user-paid translate — it is W and not part
-    # of the unified `motif_edit` above precisely because it SPENDS: folding a cost-gated
-    # op into an auto-applied A-class tool would make one tool's ops disagree about
-    # whether they charge the user, which is the ambiguity the class marker removes.
-    "composition_motif_adopt", "composition_motif_mine", "composition_motif_translate",
+    # Tier W (motif). `library_translate` is the user-paid translate — W, and NOT part of
+    # the unified `motif_edit` above precisely because it SPENDS: folding a cost-gated op
+    # into an auto-applied A-class tool would make one tool's ops disagree about whether
+    # they charge the user, which is the ambiguity the class marker removes. It carries
+    # BOTH libraries behind a `kind` discriminator (CAT-1/CAT-3) rather than shipping a
+    # near-identical arc twin — motif and arc_template already drifted apart once, on the
+    # very question this tool answers.
+    "composition_motif_adopt", "composition_motif_mine", "composition_library_translate",
     "composition_arc_import_analyze", "composition_conformance_run",
     # ── 23 structure layer — arc SPEC CRUD + outline reorder (SAME server) ──
     # Tier R (arc reads)
@@ -181,7 +184,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "plan_get_missing_material",
           "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate", "composition_decompile_arcs",
-          "composition_motif_adopt", "composition_motif_mine", "composition_motif_translate",
+          "composition_motif_adopt", "composition_motif_mine", "composition_library_translate",
           "composition_arc_import_analyze", "composition_conformance_run",
           "composition_authoring_run_create", "composition_authoring_run_gate",
           "composition_authoring_run_start", "composition_authoring_run_resume",

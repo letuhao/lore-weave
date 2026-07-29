@@ -1148,7 +1148,11 @@ CREATE TABLE IF NOT EXISTS arc_template (
   id            UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id UUID,                                     -- NULL = system (seed/migrate-only)
   code          TEXT NOT NULL,
-  language      TEXT NOT NULL DEFAULT 'en',
+  -- ARC-I18N: the language this template was AUTHORED in (parity with motif/books/
+  -- chapters). NOT part of identity — other languages are arc_template_translation
+  -- rows resolved with per-leaf fallback. It was inside all three unique keys, which
+  -- made the same arc in two languages two unrelated rows.
+  original_language TEXT NOT NULL DEFAULT 'en',
   visibility    TEXT NOT NULL DEFAULT 'private'
                   CHECK (visibility IN ('private','unlisted','public')),
   name          TEXT NOT NULL,
@@ -1180,9 +1184,9 @@ CREATE TABLE IF NOT EXISTS arc_template (
   CONSTRAINT arc_template_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user
-  ON arc_template(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL;
+  ON arc_template(owner_user_id, code) WHERE owner_user_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_system
-  ON arc_template(code, language)                WHERE owner_user_id IS NULL;
+  ON arc_template(code)                WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_arc_template_owner  ON arc_template(owner_user_id) WHERE owner_user_id IS NOT NULL;
 -- D-ARC-TEMPLATE-BOOK-TIER (34a) — the book-SHARED collaboration tier, MIRRORING the proven
 -- motif.book_shared (model B): access = the book grant resolved at the caller (owner is attribution
@@ -1202,10 +1206,10 @@ END $$;
 -- clone of the same code coexist; the shared tier dedups PER BOOK. Create the replacement BEFORE
 -- dropping the old (no window with zero uniqueness).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user_nobook
-  ON arc_template(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+  ON arc_template(owner_user_id, code) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
 DROP INDEX IF EXISTS uq_arc_template_user;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_book_shared
-  ON arc_template(book_id, code, language) WHERE book_id IS NOT NULL AND book_shared;
+  ON arc_template(book_id, code) WHERE book_id IS NOT NULL AND book_shared;
 CREATE INDEX IF NOT EXISTS idx_arc_template_book ON arc_template(book_id) WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_arc_template_public ON arc_template(visibility, updated_at DESC) WHERE visibility = 'public';
 CREATE INDEX IF NOT EXISTS idx_arc_template_genre  ON arc_template USING GIN (genre_tags);
@@ -2284,6 +2288,14 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         from app.db.motif_i18n_migrate import run_motif_i18n
         if await run_motif_i18n(conn):
             logger.info("composition migrate: motif i18n motif_i18n_v1 applied this boot")
+        # ARC-I18N: the same reshape for arc_template — `language` out of all three
+        # unique keys + arc_template_translation. Unlike the motif one there is nothing
+        # to collapse (no seeded corpus, one language live), so this is a pure reshape;
+        # it runs here because the arc DDL below is the fresh-DB path and this is the
+        # existing-DB path, exactly as motif's pair does.
+        from app.db.arc_i18n_migrate import run_arc_i18n
+        if await run_arc_i18n(conn):
+            logger.info("composition migrate: arc i18n arc_i18n_v1 applied this boot")
         await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
         await conn.execute(_GLOSSARY_BUILD_SQL)        # glossary-build pipeline FSM (spec 2026-07-27)
         await conn.execute(_ERROR_BLOCK_SQL)           # atom-edit Phase D: author-marked error blocks

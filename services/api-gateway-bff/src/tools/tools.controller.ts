@@ -25,7 +25,7 @@ export const FE_BRIDGE_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
   'composition_conformance_run', // PROPOSE — deep arc-conformance job (the feature)
   'composition_motif_mine', // PROPOSE — mine motifs from a book/corpus
   'composition_motif_adopt', // PROPOSE — clone a motif into the user/book library
-  'composition_motif_translate', // PROPOSE — buy a translation of YOUR OWN motif
+  'composition_library_translate', // PROPOSE — buy a translation of YOUR OWN motif/arc
   'composition_arc_import_analyze', // PROPOSE — deconstruct a reference into an arc
   'composition_get_mine_job', // POLL — read a motif/conformance job to terminal
 ]);

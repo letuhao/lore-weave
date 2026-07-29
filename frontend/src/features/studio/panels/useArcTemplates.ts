@@ -16,6 +16,7 @@ import type { ArcTemplate } from '@/features/composition/motif/arcTypes';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
+import { useTranslation } from 'react-i18next';
 import { listBookSharedTemplates, createSharedTemplate } from '@/features/composition/arcTemplates/api';
 
 export type ArcTier = 'all' | 'mine' | 'system' | 'book' | 'archived';
@@ -126,12 +127,20 @@ export function useArcTemplates(bookId: string): ArcTemplatesState {
     [token, invalidate],
   );
 
+  const { i18n } = useTranslation();
   const create = useCallback(
-    (args: { code: string; name: string; language?: string; shareToBook?: boolean }) =>
-      run(() => args.shareToBook && bookId
-        ? createSharedTemplate({ code: args.code, name: args.name, language: args.language }, bookId, token!)
-        : arcApi.create({ language: 'en', code: args.code, name: args.name }, token!)),
-    [run, token, bookId],
+    // ARC-I18N: `originalLanguage` is what the AUTHOR is writing in. It defaults to the
+    // UI language rather than a hardcoded 'en' — the motif library shipped that exact
+    // hardcode, so every non-English author's row claimed English and then handed
+    // non-English prose to an English prompt while reporting no fallback.
+    (args: { code: string; name: string; originalLanguage?: string; shareToBook?: boolean }) =>
+      run(() => {
+        const original_language = args.originalLanguage || i18n.language || 'en';
+        return args.shareToBook && bookId
+          ? createSharedTemplate({ code: args.code, name: args.name, original_language }, bookId, token!)
+          : arcApi.create({ original_language, code: args.code, name: args.name }, token!);
+      }),
+    [run, token, bookId, i18n.language],
   );
   const adopt = useCallback((id: string) => run(() => arcApi.adopt(id, undefined, token!)), [run, token]);
   const archive = useCallback((id: string) => run(async () => {

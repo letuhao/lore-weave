@@ -532,7 +532,7 @@ async def arc_extract_template(
     name: str,
     summary: str = "",
     genre_tags: list[str] | None = None,
-    language: str = "en",
+    original_language: str = "en",
     visibility: str = "private",
     structure_repo: "StructureRepo",
     outline_repo: "OutlineRepo",
@@ -635,7 +635,7 @@ async def arc_extract_template(
     ]
 
     args = ArcTemplateCreateArgs(
-        code=code, name=name, language=language, summary=summary,
+        code=code, name=name, original_language=original_language, summary=summary,
         genre_tags=list(genre_tags or []),
         chapter_span=len(member_node_ids) or None,
         threads=threads, layout=layout, pacing=pacing, arc_roster=arc_roster,
@@ -651,14 +651,14 @@ async def arc_extract_template(
 
 async def extract_template_from_arc(
     pool: Any, *, arc_node: StructureNode, owner_user_id: UUID,
-    code: str, name: str, language: str = "en", visibility: str = "private",
+    code: str, name: str, original_language: str = "en", visibility: str = "private",
 ) -> dict[str, Any]:
     """MCP/REST seam for `composition_arc_extract_template` (23 B2): run the spec→template
     snapshot and PERSIST it as a USER-tier `arc_template` in the caller's library.
 
     Thin wrapper over `arc_extract_template` (the pure orchestrator) + `ArcTemplateRepo.create`
     (the docstring above says "the caller persists it"). Returns the new template id + the
-    reconstruction stats. A duplicate (owner, code, language) raises asyncpg.UniqueViolationError,
+    reconstruction stats. A duplicate (owner, code) raises asyncpg.UniqueViolationError,
     which the caller maps to a 409 — this seam does not swallow it."""
     from app.db.repositories.arc_template_repo import ArcTemplateRepo
     from app.db.repositories.motif_application import MotifApplicationRepo
@@ -666,7 +666,7 @@ async def extract_template_from_arc(
     from app.db.repositories.structure import StructureRepo
 
     extract = await arc_extract_template(
-        arc_node, code=code, name=name, language=language, visibility=visibility,
+        arc_node, code=code, name=name, original_language=original_language, visibility=visibility,
         structure_repo=StructureRepo(pool), outline_repo=OutlineRepo(pool),
         applications_repo=MotifApplicationRepo(pool),
     )

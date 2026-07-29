@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import pytest
 
+import json
+
 from app.motif_i18n import (
+    ARC_TEMPLATE_SPEC,
+    MOTIF_SPEC,
     TranslationFileError,
     build_translation_entry,
     extract_translatable,
@@ -283,3 +287,64 @@ def test_the_two_echo_predicates_agree():
     for src, out, lang, expected in cases:
         assert is_untranslated_echo(src, out, lang) == fe_echo(src, out, lang), (src, out, lang)
         assert is_untranslated_echo(src, out, lang) is expected, (src, out, lang)
+
+
+# ── the ARC-TEMPLATE spec (ARC-I18N) ───────────────────────────────────────────
+def _arc(**over):
+    row = {
+        "code": "arc.three-year-pact",
+        "original_language": "en",
+        "name": "The Three-Year Pact",
+        "summary": "two rivals bound to cooperate until a fixed date",
+        "genre_tags": ["xianxia"],
+        "chapter_span": 30,
+        "threads": [{"key": "combat", "label": "Combat"},
+                    {"key": "romance", "label": "Romance"}],
+        "layout": [{"motif_code": "duel", "thread": "combat", "span_start": 1,
+                    "span_end": 2, "ord": 0, "role_hints": {}, "triggers": []}],
+        "arc_roster": [{"key": "rival", "actant": "opponent", "label": "the rival",
+                        "constraints": ["must outrank the lead at the start"]}],
+    }
+    row.update(over)
+    return row
+
+
+def test_the_arc_spec_translates_text_and_refuses_structure():
+    """`layout` is entirely machine values — motif_code, thread key, spans, ord — so it
+    carries no translatable leaf and is absent from the spec BY DESIGN. A model asked to
+    'localize' a layout would happily rename a thread key and silently break every
+    placement's binding."""
+    payload = extract_translatable(_arc(), ARC_TEMPLATE_SPEC)
+    assert set(payload) == {"name", "summary", "threads", "arc_roster"}
+    blob = json.dumps(payload, ensure_ascii=False)
+    for structural in ("layout", "motif_code", "span_start", "chapter_span",
+                       "xianxia", "opponent"):
+        assert structural not in blob, f"{structural} must never reach a translator"
+
+
+def test_an_arc_translation_merges_by_thread_key_not_position():
+    """The join key is `key`. A translation that reorders threads — or a source that
+    gains one — must not shift wording onto the wrong thread, which is silent at runtime
+    (the merge just misses) and therefore has to be structural."""
+    tr = {"language_code": "vi", "name": "Giao Ước Ba Năm", "summary": "",
+          "threads": [{"key": "romance", "label": "Tình cảm"}], "arc_roster": []}
+    out = resolve_text(_arc(), tr, "vi", spec=ARC_TEMPLATE_SPEC)
+    by_key = {t["key"]: t["label"] for t in out["threads"]}
+    assert by_key["romance"] == "Tình cảm"
+    assert by_key["combat"] == "Combat", "an uncovered thread keeps its source wording"
+    assert out["name"] == "Giao Ước Ba Năm"
+    assert out["text_language"] == "vi" and out["text_fallback"] is False
+
+
+def test_an_arc_with_no_translation_reads_original_and_says_so():
+    out = resolve_text(_arc(), None, "vi", spec=ARC_TEMPLATE_SPEC)
+    assert out["name"] == "The Three-Year Pact"
+    assert out["text_language"] == "en" and out["text_fallback"] is True
+
+
+def test_the_two_specs_do_not_share_mutable_state():
+    """They are separate frozen specs, not one dict two names — a stray mutation through
+    either would silently redefine what is translatable for the other."""
+    assert MOTIF_SPEC.lists is not ARC_TEMPLATE_SPEC.lists
+    assert "beats" in MOTIF_SPEC.lists and "beats" not in ARC_TEMPLATE_SPEC.lists
+    assert "threads" in ARC_TEMPLATE_SPEC.lists and "threads" not in MOTIF_SPEC.lists

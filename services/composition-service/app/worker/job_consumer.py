@@ -375,9 +375,9 @@ async def _run_operation(
             pool, llm, get_knowledge_client(),
             user_id=str(job.created_by), input=job.input or {},
         )
-    if op == "translate_motif":
-        from app.engine.motif_translate import run_translate_motifs
-        return await run_translate_motifs(
+    if op == "translate_library":
+        from app.engine.library_translate import run_translate_library
+        return await run_translate_library(
             pool, llm, user_id=str(job.created_by), input=job.input or {},
             cancel_check=cancel_check,
         )

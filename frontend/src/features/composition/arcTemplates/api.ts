@@ -22,11 +22,11 @@ export async function listBookSharedTemplates(bookId: string, token: string): Pr
 
 /** 34a — create into the book's SHARED tier (EDIT-gated server-side). */
 export function createSharedTemplate(
-  body: { code: string; name: string; language?: string }, bookId: string, token: string,
+  body: { code: string; name: string; original_language?: string }, bookId: string, token: string,
 ): Promise<ArcTemplate> {
   return apiJson<ArcTemplate>(
     `${BASE}/arc-templates?target=book_shared&book_id=${encodeURIComponent(bookId)}`,
-    { method: 'POST', token, body: JSON.stringify({ language: 'en', ...body }) },
+    { method: 'POST', token, body: JSON.stringify({ original_language: 'en', ...body }) },
   );
 }
 

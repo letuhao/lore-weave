@@ -30,25 +30,65 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
 # ── what is translatable ───────────────────────────────────────────────────
-# Scalars carried on the motif row itself.
-TRANSLATABLE_SCALARS: tuple[str, ...] = ("name", "summary", "emotion_target")
+# A SPEC is the whole definition of "what is text" for one entity. Two entities use
+# this engine — motifs and arc templates — and they must be described, never
+# duplicated: the arc library had the identical identity defect (`language` inside
+# `uq_arc_template_*`) plus the identical read bug (`language` as a WHERE filter,
+# which can only SUBTRACT), so re-implementing resolution for it would have meant two
+# copies of the rule that exists to stop copies drifting.
 
-# JSONB lists. `key` names the field that identifies an element across languages
-# (so a reordered translation still merges correctly); None = positional match.
-# `fields` are the translatable leaves inside each element — everything else in
-# the element is structure and is taken from the SOURCE, always.
-TRANSLATABLE_LISTS: dict[str, dict[str, Any]] = {
-    "roles":         {"key": "key", "fields": ("label", "constraints")},
-    "beats":         {"key": "key", "fields": ("label", "intent")},
-    "preconditions": {"key": None,  "fields": ("text",)},
-    "effects":       {"key": None,  "fields": ("text",)},
-    "examples":      {"key": None,  "fields": ("text",)},
-}
 
-TRANSLATABLE_FIELDS: tuple[str, ...] = TRANSLATABLE_SCALARS + tuple(TRANSLATABLE_LISTS)
+@dataclass(frozen=True)
+class TranslatableSpec:
+    """`scalars` are text columns on the row itself.
+
+    `lists` are JSONB arrays: `key` names the field that identifies an element across
+    languages (so a reordered translation still merges correctly), None = positional
+    match; `fields` are the translatable leaves inside each element — everything else
+    in the element is STRUCTURE and comes from the source, always.
+    """
+
+    scalars: tuple[str, ...]
+    lists: dict[str, dict[str, Any]]
+
+    @property
+    def fields(self) -> tuple[str, ...]:
+        return self.scalars + tuple(self.lists)
+
+
+MOTIF_SPEC = TranslatableSpec(
+    scalars=("name", "summary", "emotion_target"),
+    lists={
+        "roles":         {"key": "key", "fields": ("label", "constraints")},
+        "beats":         {"key": "key", "fields": ("label", "intent")},
+        "preconditions": {"key": None,  "fields": ("text",)},
+        "effects":       {"key": None,  "fields": ("text",)},
+        "examples":      {"key": None,  "fields": ("text",)},
+    },
+)
+
+# An arc template's `layout` is entirely machine values — `motif_code`, `thread`,
+# `span_start`/`span_end`, `ord`, `triggers`, `role_hints` — so it carries NO
+# translatable leaf and is absent here by design, not by omission. Same for
+# `chapter_span` and `genre_tags`. `threads[].key` and `arc_roster[].key`/`actant`
+# are join keys and a greimas role; translating either would break the binding.
+ARC_TEMPLATE_SPEC = TranslatableSpec(
+    scalars=("name", "summary"),
+    lists={
+        "threads":    {"key": "key", "fields": ("label",)},
+        "arc_roster": {"key": "key", "fields": ("label", "constraints")},
+    },
+)
+
+# Back-compat aliases: the motif spec IS the historical module-level contract, and
+# every existing caller (migration, seeder, read path, the dev-time tool) means motif.
+TRANSLATABLE_SCALARS: tuple[str, ...] = MOTIF_SPEC.scalars
+TRANSLATABLE_LISTS: dict[str, dict[str, Any]] = MOTIF_SPEC.lists
+TRANSLATABLE_FIELDS: tuple[str, ...] = MOTIF_SPEC.fields
 
 
 def _as_list(value: Any) -> list[dict[str, Any]]:
@@ -63,19 +103,19 @@ def _as_list(value: Any) -> list[dict[str, Any]]:
     return [v for v in value if isinstance(v, dict)]
 
 
-def extract_translatable(row: Any) -> dict[str, Any]:
-    """Project a motif (row, dict, or model) down to only its translatable leaves.
+def extract_translatable(row: Any, spec: TranslatableSpec = MOTIF_SPEC) -> dict[str, Any]:
+    """Project a row (dict or model) down to only its translatable leaves.
 
-    The result is what gets hashed, what gets handed to a translator, and the
-    shape a `motif_translation` row stores.
+    The result is what gets hashed, what gets handed to a translator, and the shape a
+    `*_translation` row stores.
     """
     get = row.get if isinstance(row, dict) else (lambda k, d=None: getattr(row, k, d))
     out: dict[str, Any] = {}
-    for field in TRANSLATABLE_SCALARS:
+    for field in spec.scalars:
         val = get(field)
         out[field] = val if isinstance(val, str) else ("" if val is None else str(val))
-    for field, spec in TRANSLATABLE_LISTS.items():
-        key_field, leaves = spec["key"], spec["fields"]
+    for field, lspec in spec.lists.items():
+        key_field, leaves = lspec["key"], lspec["fields"]
         elems = []
         for elem in _as_list(get(field)):
             projected: dict[str, Any] = {}
@@ -100,9 +140,9 @@ def translatable_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-def source_hash(row: Any) -> str:
-    """Hash of a motif's CURRENT translatable payload."""
-    return translatable_hash(extract_translatable(row))
+def source_hash(row: Any, spec: TranslatableSpec = MOTIF_SPEC) -> str:
+    """Hash of a row's CURRENT translatable payload."""
+    return translatable_hash(extract_translatable(row, spec))
 
 
 # ── the on-disk translation-file shape ─────────────────────────────────────
@@ -126,27 +166,29 @@ class TranslationFileError(ValueError):
     """A translation file that would mis-merge — always loud, never tolerated."""
 
 
-def build_translation_entry(payload: dict[str, Any]) -> dict[str, Any]:
+def build_translation_entry(
+    payload: dict[str, Any], spec: TranslatableSpec = MOTIF_SPEC
+) -> dict[str, Any]:
     """Translatable payload → the on-disk entry shape (used by the converter/tool)."""
     entry: dict[str, Any] = {}
-    for field in TRANSLATABLE_SCALARS:
+    for field in spec.scalars:
         if payload.get(field):
             entry[field] = payload[field]
-    for field, spec in TRANSLATABLE_LISTS.items():
+    for field, lspec in spec.lists.items():
         elems = payload.get(field) or []
-        if spec["key"]:
+        if lspec["key"]:
             keyed = {}
             for e in elems:
-                k = e.get(spec["key"])
+                k = e.get(lspec["key"])
                 if k is None:
                     continue
-                leaves = {lf: e[lf] for lf in spec["fields"] if e.get(lf)}
+                leaves = {lf: e[lf] for lf in lspec["fields"] if e.get(lf)}
                 if leaves:
                     keyed[k] = leaves
             if keyed:
                 entry[field] = keyed
         else:
-            leaf = spec["fields"][0]
+            leaf = lspec["fields"][0]
             texts = [e.get(leaf, "") for e in elems]
             if any(texts):
                 entry[field] = texts
@@ -154,7 +196,8 @@ def build_translation_entry(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_translation_entry(
-    entry: dict[str, Any], source_payload: dict[str, Any], *, where: str = ""
+    entry: dict[str, Any], source_payload: dict[str, Any], *, where: str = "",
+    spec: TranslatableSpec = MOTIF_SPEC,
 ) -> dict[str, Any]:
     """On-disk entry → the `motif_translation` column payload, validated.
 
@@ -167,12 +210,12 @@ def parse_translation_entry(
         raise TranslationFileError(f"{where}: entry must be an object, got {type(entry).__name__}")
 
     out: dict[str, Any] = {}
-    for field in TRANSLATABLE_SCALARS:
+    for field in spec.scalars:
         val = entry.get(field)
         out[field] = val if isinstance(val, str) else ""
 
-    for field, spec in TRANSLATABLE_LISTS.items():
-        key_field, leaves = spec["key"], spec["fields"]
+    for field, lspec in spec.lists.items():
+        key_field, leaves = lspec["key"], lspec["fields"]
         src_elems = source_payload.get(field) or []
         given = entry.get(field)
         if key_field:
@@ -346,14 +389,15 @@ def is_untranslated_echo(src_val: str, out_val: Any, lang: str | None = None) ->
 
 
 # ── resolution ─────────────────────────────────────────────────────────────
-def _merge_list(field: str, src: list[dict], tr: list[dict]) -> list[dict]:
+def _merge_list(field: str, src: list[dict], tr: list[dict],
+                spec: TranslatableSpec = MOTIF_SPEC) -> list[dict]:
     """Overlay a translated list onto the source list, per leaf.
 
     Structure always comes from `src`. An element the translation does not cover
     (missing key, short list, absent leaf) keeps its source wording — never blank.
     """
-    spec = TRANSLATABLE_LISTS[field]
-    key_field, leaves = spec["key"], spec["fields"]
+    lspec = spec.lists[field]
+    key_field, leaves = lspec["key"], lspec["fields"]
     if key_field:
         by_key = {e.get(key_field): e for e in tr if e.get(key_field) is not None}
         pick = lambda i, e: by_key.get(e.get(key_field), {})  # noqa: E731
@@ -378,6 +422,7 @@ def resolve_text(
     want_language: str | None,
     *,
     current_hash: str | None = None,
+    spec: TranslatableSpec = MOTIF_SPEC,
 ) -> dict[str, Any]:
     """Resolve a motif's display/prompt text into `want_language`.
 
@@ -402,8 +447,8 @@ def resolve_text(
     # carried — `beats[].tension_target` and `beats[].order` vanished from the resolved
     # motif, in the fallback path too, so a book that asked for ANY language lost its beat
     # pacing. Caught by a test that asserted structure survives translation.
-    full: dict[str, Any] = {f: sget(f) for f in TRANSLATABLE_SCALARS}
-    for field in TRANSLATABLE_LISTS:
+    full: dict[str, Any] = {f: sget(f) for f in spec.scalars}
+    for field in spec.lists:
         full[field] = [dict(e) for e in _as_list(sget(field))]
 
     if not want_language or want_language == original or translation is None:
@@ -416,19 +461,19 @@ def resolve_text(
 
     tget = translation.get if isinstance(translation, dict) else (
         lambda k, d=None: getattr(translation, k, d))
-    tr_payload = extract_translatable(translation)
+    tr_payload = extract_translatable(translation, spec)
 
     resolved: dict[str, Any] = {}
-    for field in TRANSLATABLE_SCALARS:
+    for field in spec.scalars:
         val = tr_payload.get(field)
         resolved[field] = val if val else full.get(field)
-    for field in TRANSLATABLE_LISTS:
-        resolved[field] = _merge_list(field, full[field], tr_payload.get(field) or [])
+    for field in spec.lists:
+        resolved[field] = _merge_list(field, full[field], tr_payload.get(field) or [], spec)
 
     stored_hash = tget("source_content_hash") or ""
     live_hash = (
         current_hash if current_hash is not None
-        else translatable_hash(extract_translatable(source))
+        else translatable_hash(extract_translatable(source, spec))
     )
 
     return {

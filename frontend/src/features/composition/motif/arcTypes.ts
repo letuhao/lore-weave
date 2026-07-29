@@ -39,8 +39,18 @@ export type ArcRosterEntry = {
 export type ArcTemplate = {
   id: string;
   owner_user_id: string | null;        // null = system tier
+  book_id?: string | null;             // per-book label; shared-tier rows carry it too
+  book_shared?: boolean;               // D-ARC-TEMPLATE-BOOK-TIER: the book's SHARED tier
   code: string;
-  language: string;
+  /** ARC-I18N: the language this template was AUTHORED in. No longer part of its
+   *  identity — other languages are arc_template_translation rows. */
+  original_language: string;
+  /** Which language the text above is ACTUALLY in, and whether it is the one asked
+   *  for. Never silent: a template with no translation reads in its original and
+   *  says so. `text_stale` = translated from an older version of the source. */
+  text_language?: string;
+  text_fallback?: boolean;
+  text_stale?: boolean;
   visibility: MotifVisibility;
   name: string;
   summary: string;
@@ -63,7 +73,9 @@ export type ArcTemplateListParams = {
   scope?: 'all' | 'system' | 'mine';
   genre?: string;
   q?: string;
-  language?: string;
+  /** A READ preference, never a filter — it re-words the result with per-leaf
+   *  fallback. As a filter it could only subtract, which returned an empty library. */
+  display_language?: string;
   status?: string;
   limit?: number;
 };
@@ -79,7 +91,8 @@ export type ArcTemplateList = {
 export type ArcTemplateCreateArgs = {
   code: string;
   name: string;
-  language?: string;
+  /** The language YOU are authoring in. We never machine-translate your templates. */
+  original_language?: string;
   summary?: string;
   genre_tags?: string[];
   chapter_span?: number | null;

@@ -306,7 +306,7 @@ export type ArcConformance = {
 
 export type ConfirmDescriptor =
   | 'composition.motif_mine' | 'composition.arc_import' | 'composition.conformance_run'
-  | 'composition.motif_adopt' | 'composition.motif_translate';
+  | 'composition.motif_adopt' | 'composition.library_translate';
 
 export type CostEstimate = {
   confirm_token: string;
@@ -335,7 +335,7 @@ export type MotifTranslateLanguage = typeof MOTIF_TRANSLATE_LANGUAGES[number];
  *  their source wording — never blank); `echoed` came back in the source language,
  *  which we REPORT rather than silently re-spending to retry. */
 export type MotifTranslateOutcome = {
-  motif_id: string;
+  id: string;
   code?: string;
   status: 'translated' | 'already_original' | 'already_translated' | 'authored_kept'
         | 'nothing_to_translate' | 'not_translatable' | 'model_failed' | 'failed'
@@ -357,12 +357,13 @@ export type MotifTranslationRow = {
   stale: boolean;
 };
 
-export type MotifTranslationInventory = {
+export type TranslationInventory = {
   original_language: string;
   translations: MotifTranslationRow[];
 };
 
 export type MotifTranslateResult = {
+  kind: 'motif' | 'arc_template';
   target_language: string;
   requested: number;
   written: number;

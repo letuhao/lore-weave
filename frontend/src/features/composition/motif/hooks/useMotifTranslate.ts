@@ -1,5 +1,5 @@
-// The user-paid motif translate (spec 2026-07-29-motif-i18n §5) — the Tier-W flow
-// controller. Mirrors useMotifMine: PROPOSE (mint a confirm token + $ estimate via the
+// The user-paid LIBRARY translate (spec 2026-07-29-motif-i18n §5) — the Tier-W flow
+// controller, for motifs AND arc templates. Mirrors useMotifMine: PROPOSE (mint a confirm token + $ estimate via the
 // FE→MCP bridge) → the human confirms the cost → poll the job. The FE never executes
 // the spend.
 //
@@ -14,7 +14,10 @@ import { motifApi, isQuotaError } from '../api';
 import type { CostEstimate, MotifTranslateLanguage, MotifTranslateResult } from '../types';
 
 type Args = {
-  motifIds: string[];
+  /** Which library. Both carried the identical identity defect and share one policy,
+   *  one tool and one worker job — only the table differs. */
+  kind?: 'motif' | 'arc_template';
+  ids: string[];
   targetLanguage: MotifTranslateLanguage;
   bookId?: string | null;
   /** Re-translate one that already exists and is still current. Off by default —
@@ -34,7 +37,8 @@ export function useMotifTranslate(token: string | null, onDone?: () => void) {
     mutationFn: (args: Args & { modelRef: string }) =>
       motifApi.translatePropose(
         {
-          motifIds: args.motifIds,
+          kind: args.kind,
+          ids: args.ids,
           targetLanguage: args.targetLanguage,
           bookId: args.bookId,
           force: args.force,
@@ -55,6 +59,8 @@ export function useMotifTranslate(token: string | null, onDone?: () => void) {
       setEstimate(null);
       qc.invalidateQueries({ queryKey: ['composition', 'motifs'] });
       qc.invalidateQueries({ queryKey: ['composition', 'motif'] });
+      qc.invalidateQueries({ queryKey: ['composition', 'arcTemplates'] });
+      qc.invalidateQueries({ queryKey: ['composition', 'arcTemplate'] });
       onDone?.();
     },
   });

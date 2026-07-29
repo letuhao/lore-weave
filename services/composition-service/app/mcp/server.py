@@ -98,7 +98,9 @@ from app.db.repositories.structure_templates import (
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
-from app.engine.motif_translate import LANGUAGE_NAMES, MAX_MOTIFS_PER_JOB
+from app.engine.library_translate import (
+    LANGUAGE_NAMES, MAX_ITEMS_PER_JOB, TRANSLATABLE_KINDS,
+)
 from app.db.repositories.motif_retrieve import MotifRetriever, node_query_text
 from app.db.repositories.entity_references import EntityReferencesRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -174,9 +176,9 @@ _GENERATE_DESCRIPTOR = "composition.generate"
 # (confirm-token + a real usage-billing precheck + a 202+poll worker enqueue).
 _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
-# The user-paid motif translate: an LLM-spend job like mine, but USER-scoped (the payload
-# names motif_ids, and a book_id appears only for the shared tier).
-_MOTIF_TRANSLATE_DESCRIPTOR = "composition.motif_translate"
+# The user-paid library translate (motif | arc_template): an LLM-spend job like mine, but
+# USER-scoped — the payload names ids + kind, and a book_id appears only for the shared tier.
+_LIBRARY_TRANSLATE_DESCRIPTOR = "composition.library_translate"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
 # close-21-28 P-O2a — the arc-decompiler (deterministic, $0) confirm-gated to the agent.
@@ -511,22 +513,29 @@ _TRANSLATE_USD_PER_1K_TOKENS = 0.01
 _CHARS_PER_TOKEN = 3.0          # conservative: CJK sources tokenize far denser than en
 
 
-def _translate_estimate(motifs: list[dict[str, Any]], target_language: str) -> dict[str, Any]:
+def _translate_estimate(
+    items: list[dict[str, Any]], target_language: str, kind: str = "motif",
+) -> dict[str, Any]:
     """Size-derived $ estimate + an exact-ish token count for the confirm card."""
-    from app.motif_i18n import build_translation_entry, extract_translatable, flatten_entry
+    from app.motif_i18n import (
+        ARC_TEMPLATE_SPEC, MOTIF_SPEC, build_translation_entry, extract_translatable,
+        flatten_entry,
+    )
 
+    spec = MOTIF_SPEC if kind == "motif" else ARC_TEMPLATE_SPEC
     chars = 0
-    for m in motifs:
-        for text in flatten_entry(build_translation_entry(extract_translatable(m))).values():
+    for m in items:
+        for text in flatten_entry(
+                build_translation_entry(extract_translatable(m, spec), spec)).values():
             chars += len(text)
     # in (source + prompt) + out (translation, allow 1.5× — most targets run longer
     # than English), plus a per-motif prompt overhead for the system + context block.
-    tokens = int(chars / _CHARS_PER_TOKEN * 2.5) + 400 * len(motifs)
+    tokens = int(chars / _CHARS_PER_TOKEN * 2.5) + 400 * len(items)
     return {
         "estimated_usd": round(tokens / 1000 * _TRANSLATE_USD_PER_1K_TOKENS, 4),
         "estimated_tokens": tokens,
         "currency": "USD",
-        "basis": f"{len(motifs)} motif(s) → {target_language}",
+        "basis": f"{len(items)} {kind}(s) → {target_language}",
     }
 
 
@@ -4679,10 +4688,18 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
     }
 
 
-class _MotifTranslateArgs(ForbidExtra):
-    """Flat args for composition_motif_translate (W/user — the user-paid translate)."""
+class _LibraryTranslateArgs(ForbidExtra):
+    """Flat args for composition_library_translate (W/user — the user-paid translate)."""
 
-    motif_ids: list[str]
+    # ONE tool, two libraries. Motifs and arc templates differ in nothing this tool cares
+    # about — same tier (W), same confirm-token flow, same fields, same tenancy rule — so
+    # CAT-2's "merge only when the safety behaviour matches" is satisfied and two tools
+    # would just be two places for the policy to drift apart. Which is exactly what
+    # happened to their identity keys.
+    kind: Literal["motif", "arc_template"] = "motif"
+    # CAT-3: batch is `items[]`, 1..N, bounded, with PER-ITEM results. A single item is a
+    # 1-element array; there is no separate singular shape to maintain.
+    ids: list[str]
     # CLOSED SET — the platform's supported reading languages, so the value can only be
     # one a reader could actually be reading in. A free string here would let `auto`
     # into the write path (`language='auto'` matched zero rows and zeroed the whole
@@ -4707,64 +4724,69 @@ class _MotifTranslateArgs(ForbidExtra):
 
 
 @mcp_server.tool(
-    name="composition_motif_translate",
+    name="composition_library_translate",
     description=(
-        "PROPOSE translating YOUR OWN motifs into another language — the motif keeps its "
-        "original language and gains a translation, so it reads in the reader's language "
-        "with fallback. The platform's built-in motifs already ship in every supported "
-        "language for free and cannot be translated here; this is for motifs you authored "
-        "or adopted. Spends LLM tokens with YOUR model, so it is cost-gated: it returns a "
-        "confirm_token + a $ estimate; nothing runs until you confirm via confirm_action, "
-        "then it runs as a background job you poll with composition_get_mine_job. An "
-        "existing, still-current translation is skipped rather than re-charged unless "
-        "force=true, and a hand-written translation is never overwritten."
+        "PROPOSE translating YOUR OWN library items into another language — set "
+        "kind='motif' (default) or kind='arc_template'. The item keeps its original "
+        "language and GAINS a translation, so it reads in the reader's language with "
+        "per-leaf fallback; nothing is overwritten. The platform's built-in motifs "
+        "already ship in every supported language for free and cannot be translated "
+        "here; this is for items you authored or adopted. Spends LLM tokens with YOUR "
+        "model, so it is cost-gated: it returns a confirm_token + a $ estimate; nothing "
+        "runs until you confirm via confirm_action, then it runs as a background job you "
+        "poll with composition_get_mine_job. An existing, still-current translation is "
+        "skipped rather than re-charged unless force=true, and a hand-written "
+        "translation is never overwritten. Results are PER ITEM."
     ),
     meta=require_meta(
         "W", "user",
-        synonyms=["translate motif", "translate my motifs", "localize motif",
-                  "motif in Vietnamese", "dịch motif", "翻译motif",
+        synonyms=["translate motif", "translate my motifs", "translate arc template",
+                  "localize motif", "localize my library", "motif in Vietnamese",
+                  "dịch motif", "dịch thư viện", "翻译motif",
                   "make my motifs readable in another language"],
         # `paid` is not decoration: the _meta Completeness Law exists because an
         # undeclared spender runs without the approval card. This one spends the
-        # user's own BYOK budget, per motif.
+        # user's own BYOK budget, per item.
         async_job=True, paid=True,
-        tool_name="composition_motif_translate",
+        tool_name="composition_library_translate",
     ),
 )
-async def composition_motif_translate(ctx: MCPContext, args: _MotifTranslateArgs) -> dict:
+async def composition_library_translate(ctx: MCPContext, args: _LibraryTranslateArgs) -> dict:
     # @small_return: Tier-W PROPOSE card — a single {confirm_token, estimate} object.
     tc = _ctx(ctx)
-    if not args.motif_ids:
-        return {"success": False, "error": "motif_ids is required"}
-    if len(args.motif_ids) > MAX_MOTIFS_PER_JOB:
+    if not args.ids:
+        return {"success": False, "error": "ids is required"}
+    if len(args.ids) > MAX_ITEMS_PER_JOB:
         return {"success": False,
-                "error": f"at most {MAX_MOTIFS_PER_JOB} motifs per translate job"}
+                "error": f"at most {MAX_ITEMS_PER_JOB} items per translate job"}
     try:
-        motif_ids = [UUID(m) for m in args.motif_ids]
+        item_ids = [UUID(m) for m in args.ids]
     except (ValueError, TypeError):
-        return {"success": False, "error": "motif_ids must be UUIDs"}
+        return {"success": False, "error": "ids must be UUIDs"}
     if args.book_id:
-        # SHARED-tier targets: EDIT on the book. Re-checked at confirm AND per-motif in
+        # SHARED-tier targets: EDIT on the book. Re-checked at confirm AND per-item in
         # the engine — a proposal is not a standing authorization.
         await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
 
-    repo = MotifRepo(get_pool())
+    repo = (MotifRepo if args.kind == "motif" else ArcTemplateRepo)(get_pool())
     allowed = await repo.list_translatable(
-        tc.user_id, motif_ids, book_id=UUID(args.book_id) if args.book_id else None)
+        tc.user_id, item_ids, book_id=UUID(args.book_id) if args.book_id else None)
     if not allowed:
         # Uniform refusal — it does not distinguish "does not exist" from "is a system
-        # motif" from "is not yours" (no enumeration oracle). The message names the one
+        # row" from "is not yours" (no enumeration oracle). The message names the one
         # thing a user can act on.
+        noun = "motifs" if args.kind == "motif" else "arc templates"
         return {
             "success": False,
-            "error": "none of those motifs are yours to translate — the built-in "
-                     "library already ships in every supported language, and a public "
-                     "motif must be adopted into your library first",
+            "error": f"none of those {noun} are yours to translate — the built-in "
+                     f"library already ships in every supported language, and a public "
+                     f"item must be adopted into your library first",
         }
 
-    estimate = _translate_estimate(allowed, args.target_language)
+    estimate = _translate_estimate(allowed, args.target_language, args.kind)
     payload = {
-        "motif_ids": [str(m["id"]) for m in allowed],
+        "kind": args.kind,
+        "ids": [str(m["id"]) for m in allowed],
         "target_language": args.target_language,
         "book_id": args.book_id,
         "force": args.force,
@@ -4773,21 +4795,21 @@ async def composition_motif_translate(ctx: MCPContext, args: _MotifTranslateArgs
         "estimate_usd": estimate["estimated_usd"],
     }
     # resource_id binds the token: the named book for a shared-tier translate, else the
-    # user (the motif library is user-scoped).
+    # user (both libraries are user-scoped).
     resource_id = UUID(args.book_id) if args.book_id else tc.user_id
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret,
-        tc.user_id, resource_id, _MOTIF_TRANSLATE_DESCRIPTOR, payload,
+        tc.user_id, resource_id, _LIBRARY_TRANSLATE_DESCRIPTOR, payload,
     )
     return {
         "confirm_token": confirm_token,
-        "descriptor": _MOTIF_TRANSLATE_DESCRIPTOR,
-        "title": f"Translate {len(allowed)} motif(s) to "
+        "descriptor": _LIBRARY_TRANSLATE_DESCRIPTOR,
+        "title": f"Translate {len(allowed)} {args.kind.replace(chr(95), chr(32))}(s) to "
                  f"{LANGUAGE_NAMES.get(args.target_language, args.target_language)}",
         "domain": "composition",
         "requires": "human confirmation — this spends LLM tokens",
         "estimate": estimate,
-        "skipped": len(motif_ids) - len(allowed),
+        "skipped": len(item_ids) - len(allowed),
     }
 
 
@@ -6640,7 +6662,7 @@ class _ArcExtractTemplateArgs(ForbidExtra):
     node_id: str
     code: str
     name: str
-    language: str = "en"
+    original_language: str = "en"
     # 'public' is excluded at create — publishing is the separate library flip.
     visibility: Literal["private", "unlisted"] = "private"
 
@@ -6677,13 +6699,13 @@ async def composition_arc_extract_template(
         result = await fn(
             get_pool(),
             arc_node=node, owner_user_id=tc.user_id,
-            code=args.code, name=args.name, language=args.language,
+            code=args.code, name=args.name, original_language=args.original_language,
             visibility=args.visibility,
         )
     except asyncpg.UniqueViolationError:
         return {
             "success": False, "outcome": "applied_conflict",
-            "error": "an arc template with this code + language already exists in your library",
+            "error": "an arc template with this code already exists in your library",
         }
     out = dict(result)
     out.setdefault("_meta", {"undo_hint": None})
@@ -6769,7 +6791,12 @@ async def composition_arc_template_list(
     genre: Annotated[str | None, "filter by genre tag"] = None,
     status: Annotated[Literal["draft", "active", "archived"], "draft | active | archived"] = "active",
     q: Annotated[str | None, "text search over name/summary"] = None,
-    language: Annotated[str | None, "language code filter"] = None,
+    # ARC-I18N: a READ preference, never a filter. It RE-WORDS the result with per-leaf
+    # fallback; as a filter it could only subtract, so asking for a language nothing was
+    # authored in returned an empty library instead of a translated one.
+    display_language: Annotated[
+        str | None, "read the library in this language (falls back per leaf; never filters)"
+    ] = None,
     limit: Annotated[int, "1..100"] = 50,
 ) -> dict:
     tc = _ctx(ctx)
@@ -6785,7 +6812,7 @@ async def composition_arc_template_list(
     capped = max(1, min(100, limit))
     rows = await repo.list_for_caller(
         tc.user_id, scope=("user" if scope == "mine" else scope), genre=genre,
-        status=status, q=q, language=language, limit=capped + 1,
+        status=status, q=q, display_language=display_language, limit=capped + 1,
     )
     more = len(rows) > capped
     rows = rows[:capped]
@@ -6826,7 +6853,7 @@ async def composition_arc_template_get(
         "Create a PRIVATE arc template owned by the caller (a reusable arc skeleton — threads, "
         "layout, pacing, roster). Publishing/sharing a template is a deliberate human action in "
         "the studio (it runs a quota gate), so this tool creates PRIVATE only; pass visibility "
-        "other than private and it is refused with that guidance. A duplicate (code, language) → 409."
+        "other than private and it is refused with that guidance. A duplicate code → 409."
     ),
     meta=require_meta("W", "book",
                       synonyms=["create arc template", "new arc template", "save arc skeleton"],
@@ -6842,7 +6869,7 @@ async def composition_arc_template_create(ctx: MCPContext, args: ArcTemplateCrea
     try:
         arc = await ArcTemplateRepo(get_pool()).create(tc.user_id, args)
     except asyncpg.UniqueViolationError:
-        return {"error": "an arc template with this code + language already exists"}
+        return {"error": "an arc template with this code already exists"}
     return arc.model_dump(mode="json")
 
 
@@ -6876,7 +6903,7 @@ async def composition_arc_template_update(ctx: MCPContext, args: _ArcTemplateUpd
     except VersionMismatchError as exc:
         return {"error": "version conflict", "current": exc.current.model_dump(mode="json")}
     except asyncpg.UniqueViolationError:
-        return {"error": "an arc template with this code + language already exists"}
+        return {"error": "an arc template with this code already exists"}
     if arc is None:
         raise uniform_not_accessible()
     return arc.model_dump(mode="json")
@@ -6942,7 +6969,7 @@ class _ArcTemplateEditArgs(ForbidExtra):
     expected_version: int | None = None  # update (optional optimistic concurrency)
     code: str | None = None             # create (required)
     name: str | None = None             # create (required), update
-    language: str | None = None         # create
+    original_language: str | None = None   # create
     summary: str | None = None          # create, update
     genre_tags: list[str] | None = None  # create, update
     chapter_span: int | None = None     # create, update
@@ -6959,8 +6986,8 @@ class _ArcTemplateEditArgs(ForbidExtra):
     description=(
         "Create, edit, archive, or restore one of YOUR arc templates (reusable arc "
         "skeletons — threads, layout, pacing, roster) — the unified template-CRUD entry point. "
-        "op=create mints a PRIVATE template (needs code + name; optional language/summary/"
-        "genre_tags/chapter_span/threads/layout/pacing/arc_roster; a duplicate code+language → "
+        "op=create mints a PRIVATE template (needs code + name; optional original_language/summary/"
+        "genre_tags/chapter_span/threads/layout/pacing/arc_roster; a duplicate code → "
         "409). op=update edits your own (needs arc_id; optional expected_version for optimistic "
         "concurrency; only the fields you pass change; a foreign/system row → 404). op=archive "
         "soft-archives yours (needs arc_id; reversible via op=restore). op=restore un-archives "
@@ -6984,7 +7011,8 @@ async def composition_arc_template_edit(ctx: MCPContext, args: _ArcTemplateEditA
         return await composition_arc_template_create(ctx, ArcTemplateCreateArgs(
             code=args.code, name=args.name,
             **_present(
-                language=args.language, summary=args.summary, genre_tags=args.genre_tags,
+                original_language=args.original_language, summary=args.summary,
+                genre_tags=args.genre_tags,
                 chapter_span=args.chapter_span, threads=args.threads, layout=args.layout,
                 pacing=args.pacing, arc_roster=args.arc_roster, visibility=args.visibility,
             ),

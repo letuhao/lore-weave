@@ -14,7 +14,7 @@ import type { GenerationJob } from '../types';
 import type {
   ArcConformance, CatalogList, ChapterConformance, CostEstimate, MineResult, Motif,
   MotifCreateArgs, MotifPatchArgs, MotifTier, MotifTranslateLanguage,
-  MotifTranslateResult, MotifTranslationInventory, SyncDiff, SyncResult,
+  MotifTranslateResult, TranslationInventory, SyncDiff, SyncResult,
 } from './types';
 
 const BASE = '/v1/composition';
@@ -289,13 +289,24 @@ export const motifApi = {
    *  so this is how it reports what exists without becoming one of them. */
   motifTranslations(
     motifId: string, token: string, bookId?: string | null,
-  ): Promise<MotifTranslationInventory> {
+  ): Promise<TranslationInventory> {
     // `bookId` selects the SHARED-tier read. Without it the server falls back to
     // system|public|owned, which does not include a book_shared row a COLLABORATOR
     // owns — i.e. the exact rows a grantee may translate would report an empty
     // inventory and be offered a duplicate translation.
-    return apiJson<MotifTranslationInventory>(
+    return apiJson<TranslationInventory>(
       `${BASE}/motifs/${motifId}/translations${_qs({ book_id: bookId ?? undefined })}`,
+      { token },
+    );
+  },
+
+  /** The same inventory for an ARC TEMPLATE. Identical contract, different table — the
+   *  arc library carried the identical identity defect and gets the identical read. */
+  arcTranslations(
+    arcId: string, token: string, bookId?: string | null,
+  ): Promise<TranslationInventory> {
+    return apiJson<TranslationInventory>(
+      `${BASE}/arc-templates/${arcId}/translations${_qs({ book_id: bookId ?? undefined })}`,
       { token },
     );
   },
@@ -310,7 +321,8 @@ export const motifApi = {
    *  (yours; a system or foreign-public motif is refused), so `skipped` can be > 0. */
   async translatePropose(
     args: {
-      motifIds: string[];
+      kind?: 'motif' | 'arc_template';
+      ids: string[];
       targetLanguage: MotifTranslateLanguage;
       bookId?: string | null;
       force?: boolean;
@@ -320,10 +332,11 @@ export const motifApi = {
     token: string,
   ): Promise<CostEstimate & { skipped: number }> {
     const res = await mcpExecute<_McpProposeResult & { skipped?: number }>(
-      'composition_motif_translate',
+      'composition_library_translate',
       {
         args: {
-          motif_ids: args.motifIds,
+          kind: args.kind ?? 'motif',
+          ids: args.ids,
           target_language: args.targetLanguage,
           ...(args.bookId ? { book_id: args.bookId } : {}),
           ...(args.force ? { force: true } : {}),
@@ -335,7 +348,7 @@ export const motifApi = {
     );
     return {
       confirm_token: res.confirm_token,
-      descriptor: 'composition.motif_translate',
+      descriptor: 'composition.library_translate',
       est_usd: res.estimate?.estimated_usd ?? 0,
       est_tokens: res.estimate?.estimated_tokens ?? 0,
       quota_remaining: null,

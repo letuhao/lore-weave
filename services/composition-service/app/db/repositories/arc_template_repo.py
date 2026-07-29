@@ -34,6 +34,8 @@ import asyncpg
 
 from app.db.models import ArcTemplate, ArcTemplateCreateArgs, ArcTemplatePatchArgs
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.motif_repo import normalize_display_language
+from app.motif_i18n import ARC_TEMPLATE_SPEC, resolve_text, source_hash
 
 # 25 M5.2 (BA5) renamed the arc_template columns threads→tracks, arc_roster→roster. The Pydantic
 # model + MCP/API keep the field names threads/arc_roster (the full BA10 vocabulary rename across
@@ -43,7 +45,7 @@ _COL_FOR = {"threads": "tracks", "arc_roster": "roster"}  # model field → rena
 
 # embedding + raw embed cols deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
-  id, owner_user_id, book_id, book_shared, code, language, visibility, name, summary, genre_tags,
+  id, owner_user_id, book_id, book_shared, code, original_language, visibility, name, summary, genre_tags,
   chapter_span, tracks AS threads, layout, pacing, roster AS arc_roster, source, imported_derived,
   source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at
@@ -53,6 +55,94 @@ _SELECT_COLS = """
 _JSONB_FIELDS = ("threads", "layout", "pacing", "arc_roster")
 # The read predicate (R1.1) — system | public | owned-by-caller. $1 = caller_id.
 _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_user_id = $1)"
+
+
+# ── display-language resolution (ARC-I18N) ─────────────────────────────────
+# `language` used to mean two things at once — the language a row was STORED in (a
+# filter) and the language a caller wanted to READ (a preference). They are now two
+# names: `original_language` on the row, `display_language` on reads. The motif library
+# learned this the hard way; the arc library had the identical shape and had simply not
+# been asked for a second language yet.
+_TR_COLS = ("arc_template_id, language_code, name, summary, threads, arc_roster, "
+            "source_content_hash")
+_TR_JSONB = ("threads", "arc_roster")
+
+
+async def _translations_for(
+    conn: asyncpg.Connection, ids: list[Any], want: str
+) -> dict[Any, dict[str, Any]]:
+    """ONE query for the whole batch — never per row (a 30-arc library would otherwise
+    cost 30 round-trips)."""
+    if not ids:
+        return {}
+    rows = await conn.fetch(
+        f"SELECT {_TR_COLS} FROM arc_template_translation "
+        f"WHERE language_code = $1 AND arc_template_id = ANY($2::uuid[])",
+        want, ids,
+    )
+    out: dict[Any, dict[str, Any]] = {}
+    for r in rows:
+        tr = dict(r)
+        for f in _TR_JSONB:
+            if isinstance(tr.get(f), str):
+                tr[f] = json.loads(tr[f])
+        out[tr["arc_template_id"]] = tr
+    return out
+
+
+async def apply_display_language(
+    conn: asyncpg.Connection, arcs: list[ArcTemplate], display_language: str | None
+) -> list[ArcTemplate]:
+    """Re-word a batch of arc templates into `display_language`, falling back per leaf.
+
+    Every returned row carries `text_language`/`text_fallback`/`text_stale`, so no
+    consumer — reader or model prompt — can be handed text without knowing which
+    language it is in. That reporting is the whole point: the bug this replaces was
+    silent."""
+    want = normalize_display_language(display_language)
+    if not want or not arcs:
+        return arcs
+    need = [a.id for a in arcs if a.original_language != want]
+    by_id = await _translations_for(conn, need, want)
+
+    out: list[ArcTemplate] = []
+    for a in arcs:
+        if a.original_language == want:
+            out.append(a.model_copy(update={"text_language": want}))
+            continue
+        out.append(a.model_copy(update=resolve_text(
+            a, by_id.get(a.id), want, spec=ARC_TEMPLATE_SPEC)))
+    return out
+
+
+async def apply_display_language_dicts(
+    conn: asyncpg.Connection, rows: list[dict[str, Any]], display_language: str | None
+) -> list[dict[str, Any]]:
+    """The catalog variant — the same resolution over the light allow-list dicts.
+
+    Only the leaves the projection actually carries are written back: the catalog omits
+    `arc_roster` by design (B-3), and resolving a field the caller was never given would
+    re-introduce it."""
+    want = normalize_display_language(display_language)
+    if not want or not rows:
+        return rows
+    need = [r["id"] for r in rows if r.get("original_language") != want]
+    by_id = await _translations_for(conn, need, want)
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if r.get("original_language") == want:
+            out.append({**r, "text_language": want, "text_fallback": False,
+                        "text_stale": False})
+            continue
+        resolved = resolve_text(r, by_id.get(r["id"]), want, spec=ARC_TEMPLATE_SPEC)
+        merged = dict(r)
+        for k in ("name", "summary", "text_language", "text_fallback", "text_stale"):
+            merged[k] = resolved[k]
+        if "threads" in merged:
+            merged["threads"] = resolved["threads"]
+        out.append(merged)
+    return out
 
 
 def _row_to_arc(row: asyncpg.Record) -> ArcTemplate:
@@ -113,7 +203,7 @@ class ArcTemplateRepo:
         be EDIT-gated on `book_id` at the route BEFORE this runs — the repo does not gate."""
         query = f"""
         INSERT INTO arc_template
-          (owner_user_id, code, language, visibility, name, summary, genre_tags,
+          (owner_user_id, code, original_language, visibility, name, summary, genre_tags,
            chapter_span, tracks, layout, pacing, roster, source, status,
            imported_derived, book_id, book_shared)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
@@ -123,7 +213,7 @@ class ArcTemplateRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
                 query,
-                user_id, args.code, args.language, args.visibility, args.name,
+                user_id, args.code, args.original_language, args.visibility, args.name,
                 args.summary, args.genre_tags, args.chapter_span,
                 _jsonb(_dump_models(args.threads)), _jsonb(_dump_models(args.layout)),
                 _jsonb(args.pacing), _jsonb(_dump_models(args.arc_roster)), source, status,
@@ -266,12 +356,13 @@ class ArcTemplateRepo:
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
         status: str | None = "active", q: str | None = None,
-        language: str | None = None, limit: int = 100, book_id: UUID | None = None,
+        display_language: str | None = None, limit: int = 100, book_id: UUID | None = None,
     ) -> list[ArcTemplate]:
         """Tier-merged list under the read predicate (system | public | owner). `scope`
         narrows: 'system' (owner NULL), 'user' (owner=caller), 'public' (visibility=
         public), 'all' (the full predicate). genre filters the GIN array; q is an ILIKE
-        on name/summary; language/status are exact. System rows sort first.
+        on name/summary; status is exact. System rows sort first. `display_language`
+        RE-WORDS the result (never filters it) — see the note at the removed filter.
 
         D-ARC-TEMPLATE-BOOK-TIER (34a): when `book_id` is given (the CALLER MUST be VIEW-gated
         on it at the route), the 'all' predicate ALSO surfaces that book's SHARED rows
@@ -302,9 +393,11 @@ class ArcTemplateRepo:
         if status is not None:
             params.append(status)
             where.append(f"status = ${len(params)}")
-        if language is not None:
-            params.append(language)
-            where.append(f"language = ${len(params)}")
+        # ARC-I18N: `language` is deliberately NOT a WHERE clause any more. A filter can
+        # only ever SUBTRACT, so asking for Vietnamese HID every arc not stored in
+        # Vietnamese instead of showing it translated — and with every row authored in
+        # `en`, that is an empty library. It is applied AFTER selection, as a re-wording
+        # with per-leaf fallback (the same fix the motif library got, same reason).
         if q:
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
@@ -317,7 +410,8 @@ class ArcTemplateRepo:
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, *params)
-        return [_row_to_arc(r) for r in rows]
+            return await apply_display_language(c, [_row_to_arc(r) for r in rows],
+                                                display_language)
 
     async def clone(
         self, caller_id: UUID, src_arc_id: UUID, *, target_owner: UUID,
@@ -352,7 +446,7 @@ class ArcTemplateRepo:
             row = await c.fetchrow(
                 f"""
                 INSERT INTO arc_template
-                  (owner_user_id, code, language, visibility, name, summary, genre_tags,
+                  (owner_user_id, code, original_language, visibility, name, summary, genre_tags,
                    chapter_span, tracks, layout, pacing, roster, source, source_ref,
                    source_version, embedding, embedding_model, embedding_dim,
                    embedded_summary_hash, imported_derived)
@@ -361,7 +455,7 @@ class ArcTemplateRepo:
                         $15,$16,$17,$18,$19)
                 RETURNING {_SELECT_COLS}
                 """,
-                target_owner, s["code"], s["language"], s["name"], s["summary"], genres,
+                target_owner, s["code"], s["original_language"], s["name"], s["summary"], genres,
                 s["chapter_span"], _passthru_jsonb(s["threads"]),
                 _passthru_jsonb(s["layout"]), _passthru_jsonb(s["pacing"]),
                 _passthru_jsonb(s["arc_roster"]), s["source"], f"lineage:{src_arc_id}",
@@ -375,13 +469,13 @@ class ArcTemplateRepo:
     # JSONB are structurally excluded from the LIGHT catalog list (one get_visible
     # away). Mirrors motif_repo._CATALOG_COLS.
     _CATALOG_COLS = (
-        "id", "code", "language", "name", "summary", "genre_tags", "chapter_span",
+        "id", "code", "original_language", "name", "summary", "genre_tags", "chapter_span",
         "tracks AS threads", "source", "version", "updated_at",
     )
 
     async def list_public(
         self, *, genre: str | None = None, q: str | None = None,
-        language: str | None = None, sort: str = "recent",
+        display_language: str | None = None, sort: str = "recent",
         limit: int = 50, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """The PUBLIC catalog (B-3 analogue). visibility='public' AND status='active'
@@ -394,9 +488,7 @@ class ArcTemplateRepo:
         if genre is not None:
             params.append(genre)
             where.append(f"${len(params)} = ANY(genre_tags)")
-        if language is not None:
-            params.append(language)
-            where.append(f"language = ${len(params)}")
+        # Same as `list`: a display language re-words the catalog, it never narrows it.
         if q:
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
@@ -416,14 +508,18 @@ class ArcTemplateRepo:
         async with self._pool.acquire() as c:
             rows = await c.fetch(list_q, *params)
             total = await c.fetchval(count_q, *count_params)
-        out: list[dict[str, Any]] = []
-        for r in rows:
-            d = dict(r)
-            # threads is a JSONB column → asyncpg may return it as a json string.
-            t = d.get("threads")
-            if isinstance(t, str):
-                d["threads"] = json.loads(t)
-            out.append(d)
+            out: list[dict[str, Any]] = []
+            for r in rows:
+                d = dict(r)
+                # threads is a JSONB column → asyncpg may return it as a json string.
+                t = d.get("threads")
+                if isinstance(t, str):
+                    d["threads"] = json.loads(t)
+                out.append(d)
+            # The catalog carries name/summary/threads — real text a reader reads — so it
+            # is re-worded like every other read. `arc_roster` is not on the allow-list, so
+            # the resolved payload is projected back onto the light dict.
+            out = await apply_display_language_dicts(c, out, display_language)
         return out, int(total or 0)
 
     async def count_shared_by_owner(self, owner_id: UUID) -> int:
@@ -436,3 +532,120 @@ class ArcTemplateRepo:
                 "AND visibility IN ('public','unlisted') AND status <> 'archived'",
                 owner_id,
             ) or 0)
+
+
+# ── the user-paid translate path (ARC-I18N) ────────────────────────────────
+# Deliberately the SAME four methods, the same tenancy rule and the same authored
+# guard as `MotifRepo`. Two libraries, one policy: the platform's own content ships
+# translated for free, a user's content is theirs and is never machine-translated
+# behind their back, and an adopter pays for their own demand languages.
+
+    async def list_translatable(
+        self, caller_id: UUID, arc_ids: list[UUID], *, book_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """The subset of `arc_ids` this caller may buy a translation for.
+
+        Narrower than the READ predicate on purpose: an `arc_template_translation` row
+        on a SYSTEM template is System tier — seeded, admin-managed, shared by every
+        user — so a regular user writing one is the kinds bug. A public template someone
+        else owns is refused too; adopt it first, and then it is yours.
+        """
+        if not arc_ids:
+            return []
+        params: list[Any] = [caller_id, arc_ids]
+        scope = "owner_user_id = $1"
+        if book_id is not None:
+            params.append(book_id)
+            scope = f"(owner_user_id = $1 OR (book_shared AND book_id = ${len(params)}))"
+        rows = await self._pool.fetch(
+            f"SELECT {_SELECT_COLS} FROM arc_template "
+            f"WHERE id = ANY($2::uuid[]) AND status <> 'archived' AND {scope}",
+            *params,
+        )
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            for f in _JSONB_FIELDS:
+                if isinstance(d.get(f), str):
+                    d[f] = json.loads(d[f])
+            out.append(d)
+        return out
+
+    async def list_translations(self, arc_id: UUID) -> list[dict[str, Any]]:
+        """Which languages this template already reads in, and whether each is current.
+
+        Every translatable column exists on BOTH tables, so each one is qualified — an
+        unqualified `name` here is an ambiguous-column error, not a wrong answer.
+        """
+        rows = await self._pool.fetch(
+            "SELECT t.language_code, t.source AS tr_source, t.translated_by, t.updated_at, "
+            "  t.source_content_hash AS made_from, "
+            "  a.name, a.summary, a.tracks AS threads, a.roster AS arc_roster "
+            "FROM arc_template_translation t JOIN arc_template a ON a.id = t.arc_template_id "
+            "WHERE t.arc_template_id = $1 ORDER BY t.language_code",
+            arc_id,
+        )
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            for f in ("threads", "arc_roster"):
+                if isinstance(d.get(f), str):
+                    d[f] = json.loads(d[f])
+            out.append({
+                "language_code": d["language_code"], "source": d["tr_source"],
+                "translated_by": d["translated_by"], "updated_at": d["updated_at"],
+                "stale": (d.get("made_from") or "") != source_hash(d, ARC_TEMPLATE_SPEC),
+            })
+        return out
+
+    async def get_translation_state(
+        self, arc_id: UUID, language_code: str,
+    ) -> dict[str, Any] | None:
+        """`{source, stale}` for an existing translation, or None. `stale` compares the
+        hash the translation was MADE from against the template's current text — the
+        signal that lets a re-translate be free when nothing moved and paid when it did."""
+        row = await self._pool.fetchrow(
+            "SELECT t.source AS tr_source, t.source_content_hash AS made_from, "
+            "  a.name, a.summary, a.tracks AS threads, a.roster AS arc_roster "
+            "FROM arc_template_translation t JOIN arc_template a ON a.id = t.arc_template_id "
+            "WHERE t.arc_template_id = $1 AND t.language_code = $2",
+            arc_id, language_code,
+        )
+        if row is None:
+            return None
+        d = dict(row)
+        for f in ("threads", "arc_roster"):
+            if isinstance(d.get(f), str):
+                d[f] = json.loads(d[f])
+        return {"source": d["tr_source"],
+                "stale": (d.get("made_from") or "") != source_hash(d, ARC_TEMPLATE_SPEC)}
+
+    async def upsert_translation(
+        self, arc_id: UUID, language_code: str, payload: dict[str, Any],
+        *, source_content_hash: str, translated_by: str,
+    ) -> bool:
+        """Write a MACHINE translation. False when an `authored` row refused it — the
+        same conflict rule the motif upsert and the seeder carry, byte for byte: machine
+        output never lands on top of wording a person wrote."""
+        res = await self._pool.execute(
+            """
+            INSERT INTO arc_template_translation (
+              arc_template_id, language_code, name, summary, threads, arc_roster,
+              source_content_hash, source, translated_by
+            ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, 'machine', $8)
+            ON CONFLICT (arc_template_id, language_code) DO UPDATE SET
+              name = EXCLUDED.name, summary = EXCLUDED.summary,
+              threads = EXCLUDED.threads, arc_roster = EXCLUDED.arc_roster,
+              source_content_hash = EXCLUDED.source_content_hash,
+              source = EXCLUDED.source, translated_by = EXCLUDED.translated_by,
+              updated_at = now()
+            WHERE arc_template_translation.source <> 'authored'
+            """,
+            arc_id, language_code,
+            payload.get("name") or "", payload.get("summary") or "",
+            json.dumps(payload.get("threads") or []),
+            json.dumps(payload.get("arc_roster") or []),
+            source_content_hash, translated_by,
+        )
+        # asyncpg returns "INSERT 0 <n>" — n == 0 means the authored guard held.
+        return not res.endswith(" 0")

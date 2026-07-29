@@ -1,4 +1,4 @@
-"""app/engine/motif_translate.py — the USER-PAID translate path.
+"""app/engine/library_translate.py — the USER-PAID translate path.
 
 The model call itself is stubbed; what is worth guarding is everything around it,
 because every failure here is one the user has ALREADY PAID FOR:
@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.engine import motif_translate as mtr
+from app.engine import library_translate as mtr
 from app.motif_i18n import TranslationFileError
 
 
@@ -289,9 +289,9 @@ def repo_patch(monkeypatch):
 async def _run_job(repo_patch, repo, motif_ids, respond=None, **over):
     repo_patch(repo)
     llm = _LLM(respond or (lambda sent: {k: f"JA::{v}" for k, v in sent.items()}))
-    inp = {"motif_ids": [str(m) for m in motif_ids], "target_language": "ja",
+    inp = {"ids": [str(m) for m in motif_ids], "target_language": "ja",
            "model_ref": "m-1", "model_source": "user_model", **over}
-    return await mtr.run_translate_motifs(None, llm, user_id=str(uuid4()), input=inp)
+    return await mtr.run_translate_library(None, llm, user_id=str(uuid4()), input=inp)
 
 
 @pytest.mark.asyncio
@@ -301,7 +301,7 @@ async def test_a_motif_the_caller_may_not_translate_is_refused_at_run_time(repo_
     it does not distinguish 'system' from 'not yours' from 'does not exist'."""
     stranger = uuid4()
     out = await _run_job(repo_patch, _Repo(allowed=[]), [stranger])
-    assert out["results"] == [{"motif_id": str(stranger), "status": "not_translatable"}]
+    assert out["results"] == [{"id": str(stranger), "status": "not_translatable"}]
     assert out["written"] == 0
 
 
@@ -368,7 +368,7 @@ async def test_one_bad_motif_does_not_sink_the_batch(repo_patch):
 
     repo = _Repo(allowed=[good, bad])
     out = await _run_job(repo_patch, repo, [good["id"], bad["id"]], respond=respond)
-    statuses = {r["motif_id"]: r["status"] for r in out["results"]}
+    statuses = {r["id"]: r["status"] for r in out["results"]}
     assert statuses[str(good["id"])] == "translated"
     assert statuses[str(bad["id"])] == "failed"
     assert out["written"] == 1
@@ -391,9 +391,9 @@ async def test_an_unsupported_language_is_refused_before_any_work(repo_patch):
     repo = _Repo(allowed=[])
     repo_patch(repo)
     with pytest.raises(ValueError, match="unsupported target_language"):
-        await mtr.run_translate_motifs(
+        await mtr.run_translate_library(
             None, _LLM(lambda s: {}), user_id=str(uuid4()),
-            input={"motif_ids": [str(uuid4())], "target_language": "auto",
+            input={"ids": [str(uuid4())], "target_language": "auto",
                    "model_ref": "m-1"})
 
 
@@ -403,18 +403,18 @@ async def test_a_missing_model_ref_fails_closed(repo_patch):
     model spends the USER's money."""
     repo_patch(_Repo(allowed=[]))
     with pytest.raises(ValueError, match="model_ref is required"):
-        await mtr.run_translate_motifs(
+        await mtr.run_translate_library(
             None, _LLM(lambda s: {}), user_id=str(uuid4()),
-            input={"motif_ids": [str(uuid4())], "target_language": "ja"})
+            input={"ids": [str(uuid4())], "target_language": "ja"})
 
 
 @pytest.mark.asyncio
 async def test_the_batch_is_capped(repo_patch):
     """An unbounded batch is an unbounded bill, and it would make the confirm card's
     estimate meaningless."""
-    ids = [uuid4() for _ in range(mtr.MAX_MOTIFS_PER_JOB + 10)]
+    ids = [uuid4() for _ in range(mtr.MAX_ITEMS_PER_JOB + 10)]
     out = await _run_job(repo_patch, _Repo(allowed=[]), ids)
-    assert out["requested"] == mtr.MAX_MOTIFS_PER_JOB
+    assert out["requested"] == mtr.MAX_ITEMS_PER_JOB
 
 
 @pytest.mark.asyncio
@@ -434,10 +434,10 @@ async def test_cancelling_stops_the_spend_for_motifs_not_yet_started(repo_patch)
         seen["n"] += 1
         return seen["n"] > 1          # the first motif runs, then the user cancels
 
-    out = await mtr.run_translate_motifs(
+    out = await mtr.run_translate_library(
         None, _LLM(lambda sent: {k: f"JA::{v}" for k, v in sent.items()}),
         user_id=str(uuid4()),
-        input={"motif_ids": [str(a["id"]), str(b["id"])], "target_language": "ja",
+        input={"ids": [str(a["id"]), str(b["id"])], "target_language": "ja",
                "model_ref": "m-1"},
         cancel_check=cancel_check,
     )
@@ -452,7 +452,7 @@ _BOOK = UUID("00000000-0000-0000-0000-0000000000b1")
 def grant_patch(monkeypatch):
     """Swap the worker's grant client for one whose verdict the test controls."""
     def _install(verdict):
-        import app.engine.motif_translate as m
+        import app.engine.library_translate as m
 
         async def _authorize(grant, book_id, caller, need):
             if verdict is not None:
@@ -521,3 +521,44 @@ async def test_a_grant_service_outage_narrows_the_batch_it_does_not_fail_it(repo
     out = await _run_job(repo_patch, repo, [mine["id"]], book_id=str(_BOOK))
     assert out["results"][0]["status"] == "translated"
     assert out["written"] == 1
+
+
+# ── the MCP tool BODY ──────────────────────────────────────────────────────
+# Everything above tests the engine. Nothing tested the tool handler itself, and it
+# shipped a bare `NameError` (`motif_ids` left behind by the motif→library rename) that
+# every unit test passed straight over: the engine was fine, the schema was fine, and
+# the tool raised on its very first live call. A handler nothing executes is a handler
+# nothing checks.
+@pytest.mark.asyncio
+async def test_the_tool_body_runs_end_to_end_for_both_kinds(monkeypatch):
+    import app.mcp.server as srv
+
+    for kind, repo_attr in (("motif", "MotifRepo"), ("arc_template", "ArcTemplateRepo")):
+        item = _motif() if kind == "motif" else {
+            "id": uuid4(), "code": "arc.x", "original_language": "en",
+            "name": "The Debt", "summary": "an obligation outlives its lender",
+            "threads": [{"key": "debt", "label": "The obligation"}],
+            "arc_roster": [{"key": "heir", "actant": "receiver", "label": "the heir",
+                            "constraints": []}],
+        }
+
+        class _R:
+            def __init__(self, pool): pass
+            async def list_translatable(self, caller, ids, *, book_id=None):
+                return [item]
+
+        monkeypatch.setattr(srv, repo_attr, _R)
+        monkeypatch.setattr(srv, "get_pool", lambda: None)
+        monkeypatch.setattr(srv, "mint_confirm_token", lambda *a, **k: "ct")
+
+        class _Ctx:
+            pass
+        monkeypatch.setattr(srv, "_ctx", lambda ctx: type("T", (), {"user_id": uuid4()})())
+
+        out = await srv.composition_library_translate(_Ctx(), srv._LibraryTranslateArgs(
+            kind=kind, ids=[str(item["id"])], target_language="vi", model_ref="m-1"))
+        assert out["confirm_token"] == "ct", out
+        assert out["descriptor"] == srv._LIBRARY_TRANSLATE_DESCRIPTOR
+        assert out["estimate"]["estimated_tokens"] > 0
+        assert out["skipped"] == 0
+        assert kind.replace("_", " ") in out["title"]

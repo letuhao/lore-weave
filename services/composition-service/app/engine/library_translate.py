@@ -1,16 +1,25 @@
-"""Motif translate — the USER-PAID runtime path (docs/plans/2026-07-29-motif-translate-runtime.md).
+"""Library translate — the USER-PAID runtime path.
+
+Plans: docs/plans/2026-07-29-motif-translate-runtime.md (motif) and its arc follow-on.
 
 The platform's own 84 motifs ship pre-translated into 17 locales at dev time, free.
-A motif a *user* authored is theirs: we never translate it on our own initiative and
+Content a *user* authored is theirs: we never translate it on our own initiative and
 never spend a token on it behind their back (spec §5). This module is the other half
 of that policy — the one that lets them spend their own, deliberately.
 
-``run_translate_motifs`` is the worker handler behind the Tier-W
-``composition_motif_translate`` tool. The confirm effect (routers/actions.py) enqueues
-a ``translate_motif`` job; the consumer dispatches here. Input envelope:
+TWO libraries, ONE code path. Motifs and arc templates carried the identical identity
+defect (`language` inside the unique key) and the identical read bug (`language` as a
+WHERE filter, which can only subtract), and the motif one was fixed first. Giving the
+arc library its own translate implementation would have re-created exactly the
+divergence that produced the pair. `input['kind']` selects the spec + repo; everything
+else — tenancy, the authored guard, the fallback rules, the echo report — is shared.
 
-    {"worker_op": "translate_motif",
-     "motif_ids": ["…"], "target_language": "ja", "book_id": null,
+``run_translate_library`` is the worker handler behind the Tier-W
+``composition_library_translate`` tool. The confirm effect (routers/actions.py) enqueues
+a ``translate_library`` job; the consumer dispatches here. Input envelope:
+
+    {"worker_op": "translate_library", "kind": "motif" | "arc_template",
+     "ids": ["…"], "target_language": "ja", "book_id": null,
      "model_ref": "…", "model_source": "user_model", "force": false}
 
 Three properties this file exists to hold:
@@ -46,6 +55,9 @@ from app.grant_client import GrantLevel, get_grant_client
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.packer.pack import OwnershipError
 from app.motif_i18n import (
+    ARC_TEMPLATE_SPEC,
+    MOTIF_SPEC,
+    TranslatableSpec,
     build_translation_entry,
     extract_translatable,
     flatten_entry,
@@ -55,9 +67,29 @@ from app.motif_i18n import (
     unflatten_entry,
 )
 
+# The two libraries this engine serves. Everything below is spec-driven so the arc
+# library cannot drift from the motif library the way its identity key already had:
+# `language` sat inside `uq_arc_template_*` for exactly as long as it sat inside
+# `uq_motif_*`, and one was fixed while the other was not.
+_KINDS: dict[str, dict[str, Any]] = {
+    "motif": {
+        "spec": MOTIF_SPEC,
+        "repo": "app.db.repositories.motif_repo:MotifRepo",
+        "noun": "motif",
+    },
+    "arc_template": {
+        "spec": ARC_TEMPLATE_SPEC,
+        "repo": "app.db.repositories.arc_template_repo:ArcTemplateRepo",
+        "noun": "arc template",
+    },
+}
+
 logger = logging.getLogger(__name__)
 
-__all__ = ["run_translate_motifs", "translate_one", "LANGUAGE_NAMES", "MAX_MOTIFS_PER_JOB"]
+__all__ = ["run_translate_library", "translate_one", "LANGUAGE_NAMES",
+           "MAX_ITEMS_PER_JOB", "TRANSLATABLE_KINDS"]
+
+TRANSLATABLE_KINDS = ("motif", "arc_template")
 
 # The languages a user may buy. Closed set = the platform's supported locales, which is
 # what the FE's own language switcher offers — so the value can only ever be one the
@@ -84,9 +116,9 @@ LANGUAGE_NAMES: dict[str, str] = {
     "hi": "हिन्दी",
 }
 
-# One job may not translate more than this many motifs. The cap is what makes the
+# One job may not translate more than this many items. The cap is what makes the
 # confirm card's estimate meaningful — an unbounded batch is an unbounded bill.
-MAX_MOTIFS_PER_JOB = 50
+MAX_ITEMS_PER_JOB = 50
 
 _SYSTEM = (
     "You are a literary translator localizing a NARRATIVE CRAFT library for a "
@@ -147,6 +179,8 @@ async def translate_one(
     target_language: str,
     model_source: str,
     model_ref: str,
+    spec: TranslatableSpec = MOTIF_SPEC,
+    kind: str = "motif",
     trace_id: str | None = None,
     cancel_check: Any = None,
 ) -> dict[str, Any]:
@@ -156,8 +190,8 @@ async def translate_one(
        "payload": {…}|None, "source_content_hash": "…",
        "translated": int, "fell_back": [key], "dropped": [key], "echoed": [key]}``
     """
-    source_payload = extract_translatable(motif)
-    entry = build_translation_entry(source_payload)
+    source_payload = extract_translatable(motif, spec)
+    entry = build_translation_entry(source_payload, spec)
     flat = flatten_entry(entry)
     src_hash = translatable_hash(source_payload)
 
@@ -183,11 +217,11 @@ async def translate_one(
         llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
         messages=messages, max_tokens=_MAX_TOKENS,
         job_meta={
-            "extractor": "motif_translate",
+            "extractor": f"{kind}_translate",
             # The billing label (reference: the provider `operation` field is
             # quad-overloaded — relabel via job_meta, never by expanding the enum).
-            "usage_purpose": "motif_translate",
-            "motif_code": motif.get("code"),
+            "usage_purpose": f"{kind}_translate",
+            "code": motif.get("code"),
             "target_language": target_language,
         },
         schema=_schema_for(keys), schema_name="motif_translation",
@@ -227,7 +261,7 @@ async def translate_one(
     # unflatten that produced a list where an object was expected. It raises, and the
     # caller turns that into a per-motif failure rather than a write.
     payload = parse_translation_entry(
-        rebuilt, source_payload, where=f"{motif.get('code')}:{target_language}")
+        rebuilt, source_payload, where=f"{motif.get('code')}:{target_language}", spec=spec)
 
     return {
         "status": "translated", "payload": payload, "source_content_hash": src_hash,
@@ -236,7 +270,7 @@ async def translate_one(
     }
 
 
-async def run_translate_motifs(
+async def run_translate_library(
     pool: asyncpg.Pool,
     llm: Any,
     *,
@@ -244,34 +278,45 @@ async def run_translate_motifs(
     input: dict[str, Any],
     cancel_check: Any = None,
 ) -> dict[str, Any]:
-    """Worker entry point — translate the named motifs into one target language.
+    """Worker entry point — translate the named library items into one target language.
 
-    Partial success is the norm and is reported per motif: one motif whose model call
+    `input['kind']` selects which library (motif | arc_template); everything else is
+    identical, which is the point: one policy, one code path, two tables.
+
+    Partial success is the norm and is reported per item: one item whose model call
     failed must not discard the ones that succeeded (the user paid for all of them).
     """
-    from app.db.repositories.motif_repo import MotifRepo
+    import importlib
+
+    kind = str(input.get("kind") or "motif")
+    if kind not in _KINDS:
+        raise ValueError(f"translate_library: unsupported kind {kind!r}")
+    cfg = _KINDS[kind]
+    spec = cfg["spec"]
+    mod_name, _, cls_name = cfg["repo"].partition(":")
+    repo_cls = getattr(importlib.import_module(mod_name), cls_name)
 
     target = str(input.get("target_language") or "").strip()
     if target not in LANGUAGE_NAMES:
-        raise ValueError(f"translate_motif: unsupported target_language {target!r}")
-    raw_ids = list(input.get("motif_ids") or [])
+        raise ValueError(f"translate_library: unsupported target_language {target!r}")
+    raw_ids = list(input.get("ids") or [])
     if not raw_ids:
-        raise ValueError("translate_motif: motif_ids is required")
+        raise ValueError("translate_library: ids is required")
     try:
-        motif_ids = [UUID(str(m)) for m in raw_ids[:MAX_MOTIFS_PER_JOB]]
+        item_ids = [UUID(str(m)) for m in raw_ids[:MAX_ITEMS_PER_JOB]]
     except (ValueError, TypeError) as exc:
-        raise ValueError("translate_motif: motif_ids must be UUIDs") from exc
+        raise ValueError("translate_library: ids must be UUIDs") from exc
 
     model_ref = str(input.get("model_ref") or "")
     model_source = str(input.get("model_source") or "user_model")
     if not model_ref:
         # Fail closed rather than reaching for a platform default: the whole point of
         # this path is that the USER's model spends the USER's money.
-        raise ValueError("translate_motif: model_ref is required")
+        raise ValueError("translate_library: model_ref is required")
 
     book_id = input.get("book_id")
     force = bool(input.get("force"))
-    repo = MotifRepo(pool)
+    repo = repo_cls(pool)
 
     # THE TENANCY GATE, re-applied here rather than trusted from the proposal — a
     # `translate_motif` job is server-retryable, so the sweeper can re-drive it long
@@ -296,32 +341,32 @@ async def run_translate_motifs(
                 get_grant_client(), book_uuid, UUID(user_id), GrantLevel.EDIT)
         except (OwnershipError, InsufficientGrant) as exc:
             logger.warning(
-                "translate_motif: book grant re-check failed for book=%s user=%s: %s "
+                "translate_library: book grant re-check failed for book=%s user=%s: %s "
                 "— shared-tier motifs dropped from this run", book_uuid, user_id, exc)
             book_uuid = None
-    targets = await repo.list_translatable(UUID(user_id), motif_ids, book_id=book_uuid)
+    targets = await repo.list_translatable(UUID(user_id), item_ids, book_id=book_uuid)
     by_id = {str(m["id"]): m for m in targets}
 
     results: list[dict[str, Any]] = []
     written = 0
-    for mid in motif_ids:
+    for mid in item_ids:
         # Cancel between motifs, not only inside a call. `call_json` already threads the
         # check into the in-flight request, but a 50-motif batch is minutes of spending:
         # a user who cancels must stop being charged for the motifs not started yet, not
         # merely for the one mid-flight. Everything already written stays written.
         if cancel_check is not None and await cancel_check():
-            results.append({"motif_id": str(mid), "status": "cancelled"})
+            results.append({"id": str(mid), "status": "cancelled"})
             continue
         motif = by_id.get(str(mid))
         if motif is None:
             # Not owned, not shared-with-EDIT, or system tier. One uniform outcome —
             # "you may not translate this" — so the result cannot be used to probe
             # which motifs exist.
-            results.append({"motif_id": str(mid), "status": "not_translatable"})
+            results.append({"id": str(mid), "status": "not_translatable"})
             continue
         code = motif.get("code")
         if (motif.get("original_language") or "en") == target:
-            results.append({"motif_id": str(mid), "code": code,
+            results.append({"id": str(mid), "code": code,
                             "status": "already_original"})
             continue
         existing = await repo.get_translation_state(mid, target)
@@ -330,12 +375,12 @@ async def run_translate_motifs(
         # refuse the write anyway, so skipping this check would spend a real token to
         # produce something guaranteed to be discarded.
         if existing and existing["source"] == "authored":
-            results.append({"motif_id": str(mid), "code": code,
+            results.append({"id": str(mid), "code": code,
                             "status": "authored_kept"})
             continue
         if not force and existing and not existing["stale"]:
             # Already fresh in this language — charging again buys nothing.
-            results.append({"motif_id": str(mid), "code": code,
+            results.append({"id": str(mid), "code": code,
                             "status": "already_translated"})
             continue
 
@@ -343,11 +388,11 @@ async def run_translate_motifs(
             out = await translate_one(
                 llm, motif, user_id=user_id, target_language=target,
                 model_source=model_source, model_ref=model_ref,
-                cancel_check=cancel_check,
+                spec=spec, kind=kind, cancel_check=cancel_check,
             )
         except Exception as exc:  # noqa: BLE001 — one bad motif must not sink the batch
-            logger.warning("translate_motif: %s failed: %r", code, exc)
-            results.append({"motif_id": str(mid), "code": code,
+            logger.warning("translate_library[%s]: %s failed: %r", kind, code, exc)
+            results.append({"id": str(mid), "code": code,
                             "status": "failed", "error": str(exc)[:200]})
             continue
 
@@ -361,14 +406,15 @@ async def run_translate_motifs(
             if not wrote:
                 out["status"] = "authored_kept"
         results.append({
-            "motif_id": str(mid), "code": code, "status": out["status"],
+            "id": str(mid), "code": code, "status": out["status"],
             "translated": out["translated"], "fell_back": out["fell_back"],
             "dropped": out["dropped"], "echoed": out["echoed"],
         })
 
     return {
+        "kind": kind,
         "target_language": target,
-        "requested": len(motif_ids),
+        "requested": len(item_ids),
         "written": written,
         "results": results,
     }

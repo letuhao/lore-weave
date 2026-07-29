@@ -1,5 +1,42 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧬 ARC TEMPLATE i18n — the last table with language in its identity key (2026-07-30)
+
+Swept all four DBs first: every other `language` inside a UNIQUE key belongs to a
+*translation* table, where `language_code` is correctly the key. `arc_template` was the
+only entity table left.
+
+**Measured before touching it: 31 rows · 0 system rows · 1 language (`en`) · no caller
+sending `language`.** So unlike the motif migration — 168 rows for 84 motifs, 84
+hand-written Vietnamese translations to rescue, 55 link edges to repoint — there was
+**nothing to collapse**. `arc_i18n_v1` is a pure reshape.
+
+That made it a *trap*, not damage: `arc_template_repo` still had `language` as a WHERE
+arm in `list` and `catalog`, and a WHERE arm can only SUBTRACT. The moment anyone wired
+the reader's language into the arc library the way the motif library now does, every
+non-English user would have got **zero arcs** — and the symptom reads as missing data,
+not as a filter. Proven fixed: the library returns 25 templates at `display_language`
+none/vi/ja/auto alike.
+
+**One engine, two libraries.** `motif_i18n.py` became spec-driven (`MOTIF_SPEC` +
+`ARC_TEMPLATE_SPEC`); `composition_motif_translate` became **`composition_library_translate`**
+with a `kind` discriminator (CAT-1/CAT-3 — identical W tier, identical confirm flow, so
+CAT-2's divergent-safety bar is satisfied); the worker op is `translate_library`. Giving
+the arc library its own copy would have re-created exactly the divergence that let one
+identity key get fixed while its twin did not.
+
+`arc_template.layout` carries no translatable leaf and is absent from the spec **by
+design** — it is `motif_code`/`thread`/spans/`ord`, and a model asked to localize it
+would rename a thread key and silently break every placement binding.
+
+### Found at review
+
+The MCP tool body shipped a bare `NameError` (`motif_ids`, left by the rename) that
+**every unit test passed over** — the engine was tested, the schema was tested, the
+allowlist was tested, and nothing executed the handler. It raised on its first live
+call. Now covered by a test that runs the handler end-to-end for both kinds.
+
+
 ## 🧠 REASONING WIRE FIELDS — back to one SSOT (2026-07-30)
 
 Plan + full write-up: [`docs/plans/2026-07-30-reasoning-wire-fields-ssot.md`](../plans/2026-07-30-reasoning-wire-fields-ssot.md)

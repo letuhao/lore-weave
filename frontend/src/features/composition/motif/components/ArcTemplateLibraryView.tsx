@@ -8,6 +8,7 @@ import { MotifStateBoundary } from './MotifStateBoundary';
 import { ArcTimelineEditor } from './ArcTimelineEditor';
 import { ArcApplyPreview } from './ArcApplyPreview';
 import { ArcConformancePanel } from './ArcConformancePanel';
+import { MotifTranslateAction } from './MotifTranslateAction';
 import { useArcLibrary } from '../hooks/useArcLibrary';
 import { currentUserId } from '../currentUser';
 import type { ArcTemplate } from '../arcTypes';
@@ -30,6 +31,19 @@ export function ArcTemplateLibraryView({ token, projectId, modelRef }: { token: 
           ← {t('motif.arc.backToList', { defaultValue: 'All arc templates' })}
         </button>
         <div className="min-h-0 flex-1 overflow-auto">
+          {/* ARC-I18N — which language this template is written in, plus (for one you
+              own) the paid translate. Above the editor because it QUALIFIES everything
+              below: the editor writes the SOURCE row, so the reader must know the text
+              they are looking at is the original and not a translation. */}
+          <div className="p-2">
+            <MotifTranslateAction
+              motif={openArc as unknown as Parameters<typeof MotifTranslateAction>[0]['motif']}
+              kind="arc_template"
+              canTranslate={!!me && openArc.owner_user_id === me}
+              token={token}
+              bookId={openArc.book_shared ? openArc.book_id ?? null : null}
+            />
+          </div>
           <ArcTimelineEditor arcId={openArc.id} token={token} />
           <div className="p-2">
             <ArcApplyPreview arc={openArc} token={token} projectId={projectId} />

@@ -663,7 +663,16 @@ class ArcTemplate(BaseModel):
     book_id: UUID | None = None
     book_shared: bool = False
     code: _Code
-    language: _Lang = "en"
+    # ARC-I18N: the language this template was AUTHORED in. NOT identity — it sat inside
+    # all three `uq_arc_template_*` keys, which made the same arc in two languages two
+    # unrelated rows. Other languages are arc_template_translation rows.
+    original_language: _Lang = "en"
+    # Read-path metadata, stamped when the caller asked for a display language. Same
+    # contract as Motif: a consumer must never receive text without knowing what
+    # language it is in.
+    text_language: _Lang | None = None
+    text_fallback: bool = False
+    text_stale: bool = False
     visibility: MotifVisibility = "private"
     name: _Title
     summary: _Long = ""
@@ -975,7 +984,7 @@ class ArcRosterEntry(BaseModel):                   # one arc_roster[] entry (§1
 class ArcTemplateCreateArgs(_ForbidExtra):
     code: _Code
     name: _Title
-    language: _Lang = "en"
+    original_language: _Lang = "en"
     summary: _Long = ""
     genre_tags: list[_Key] = Field(default_factory=list)
     chapter_span: Annotated[int, Field(ge=1)] | None = None
@@ -987,8 +996,14 @@ class ArcTemplateCreateArgs(_ForbidExtra):
 
 
 class ArcTemplatePatchArgs(_ForbidExtra):
-    # every field optional (PATCH semantics); owner/code/language/source are NOT
-    # patchable (identity/lineage are immutable post-create — clone to re-key).
+    # every field optional (PATCH semantics); owner/code/source are NOT patchable
+    # (identity/lineage are immutable post-create — clone to re-key).
+    #
+    # `original_language` IS patchable, for the same reason it is on a motif: it was
+    # excluded while language was part of the identity key, and ARC-I18N took it out.
+    # A wrong claim about the authoring language hands the wrong language to a prompt
+    # while reporting no fallback.
+    original_language: _Lang | None = None
     name: _Title | None = None
     summary: _Long | None = None
     genre_tags: list[_Key] | None = None

@@ -25,7 +25,10 @@ import { useMotifTranslate } from '../hooks/useMotifTranslate';
 import { MOTIF_TRANSLATE_LANGUAGES, type Motif, type MotifTranslateLanguage } from '../types';
 
 type Props = {
+  /** A motif or an arc template — both expose `id`, `original_language`,
+   *  `owner_user_id`, and both are translated through the same tool. */
   motif: Motif;
+  kind?: 'motif' | 'arc_template';
   /** Whether this caller may BUY a translation — which is exactly the set they may EDIT,
    *  and deliberately so: the server allows a motif you own OR a book's SHARED row you
    *  hold EDIT on. Gating this on ownership alone would have shut every collaborator out
@@ -48,7 +51,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
 };
 const label = (code: string) => LANGUAGE_LABELS[code] ?? code;
 
-export function MotifTranslateAction({ motif, canTranslate, token, bookId }: Props) {
+export function MotifTranslateAction({ motif, kind = 'motif', canTranslate, token, bookId }: Props) {
   const { t, i18n } = useTranslation('composition');
   // Default the target to what the reader is already reading the app in — that is the
   // language they discovered the gap in.
@@ -72,8 +75,10 @@ export function MotifTranslateAction({ motif, canTranslate, token, bookId }: Pro
   // is the edit surface and the PATCH is whole-object — so the inventory is how it can
   // report the reader's language without silently becoming it.
   const inventory = useQuery({
-    queryKey: ['composition', 'motif', motif.id, 'translations', bookId ?? null],
-    queryFn: () => motifApi.motifTranslations(motif.id, token!, bookId),
+    queryKey: ['composition', kind, motif.id, 'translations', bookId ?? null],
+    queryFn: () => (kind === 'motif'
+      ? motifApi.motifTranslations(motif.id, token!, bookId)
+      : motifApi.arcTranslations(motif.id, token!, bookId)),
     enabled: !!token,
   });
   const rows = inventory.data?.translations ?? [];
@@ -130,10 +135,10 @@ export function MotifTranslateAction({ motif, canTranslate, token, bookId }: Pro
         <p data-testid="motif-language-not-yours" className="mt-1 text-neutral-500">
           {motif.owner_user_id == null
             ? t('motif.language.systemFree', {
-              defaultValue: 'Built-in motifs are provided in every supported language — this one has no translation for your language yet.',
+              defaultValue: 'Built-in library items are provided in every supported language — this one has no translation for your language yet.',
             })
             : t('motif.language.adoptFirst', {
-              defaultValue: 'Adopt this motif into your library to translate it.',
+              defaultValue: 'Adopt this into your library to translate it.',
             })}
         </p>
       )}
@@ -192,7 +197,7 @@ export function MotifTranslateAction({ motif, canTranslate, token, bookId }: Pro
             // charged". A STALE one is different — re-buying it is the point.
             disabled={!model || busy || (!!have && !have.stale)}
             onClick={() => model && tr.mint.mutate({
-              motifIds: [motif.id], targetLanguage: target, bookId,
+              kind, ids: [motif.id], targetLanguage: target, bookId,
               force: staleTarget, modelRef: model,
             })}
           >
