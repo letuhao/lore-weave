@@ -252,6 +252,29 @@ async def _load_work_node(works, outline, grant, user_id, project_id, node_id,
     return work, node
 
 
+#: A draft that produced TOKENS but no TEXT is the "empty ghost" — the whole output budget went to
+#: hidden reasoning, and `parts` (which collects only `token` deltas, never `reasoning` ones) came
+#: back empty. `cowrite` already names the failure in a comment; nothing checked for it.
+#:
+#: Found by writing a scene through the GUI as a real author: the job recorded
+#: `{"text": "", "truncated": true, "finish_reason": "length", "output_tokens": 800}` with
+#: `status: completed`, the panel returned to "Ready to draft", and the author was billed 800 output
+#: tokens for nothing — with no error anywhere. A completed job that produced no prose is not a
+#: success; it is the silent-success law's exact violation, on the surface an author uses most.
+def _empty_draft_error(text: str, output_tokens: int, finish_reason: str | None) -> str | None:
+    """The message for a draft that produced no prose, or None when there is prose."""
+    if (text or "").strip():
+        return None
+    if output_tokens > 0:
+        return (
+            f"the model produced {output_tokens} output tokens but no prose "
+            f"(finish_reason={finish_reason!r}). This usually means the whole budget went to hidden "
+            f"reasoning — pick a non-reasoning drafter, or set reasoning effort to none for this "
+            f"model. Nothing was written."
+        )
+    return "the model returned no prose at all. Nothing was written."
+
+
 async def _maybe_detect_narrative_threads(
     work, *, llm, repo, user_id, project_id, scene_text,
     opened_at_node, model_source, model_ref, source_language,
@@ -705,6 +728,14 @@ async def generate(
                       "truncated": truncated, "finish_reason": m.finish_reason}
             if stream_error:
                 result["error"] = stream_error
+            empty = _empty_draft_error(final["text"], m.output_tokens, m.finish_reason)
+            if empty:
+                result["error"] = empty
+                await jobs.update_status(job.id, "failed", result=result)
+                yield _sse({"type": "error", "job_id": str(job.id), "status": "failed",
+                            "output_tokens": m.output_tokens, "measured": m.measured,
+                            "finish_reason": m.finish_reason, "error": empty})
+                return
             await jobs.update_status(job.id, "completed", result=result)
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
@@ -908,6 +939,14 @@ async def selection_edit(
                       "selection_edit": True}
             if stream_error:
                 result["error"] = stream_error
+            empty = _empty_draft_error(final["text"], m.output_tokens, m.finish_reason)
+            if empty:
+                result["error"] = empty
+                await jobs.update_status(job.id, "failed", result=result)
+                yield _sse({"type": "error", "job_id": str(job.id), "status": "failed",
+                            "output_tokens": m.output_tokens, "measured": m.measured,
+                            "finish_reason": m.finish_reason, "error": empty})
+                return
             await jobs.update_status(job.id, "completed", result=result)
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
