@@ -243,7 +243,12 @@ SYSTEM = (
 
 
 def translate_chunk(src: dict[str, str], endonym: str, code: str,
-                    script_re: str | None, max_heal: int) -> tuple[dict, dict]:
+                    script_re: str | None, max_heal: int,
+                    system: str = SYSTEM) -> tuple[dict, dict]:
+    """`system` is a parameter so a SECOND corpus can reuse this whole loop — the
+    chunking, the verify, the self-heal, the no-silent-drop fallback — with its own
+    domain prompt. scripts/motif_translate.py does that for the motif seed packs; the
+    machinery here is the part worth having exactly one copy of."""
     user = (f"Target language: {endonym} ({code})\n\n"
             f"{json.dumps(src, ensure_ascii=False, indent=0)}")
     out: dict = {}
@@ -252,7 +257,7 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
             # Flatten the model's output: gemma sometimes RE-NESTS a flat dotted key
             # ({"graph.counts": x} → {"graph": {"counts": x}}); flattening normalizes
             # both shapes back to dotted-flat so verify compares like-for-like.
-            out = flatten(extract_json(call_model(SYSTEM, user)))
+            out = flatten(extract_json(call_model(system, user)))
         except (ValueError, json.JSONDecodeError) as e:
             user = (f"Your previous output was not valid JSON ({e}) — most likely an "
                     f"unescaped double-quote inside a value. Do NOT use \" inside values "
@@ -277,7 +282,8 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
     return out, {**soft, **{k: f"FAILED:{r}" for k, r in hard.items()}}
 
 
-def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None) -> None:
+def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None,
+                       system: str = SYSTEM) -> None:
     """Self-heal only fires on HARD failures (translate_chunk returns early once
     `hard` is empty) — a key the model silently echoed back in English inside a
     12-key batch surfaces merely as a SOFT "possibly untranslated" flag and is
@@ -300,7 +306,8 @@ def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None) 
                                           or str(v).startswith("FAILED:"))]
     for key in candidates:
         try:
-            out, soft = translate_chunk({key: src_by_key[key]}, endonym, code, script_re, max_heal=1)
+            out, soft = translate_chunk({key: src_by_key[key]}, endonym, code, script_re,
+                                          max_heal=1, system=system)
         except Exception:
             continue
         fixed = out.get(key)

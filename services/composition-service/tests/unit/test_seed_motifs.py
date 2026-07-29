@@ -247,3 +247,68 @@ def test_inventory_counts(rows, edges):
     # per language): 12+34 precedes + 7+2 composed_of.
     assert sum(1 for e in edges if e["kind"] == "precedes") == 46
     assert sum(1 for e in edges if e["kind"] == "composed_of") == 9
+
+
+# ── MOTIF-I18N — the seeder must survive its own tooling's output.
+def test_a_FAILED_report_in_a_translations_dir_does_not_break_the_loader(tmp_path, monkeypatch):
+    """scripts/motif_translate.py writes `_FAILED.json` ({pack: [keys]}) whenever a key
+    exhausts its heal rounds — i.e. routinely. The loader globbed `*.json` and read that
+    report as a translation file, taking a PACK name for a motif code and raising, so ONE
+    failed key anywhere would stop composition-service from booting. Reproduced against
+    the real loader before the fix; a report file must simply be ignored."""
+    import json as _json
+
+    from app.db import seed_motifs as sm
+
+    tdir = tmp_path / "translations" / "xx"
+    tdir.mkdir(parents=True)
+    (tdir / "_FAILED.json").write_text(
+        _json.dumps({"mystery": ["mystery.witness_who_lies|name"]}), encoding="utf-8")
+    monkeypatch.setattr(sm, "_TRANSLATION_DIR", tmp_path / "translations")
+
+    assert sm.load_translation_rows(sm.load_motif_rows()) == []
+
+
+def test_a_recorded_source_hash_survives_an_english_edit(tmp_path, monkeypatch):
+    """The staleness signal only means anything if the seeder REPORTS what the
+    translation was made from rather than re-deriving it. Re-deriving stamps every
+    translation as fresh no matter how far the English has moved — so editing a summary
+    and not re-translating would ship stale Vietnamese under a fresh flag, which is the
+    'git says one thing, production says another' shape this repo keeps hitting."""
+    import json as _json
+
+    from app.db import seed_motifs as sm
+
+    rows = sm.load_motif_rows()
+    code = rows[0]["code"]
+    tdir = tmp_path / "translations" / "xx"
+    tdir.mkdir(parents=True)
+    (tdir / "pack.json").write_text(_json.dumps({code: {"name": "translated"}}), encoding="utf-8")
+    (tdir / "_source_hash.json").write_text(
+        _json.dumps({code: "made-from-an-older-english-summary"}), encoding="utf-8")
+    monkeypatch.setattr(sm, "_TRANSLATION_DIR", tmp_path / "translations")
+
+    got = sm.load_translation_rows(rows)
+    assert len(got) == 1
+    assert got[0]["source_content_hash"] == "made-from-an-older-english-summary", (
+        "the seeder re-derived the hash and erased the staleness signal")
+
+
+def test_a_translation_with_no_recorded_hash_is_assumed_in_sync(tmp_path, monkeypatch):
+    """The hand-authored vi packs predate the sidecar. Absent a record, assume the
+    translation matches the source it ships beside — which is true for them, and is what
+    the seeder did for everything before the sidecar existed."""
+    import json as _json
+
+    from app.db import seed_motifs as sm
+    from app.motif_i18n import extract_translatable, translatable_hash
+
+    rows = sm.load_motif_rows()
+    code = rows[0]["code"]
+    tdir = tmp_path / "translations" / "xx"
+    tdir.mkdir(parents=True)
+    (tdir / "pack.json").write_text(_json.dumps({code: {"name": "translated"}}), encoding="utf-8")
+    monkeypatch.setattr(sm, "_TRANSLATION_DIR", tmp_path / "translations")
+
+    got = sm.load_translation_rows(rows)
+    assert got[0]["source_content_hash"] == translatable_hash(extract_translatable(rows[0]))

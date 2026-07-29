@@ -302,7 +302,32 @@ def load_translation_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return out
     for lang_dir in sorted(p for p in _TRANSLATION_DIR.iterdir() if p.is_dir()):
         language = lang_dir.name
+        # WHICH source text each translation was actually made from, recorded by
+        # scripts/motif_translate.py at translate time. Recomputing it here from the
+        # CURRENT source instead — which is what this did first — stamps every
+        # translation as fresh no matter how far the English has moved since, so
+        # editing a summary without re-translating would silently ship stale wording
+        # under a fresh flag. A code with no recorded hash (the hand-authored vi packs
+        # predate the sidecar) falls back to the current hash: assuming in-sync is
+        # right for a translation that was authored against this very source, and is
+        # in any case what the old behaviour did for everything.
+        recorded_hashes: dict[str, str] = {}
+        hash_path = lang_dir / "_source_hash.json"
+        if hash_path.exists():
+            try:
+                loaded = json.loads(hash_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    recorded_hashes = loaded
+            except (ValueError, OSError):
+                pass
+        # `_`-prefixed files are REPORTS, not translations — scripts/motif_translate.py
+        # writes `_FAILED.json` ({pack: [keys]}) whenever a key exhausts its heal rounds.
+        # Globbing it as a translation file made the loader read a PACK name as a motif
+        # code and raise, so a single failed key anywhere would stop composition-service
+        # from booting. The tool's own output must never be able to break the seeder.
         for path in sorted(lang_dir.glob("*.json")):
+            if path.name.startswith("_"):
+                continue
             with path.open(encoding="utf-8") as fh:
                 doc = json.load(fh)
             if not isinstance(doc, dict):
@@ -324,10 +349,13 @@ def load_translation_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "motif_id": _motif_id(code),
                         "language_code": language,
                         "payload": payload,
-                        # The source text this translation was made from. A later edit to
-                        # the English motif changes this hash, which marks the translation
-                        # stale on read instead of silently serving mismatched wording.
-                        "source_content_hash": translatable_hash(payload_by_code[code]),
+                        # The source text this translation was made from — recorded at
+                        # translate time, not inferred now. A later edit to the English
+                        # motif moves the live hash away from this one, which marks the
+                        # translation stale on read instead of silently serving
+                        # mismatched wording under a fresh flag.
+                        "source_content_hash": recorded_hashes.get(
+                            code, translatable_hash(payload_by_code[code])),
                         "source": "authored" if language in _AUTHORED_LANGUAGES else "machine",
                     }
                 )

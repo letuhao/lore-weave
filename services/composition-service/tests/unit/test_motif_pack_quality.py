@@ -139,3 +139,18 @@ def test_pack_rows_are_valid_json_objects_with_stable_keys(by_code):
         extra = set(row) - allowed
         assert not extra, f"{code} carries key(s) the loader will drop: {sorted(extra)}"
         assert json.dumps(row)          # round-trips
+
+
+def test_emotion_target_vocabulary_has_no_separator_variants(by_code):
+    """`emotion_target` is a free-text label that behaves like a controlled vocabulary —
+    36 values across 84 motifs, each fed to the writing model and shown to the author.
+    Two spellings of one mood (`grim resolve` vs `grim-resolve`, found live) split it
+    into two apparent moods: they sort apart, filter apart, and translate to different
+    words. Nothing else checks this, because each spelling is individually valid."""
+    variants: dict[str, set[str]] = {}
+    for row in by_code.values():
+        value = row.get("emotion_target")
+        if value:
+            variants.setdefault(value.lower().replace("-", " ").replace("_", " "), set()).add(value)
+    split = {k: sorted(v) for k, v in variants.items() if len(v) > 1}
+    assert not split, f"one mood spelled several ways: {split}"

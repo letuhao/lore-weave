@@ -666,14 +666,14 @@
     ],
     "annotations": {},
     "tension_target": 4,
-    "emotion_target": "grim resolve",
+    "emotion_target": "grim-resolve",
     "examples": [
       {
         "text": "They knew which ford, and roughly which hour, and the only thing left to decide was what he was willing to leave on the bank."
       }
     ],
     "source": "authored",
-    "source_version": 2
+    "source_version": 3
   },
   {
     "code": "wuxia.retired_blade_recalled",

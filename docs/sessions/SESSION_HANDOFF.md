@@ -37,11 +37,46 @@ the fix: those statements had been corrected to the new column NAME but still ca
 `original_language` **in the key**, so if a condition ever fired they would have resurrected the exact
 schema this migration removes.
 
+## ✅ MOTIF TRANSLATION TOOL — `scripts/motif_translate.py` (2026-07-29)
+
+**Reuses** `i18n_translate.py` rather than cloning it: its system prompt became a parameter, so one
+copy of the chunk / verify / self-heal / isolate-retry / gap-fill / no-silent-drop loop now serves
+both the FE locales and the motif packs. Motif-specific parts only: the source, a prose-fiction craft
+prompt (with each motif's own English name+summary injected as context, because a beat label is
+untranslatable in isolation), and a **structural gate** — every written file is re-parsed through
+`parse_translation_entry` against the real source, since a drifted `beats[].key` does not error at
+runtime, it just silently stops merging while the file on disk still looks complete.
+
+Two independent guards protect the hand-written Vietnamese: the tool refuses an authored language
+without `--force-authored`, and the seeder's upsert refuses to let a `machine` row overwrite an
+`authored` one. A test asserts both agree on which languages those are.
+
+**Two real defects found while building it:**
+- `_FAILED.json` — which the tool writes whenever *any* key exhausts its heal rounds — was globbed by
+  the seeder as a translation file, read a PACK name as a motif code, and raised. **One failed key
+  anywhere would have stopped composition-service from booting.** Reproduced against the real loader,
+  then fixed (`_`-prefixed files are reports) + guarded.
+- The seeder **re-derived** `source_content_hash` from the *current* source on every boot, so every
+  translation was stamped fresh no matter how far the English had moved. Editing a summary without
+  re-translating would ship stale wording under a fresh flag — the staleness column was decorative.
+  The tool now records what it actually translated from (`_source_hash.json`, `_`-prefixed so the
+  same skip covers it); the seeder reads it, falling back to the current hash for the pre-sidecar vi
+  packs. A `vi` baseline was generated from the verified-identical source.
+
+Proof run: `ja`/`mystery`, 8 motifs / 173 keys, 0 failures, 59s — output verified literary and
+key-faithful (`The Witness Whose Lie Is Not the Crime` → `罪とは無関係な嘘をつく目撃者`, every beat key intact).
+
+### ⏳ IN FLIGHT — the full 16-locale run
+`python -u scripts/motif_translate.py --workers 6` is translating 84 motifs × 16 locales
+(2,346 chunks, ~4h). **It is resumable and idempotent** — gap-fill carries every already-good key, so
+re-running after an interruption costs only what is missing. When it finishes:
+1. `python scripts/motif_translate.py --check <lang>` per locale.
+2. The run started before `_source_hash.json` existed, so **regenerate the sidecars** for the machine
+   locales (honest: those files were translated from the current source minutes earlier).
+3. Commit `translations/` — and check BOTH sides if any pack moves.
+
 ### ▶ NEXT on this track
-1. **`scripts/motif_translate.py`** — clone `scripts/i18n_translate.py` (flatten · chunk-by-key-count ·
-   verify · self-heal · isolate-retry · gap-fill resume · `_FAILED.json`) onto the seed packs, with
-   **key-invariance as a HARD check**. Then translate the 84 motifs into the remaining 16 locales.
-2. **The user-paid runtime translate path** — a metered job through provider-registry + a UI
+1. **The user-paid runtime translate path** — a metered job through provider-registry + a UI
    affordance. Deliberately NOT in this cycle; the policy it serves (never translate a user's motif
    for free) is what landed. Without it a user cannot translate their own motifs at all.
 3. **Arc templates have the identical defect** — `arc_template.language` is still in
