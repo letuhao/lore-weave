@@ -105,6 +105,17 @@ def coverage_report_analyze(
 #:
 #: `(kind, dotted path, how to label one item)`. A path of `arcs`/`events` is top-level; anything else
 #: is nested under `layers` or `charter` or `meta`.
+#: Which cross-step counter belongs to which board kind. `propose_llm_async._attach_step_disagreement`
+#: records where ANALYZE found more than the plan kept; this is how that reaches the author.
+_DISAGREEMENT_KEY: dict[str, str] = {
+    "character_seed": "characters",
+    "mechanics": "mechanics",
+    "planner_variables": "variables",
+    "arc_overview": "arcs",
+    "writing_principles": "style_constraints",
+    "open_questions": "open_questions",
+}
+
 _BOARD_KINDS: list[tuple[str, str, str]] = [
     ("character_seed", "layers.characters", "name"),
     ("mechanics", "layers.mechanics", "name"),
@@ -185,13 +196,23 @@ def spec_coverage_board(spec: dict[str, Any]) -> dict[str, Any]:
             else:
                 labels.append(str(it).strip())
         labels = [x for x in labels if x]
-        kinds.append({
+        # A kind can be PRESENT and still wrong. `status` answers "may I claim absence?"; it says
+        # nothing about completeness, so a run that collapsed to one character reads exactly like a
+        # book with one character. This is the only completeness signal available without ground
+        # truth: the run's own two steps counted the same thing and disagreed.
+        shrank = (unread.get("step_disagreement") or {}).get(_DISAGREEMENT_KEY.get(kind, ""))
+        entry = {
             "kind": kind,
             "count": len(items),
             # `unknown` is NOT a third flavour of absent — it is the honest refusal to claim either.
             "status": "present" if items else ("unknown" if read_incomplete else "absent"),
             "evidence": labels,
-        })
+        }
+        if isinstance(shrank, dict):
+            # Reported, never repaired: a shrink is not necessarily wrong (materialize legitimately
+            # merges duplicates). The author is told what to look at.
+            entry["shrank_from"] = shrank.get("analyze")
+        kinds.append(entry)
 
     return {
         "version": 1,
@@ -206,6 +227,7 @@ def spec_coverage_board(spec: dict[str, Any]) -> dict[str, Any]:
             "unclassified": unclassified,
             "degraded_steps": degraded_steps,
             "path": unread.get("path") or "rules",
+            "step_disagreement": unread.get("step_disagreement") or {},
             "note": unread.get("note") or "",
         },
     }

@@ -195,7 +195,62 @@ async def propose_spec_llm_async(
         analyze, checksum, client, existing=existing, inject_cast_max=inject_cast_max,
     )
     _attach_read_provenance(spec, client.io_log)
+    _attach_step_disagreement(spec, analyze)
     return spec, analyze, client.io_log
+
+
+#: What ANALYZE and MATERIALIZE are both supposed to hold, and where each keeps it. Two independent
+#: counts of the same thing, produced by two separate model calls in the same run.
+_CROSS_STEP: dict[str, tuple[str, tuple[str, ...]]] = {
+    "characters": ("characters", ("layers", "characters")),
+    "mechanics": ("mechanics", ("layers", "mechanics")),
+    "variables": ("variables", ("layers", "variables")),
+    "arcs": ("arcs", ("arcs",)),
+    "events": ("events", ("events",)),
+    "open_questions": ("open_questions", ("meta", "open_questions")),
+    "style_constraints": ("style_constraints", ("charter", "style_constraints")),
+}
+
+
+def _attach_step_disagreement(spec: dict[str, Any], analyze: dict[str, Any]) -> None:
+    """Report where the run's own two steps DISAGREE — the only collapse signal that needs no truth.
+
+    The hole this closes: a run that collapses produces `character_seed present n=1`, which is
+    indistinguishable from a book that genuinely has one character. The coverage board can tell a
+    dirty read from a clean one; it cannot tell "one character because the book has one" from "one
+    character because this run fell over". Measured: 1 of 12 runs on the Chinese corpus came back
+    with a single name where the same document yields four on the other 11.
+
+    No ground truth is needed, because we now have **two independent counts of the same thing**.
+    Carrying the cast through `analyze` (the fix for the vanished nameless character) is what made
+    this possible: before it, the cast existed at exactly one point in the pipeline and there was
+    nothing to compare against.
+
+    Reported, never repaired. A shrink is not necessarily wrong — `materialize` legitimately merges
+    duplicates — so this says "these two steps disagreed, look" and stops. Same discipline as
+    `unread`, `unavailable` and `stale`: the machine states what it noticed; the human decides.
+    """
+    lost: dict[str, dict[str, int]] = {}
+    for name, (a_key, path) in _CROSS_STEP.items():
+        a = analyze.get(a_key)
+        if not isinstance(a, list) or not a:
+            continue                      # analyze found none: nothing could have been lost
+        node: Any = spec
+        for part in path:
+            node = node.get(part) if isinstance(node, dict) else None
+        after = len(node) if isinstance(node, list) else 0
+        if after < len(a):
+            lost[name] = {"analyze": len(a), "spec": after}
+    if not lost:
+        return
+    block = spec.setdefault("meta", {}).setdefault("ingest_unread", {})
+    if not isinstance(block, dict):
+        return
+    block["step_disagreement"] = lost
+    detail = "; ".join(f"{k}: {v['analyze']} → {v['spec']}" for k, v in sorted(lost.items()))
+    note = (f"this run's two steps disagree — the read found more than the plan kept ({detail}). "
+            f"Check these before building on them.")
+    block["note"] = f"{block['note']} {note}".strip() if block.get("note") else note
 
 
 def _attach_read_provenance(spec: dict[str, Any], io_log: list[dict[str, Any]]) -> None:

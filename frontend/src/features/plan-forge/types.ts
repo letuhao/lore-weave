@@ -293,7 +293,15 @@ export interface MaterialPacket {
   /** The search could not run. NEVER render these as questions — asking the author to rewrite what
    *  they may already have written, because a model call failed, is the bug this bucket exists for. */
   unavailable: MaterialUnavailableRow[];
-  read: { failed: boolean; unclassified: string[]; note: string };
+  read: {
+    failed: boolean;
+    unclassified: string[];
+    note: string;
+    /** Where the run's own two steps counted the same thing and disagreed — `{characters: {analyze,
+     *  spec}}`. The only completeness signal available without ground truth: a collapsed run
+     *  otherwise reads exactly like a small book. */
+    step_disagreement?: Record<string, { analyze: number; spec: number }>;
+  };
   /** The plan has moved on since this was computed (a keep, a refine, a re-propose). The lines are
    *  still the author's own words, so it is still shown — but never silently. */
   stale?: boolean;

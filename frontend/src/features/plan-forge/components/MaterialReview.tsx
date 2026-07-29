@@ -107,6 +107,20 @@ export function MaterialReview({ state, disabled }: Props) {
         </p>
       )}
 
+      {Object.keys(packet.read.step_disagreement ?? {}).length > 0 && (
+        // A collapsed run reads exactly like a small book, so the board cannot raise its hand from
+        // counts alone. It can when the run's OWN two steps disagree — reported, never repaired,
+        // because a shrink is not necessarily wrong.
+        <p data-testid="material-shrank" className="text-destructive">
+          {t('planner.material.shrank', {
+            defaultValue:
+              'This run read more than it kept ({{detail}}) — check those parts before building on them.',
+            detail: Object.entries(packet.read.step_disagreement ?? {})
+              .map(([k, v]) => `${label(k)}: ${v.analyze} → ${v.spec}`).join(', '),
+          })}
+        </p>
+      )}
+
       {packet.read.failed && (
         <p data-testid="material-read-failed" className="text-destructive">
           {t('planner.material.readFailed', {

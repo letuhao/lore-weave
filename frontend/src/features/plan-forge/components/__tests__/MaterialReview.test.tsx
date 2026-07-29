@@ -155,3 +155,20 @@ it('a fresh packet shows no stale banner', () => {
   render(<MaterialReview state={state()} />);
   expect(screen.queryByTestId('material-stale')).toBeNull();
 });
+
+it('a run that read more than it kept says so, with both counts', () => {
+  // The silence this closes: `present n=1` is what a collapsed run and a one-character book both
+  // look like. The run's own two steps disagreeing is the only signal that needs no ground truth.
+  render(<MaterialReview state={state({ packet: { ...PACKET, read: {
+    failed: false, unclassified: [], note: '',
+    step_disagreement: { characters: { analyze: 4, spec: 1 } },
+  } } })} />);
+  const el = screen.getByTestId('material-shrank');
+  expect(el.textContent).toContain('4');
+  expect(el.textContent).toContain('1');
+});
+
+it('a run whose steps agree shows no such banner', () => {
+  render(<MaterialReview state={state()} />);
+  expect(screen.queryByTestId('material-shrank')).toBeNull();
+});
