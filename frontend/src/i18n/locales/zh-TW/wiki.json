@@ -1,5 +1,4 @@
 {
-  "title": "Wiki",
   "search": "搜尋 Wiki...",
   "searchEntities": "依名稱搜尋實體...",
   "noArticles": "尚無 Wiki 文章",
@@ -150,12 +149,12 @@
       "writeback": "儲存"
     },
     "badge": {
-      "generated": "AI",
       "generatedHint": "AI 生成，已通過驗證。",
       "needs_review": "待審",
       "needs_reviewHint": "AI 生成 — 已標記待審。",
       "blocked": "已封鎖",
-      "blockedHint": "AI 生成 — 經驗證封鎖發佈。"
+      "blockedHint": "AI 生成 — 經驗證封鎖發佈。",
+      "generated": "AI 生成"
     },
     "flags": {
       "reviewTitle": "已標記待審",
@@ -233,5 +232,6 @@
     "pendingChip_other": "{{count}} 則建議",
     "pendingTitle": "待審建議（{{count}}）",
     "pendingTitle_other": "待審建議（{{count}}）"
-  }
+  },
+  "title": "維基"
 }

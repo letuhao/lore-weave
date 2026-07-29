@@ -3,6 +3,7 @@
 // state (name/kind/genre + beats array with add/remove) + submit. No JSX.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motifApi } from '../api';
 import type { Motif, MotifBeat, MotifKind } from '../types';
 
@@ -23,6 +24,12 @@ const EMPTY: QuickCreateState = {
 export function useMotifQuickCreate(token: string | null, onCreated?: (m: Motif) => void) {
   const qc = useQueryClient();
   const [form, setForm] = useState<QuickCreateState>(EMPTY);
+  // MOTIF-I18N — the language the author is typing in. This used never to be sent at
+  // all, so EVERY user-authored motif took the server default 'en': a Vietnamese
+  // author's motif then reported `text_language: "en"` with no fallback flag and fed
+  // Vietnamese prose to an English prompt, silently. The UI language is the best
+  // available guess at what someone is writing in, and it stays correctable afterwards.
+  const { i18n } = useTranslation();
 
   const set = useCallback(<K extends keyof QuickCreateState>(k: K, v: QuickCreateState[K]) => {
     setForm((prev) => ({ ...prev, [k]: v }));
@@ -51,6 +58,7 @@ export function useMotifQuickCreate(token: string | null, onCreated?: (m: Motif)
         {
           code: form.code.trim(),
           name: form.name.trim(),
+          original_language: i18n.language || 'en',
           kind: form.kind,
           summary: form.summary.trim(),
           genre_tags: form.genres.split(',').map((g) => g.trim()).filter(Boolean),

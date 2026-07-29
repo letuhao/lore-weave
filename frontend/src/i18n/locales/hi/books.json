@@ -220,6 +220,7 @@
       "selected": "{{count}} चयनित",
       "activate": "सक्रिय करें",
       "deactivate": "निष्क्रिय करें",
+      "reject": "अस्वीकार करें",
       "clear": "साफ़ करें",
       "done": "{{count}} इकाइयाँ {{status}} पर सेट की गईं",
       "select_all_matching": "सभी {{count}} मिलान वाले चुनें",
@@ -229,8 +230,7 @@
       "delete_confirm": {
         "title": "{{count}} इकाइयाँ हटाएं?",
         "description": "{{count}} चयनित इकाइयों को रीसायकल बिन में ले जाया जाएगा।"
-      },
-      "reject": "अस्वीकार करें"
+      }
     },
     "clear_filters": "सभी फ़िल्टर साफ़ करें",
     "deleted": "इकाई हटाई गई",
@@ -239,6 +239,7 @@
       "description": "अपनी पहली शब्दावली इकाई बनाएं — पात्र, स्थान, वस्तुएं और बहुत कुछ।"
     },
     "untitled": "शीर्षकहीन",
+    "scope_label_title": "दायरा — यह इकाई को समान नाम वाली अन्य इकाइयों से अलग करता है",
     "alive_title": "जीवित — मृत चिह्नित करने के लिए क्लिक करें",
     "dead_title": "मृत — पुनर्जीवित करने के लिए क्लिक करें",
     "alive": "जीवित",
@@ -254,8 +255,7 @@
       "title": "इकाई हटाएं?",
       "description": "\"{{title}}\" को रीसायकल बिन में ले जाया जाएगा।",
       "confirm": "हटाएं"
-    },
-    "scope_label_title": "दायरा — यह इकाई को समान नाम वाली अन्य इकाइयों से अलग करता है"
+    }
   },
   "sharing": {
     "title": "दृश्यता",
@@ -404,7 +404,6 @@
   },
   "kind_editor": {
     "modified": "संशोधित",
-    "ai": "AI",
     "required": "आवश्यक",
     "optional": "वैकल्पिक",
     "activate": "सक्रिय करें",
@@ -424,7 +423,6 @@
     "attr_count_other": "गुण ({{count}})",
     "entity_count": "एंटिटी ({{count}})",
     "entity_count_other": "एंटिटी ({{count}})",
-    "system_tag": "system",
     "revert_to_default": "डिफ़ॉल्ट पर वापस लाएँ",
     "revert_title_attr": "सभी परिवर्तनों को सिस्टम डिफ़ॉल्ट पर रीसेट करें",
     "delete_kind_tooltip": "प्रकार हटाएँ",
@@ -470,7 +468,9 @@
       "title": "डिफ़ॉल्ट पर रीसेट करें?",
       "desc": "\"{{name}}\" को इसके मूल नाम, आइकन, रंग और attribute नामों पर रीसेट कर दिया जाएगा। Genre टैग और कस्टम attributes प्रभावित नहीं होंगे।",
       "confirm": "रीसेट करें"
-    }
+    },
+    "ai": "AI",
+    "system_tag": "सिस्टम"
   },
   "attr_editor": {
     "field_type": {
@@ -480,15 +480,14 @@
       "number": "संख्या",
       "date": "तारीख",
       "tags": "टैग्स",
-      "url": "URL",
-      "boolean": "बूलियन"
+      "boolean": "बूलियन",
+      "url": "URL"
     },
     "new_attr": "नया Attribute",
     "edit_attr": "Attribute संपादित करें",
     "system": "सिस्टम",
     "custom": "कस्टम",
     "modified": "संशोधित",
-    "ai": "AI",
     "core": "कोर",
     "display_name": "डिस्प्ले नाम",
     "field_type_label": "फील्ड का प्रकार",
@@ -528,6 +527,7 @@
       "title": "Attribute का नाम रीसेट करें?",
       "desc": "नाम को \"{{from}}\" से वापस \"{{to}}\" पर रीसेट करें। अन्य फ़ील्ड प्रभावित नहीं होंगे।",
       "confirm": "रीसेट करें"
-    }
+    },
+    "ai": "AI"
   }
 }

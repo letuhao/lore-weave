@@ -75,11 +75,11 @@
     "stage": "चरण",
     "status": "स्थिति",
     "tokens": "टोकन (इन/आउट)",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · मुफ्त",
     "cloud": "☁ {{kind}}",
     "launching": "लॉन्च हो रहा है…",
-    "launch": "अभियान लॉन्च करें"
+    "launch": "अभियान लॉन्च करें",
+    "usd": "USD"
   },
   "list": {
     "title": "ऑटो-ड्राफ्ट अभियान",

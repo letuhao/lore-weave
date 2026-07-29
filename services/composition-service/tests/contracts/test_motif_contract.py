@@ -116,10 +116,27 @@ def test_create_args_forbid_extra_and_no_owner_or_embed_field():
 
 def test_patch_args_forbid_extra_and_immutable_identity():
     MotifPatchArgs(name="new")
-    # code/original_language/source/owner are identity/lineage — not patchable here.
-    for forbidden in ("code", "original_language", "source", "owner_user_id"):
+    # code/source/owner are identity/lineage — not patchable here.
+    for forbidden in ("code", "source", "owner_user_id"):
         with pytest.raises(Exception):
             MotifPatchArgs(**{forbidden: "x"})
+
+
+def test_original_language_is_patchable_because_it_is_no_longer_identity():
+    """It used to be pinned as immutable alongside `code`, and that was right WHILE
+    language sat inside `uq_motif_system(code, language)` — changing it really did re-key
+    the row. MOTIF-I18N took language out of every unique index: a motif is one row, and
+    `original_language` is a CLAIM about which language the author typed in.
+
+    A wrong claim is not a cosmetic problem. The FE create path never sent the field at
+    all, so every user-authored motif took the `en` default — a Vietnamese author's motif
+    then resolves as `text_language: "en"`, `text_fallback: false`, and hands Vietnamese
+    prose to an English prompt while reporting that everything is fine. That is the exact
+    silent wrong-language bug the whole i18n re-arch was written to kill, surviving in the
+    user tier. Correcting it has to be reachable.
+    """
+    args = MotifPatchArgs(original_language="vi")
+    assert args.model_dump(exclude_unset=True) == {"original_language": "vi"}
 
 
 # ── model round-trips + MotifCandidate shape ───────────────────────────────────

@@ -428,6 +428,7 @@
   "pacing": "Tempo",
   "canon_consistency": "Kanon",
   "dismiss": "Verwerfen",
+  "overrideSlipBlocked": "Blockierte Überschreibung akzeptieren: Eine „Was-wäre-wenn“-Version ist zum Kanon-Wert zurückgefallen. Vor dem Akzeptieren neu generieren.",
   "overrideSlipExhausted": "Abweichung besteht trotz Regenerations-Limit weiterhin – zur Überprüfung markiert (Akzeptieren ist nicht mehr blockiert).",
   "overrideSlipDetail": "{{name}} ({{field}}): erwartet „{{expected}}“, gefunden „{{found}}“",
   "deltaInconsistencyDetail": "{{name}}: widerspricht der Delta-Regel „{{rule}}“",
@@ -972,6 +973,38 @@
       "degradedLibrary": "Nicht nach Relevanz sortiert – das Embedding-Modell der gemeinsamen Bibliothek ist nicht konfiguriert. Daher handelt es sich hierbei um Genre-Alternativen und nicht um bewertete Treffer.",
       "sectionMine": "Deine Motive",
       "sectionLibrary": "Aus der Bibliothek"
+    },
+    "language": {
+      "writtenIn": "Geschrieben in",
+      "authored": "handschriftliche Übersetzung",
+      "staleShort": "veraltet",
+      "missingYours": "nicht in {{lang}} – es wird auf das Original zurückgegriffen",
+      "systemFree": "Integrierte Motive sind in jeder unterstützten Sprache verfügbar – für dieses Motiv gibt es noch keine Übersetzung in deine Sprache.",
+      "adoptFirst": "Füge dieses Motiv deiner Bibliothek hinzu, um es zu übersetzen.",
+      "translateTo": "Übersetzen nach",
+      "model": "Übersetzungsmodell",
+      "translate": "Übersetzen…",
+      "retranslate": "Neu übersetzen…",
+      "alreadyHave": "Bereits übersetzt",
+      "estimating": "Schätzung läuft…",
+      "youPay": "Ihre eigenen Motive werden niemals automatisch übersetzt – dies erfolgt über Ihr Modell auf Ihre Kosten.",
+      "confirmWhat": "Dieses Motiv mit Ihrem Modell nach {{lang}} übersetzen.",
+      "echoed": "{{count}} Feld(er) wurde(n) nicht übersetzt zurückgegeben – Ihr Modell unterstützt diese Sprache möglicherweise nicht optimal.",
+      "again": "Eine andere Sprache übersetzen",
+      "quota": "Limit für Ausgaben erreicht.",
+      "failed": "Übersetzung fehlgeschlagen.",
+      "outcome": {
+        "translated": "Nach {{lang}} übersetzt.",
+        "already_original": "Dieses Motiv ist bereits in dieser Sprache verfasst.",
+        "already_translated": "Bereits übersetzt und weiterhin aktuell – es wurden keine Kosten berechnet.",
+        "authored_kept": "Eine manuell geschriebene Übersetzung existiert und wurde beibehalten.",
+        "nothing_to_translate": "Dieses Motiv enthält keinen zu übersetzenden Text.",
+        "not_translatable": "Dieses Motiv steht Ihnen nicht zur Übersetzung zur Verfügung.",
+        "model_failed": "Dein Modell hat keine nutzbaren Ergebnisse geliefert – es wurde nichts gespeichert.",
+        "failed": "Übersetzung fehlgeschlagen.",
+        "cancelled": "Abgebrochen, bevor dieses Motiv übersetzt wurde – es wurden keine Gebühren berechnet."
+      },
+      "skipped": "{{count}} der von Ihnen ausgewählten Motive sind nicht für eine Übersetzung vorgesehen und wurden nicht berücksichtigt."
     }
   },
   "authoringRun": {
@@ -1092,6 +1125,5 @@
       "loading": "Durchlauf wird geladen…",
       "back": "← Zurück zur Liste der Durchläufe"
     }
-  },
-  "overrideSlipBlocked": "Blockierte Überschreibung akzeptieren: Eine „Was-wäre-wenn“-Version ist zum Kanon-Wert zurückgefallen. Vor dem Akzeptieren neu generieren."
+  }
 }

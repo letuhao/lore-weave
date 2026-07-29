@@ -97,12 +97,12 @@
     "col_input": "इनपुट",
     "col_output": "आउटपुट",
     "col_cost": "लागत",
-    "cell_ok": "200 OK",
     "cell_error": "त्रुटि",
     "cell_rejected": "अस्वीकृत",
     "collapse_details": "विवरण छोटा करें",
     "expand_details": "विवरण विस्तार से देखें",
-    "no_logs": "कोई उपयोग लॉग नहीं मिला।"
+    "no_logs": "कोई उपयोग लॉग नहीं मिला।",
+    "cell_ok": "200 OK"
   },
   "detail": {
     "load_failed": "विवरण लोड करने में विफल",
@@ -116,9 +116,9 @@
     "payload_view_aria": "पेलोड दृश्य",
     "tab_input": "इनपुट (सिस्टम + यूजर)",
     "tab_output": "आउटपुट",
-    "tab_raw": "Raw JSON",
     "copy_aria": "क्लिपबोर्ड पर कॉपी करें",
     "copied": "कॉपी किया गया",
-    "copy": "कॉपी"
+    "copy": "कॉपी",
+    "tab_raw": "Raw JSON"
   }
 }

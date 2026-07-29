@@ -412,11 +412,11 @@
       "unlockFailed": "ไม่สามารถปลดล็อกได้: {{error}}",
       "field": {
         "project": "โปรเจกต์",
-        "global": "Global",
         "confidence": "ความมั่นใจ",
         "mentions": "การกล่าวถึง",
         "anchor": "คะแนน Anchor",
-        "scope": "ขอบเขต"
+        "scope": "ขอบเขต",
+        "global": "สากล"
       },
       "promote": "เพิ่มลงในอภิธานศัพท์",
       "promoteHint": "ตรวจพบเอนทิตี เพิ่มลงในอภิธานศัพท์เพื่อสร้างร่างคำศัพท์ที่แนะนำโดย AI สำหรับการตรวจสอบ",
@@ -594,9 +594,9 @@
         "empty": "ยังไม่มีบันทึก",
         "loadNewer": "โหลดข้อมูลใหม่",
         "levels": {
-          "info": "INFO",
-          "warning": "WARN",
-          "error": "ERROR"
+          "info": "ข้อมูล",
+          "warning": "คำเตือน",
+          "error": "ข้อผิดพลาด"
         }
       }
     },
@@ -688,7 +688,6 @@
         "general": "ทั่วไป"
       },
       "bookId": "ID หนังสือ (ไม่บังคับ)",
-      "bookIdPlaceholder": "uuid",
       "description": "คำอธิบาย (ไม่บังคับ)",
       "instructions": "คำแนะนำ (ไม่บังคับ)",
       "instructionsPlaceholder": "บันทึกสไตล์, น้ำเสียง, ข้อจำกัด — จะถูกส่งเข้าไปในทุกแชทของโปรเจกต์นี้",
@@ -707,7 +706,8 @@
         "errorAlreadyRunning": "มีการทดสอบ Benchmark กำลังทำงานสำหรับโปรเจกต์นี้อยู่ โปรดรอสักครู่แล้วลองใหม่",
         "errorProviderFlake": "ผู้ให้บริการ Embedding ขัดข้องระหว่างการทำงาน โปรดลองใหม่อีกครั้ง",
         "errorGeneric": "การทดสอบ Benchmark ล้มเหลว: {{message}}"
-      }
+      },
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "เก็บโครงการลงคลังหรือไม่?",

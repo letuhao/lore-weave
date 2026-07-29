@@ -973,6 +973,38 @@
       "degradedLibrary": "Not ranked by fit — the shared library's embedding model isn't configured, so these are genre fallbacks, not scored matches.",
       "sectionMine": "Your motifs",
       "sectionLibrary": "From the library"
+    },
+    "language": {
+      "writtenIn": "Written in",
+      "authored": "hand-written translation",
+      "staleShort": "outdated",
+      "missingYours": "not in {{lang}} — it falls back to the original",
+      "systemFree": "Built-in motifs are provided in every supported language — this one has no translation for your language yet.",
+      "adoptFirst": "Adopt this motif into your library to translate it.",
+      "translateTo": "Translate to",
+      "model": "Translation model",
+      "translate": "Translate…",
+      "retranslate": "Re-translate…",
+      "alreadyHave": "Already translated",
+      "estimating": "Estimating…",
+      "youPay": "Your own motifs are never translated automatically — this runs on your model, at your cost.",
+      "confirmWhat": "Translate this motif to {{lang}} using your model.",
+      "echoed": "{{count}} field(s) came back untranslated — your model may not handle this language well.",
+      "again": "Translate another language",
+      "quota": "Spending limit reached.",
+      "failed": "Translation failed.",
+      "outcome": {
+        "translated": "Translated to {{lang}}.",
+        "already_original": "This motif is already written in that language.",
+        "already_translated": "Already translated and still current — you were not charged.",
+        "authored_kept": "A hand-written translation exists and was kept.",
+        "nothing_to_translate": "This motif has no text to translate.",
+        "not_translatable": "This motif is not yours to translate.",
+        "model_failed": "Your model returned nothing usable — nothing was saved.",
+        "failed": "Translation failed.",
+        "cancelled": "Cancelled before this motif was translated — you were not charged for it."
+      },
+      "skipped": "{{count}} of the motifs you picked are not yours to translate and are not included."
     }
   },
   "authoringRun": {

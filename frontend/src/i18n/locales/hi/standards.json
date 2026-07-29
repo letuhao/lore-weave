@@ -16,8 +16,8 @@
   "action": {
     "clone": "मेरे टियर में क्लोन करें",
     "yours": "आपके",
-    "edit": "Edit",
-    "delete": "हटाएँ"
+    "delete": "हटाएँ",
+    "edit": "संपादित करें"
   },
   "genres": {
     "new": "नया जॉनर"
@@ -73,8 +73,8 @@
       "number": "संख्या",
       "date": "तारीख",
       "tags": "टैग्स",
-      "url": "URL",
-      "boolean": "हाँ / नहीं"
+      "boolean": "हाँ / नहीं",
+      "url": "URL"
     }
   },
   "stdform": {

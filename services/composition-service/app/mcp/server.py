@@ -98,6 +98,7 @@ from app.db.repositories.structure_templates import (
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
+from app.engine.motif_translate import LANGUAGE_NAMES, MAX_MOTIFS_PER_JOB
 from app.db.repositories.motif_retrieve import MotifRetriever, node_query_text
 from app.db.repositories.entity_references import EntityReferencesRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -173,6 +174,9 @@ _GENERATE_DESCRIPTOR = "composition.generate"
 # (confirm-token + a real usage-billing precheck + a 202+poll worker enqueue).
 _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
+# The user-paid motif translate: an LLM-spend job like mine, but USER-scoped (the payload
+# names motif_ids, and a book_id appears only for the shared tier).
+_MOTIF_TRANSLATE_DESCRIPTOR = "composition.motif_translate"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
 # close-21-28 P-O2a — the arc-decompiler (deterministic, $0) confirm-gated to the agent.
@@ -497,6 +501,33 @@ def _mine_estimate(*, scope: str) -> dict[str, Any]:
     The real per-token cost lands when the W8/W9/W5 worker compute runs."""
     est = 0.50 if scope == "book" else 2.00
     return {"estimated_usd": est, "currency": "USD", "basis": scope}
+
+
+# A translate is the one Tier-W motif op whose size is known EXACTLY before it runs —
+# the input is the motif's own text — so the estimate is measured rather than a scope
+# constant. The token count is honest; the $ is still a gate, not a quote (the real
+# per-token cost lands when provider-registry bills the user's own model).
+_TRANSLATE_USD_PER_1K_TOKENS = 0.01
+_CHARS_PER_TOKEN = 3.0          # conservative: CJK sources tokenize far denser than en
+
+
+def _translate_estimate(motifs: list[dict[str, Any]], target_language: str) -> dict[str, Any]:
+    """Size-derived $ estimate + an exact-ish token count for the confirm card."""
+    from app.motif_i18n import build_translation_entry, extract_translatable, flatten_entry
+
+    chars = 0
+    for m in motifs:
+        for text in flatten_entry(build_translation_entry(extract_translatable(m))).values():
+            chars += len(text)
+    # in (source + prompt) + out (translation, allow 1.5× — most targets run longer
+    # than English), plus a per-motif prompt overhead for the system + context block.
+    tokens = int(chars / _CHARS_PER_TOKEN * 2.5) + 400 * len(motifs)
+    return {
+        "estimated_usd": round(tokens / 1000 * _TRANSLATE_USD_PER_1K_TOKENS, 4),
+        "estimated_tokens": tokens,
+        "currency": "USD",
+        "basis": f"{len(motifs)} motif(s) → {target_language}",
+    }
 
 
 # ── Tier R — reads ────────────────────────────────────────────────────────────
@@ -3895,6 +3926,10 @@ class _MotifPatchToolArgs(ForbidExtra):
     expected_version: int
     # book_id set → edit the SHARED row in that book (EDIT-gated); omit → edit your own motif.
     book_id: str | None = None
+    # Correct which language the motif was AUTHORED in. Not identity (MOTIF-I18N took it
+    # out of every unique index) — a claim, and a wrong one hands the wrong language to a
+    # prompt while reporting no fallback.
+    original_language: str | None = None
     name: str | None = None
     kind: _MotifKind | None = None
     category: str | None = None
@@ -4385,9 +4420,9 @@ async def composition_motif_edit(ctx: MCPContext, args: _MotifEditArgs) -> dict:
         return await composition_motif_patch(ctx, _MotifPatchToolArgs(
             motif_id=args.motif_id, expected_version=args.expected_version,
             **_passed(
-                args, "book_id", "name", "kind", "category", "summary", "genre_tags", "roles",
-                "beats", "preconditions", "effects", "annotations", "tension_target",
-                "emotion_target", "status",
+                args, "book_id", "original_language", "name", "kind", "category", "summary",
+                "genre_tags", "roles", "beats", "preconditions", "effects", "annotations",
+                "tension_target", "emotion_target", "status",
             ),
         ))
     if args.op == "archive":
@@ -4644,6 +4679,118 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
     }
 
 
+class _MotifTranslateArgs(ForbidExtra):
+    """Flat args for composition_motif_translate (W/user — the user-paid translate)."""
+
+    motif_ids: list[str]
+    # CLOSED SET — the platform's supported reading languages, so the value can only be
+    # one a reader could actually be reading in. A free string here would let `auto`
+    # into the write path (`language='auto'` matched zero rows and zeroed the whole
+    # library once already — D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL), and would let a
+    # weak model invent a locale that no read ever asks for, so the user pays for a row
+    # nobody can ever see.
+    target_language: Literal[
+        "en", "vi", "ja", "ko", "zh-CN", "zh-TW", "es", "pt-BR", "fr", "de",
+        "ru", "id", "ms", "th", "tr", "ar", "hi",
+    ]
+    # Set ONLY when the targets are that book's SHARED tier — EDIT-gated. Omit for your
+    # own motifs.
+    book_id: str | None = None
+    # Re-translate one that already exists and is still fresh. Off by default: charging
+    # again for wording that has not moved is the thing this whole path exists to avoid.
+    force: bool = False
+    # The BYOK translate model (provider-gateway invariant). Required — the engine fails
+    # closed rather than reaching for a platform model, because the point of this path is
+    # that the USER's model spends the USER's money.
+    model_ref: str
+    model_source: str = "user_model"
+
+
+@mcp_server.tool(
+    name="composition_motif_translate",
+    description=(
+        "PROPOSE translating YOUR OWN motifs into another language — the motif keeps its "
+        "original language and gains a translation, so it reads in the reader's language "
+        "with fallback. The platform's built-in motifs already ship in every supported "
+        "language for free and cannot be translated here; this is for motifs you authored "
+        "or adopted. Spends LLM tokens with YOUR model, so it is cost-gated: it returns a "
+        "confirm_token + a $ estimate; nothing runs until you confirm via confirm_action, "
+        "then it runs as a background job you poll with composition_get_mine_job. An "
+        "existing, still-current translation is skipped rather than re-charged unless "
+        "force=true, and a hand-written translation is never overwritten."
+    ),
+    meta=require_meta(
+        "W", "user",
+        synonyms=["translate motif", "translate my motifs", "localize motif",
+                  "motif in Vietnamese", "dịch motif", "翻译motif",
+                  "make my motifs readable in another language"],
+        # `paid` is not decoration: the _meta Completeness Law exists because an
+        # undeclared spender runs without the approval card. This one spends the
+        # user's own BYOK budget, per motif.
+        async_job=True, paid=True,
+        tool_name="composition_motif_translate",
+    ),
+)
+async def composition_motif_translate(ctx: MCPContext, args: _MotifTranslateArgs) -> dict:
+    # @small_return: Tier-W PROPOSE card — a single {confirm_token, estimate} object.
+    tc = _ctx(ctx)
+    if not args.motif_ids:
+        return {"success": False, "error": "motif_ids is required"}
+    if len(args.motif_ids) > MAX_MOTIFS_PER_JOB:
+        return {"success": False,
+                "error": f"at most {MAX_MOTIFS_PER_JOB} motifs per translate job"}
+    try:
+        motif_ids = [UUID(m) for m in args.motif_ids]
+    except (ValueError, TypeError):
+        return {"success": False, "error": "motif_ids must be UUIDs"}
+    if args.book_id:
+        # SHARED-tier targets: EDIT on the book. Re-checked at confirm AND per-motif in
+        # the engine — a proposal is not a standing authorization.
+        await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+
+    repo = MotifRepo(get_pool())
+    allowed = await repo.list_translatable(
+        tc.user_id, motif_ids, book_id=UUID(args.book_id) if args.book_id else None)
+    if not allowed:
+        # Uniform refusal — it does not distinguish "does not exist" from "is a system
+        # motif" from "is not yours" (no enumeration oracle). The message names the one
+        # thing a user can act on.
+        return {
+            "success": False,
+            "error": "none of those motifs are yours to translate — the built-in "
+                     "library already ships in every supported language, and a public "
+                     "motif must be adopted into your library first",
+        }
+
+    estimate = _translate_estimate(allowed, args.target_language)
+    payload = {
+        "motif_ids": [str(m["id"]) for m in allowed],
+        "target_language": args.target_language,
+        "book_id": args.book_id,
+        "force": args.force,
+        "model_ref": args.model_ref,
+        "model_source": args.model_source,
+        "estimate_usd": estimate["estimated_usd"],
+    }
+    # resource_id binds the token: the named book for a shared-tier translate, else the
+    # user (the motif library is user-scoped).
+    resource_id = UUID(args.book_id) if args.book_id else tc.user_id
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, resource_id, _MOTIF_TRANSLATE_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _MOTIF_TRANSLATE_DESCRIPTOR,
+        "title": f"Translate {len(allowed)} motif(s) to "
+                 f"{LANGUAGE_NAMES.get(args.target_language, args.target_language)}",
+        "domain": "composition",
+        "requires": "human confirmation — this spends LLM tokens",
+        "estimate": estimate,
+        "skipped": len(motif_ids) - len(allowed),
+    }
+
+
 class _ArcImportArgs(ForbidExtra):
     import_source_id: str
     use_web: bool = False
@@ -4801,14 +4948,16 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
 @mcp_server.tool(
     name="composition_get_mine_job",
     description=(
-        "Poll an async motif job — the mining / arc-import / conformance job a confirmed "
-        "Tier-W motif action returns. Returns the job's status, its result once complete, "
-        "and cost. Use to wait for a mine/import/conformance to finish. Your own job only."
+        "Poll an async motif job — the mining / arc-import / conformance / translate job a "
+        "confirmed Tier-W motif action returns. Returns the job's status, its result once "
+        "complete, and cost. Use to wait for a mine/import/conformance/translate to finish. "
+        "Your own job only."
     ),
     meta=require_meta(
         "R", "user",
-        synonyms=["mining job", "import job", "conformance job", "poll mining",
-                  "is mining done", "motif job status"],
+        synonyms=["mining job", "import job", "conformance job", "translate job",
+                  "poll mining", "is mining done", "is the translation done",
+                  "motif job status"],
         tool_name="composition_get_mine_job",
     ),
 )

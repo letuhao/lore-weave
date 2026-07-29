@@ -346,7 +346,6 @@
     "temperature": "Температура",
     "temp_min": "0 (точный)",
     "temp_max": "2 (творческий)",
-    "top_p": "Top P",
     "topp_min": "0 (узкий)",
     "topp_max": "1 (разнообразный)",
     "default_mode": "Режим по умолчанию",
@@ -358,7 +357,8 @@
     "yes": "Да",
     "no": "Нет",
     "reset": "Сбросить настройки",
-    "save_failed": "Ошибка сохранения: {{error}}"
+    "save_failed": "Ошибка сохранения: {{error}}",
+    "top_p": "Top P"
   },
   "session_toast": {
     "create_failed": "Не удалось создать чат: {{error}}",
@@ -376,11 +376,11 @@
     "approve_once": "Разрешить один раз",
     "always_allow": "Всегда разрешать",
     "deny": "Отклонить",
-    "never_allow": "Never allow",
     "approved": "Одобрено — выполнение ✓",
     "always_allowed": "Всегда разрешено — выполнение ✓",
     "denied": "Отклонено",
-    "never_allowed": "Никогда не разрешено — вы можете отменить это в Настройки → Разрешения"
+    "never_allowed": "Никогда не разрешено — вы можете отменить это в Настройки → Разрешения",
+    "never_allow": "Никогда не разрешать"
   },
   "rack": {
     "label": "Контекст",
@@ -415,9 +415,9 @@
       "composition": "Композиция",
       "translation": "Перевод",
       "jobs": "Задачи",
-      "ui": "UI",
       "chat": "Чат",
-      "other": "Прочее"
+      "other": "Прочее",
+      "ui": "Интерфейс"
     }
   },
   "inspector": {
@@ -428,6 +428,7 @@
     "skills": "Навыки",
     "last_search": "Последний find_tools",
     "advertised": "Рекламируемые",
+    "advertised_sizes": "основной {{core}} · фронтенд {{frontend}} · активировано {{activated}}",
     "trail": "Траектория фаз",
     "phase": {
       "idle": "Ожидание",
@@ -436,8 +437,7 @@
       "discovering": "Поиск…",
       "activated": "Активировано",
       "tool_running": "Выполнение инструмента"
-    },
-    "advertised_sizes": "основной {{core}} · фронтенд {{frontend}} · активировано {{activated}}"
+    }
   },
   "presets": {
     "custom": "Пользовательский",

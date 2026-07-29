@@ -75,11 +75,11 @@
     "stage": "階段",
     "status": "狀態",
     "tokens": "Token（輸入/輸出）",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · 免費",
     "cloud": "☁ {{kind}}",
     "launching": "啟動中…",
-    "launch": "啟動活動"
+    "launch": "啟動活動",
+    "usd": "美金"
   },
   "list": {
     "title": "自動草稿活動",

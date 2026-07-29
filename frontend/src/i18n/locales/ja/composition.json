@@ -79,7 +79,6 @@
   "inline": {
     "mode": "執筆モード",
     "mode_classic": "クラシック",
-    "mode_ai": "AI",
     "continue": "続きを書く",
     "continueFromCursor": "カーソルから続きを書く",
     "continueHint": "カーソル位置からAIが続きをストリーミングします。",
@@ -90,7 +89,8 @@
     "discard": "Esc 破棄",
     "need_model": "共筆設定でデフォルトモデルを設定してください",
     "need_scene": "先に共筆パネルで場面を選択してください",
-    "stale": "カーソルが移動しました — もう一度お試しください。"
+    "stale": "カーソルが移動しました — もう一度お試しください。",
+    "mode_ai": "AI"
   },
   "beats": "ビート",
   "beatsheet": {
@@ -291,10 +291,10 @@
     "show": "表示",
     "hide": "非表示",
     "markAllReviewed": "すべて確認済みにする",
-    "ai": "AI",
     "reviewed": "確認済み",
     "unreviewed": "未確認",
-    "clickToReview": "（クリックで確認）"
+    "clickToReview": "（クリックで確認）",
+    "ai": "AI"
   },
   "flywheel": "フライホイール",
   "flywheelPanel": {
@@ -623,71 +623,52 @@
     "namePlaceholder": "異版に名前を付ける…",
     "nameLabel": "異版名"
   },
-  "motifs": "Motifs",
-  "conformance": "Conformance",
   "motif": {
-    "tier": {
-      "system": "System",
-      "user": "Mine",
-      "public": "Public"
-    },
-    "mode": {
-      "simple": "Simple",
-      "expert": "Expert"
-    },
     "scope": {
-      "label": "Motif scope",
       "my": "My library",
-      "catalog": "Public catalog",
       "book": "本",
       "shared": "共有済み",
       "system": "システム",
       "drafts": "下書き",
-      "needsBook": "モチーフを表示するには本を開いてください"
+      "needsBook": "モチーフを表示するには本を開いてください",
+      "label": "モチーフの範囲",
+      "catalog": "公開カタログ"
     },
-    "search": "Search motifs",
+    "overuse": "「{{name}}」はすでに {{chapters}} で使用されています。バリエーションを検討してください。",
     "list": {
-      "truncated": "最初の100件を表示しています — 残りを見るには検索やフィルターで絞り込んでください。",
-      "noMatch": "一致するモチーフがありません。フィルターをクリアしてください。"
+      "noMatch": "一致するモチーフがありません。フィルターをクリアしてください。",
+      "truncated": "最初の100件を表示しています — 残りを見るには検索やフィルターで絞り込んでください。"
+    },
+    "error": {
+      "load": "読み込みに失敗しました。もう一度お試しください。"
+    },
+    "permission": {
+      "readOnly": "これは共有テンプレートです。編集可能なコピーを作成するには、クローンを作成してください。"
     },
     "action": {
-      "open": "Open",
-      "adopt": "Adopt",
-      "newMotif": "New motif",
-      "close": "Close",
-      "cancel": "Cancel",
-      "retry": "Retry",
-      "swap": "Swap",
-      "clear": "Free-form",
-      "cloneToEdit": "クローンを作成して編集"
+      "cloneToEdit": "クローンを作成して編集",
+      "open": "開く",
+      "adopt": "採用",
+      "newMotif": "新しいモチーフ",
+      "close": "閉じる",
+      "cancel": "キャンセル",
+      "retry": "再試行",
+      "swap": "入れ替え",
+      "clear": "自由形式"
     },
-    "card": {
-      "draft": "Mined draft",
-      "tension": "Intensity"
-    },
-    "facet": {
-      "tier": "Tier",
-      "kind": "Kind",
-      "genre": "Genre",
-      "tension": "Intensity",
-      "clear": "Clear filters",
-      "filters": "Filters"
+    "empty": {
+      "title": "モチーフライブラリの準備ができました",
+      "body": "モチーフは再利用可能なプロットの型です。プランナーは1章につき1つのモチーフを選択するため、簡単な構成でも堅実なシーンを描くことができます。12個のスターターモチーフが用意されています — tu-tiên と báo-thù。",
+      "browseSystem": "12個のスターターを閲覧する",
+      "hint": "トークンは不要です。手動でのモチーフ作成は無料です。"
     },
     "detail": {
-      "title": "Motif",
-      "roles": "Roles",
-      "beats": "Beats",
-      "none": "—"
+      "none": "—",
+      "title": "モチーフ",
+      "roles": "役割",
+      "beats": "ビート"
     },
     "create": {
-      "title": "New motif",
-      "name": "Name",
-      "kind": "Kind",
-      "beat": "beat",
-      "beatLabel": "Beat label",
-      "removeBeat": "Remove beat",
-      "save": "Create motif",
-      "saving": "Saving…",
       "code": "コード (短いID、例: cultivation.fortuitous_encounter)",
       "summary": "概要 (プランナーが照合に使用するテキスト)",
       "genres": "ジャンル (カンマ区切り)",
@@ -696,74 +677,71 @@
         "name": "名前を入力してください",
         "code": "コードを入力してください",
         "save": "保存できませんでした。コードが既に使用されていないか確認してください。"
-      }
+      },
+      "title": "新規モチーフ",
+      "name": "名前",
+      "kind": "種類",
+      "beat": "ビート",
+      "beatLabel": "ビートのラベル",
+      "removeBeat": "ビートを削除",
+      "save": "モチーフを作成",
+      "saving": "保存中…"
     },
     "adopt": {
-      "title": "Adopt motif",
-      "targetLabel": "Adopt into",
-      "toUser": "My library",
-      "continue": "Continue",
-      "estimating": "Estimating…",
       "body": "「採用」すると、編集可能な自分専用のコピーが作成されます。保存先を選択してください。",
-      "whatItDoes": "このモチーフをライブラリにコピーします（編集可能な自分専用のクローンが作成されます）。"
+      "whatItDoes": "このモチーフをライブラリにコピーします（編集可能な自分専用のクローンが作成されます）。",
+      "title": "モチーフを採用",
+      "targetLabel": "採用先",
+      "toUser": "マイライブラリ",
+      "continue": "続行",
+      "estimating": "見積もり中…"
     },
-    "cost": {
-      "title": "Confirm cost",
-      "usd": "Est. cost",
-      "tokens": "Est. tokens",
-      "quota": "Quota left",
-      "confirm": "Confirm",
-      "confirming": "Working…"
+    "quota": {
+      "adopt": "今期の採用数は {{used}}/{{limit}} です。アーカイブするか、期限を待ってください。"
     },
     "match": {
-      "tension": "Tension fit",
-      "genre": "Genre",
-      "precond": "Setup",
-      "cosine": "Similarity",
-      "why": "なぜこのモチーフなのか？"
+      "why": "なぜこのモチーフなのか？",
+      "tension": "緊張感の適合",
+      "genre": "ジャンル",
+      "precond": "前提条件",
+      "cosine": "類似度"
     },
     "role": {
-      "unresolved": "⚠ pick…",
-      "pickFor": "{{role}} の配役を選択"
+      "pickFor": "{{role}} の配役を選択",
+      "unresolved": "⚠ 選択してください…"
     },
     "binding": {
-      "noWork": "この本のシーンにモチーフを紐付けるためのプランを作成します。",
       "freeForm": "一致するモチーフがありません。このシーンはフリーフォームです。",
-      "commitGenerate": "確定してこのシーンを執筆する →"
+      "commitGenerate": "確定してこのシーンを執筆する →",
+      "noWork": "この本のシーンにモチーフを紐付けるためのプランを作成します。"
     },
     "swap": {
-      "title": "Swap motif",
-      "none": "一致する候補はありません。"
+      "none": "一致する候補はありません。",
+      "title": "モチーフを入れ替える"
     },
     "chain": {
-      "action": "Chain it",
-      "hint": "次へ: 「{{name}}」へと自然に繋がります。"
+      "hint": "次へ: 「{{name}}」へと自然に繋がります。",
+      "action": "チェーン化"
     },
     "conf": {
-      "title": "Conformance",
-      "planned": "Planned",
-      "realized": "Realized",
-      "conformance": "Conformance",
-      "rerun": "Re-run",
-      "tone": {
-        "ok": "On beat",
-        "warn": "Tension drift",
-        "bad": "Beat missed"
-      },
-      "rerunNeedsModel": "適合性を再計算するモデルを選択してください",
       "advisory": "アドバイザリー — 検証されていない自己申告",
       "regenerate": "ビートに合わせて再生成",
       "rerunWhat": "この章のすべてのシーンを、計画されたビートと照らし合わせて再確認します。",
-      "empty": "まだ生成されていません — シーンを生成して適合性を確認してください。"
+      "empty": "まだ生成されていません — シーンを生成して適合性を確認してください。",
+      "rerunNeedsModel": "適合性を再計算するモデルを選択してください",
+      "title": "整合性",
+      "planned": "計画通り",
+      "realized": "実現済み",
+      "conformance": "適合性",
+      "rerun": "再実行",
+      "tone": {
+        "ok": "リズム通り",
+        "warn": "テンションの乖離",
+        "bad": "拍子のミス"
+      }
     },
     "arc": {
-      "place": "place",
-      "chapters": "ch {{from}}-{{to}}",
-      "moveLeft": "Move earlier",
-      "moveRight": "Move later",
-      "grow": "Lengthen",
-      "shrink": "Shorten",
-      "remove": "Remove",
+      "mobileNotice": "タイムライン・グリッドは大きな画面で利用可能です — こちらではリスト形式で編集できます。",
       "libraryEmpty": "アークのテンプレートがまだありません。新しく作成するか、ストーリーをインポートして分析しましょう。",
       "templates": {
         "tabLibrary": "ライブラリ",
@@ -867,25 +845,15 @@
         "done": "{{chapters}}個のチャプターを{{arcs}}個のアークにグループ化しました。",
         "none": "アークにグループ化するチャプターがまだありません。"
       },
-      "mobileNotice": "タイムライン・グリッドは大きな画面で利用可能です — こちらではリスト形式で編集できます。"
+      "place": "配置",
+      "chapters": "第{{from}}〜{{to}}章",
+      "moveLeft": "前に移動",
+      "moveRight": "後ろに移動",
+      "grow": "長くする",
+      "shrink": "短くする",
+      "remove": "削除"
     },
     "simple": {
-      "kind": {
-        "sequence": "a plot shape",
-        "situation": "a setup",
-        "hook": "a hook",
-        "emotion_arc": "a feeling arc",
-        "trope": "a familiar move",
-        "pattern": "a pattern",
-        "scheme": "a plot / deception"
-      },
-      "field": {
-        "tension_target": "intensity",
-        "preconditions": "needs before",
-        "effects": "leaves after",
-        "info_asymmetry": "何を知っていて、何を知らないのか"
-      },
-      "infoDeceived": "{{who}} is fooled",
       "actant": {
         "subject": "主人公 / 行動する者",
         "sender": "動機を与える者",
@@ -894,37 +862,24 @@
         "helper": "助けとなる者",
         "opponent": "妨害する者"
       },
-      "infoAsymmetry": "何を知っていて、何を知らないのか",
-      "infoKnows": "{{who}} が真実を知っている"
-    },
-    "expert": {
-      "actant": {
-        "subject": "subject",
-        "sender": "sender",
-        "object": "object",
-        "receiver": "receiver",
-        "helper": "helper",
-        "opponent": "opponent"
-      },
-      "kind": {
-        "sequence": "sequence",
-        "situation": "situation",
-        "hook": "hook",
-        "emotion_arc": "emotion arc",
-        "trope": "trope",
-        "pattern": "pattern",
-        "scheme": "scheme"
-      },
       "field": {
-        "tension_target": "tension target",
-        "preconditions": "preconditions",
-        "effects": "effects",
-        "info_asymmetry": "information asymmetry"
+        "info_asymmetry": "何を知っていて、何を知らないのか",
+        "tension_target": "緊張感",
+        "preconditions": "前提条件",
+        "effects": "余韻"
       },
-      "infoAsymmetry": "Information asymmetry",
-      "knows": "Knows",
-      "deceived": "Deceived",
-      "gap": "Gap"
+      "infoAsymmetry": "何を知っていて、何を知らないのか",
+      "infoKnows": "{{who}} が真実を知っている",
+      "kind": {
+        "sequence": "プロットの形状",
+        "situation": "セットアップ",
+        "hook": "フック",
+        "emotion_arc": "感情の起伏",
+        "trope": "定番の展開",
+        "pattern": "パターン",
+        "scheme": "プロット / 策略"
+      },
+      "infoDeceived": "{{who}} が欺かれる"
     },
     "graph": {
       "title": "グラフ — 「composed of」の「precedes」のバリエーション",
@@ -958,21 +913,96 @@
       "sectionMine": "あなたのモチーフ",
       "sectionLibrary": "ライブラリから"
     },
-    "overuse": "「{{name}}」はすでに {{chapters}} で使用されています。バリエーションを検討してください。",
-    "error": {
-      "load": "読み込みに失敗しました。もう一度お試しください。"
+    "language": {
+      "writtenIn": "使用言語：",
+      "authored": "手書き翻訳",
+      "staleShort": "古い",
+      "missingYours": "{{lang}}では利用できません。原文が使用されます。",
+      "systemFree": "標準のモチーフはすべての対応言語で提供されていますが、このモチーフはまだあなたの言語に翻訳されていません。",
+      "adoptFirst": "このモチーフをライブラリに追加して翻訳する。",
+      "translateTo": "翻訳先：",
+      "model": "翻訳モデル",
+      "translate": "翻訳する…",
+      "retranslate": "再翻訳する…",
+      "alreadyHave": "翻訳済み",
+      "estimating": "計算中…",
+      "youPay": "独自のモチーフは自動翻訳されません。お客様のモデルを使用するため、費用は自己負担となります。",
+      "confirmWhat": "使用中のモデルを使用して、このモチーフを {{lang}} に翻訳します。",
+      "echoed": "{{count}} 個のフィールドが未翻訳のままです。お使いのモデルでは、この言語の処理が適切に行えなかった可能性があります。",
+      "again": "別の言語を翻訳する",
+      "quota": "利用制限に達しました。",
+      "failed": "翻訳に失敗しました。",
+      "outcome": {
+        "translated": "{{lang}} に翻訳されました。",
+        "already_original": "このモチーフは既にその言語で書かれています。",
+        "already_translated": "既に翻訳済みであり、現在の状態が維持されています。料金は発生しませんでした。",
+        "authored_kept": "手動による翻訳が存在するため、そちらが維持されました。",
+        "nothing_to_translate": "このモチーフには翻訳するテキストがありません。",
+        "not_translatable": "このモチーフは翻訳の対象外です。",
+        "model_failed": "モデルから有効な結果が返されませんでした。何も保存されませんでした。",
+        "failed": "翻訳に失敗しました。",
+        "cancelled": "このモチーフが翻訳される前にキャンセルされました。料金は発生していません。"
+      },
+      "skipped": "選択されたモチーフのうち {{count}} 個は翻訳対象外のため、含まれていません。"
     },
-    "permission": {
-      "readOnly": "これは共有テンプレートです。編集可能なコピーを作成するには、クローンを作成してください。"
+    "tier": {
+      "system": "システム",
+      "user": "マイモチーフ",
+      "public": "公開"
     },
-    "empty": {
-      "title": "モチーフライブラリの準備ができました",
-      "body": "モチーフは再利用可能なプロットの型です。プランナーは1章につき1つのモチーフを選択するため、簡単な構成でも堅実なシーンを描くことができます。12個のスターターモチーフが用意されています — tu-tiên と báo-thù。",
-      "browseSystem": "12個のスターターを閲覧する",
-      "hint": "トークンは不要です。手動でのモチーフ作成は無料です。"
+    "mode": {
+      "simple": "シンプル",
+      "expert": "エキスパート"
     },
-    "quota": {
-      "adopt": "今期の採用数は {{used}}/{{limit}} です。アーカイブするか、期限を待ってください。"
+    "search": "モチーフを検索",
+    "card": {
+      "draft": "採掘された下書き",
+      "tension": "緊張感"
+    },
+    "facet": {
+      "tier": "ティア",
+      "kind": "種類",
+      "genre": "ジャンル",
+      "tension": "緊張感",
+      "clear": "フィルターをクリア",
+      "filters": "フィルター"
+    },
+    "cost": {
+      "title": "コストを確認",
+      "usd": "推定コスト",
+      "tokens": "推定トークン数",
+      "quota": "残りのクォータ",
+      "confirm": "確定",
+      "confirming": "処理中…"
+    },
+    "expert": {
+      "actant": {
+        "subject": "主体",
+        "sender": "送り手",
+        "object": "対象",
+        "receiver": "受け手",
+        "helper": "助け手",
+        "opponent": "敵対者"
+      },
+      "kind": {
+        "sequence": "シーケンス",
+        "situation": "シチュエーション",
+        "hook": "フック",
+        "emotion_arc": "感情の弧",
+        "trope": "トロープ",
+        "pattern": "パターン",
+        "scheme": "スキーム"
+      },
+      "field": {
+        "tension_target": "緊張の対象",
+        "preconditions": "前提条件",
+        "effects": "影響",
+        "info_asymmetry": "情報の非対称性"
+      },
+      "infoAsymmetry": "情報の非対称性",
+      "knows": "知っている",
+      "deceived": "欺かれている",
+      "gap": "ギャップ"
     }
   },
   "authoringRun": {
@@ -1093,5 +1123,7 @@
       "loading": "実行を読み込み中…",
       "back": "← 実行一覧に戻る"
     }
-  }
+  },
+  "motifs": "モチーフ",
+  "conformance": "適合性"
 }

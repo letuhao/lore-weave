@@ -79,7 +79,6 @@
   "inline": {
     "mode": "쓰기 모드",
     "mode_classic": "클래식",
-    "mode_ai": "AI",
     "continue": "계속하기",
     "continueFromCursor": "커서 위치에서 계속하기",
     "continueHint": "커서 위치에서 AI가 이어 쓸 내용을 스트리밍합니다.",
@@ -90,7 +89,8 @@
     "discard": "Esc 버리기",
     "need_model": "공동 저자 설정에서 기본 모델을 설정하세요",
     "need_scene": "먼저 공동 저자 패널에서 장면을 선택하세요",
-    "stale": "커서가 이동했습니다 — 다시 시도하세요."
+    "stale": "커서가 이동했습니다 — 다시 시도하세요.",
+    "mode_ai": "AI"
   },
   "beats": "비트",
   "beatsheet": {
@@ -291,10 +291,10 @@
     "show": "보기",
     "hide": "숨기기",
     "markAllReviewed": "모두 검토 완료로 표시",
-    "ai": "AI",
     "reviewed": "검토됨",
     "unreviewed": "미검토",
-    "clickToReview": "(클릭하여 검토)"
+    "clickToReview": "(클릭하여 검토)",
+    "ai": "AI"
   },
   "flywheel": "플라이휠",
   "flywheelPanel": {
@@ -775,7 +775,6 @@
     "arc": {
       "mobileNotice": "타임라인 그리드는 큰 화면에서 사용할 수 있습니다 — 여기서는 목록 형태로 편집할 수 있습니다.",
       "place": "배치",
-      "chapters": "ch {{from}}-{{to}}",
       "moveLeft": "앞으로 이동",
       "moveRight": "뒤로 이동",
       "grow": "길게",
@@ -883,7 +882,8 @@
         "error": "챕터를 에피소드로 그룹화할 수 없습니다.",
         "done": "{{chapters}}개의 챕터를 {{arcs}}개의 에피소드로 그룹화했습니다.",
         "none": "아직 그룹화할 챕터가 없습니다."
-      }
+      },
+      "chapters": "{{from}}~{{to}}장"
     },
     "simple": {
       "actant": {
@@ -943,6 +943,7 @@
       "gap": "ギャップ"
     },
     "graph": {
+      "title": "그래프 — ·으로 구성됨 ·의 변형",
       "loading": "관계 로딩 중…",
       "error": "모티프 그래프를 불러올 수 없습니다.",
       "retry": "다시 시도",
@@ -959,8 +960,7 @@
       },
       "truncated": "{{cap}}개의 모티프를 표시 중입니다 — 더 많은 모티프를 보려면 티어별로 좁히거나 검색해 보세요.",
       "canvasLoading": "모티프 그래프를 불러오는 중…",
-      "canvasEmpty": "아직 그래프로 표시할 모티프가 없습니다 — 모티프를 생성하거나 가져온 뒤 연결해 보세요.",
-      "title": "그래프 — ·으로 구성됨 ·의 변형"
+      "canvasEmpty": "아직 그래프로 표시할 모티프가 없습니다 — 모티프를 생성하거나 가져온 뒤 연결해 보세요."
     },
     "suggest": {
       "button": "모티프 제안",
@@ -973,6 +973,38 @@
       "degradedLibrary": "적합도순으로 정렬되지 않았습니다. 공유 라이브러리의 임베딩 모델이 구성되지 않아, 점수가 매겨진 매칭 결과가 아닌 장르별 대체 항목을 보여줍니다.",
       "sectionMine": "내 모티프",
       "sectionLibrary": "라이브러리에서"
+    },
+    "language": {
+      "writtenIn": "작성 언어:",
+      "authored": "수기 번역",
+      "staleShort": "오래된 번역",
+      "missingYours": "{{lang}} 지원 안 함 — 원문으로 표시됩니다",
+      "systemFree": "기본 모티프는 지원되는 모든 언어로 제공됩니다. 이 모티프는 아직 해당 언어로 번역되지 않았습니다.",
+      "adoptFirst": "이 모티프를 라이브러리에 추가하여 번역하세요.",
+      "translateTo": "번역 대상 언어:",
+      "model": "번역 모델",
+      "translate": "번역하기…",
+      "retranslate": "다시 번역하기…",
+      "alreadyHave": "이미 번역됨",
+      "estimating": "추정 중…",
+      "youPay": "사용자의 모티프는 자동으로 번역되지 않습니다. 이 작업은 사용자의 모델을 사용하며 비용이 발생합니다.",
+      "confirmWhat": "사용자의 모델을 사용하여 이 모티프를 {{lang}}(으)로 번역합니다.",
+      "echoed": "{{count}}개의 필드가 번역되지 않은 상태로 반환되었습니다. 사용자의 모델이 이 언어를 제대로 처리하지 못할 수 있습니다.",
+      "again": "다른 언어로 번역하기",
+      "quota": "한도에 도달했습니다.",
+      "failed": "번역에 실패했습니다.",
+      "outcome": {
+        "translated": "{{lang}}(으)로 번역되었습니다.",
+        "already_original": "이 모티프는 이미 해당 언어로 작성되어 있습니다.",
+        "already_translated": "이미 번역되어 있으며 현재 상태가 유지됩니다. 비용이 청구되지 않았습니다.",
+        "authored_kept": "직접 작성한 번역본이 존재하여 이를 유지했습니다.",
+        "nothing_to_translate": "이 모티프에는 번역할 텍스트가 없습니다.",
+        "not_translatable": "이 모티프는 번역 권한이 없습니다.",
+        "model_failed": "모델이 사용할 수 있는 결과물을 반환하지 않았습니다. 저장된 내용이 없습니다.",
+        "failed": "번역에 실패했습니다.",
+        "cancelled": "이 모티프가 번역되기 전에 취소되었습니다 — 비용이 청구되지 않았습니다."
+      },
+      "skipped": "선택하신 모티프 중 {{count}}개는 번역 대상이 아니므로 포함되지 않았습니다."
     }
   },
   "authoringRun": {

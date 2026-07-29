@@ -346,7 +346,6 @@
     "temperature": "温度",
     "temp_min": "0（正確）",
     "temp_max": "2（創造的）",
-    "top_p": "Top P",
     "topp_min": "0（狭い）",
     "topp_max": "1（多様）",
     "default_mode": "デフォルトモード",
@@ -358,7 +357,8 @@
     "yes": "はい",
     "no": "いいえ",
     "reset": "デフォルトにリセット",
-    "save_failed": "保存に失敗しました: {{error}}"
+    "save_failed": "保存に失敗しました: {{error}}",
+    "top_p": "Top P"
   },
   "session_toast": {
     "create_failed": "チャットの作成に失敗しました: {{error}}",
@@ -376,11 +376,11 @@
     "approve_once": "今回のみ許可",
     "always_allow": "常に許可",
     "deny": "拒否",
-    "never_allow": "Never allow",
     "approved": "許可しました — 実行中 ✓",
     "always_allowed": "常に許可 — 実行中 ✓",
     "denied": "拒否しました",
-    "never_allowed": "許可されません — 設定 → 権限 から変更できます"
+    "never_allowed": "許可されません — 設定 → 権限 から変更できます",
+    "never_allow": "常に拒否"
   },
   "rack": {
     "label": "コンテキスト",
@@ -415,9 +415,9 @@
       "composition": "コンポジション",
       "translation": "翻訳",
       "jobs": "ジョブ",
-      "ui": "UI",
       "chat": "チャット",
-      "other": "その他"
+      "other": "その他",
+      "ui": "UI"
     }
   },
   "inspector": {

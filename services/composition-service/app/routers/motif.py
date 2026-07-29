@@ -314,6 +314,46 @@ async def get_motif(
     return _redact_for_viewer(motif, is_owner=is_owner)
 
 
+@router.get("/motifs/{motif_id}/translations")
+async def list_motif_translations(
+    motif_id: UUID,
+    book_id: UUID | None = Query(default=None),
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Which languages this motif already reads in (MOTIF-I18N).
+
+    The detail drawer shows a motif as AUTHORED — it is the edit surface, and the PATCH
+    is whole-object, so rendering a translation there and saving would write translated
+    wording onto the source row. This is how the drawer can still tell the reader what
+    exists without becoming one of them: the original language plus the list of
+    translations, each flagged `stale` when the source text has moved since.
+
+    Same visibility as the motif itself; text is not returned, only the inventory.
+
+    `book_id` selects the SHARED-tier read (VIEW-gated on that book), because
+    `get_visible` is system|public|owned and a book_shared row owned by a *collaborator*
+    is none of those. Without it, exactly the users who may buy a translation for a
+    shared motif would see an empty inventory — the row would report "no translation in
+    your language" for a motif that has one, and offer to sell them a duplicate.
+    """
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+        motif = await repo.get_in_book(user_id, motif_id, book_id)
+    else:
+        motif = await repo.get_visible(user_id, motif_id)
+    if motif is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return {
+        "original_language": motif.original_language,
+        "translations": [
+            {**t, "updated_at": t["updated_at"].isoformat() if t.get("updated_at") else None}
+            for t in await repo.list_translations(motif_id)
+        ],
+    }
+
+
 # ── create / patch / archive ─────────────────────────────────────────────────
 
 

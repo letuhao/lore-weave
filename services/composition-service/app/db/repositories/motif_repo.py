@@ -33,7 +33,7 @@ from app.clients.embedding_client import EmbeddingError
 from app.config import settings
 from app.db.models import Motif, MotifCreateArgs, MotifPatchArgs
 from app.db.repositories import VersionMismatchError
-from app.motif_i18n import resolve_text
+from app.motif_i18n import resolve_text, source_hash
 from app.engine.motif_embed import (
     EmbedConfigError, _platform_embed_model, embed_motif_summary, embed_query,
     motif_summary_text, summary_hash,
@@ -616,6 +616,156 @@ class MotifRepo:
             return motifs
         async with self._pool.acquire() as c:
             return await apply_display_language(c, motifs, display_language)
+
+    # ── the user-paid translate path (docs/plans/2026-07-29-motif-translate-runtime.md)
+    async def list_translatable(
+        self, caller_id: UUID, motif_ids: list[UUID], *, book_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """The subset of `motif_ids` this caller is ALLOWED to buy a translation for.
+
+        TENANCY — this is the gate, and it is deliberately narrower than the read
+        predicate. A `motif_translation` row on a SYSTEM motif is System tier: seeded,
+        admin-managed, shared by every user. Letting a regular user write one is the
+        kinds bug exactly (`owner_user_id IS NULL` is therefore excluded here even
+        though every read path shows system rows). A PUBLIC motif someone else owns is
+        likewise refused — the spec's answer is that you adopt it first, which clones
+        it into your tier, and then it is yours to translate.
+
+        So: your own rows, or this book's SHARED tier when you hold EDIT on the book
+        (gated at the router/tool, as everywhere else — never here).
+        """
+        if not motif_ids:
+            return []
+        params: list[Any] = [caller_id, motif_ids]
+        scope = "owner_user_id = $1"
+        if book_id is not None:
+            params.append(book_id)
+            scope = f"(owner_user_id = $1 OR (book_shared AND book_id = ${len(params)}))"
+        query = f"""
+        SELECT {_SELECT_COLS} FROM motif
+        WHERE id = ANY($2::uuid[]) AND status <> 'archived' AND {scope}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *params)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            data = dict(r)
+            for f in _JSONB_FIELDS:
+                if isinstance(data.get(f), str):
+                    data[f] = json.loads(data[f])
+            out.append(data)
+        return out
+
+    async def list_translations(self, motif_id: UUID) -> list[dict[str, Any]]:
+        """Which languages this motif already reads in, and whether each is current.
+
+        The detail drawer needs this because it deliberately shows the motif as
+        AUTHORED, not localized: it is the surface the owner edits from, and the PATCH
+        is whole-object — rendering a translation there and saving would write the
+        translated wording onto the source row and destroy the original. So the drawer
+        states the original language and lists the translations alongside it, instead of
+        silently becoming one of them.
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                "SELECT t.language_code, t.source, t.translated_by, t.updated_at, "
+                "  t.source_content_hash AS made_from, "
+                "  m.name, m.summary, m.emotion_target, m.roles, m.beats, "
+                "  m.preconditions, m.effects, m.examples "
+                "FROM motif_translation t JOIN motif m ON m.id = t.motif_id "
+                "WHERE t.motif_id = $1 ORDER BY t.language_code",
+                motif_id,
+            )
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            data = dict(r)
+            for f in _JSONB_FIELDS:
+                if isinstance(data.get(f), str):
+                    data[f] = json.loads(data[f])
+            out.append({
+                "language_code": data["language_code"],
+                "source": data["source"],
+                "translated_by": data["translated_by"],
+                "updated_at": data["updated_at"],
+                "stale": (data.get("made_from") or "") != source_hash(data),
+            })
+        return out
+
+    async def get_translation_state(
+        self, motif_id: UUID, language_code: str,
+    ) -> dict[str, Any] | None:
+        """`{source, stale}` for an existing translation, or None if there is none.
+
+        `stale` compares the hash the translation was MADE from against the motif's
+        current translatable payload — the same signal the read path badges with. It is
+        what lets a re-translate be free when nothing moved and paid when it did.
+        """
+        # Every translatable column exists on BOTH tables, so each one is qualified —
+        # an unqualified `name` here is an ambiguous-column error, not a wrong answer.
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                "SELECT t.source AS tr_source, t.source_content_hash AS made_from, "
+                "  m.name, m.summary, m.emotion_target, m.roles, m.beats, "
+                "  m.preconditions, m.effects, m.examples "
+                "FROM motif_translation t JOIN motif m ON m.id = t.motif_id "
+                "WHERE t.motif_id = $1 AND t.language_code = $2",
+                motif_id, language_code,
+            )
+        if row is None:
+            return None
+        data = dict(row)
+        for f in _JSONB_FIELDS:
+            if isinstance(data.get(f), str):
+                data[f] = json.loads(data[f])
+        return {
+            "source": data["tr_source"],
+            "stale": (data.get("made_from") or "") != source_hash(data),
+        }
+
+    async def upsert_translation(
+        self, motif_id: UUID, language_code: str, payload: dict[str, Any],
+        *, source_content_hash: str, translated_by: str,
+    ) -> bool:
+        """Write a MACHINE translation. False when an `authored` row refused it.
+
+        The conflict rule is the seeder's, byte for byte: machine output never lands on
+        top of a hand-written translation. The 84 Vietnamese motifs were written by a
+        person, and a user idly re-translating their library must not be able to
+        overwrite them — nor a user's own hand-corrected wording.
+        """
+        async with self._pool.acquire() as c:
+            res = await c.execute(
+                """
+                INSERT INTO motif_translation (
+                  motif_id, language_code, name, summary, emotion_target,
+                  roles, beats, preconditions, effects, examples,
+                  source_content_hash, source, translated_by
+                ) VALUES (
+                  $1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,
+                  $10::jsonb, $11, 'machine', $12
+                )
+                ON CONFLICT (motif_id, language_code) DO UPDATE SET
+                  name = EXCLUDED.name, summary = EXCLUDED.summary,
+                  emotion_target = EXCLUDED.emotion_target,
+                  roles = EXCLUDED.roles, beats = EXCLUDED.beats,
+                  preconditions = EXCLUDED.preconditions, effects = EXCLUDED.effects,
+                  examples = EXCLUDED.examples,
+                  source_content_hash = EXCLUDED.source_content_hash,
+                  source = EXCLUDED.source, translated_by = EXCLUDED.translated_by,
+                  updated_at = now()
+                WHERE motif_translation.source <> 'authored'
+                """,
+                motif_id, language_code,
+                payload.get("name") or "", payload.get("summary") or "",
+                payload.get("emotion_target") or None,
+                _jsonb(payload.get("roles") or []), _jsonb(payload.get("beats") or []),
+                _jsonb(payload.get("preconditions") or []),
+                _jsonb(payload.get("effects") or []),
+                _jsonb(payload.get("examples") or []),
+                source_content_hash, translated_by,
+            )
+        # asyncpg returns "INSERT 0 <n>" — n == 0 means the authored guard held.
+        return not res.endswith(" 0")
 
     async def list_in_book(
         self, caller_id: UUID, book_id: UUID, *, genre: str | None = None,

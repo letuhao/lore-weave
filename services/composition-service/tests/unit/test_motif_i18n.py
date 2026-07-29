@@ -14,9 +14,12 @@ from app.motif_i18n import (
     TranslationFileError,
     build_translation_entry,
     extract_translatable,
+    flatten_entry,
+    is_untranslated_echo,
     parse_translation_entry,
     resolve_text,
     translatable_hash,
+    unflatten_entry,
 )
 
 
@@ -212,3 +215,71 @@ def test_a_fresh_translation_is_not_flagged_stale():
     fresh = _translation(source_content_hash=translatable_hash(extract_translatable(_motif())))
     out = resolve_text(_motif(), fresh, "vi")
     assert out["text_stale"] is False
+
+
+# ── the flat wire shape (shared by the dev-time tool AND the runtime engine) ────
+def test_flatten_unflatten_round_trips_a_real_entry():
+    """Both translators hand the model a FLAT map and rebuild the entry from the reply.
+    A round-trip that is not exact would move wording between leaves — the failure this
+    whole module is about, arriving through the back door."""
+    entry = build_translation_entry(extract_translatable(_motif()))
+    assert unflatten_entry(flatten_entry(entry)) == entry
+
+
+def test_flatten_keys_carry_the_beat_key_so_drift_is_detectable():
+    """The flat keys ARE the join keys. That is what makes 'the model returned the same
+    key set' double as 'nothing landed on the wrong beat'."""
+    flat = flatten_entry(build_translation_entry(extract_translatable(_motif())))
+    assert "beats.trapped.label" in flat
+    assert "roles.lead.constraints[0]" in flat
+
+
+def test_flatten_drops_empty_leaves():
+    """An empty string has nothing to translate; carrying it would make a legitimately
+    absent leaf look like a translation failure in every report that counts keys."""
+    assert flatten_entry({"name": "x", "summary": "", "beats": {}}) == {"name": "x"}
+
+
+# ── the echo predicate exists twice, by necessity ──────────────────────────────
+def test_the_two_echo_predicates_agree():
+    """`scripts/i18n_translate.py` cannot import from a service and a service cannot
+    import from `scripts/`, so this predicate is implemented in both. Two copies of a
+    rule is how the rule quietly stops being one rule — so they are bound here to a
+    calibration table drawn from the cases that actually mattered:
+
+    the FE run flagged 339 byte-identical German strings of which exactly ONE was a real
+    defect; the rest were German words that happen to be spelled like English ones, and
+    placeholder/URL-only values with no prose in them at all.
+    """
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "scripts"))
+    from i18n_translate import is_untranslated_echo as fe_echo
+
+    cases = [
+        # (source, output, target, is-a-defect)
+        ("Status", "Status", "de", False),                       # a German word
+        ("Editor", "Editor", "de", False),
+        ("{{op}} {{status}}", "{{op}} {{status}}", "de", False),  # no prose at all
+        ("https://example.com/docs", "https://example.com/docs", "de", False),
+        ("Never allow this tool to run", "Never allow this tool to run", "de", True),
+        ("a statement contradicts one small checkable thing",
+         "a statement contradicts one small checkable thing", "de", True),
+        ("Never allow this tool to run", "Diesem Werkzeug nie erlauben", "de", False),
+        ("Status", "Zustand", "de", False),
+        # …and the part the >=3-word bar got WRONG. The cognate defence is a Latin-script
+        # defence: Japanese is not incidentally spelled "Confirm cost". Applying the same
+        # bar to every target hid ~200 verbatim-English labels per script-bearing locale
+        # (`motif.cost.*` was English in ja/ko/ru/ar/zh and nothing reported it).
+        ("Confirm cost", "Confirm cost", "ja", True),
+        ("Confirm cost", "Confirm cost", "de", False),
+        ("Quota left", "Quota left", "ru", True),
+        ("Quota left", "コスト確認", "ja", False),
+        ("{{n}}", "{{n}}", "ja", False),                          # still nothing to translate
+        # No language given ⇒ the conservative Latin bar, so an un-updated caller
+        # under-reports rather than crying wolf.
+        ("Confirm cost", "Confirm cost", None, False),
+    ]
+    for src, out, lang, expected in cases:
+        assert is_untranslated_echo(src, out, lang) == fe_echo(src, out, lang), (src, out, lang)
+        assert is_untranslated_echo(src, out, lang) is expected, (src, out, lang)

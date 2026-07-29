@@ -75,11 +75,11 @@
     "stage": "ধাপ",
     "status": "স্ট্যাটাস",
     "tokens": "টোকেন (ইন/আউট)",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · ফ্রি",
     "cloud": "☁ {{kind}}",
     "launching": "লঞ্চ করা হচ্ছে…",
-    "launch": "ক্যাম্পেইন লঞ্চ করুন"
+    "launch": "ক্যাম্পেইন লঞ্চ করুন",
+    "usd": "USD"
   },
   "list": {
     "title": "অটো-ড্রাফট ক্যাম্পেইন",
@@ -124,7 +124,6 @@
     "saveBudget": "বাজেট সেট করুন",
     "stageCounts": "{{total}}টির মধ্যে {{done}}টি সম্পন্ন · {{failed}}টি ব্যর্থ",
     "activity": "সাম্প্রতিক কার্যক্রম",
-    "chapterShort": "ch.{{sort}}",
     "nowProcessing": "এখন প্রসেসিং হচ্ছে ({{count}})",
     "inFlightMore": "+{{count}}টি আরও",
     "switchedResumed": "মডেল পরিবর্তন করা হয়েছে — রজিউম করা হচ্ছে।",
@@ -142,9 +141,10 @@
     "stage": {
       "knowledge": "নলেজ",
       "translation": "অনুবাদ",
-      "eval": "Eval",
-      "ingest": "Ingest (পূর্বশর্ত)"
-    }
+      "ingest": "Ingest (পূর্বশর্ত)",
+      "eval": "মূল্যায়ন"
+    },
+    "chapterShort": "অধ্যায় {{sort}}"
   },
   "report": {
     "loading": "রিপোর্ট লোড হচ্ছে…",

@@ -73,8 +73,8 @@
       "number": "সংখ্যা",
       "date": "তারিখ",
       "tags": "ট্যাগ",
-      "url": "URL",
-      "boolean": "হ্যাঁ / না"
+      "boolean": "হ্যাঁ / না",
+      "url": "URL"
     }
   },
   "stdform": {

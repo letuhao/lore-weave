@@ -49,10 +49,10 @@
       "dropzone": "将文件拖到此处或点击浏览",
       "accept": ".txt .md .pdf .docx .epub — 扫描版 PDF 将进行 OCR 处理",
       "ready": "{{chars}} 字符{{ocr}}",
-      "ocr": "OCR",
       "processing": "正在提取……",
       "failed": "失败",
-      "responsibility": "我拥有这些文件的权利（拥有 / 已获授权 / 公有领域）。不构成法律建议。"
+      "responsibility": "我拥有这些文件的权利（拥有 / 已获授权 / 公有领域）。不构成法律建议。",
+      "ocr": "OCR"
     },
     "intent": {
       "label": "您想创建什么？",
@@ -84,7 +84,6 @@
       "select_model": "选择……",
       "max_spend": "最大消耗 (tokens)",
       "no_cap": "无限制",
-      "top_k": "Top-K",
       "technique": "技术方案",
       "technique_opt": {
         "retrieval": "检索 (P1)",
@@ -94,7 +93,8 @@
       "eval_gate_warning": "P2/P3 需要通过评估门槛 —— 在通过之前，任务将被拒绝。",
       "dimensions": {
         "auto": "自动 —— 丰富所有缺失维度"
-      }
+      },
+      "top_k": "Top-K"
     },
     "safety": "① 许可 · ② 抽象 · ③ 吞吐保护 · ④ 您负责晋升 —— 丰富内容在您晋升前始终只是变体。",
     "run_hint": "作为后台任务运行 —— 准备就绪后，建议将出现在“建议”列表中。",
@@ -234,7 +234,6 @@
     "max_gaps": "最大缺口数",
     "max_spend": "最大消耗 (Token)",
     "no_cap": "无限制",
-    "top_k": "Top-K",
     "gate_note": "P2 虚构 / P3 重构需要通过评估门控 (多样化评审员)。",
     "auto_enrich": "自动增强",
     "enrich_one": "增强",
@@ -247,7 +246,8 @@
       "missing": "缺失维度",
       "rank": "排名",
       "action": "操作"
-    }
+    },
+    "top_k": "Top-K"
   },
   "sources": {
     "title": "来源",

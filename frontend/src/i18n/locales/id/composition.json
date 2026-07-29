@@ -428,6 +428,7 @@
   "pacing": "pacing",
   "canon_consistency": "kanon",
   "dismiss": "abaikan",
+  "overrideSlipBlocked": "Terima yang terblokir: versi «what-if» yang menyimpang kembali ke nilai kanon. Regenerasi sebelum menerima.",
   "overrideSlipExhausted": "Override tetap menyelinap setelah batas regenerasi tercapai — ditampilkan untuk tinjauan Anda (penerimaan tidak lagi terblokir).",
   "overrideSlipDetail": "{{name}} ({{field}}): diharapkan “{{expected}}”, ditemukan “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: bertentangan dengan aturan delta “{{rule}}”",
@@ -972,6 +973,38 @@
       "degradedLibrary": "Tidak diurutkan berdasarkan kecocokan — model embedding pustaka bersama belum dikonfigurasi, jadi ini adalah cadangan genre, bukan hasil pencocokan yang dinilai.",
       "sectionMine": "Motif Anda",
       "sectionLibrary": "Dari pustaka"
+    },
+    "language": {
+      "writtenIn": "Ditulis dalam",
+      "authored": "terjemahan tulisan tangan",
+      "staleShort": "usang",
+      "missingYours": "tidak ada dalam {{lang}} — beralih ke bahasa asli",
+      "systemFree": "Motif bawaan tersedia dalam setiap bahasa yang didukung — motif ini belum memiliki terjemahan untuk bahasa Anda.",
+      "adoptFirst": "Tambahkan motif ini ke perpustakaan Anda untuk menerjemahkannya.",
+      "translateTo": "Terjemahkan ke",
+      "model": "Model terjemahan",
+      "translate": "Terjemahkan…",
+      "retranslate": "Terjemahkan ulang…",
+      "alreadyHave": "Sudah diterjemahkan",
+      "estimating": "Mengestimasi…",
+      "youPay": "Motif Anda sendiri tidak pernah diterjemahkan secara otomatis — ini dijalankan menggunakan model Anda, dengan biaya Anda sendiri.",
+      "confirmWhat": "Terjemahkan motif ini ke {{lang}} menggunakan model Anda.",
+      "echoed": "{{count}} bidang tidak diterjemahkan — model Anda mungkin tidak menangani bahasa ini dengan baik.",
+      "again": "Terjemahkan bahasa lain",
+      "quota": "Batas pengeluaran telah tercapai.",
+      "failed": "Terjemahan gagal.",
+      "outcome": {
+        "translated": "Berhasil diterjemahkan ke {{lang}}.",
+        "already_original": "Motif ini sudah ditulis dalam bahasa tersebut.",
+        "already_translated": "Sudah diterjemahkan dan masih relevan — Anda tidak dikenakan biaya.",
+        "authored_kept": "Terjemahan tulisan tangan sudah ada dan tetap dipertahankan.",
+        "nothing_to_translate": "Motif ini tidak memiliki teks untuk diterjemahkan.",
+        "not_translatable": "Motif ini bukan milik Anda untuk diterjemahkan.",
+        "model_failed": "Model Anda tidak mengembalikan hasil yang dapat digunakan — tidak ada yang disimpan.",
+        "failed": "Terjemahan gagal.",
+        "cancelled": "Dibatalkan sebelum motif ini diterjemahkan — Anda tidak dikenakan biaya untuk ini."
+      },
+      "skipped": "{{count}} motif yang Anda pilih bukan milik Anda untuk diterjemahkan dan tidak disertakan."
     }
   },
   "authoringRun": {
@@ -1092,6 +1125,5 @@
       "loading": "Memuat proses...",
       "back": "← Kembali ke daftar runs"
     }
-  },
-  "overrideSlipBlocked": "Terima yang terblokir: versi «what-if» yang menyimpang kembali ke nilai kanon. Regenerasi sebelum menerima."
+  }
 }

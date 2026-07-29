@@ -594,9 +594,9 @@
         "empty": "Логов пока нет.",
         "loadNewer": "Загрузить новые",
         "levels": {
-          "info": "INFO",
-          "warning": "WARN",
-          "error": "ERROR"
+          "info": "ИНФО",
+          "warning": "ПРЕДУПРЕЖДЕНИЕ",
+          "error": "ОШИБКА"
         }
       }
     },
@@ -671,7 +671,7 @@
       "restore": "Восстановить",
       "delete": "Удалить",
       "tuneExtraction": "Настроить извлечение",
-      "bookId": "book_id"
+      "bookId": "ID книги"
     },
     "form": {
       "createTitle": "Новый проект",
@@ -688,7 +688,6 @@
         "general": "Общее"
       },
       "bookId": "ID книги (необязательно)",
-      "bookIdPlaceholder": "uuid",
       "description": "Описание (необязательно)",
       "instructions": "Инструкции (необязательно)",
       "instructionsPlaceholder": "Заметки по стилю, голосу, ограничения — будут добавляться в каждый чат этого проекта.",
@@ -707,7 +706,8 @@
         "errorAlreadyRunning": "Для этого проекта уже запущен бенчмарк. Подождите и повторите попытку.",
         "errorProviderFlake": "Сбой провайдера эмбеддингов во время работы. Пожалуйста, повторите попытку.",
         "errorGeneric": "Ошибка бенчмарка: {{message}}"
-      }
+      },
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "Архивировать проект?",

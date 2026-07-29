@@ -107,7 +107,6 @@
       "authentication": "인증",
       "authNone": "없음",
       "authBearer": "Bearer 토큰",
-      "authOauth": "OAuth 2.1",
       "noAuthHint": "인증 없음 — 이 서버는 공개되어 있습니다. 계속하여 등록 및 스캔을 진행하세요.",
       "bearerLabel": "Bearer 토큰 (볼트 내에 안전하게 저장되며 다시 표시되지 않습니다)",
       "bearerPlaceholder": "토큰 붙여넣기",
@@ -124,7 +123,8 @@
       "continue": "계속하기",
       "authKind": "인증 방식: {{kind}}",
       "enable": "내 세션에서 활성화",
-      "done": "완료"
+      "done": "완료",
+      "authOauth": "OAuth 2.1"
     }
   },
   "commands": {

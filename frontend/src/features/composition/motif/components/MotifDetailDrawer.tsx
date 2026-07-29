@@ -12,6 +12,7 @@ import { useMotifEditor } from '../hooks/useMotifEditor';
 import { useMotifSync } from '../hooks/useMotifSync';
 import { InfoAsymmetryCard } from './InfoAsymmetryCard';
 import { MotifEditorForm } from './MotifEditorForm';
+import { MotifTranslateAction } from './MotifTranslateAction';
 import { SyncDiffDrawer } from './SyncDiffDrawer';
 import { MotifGraphSection } from './MotifGraphSection';
 
@@ -135,6 +136,22 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
             {simple && motif.examples[0]?.text && (
               <blockquote className="border-l-2 border-amber-400 pl-2 text-xs italic text-neutral-600 dark:text-neutral-300">“{motif.examples[0].text}”</blockquote>
             )}
+
+            {/* MOTIF-I18N — which language this text is actually in, and (for a motif you
+                own) the paid translate. Above the summary because it QUALIFIES everything
+                below it: the whole point is that no reader sees this prose without knowing
+                what language it is in. */}
+            <MotifTranslateAction
+              motif={motif}
+              // The same predicate that opens the Edit door: what you may edit, you may
+              // translate. `readOnly` is already `isReadOnly(motif, meUserId)`, which is
+              // false for a book_shared row you collaborate on — so a collaborator gets
+              // the capability the server actually grants them, rather than an
+              // owner-only gate the backend never asked for.
+              canTranslate={!readOnly}
+              token={token ?? null}
+              bookId={motif.book_shared ? motif.book_id ?? null : null}
+            />
 
             <p className="text-xs text-neutral-600 dark:text-neutral-300">{motif.summary}</p>
 

@@ -150,12 +150,12 @@
       "writeback": "저장 중"
     },
     "badge": {
-      "generated": "AI",
       "generatedHint": "AI 생성, 검증 완료.",
       "needs_review": "검토 필요",
       "needs_reviewHint": "AI 생성 — 검토 대상으로 분류됨.",
       "blocked": "차단됨",
-      "blockedHint": "AI 생성 — 검증에 의해 게시가 차단됨."
+      "blockedHint": "AI 생성 — 검증에 의해 게시가 차단됨.",
+      "generated": "AI"
     },
     "flags": {
       "reviewTitle": "검토 대상",

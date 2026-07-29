@@ -646,24 +646,37 @@
       "needsBook": "Mở một cuốn sách để xem các motif của nó"
     },
     "search": "Search motifs",
+    "overuse": "«{{name}}» đã được sử dụng trong {{chapters}} — hãy cân nhắc thay đổi để đa dạng hơn.",
     "list": {
-      "truncated": "Đang hiển thị 100 mục đầu tiên — hãy thu hẹp phạm vi bằng tìm kiếm hoặc bộ lọc để xem các mục còn lại.",
-      "noMatch": "Không có motif nào khớp — hãy xóa các bộ lọc."
+      "noMatch": "Không có motif nào khớp — hãy xóa các bộ lọc.",
+      "truncated": "Đang hiển thị 100 mục đầu tiên — hãy thu hẹp phạm vi bằng tìm kiếm hoặc bộ lọc để xem các mục còn lại."
+    },
+    "error": {
+      "load": "Không thể tải — vui lòng thử lại."
+    },
+    "permission": {
+      "readOnly": "Đây là mẫu được chia sẻ — hãy nhân bản để tạo bản sao có thể chỉnh sửa của riêng bạn."
     },
     "action": {
       "open": "Open",
       "adopt": "Adopt",
       "newMotif": "New motif",
+      "cloneToEdit": "Nhân bản để chỉnh sửa",
       "close": "Close",
       "cancel": "Cancel",
       "retry": "Retry",
       "swap": "Swap",
-      "clear": "Free-form",
-      "cloneToEdit": "Nhân bản để chỉnh sửa"
+      "clear": "Free-form"
     },
     "card": {
       "draft": "Mined draft",
       "tension": "Intensity"
+    },
+    "empty": {
+      "title": "Thư viện motif của bạn đã sẵn sàng",
+      "body": "Motif là các khuôn mẫu cốt truyện có thể tái sử dụng. Trình lập kế hoạch sẽ chọn một motif cho mỗi chương để ngay cả một mô hình nhỏ cũng có thể tạo nên một cảnh phim vững chắc. Đã có sẵn 12 motif khởi đầu — tu tiên và báo thù.",
+      "browseSystem": "Xem 12 motif khởi đầu",
+      "hint": "Không cần token — tự xây dựng motif là hoàn toàn miễn phí."
     },
     "facet": {
       "tier": "Tier",
@@ -682,16 +695,16 @@
     "create": {
       "title": "New motif",
       "name": "Name",
+      "code": "Mã (một ID ngắn, ví dụ: cultivation.fortuitous_encounter)",
       "kind": "Kind",
+      "summary": "Tóm tắt (đây là nội dung mà trình lập kế hoạch sẽ dùng để đối soát)",
+      "genres": "Thể loại (ngăn cách bằng dấu phẩy)",
+      "beats": "Nhịp độ (hình dáng theo thứ tự)",
       "beat": "beat",
       "beatLabel": "Beat label",
       "removeBeat": "Remove beat",
       "save": "Create motif",
       "saving": "Saving…",
-      "code": "Mã (một ID ngắn, ví dụ: cultivation.fortuitous_encounter)",
-      "summary": "Tóm tắt (đây là nội dung mà trình lập kế hoạch sẽ dùng để đối soát)",
-      "genres": "Thể loại (ngăn cách bằng dấu phẩy)",
-      "beats": "Nhịp độ (hình dáng theo thứ tự)",
       "err": {
         "name": "Yêu cầu phải có tên",
         "code": "Yêu cầu phải có mã",
@@ -700,12 +713,15 @@
     },
     "adopt": {
       "title": "Adopt motif",
+      "body": "Tính năng Nhận diện sẽ tạo một bản sao riêng tư có thể chỉnh sửa của bạn. Hãy chọn nơi lưu trữ.",
       "targetLabel": "Adopt into",
       "toUser": "My library",
+      "whatItDoes": "Sao chép motif này vào thư viện của bạn (một bản sao riêng tư, có thể chỉnh sửa).",
       "continue": "Continue",
-      "estimating": "Estimating…",
-      "body": "Tính năng Nhận diện sẽ tạo một bản sao riêng tư có thể chỉnh sửa của bạn. Hãy chọn nơi lưu trữ.",
-      "whatItDoes": "Sao chép motif này vào thư viện của bạn (một bản sao riêng tư, có thể chỉnh sửa)."
+      "estimating": "Estimating…"
+    },
+    "quota": {
+      "adopt": "Bạn đã nhận {{used}}/{{limit}} trong kỳ này — hãy lưu trữ bớt hoặc chờ đợi."
     },
     "cost": {
       "title": "Confirm cost",
@@ -716,47 +732,48 @@
       "confirming": "Working…"
     },
     "match": {
+      "why": "Tại sao chọn motif này?",
       "tension": "Tension fit",
       "genre": "Genre",
       "precond": "Setup",
-      "cosine": "Similarity",
-      "why": "Tại sao chọn motif này?"
+      "cosine": "Similarity"
     },
     "role": {
-      "unresolved": "⚠ pick…",
-      "pickFor": "Chọn dàn diễn viên cho {{role}}"
+      "pickFor": "Chọn dàn diễn viên cho {{role}}",
+      "unresolved": "⚠ pick…"
     },
     "binding": {
-      "noWork": "Tạo kế hoạch để liên kết các mô-típ với các cảnh trong cuốn sách này.",
       "freeForm": "Không có motif nào khớp — cảnh này là dạng tự do.",
-      "commitGenerate": "Xác nhận + viết cảnh này →"
+      "commitGenerate": "Xác nhận + viết cảnh này →",
+      "noWork": "Tạo kế hoạch để liên kết các mô-típ với các cảnh trong cuốn sách này."
     },
     "swap": {
       "title": "Swap motif",
       "none": "Không có kết quả khớp nào khác."
     },
     "chain": {
-      "action": "Chain it",
-      "hint": "Tiếp theo: «{{name}}» diễn ra một cách tự nhiên."
+      "hint": "Tiếp theo: «{{name}}» diễn ra một cách tự nhiên.",
+      "action": "Chain it"
     },
     "conf": {
       "title": "Conformance",
       "planned": "Planned",
       "realized": "Realized",
       "conformance": "Conformance",
+      "advisory": "Cảnh báo — báo cáo tự kê khai chưa được xác thực",
+      "regenerate": "Tạo lại để vượt qua",
       "rerun": "Re-run",
+      "rerunWhat": "Kiểm tra lại mọi cảnh trong chương này so với nhịp truyện đã lập kế hoạch.",
+      "empty": "Chưa được tạo — hãy tạo các cảnh để xem mức độ phù hợp.",
       "tone": {
         "ok": "On beat",
         "warn": "Tension drift",
         "bad": "Beat missed"
       },
-      "rerunNeedsModel": "Chọn một mô hình để chạy lại kiểm tra sự phù hợp",
-      "advisory": "Cảnh báo — báo cáo tự kê khai chưa được xác thực",
-      "regenerate": "Tạo lại để vượt qua",
-      "rerunWhat": "Kiểm tra lại mọi cảnh trong chương này so với nhịp truyện đã lập kế hoạch.",
-      "empty": "Chưa được tạo — hãy tạo các cảnh để xem mức độ phù hợp."
+      "rerunNeedsModel": "Chọn một mô hình để chạy lại kiểm tra sự phù hợp"
     },
     "arc": {
+      "mobileNotice": "Lưới dòng thời gian có sẵn trên màn hình lớn — tại đây bạn có thể chỉnh sửa dưới dạng danh sách.",
       "place": "place",
       "chapters": "ch {{from}}-{{to}}",
       "moveLeft": "Move earlier",
@@ -866,10 +883,17 @@
         "error": "Không thể nhóm các chương thành các hồi.",
         "done": "Đã nhóm {{chapters}} chương thành {{arcs}} hồi.",
         "none": "Chưa có chương nào để nhóm thành hồi."
-      },
-      "mobileNotice": "Lưới dòng thời gian có sẵn trên màn hình lớn — tại đây bạn có thể chỉnh sửa dưới dạng danh sách."
+      }
     },
     "simple": {
+      "actant": {
+        "subject": "người anh hùng / người thực hiện hành động",
+        "sender": "người khởi xướng",
+        "object": "thứ đang bị đe dọa",
+        "receiver": "người thụ hưởng",
+        "helper": "người hỗ trợ",
+        "opponent": "người cản trở"
+      },
       "kind": {
         "sequence": "a plot shape",
         "situation": "a setup",
@@ -885,17 +909,9 @@
         "effects": "leaves after",
         "info_asymmetry": "ai là người không biết sự thật"
       },
-      "infoDeceived": "{{who}} is fooled",
-      "actant": {
-        "subject": "người anh hùng / người thực hiện hành động",
-        "sender": "người khởi xướng",
-        "object": "thứ đang bị đe dọa",
-        "receiver": "người thụ hưởng",
-        "helper": "người hỗ trợ",
-        "opponent": "người cản trở"
-      },
       "infoAsymmetry": "Ai là người không biết sự thật",
-      "infoKnows": "{{who}} biết sự thật"
+      "infoKnows": "{{who}} biết sự thật",
+      "infoDeceived": "{{who}} is fooled"
     },
     "expert": {
       "actant": {
@@ -958,21 +974,37 @@
       "sectionMine": "Mô típ của bạn",
       "sectionLibrary": "Từ thư viện"
     },
-    "overuse": "«{{name}}» đã được sử dụng trong {{chapters}} — hãy cân nhắc thay đổi để đa dạng hơn.",
-    "error": {
-      "load": "Không thể tải — vui lòng thử lại."
-    },
-    "permission": {
-      "readOnly": "Đây là mẫu được chia sẻ — hãy nhân bản để tạo bản sao có thể chỉnh sửa của riêng bạn."
-    },
-    "empty": {
-      "title": "Thư viện motif của bạn đã sẵn sàng",
-      "body": "Motif là các khuôn mẫu cốt truyện có thể tái sử dụng. Trình lập kế hoạch sẽ chọn một motif cho mỗi chương để ngay cả một mô hình nhỏ cũng có thể tạo nên một cảnh phim vững chắc. Đã có sẵn 12 motif khởi đầu — tu tiên và báo thù.",
-      "browseSystem": "Xem 12 motif khởi đầu",
-      "hint": "Không cần token — tự xây dựng motif là hoàn toàn miễn phí."
-    },
-    "quota": {
-      "adopt": "Bạn đã nhận {{used}}/{{limit}} trong kỳ này — hãy lưu trữ bớt hoặc chờ đợi."
+    "language": {
+      "writtenIn": "Viết bằng",
+      "authored": "bản dịch viết tay",
+      "staleShort": "lỗi thời",
+      "missingYours": "không có trong {{lang}} — sẽ chuyển về bản gốc",
+      "systemFree": "Các motif tích hợp sẵn được cung cấp bằng mọi ngôn ngữ được hỗ trợ — motif này hiện chưa có bản dịch cho ngôn ngữ của bạn.",
+      "adoptFirst": "Thêm motif này vào thư viện của bạn để dịch.",
+      "translateTo": "Dịch sang",
+      "model": "Mô hình dịch thuật",
+      "translate": "Dịch…",
+      "retranslate": "Dịch lại…",
+      "alreadyHave": "Đã dịch",
+      "estimating": "Đang ước tính…",
+      "youPay": "Các motif của riêng bạn sẽ không bao giờ được tự động dịch — quá trình này chạy trên mô hình của bạn và bạn sẽ chịu chi phí.",
+      "confirmWhat": "Dịch motif này sang {{lang}} bằng mô hình của bạn.",
+      "echoed": "{{count}} trường không được dịch — mô hình của bạn có thể không xử lý tốt ngôn ngữ này.",
+      "again": "Dịch sang ngôn ngữ khác",
+      "quota": "Đã đạt đến hạn mức chi tiêu.",
+      "failed": "Dịch thất bại.",
+      "outcome": {
+        "translated": "Đã dịch sang {{lang}}.",
+        "already_original": "Motif này vốn đã được viết bằng ngôn ngữ đó.",
+        "already_translated": "Đã được dịch và vẫn đang được sử dụng — bạn không bị tính phí.",
+        "authored_kept": "Đã có bản dịch viết tay và được giữ lại.",
+        "nothing_to_translate": "Motif này không có văn bản để dịch.",
+        "not_translatable": "Bạn không có quyền dịch motif này.",
+        "model_failed": "Mô hình của bạn không trả về kết quả nào có thể sử dụng được — không có dữ liệu nào được lưu.",
+        "failed": "Dịch thất bại.",
+        "cancelled": "Đã hủy trước khi motif này được dịch — bạn không bị tính phí cho mục này."
+      },
+      "skipped": "{{count}} motif bạn đã chọn không thuộc phạm vi dịch thuật của bạn và không được bao gồm."
     }
   },
   "authoringRun": {

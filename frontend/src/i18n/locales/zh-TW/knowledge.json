@@ -594,9 +594,9 @@
         "empty": "尚無日誌。",
         "loadNewer": "載入較新日誌",
         "levels": {
-          "info": "INFO",
-          "warning": "WARN",
-          "error": "ERROR"
+          "info": "資訊",
+          "warning": "警告",
+          "error": "錯誤"
         }
       }
     },
@@ -671,7 +671,7 @@
       "restore": "還原",
       "delete": "刪除",
       "tuneExtraction": "調整抽取",
-      "bookId": "book_id"
+      "bookId": "書籍 ID"
     },
     "form": {
       "createTitle": "新增專案",
@@ -688,7 +688,6 @@
         "general": "一般"
       },
       "bookId": "書籍 ID (選填)",
-      "bookIdPlaceholder": "uuid",
       "description": "描述 (選填)",
       "instructions": "指示 (選填)",
       "instructionsPlaceholder": "風格筆記、語氣、限制條件 — 會插入到此專案的每次對話中。",
@@ -707,7 +706,8 @@
         "errorAlreadyRunning": "此專案已有基準測試正在執行。請稍候再試。",
         "errorProviderFlake": "嵌入服務提供者在執行期間失敗。請重試。",
         "errorGeneric": "基準測試失敗: {{message}}"
-      }
+      },
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "封存專案?",
@@ -1134,22 +1134,22 @@
   },
   "relations": {
     "edit": {
-      "cta": "Correct relation",
-      "title": "Correct relation",
-      "field": {
-        "predicate": "Predicate"
-      },
-      "save": "Correct",
-      "saving": "Correcting…",
-      "cancel": "Cancel",
-      "correctSuccess": "Relation corrected.",
-      "invalidateSuccess": "Relation removed.",
-      "markWrong": "Mark wrong",
-      "invalidating": "Removing…",
       "description": "修正此關係的謂詞，或將其標記為錯誤以將其移除。",
       "invalidateHint": "若此關係不應被擷取，請將其標記為錯誤以將其移除。",
       "invalidateConfirm": "要將此關係標記為錯誤並移除嗎？",
-      "failed": "無法儲存修正內容：{{error}}"
+      "failed": "無法儲存修正內容：{{error}}",
+      "cta": "修正關係",
+      "title": "修正關係",
+      "field": {
+        "predicate": "謂詞"
+      },
+      "save": "確認",
+      "saving": "修正中…",
+      "cancel": "取消",
+      "correctSuccess": "關係已修正。",
+      "invalidateSuccess": "關係已移除。",
+      "markWrong": "標記錯誤",
+      "invalidating": "正在移除…"
     },
     "create": {
       "title": "連結實體",
@@ -1179,30 +1179,30 @@
       "save": "新增事件"
     },
     "edit": {
-      "cta": "Edit",
-      "title": "Edit event",
-      "field": {
-        "title": "Title",
-        "summary": "Summary",
-        "timeCue": "Time cue",
-        "dateIso": "Date (ISO)"
-      },
-      "save": "Save",
-      "saving": "Saving…",
-      "cancel": "Cancel",
-      "success": "Event updated.",
       "description": "調整此事件的標題、摘要或時間。",
       "dateIsoPlaceholder": "YYYY 或 YYYY-MM-DD",
       "conflict": "另一台裝置已更新此事件。請檢查最新版本後再試一次。",
       "failed": "無法更新事件：{{error}}",
-      "invalidDate": "日期格式必須為 YYYY、YYYY-MM 或 YYYY-MM-DD。"
+      "invalidDate": "日期格式必須為 YYYY、YYYY-MM 或 YYYY-MM-DD。",
+      "cta": "編輯",
+      "title": "編輯事件",
+      "field": {
+        "title": "標題",
+        "summary": "摘要",
+        "timeCue": "時間提示",
+        "dateIso": "日期 (ISO)"
+      },
+      "save": "儲存",
+      "saving": "正在儲存…",
+      "cancel": "取消",
+      "success": "活動已更新。"
     },
     "archive": {
-      "cta": "Delete",
-      "archiving": "Deleting…",
-      "success": "Event deleted.",
       "confirm": "要刪除（隱藏）此事件嗎？",
-      "failed": "無法刪除事件：{{error}}"
+      "failed": "無法刪除事件：{{error}}",
+      "cta": "刪除",
+      "archiving": "正在刪除…",
+      "success": "活動已刪除。"
     }
   },
   "mining": {

@@ -927,8 +927,17 @@ class MotifCreateArgs(_ForbidExtra):
 
 
 class MotifPatchArgs(_ForbidExtra):
-    # every field optional (PATCH semantics); owner/code/language/source are NOT
-    # patchable here (identity/lineage are immutable post-create — clone to re-key).
+    # every field optional (PATCH semantics); owner/code/source are NOT patchable here
+    # (identity/lineage are immutable post-create — clone to re-key).
+    #
+    # `original_language` IS patchable, and used not to be: it was excluded back when
+    # language was part of the identity key, where changing it really would have re-keyed
+    # the row. MOTIF-I18N removed it from every unique index — language is a view now, and
+    # `original_language` is just a claim about which language the author typed in. A wrong
+    # claim is the silent wrong-language bug in the user tier (a vi motif labelled `en`
+    # reports `text_language: "en"`, `text_fallback: false`, and hands Vietnamese to an
+    # English prompt), so correcting it has to be possible.
+    original_language: _Lang | None = None
     name: _Title | None = None
     kind: MotifKind | None = None
     category: _Code | None = None

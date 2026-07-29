@@ -13,7 +13,8 @@ import { compositionApi } from '../api';
 import type { GenerationJob } from '../types';
 import type {
   ArcConformance, CatalogList, ChapterConformance, CostEstimate, MineResult, Motif,
-  MotifCreateArgs, MotifPatchArgs, MotifTier, SyncDiff, SyncResult,
+  MotifCreateArgs, MotifPatchArgs, MotifTier, MotifTranslateLanguage,
+  MotifTranslateResult, MotifTranslationInventory, SyncDiff, SyncResult,
 } from './types';
 
 const BASE = '/v1/composition';
@@ -282,6 +283,90 @@ export const motifApi = {
     return motifApi.patch(motifId, { status: 'active' }, expectedVersion, token);
   },
 
+  /** Which languages this motif already reads in. The detail drawer shows a motif as
+   *  AUTHORED (it is the edit surface, and the PATCH is whole-object — rendering a
+   *  translation there and saving would write translated wording onto the source row),
+   *  so this is how it reports what exists without becoming one of them. */
+  motifTranslations(
+    motifId: string, token: string, bookId?: string | null,
+  ): Promise<MotifTranslationInventory> {
+    // `bookId` selects the SHARED-tier read. Without it the server falls back to
+    // system|public|owned, which does not include a book_shared row a COLLABORATOR
+    // owns — i.e. the exact rows a grantee may translate would report an empty
+    // inventory and be offered a duplicate translation.
+    return apiJson<MotifTranslationInventory>(
+      `${BASE}/motifs/${motifId}/translations${_qs({ book_id: bookId ?? undefined })}`,
+      { token },
+    );
+  },
+
+  // ── Tier-W: the USER-PAID translate (spec 2026-07-29-motif-i18n §5) ─────────
+  // The platform's 84 motifs ship in all 17 supported languages for free. A motif YOU
+  // authored is yours — we never translate it on our own initiative and never spend a
+  // token on it behind your back. This pair is how you spend your OWN: propose (mint a
+  // confirm token + a size-derived $ estimate, no spend) → human confirms → a job we poll.
+  /** Step 1 — PROPOSE composition_motif_translate → cost estimate + confirm_token.
+   *  No spend. The server filters the ids down to the ones you may actually translate
+   *  (yours; a system or foreign-public motif is refused), so `skipped` can be > 0. */
+  async translatePropose(
+    args: {
+      motifIds: string[];
+      targetLanguage: MotifTranslateLanguage;
+      bookId?: string | null;
+      force?: boolean;
+      modelRef: string;
+      modelSource?: string;
+    },
+    token: string,
+  ): Promise<CostEstimate & { skipped: number }> {
+    const res = await mcpExecute<_McpProposeResult & { skipped?: number }>(
+      'composition_motif_translate',
+      {
+        args: {
+          motif_ids: args.motifIds,
+          target_language: args.targetLanguage,
+          ...(args.bookId ? { book_id: args.bookId } : {}),
+          ...(args.force ? { force: true } : {}),
+          model_ref: args.modelRef,
+          model_source: args.modelSource ?? 'user_model',
+        },
+      },
+      token,
+    );
+    return {
+      confirm_token: res.confirm_token,
+      descriptor: 'composition.motif_translate',
+      est_usd: res.estimate?.estimated_usd ?? 0,
+      est_tokens: res.estimate?.estimated_tokens ?? 0,
+      quota_remaining: null,
+      skipped: res.skipped ?? 0,
+    };
+  },
+  /** Step 2 — confirm the token → 202 + a translate job we poll to terminal. Like the
+   *  mine job it is Work-LESS (project_id=NULL), so it is polled through the OWNER-scoped
+   *  /motif-jobs/{id}; getJob gates on a Work that does not exist and would 404 forever
+   *  AFTER the user has paid (BE-7c). */
+  async translateConfirm(confirmToken: string, token: string): Promise<MotifTranslateResult> {
+    const resp = await apiJson<{ job_id?: string } & Record<string, unknown>>(
+      `${BASE}/actions/confirm${_qs({ token: confirmToken })}`,
+      { method: 'POST', token }, // token rides the QUERY; identity is the Bearer JWT
+    );
+    if (!resp.job_id) {
+      return ((resp as { result?: MotifTranslateResult }).result
+        ?? (resp as unknown as MotifTranslateResult));
+    }
+    let job = await compositionApi.getMotifJob(resp.job_id, token);
+    for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
+      await _sleep(_POLL_INTERVAL_MS);
+      job = await compositionApi.getMotifJob(resp.job_id, token);
+    }
+    if (job.status === 'failed') {
+      throw new Error((job.result as { error?: string } | null)?.error || 'translation failed');
+    }
+    if (job.status !== 'completed') throw new Error('translation did not complete in time');
+    return job.result as MotifTranslateResult;
+  },
+
   // ── publish sync (W11) — upstream-diff + apply-merge ─────────────────────────
   /** The per-field diff of an adopted motif vs its current upstream (3-way when a base
    *  snapshot exists, else 2-way). 404/409/410 when not the caller's resolvable clone. */
@@ -448,7 +533,10 @@ export const motifApi = {
 type _McpProposeResult = {
   confirm_token: string;
   descriptor?: string;
-  estimate?: { estimated_usd?: number; currency?: string; basis?: string };
+  // `estimated_tokens` is present only on the translate estimate, whose input size is
+  // known exactly before the call (it is the motif's own text). The others are coarse
+  // scope constants and legitimately omit it.
+  estimate?: { estimated_usd?: number; estimated_tokens?: number; currency?: string; basis?: string };
 };
 
 // The Tier-W actions route answers a 202 `{ job_id, status }` (the spend runs in a

@@ -227,10 +227,10 @@
       "endpoint_hint": "デフォルトエンドポイント（OpenAI、Anthropic）を使う場合は空欄にしてください。",
       "api_key": "APIキー",
       "api_key_ph_local": "ローカルでは任意",
-      "api_key_ph": "sk-...",
       "cancel": "キャンセル",
       "adding": "追加中...",
-      "submit": "プロバイダーを追加"
+      "submit": "プロバイダーを追加",
+      "api_key_ph": "sk-..."
     },
     "edit_dialog": {
       "aria": "プロバイダーを編集",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "デフォルトを使う場合は空欄",
       "api_key": "APIキー",
       "api_key_ph_keep": "••••••••  （現在のキーを保持する場合は空欄）",
-      "api_key_ph": "sk-...",
       "api_key_keep_hint": "既存のキーを保持する場合は空欄にしてください。",
       "max_concurrency": "最大同時リクエスト数",
       "max_concurrency_ph": "無制限",
       "max_concurrency_hint": "このプロバイダーが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合（例：ローカルGPU）のみ数値を設定してください。",
       "cancel": "キャンセル",
       "saving": "保存中...",
-      "submit": "変更を保存"
+      "submit": "変更を保存",
+      "api_key_ph": "sk-..."
     },
     "delete": {
       "title": "{{name}} を削除しますか？",
@@ -364,13 +364,13 @@
       "extended_thinking": "拡張思考",
       "json_mode": "JSONモード",
       "reasoning": "推論",
-      "tts": "TTS",
-      "stt": "STT",
       "image_gen": "画像生成",
       "video_gen": "動画生成",
       "embedding": "埋め込み",
       "rerank": "リランク",
-      "moderation": "モデレーション"
+      "moderation": "モデレーション",
+      "tts": "読み上げ",
+      "stt": "音声認識"
     }
   },
   "services": {
@@ -464,7 +464,6 @@
       "model": "モデル",
       "search_ph": "モデルを検索...",
       "top": "おすすめ",
-      "ctx": "ctx",
       "model_hint": "入力して検索。またはリストにないカスタムモデル名を入力してください。",
       "alias": "エイリアス（表示名）",
       "alias_ph": "例: マイ高速モデル",
@@ -473,7 +472,8 @@
       "notes_ph": "このモデル設定に関する任意のメモ...",
       "cancel": "キャンセル",
       "adding": "追加中...",
-      "submit": "モデルを追加"
+      "submit": "モデルを追加",
+      "ctx": "ctx"
     },
     "edit": {
       "aria": "モデルを編集",
@@ -489,7 +489,6 @@
       "remove_default_aria": "デフォルトから外す",
       "set_default_aria": "デフォルトに設定",
       "verify_hint": "接続をテストしてこのモデルが動作するか確認します",
-      "verify_ok": "OK — {{ms}}ms",
       "testing": "テスト中...",
       "reverify": "再検証",
       "verify": "検証",
@@ -511,7 +510,8 @@
       "request_failed": "リクエストに失敗しました",
       "cancel": "キャンセル",
       "saving": "保存中...",
-      "submit": "変更を保存"
+      "submit": "変更を保存",
+      "verify_ok": "OK — {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "モデルの取得に失敗しました: {{error}}",

@@ -220,6 +220,7 @@
       "selected": "{{count}}개 선택됨",
       "activate": "활성화",
       "deactivate": "비활성화",
+      "reject": "거절",
       "clear": "해제",
       "done": "{{count}}개의 엔티티가 {{status}} 상태로 변경되었습니다.",
       "select_all_matching": "일치하는 항목 {{count}}개 모두 선택",
@@ -229,8 +230,7 @@
       "delete_confirm": {
         "title": "{{count}}개의 엔티티를 삭제할까요?",
         "description": "선택한 {{count}}개의 엔티티가 휴지통으로 이동됩니다."
-      },
-      "reject": "거절"
+      }
     },
     "clear_filters": "모든 필터 해제",
     "deleted": "엔티티 삭제됨",
@@ -239,6 +239,7 @@
       "description": "첫 번째 용어집 엔티티를 만들어 보세요 — 캐릭터, 장소, 아이템 등."
     },
     "untitled": "제목 없음",
+    "scope_label_title": "범위 — 동일한 이름을 가진 다른 엔티티와 이 엔티티를 구분합니다",
     "alive_title": "생존 — 클릭하여 사망 처리",
     "dead_title": "사망 — 클릭하여 부활",
     "alive": "생존",
@@ -254,8 +255,7 @@
       "title": "엔티티를 삭제할까요?",
       "description": "\"{{title}}\"이(가) 휴지통으로 이동됩니다.",
       "confirm": "삭제"
-    },
-    "scope_label_title": "범위 — 동일한 이름을 가진 다른 엔티티와 이 엔티티를 구분합니다"
+    }
   },
   "sharing": {
     "title": "공개 범위",
@@ -404,7 +404,6 @@
   },
   "kind_editor": {
     "modified": "수정됨",
-    "ai": "AI",
     "required": "필수",
     "optional": "선택",
     "activate": "활성화",
@@ -424,7 +423,6 @@
     "attr_count_other": "{{count}}개 속성",
     "entity_count": "{{count}}개 엔티티",
     "entity_count_other": "{{count}}개 엔티티",
-    "system_tag": "system",
     "revert_to_default": "기본값으로 복원",
     "revert_title_attr": "모든 변경 사항을 시스템 기본값으로 복원",
     "delete_kind_tooltip": "종류 삭제",
@@ -470,7 +468,9 @@
       "title": "기본값으로 복원할까요?",
       "desc": "\"{{name}}\"의 이름, 아이콘, 색상 및 속성 이름이 원래 상태로 초기화됩니다. 장르 태그와 사용자 지정 속성에는 영향을 주지 않습니다.",
       "confirm": "복원"
-    }
+    },
+    "ai": "AI",
+    "system_tag": "시스템"
   },
   "attr_editor": {
     "field_type": {
@@ -480,15 +480,14 @@
       "number": "숫자",
       "date": "날짜",
       "tags": "태그",
-      "url": "URL",
-      "boolean": "불리언"
+      "boolean": "불리언",
+      "url": "URL"
     },
     "new_attr": "새 속성",
     "edit_attr": "속성 편집",
     "system": "시스템",
     "custom": "사용자 지정",
     "modified": "수정됨",
-    "ai": "AI",
     "core": "코어",
     "display_name": "표시 이름",
     "field_type_label": "필드 유형",
@@ -528,6 +527,7 @@
       "title": "속성 이름을 복원할까요?",
       "desc": "이름을 \"{{from}}\"에서 \"{{to}}\"로 초기화합니다. 다른 필드에는 영향을 주지 않습니다.",
       "confirm": "복원"
-    }
+    },
+    "ai": "AI"
   }
 }

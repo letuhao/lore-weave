@@ -1,5 +1,49 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🌐 MOTIF TRANSLATE — the user-paid path (2026-07-30)
+
+A user can now buy a translation of a motif they authored. Before this, spec §5's policy
+was implemented only in the half that REFUSES, so "we never spend your tokens without
+asking" was indistinguishable from "you cannot translate". Tier-W propose/confirm →
+`translate_motif` worker job → `motif_translation` row; the caller's own BYOK model, so
+their spend. Platform motifs stay free in all 17 locales and are refused server-side.
+
+### The three "deferred" rows — all three turned out to be buildable
+
+Parked first, then challenged ("đừng để chúng trôi"). Two of the three were **wrong
+diagnoses**, which is the point of challenging them:
+
+| Was | What it actually was | Now |
+|---|---|---|
+| `D-MOTIF-TRANSLATE-WORKER-GRANT` — "the worker has no grant client, no composition worker op does" | **False, believed from my own note instead of read from code.** `get_grant_client()` is a module-level singleton built from settings — not a FastAPI dependency — so the worker could always call it. | **FIXED.** `run_translate_motifs` re-checks EDIT on the book before the shared-tier arm. Fail-closed and *narrowing*: an outage drops the shared arm but leaves the caller's OWN motifs translatable. 3 tests (revoked → shared scope dropped · live → kept · outage → batch narrows, not fails). |
+| `D-BFF-JEST-SUITE-DEAD` — "ts-jest 29 vs typescript 7, all 14 suites fail" | **A drifted install, not a repo defect.** The lockfile pins `typescript` 5.9.3; the tree had 7.0.2. Host-env drift masquerading as a code bug. | **FIXED** by `npm ci`. **14/14 suites, 201 tests pass.** The FE↔allowlist binding test's stated reason for living on the FE side was therefore false and has been corrected. |
+| `D-I18N-SHORT-LABEL-ECHOES` — 1,008 verbatim-English keys across the 9 non-Latin locales | Real — and the first *fix* repeated the original mistake on the other side. | **FIXED, 1,008 → 66.** See below. |
+
+#### The calibration trap, caught twice on the same rule
+
+1. **≥3 prose words** was calibrated on a *cognate* argument — `Status` is a German word.
+   That argument has no force against a non-Latin script, so the bar hid ~200 verbatim
+   English labels per script-bearing locale. Fixed: the bar is the **target's**, not the
+   corpus's.
+2. **≥1 word for a non-Latin target** then flagged `AI`, `JSON`, `Ollama`, `LM Studio`,
+   `OAuth 2.1`, `200 OK`, `USD` — 309 of them. Those are *correctly* verbatim in every
+   language; "translating" them would be the defect. Same shape, opposite direction.
+
+So the rule stopped being a number and became a **discriminator**: a verbatim value is a
+defect only if it contains **ordinary prose — at least one all-lowercase word**. English
+prose always carries one (`Confirm cost` → "cost"); a pure Title-Case/ALL-CAPS token
+string is a *name* (`LM Studio`, `API Key`, `Top-K`), and a name kept as-is is a
+translator doing their job.
+
+**1,008 → 309 (re-translation run) → 66 (discriminator).** The 66 survivors are
+`uuid`, `sk-...`, `recook-OK`, `conf {{value}}` — technical placeholders that are also
+correctly kept. That is the honest floor, not remaining debt.
+
+**Pre-existing debris noted, not touched:** two `smoke.my_hook` motifs (2026-06-27) owned by
+two other user ids sit in `loreweave_composition`. Deleting another user's rows unilaterally
+is exactly the destructive-op mistake the repo has a rule about.
+
+
 ## 🇨🇳 THIRD CORPUS — mainland Chinese web-novel (2026-07-29)
 
 `tests/fixtures/plan-forge/corpus-cn-webnovel.md` — 《余烬纪元》, a末世修真 planning document written

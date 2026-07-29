@@ -428,6 +428,7 @@
   "pacing": "ritmo",
   "canon_consistency": "cânone",
   "dismiss": "descartar",
+  "overrideSlipBlocked": "Aceitar bloqueio: uma versão «e se» (what-if) sobrepôs o valor canônico. Regenere antes de aceitar.",
   "overrideSlipExhausted": "Sobreposição persistente após o limite de regeneração — exibida para sua revisão (a aceitação não está mais bloqueada).",
   "overrideSlipDetail": "{{name}} ({{field}}): esperado “{{expected}}”, encontrado “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: contradiz a regra delta “{{rule}}”",
@@ -972,6 +973,38 @@
       "degradedLibrary": "Não classificados por afinidade — o modelo de embedding da biblioteca compartilhada não está configurado, portanto, estes são resultados genéricos de gênero, não correspondências pontuadas.",
       "sectionMine": "Seus motivos",
       "sectionLibrary": "Da biblioteca"
+    },
+    "language": {
+      "writtenIn": "Escrito em",
+      "authored": "tradução manuscrita",
+      "staleShort": "desatualizado",
+      "missingYours": "não está em {{lang}} — será exibido o original",
+      "systemFree": "Motivos integrados são fornecidos em todos os idiomas suportados — este ainda não possui tradução para o seu idioma.",
+      "adoptFirst": "Adicione este motivo à sua biblioteca para traduzi-lo.",
+      "translateTo": "Traduzir para",
+      "model": "Modelo de tradução",
+      "translate": "Traduzir…",
+      "retranslate": "Retraduzir…",
+      "alreadyHave": "Já traduzido",
+      "estimating": "Estimando…",
+      "youPay": "Seus próprios motivos nunca são traduzidos automaticamente — isso é executado no seu modelo, sob seu custo.",
+      "confirmWhat": "Traduzir este motivo para {{lang}} usando seu modelo.",
+      "echoed": "{{count}} campo(s) retornaram sem tradução — seu modelo pode não lidar bem com este idioma.",
+      "again": "Traduzir outro idioma",
+      "quota": "Limite de gastos atingido.",
+      "failed": "Falha na tradução.",
+      "outcome": {
+        "translated": "Traduzido para {{lang}}.",
+        "already_original": "Este motivo já está escrito nesse idioma.",
+        "already_translated": "Já traduzido e ainda atual — você não foi cobrado.",
+        "authored_kept": "Uma tradução escrita à mão existe e foi mantida.",
+        "nothing_to_translate": "Este motivo não possui texto para traduzir.",
+        "not_translatable": "Este motivo não é seu para traduzir.",
+        "model_failed": "Seu modelo não retornou nada utilizável — nada foi salvo.",
+        "failed": "Falha na tradução.",
+        "cancelled": "Cancelado antes que este motivo fosse traduzido — você não foi cobrado por ele."
+      },
+      "skipped": "{{count}} dos motivos que você escolheu não são seus para traduzir e não foram incluídos."
     }
   },
   "authoringRun": {
@@ -1092,6 +1125,5 @@
       "loading": "Carregando execução…",
       "back": "← Voltar para a lista de execuções"
     }
-  },
-  "overrideSlipBlocked": "Aceitar bloqueio: uma versão «e se» (what-if) sobrepôs o valor canônico. Regenere antes de aceitar."
+  }
 }

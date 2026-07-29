@@ -2,7 +2,14 @@
   "header": "增補審閱",
   "subtitle": "審閱 AI 為描述不足的實體所提出的設定，再將你核可的內容晉升為本書的正典。增補草稿在晉升前皆為私人異本。",
   "untitled": "未命名",
-  "panel": { "compose": "建立", "proposals": "提案", "gaps": "缺口", "sources": "來源", "jobs": "作業", "settings": "設定檔" },
+  "panel": {
+    "compose": "建立",
+    "proposals": "提案",
+    "gaps": "缺口",
+    "sources": "來源",
+    "jobs": "作業",
+    "settings": "設定檔"
+  },
   "compose": {
     "title": "建立增補",
     "subtitle": "依你的方式開始 — 擴寫你寫好的草稿，或填補偵測到的缺口。你建立的一切在晉升前皆為增補異本。",
@@ -42,10 +49,10 @@
       "dropzone": "將檔案拖放到此處，或點擊瀏覽",
       "accept": ".txt .md .pdf .docx .epub — 掃描 PDF 會進行 OCR",
       "ready": "{{chars}} 字元{{ocr}}",
-      "ocr": "OCR",
       "processing": "擷取中…",
       "failed": "失敗",
-      "responsibility": "我擁有這些檔案的權利（自有／已授權／公有領域）。本訊息非法律建議。"
+      "responsibility": "我擁有這些檔案的權利（自有／已授權／公有領域）。本訊息非法律建議。",
+      "ocr": "OCR"
     },
     "intent": {
       "label": "你想創作什麼？",
@@ -77,11 +84,17 @@
       "select_model": "選擇…",
       "max_spend": "支出上限（tokens）",
       "no_cap": "無上限",
-      "top_k": "Top-K",
       "technique": "技法",
-      "technique_opt": { "retrieval": "檢索 (P1)", "fabrication": "虛構 (P2)", "recook": "再製 (P3)" },
+      "technique_opt": {
+        "retrieval": "檢索 (P1)",
+        "fabrication": "虛構 (P2)",
+        "recook": "再製 (P3)"
+      },
       "eval_gate_warning": "P2/P3 需通過 eval-gate — 未通過前工作會被拒絕。",
-      "dimensions": { "auto": "自動 — 補全所有缺少的維度" }
+      "dimensions": {
+        "auto": "自動 — 補全所有缺少的維度"
+      },
+      "top_k": "Top-K"
     },
     "safety": "① 授權 · ② 抽象化 · ③ 防原文照搬 · ④ 由你晉升 — 增補在你晉升前仍為異本。",
     "run_hint": "以背景作業執行 — 完成後會出現在「提案」分頁。",
@@ -124,7 +137,11 @@
       "injection": "提示注入",
       "regurgitation": "來源複述"
     },
-    "severity": { "low": "低", "medium": "中", "high": "高" }
+    "severity": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    }
   },
   "prov": {
     "technique": "技法",
@@ -217,14 +234,20 @@
     "max_gaps": "最多",
     "max_spend": "花費上限（tokens）",
     "no_cap": "無上限",
-    "top_k": "Top-K",
     "gate_note": "P2 虛構 / P3 再製 需通過評估閘門（多元評審）。",
-    "auto_enrich": "Auto-enrich",
     "enrich_one": "增補",
     "enrich_one_hint": "於下方選擇生成＋嵌入模型以增補。",
     "enriching": "排入佇列中…",
     "enqueued": "已將 {{count}} 個缺口排入增補佇列",
-    "col": { "entity": "實體", "kind": "類型", "missing": "缺少的維度", "rank": "排名", "action": "操作" }
+    "col": {
+      "entity": "實體",
+      "kind": "類型",
+      "missing": "缺少的維度",
+      "rank": "排名",
+      "action": "操作"
+    },
+    "top_k": "Top-K",
+    "auto_enrich": "自動增強"
   },
   "sources": {
     "title": "來源",
@@ -295,7 +318,13 @@
     "markers_placeholder": "詞語 | 原因（每行一項）",
     "markers_hint": "每行一項，格式為「詞語 | 原因」。這些是時代錯誤檢查會標記的詞語。清空即關閉檢查。",
     "dimensions": "維度覆寫",
-    "kind": { "character": "角色", "location": "地點", "item": "物品", "faction": "勢力", "event": "事件" },
+    "kind": {
+      "character": "角色",
+      "location": "地點",
+      "item": "物品",
+      "faction": "勢力",
+      "event": "事件"
+    },
     "add_dimension": "新增維度",
     "no_extra_dims": "使用此類型的內建維度。",
     "dim_id": "ID",

@@ -118,6 +118,7 @@
     "new_kind_code_hint": "僅限小寫字母、數字與底線。作為穩定識別碼使用。",
     "merge_all": "套用至所有 {{count}} 個以「{{code}}」到達的實體",
     "merge_all_hint": "建立可重用的別名，使日後以此代碼擷取時自動對應。",
+    "same_code_note": "有 {{count}} 個實體以「{{code}}」的形式抵達 — 請在此解析每一個實體。",
     "cancel": "取消",
     "apply": "套用",
     "saving": "套用中...",
@@ -126,8 +127,7 @@
     "err_code_format": "代碼僅限小寫字母、數字與底線",
     "err_save": "套用失敗",
     "toast_merged": "已從「{{code}}」對應 {{count}} 個實體",
-    "toast_reassigned": "已重新指派「{{name}}」",
-    "same_code_note": "有 {{count}} 個實體以「{{code}}」的形式抵達 — 請在此解析每一個實體。"
+    "toast_reassigned": "已重新指派「{{name}}」"
   },
   "history": {
     "title": "版本歷史",
@@ -151,8 +151,8 @@
     },
     "actor": {
       "user": "你",
-      "pipeline": "AI",
-      "system": "系統"
+      "system": "系統",
+      "pipeline": "AI"
     },
     "error": "無法載入版本歷史。"
   }

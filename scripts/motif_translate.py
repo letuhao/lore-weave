@@ -56,21 +56,25 @@ sys.path.insert(0, str(REPO / "services" / "composition-service"))
 
 from i18n_translate import (  # noqa: E402  (path set above)
     TARGETS,
-    is_untranslated_echo,
     chunk_items,
-    flatten,
     isolate_retry_soft,
     translate_chunk,
-    unflatten,
     verify_chunk,
 )
 
+# flatten/unflatten and the echo predicate come from the SERVICE module, not from
+# i18n_translate: the runtime translate engine cannot import from `scripts/`, and the
+# key scheme this tool writes to disk has to be the same one the engine writes to the
+# DB. One definition, two callers.
 from app.motif_i18n import (  # noqa: E402
     TranslationFileError,
     build_translation_entry,
     extract_translatable,
+    flatten_entry as flatten,
+    is_untranslated_echo,
     parse_translation_entry,
     source_hash,
+    unflatten_entry as unflatten,
 )
 
 PACK_DIR = REPO / "services" / "composition-service" / "app" / "db" / "seed_motif_packs"
@@ -308,7 +312,7 @@ def audit_locale(lang: str, source: dict[str, list[dict]]) -> dict:
             src_flat = _flat_entry(entry_of(motif))
             for leaf, val in _flat_entry(entry).items():
                 out["keys"] += 1
-                if leaf in src_flat and is_untranslated_echo(src_flat[leaf], val):
+                if leaf in src_flat and is_untranslated_echo(src_flat[leaf], val, lang):
                     out["echoed"].append({"code": code, "pack": pack, "leaf": leaf,
                                           "text": val[:70]})
         for code in set(doc) - set(src_by_code):

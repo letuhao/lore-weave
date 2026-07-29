@@ -150,12 +150,12 @@
       "writeback": "กำลังบันทึก"
     },
     "badge": {
-      "generated": "AI",
       "generatedHint": "สร้างโดย AI และผ่านการตรวจสอบแล้ว",
       "needs_review": "รอการตรวจสอบ",
       "needs_reviewHint": "สร้างโดย AI — ทำเครื่องหมายไว้เพื่อให้ตรวจสอบ",
       "blocked": "ถูกระงับ",
-      "blockedHint": "สร้างโดย AI — ถูกระงับการเผยแพร่โดยการตรวจสอบ"
+      "blockedHint": "สร้างโดย AI — ถูกระงับการเผยแพร่โดยการตรวจสอบ",
+      "generated": "AI"
     },
     "flags": {
       "reviewTitle": "ถูกระบุให้ตรวจสอบ",

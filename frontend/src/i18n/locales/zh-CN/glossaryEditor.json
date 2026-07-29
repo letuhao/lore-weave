@@ -118,6 +118,7 @@
     "new_kind_code_hint": "仅限小写字母、数字和下划线。将用作稳定标识符。",
     "merge_all": "应用到所有以 \"{{code}}\" 形式出现的 {{count}} 个实体",
     "merge_all_hint": "创建一个可重复使用的别名，以便未来提取到该代码时自动解析。",
+    "same_code_note": "又有 {{count}} 个实体以 «{{code}}» 形式到达 — 请在此处逐一解决。",
     "cancel": "取消",
     "apply": "应用",
     "saving": "应用中...",
@@ -126,8 +127,7 @@
     "err_code_format": "代码必须仅由小写字母、数字和下划线组成",
     "err_save": "应用失败",
     "toast_merged": "已从 \"{{code}}\" 映射 {{count}} 个实体",
-    "toast_reassigned": "已重新分配 \"{{name}}\"",
-    "same_code_note": "又有 {{count}} 个实体以 «{{code}}» 形式到达 — 请在此处逐一解决。"
+    "toast_reassigned": "已重新分配 \"{{name}}\""
   },
   "history": {
     "title": "版本历史",
@@ -151,8 +151,8 @@
     },
     "actor": {
       "user": "你",
-      "pipeline": "AI",
-      "system": "系统"
+      "system": "系统",
+      "pipeline": "AI"
     },
     "error": "无法加载版本历史。"
   }

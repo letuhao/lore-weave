@@ -118,6 +118,7 @@
     "new_kind_code_hint": "小文字・数字・アンダースコアのみ。安定した識別子として使用されます。",
     "merge_all": "コード「{{code}}」で到着した {{count}} 件すべてに適用",
     "merge_all_hint": "再利用可能なエイリアスを作成し、今後このコードでの抽出が自動的に解決されます。",
+    "same_code_note": "「{{code}}」として、あと{{count}}件のエンティティが到着しました。ここでそれぞれを解決してください。",
     "cancel": "キャンセル",
     "apply": "適用",
     "saving": "適用中...",
@@ -126,8 +127,7 @@
     "err_code_format": "コードは小文字・数字・アンダースコアのみです",
     "err_save": "適用に失敗しました",
     "toast_merged": "「{{code}}」から {{count}} 件をマッピングしました",
-    "toast_reassigned": "「{{name}}」を再割り当てしました",
-    "same_code_note": "「{{code}}」として、あと{{count}}件のエンティティが到着しました。ここでそれぞれを解決してください。"
+    "toast_reassigned": "「{{name}}」を再割り当てしました"
   },
   "history": {
     "title": "バージョン履歴",
@@ -151,8 +151,8 @@
     },
     "actor": {
       "user": "あなた",
-      "pipeline": "AI",
-      "system": "システム"
+      "system": "システム",
+      "pipeline": "AI"
     },
     "error": "バージョン履歴を読み込めませんでした。"
   }

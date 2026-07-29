@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 # ── what is translatable ───────────────────────────────────────────────────
@@ -206,6 +207,142 @@ def parse_translation_entry(
                 )
             out[field] = [{leaf: t} for t in given if isinstance(t, str)]
     return out
+
+
+# ── the flat wire shape (entry ↔ {dotted key: string}) ─────────────────────
+# A translator — the dev-time script or the runtime engine — works on a FLAT map of
+# string leaves, because that is what makes key-set identity a checkable property:
+# the model is handed `{"beats.press.label": "…"}` and must hand back the same key
+# set. An entry-shaped payload would let a renamed beat hide inside a nested object.
+#
+# This lives HERE, not in either translator, because both must produce byte-identical
+# keys. `scripts/motif_translate.py` used to borrow `i18n_translate`'s generic
+# flatten; the runtime engine cannot import from `scripts/`, and two copies of a key
+# scheme is precisely the drift this module exists to prevent.
+
+_PATH_TOKEN_RE = re.compile(r"[^.\[\]]+|\[\d+\]")
+
+
+def flatten_entry(obj: Any, prefix: str = "") -> dict[str, str]:
+    """Translation entry → `{dotted.path: text}`, string leaves only.
+
+    Empty strings are dropped: there is nothing to translate, and carrying them
+    would make a legitimately-absent leaf look like a translation failure.
+    """
+    out: dict[str, str] = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.update(flatten_entry(v, f"{prefix}.{k}" if prefix else k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out.update(flatten_entry(v, f"{prefix}[{i}]"))
+    elif isinstance(obj, str) and obj:
+        out[prefix] = obj
+    return out
+
+
+def unflatten_entry(flat: dict[str, Any]) -> Any:
+    """`{dotted.path: text}` → the nested entry shape. Inverse of `flatten_entry`."""
+    root: dict = {}
+    for key, val in flat.items():
+        parts = _PATH_TOKEN_RE.findall(key)
+        cur: Any = root
+        for i, part in enumerate(parts):
+            last = i == len(parts) - 1
+            is_index = part.startswith("[")
+            token: Any = int(part[1:-1]) if is_index else part
+            if last:
+                if is_index:
+                    while len(cur) <= token:
+                        cur.append(None)
+                    cur[token] = val
+                else:
+                    cur[token] = val
+                continue
+            nxt_is_index = parts[i + 1].startswith("[")
+            default: Any = [] if nxt_is_index else {}
+            if is_index:
+                while len(cur) <= token:
+                    cur.append(None)
+                if cur[token] is None:
+                    cur[token] = default
+                cur = cur[token]
+            else:
+                cur = cur.setdefault(token, default)
+    return root
+
+
+# ── the echo check ─────────────────────────────────────────────────────────
+# A leaf handed back in its source language, verbatim. It is structurally
+# indistinguishable from a real translation — present, non-empty, valid — so nothing
+# else in the pipeline can see it. This is the motif-corpus twin of the predicate in
+# `scripts/i18n_translate.py`; the two must agree, and a test binds them to one
+# calibration table (they cannot share an import — a repo script must not depend on a
+# service, and a service must not depend on `scripts/`).
+_PLACEHOLDER_RE = re.compile(r"\{\{.*?\}\}|\$t\([^)]*\)|<[^>]+>")
+_URL_RE = re.compile(r"https?://\S+|\w+://\S+")
+
+# Below this, a byte-identical value is a cognate, a proper noun, or a label with
+# nothing in it to translate — `Status` is a German word, `{{op}} {{status}}` has no
+# prose at all. Measured: raw byte-equality flagged 339 German strings of which one
+# was a real defect.
+#
+# That defence is a LATIN-script defence, and applying it to every target repeated the
+# same mistake one level down — a threshold justified by one class of input, quietly
+# applied to a class it does not describe. A Japanese string is not incidentally spelled
+# "Confirm cost". For a target that does not write in the Latin alphabet the bar is one
+# translatable word.
+ECHO_MIN_WORDS = 3
+ECHO_MIN_WORDS_NON_LATIN = 1
+NON_LATIN_TARGETS = frozenset({
+    "ja", "ko", "zh-CN", "zh-TW", "ru", "ar", "hi", "bn", "th",
+})
+
+
+def prose_words(value: str) -> list[str]:
+    """The words a translator could actually have translated."""
+    return re.findall(r"[A-Za-z]{2,}", _URL_RE.sub("", _PLACEHOLDER_RE.sub("", value)))
+
+
+def has_lowercase_prose(value: str) -> bool:
+    """True when the value contains an ordinary lowercase word — i.e. real prose.
+
+# ...and the same trap on the OTHER side. A bar of one word for a non-Latin target
+# flagged `AI`, `JSON`, `Ollama`, `LM Studio`, `OAuth 2.1`, `200 OK`, `USD` — 309 of
+# them — as untranslated. They are not: an acronym, a brand, or a protocol name is
+# CORRECTLY left verbatim in every language, and "translating" them would be the
+# defect. Twice now a threshold justified by one class of input has been applied to a
+# class it does not describe, so state the discriminator instead of tuning a number:
+#
+#   a verbatim value is a defect only if it contains ORDINARY PROSE —
+#   at least one all-lowercase word.
+#
+# English prose always carries one (`Confirm cost` → "cost"; `Never allow this tool to
+# run` → four). A pure Title-Case / ALL-CAPS token string is a NAME — `LM Studio`,
+# `API Key`, `Top-K`, `Beat Sheet` — and a name kept as-is is a translator doing their
+# job. Conservative in the right direction: it under-reports a Title-Case label that
+# genuinely should have been localized, rather than crying wolf on every acronym in
+# the product.
+    """
+    return any(w.islower() for w in prose_words(value))
+
+
+def echo_min_words(lang: str | None) -> int:
+    """How much prose a verbatim value needs before it counts as a defect."""
+    return ECHO_MIN_WORDS_NON_LATIN if lang in NON_LATIN_TARGETS else ECHO_MIN_WORDS
+
+
+def is_untranslated_echo(src_val: str, out_val: Any, lang: str | None = None) -> bool:
+    """`out_val` is `src_val` verbatim, and long enough that that is a defect.
+
+    Pass `lang` when it is known. Omitting it keeps the conservative Latin bar, so a
+    caller that has not been updated under-reports rather than crying wolf.
+    """
+    if not isinstance(out_val, str) or out_val != src_val:
+        return False
+    if not has_lowercase_prose(src_val):
+        return False          # a name/acronym kept verbatim is correct in every language
+    return len(prose_words(src_val)) >= echo_min_words(lang)
 
 
 # ── resolution ─────────────────────────────────────────────────────────────

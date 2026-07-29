@@ -19,8 +19,12 @@
     "edit": "編集",
     "delete": "削除"
   },
-  "genres": { "new": "新しいジャンル" },
-  "kinds": { "new": "新しい種類" },
+  "genres": {
+    "new": "新しいジャンル"
+  },
+  "kinds": {
+    "new": "新しい種類"
+  },
   "toast": {
     "cloned": "「{{name}}」を標準に複製しました",
     "cloneError": "「{{name}}」を複製できませんでした",
@@ -69,8 +73,8 @@
       "number": "数値",
       "date": "日付",
       "tags": "タグ",
-      "url": "URL",
-      "boolean": "はい / いいえ"
+      "boolean": "はい / いいえ",
+      "url": "URL"
     }
   },
   "stdform": {

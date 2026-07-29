@@ -97,12 +97,12 @@
     "col_input": "入力",
     "col_output": "出力",
     "col_cost": "コスト",
-    "cell_ok": "200 OK",
     "cell_error": "エラー",
     "cell_rejected": "拒否",
     "collapse_details": "詳細を折りたたむ",
     "expand_details": "詳細を展開",
-    "no_logs": "使用ログが見つかりません。"
+    "no_logs": "使用ログが見つかりません。",
+    "cell_ok": "200 OK"
   },
   "detail": {
     "load_failed": "詳細の読み込みに失敗しました",

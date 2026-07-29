@@ -96,7 +96,24 @@ URL_RE = re.compile(r"https?://\S+|\w+://\S+")
 # placeholders, tags and URLs removed — and requiring a phrase rather than a label
 # brings that to the genuine hits. Calibrated against all 17 locales: >=2 words is
 # still mostly noise, >=3 lands on the real ones.
+#
+# ...for a LATIN-script target. That whole cognate argument — `Status` is a German word,
+# `Pause` is a French one — cannot hold for a target that does not use the Latin
+# alphabet: a Japanese string is not incidentally spelled "Confirm cost". Applying the
+# >=3 bar uniformly hid ~200 short English labels per script-bearing locale (`motif.cost.*`
+# was verbatim English in ja/ko/ru/ar/zh and nothing reported it), which is the SAME
+# mistake the >=3 bar was introduced to fix, one level down: a threshold justified by one
+# class of input, silently applied to a class it does not describe. So the bar is the
+# target's, not the corpus's.
 ECHO_MIN_WORDS = 3
+ECHO_MIN_WORDS_NON_LATIN = 1
+
+#: Targets that do NOT write in the Latin alphabet — a verbatim English value in one of
+#: these is a defect at any length. Derived from TARGETS' script regexes, which is the
+#: same fact stated once already; kept as an explicit set so the rule reads out loud.
+NON_LATIN_TARGETS = frozenset({
+    "ja", "ko", "zh-CN", "zh-TW", "ru", "ar", "hi", "bn", "th",
+})
 
 
 def prose_words(value: str) -> list[str]:
@@ -104,11 +121,47 @@ def prose_words(value: str) -> list[str]:
     return re.findall(r"[A-Za-z]{2,}", URL_RE.sub("", PLACEHOLDER_RE.sub("", value)))
 
 
-def is_untranslated_echo(src_val: str, out_val: str) -> bool:
+def has_lowercase_prose(value: str) -> bool:
+    """True when the value contains an ordinary lowercase word — i.e. real prose.
+
+# ...and the same trap on the OTHER side. A bar of one word for a non-Latin target
+# flagged `AI`, `JSON`, `Ollama`, `LM Studio`, `OAuth 2.1`, `200 OK`, `USD` — 309 of
+# them — as untranslated. They are not: an acronym, a brand, or a protocol name is
+# CORRECTLY left verbatim in every language, and "translating" them would be the
+# defect. Twice now a threshold justified by one class of input has been applied to a
+# class it does not describe, so state the discriminator instead of tuning a number:
+#
+#   a verbatim value is a defect only if it contains ORDINARY PROSE —
+#   at least one all-lowercase word.
+#
+# English prose always carries one (`Confirm cost` → "cost"; `Never allow this tool to
+# run` → four). A pure Title-Case / ALL-CAPS token string is a NAME — `LM Studio`,
+# `API Key`, `Top-K`, `Beat Sheet` — and a name kept as-is is a translator doing their
+# job. Conservative in the right direction: it under-reports a Title-Case label that
+# genuinely should have been localized, rather than crying wolf on every acronym in
+# the product.
+    """
+    return any(w.islower() for w in prose_words(value))
+
+
+def echo_min_words(lang: str | None) -> int:
+    """How much prose a verbatim value needs before it counts as a defect."""
+    return ECHO_MIN_WORDS_NON_LATIN if lang in NON_LATIN_TARGETS else ECHO_MIN_WORDS
+
+
+def is_untranslated_echo(src_val: str, out_val: str, lang: str | None = None) -> bool:
     """`out_val` is the English `src_val`, verbatim, and long enough that that is a
-    defect rather than a cognate, a proper noun, or a label with nothing to translate."""
-    return (isinstance(out_val, str) and out_val == src_val
-            and len(prose_words(src_val)) >= ECHO_MIN_WORDS)
+    defect rather than a cognate, a proper noun, or a label with nothing to translate.
+
+    Pass `lang` whenever it is known: for a non-Latin-script target there is no cognate
+    defence and the bar drops to a single translatable word. Omitting it keeps the
+    conservative Latin bar, so an un-updated caller under-reports rather than crying wolf.
+    """
+    if not isinstance(out_val, str) or out_val != src_val:
+        return False
+    if not has_lowercase_prose(src_val):
+        return False          # a name/acronym kept verbatim is correct in every language
+    return len(prose_words(src_val)) >= echo_min_words(lang)
 _ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
 
 
@@ -226,8 +279,14 @@ def extract_json(text: str) -> dict:
 
 
 # ── verify ──────────────────────────────────────────────────────────────────
-def verify_chunk(src: dict[str, str], out: dict, script_re: str | None):
-    """Return (hard_failures, soft_failures) as {key: reason}."""
+def verify_chunk(src: dict[str, str], out: dict, script_re: str | None,
+                 lang: str | None = None):
+    """Return (hard_failures, soft_failures) as {key: reason}.
+
+    `lang` sets the echo bar: a non-Latin-script target has no cognate defence, so a
+    single verbatim English word is already a defect there. Optional so an un-updated
+    caller keeps the conservative Latin bar rather than crying wolf.
+    """
     hard: dict[str, str] = {}
     soft: dict[str, str] = {}
     for key, src_val in src.items():
@@ -244,7 +303,7 @@ def verify_chunk(src: dict[str, str], out: dict, script_re: str | None):
             continue
         # soft: the value came back as the English source, verbatim. Works for EVERY
         # language, unlike the script heuristic below — which is the whole point.
-        if is_untranslated_echo(src_val, val):
+        if is_untranslated_echo(src_val, val, lang):
             soft[key] = "possibly untranslated (identical to English)"
             continue
         # soft: value looks untranslated (has ASCII words but no target-script char)
@@ -300,7 +359,7 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
                     f"(use « » or „ “ or ‘ ’). Re-emit ONLY a strictly-valid JSON object "
                     f"translating these into {endonym}:\n\n{json.dumps(src, ensure_ascii=False)}")
             continue
-        hard, soft = verify_chunk(src, out, script_re)
+        hard, soft = verify_chunk(src, out, script_re, code)
         if not hard:
             return out, soft
         # self-heal: name the exact defects
@@ -312,7 +371,7 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
                 f"{json.dumps(need, ensure_ascii=False)}\n\nFull source:\n"
                 f"{json.dumps(src, ensure_ascii=False)}")
     # exhausted heal rounds — keep good keys, mark the rest FAILED (source fallback)
-    hard, soft = verify_chunk(src, out, script_re)
+    hard, soft = verify_chunk(src, out, script_re, code)
     for k in hard:
         out[k] = src.get(k, out.get(k, ""))
     return out, {**soft, **{k: f"FAILED:{r}" for k, r in hard.items()}}
@@ -351,7 +410,7 @@ def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None,
         fixed = out.get(key)
         if not fixed or soft.get(key, "").startswith("FAILED"):
             continue
-        if is_untranslated_echo(src_by_key[key], fixed):
+        if is_untranslated_echo(src_by_key[key], fixed, code):
             continue  # came back as English again — leave the soft flag for review
         if script_re and _ASCII_LETTER_RE.search(fixed) and not re.search(script_re, fixed):
             continue  # still untranslated even isolated — leave the soft flag as-is
@@ -452,7 +511,7 @@ def echoed_keys(code: str, ns_path: Path) -> set[str]:
     except (ValueError, OSError):
         return set()
     return {k for k, v in src.items()
-            if isinstance(v, str) and is_untranslated_echo(v, got.get(k))}
+            if isinstance(v, str) and is_untranslated_echo(v, got.get(k), code)}
 
 
 def audit(langs: list[str], ns_files: list[Path]) -> list[dict]:
@@ -523,7 +582,7 @@ def main() -> int:
         src = flatten(json.loads((src_dir / name).read_text(encoding="utf-8")))
         out = flatten(json.loads((LOCALES_DIR / code / name).read_text(encoding="utf-8")))
         strs = {k: v for k, v in src.items() if isinstance(v, str)}
-        hard, soft = verify_chunk(strs, {k: out.get(k) for k in strs}, TARGETS[code][1])
+        hard, soft = verify_chunk(strs, {k: out.get(k) for k in strs}, TARGETS[code][1], code)
         print(f"{args.check}: {len(hard)} hard, {len(soft)} soft")
         for k, r in {**hard, **soft}.items():
             print(f"  {k}: {r}")

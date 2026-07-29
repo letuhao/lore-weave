@@ -92,11 +92,11 @@
     "loadFailed": "জীবন্ত বিশ্ব লোড করতে ব্যর্থ হয়েছে: {{error}}",
     "empty": "এই বিশ্বে এখনও কোনো কাজ নেই — টাইমলাইন বাড়াতে একটি বই বা 'What-if' শুরু করুন।",
     "canonBadge": "ক্যানন",
-    "branchBadge": "What-if",
     "canonAria": "ক্যানন: {{title}}",
     "branchAria": "অধ্যায় {{ch}} এ What-if শাখা: {{title}}",
     "branchAt": "অধ্যায় {{ch}} এ শাখা তৈরি",
     "orphan": "· এই বিশ্বের বাইরে উৎস",
-    "edgeLabel": "অধ্যায় {{ch}}"
+    "edgeLabel": "অধ্যায় {{ch}}",
+    "branchBadge": "যদি এমন হতো"
   }
 }

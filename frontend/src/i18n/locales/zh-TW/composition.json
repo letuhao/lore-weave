@@ -79,7 +79,6 @@
   "inline": {
     "mode": "寫作模式",
     "mode_classic": "經典",
-    "mode_ai": "AI",
     "continue": "續寫",
     "continueFromCursor": "從游標繼續書寫",
     "continueHint": "AI 從你的游標位置串流接續內容。",
@@ -90,7 +89,8 @@
     "discard": "Esc 捨棄",
     "need_model": "請在共筆設定中設定預設模型",
     "need_scene": "請先在共筆面板中選擇一個場景",
-    "stale": "游標已移動 — 請重試。"
+    "stale": "游標已移動 — 請重試。",
+    "mode_ai": "AI 模式"
   },
   "beats": "節拍",
   "beatsheet": {
@@ -291,10 +291,10 @@
     "show": "顯示",
     "hide": "隱藏",
     "markAllReviewed": "全部標記為已審閱",
-    "ai": "AI",
     "reviewed": "已審閱",
     "unreviewed": "未審閱",
-    "clickToReview": "（點擊以審閱）"
+    "clickToReview": "（點擊以審閱）",
+    "ai": "AI"
   },
   "flywheel": "飛輪",
   "flywheelPanel": {
@@ -623,71 +623,52 @@
     "namePlaceholder": "為一個假設命名…",
     "nameLabel": "假設名稱"
   },
-  "motifs": "Motifs",
-  "conformance": "Conformance",
   "motif": {
-    "tier": {
-      "system": "System",
-      "user": "Mine",
-      "public": "Public"
-    },
-    "mode": {
-      "simple": "Simple",
-      "expert": "Expert"
-    },
     "scope": {
-      "label": "Motif scope",
       "my": "My library",
-      "catalog": "Public catalog",
       "book": "書籍",
       "shared": "共享",
       "system": "系統",
       "drafts": "草稿",
-      "needsBook": "開啟書籍以查看其主題元素"
+      "needsBook": "開啟書籍以查看其主題元素",
+      "label": "主題範圍",
+      "catalog": "公開目錄"
     },
-    "search": "Search motifs",
+    "overuse": "「{{name}}」已在 {{chapters}} 中使用過 — 建議嘗試不同的變化。",
     "list": {
-      "truncated": "僅顯示前 100 筆 — 請使用搜尋或篩選來查看其餘內容。",
-      "noMatch": "無符合的母題 — 請清除篩選條件。"
+      "noMatch": "無符合的母題 — 請清除篩選條件。",
+      "truncated": "僅顯示前 100 筆 — 請使用搜尋或篩選來查看其餘內容。"
+    },
+    "error": {
+      "load": "載入失敗 — 請重試。"
+    },
+    "permission": {
+      "readOnly": "這是一個共用模板 — 請複製以建立您自己的可編輯副本。"
     },
     "action": {
-      "open": "Open",
-      "adopt": "Adopt",
-      "newMotif": "New motif",
-      "close": "Close",
-      "cancel": "Cancel",
-      "retry": "Retry",
-      "swap": "Swap",
-      "clear": "Free-form",
-      "cloneToEdit": "複製以編輯"
+      "cloneToEdit": "複製以編輯",
+      "open": "開啟",
+      "adopt": "採用",
+      "newMotif": "新主題",
+      "close": "關閉",
+      "cancel": "取消",
+      "retry": "重試",
+      "swap": "交換",
+      "clear": "自由格式"
     },
-    "card": {
-      "draft": "Mined draft",
-      "tension": "Intensity"
-    },
-    "facet": {
-      "tier": "Tier",
-      "kind": "Kind",
-      "genre": "Genre",
-      "tension": "Intensity",
-      "clear": "Clear filters",
-      "filters": "Filters"
+    "empty": {
+      "title": "您的母題庫已準備就緒",
+      "body": "母題是可重複使用的情節結構。規劃器會為每章挑選一個母題，因此即使是簡單的模型也能寫出紮實的場景。這裡已有 12 個入門母題 — 例如：tu-tiên 與 báo-thù。",
+      "browseSystem": "瀏覽 12 個入門母題",
+      "hint": "無需消耗 Token — 手動建立母題是免費的。"
     },
     "detail": {
-      "title": "Motif",
-      "roles": "Roles",
-      "beats": "Beats",
-      "none": "—"
+      "none": "—",
+      "title": "主題元素",
+      "roles": "角色",
+      "beats": "節拍"
     },
     "create": {
-      "title": "New motif",
-      "name": "Name",
-      "kind": "Kind",
-      "beat": "beat",
-      "beatLabel": "Beat label",
-      "removeBeat": "Remove beat",
-      "save": "Create motif",
-      "saving": "Saving…",
       "code": "代碼 (簡短的 ID，例如 cultivation.fortuitous_encounter)",
       "summary": "摘要 (規劃器將以此進行比對)",
       "genres": "類型 (以逗號分隔)",
@@ -696,74 +677,71 @@
         "name": "必須輸入名稱",
         "code": "必須輸入代碼",
         "save": "無法儲存 — 請檢查代碼是否已被使用。"
-      }
+      },
+      "title": "新增主題元素",
+      "name": "名稱",
+      "kind": "種類",
+      "beat": "節拍",
+      "beatLabel": "節拍標籤",
+      "removeBeat": "移除節拍",
+      "save": "建立主題",
+      "saving": "儲存中…"
     },
     "adopt": {
-      "title": "Adopt motif",
-      "targetLabel": "Adopt into",
-      "toUser": "My library",
-      "continue": "Continue",
-      "estimating": "Estimating…",
       "body": "「採用」會建立一份您專屬且可編輯的副本。請選擇儲存位置。",
-      "whatItDoes": "將此動機複製到您的圖書館中（一份私人的、可編輯的複製品）。"
+      "whatItDoes": "將此動機複製到您的圖書館中（一份私人的、可編輯的複製品）。",
+      "title": "採用主題",
+      "targetLabel": "採用至",
+      "toUser": "我的圖書館",
+      "continue": "繼續",
+      "estimating": "估算中…"
     },
-    "cost": {
-      "title": "Confirm cost",
-      "usd": "Est. cost",
-      "tokens": "Est. tokens",
-      "quota": "Quota left",
-      "confirm": "Confirm",
-      "confirming": "Working…"
+    "quota": {
+      "adopt": "您在本週期內已採用 {{used}}/{{limit}} 個 — 請封存部分內容或稍後再試。"
     },
     "match": {
-      "tension": "Tension fit",
-      "genre": "Genre",
-      "precond": "Setup",
-      "cosine": "Similarity",
-      "why": "為何選擇此動機？"
+      "why": "為何選擇此動機？",
+      "tension": "張力契合度",
+      "genre": "類型",
+      "precond": "設定",
+      "cosine": "相似度"
     },
     "role": {
-      "unresolved": "⚠ pick…",
-      "pickFor": "為 {{role}} 挑選角色"
+      "pickFor": "為 {{role}} 挑選角色",
+      "unresolved": "⚠ 請選擇…"
     },
     "binding": {
-      "noWork": "為這本書制定一個將主題與場景進行綁定的計畫。",
       "freeForm": "無匹配的動機 — 此場景為自由格式。",
-      "commitGenerate": "確認並撰寫此場景 →"
+      "commitGenerate": "確認並撰寫此場景 →",
+      "noWork": "為這本書制定一個將主題與場景進行綁定的計畫。"
     },
     "swap": {
-      "title": "Swap motif",
-      "none": "無其他匹配項。"
+      "none": "無其他匹配項。",
+      "title": "更換主題"
     },
     "chain": {
-      "action": "Chain it",
-      "hint": "下一步：「{{name}}」銜接自然。"
+      "hint": "下一步：「{{name}}」銜接自然。",
+      "action": "串聯"
     },
     "conf": {
-      "title": "Conformance",
-      "planned": "Planned",
-      "realized": "Realized",
-      "conformance": "Conformance",
-      "rerun": "Re-run",
-      "tone": {
-        "ok": "On beat",
-        "warn": "Tension drift",
-        "bad": "Beat missed"
-      },
-      "rerunNeedsModel": "選擇一個模型來重新執行一致性檢查",
       "advisory": "提示 — 未經證實的自我報告",
       "regenerate": "重新生成以符合節點",
       "rerunWhat": "重新檢查本章中的每個場景是否符合其規劃的節點。",
-      "empty": "尚未生成 — 請生成場景以查看符合程度。"
+      "empty": "尚未生成 — 請生成場景以查看符合程度。",
+      "rerunNeedsModel": "選擇一個模型來重新執行一致性檢查",
+      "title": "符合度",
+      "planned": "已規劃",
+      "realized": "已實現",
+      "conformance": "符合度",
+      "rerun": "重新執行",
+      "tone": {
+        "ok": "節奏正確",
+        "warn": "張力偏移",
+        "bad": "節奏失準"
+      }
     },
     "arc": {
-      "place": "place",
-      "chapters": "ch {{from}}-{{to}}",
-      "moveLeft": "Move earlier",
-      "moveRight": "Move later",
-      "grow": "Lengthen",
-      "shrink": "Shorten",
-      "remove": "Remove",
+      "mobileNotice": "時間軸網格可在較大螢幕上查看 — 在此處您可以以列表形式進行編輯。",
       "libraryEmpty": "目前尚無故事弧模板。您可以建立一個，或匯入故事進行解構。",
       "templates": {
         "tabLibrary": "圖書館",
@@ -867,25 +845,15 @@
         "done": "已將 {{chapters}} 個章節分組為 {{arcs}} 個故事弧。",
         "none": "目前尚無章節可進行故事弧分組。"
       },
-      "mobileNotice": "時間軸網格可在較大螢幕上查看 — 在此處您可以以列表形式進行編輯。"
+      "place": "放置",
+      "chapters": "第 {{from}}-{{to}} 章",
+      "moveLeft": "提前",
+      "moveRight": "延後",
+      "grow": "拉長",
+      "shrink": "縮短",
+      "remove": "移除"
     },
     "simple": {
-      "kind": {
-        "sequence": "a plot shape",
-        "situation": "a setup",
-        "hook": "a hook",
-        "emotion_arc": "a feeling arc",
-        "trope": "a familiar move",
-        "pattern": "a pattern",
-        "scheme": "a plot / deception"
-      },
-      "field": {
-        "tension_target": "intensity",
-        "preconditions": "needs before",
-        "effects": "leaves after",
-        "info_asymmetry": "誰身處未知"
-      },
-      "infoDeceived": "{{who}} is fooled",
       "actant": {
         "subject": "主角 / 行動者",
         "sender": "驅動者",
@@ -894,37 +862,24 @@
         "helper": "協助者",
         "opponent": "阻礙者"
       },
-      "infoAsymmetry": "誰身處未知",
-      "infoKnows": "{{who}} 知道真相"
-    },
-    "expert": {
-      "actant": {
-        "subject": "subject",
-        "sender": "sender",
-        "object": "object",
-        "receiver": "receiver",
-        "helper": "helper",
-        "opponent": "opponent"
-      },
-      "kind": {
-        "sequence": "sequence",
-        "situation": "situation",
-        "hook": "hook",
-        "emotion_arc": "emotion arc",
-        "trope": "trope",
-        "pattern": "pattern",
-        "scheme": "scheme"
-      },
       "field": {
-        "tension_target": "tension target",
-        "preconditions": "preconditions",
-        "effects": "effects",
-        "info_asymmetry": "information asymmetry"
+        "info_asymmetry": "誰身處未知",
+        "tension_target": "張力目標",
+        "preconditions": "前置條件",
+        "effects": "後續影響"
       },
-      "infoAsymmetry": "Information asymmetry",
-      "knows": "Knows",
-      "deceived": "Deceived",
-      "gap": "Gap"
+      "infoAsymmetry": "誰身處未知",
+      "infoKnows": "{{who}} 知道真相",
+      "kind": {
+        "sequence": "情節走向",
+        "situation": "情境設定",
+        "hook": "懸念鉤子",
+        "emotion_arc": "情感弧線",
+        "trope": "常見套路",
+        "pattern": "模式",
+        "scheme": "情節 / 詭計"
+      },
+      "infoDeceived": "{{who}} 被誤導"
     },
     "graph": {
       "title": "圖表 — 由 · 組成 · 為 · 的變體",
@@ -958,21 +913,96 @@
       "sectionMine": "您的主題",
       "sectionLibrary": "來自圖庫"
     },
-    "overuse": "「{{name}}」已在 {{chapters}} 中使用過 — 建議嘗試不同的變化。",
-    "error": {
-      "load": "載入失敗 — 請重試。"
+    "language": {
+      "writtenIn": "書寫語言為",
+      "authored": "手寫翻譯",
+      "staleShort": "已過時",
+      "missingYours": "並非 {{lang}} — 將回退至原文",
+      "systemFree": "內建主題提供所有支援語言的翻譯 — 此主題目前尚未提供您所屬語言的翻譯。",
+      "adoptFirst": "將此主題加入您的圖書館以進行翻譯。",
+      "translateTo": "翻譯至",
+      "model": "翻譯模型",
+      "translate": "翻譯…",
+      "retranslate": "重新翻譯…",
+      "alreadyHave": "已翻譯",
+      "estimating": "估算中…",
+      "youPay": "您的專屬主題不會自動翻譯 — 這將使用您的模型進行，費用由您負擔。",
+      "confirmWhat": "使用您的模型將此主題翻譯為 {{lang}}。",
+      "echoed": "{{count}} 個欄位未被翻譯 — 您的模型可能無法良好處理此語言。",
+      "again": "翻譯另一種語言",
+      "quota": "已達到消費限額。",
+      "failed": "翻譯失敗。",
+      "outcome": {
+        "translated": "已翻譯為 {{lang}}。",
+        "already_original": "此主題本身即為該語言。",
+        "already_translated": "已翻譯且內容為最新 — 您未被扣費。",
+        "authored_kept": "已存在手寫翻譯並予以保留。",
+        "nothing_to_translate": "此主題沒有需要翻譯的文字。",
+        "not_translatable": "您無權翻譯此主題。",
+        "model_failed": "您的模型未回傳任何可用內容 — 未儲存任何資料。",
+        "failed": "翻譯失敗。",
+        "cancelled": "在此主題翻譯前已取消 — 您未被收取任何費用。"
+      },
+      "skipped": "您選擇的 {{count}} 個主題不屬於您的翻譯範圍，因此未包含在內。"
     },
-    "permission": {
-      "readOnly": "這是一個共用模板 — 請複製以建立您自己的可編輯副本。"
+    "tier": {
+      "system": "系統",
+      "user": "我的",
+      "public": "公開"
     },
-    "empty": {
-      "title": "您的母題庫已準備就緒",
-      "body": "母題是可重複使用的情節結構。規劃器會為每章挑選一個母題，因此即使是簡單的模型也能寫出紮實的場景。這裡已有 12 個入門母題 — 例如：tu-tiên 與 báo-thù。",
-      "browseSystem": "瀏覽 12 個入門母題",
-      "hint": "無需消耗 Token — 手動建立母題是免費的。"
+    "mode": {
+      "simple": "簡易",
+      "expert": "專家"
     },
-    "quota": {
-      "adopt": "您在本週期內已採用 {{used}}/{{limit}} 個 — 請封存部分內容或稍後再試。"
+    "search": "搜尋主題元素",
+    "card": {
+      "draft": "挖掘草稿",
+      "tension": "張力"
+    },
+    "facet": {
+      "tier": "層級",
+      "kind": "類型",
+      "genre": "類型",
+      "tension": "強度",
+      "clear": "清除篩選",
+      "filters": "篩選條件"
+    },
+    "cost": {
+      "title": "確認費用",
+      "usd": "預估費用",
+      "tokens": "預估 Token 數",
+      "quota": "剩餘額度",
+      "confirm": "確認",
+      "confirming": "處理中…"
+    },
+    "expert": {
+      "actant": {
+        "subject": "主體",
+        "sender": "發送者",
+        "object": "客體",
+        "receiver": "接收者",
+        "helper": "助手",
+        "opponent": "對手"
+      },
+      "kind": {
+        "sequence": "序列",
+        "situation": "情境",
+        "hook": "鉤子",
+        "emotion_arc": "情緒弧線",
+        "trope": "常見手法",
+        "pattern": "模式",
+        "scheme": "結構"
+      },
+      "field": {
+        "tension_target": "緊張感目標",
+        "preconditions": "前提條件",
+        "effects": "影響",
+        "info_asymmetry": "資訊不對稱"
+      },
+      "infoAsymmetry": "資訊不對稱",
+      "knows": "知曉",
+      "deceived": "被欺騙",
+      "gap": "差距"
     }
   },
   "authoringRun": {
@@ -1093,5 +1123,7 @@
       "loading": "載入運行中…",
       "back": "← 返回運行清單"
     }
-  }
+  },
+  "motifs": "主題元素",
+  "conformance": "符合度"
 }

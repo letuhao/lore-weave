@@ -259,7 +259,6 @@
       "none": "사용자의 언어({{lang}})로 된 결과가 없습니다. 소스 언어 결과를 표시합니다."
     },
     "detail": {
-      "title": "Drawer",
       "close": "닫기",
       "text": "전체 텍스트",
       "sourceType": "소스 유형",
@@ -269,7 +268,8 @@
       "matchScore": "일치 점수",
       "createdAt": "생성일",
       "hubLabel": "청크 종류",
-      "hubValue": "요약 / 허브 청크"
+      "hubValue": "요약 / 허브 청크",
+      "title": "사이드바"
     }
   },
   "timeline": {
@@ -671,7 +671,7 @@
       "restore": "복구",
       "delete": "삭제",
       "tuneExtraction": "추출 설정 조정",
-      "bookId": "book_id"
+      "bookId": "도서 ID"
     },
     "form": {
       "createTitle": "새 프로젝트",
@@ -688,7 +688,6 @@
         "general": "일반"
       },
       "bookId": "도서 ID (선택 사항)",
-      "bookIdPlaceholder": "uuid",
       "description": "설명 (선택 사항)",
       "instructions": "지침 (선택 사항)",
       "instructionsPlaceholder": "문체, 어조, 제약 사항 등 — 이 프로젝트의 모든 채팅에 적용됩니다.",
@@ -707,7 +706,8 @@
         "errorAlreadyRunning": "이 프로젝트에 대해 이미 실행 중인 벤치마크가 있습니다. 잠시 후 다시 시도하세요.",
         "errorProviderFlake": "실행 중 임베딩 제공업체 오류가 발생했습니다. 다시 시도하세요.",
         "errorGeneric": "벤치마크 실패: {{message}}"
-      }
+      },
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "프로젝트를 보관할까요?",

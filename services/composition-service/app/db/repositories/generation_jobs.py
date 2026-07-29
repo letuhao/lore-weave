@@ -71,7 +71,10 @@ _PROMOTED_SCENE_PROSE_KIND = "promoted_scene_prose"
 #: `created_by`. Keep this list HERE (in the writer), never in the DDL CHECK: a new
 #: Work-less op must not need a migration (the
 #: `migration-check-constraint-must-backfill-all-historical-blocks` trap).
-UNBOUND_OPERATIONS = frozenset({"mine_motifs", "analyze_reference"})
+#: `translate_motif` joins them: a motif library is the USER's, not a book's — the job
+#: names motif_ids and has no Work to hang on even when the targets are a book's shared
+#: tier (the book_id in its input is a tenancy filter, not a Work binding).
+UNBOUND_OPERATIONS = frozenset({"mine_motifs", "analyze_reference", "translate_motif"})
 
 
 def _jsonb(value: dict[str, Any] | None) -> str | None:

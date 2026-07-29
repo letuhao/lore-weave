@@ -75,11 +75,11 @@
     "stage": "단계",
     "status": "상태",
     "tokens": "토큰 (입력/출력)",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · 무료",
     "cloud": "☁ {{kind}}",
     "launching": "시작 중…",
-    "launch": "캠페인 시작"
+    "launch": "캠페인 시작",
+    "usd": "USD"
   },
   "list": {
     "title": "자동 초안 캠페인",
@@ -124,7 +124,6 @@
     "saveBudget": "예산 설정",
     "stageCounts": "{{total}}개 중 {{done}}개 완료 · {{failed}}개 실패",
     "activity": "최근 활동",
-    "chapterShort": "ch.{{sort}}",
     "nowProcessing": "처리 중 ({{count}})",
     "inFlightMore": "+{{count}}개 더 있음",
     "switchedResumed": "모델 변경됨 — 재개 중.",
@@ -144,7 +143,8 @@
       "translation": "번역",
       "eval": "평가",
       "ingest": "데이터 수집 (전제 조건)"
-    }
+    },
+    "chapterShort": "제 {{sort}}장"
   },
   "report": {
     "loading": "리포트 로딩 중…",
