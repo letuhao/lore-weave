@@ -1005,6 +1005,15 @@
         "cancelled": "Annulé avant la traduction de ce motif — vous n'avez pas été débité."
       },
       "skipped": "{{count}} des motifs que vous avez choisis ne vous appartiennent pas et ne sont pas inclus dans la traduction."
+    },
+    "batch": {
+      "open": "Traduire…",
+      "selected": "{{count}} sélectionnés",
+      "excluded": "{{count}} ne sont pas à vous traduire (les contenus intégrés sont déjà gratuits dans toutes les langues ; adoptez d'abord une version publique)",
+      "run": "Traduire {{count}}…",
+      "overCap": "Maximum {{cap}} motifs par tâche de traduction — désélectionnez {{over}} éléments.",
+      "confirmWhat": "Traduire {{count}} motif(s) en {{lang}} en utilisant votre modèle.",
+      "doneTitle": "{{written}} sur {{total}} traduits en {{lang}}"
     }
   },
   "authoringRun": {

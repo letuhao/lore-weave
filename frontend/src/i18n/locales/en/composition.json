@@ -1005,6 +1005,15 @@
         "cancelled": "Cancelled before this motif was translated — you were not charged for it."
       },
       "skipped": "{{count}} of the motifs you picked are not yours to translate and are not included."
+    },
+    "batch": {
+      "open": "Translate…",
+      "selected": "{{count}} selected",
+      "excluded": "{{count}} not yours to translate (built-ins are already free in every language; adopt a public one first)",
+      "run": "Translate {{count}}…",
+      "overCap": "At most {{cap}} motifs per translation job — deselect {{over}}.",
+      "confirmWhat": "Translate {{count}} motif(s) to {{lang}} using your model.",
+      "doneTitle": "{{written}} of {{total}} translated to {{lang}}"
     }
   },
   "authoringRun": {

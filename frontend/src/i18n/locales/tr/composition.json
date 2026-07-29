@@ -1005,6 +1005,15 @@
         "cancelled": "Bu motif çevrilmeden önce iptal edildi — sizden herhangi bir ücret alınmadı."
       },
       "skipped": "Seçtiğiniz motiflerden {{count}} tanesi çeviri yetkiniz dahilinde değil ve dahil edilmedi."
+    },
+    "batch": {
+      "open": "Çevir…",
+      "selected": "{{count}} seçildi",
+      "excluded": "{{count}} çevrilecek öğeniz değil (yerleşik öğeler her dilde zaten ücretsizdir; önce halka açık bir tane benimseyin)",
+      "run": "{{count}} öğe çevrilsin…",
+      "overCap": "Çeviri görevi başına en fazla {{cap}} motif — {{over}} öğenin seçimini kaldırın.",
+      "confirmWhat": "Kendi modelinizi kullanarak {{count}} motif {{lang}} diline çevrilsin.",
+      "doneTitle": "{{total}} öğeden {{written}} tanesi {{lang}} diline çevrildi"
     }
   },
   "authoringRun": {

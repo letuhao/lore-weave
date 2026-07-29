@@ -1005,6 +1005,15 @@
         "cancelled": "Đã hủy trước khi motif này được dịch — bạn không bị tính phí cho mục này."
       },
       "skipped": "{{count}} motif bạn đã chọn không thuộc phạm vi dịch thuật của bạn và không được bao gồm."
+    },
+    "batch": {
+      "open": "Dịch…",
+      "selected": "Đã chọn {{count}}",
+      "excluded": "{{count}} mục không thuộc phạm vi dịch của bạn (các mục mặc định đã được miễn phí ở mọi ngôn ngữ; hãy áp dụng một bản công khai trước)",
+      "run": "Dịch {{count}}…",
+      "overCap": "Tối đa {{cap}} motif cho mỗi lượt dịch — vui lòng bỏ chọn {{over}} mục.",
+      "confirmWhat": "Dịch {{count}} motif sang {{lang}} bằng mô hình của bạn.",
+      "doneTitle": "Đã dịch {{written}}/{{total}} sang {{lang}}"
     }
   },
   "authoringRun": {

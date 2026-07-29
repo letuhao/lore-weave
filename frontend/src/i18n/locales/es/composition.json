@@ -1005,6 +1005,15 @@
         "cancelled": "Cancelado antes de que este motivo fuera traducido; no se te ha cobrado por ello."
       },
       "skipped": "{{count}} de los motivos que elegiste no te pertenecen para traducir y no se han incluido."
+    },
+    "batch": {
+      "open": "Traducir…",
+      "selected": "{{count}} seleccionados",
+      "excluded": "{{count}} no son tuyos para traducir (los integrados ya son gratuitos en todos los idiomas; adopta uno público primero)",
+      "run": "Traducir {{count}}…",
+      "overCap": "Máximo {{cap}} motivos por tarea de traducción; deselecciona {{over}}.",
+      "confirmWhat": "Traducir {{count}} motivo(s) a {{lang}} usando tu modelo.",
+      "doneTitle": "{{written}} de {{total}} traducidos a {{lang}}"
     }
   },
   "authoringRun": {

@@ -52,6 +52,7 @@
   "guidedCueStart": "创建你的第一个场景，然后编写开场并点击“生成” — 或者在编辑器中从光标处“继续”。",
   "guidedStart": "开始写作",
   "compose": "创作",
+  "cowriter": "共同作者",
   "cw": {
     "insert": "作为草稿插入",
     "use_as_guide": "用作指南",
@@ -78,6 +79,7 @@
   "inline": {
     "mode": "写作模式",
     "mode_classic": "经典",
+    "mode_ai": "AI 模式",
     "continue": "继续",
     "continueFromCursor": "从光标处继续",
     "continueHint": "从你的光标处流式生成 AI 续写。",
@@ -88,8 +90,7 @@
     "discard": "Esc 舍弃",
     "need_model": "请在 co-writer 设置中设置默认模型",
     "need_scene": "请先在 co-writer 面板中选择一个场景",
-    "stale": "光标已移动 — 请重试。",
-    "mode_ai": "AI 模式"
+    "stale": "光标已移动 — 请重试。"
   },
   "beats": "情节节拍",
   "beatsheet": {
@@ -290,10 +291,10 @@
     "show": "显示",
     "hide": "隐藏",
     "markAllReviewed": "标记为已审核",
+    "ai": "AI",
     "reviewed": "已审核",
     "unreviewed": "待审核",
-    "clickToReview": "(点击进行审核)",
-    "ai": "AI"
+    "clickToReview": "(点击进行审核)"
   },
   "flywheel": "飞轮",
   "flywheelPanel": {
@@ -1004,6 +1005,15 @@
         "cancelled": "在此主题翻译前已取消 — 您未被扣费。"
       },
       "skipped": "您选择的 {{count}} 个主题不属于您的翻译范围，因此未包含在内。"
+    },
+    "batch": {
+      "open": "翻译…",
+      "selected": "已选择 {{count}} 个",
+      "excluded": "{{count}} 个不属于您的翻译范围（内置内容在所有语言中均已免费；请先采用公开版本）",
+      "run": "翻译 {{count}} 个…",
+      "overCap": "每次翻译任务最多处理 {{cap}} 个 motif — 请取消选择 {{over}} 个。",
+      "confirmWhat": "使用您的模型将 {{count}} 个 motif 翻译为 {{lang}}。",
+      "doneTitle": "已将 {{total}} 个中的 {{written}} 个翻译为 {{lang}}"
     }
   },
   "authoringRun": {
@@ -1124,6 +1134,5 @@
       "loading": "正在加载运行…",
       "back": "← 返回运行列表"
     }
-  },
-  "cowriter": "共同作者"
+  }
 }

@@ -1005,6 +1005,15 @@
         "cancelled": "Dibatalkan sebelum motif ini diterjemahkan — anda tidak dikenakan sebarang caj."
       },
       "skipped": "{{count}} daripada motif yang anda pilih bukan milik anda untuk diterjemahkan dan tidak disertakan."
+    },
+    "batch": {
+      "open": "Terjemah…",
+      "selected": "{{count}} dipilih",
+      "excluded": "{{count}} bukan milik anda untuk diterjemah (item terbina dalam adalah percuma dalam setiap bahasa; pilih satu bahasa awam terlebih dahulu)",
+      "run": "Terjemah {{count}}…",
+      "overCap": "Maksimum {{cap}} motif bagi setiap tugasan terjemahan — nyahpilih {{over}}.",
+      "confirmWhat": "Terjemah {{count}} motif ke {{lang}} menggunakan model anda.",
+      "doneTitle": "{{written}} daripada {{total}} diterjemah ke {{lang}}"
     }
   },
   "authoringRun": {

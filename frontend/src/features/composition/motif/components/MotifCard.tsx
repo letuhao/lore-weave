@@ -19,6 +19,11 @@ type Props = {
   /** S-08 — restore an archived motif (shown only for archived rows, i.e. the Archived scope). */
   onRestore?: (id: string) => void;
   busy?: boolean;
+  /** Batch-translate selection. `onToggleSelect` present = this row IS selectable; a row
+   *  the caller may not translate simply does not get the handler, so an un-actionable
+   *  checkbox can never render. The bar states how many were excluded and why. */
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 };
 
 const TIER_CLASS: Record<'system' | 'user' | 'public', string> = {
@@ -27,7 +32,7 @@ const TIER_CLASS: Record<'system' | 'user' | 'public', string> = {
   public: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
 };
 
-export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDiscard, onRestore, busy }: Props) {
+export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDiscard, onRestore, busy, selected, onToggleSelect }: Props) {
   const { t } = useTranslation('composition');
   const { simple } = useMotifSimpleMode();
   const tier = motifTier(motif, meUserId);
@@ -49,6 +54,16 @@ export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDisca
       }`}
     >
       <div className="flex items-start justify-between gap-2">
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            data-testid={`motif-select-${motif.id}`}
+            aria-label={motif.name}
+            className="mt-1 shrink-0"
+            checked={!!selected}
+            onChange={() => onToggleSelect(motif.id)}
+          />
+        )}
         <div className="min-w-0">
           <div className="truncate font-medium text-neutral-800 dark:text-neutral-100">{motif.name}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1">

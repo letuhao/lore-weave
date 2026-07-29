@@ -1,5 +1,41 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🗂 BATCH TRANSLATE — the engine's 50-item ceiling is now reachable (2026-07-30)
+
+The engine has always taken 1..50 items per job and the MCP tool has always taken an
+array; the only thing missing was somewhere to pick more than one. A capability wired at
+the engine and unreachable at the surface is the shape this repo keeps re-learning — so
+`MotifBatchTranslateBar` + a selection mode in the motif library.
+
+**Only rows the caller may translate get a checkbox.** Offering a tick on a built-in and
+refusing it at propose is a batch narrowed *after the fact* — the silent-truncation bug
+with a price tag on it. The bar states how many rows were excluded and why, refuses over
+the 50 ceiling **before** estimating (naming the overage), and reports **per item**:
+"already current — you were not charged" is a different fact from "translated" and is
+never folded into a total.
+
+**Found at review:** a selection is over a VIEW. Changing scope/search/facet left the
+button claiming "Translate 3" over a list showing none of the three — the author would
+pay for rows they had lost sight of. Cleared at the point the view changes (an explicit
+handler, not a `useEffect` watching state, which is banned here for reacting a render
+late).
+
+**Live-smoked, not asserted:** 3 ids through the BFF bridge (2 own + 1 system) → propose
+says *Translate 2 motif(s)* with `skipped: 1`; ONE job translated both (4 leaves each, 0
+echoed), read back as `ja` with `text_fallback=false` and beat tension preserved; 2
+`usage_outbox` rows = 2 LLM calls. **Re-running the identical batch: `already_translated`
+×2, `written: 0`, billing count unchanged at 2 — no double charge.**
+
+### Known, stated bias in the echo detector
+
+`has_lowercase_prose` deliberately does not flag a verbatim **Title-Case** string, so a
+motif *name* left in English would go unreported. That is the conservative side of a
+measured trade: including Title-Case re-flags `LM Studio` / `API Key` / `Top-K` /
+`Beat Sheet`, and excluding it is what took the FE corpus 309 → 66. In practice the models
+translate names fine (食い違う帳簿 · Chìa khóa để lại trong ổ · 두 번 불린 이름). Recorded
+because it is a real hole in the *detector*, not because it has bitten.
+
+
 ## 🧬 ARC TEMPLATE i18n — the last table with language in its identity key (2026-07-30)
 
 Swept all four DBs first: every other `language` inside a UNIQUE key belongs to a

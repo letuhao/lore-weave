@@ -1005,6 +1005,15 @@
         "cancelled": "Abgebrochen, bevor dieses Motiv übersetzt wurde – es wurden keine Gebühren berechnet."
       },
       "skipped": "{{count}} der von Ihnen ausgewählten Motive sind nicht für eine Übersetzung vorgesehen und wurden nicht berücksichtigt."
+    },
+    "batch": {
+      "open": "Übersetzen…",
+      "selected": "{{count}} ausgewählt",
+      "excluded": "{{count}} sind nicht für dich zum Übersetzen (Standardinhalte sind in jeder Sprache bereits kostenlos; nimm zuerst ein öffentliches an)",
+      "run": "{{count}} übersetzen…",
+      "overCap": "Höchstens {{cap}} Motive pro Übersetzungsauftrag — wähle {{over}} ab.",
+      "confirmWhat": "Übersetze {{count}} Motif(s) nach {{lang}} mit deinem Modell.",
+      "doneTitle": "{{written}} von {{total}} nach {{lang}} übersetzt"
     }
   },
   "authoringRun": {
