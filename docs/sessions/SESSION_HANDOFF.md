@@ -1,5 +1,57 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔐 GAME CLIENT AUTH — login + register + recovery, one account with the novel app (2026-07-30)
+
+**Scope:** `frontend-game` had no auth at all (`/login` was a "Continue as guest" button and
+`@loreweave/auth-client` was literally `export {}`). Now it signs in against the SAME
+`auth-service` + `users` table the novel app uses — **no migration, no second registration**.
+
+**Shipped**
+- **`@loreweave/auth-client`** — real: login · register · refresh (single-flight, rotation-safe) ·
+  `authedJson` (silent-refresh + one retry + multi-tab rotation race) · **`logout` that REVOKES
+  server-side** (it previously only cleared localStorage; the refresh token stayed valid) ·
+  `checkPassword` (mirrors the Go policy so the user learns WHICH rule failed).
+- **Login / register / `/reset`** routes + `RequireAuth` guard + session hydrated synchronously.
+- **i18n foundation** — `@loreweave/i18n` filled in (was a skeleton), 4-locale cluster
+  (en/ja/vi/zh-TW), `auth` + `common` namespaces, language switcher. **Non-`en` locales are
+  TOOL-GENERATED** per ML-7 — never hand-edit them, run
+  `python scripts/i18n_translate.py --locales-dir packages/i18n/locales --ns <ns>`.
+- **HTML transactional mail** (auth-service) — `multipart/alternative` (text part first, RFC 2046),
+  RFC 2047 subject encoding, implicit-TLS mode for port 465, **async send** (a real relay is
+  200-2000 ms and used to sit inside the register request).
+- **Toolchain**: root `eslint.config.mjs` covering `frontend-game/{src,tests}` + `packages/*/src`
+  (was one dir, everything else default-uncovered) + a staged-scoped eslint pre-commit gate.
+
+**Two HIGH fixes from `/review-impl`**
+1. `frontend/nginx.conf` proxied `/game/` to a LITERAL upstream. `frontend-game` is profile-gated,
+   `frontend` is always-up ⇒ a plain `docker compose up` would have failed to start the novel app's
+   nginx (`host not found in upstream`). Now resolver + variable, so a missing game container is a
+   502 on `/game/` only.
+2. `scripts/i18n-completeness-gate.py` was hardcoded to the novel tree and matched staged paths by
+   the substring `/i18n/locales/` — present in BOTH trees. Staging a game locale validated the
+   *novel* app and printed OK. A game namespace with zero translations passed silently. Gate now
+   iterates `LOCALE_ROOTS` with per-root anchoring; `i18n_translate.py` gained `--locales-dir`.
+
+**Verified** — TS 211/211 · Go auth-service all `internal/...` green (6 new mail tests) · lint 0
+errors · i18n gate 2 trees × 35 namespaces. Live: login → SSO into the novel app on one origin
+(`lw_auth` + `lw_language` shared) · register (weak-password + mismatch + verify notice, `locale`
+reached the DB) · reset (old pw 401 / new pw 200 / token single-use 400).
+
+**⚠ Deferred / open**
+- `D-GAME-RESET-DEEPLINK` — the emailed link points at `PUBLIC_APP_URL/reset` = the **novel** app,
+  not `/game/reset`. Works (same token, novel app owns `/reset`), but a game user lands in the
+  writing app. Needs a product call on per-source links.
+- `D-GAME-SSO-ORIGIN` — SSO requires both SPAs on ONE origin. Prod wiring exists
+  (`frontend/nginx.conf` `location /game/`); **not yet deployed or smoked in prod**.
+- `D-MAIL-DNS` — SPF/DKIM/DMARC are DNS-side. Until they exist, real Gmail delivery lands in spam
+  no matter how the HTML looks. Relay itself is config-only (`SMTP_*`), no code change needed.
+- `D-GAME-SETTINGS-SOURCE-TIER` (LOW, SET-4) — the language switcher shows the value, not which
+  tier it resolved from.
+- 6 pre-existing eslint warnings now VISIBLE for the first time (setState-in-effect in
+  `EchoPanel`/`RotatePrompt`, array-index keys) — lint had been dead repo-wide.
+
+---
+
 ## 🏗️ ARCHITECTURE — chat = supporter, compile+draft = subagent (2026-07-26)
 **Human decision (this session):** the chat agent is a lightweight **SUPPORTER** (atomic edits —
 edit plan/glossary/KG, suggestions); the heavy **COMPILE + long-run DRAFTING** runs in the

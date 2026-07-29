@@ -24,6 +24,9 @@ type Config struct {
 	SMTPUser     string
 	SMTPPassword string
 	SMTPFrom     string
+	// auto = STARTTLS-if-offered (587, and Mailhog). implicit = TLS from the
+	// first byte (465). Deploy-time infra, not a per-user knob.
+	SMTPTLSMode  string
 	// Browser base URL for links in emails (e.g. http://localhost:5173).
 	PublicAppURL string
 	// Notification service internal URL for creating notifications on events.
@@ -95,6 +98,7 @@ func Load() (*Config, error) {
 		SMTPUser:                       os.Getenv("SMTP_USER"),
 		SMTPPassword:                   os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:                       getEnv("SMTP_FROM", ""),
+		SMTPTLSMode:                    getEnv("SMTP_TLS_MODE", "auto"),
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
 		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),

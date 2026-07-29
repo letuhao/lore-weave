@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02 Entry — Onboarding draft</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+
+  <div class="rail">
+    <span>00 Account</span><span class="sep">→</span>
+    <span>01 Reality</span><span class="sep">→</span>
+    <b>02 Entry</b><span class="sep">→</span>
+    <span>03 Arrival</span>
+    <span style="margin-left:auto">F4 · một primitive, ba lối vào</span>
+  </div>
+
+  <h1 style="font-size:1.75rem;margin:0 0 .25rem">Bạn nhận thân phận bằng cách nào?</h1>
+  <p class="subtle" style="margin:0 0 1rem">
+    Đây <strong>không phải</strong> ba tính năng. PC và NPC dùng chung một substrate
+    (<span class="mono">actor_core</span>); "PC" chỉ là một actor có <span class="mono">user_id</span>.
+    Nên cả ba lối đều kết thúc ở <em>đúng một</em> ràng buộc:
+    <span class="mono">user → actor → cell → channel</span>.
+  </p>
+
+  <div class="note" style="margin-bottom:1.5rem">
+    <span class="mono" style="font-size:.8125rem">
+      A · BindPcUser<br>
+      B · RegisterPc → BindPcUser<br>
+      C · RegisterPc(body_memory_init) → BindPcUser
+    </span>
+    <div style="margin-top:.5rem">
+      Khác biệt duy nhất là <strong>có tạo actor mới hay không</strong>. Lối A không tạo gì cả —
+      đó là lý do A là lát cắt dọc đầu tiên rẻ nhất, và cascade 14-feature là chuyện của B/C.
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:1.5rem">
+
+    <!-- ── A ───────────────────────────────────────────────── -->
+    <div class="card card-hoverable">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:.5rem">
+        <h3 style="margin:0;font-size:1.0625rem">A · Nhân vật canon</h3>
+        <span class="from-manifest">5 PC</span>
+      </div>
+      <p class="subtle" style="margin:.375rem 0 .875rem">Kiểu BG3 Origin — nhập vai một người <em>đã tồn tại</em> trong thế giới.</p>
+
+      <div class="mono" style="font-size:.75rem;line-height:1.8;padding:.5rem .625rem;background:var(--paper-soft);border-radius:.25rem">
+        proposal:<br>
+        &nbsp;&nbsp;<strong>Forge:BindPcUser</strong><br>
+        actor mới tạo: <strong>không</strong><br>
+        cascade: <strong>không</strong>
+      </div>
+
+      <p class="subtle" style="margin:.75rem 0 0;font-size:.75rem">
+        Người ấy đã có gia tộc, môn phái, danh tiếng, ký ức. Bạn thừa hưởng toàn bộ.
+      </p>
+    </div>
+
+    <!-- ── B ───────────────────────────────────────────────── -->
+    <div class="card card-hoverable">
+      <h3 style="margin:0;font-size:1.0625rem">B · Tự tạo</h3>
+      <p class="subtle" style="margin:.375rem 0 .875rem">Wizard 8 bước → Advanced (~46 field) → AI Assistant. Ba mức độ sâu, cùng một kết quả.</p>
+
+      <div class="mono" style="font-size:.75rem;line-height:1.8;padding:.5rem .625rem;background:var(--paper-soft);border-radius:.25rem">
+        proposal:<br>
+        &nbsp;&nbsp;<strong>Forge:RegisterPc</strong><br>
+        &nbsp;&nbsp;<strong>Forge:BindPcUser</strong><br>
+        cascade: <strong>14 feature</strong>
+      </div>
+
+      <p class="subtle" style="margin:.75rem 0 0;font-size:.75rem">
+        Màn hình chi tiết đã có sẵn và <em>vẫn dùng được</em> —
+        <a href="../../features/03_player_onboarding/wireframes/03b_custom_pc.html">03b</a> ·
+        <a href="../../features/03_player_onboarding/wireframes/03b2_advanced.html">03b2</a> ·
+        <a href="../../features/03_player_onboarding/wireframes/06_ai_assistant.html">06</a>.
+        Form không phụ thuộc medium nên không vẽ lại.
+      </p>
+    </div>
+
+    <!-- ── C ───────────────────────────────────────────────── -->
+    <div class="card card-hoverable">
+      <h3 style="margin:0;font-size:1.0625rem">C · Xuyên không</h3>
+      <p class="subtle" style="margin:.375rem 0 .875rem">Hồn mới, xác cũ. Thân thể mang ký ức của người trước — rò rỉ dần.</p>
+
+      <div class="mono" style="font-size:.75rem;line-height:1.8;padding:.5rem .625rem;background:var(--paper-soft);border-radius:.25rem">
+        proposal:<br>
+        &nbsp;&nbsp;<strong>Forge:RegisterPc</strong><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--accent)">+ body_memory_init</span><br>
+        &nbsp;&nbsp;<strong>Forge:BindPcUser</strong>
+      </div>
+
+      <p class="subtle" style="margin:.75rem 0 0;font-size:.75rem">
+        Điểm khác biệt của LoreWeave. Cũng là lối duy nhất khiến hai đồng hồ
+        <span class="mono">soul</span> / <span class="mono">body</span> (TDIL_001) lệch nhau ngay từ turn 0.
+      </p>
+    </div>
+
+  </div>
+
+  <h4 style="margin:0 0 .5rem;font-size:.9375rem">Cùng một màn, thế giới khác — Saigon 2026</h4>
+  <p class="subtle" style="margin:0 0 .75rem">
+    Manifest của Saigon khai <span class="mono">modes_enabled: [Custom]</span> và
+    <span class="mono">canonical_pcs: 0</span>. Màn hình phải tự thu lại:
+  </p>
+
+  <div class="grid-3" style="margin-bottom:1.5rem">
+    <div class="card card-disabled">
+      <h3 style="margin:0;font-size:1.0625rem">A · Nhân vật canon</h3>
+      <p class="subtle" style="margin:.375rem 0 0">Thế giới này chưa ai viết PC canon.</p>
+    </div>
+    <div class="card card-hoverable">
+      <h3 style="margin:0;font-size:1.0625rem">B · Tự tạo</h3>
+      <p class="subtle" style="margin:.375rem 0 0">Lối duy nhất ở Saigon 2026.</p>
+    </div>
+    <div class="card card-disabled">
+      <h3 style="margin:0;font-size:1.0625rem">C · Xuyên không</h3>
+      <p class="subtle" style="margin:.375rem 0 0">Tác giả không bật cho thế giới này.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Đó là toàn bộ ý nghĩa của "data-driven".</strong> Không có branch nào trong code UI nói
+    "nếu là Saigon thì ẩn A". UI chỉ render <span class="mono">modes_enabled</span>. Tác giả thêm thế
+    giới thứ tư ngày mai — màn này đúng ngay, không cần sửa.
+  </div>
+
+  <footer class="draft-foot">
+    Onboarding concept pass · 2026-07-29 · <a href="index.html">← index</a> ·
+    <a href="00_CONCEPT.md">00_CONCEPT.md</a>
+  </footer>
+</div>
+
+<script>
+  const p = new URLSearchParams(location.search).get('reality');
+  if (p) document.body.dataset.reality = p;
+</script>
+</body>
+</html>

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -77,11 +78,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Error("register: verification ticket", "error", err)
 		} else {
-			subject := "Verify your LoreWeave email"
-			bodyText := verifyEmailPlainBody(token, s.cfg.PublicAppURL)
-			if err := s.smtpSend(emailNorm, subject, bodyText); err != nil {
-				slog.Error("register: verify email smtp", "error", err)
-			}
+			s.sendMail(emailNorm, verifyEmailContent(token, s.cfg.PublicAppURL))
 			if s.cfg.DevLogEmailTokens {
 				fmt.Printf("[dev email] verify token for user %s (%s): %s\n", uid.String(), emailNorm, token)
 			}
@@ -516,7 +513,7 @@ func (s *Server) verifyEmailRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.SMTPHost != "" {
-		if err := s.smtpSend(email, "Verify your LoreWeave email", verifyEmailPlainBody(token, s.cfg.PublicAppURL)); err != nil {
+		if err := s.sendMailSync(email, verifyEmailContent(token, s.cfg.PublicAppURL)); err != nil {
 			slog.Error("verify email smtp", "error", err)
 			writeErr(w, http.StatusBadGateway, "AUTH_EMAIL_SEND_FAILED", "could not send verification email")
 			return
@@ -611,11 +608,7 @@ func (s *Server) passwordResetRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	emailNorm := strings.TrimSpace(body.Email)
 	if s.cfg.SMTPHost != "" {
-		subject := "Reset your LoreWeave password"
-		bodyText := passwordResetPlainBody(token, s.cfg.PublicAppURL)
-		if err := s.smtpSend(emailNorm, subject, bodyText); err != nil {
-			slog.Error("password reset smtp", "error", err)
-		}
+		s.sendMail(emailNorm, passwordResetContent(token, s.cfg.PublicAppURL))
 	}
 	if s.cfg.DevLogEmailTokens {
 		fmt.Printf("[dev email] password reset for user %s (%s): %s\n", uid.String(), emailNorm, token)
@@ -766,45 +759,113 @@ func (s *Server) insertVerificationTicket(ctx context.Context, uid uuid.UUID) (t
 	return token, err
 }
 
-func (s *Server) smtpSend(to, subject, body string) error {
-	return mail.SendPlain(
-		s.cfg.SMTPHost,
-		s.cfg.SMTPPort,
-		s.cfg.SMTPUser,
-		s.cfg.SMTPPassword,
-		s.cfg.SMTPFrom,
-		to,
-		subject,
-		body,
+// sendMail delivers a rendered Content as multipart/alternative.
+//
+// SYNCHRONOUS senders were fine against Mailhog on localhost (~1 ms). A real
+// relay — SES, Gmail, Resend — is 200-2000 ms away and can hang, and this ran
+// INSIDE the register/reset request, so every signup paid the relay's latency
+// and a stalled relay stalled the HTTP response. Delivery is not part of the
+// user's transaction: the ticket row is already committed, so the mail is fired
+// on its own goroutine with its own timeout and the handler returns at once.
+//
+// The trade-off is explicit: a send failure can no longer be reported in the
+// response. It never usefully could — both endpoints deliberately answer the
+// same way whether or not the address exists (account-enumeration defence), so
+// a delivery error was already invisible to the caller and only ever landed in
+// the log. It still does.
+// sendMailSync delivers and RETURNS the error. Used only where the user
+// explicitly asked for a mail (the resend endpoint) and therefore deserves to
+// be told it failed, rather than being shown a false "sent". Everywhere else
+// uses sendMail — see the note there on why delivery is not part of the
+// caller's transaction.
+func (s *Server) sendMailSync(to string, c mail.Content) error {
+	if s.cfg.SMTPHost == "" {
+		return nil
+	}
+	htmlBody, err := c.RenderHTML()
+	if err != nil {
+		return err
+	}
+	return mail.Send(
+		s.cfg.SMTPHost, s.cfg.SMTPPort, s.cfg.SMTPUser, s.cfg.SMTPPassword,
+		s.cfg.SMTPFrom, to, c.Subject, c.RenderText(), htmlBody,
+		mail.TLSMode(s.cfg.SMTPTLSMode),
 	)
 }
 
-func verifyEmailPlainBody(token, publicBase string) string {
-	var b strings.Builder
-	b.WriteString("Your LoreWeave email verification token is:\n\n")
-	b.WriteString(token)
-	b.WriteString("\n\nPaste it on the Verify page in the app. This token expires in 24 hours.\n")
-	if publicBase != "" {
-		base := strings.TrimRight(publicBase, "/")
-		b.WriteString("\nOpen the app: ")
-		b.WriteString(base)
-		b.WriteString("/verify\n")
+func (s *Server) sendMail(to string, c mail.Content) {
+	if s.cfg.SMTPHost == "" {
+		return
 	}
-	return b.String()
+	htmlBody, err := c.RenderHTML()
+	if err != nil {
+		slog.Error("mail: render html", "error", err)
+		return
+	}
+	textBody := c.RenderText()
+	go func() {
+		done := make(chan error, 1)
+		go func() {
+			done <- mail.Send(
+				s.cfg.SMTPHost, s.cfg.SMTPPort, s.cfg.SMTPUser, s.cfg.SMTPPassword,
+				s.cfg.SMTPFrom, to, c.Subject, textBody, htmlBody,
+				mail.TLSMode(s.cfg.SMTPTLSMode),
+			)
+		}()
+		select {
+		case err := <-done:
+			if err != nil {
+				// Address deliberately not logged in full — an auth log is not
+				// the place to accumulate a list of user emails (PII).
+				slog.Error("mail: send failed", "subject", c.Subject, "error", err)
+			}
+		case <-time.After(30 * time.Second):
+			slog.Error("mail: send timed out", "subject", c.Subject)
+		}
+	}()
 }
 
-func passwordResetPlainBody(token, publicBase string) string {
-	var b strings.Builder
-	b.WriteString("Your LoreWeave password reset token is:\n\n")
-	b.WriteString(token)
-	b.WriteString("\n\nPaste it on the Reset password page. This token expires in one hour.\n")
-	if publicBase != "" {
-		base := strings.TrimRight(publicBase, "/")
-		b.WriteString("\nOpen the app: ")
-		b.WriteString(base)
-		b.WriteString("/reset\n")
+// actionURL builds the deep link that carries the token, so the common path is
+// one click instead of a copy-paste. The token is still shown in the mail —
+// some clients mangle long query strings, and a user forwarding themselves the
+// code should not be stuck.
+func actionURL(publicBase, path, token string) string {
+	if publicBase == "" {
+		return ""
 	}
-	return b.String()
+	return fmt.Sprintf("%s%s?token=%s", strings.TrimRight(publicBase, "/"), path, url.QueryEscape(token))
+}
+
+func verifyEmailContent(token, publicBase string) mail.Content {
+	return mail.Content{
+		Subject:     "Verify your LoreWeave email",
+		Preheader:   "One tap confirms your address — the code is inside if you'd rather paste it.",
+		Kicker:      "Account security",
+		Heading:     "Confirm your email address",
+		Intro:       "Welcome to LoreWeave. Confirm this address so we can reach you about your account. You can keep using LoreWeave in the meantime — this only takes a moment.",
+		ActionURL:   actionURL(publicBase, "/verify", token),
+		ActionLabel: "Verify my email",
+		TokenLabel:  "Or paste this code into the Verify page:",
+		Token:       token,
+		ExpiryNote:  "This code expires in 24 hours.",
+		IgnoreNote:  "If you didn't create a LoreWeave account, you can ignore this email.",
+	}
+}
+
+func passwordResetContent(token, publicBase string) mail.Content {
+	return mail.Content{
+		Subject:     "Reset your LoreWeave password",
+		Preheader:   "A password reset was requested. The link expires in one hour.",
+		Kicker:      "Account security",
+		Heading:     "Reset your password",
+		Intro:       "Someone asked to reset the password for this LoreWeave account. If it was you, use the button below to choose a new one.",
+		ActionURL:   actionURL(publicBase, "/reset", token),
+		ActionLabel: "Choose a new password",
+		TokenLabel:  "Or paste this code into the Reset page:",
+		Token:       token,
+		ExpiryNote:  "This code expires in one hour and can be used once.",
+		IgnoreNote:  "If you didn't request this, ignore this email — your password stays unchanged.",
+	}
 }
 
 // ── User Preferences ─────────────────────────────────────────────────────────

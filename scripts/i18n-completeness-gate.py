@@ -23,7 +23,24 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-LOCALES = REPO / "frontend" / "src" / "i18n" / "locales"
+
+# EVERY locale tree in the repo, not just the novel app's.
+#
+# This was a single hardcoded path (`frontend/src/i18n/locales`) until a SECOND
+# tree appeared for the game client (`packages/i18n/locales`, 2026-07-30). The
+# staged-path filter below matched on the substring "/i18n/locales/", which is
+# present in BOTH — so staging a game locale made the gate check the *novel*
+# app's tree and report OK, a green that proved nothing about the file actually
+# being committed. A game-only namespace (no counterpart under frontend/) passed
+# silently even with zero translations, because it matched no `en` namespace in
+# the only tree the gate could see.
+#
+# Roots are (relative-path-prefix, absolute-dir). The prefix scopes the staged
+# filter so the trees can never validate each other again.
+LOCALE_ROOTS = [
+    ("frontend/src/i18n/locales/", REPO / "frontend" / "src" / "i18n" / "locales"),
+    ("packages/i18n/locales/", REPO / "packages" / "i18n" / "locales"),
+]
 SRC = "en"
 
 
@@ -53,26 +70,32 @@ def staged_files() -> set[str]:
     return {ln.strip().replace("\\", "/") for ln in out.splitlines() if ln.strip()}
 
 
-def main() -> int:
-    staged_mode = "--staged" in sys.argv
+def check_root(prefix: str, LOCALES: Path, staged_mode: bool, sf: set) -> tuple[list, int, int]:
+    """Check one locale tree. Returns (problems, n_locales, n_namespaces_checked)."""
     en_dir = LOCALES / SRC
     if not en_dir.is_dir():
-        print("i18n-completeness-gate: no en locale dir — skipping")
-        return 0
+        return ([], 0, 0)
     all_ns = sorted(f.name for f in en_dir.glob("*.json"))
     locales = sorted(d.name for d in LOCALES.iterdir()
                      if d.is_dir() and d.name != SRC and not d.name.startswith("_"))
 
     # In --staged mode, only gate namespaces whose en (or any locale copy / _FAILED) is staged.
+    # The filter is anchored to THIS root's prefix so a sibling tree's staged file
+    # can never select namespaces here.
     ns_to_check = all_ns
     if staged_mode:
-        sf = staged_files()
         touched = {p.rsplit("/", 1)[-1] for p in sf
-                   if "/i18n/locales/" in p and p.endswith(".json") and not p.endswith("_FAILED.json")}
-        failed_touched = any("/i18n/locales/" in p and p.endswith("_FAILED.json") for p in sf)
+                   if p.startswith(prefix) and p.endswith(".json") and not p.endswith("_FAILED.json")}
+        failed_touched = any(p.startswith(prefix) and p.endswith("_FAILED.json") for p in sf)
+        # A staged namespace with NO `en` counterpart is itself a violation: en is
+        # the authored source, so a translation with no source cannot be correct.
+        orphans = sorted(touched - set(all_ns))
         ns_to_check = [ns for ns in all_ns if ns in touched]
-        if not ns_to_check and not failed_touched:
-            return 0  # no i18n change staged → nothing to enforce
+        if not ns_to_check and not failed_touched and not orphans:
+            return ([], len(locales), 0)
+        if orphans:
+            return ([f"{prefix}{o} — staged with no `en/{o}` source (ML-7: en is authored first)"
+                     for o in orphans], len(locales), len(ns_to_check))
 
     problems: list[str] = []
     for loc in locales:
@@ -96,19 +119,33 @@ def main() -> int:
             if missing:
                 problems.append(f"{loc}/{ns} — {len(missing)} missing/empty (e.g. {sorted(missing)[:3]})")
 
+    return ([f"{prefix}{p}" for p in problems], len(locales), len(ns_to_check))
+
+
+def main() -> int:
+    staged_mode = "--staged" in sys.argv
+    sf = staged_files() if staged_mode else set()
+
+    problems: list[str] = []
+    n_loc = n_ns = 0
+    for prefix, root in LOCALE_ROOTS:
+        probs, nl, nn = check_root(prefix, root, staged_mode, sf)
+        problems += probs
+        n_loc += nl
+        n_ns += nn
+
     if problems:
         scope = "staged" if staged_mode else "full-repo"
         print(f"i18n-completeness-gate ({scope}): FAIL — ML-7 violated. "
-              f"Run: python scripts/i18n_translate.py"
-              + (f" --ns {','.join(n[:-5] for n in ns_to_check)}" if staged_mode and ns_to_check else ""))
+              f"Run: python scripts/i18n_translate.py")
         for p in problems[:60]:
             print(f"  ✗ {p}")
         if len(problems) > 60:
             print(f"  … +{len(problems) - 60} more")
         return 1
 
-    print(f"i18n-completeness-gate: OK — {len(locales)} locales × "
-          f"{len(ns_to_check)} namespace(s) at full `en` parity")
+    print(f"i18n-completeness-gate: OK — {len(LOCALE_ROOTS)} tree(s), "
+          f"{n_loc} locale-dir(s) x {n_ns} namespace(s) at full `en` parity")
     return 0
 
 

@@ -15,8 +15,8 @@
     "e2e": "playwright test --project=chromium",
     "e2e:all-browsers": "playwright test",
     "e2e:install": "playwright install --with-deps",
-    "lint": "eslint src",
-    "lint:fix": "eslint src --fix",
+    "lint": "pnpm -w run lint",
+    "lint:fix": "pnpm -w run lint:fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
     "check:bundle-size": "node scripts/check-bundle-size.mjs"
@@ -30,9 +30,11 @@
     "@react-three/drei": "^10.7",
     "@react-three/fiber": "^9.6.1",
     "@tanstack/react-query": "^5",
+    "i18next": "^26",
     "phaser": "^4.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-i18next": "^17",
     "react-router-dom": "^7",
     "three": "^0.185",
     "zustand": "^5"
@@ -57,7 +59,7 @@
     "postcss": "^8.5.20",
     "prettier": "^3",
     "tailwindcss": "^4.3.2",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8",
     "vite": "^8.1.3",
     "vitest": "^4.1.10"

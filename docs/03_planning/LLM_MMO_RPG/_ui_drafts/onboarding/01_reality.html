@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 Reality — Onboarding draft</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+
+  <div class="rail">
+    <span>00 Account</span><span class="sep">→</span>
+    <b>01 Reality</b><span class="sep">→</span>
+    <span>02 Entry</span><span class="sep">→</span>
+    <span>03 Arrival</span>
+    <span style="margin-left:auto">F3 · reality configures everything after it</span>
+  </div>
+
+  <h1 style="font-size:1.75rem;margin:0 0 .25rem">Chọn thế giới</h1>
+  <p class="subtle" style="margin:0 0 1rem">
+    Đây không phải bước trang trí. Chọn xong là <strong>nạp cấu hình</strong>: mode nào tồn tại,
+    PC canon nào được offer, AI assistant bật hay không, spawn ở đâu — tất cả do
+    <span class="mono">RealityManifest.onboarding_config</span> của thế giới đó khai báo.
+  </p>
+  <div class="brush-divider"></div>
+
+  <div class="grid-3" style="margin-bottom:1.5rem">
+
+    <!-- ── reality 1 ───────────────────────────────────────── -->
+    <div class="card card-hoverable card-selected">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <h3 style="margin:0 0 .25rem;font-size:1.0625rem">Đông Phong Cõi</h3>
+        <span class="verdict verdict-resolved">✓ đã chọn</span>
+      </div>
+      <p class="subtle" style="margin:0 0 .875rem">Tiên hiệp · tu chân · môn phái</p>
+
+      <div class="mono" style="line-height:1.9;font-size:.75rem">
+        <div><span class="from-manifest">modes_enabled</span> Canonical · Custom · XuyênKhông</div>
+        <div><span class="from-manifest">canonical_pcs</span> 5</div>
+        <div><span class="from-manifest">ai_assistant</span> true</div>
+        <div><span class="from-manifest">default_spawn</span> đông-hải-đạo-cốc</div>
+        <div><span class="from-manifest">languages</span> vi · zh</div>
+      </div>
+    </div>
+
+    <!-- ── reality 2 ───────────────────────────────────────── -->
+    <div class="card card-hoverable">
+      <h3 style="margin:0 0 .25rem;font-size:1.0625rem">Saigon 2026</h3>
+      <p class="subtle" style="margin:0 0 .875rem">Hiện đại · đô thị · dị năng ngầm</p>
+
+      <div class="mono" style="line-height:1.9;font-size:.75rem">
+        <div><span class="from-manifest">modes_enabled</span> Custom <em>only</em></div>
+        <div><span class="from-manifest">canonical_pcs</span> 0</div>
+        <div><span class="from-manifest">ai_assistant</span> true</div>
+        <div><span class="from-manifest">default_spawn</span> quận-1-hầm-metro</div>
+        <div><span class="from-manifest">languages</span> vi · en</div>
+      </div>
+    </div>
+
+    <!-- ── reality 3 ───────────────────────────────────────── -->
+    <div class="card card-hoverable">
+      <h3 style="margin:0 0 .25rem;font-size:1.0625rem">Faerûn</h3>
+      <p class="subtle" style="margin:0 0 .875rem">Fantasy phương Tây · phiêu lưu</p>
+
+      <div class="mono" style="line-height:1.9;font-size:.75rem">
+        <div><span class="from-manifest">modes_enabled</span> Canonical · Custom</div>
+        <div><span class="from-manifest">canonical_pcs</span> 8</div>
+        <div><span class="from-manifest">ai_assistant</span> <strong>false</strong></div>
+        <div><span class="from-manifest">default_spawn</span> baldurs-gate-docks</div>
+        <div><span class="from-manifest">languages</span> en</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note" style="margin-bottom:1rem">
+    <strong>Đọc kỹ 3 thẻ trên — chúng khác nhau ở mức cấu hình, không phải ở mức chủ đề.</strong>
+    Saigon 2026 <em>không có</em> Canonical (chưa ai viết PC canon), Faerûn <em>tắt</em> AI assistant.
+    Màn 02 phải render từ dữ liệu này. Một mode-picker hardcode 3 lựa chọn là sai với manifest —
+    đó chính là điều F3 chặn.
+  </div>
+
+  <div class="note note-warn" style="margin-bottom:1.5rem">
+    <strong>C-Q4 (mở):</strong> màn này nên trông như <em>thẻ chữ</em> (bản vẽ hiện tại) hay như
+    <em>bản đồ thế giới</em>? Game đã có <a href="../MAP_GUI_v2.html">MAP_GUI_v2</a>, và F5 nói medium
+    là đồ hoạ. Thẻ chữ là di sản của khung "text game". Chưa chốt — xem
+    <a href="00_CONCEPT.md">00_CONCEPT §6</a>.
+  </div>
+
+  <div style="display:flex;gap:.75rem;align-items:center">
+    <button class="btn-primary">Vào Đông Phong Cõi →</button>
+    <span class="subtle">Khoá theo phiên (Q6) — đổi thế giới giữa phiên là V2+ (PO-D5).</span>
+  </div>
+
+  <footer class="draft-foot">
+    Onboarding concept pass · 2026-07-29 · <a href="index.html">← index</a> ·
+    <a href="00_CONCEPT.md">00_CONCEPT.md</a>
+  </footer>
+</div>
+
+<script>
+  const p = new URLSearchParams(location.search).get('reality');
+  if (p) document.body.dataset.reality = p;
+</script>
+</body>
+</html>
