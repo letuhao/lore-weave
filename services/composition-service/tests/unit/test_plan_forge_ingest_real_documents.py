@@ -433,3 +433,32 @@ def test_the_carried_material_is_BOUNDED():
     notes = propose_spec(ingest_markdown(big))["author_notes"]
     assert sum(len(n["text"]) for n in notes) <= 6000
 
+
+
+def test_a_PREMISE_section_is_not_filed_as_a_world_rule():
+    """D-PLANFORGE-NO-PREMISE-KIND. `premise` sat inside the SETTING regex, so a section saying what
+    the story IS compiled as a law the story must OBEY — and the book's own premise never reached the
+    compiled premise block, which only ever carried the ARC's.
+
+    Grounded in the real Mị Đế document, whose premise section is titled `Mị Đế - Ý tưởng khởi đầu`
+    and fell to `other`. That is also why the matcher is NOT anchored to the start of the title: an
+    author names the section after their book far more often than they lead with the word.
+    """
+    from app.engine.plan_forge.compile import compile_artifacts
+
+    doc = ingest_markdown(
+        "# Mị Đế - Ý tưởng khởi đầu\n"
+        "- Bộ tiểu thuyết huyền huyễn, Tu Chân Khoa Học.\n\n"
+        "# Bối cảnh\nThế giới tàn khốc.\n\n"
+        "# Arc mở đầu\n**Theme:** phản bội\n"
+    )
+    kinds = {s["title"]: s["kind"] for s in doc["sections"]}
+    assert kinds["Mị Đế - Ý tưởng khởi đầu"] == "premise"
+    # …and a genuine setting section is STILL mechanics — the fix must not steal from its neighbour.
+    assert kinds["Bối cảnh"] == "mechanics"
+
+    spec = propose_spec(doc)
+    assert spec["charter"]["premise_notes"] == ["Bộ tiểu thuyết huyền huyễn, Tu Chân Khoa Học."]
+    pkg = compile_artifacts(spec, spec["arcs"][0]["id"])["planning_package"]
+    assert pkg["premise"].startswith("Premise: Bộ tiểu thuyết"), \
+        "the book's premise must lead the block every pass reads, ahead of the arc's"

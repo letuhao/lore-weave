@@ -43,7 +43,19 @@ SECTION_KIND_MAP: list[tuple[re.Pattern[str], str]] = [
     # languages, deliberately not as the phrases of any one document — over-fitting the map to a
     # single book is the mistake this whole module is recovering from. The `unread` block below is
     # what keeps the map honest about whatever it still misses.
-    (re.compile(r"bối cảnh|thiết lập|thế giới|setting|world[- ]?building|lore|premise", re.I),
+    # PREMISE IS NOT A WORLD RULE, and it had no kind at all — `premise` sat in the SETTING regex
+    # below, so a section stating what the story IS compiled as a law the story must OBEY
+    # (D-PLANFORGE-NO-PREMISE-KIND). Its own kind, ahead of the setting matcher so the more
+    # specific word wins.
+    #
+    # I first blamed the dogfood's `mechanics: ['Bối cảnh', 'Thiết lập linh hồn']` on this and was
+    # WRONG: `bối cảnh` means setting and `thiết lập` means setup, so those two are filed correctly.
+    # The real casualty on that document is `Mị Đế - Ý tưởng khởi đầu` ("initial idea"), which fell
+    # to `other` — which is why this is NOT anchored to the start of the title. An author names a
+    # premise section after their book far more often than they lead with the word.
+    (re.compile(r"ý tưởng|tiền đề|premise|logline|core (concept|idea)|pitch", re.I),
+     "premise"),
+    (re.compile(r"bối cảnh|thiết lập|thế giới|setting|world[- ]?building|lore", re.I),
      "mechanics"),
     (re.compile(r"planner variables|variables|state var|stat|chỉ số|biến trạng thái", re.I),
      "planner_variables"),

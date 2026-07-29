@@ -112,6 +112,7 @@ _BOARD_KINDS: list[tuple[str, str, str]] = [
     ("arc_overview", "arcs", "title"),
     ("writing_principles", "charter.style_constraints", ""),
     ("open_questions", "meta.open_questions", ""),
+    ("premise", "charter.premise_notes", ""),
 ]
 
 _EVIDENCE_MAX = 6

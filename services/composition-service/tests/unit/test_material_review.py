@@ -223,3 +223,80 @@ def test_no_model_is_involved():
     src = inspect.getsource(apply_kept_material)
     for tell in ("call_json", "await", "llm", "search_material"):
         assert tell not in src, f"apply_kept_material reaches for {tell!r}"
+
+
+# ── the ONE field a structured kind needs, and nobody may invent ─────────────────────────────────
+
+def test_a_LABELLED_keep_lands_STRUCTURALLY_in_its_slot():
+    """Reading the schemas back, each structured kind is short exactly one field a human must decide:
+    a label. The quote is the body; only the name/title takes judgement. So ask for that, never guess
+    it — and then a kept variable really is a variable."""
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    out, report = apply_kept_material(_spec(), {
+        "planner_variables": [{"quote": "Ký ức mất dần từng lớp.", "label": "Ký ức"}],
+        "mechanics": [{"quote": "Salt only moves by sea.", "label": "Salt logistics"}],
+        "character_seed": [{"quote": "She returns each cycle.", "label": "Seraphine"}],
+        "arc_overview": [{"quote": "Three cycles, each worse.", "label": "The Cycles"}],
+    })
+    var = out["layers"]["variables"][0]
+    assert var["name"] == "Ký ức" and var["transition_rules"] == ["Ký ức mất dần từng lớp."]
+    assert var["code"] == var["code"].upper() and var["code"], "a variable's identity is a CODE"
+
+    mech = out["layers"]["mechanics"][0]
+    assert mech["name"] == "Salt logistics" and mech["rules"] == ["Salt only moves by sea."]
+
+    char = out["layers"]["characters"][-1]
+    assert char["name"] == "Seraphine" and char["baseline_notes"] == "She returns each cycle."
+    assert char["id"]
+
+    arc = out["arcs"][-1]
+    assert arc["title"] == "The Cycles" and arc["summary"] == "Three cycles, each worse."
+
+    assert report["applied_to_slot"] == {
+        "planner_variables": 1, "mechanics": 1, "character_seed": 1, "arc_overview": 1,
+    }
+    assert report["carried_as_author_notes"] == {}
+
+
+def test_an_UNLABELLED_keep_still_falls_back_to_a_note():
+    """The fallback is now a real outcome, not a shrug: author notes reach the pass prompts through
+    PassContext.grounding. But it is still not a structured row, and the report says which."""
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    out, report = apply_kept_material(_spec(), {"planner_variables": ["Ký ức mất dần."]})
+    assert out["layers"]["variables"] == []
+    assert report["carried_as_author_notes"] == {"planner_variables": 1}
+
+
+def test_identity_never_collides_with_a_row_the_author_already_has():
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    spec = _spec(layers={"characters": [{"id": "seraphine", "name": "Someone else"}],
+                         "mechanics": [], "variables": []})
+    out, _ = apply_kept_material(spec, {
+        "character_seed": [{"quote": "x", "label": "Seraphine"}]})
+    ids = [c["id"] for c in out["layers"]["characters"]]
+    assert len(ids) == len(set(ids)), f"identity collided: {ids}"
+
+
+def test_a_label_the_author_ALREADY_used_is_not_duplicated():
+    """Keeping the same line twice, or re-keeping after a reload, must not grow the cast."""
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    kept = {"character_seed": [{"quote": "x", "label": "Seraphine"}]}
+    once, _ = apply_kept_material(_spec(), kept)
+    twice, report = apply_kept_material(once, kept)
+    assert len(twice["layers"]["characters"]) == len(once["layers"]["characters"])
+    assert report["applied_to_slot"] == {}
+
+
+def test_a_string_entry_and_a_labelled_entry_can_share_one_call():
+    from app.engine.plan_forge.material_review import apply_kept_material
+
+    out, report = apply_kept_material(_spec(), {
+        "mechanics": ["unlabelled line", {"quote": "labelled line", "label": "A rule"}]})
+    assert out["layers"]["mechanics"][0]["name"] == "A rule"
+    assert any("unlabelled line" == n["text"] for n in out["author_notes"])
+    assert report == {"applied_to_slot": {"mechanics": 1},
+                      "carried_as_author_notes": {"mechanics": 1}}

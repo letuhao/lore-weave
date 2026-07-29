@@ -15,10 +15,10 @@ from app.engine.plan_forge.coverage import spec_coverage_board
 from app.engine.plan_forge.ingest import ingest_markdown
 from app.engine.plan_forge.propose import propose_spec
 
-_ALL_KINDS = {
-    "character_seed", "mechanics", "planner_variables",
-    "arc_overview", "writing_principles", "open_questions",
-}
+#: Derived from the producer, not restated. When `D-PLANFORGE-NO-PREMISE-KIND` added a seventh kind
+#: this file was the only thing that broke — a hand-copied list would have made it six files.
+_ALL_KINDS = {k for k, _, _ in __import__(
+    "app.engine.plan_forge.coverage", fromlist=["_BOARD_KINDS"])._BOARD_KINDS}
 
 
 def _spec(**over):

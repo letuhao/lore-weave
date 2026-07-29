@@ -5038,9 +5038,13 @@ async def plan_keep_material(
     book_id: Annotated[str, "The book (UUID)."],
     run_id: Annotated[str, "The plan run (UUID)."],
     kept: Annotated[
-        dict[str, list[str]],
-        "{planning kind: [exact quotes the author kept]}. Quotes must be copied from the "
-        "plan_find_missing_material response, character for character.",
+        dict[str, list[Any]],
+        "{planning kind: [entry, ...]}. An entry is either the exact quote as a string, or "
+        "{quote, label} — copy the quote from plan_find_missing_material character for character. "
+        "A LABEL is the one field a structured kind needs and you must NOT invent it: ask the "
+        "author what to call the character / rule / variable / arc. With a label the line becomes a "
+        "real row in the plan; without one it is filed as an author note (which does reach the "
+        "planning prompts, but is not a row).",
     ],
 ) -> dict:
     tc = _ctx(ctx)

@@ -50,6 +50,7 @@ _KIND_MEANING: dict[str, str] = {
     "writing_principles": "how the prose itself should be written — voice, tone, pacing, what to "
                           "avoid",
     "open_questions": "something the author has not decided yet, or has explicitly left open",
+    "premise": "what this story IS in a sentence or two — the hook, the core idea, what it is about",
 }
 
 _SYSTEM = (

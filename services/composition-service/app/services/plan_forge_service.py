@@ -1397,7 +1397,7 @@ class PlanForgeService:
         )
 
     async def keep_material(
-        self, created_by: UUID, book_id: UUID, run_id: UUID, *, kept: dict[str, list[str]],
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, kept: dict[str, list[Any]],
     ) -> dict[str, Any] | None:
         """Write what the author kept into the run's spec — deterministically, in their own words.
 

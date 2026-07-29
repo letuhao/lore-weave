@@ -586,6 +586,7 @@ def propose_spec(
     arc_sec = _section(doc, "arc_overview")
     principles_sec = _section(doc, "writing_principles")
     open_sec = _section(doc, "open_questions")
+    premise_sec = _section(doc, "premise")
     mech_secs = _sections(doc, "mechanics")
 
     char_body = char_sec["body"] if char_sec else ""
@@ -688,6 +689,10 @@ def propose_spec(
         # forward as raw text for the LLM passes, which read the words rather than the labels.
         "author_notes": _unclassified_notes(doc),
         "charter": {
+            # D-PLANFORGE-NO-PREMISE-KIND — the book's OWN premise, which had no home and was
+            # compiled as a mechanic. A LIST because an author writes several paragraphs of it, and
+            # because that is the shape every table-driven consumer here already handles.
+            "premise_notes": _bullets(premise_sec["body"], limit=8) if premise_sec else [],
             "consistency_anchors": anchors,
             "forbids": _extract_forbids(doc),
             "style_constraints": style,

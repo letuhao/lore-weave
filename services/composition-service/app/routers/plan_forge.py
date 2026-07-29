@@ -486,6 +486,17 @@ async def self_check_plan_run(
     return report
 
 
+class KeptEntry(BaseModel):
+    """A kept line the author gave a NAME to, so it can become a real row rather than a note.
+
+    The label is the ONE field the structured kinds need and that nobody may infer — declared here
+    so a client cannot smuggle extra keys past `extra='ignore'` (the rest-write-mirror-drops-fields
+    bug the models around this one already warn about)."""
+
+    quote: Annotated[str, StringConstraints(max_length=400)]
+    label: Annotated[str, StringConstraints(max_length=120)]
+
+
 class PlanKeptMaterial(BaseModel):
     """`{planning kind: [exact quotes the author kept]}`.
 
@@ -495,7 +506,7 @@ class PlanKeptMaterial(BaseModel):
     document, and an uncapped string here is a write-amplification surface.
     """
 
-    kept: dict[str, list[Annotated[str, StringConstraints(max_length=400)]]] = Field(
+    kept: dict[str, list[Annotated[str, StringConstraints(max_length=400)] | KeptEntry]] = Field(
         default_factory=dict,
     )
 
@@ -533,7 +544,9 @@ async def keep_material(
     """Write the kept lines into the run's spec, verbatim (GUI parity with `plan_keep_material`)."""
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
-        out = await svc.keep_material(user_id, book_id, run_id, kept=body.kept)
+        kept = {k: [e if isinstance(e, str) else e.model_dump() for e in v]
+                for k, v in body.kept.items()}
+        out = await svc.keep_material(user_id, book_id, run_id, kept=kept)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if out is None:

@@ -110,7 +110,11 @@ def compile_artifacts(
     # `summary` carries what they actually said about the arc in prose ("this is not a power arc; it
     # is a discovery-and-price arc"). That line is the single most load-bearing sentence in the
     # block — it is why they emphasised it — and it was going nowhere near the prompt.
-    premise_parts = [
+    # D-PLANFORGE-NO-PREMISE-KIND — the BOOK's premise, ahead of the arc's. Without it the passes
+    # only ever saw "Arc: <title> / Theme: …": the story's own premise had no kind, so it compiled
+    # into `mechanics` and was read as a law the story must obey.
+    book_premise = [str(x) for x in (spec.get("charter", {}).get("premise_notes") or []) if x]
+    premise_parts = [f"Premise: {p}" for p in book_premise[:6]] + [
         f"Arc: {arc['title']}" if arc else arc_id,
         f"Theme: {arc['theme']}" if arc and arc.get("theme") else "",
         f"Summary: {arc['summary']}" if arc and arc.get("summary") else "",

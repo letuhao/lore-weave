@@ -277,8 +277,19 @@ def pass_cursor(run: PlanRun, *, package_artifact_id: UUID | str | None = None) 
 def blocked_at(run: PlanRun) -> str | None:
     """The first pass that is waiting on a human (BLOCKING + completed + decision pending).
 
-    None ⇒ nothing is waiting on the user. This is what the Pass Rail renders, and what tells an
-    autonomous run whether it may proceed.
+    **It does NOT mean the rail is stopped.** Read the name carefully: this is *where a human is
+    owed a decision*, not *what may run*. What may run is the dependency graph, enforced by
+    `assert_runnable` — and a pass that does not depend on the blocked one runs perfectly legally.
+
+    Live during the 2026-07-29 dogfood: with `blocked_at: cast`, running `beats` returned 200 and
+    completed, because `beats depends_on=("motifs",)` and `cast` is nowhere in its lineage. Nothing
+    was wrong — but the view said "blocked" and then let pass 4 through, which reads as a bug in
+    whichever of the two you trusted first.
+
+    The fix is not to start refusing (that would block work the graph says is fine); it is to publish
+    `runnable_now` beside this, so the two facts are visible together and cannot contradict.
+
+    None ⇒ nobody is owed a decision.
     """
     for pid in PASS_ORDER:
         e = _entry(run, pid)
@@ -328,6 +339,18 @@ def derive_view(
         "passes": passes,
         "pass_cursor": pass_cursor(run, package_artifact_id=package_artifact_id),
         "blocked_at": blocked_at(run),
+        # What the author can actually start RIGHT NOW: every pass whose declared upstreams are all
+        # fresh and accepted. Derived from the same `blockers_for` the gate raises on, so the view
+        # and the enforcement cannot disagree — the alternative is a client re-deriving it and being
+        # wrong in a second place.
+        #
+        # Published because `blocked_at` alone reads as "the rail has stopped". It does not: it names
+        # who is owed a decision. Together they are unambiguous — "waiting on you at cast, and you can
+        # still run beats" — where either alone is a half-truth.
+        "runnable_now": [
+            p["pass_id"] for p in passes
+            if not p["blockers"] and p["decision"] not in ("accepted", "auto")
+        ],
     }
 
 

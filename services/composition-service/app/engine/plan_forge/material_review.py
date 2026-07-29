@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from app.engine.plan_forge.coverage import spec_coverage_board
@@ -55,6 +56,7 @@ _QUESTION: dict[str, str] = {
     "writing_principles": "How should the prose itself read? Voice, pacing, anything you never want "
                           "to see on the page.",
     "open_questions": "What have you not decided yet?",
+    "premise": "In a sentence or two, what is this story about?",
 }
 
 
@@ -141,7 +143,38 @@ async def find_missing_material(
 _DIRECT_SLOT: dict[str, tuple[str, str]] = {
     "writing_principles": ("charter", "style_constraints"),
     "open_questions": ("meta", "open_questions"),
+    "premise": ("charter", "premise_notes"),
 }
+
+#: The four structured kinds, and what a kept line is missing to become a row there.
+#:
+#: Reading the schemas back, every one of them is short **exactly one field a human has to decide**:
+#: a LABEL. `character_seed` needs `{id, name}`, `mechanics` `{name, rules}`, `planner_variables`
+#: `{code, name}`, `arc_overview` `{id, title}` — and in each case the quote supplies the body while
+#: only the name/title requires judgement. The identity (`id`/`code`) is machine-owned and derived
+#: from the label, which is bookkeeping, not a guess about meaning.
+#:
+#: So the honest fix is to ASK for that one field, never to infer it. With a label the line lands
+#: structurally; without one it still becomes an author note — which now genuinely reaches the pass
+#: prompts (`PassContext.grounding`), so the fallback is a real outcome rather than a shrug.
+#:
+#: `(parent, key, label_field, body_field, id_field)`
+_LABELLED_SLOT: dict[str, tuple[str, str, str, str, str]] = {
+    "character_seed": ("layers", "characters", "name", "baseline_notes", "id"),
+    "mechanics": ("layers", "mechanics", "name", "rules", "id"),
+    "planner_variables": ("layers", "variables", "name", "transition_rules", "code"),
+    "arc_overview": ("", "arcs", "title", "summary", "id"),
+}
+
+#: `rules` / `transition_rules` are string ARRAYS in the schema; the others are plain strings.
+_LIST_BODY = {"rules", "transition_rules"}
+
+
+def _slug(label: str, *, upper: bool = False) -> str:
+    """A stable identity from the author's label. Machine bookkeeping, not interpretation."""
+    s = re.sub(r"[^\w]+", "_", label.strip(), flags=re.UNICODE).strip("_")
+    s = s[:48] or "item"
+    return s.upper() if upper else s.lower()
 
 
 def apply_kept_material(
@@ -176,8 +209,46 @@ def apply_kept_material(
     applied: dict[str, int] = {}
     noted: dict[str, int] = {}
 
-    for kind, quotes in (kept or {}).items():
-        lines = [q.strip() for q in quotes if isinstance(q, str) and q.strip()]
+    for kind, entries in (kept or {}).items():
+        # An entry is either the bare quote (today's shape, kept working) or `{quote, label}` — the
+        # label being the ONE field a structured kind needs and nobody may invent.
+        lines: list[str] = []
+        labelled: list[tuple[str, str]] = []
+        for e in entries or []:
+            if isinstance(e, str):
+                if e.strip():
+                    lines.append(e.strip())
+            elif isinstance(e, dict):
+                q = str(e.get("quote") or "").strip()
+                lab = str(e.get("label") or "").strip()
+                if not q:
+                    continue
+                (labelled.append((q, lab)) if lab else lines.append(q))
+
+        if labelled and kind in _LABELLED_SLOT:
+            parent, key, label_field, body_field, id_field = _LABELLED_SLOT[kind]
+            bucket = (out.setdefault(parent, {}) if parent else out).setdefault(key, [])
+            if not isinstance(bucket, list):
+                bucket = []
+                (out[parent] if parent else out)[key] = bucket
+            taken = {str(r.get(id_field) or "") for r in bucket if isinstance(r, dict)}
+            have_labels = {str(r.get(label_field) or "").strip().casefold()
+                           for r in bucket if isinstance(r, dict)}
+            for quote, label in labelled:
+                if label.casefold() in have_labels:
+                    continue          # the author already has a row by that name — do not duplicate
+                ident = _slug(label, upper=(id_field == "code"))
+                base, n = ident, 2
+                while ident in taken:
+                    ident, n = f"{base}_{n}", n + 1
+                taken.add(ident)
+                have_labels.add(label.casefold())
+                bucket.append({
+                    id_field: ident, label_field: label,
+                    body_field: [quote] if body_field in _LIST_BODY else quote,
+                })
+                applied[kind] = applied.get(kind, 0) + 1
+
         if not lines:
             continue
         slot = _DIRECT_SLOT.get(kind)
