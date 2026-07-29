@@ -125,7 +125,9 @@ impl BindingStore for PgBindingStore {
         let mut conn = PgConnectionWriter::new(self.pool.clone())
             .map_err(|e| io(format!("meta connection: {e}")))?;
         let qb = PgQueryBuilder;
-        let outbox = PgOutboxAppender;
+        // Built FROM the allowlist so a cross-reality event carries its topic.
+        // `PgOutboxAppender::default()` would compile and silently stamp NULL.
+        let outbox = PgOutboxAppender::new(&self.allowlist);
         let clock = HostClock;
         let uuid = V4Uuid;
         let mut cfg = MetaWriteConfig {

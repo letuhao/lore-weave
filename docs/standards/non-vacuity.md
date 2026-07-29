@@ -12,7 +12,7 @@
 > returned **zero hits**.
 >
 > That is the repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing**. The
-> consequence is measurable: the same defect shipped **eighteen times** (§4), each fixed locally in the
+> consequence is measurable: the same defect shipped **nineteen times** (§4), each fixed locally in the
 > place it happened, because the next person had no page to read. This is that page.
 
 ---
@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — eighteen occurrences, one caught by a test
+## 4. The register — nineteen occurrences, one caught by a test
 
-Kept because the count is the argument. **Seventeen of the eighteen were found by a human or an agent
+Kept because the count is the argument. **Eighteen of the nineteen were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -151,6 +151,7 @@ that inspects the check itself can see it.
 | 15 | the shared stripper was string-blind under `keep_strings=True` — the fork `hot-path-gate` runs — so a `//` inside a string ate the rest of the line and its findings with it | NV-3 | `/review-impl`, reviewing the FIX for row 13 | fixed 2026-07-29 |
 | 16 | `db-safety-gate`'s shell selector was `"test" in base`, while the **same file's** `RE_THROWAWAY` had always accepted `smoke` — **six** DB-dropping smoke scripts were default-uncovered | NV-4 | writing a seventh and finding the gate silent on it | fixed 2026-07-29 (`Q1 B2a`) |
 | 17 | `db-safety-gate`'s **file-level** pragma window `lines[:60]` — row 3 fixed the *inline* pragma window in this very file and left its sibling alone | NV-5 | the exemption landed at line 69 and was discarded | fixed 2026-07-29 (`Q1 B2a`) |
+| 19 | four **meta** lints (`service-acl-matrix`, `role-grant-validator`, `pii-classify`, `meta-write-discipline`) existed and **none was wired into pre-commit** — `service-acl-matrix-lint` was RED for a whole commit and nothing said so | NV-3 | `/review-impl`'s standards gate, running it by hand | 3 wired 2026-07-29 (`Q1 B2b` review); `meta-write-discipline` left out at ~74s, CI's job — said out loud rather than quietly skipped |
 | 18 | migration 033's append-only trigger was an ORIGIN trigger, so `session_replication_role = replica` (`pg_restore --disable-triggers`, logical-replication apply) skipped it — the UPDATE rewrote a bound digest and the DELETE removed the epoch | NV-3 | probing the guard in the one mode that turns triggers off, before writing the test that asserts it | fixed 2026-07-29 (`Q1 B2a`) — `ENABLE ALWAYS` |
 
 **Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
@@ -205,6 +206,13 @@ ever have supplied it — the "input that reaches the guarded thing without pass
 which the gapless trigger shadows for every input a client can send, is reachable in exactly that mode
 — so a constraint that looked like dead SQL is the one thing still standing when the triggers are off.
 **Ask of every guard: what turns this off, and who does that routinely?**
+
+**Row 19 is the degenerate case, and it is the one to remember.** The gate was written, correct, and
+would have caught the defect on its first run — it had simply never been *attached to anything*. It sat
+in `scripts/` beside seventeen siblings that ARE in `.githooks/pre-commit`, so the directory listing
+made it look enforced. A check nobody runs is not a weaker check; it is **the same as not having one**,
+with the added cost that its existence answers *"is this covered?"* with a yes.
+**"There is a lint for that" is not enforcement — grep the hook.**
 
 ---
 

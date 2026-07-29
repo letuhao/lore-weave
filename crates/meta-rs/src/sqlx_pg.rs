@@ -140,41 +140,56 @@ impl QueryBuilder for PgQueryBuilder {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // The CAS guard and the PK share one record so the statement needs two
-        // params rather than three. A CAS column whose expected value is NULL
-        // becomes `IS NULL`: `col = NULL` is never true in SQL, so rendering it
-        // as equality would turn "only while unset" into "never" — the same
-        // correction the Go builder carries, and the reason it is repeated here
-        // instead of being left to the reader.
+        // THE PK AND THE CAS GUARD GET SEPARATE RECORDS, and the first draft's
+        // "share one record so the statement needs two params rather than three"
+        // was a silent wrong-row write.
+        //
+        // Merging them meant `key.insert(col, cas_value)` OVERWROTE the primary
+        // key whenever a column appeared in both `pk` and `expected_before`.
+        // Measured on `pk={reality_id: A}, expected_before={reality_id: B}`:
+        //
+        //   WHERE t."reality_id" = k."reality_id" AND t."reality_id" = k."reality_id"
+        //   k = {"epoch":1,"reality_id":"BBBB"}      <- A is GONE
+        //
+        // …so the UPDATE targeted whatever row held B. The Go builder binds the
+        // two as separate parameters and emits `pk = $2 AND pk = $3`, which
+        // matches nothing and surfaces as a CAS conflict — the safe outcome, and
+        // the behaviour this must mirror. Saving one parameter is not worth a
+        // divergence in which row gets written.
+        //
+        // A CAS column whose expected value is NULL becomes `IS NULL`: `col =
+        // NULL` is never true in SQL, so rendering it as equality would turn
+        // "only while unset" into "never".
         let mut where_parts: Vec<String> = intent
             .pk
             .keys()
             .map(|c| format!("t.{} = k.{}", quote_ident(c), quote_ident(c)))
             .collect();
-        let mut cas_present = ValueMap::new();
+        let mut cas = ValueMap::new();
         for (c, v) in &intent.expected_before {
             if v.is_null() {
                 where_parts.push(format!("t.{} IS NULL", quote_ident(c)));
             } else {
-                where_parts.push(format!("t.{} = k.{}", quote_ident(c), quote_ident(c)));
-                cas_present.insert(c.clone(), v.clone());
+                where_parts.push(format!("t.{} = cas.{}", quote_ident(c), quote_ident(c)));
+                cas.insert(c.clone(), v.clone());
             }
-        }
-        let mut key = intent.pk.clone();
-        for (c, v) in cas_present {
-            key.insert(c, v);
         }
 
         let q = format!(
             "UPDATE {table} AS t SET {set} \
              FROM jsonb_populate_record(NULL::{table}, $1::jsonb) AS nv, \
-                  jsonb_populate_record(NULL::{table}, $2::jsonb) AS k \
+                  jsonb_populate_record(NULL::{table}, $2::jsonb) AS k, \
+                  jsonb_populate_record(NULL::{table}, $3::jsonb) AS cas \
              WHERE {}",
             where_parts.join(" AND "),
         );
         Ok((
             q,
-            vec![as_json_object(&intent.new_values), as_json_object(&key)],
+            vec![
+                as_json_object(&intent.new_values),
+                as_json_object(&intent.pk),
+                as_json_object(&cas),
+            ],
         ))
     }
 
@@ -235,8 +250,29 @@ impl QueryBuilder for PgQueryBuilder {
 
 /// Appends to `meta_outbox` inside the caller's transaction — the same TX as
 /// the data row and the audit row, which is the whole point of an outbox.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct PgOutboxAppender;
+///
+/// **Stamps `xreality_topic`, and the first version did not.** The Go appender
+/// (`sdks/go/metaoutbox`) has always taken it from the allowlist so the relay
+/// knows to ALSO bridge the event onto a cross-reality Redis topic. Omitting it
+/// fails nothing anywhere: the row lands, the relay forwards it to the normal
+/// stream, and the cross-reality consumer simply stops hearing about events it
+/// used to receive.
+///
+/// There is no `Default`, deliberately. A zero-argument constructor is exactly
+/// how the omission would come back — it would compile, run, and stamp NULL.
+#[derive(Debug, Clone)]
+pub struct PgOutboxAppender {
+    xreality: std::collections::HashMap<String, String>,
+}
+
+impl PgOutboxAppender {
+    /// Build from the allowlist, which is the only place topics are declared.
+    pub fn new(allowlist: &crate::allowlist::Allowlist) -> Self {
+        Self {
+            xreality: allowlist.xreality_topics().clone(),
+        }
+    }
+}
 
 impl OutboxAppender<PgTx> for PgOutboxAppender {
     fn append(&self, tx: &mut PgTx, event: OutboxEvent) -> Result<(), MetaError> {
@@ -245,11 +281,14 @@ impl OutboxAppender<PgTx> for PgOutboxAppender {
             "event_name": event.event_name,
             "aggregate_id": event.aggregate_id,
             "payload": event.payload,
+            "xreality_topic": self.xreality.get(&event.event_name),
             "recorded_at_nanos": event.recorded_at_nanos,
         });
         let q = "INSERT INTO meta_outbox \
-                 (event_id, event_name, aggregate_id, payload, recorded_at_nanos) \
-                 SELECT r.event_id, r.event_name, r.aggregate_id, r.payload, r.recorded_at_nanos \
+                 (event_id, event_name, aggregate_id, payload, xreality_topic, \
+                  recorded_at_nanos) \
+                 SELECT r.event_id, r.event_name, r.aggregate_id, r.payload, \
+                        r.xreality_topic, r.recorded_at_nanos \
                  FROM jsonb_populate_record(NULL::meta_outbox, $1::jsonb) AS r";
         tx.exec(q, &[rec]).map(|_| ())
     }
@@ -494,14 +533,44 @@ mod tests {
             .insert("ruleset_digest".into(), Value::String("x".into()));
         let (q, args) = PgQueryBuilder.build_update(&i).unwrap();
         assert!(q.contains("t.\"close_reason\" IS NULL"), "{q}");
-        assert!(q.contains("t.\"ruleset_digest\" = k.\"ruleset_digest\""), "{q}");
-        let key = args[1].as_object().unwrap();
+        assert!(q.contains("t.\"ruleset_digest\" = cas.\"ruleset_digest\""), "{q}");
+        let key = args[2].as_object().unwrap();
         assert!(
             !key.contains_key("close_reason"),
             "an IS NULL predicate binds no value; carrying one would make \
              jsonb_populate_record produce a NULL field that matches nothing"
         );
         assert!(key.contains_key("ruleset_digest"));
+    }
+
+
+    /// **A column in BOTH `pk` and `expected_before` must not overwrite the
+    /// primary key.** The first implementation merged them into one record to
+    /// save a parameter, and the CAS value won: the UPDATE silently targeted a
+    /// DIFFERENT ROW. Go binds them separately (`pk = $2 AND pk = $3`), matches
+    /// nothing, and reports a CAS conflict — the safe outcome this mirrors.
+    #[test]
+    fn a_cas_on_a_pk_column_does_not_retarget_the_row() {
+        let mut i = intent();
+        i.operation = MetaWriteOp::Update;
+        let pk_value = i.pk["reality_id"].clone();
+        i.expected_before
+            .insert("reality_id".into(), Value::String("a-different-reality".into()));
+
+        let (q, args) = PgQueryBuilder.build_update(&i).unwrap();
+        assert_eq!(
+            args[1].as_object().unwrap()["reality_id"], pk_value,
+            "the PK record must still carry the PK's OWN value"
+        );
+        assert_eq!(
+            args[2].as_object().unwrap()["reality_id"],
+            Value::String("a-different-reality".into()),
+            "…and the CAS record carries the expected-before value, separately"
+        );
+        // Two DIFFERENT records referenced, so the predicate can be unsatisfiable
+        // rather than quietly true of the wrong row.
+        assert!(q.contains("t.\"reality_id\" = k.\"reality_id\""), "{q}");
+        assert!(q.contains("t.\"reality_id\" = cas.\"reality_id\""), "{q}");
     }
 
     #[test]

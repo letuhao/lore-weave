@@ -934,6 +934,64 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 > 7 python gates + 4 shell lints OK · **live smoke: 11 tests on a real Postgres**
 > (`bash scripts/meta-rs-pg-live-smoke.sh` — 7 adapter + 4 create/load).
 >
+> 🔎 **`/review-impl` ON B2a+B2b — 5 findings, ALL CLEARED, none deferred.**
+>
+> **HIGH · the ACL matrix, and the gate that would have caught it was never wired.**
+> `scripts/service-acl-matrix-lint.sh` FAILED on `cbc3ef45f`: commit-service is the first RUST writer
+> of meta tables and had no `contracts/service_acl/matrix.yaml` entry — in production it would have had
+> no grant on `reality_ruleset_binding`. Bisected to prove it was mine (PASS at `bf511da3c`, FAIL at
+> `cbc3ef45f`). **Root cause: FOUR meta lints exist and NONE was in `.githooks/pre-commit`** — they were
+> "run them if you remember", which is the same as not having them. Three are now wired (~8s total);
+> `meta-write-discipline-lint` is left out at **~74s** and belongs in CI, said out loud rather than
+> quietly skipped. The trigger is **content as well as path**, because a path-only condition would have
+> missed the very commit that motivated it (a `meta-rs` line in a Cargo.toml, a `use meta_rs::…` in a
+> service file, none of the meta directories touched). **Non-vacuity register row 19.**
+>
+> **HIGH · `build_update` silently targeted the WRONG ROW.** A column present in both `pk` and
+> `expected_before` had its PK value overwritten by the CAS value, because the two shared one
+> `jsonb_populate_record`. Measured, not inferred:
+>
+> ```text
+> WHERE t."reality_id" = k."reality_id" AND t."reality_id" = k."reality_id"
+> k = {"epoch":1,"reality_id":"BBBB"}          <- the PK's own value is GONE
+> ```
+>
+> Go binds them separately (`pk = $2 AND pk = $3`), matches nothing, and reports a CAS conflict — the
+> safe outcome. Fixed with a third record; regression test at both the SQL level and live.
+>
+> **MED · the Rust allowlist silently dropped `xreality_topic`.** Go has read it since the file was
+> written; `EventBinding` had no such field and serde ignores unknown fields, so **both mirrors parsed
+> the same bytes and disagreed about what was in them.** A Rust writer of a table declaring a topic
+> would have written `xreality_topic` NULL — the relay forwards to the normal stream, the cross-reality
+> consumer just stops receiving, nothing errors anywhere. Field added, topic map exposed, appender
+> stamps it, `PgOutboxAppender` **has no `Default`** (a zero-arg constructor is exactly how the omission
+> returns). `from_entries` re-serializes through YAML and had the same hole — closed with it.
+>
+> **MED · `build_update`/`build_delete` had NO live test.** The only live table was append-only, so the
+> adapter's main paths — for an adapter meant to serve *every* meta table — were verified by string
+> assertions alone. `reality_registry` added to the smoke: matching CAS hits exactly one row, a stale
+> CAS is `ConcurrentStateTransition`, a CAS-on-PK cannot reach a bystander, DELETE removes only the
+> named row and a second DELETE is a conflict.
+>
+> **Standards checked and clean:** provider-gateway + no-hardcoded-models (untouched — no LLM path) ·
+> language rule (Rust for kernel-derived; `language-rule-lint` PASS) · tenancy (per-reality tier,
+> `reality_id` scope key, no user-facing write path, consistent with `reality_registry`'s own shape) ·
+> destructive-ops (no DELETE/TRUNCATE/DROP in any test; isolation is a fresh UUID, which append-only
+> forces and is the better answer; `db-safety-gate` PASS) · no hardcoded secrets (the smoke reads the
+> password from the running container at runtime, no default).
+>
+> **VERIFY after fixes:** workspace **1987 / 0** · Go `contracts/meta` green · **live smoke 15/15**
+> (11 adapter + 4 create/load) · 7 python gates + **4** shell lints OK.
+>
+> **Deferred (2 rows, both LOW, both gate-eligible #4 — blocked on infra that does not exist here):**
+> * `D-META-LIVE-SMOKE-NOT-IN-CI` — the 15 live tests SKIP without `META_RS_TEST_DATABASE_URL`, so
+>   `cargo test --workspace` counts them as passing. Same class as `D-PUBLISHER-SMOKE-NOT-IN-CI`;
+>   clears when a CI job with Postgres exists. **Until then `scripts/meta-rs-pg-live-smoke.sh` is a
+>   manual step before any meta-adapter change.**
+> * `D-META-ALLOWLIST-NO-DRIFT-GATE` — nothing checks that a new `migrations/meta/*` table gets an
+>   `events_allowlist.yaml` row. A missing row fails at RUNTIME (`table not allowlisted`), not at
+>   commit. Pre-existing, surfaced here.
+>
 > * **B3 (next):** the doc 35 §12 sweep + 16a/26 cross-refs. The store round-trip test §12 asked for
 >   landed in B2b — it needed the Pg binding to be worth writing.
 > * **Q0b is now UNBLOCKED and small:** the table takes epoch N+1 rows already (proved by

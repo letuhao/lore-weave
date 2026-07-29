@@ -117,6 +117,27 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # target -> os.environ.get(VAR, default) AND fail loudly when absent.
 "$PY" "$ROOT/scripts/no-absolute-host-paths.py"
 
+# I8 / I11 / S08 §12X.3 — the META-TABLE gates. Wired 2026-07-29 after Q1 B2b
+# added the first RUST writer of meta tables and shipped it with NO ACL matrix
+# entry: `service-acl-matrix-lint` was red for a whole commit and nothing said
+# so, because none of these four lints had ever been hooked. They were "run them
+# if you remember", which is the same as not having them.
+#
+# `meta-write-discipline-lint.sh` is deliberately NOT here: it greps every Go /
+# Rust / SQL / TS file for every meta table and takes ~74s, which is a pre-commit
+# nobody keeps. It belongs in CI. The three below total ~8s.
+#
+# The trigger is CONTENT as well as path. A path-only condition
+# (migrations/meta/, contracts/meta/, crates/meta-rs/) would have MISSED the very
+# commit that motivated this: it added a `meta-rs` dependency in a Cargo.toml and
+# a `use meta_rs::…` in a service source file, and touched none of those
+# directories. Default-uncovered again (docs/standards/non-vacuity.md, NV-3).
+if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/(service_acl|meta)/|crates/meta-rs/'    || git diff --cached -U0 | grep -qE '^\+.*(meta-rs|meta_rs|contracts/meta|MetaWrite\(|meta_write)'; then
+  sh "$ROOT/scripts/service-acl-matrix-lint.sh"
+  sh "$ROOT/scripts/role-grant-validator.sh"
+  sh "$ROOT/scripts/pii-classify-lint.sh"
+fi
+
 # ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
 # must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
 # scripts/i18n_translate.py (gap-fill), never hand-edited into a locale, never a one-off translator.

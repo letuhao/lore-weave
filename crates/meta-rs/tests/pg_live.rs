@@ -94,10 +94,10 @@ async fn pool(dsn: &str) -> PgPool {
 fn write(pool: &PgPool, intent: MetaWriteIntent) -> Result<i64, meta_rs::MetaError> {
     let mut conn = PgConnectionWriter::new(pool.clone())?;
     let qb = PgQueryBuilder;
-    let outbox = PgOutboxAppender;
+    let al = allowlist();
+    let outbox = PgOutboxAppender::new(&al);
     let clock = WallClock;
     let uuid = RealUuid;
-    let al = allowlist();
     let mut cfg = MetaWriteConfig {
         connection: &mut conn,
         allowlist: &al,
@@ -435,4 +435,195 @@ async fn meta_write_cannot_update_an_append_only_binding() {
     )
     .expect_err("the table refuses UPDATE for every role");
     assert!(format!("{err}").contains("append-only"), "{err}");
+}
+
+// ── the adapter's UPDATE / DELETE / CAS paths ───────────────────────────────
+//
+// `reality_ruleset_binding` is append-only, so every test above can only ever
+// prove that an UPDATE is REFUSED. That leaves `build_update`, `build_delete`
+// and the CAS guard verified by string assertions alone — for an adapter whose
+// whole purpose is to serve every meta table, not just this one. These run
+// against `reality_registry`: allowlisted, writable, and the canonical
+// CAS-guarded state machine in the meta schema.
+
+fn registry_intent(reality: Uuid, status: &str) -> MetaWriteIntent {
+    let mut pk = ValueMap::new();
+    pk.insert("reality_id".into(), serde_json::json!(reality.to_string()));
+    let mut new_values = ValueMap::new();
+    for (k, v) in [
+        ("db_host", serde_json::json!("pg-shard-1.internal")),
+        ("db_name", serde_json::json!("loreweave_test_reality")),
+        ("status", serde_json::json!(status)),
+        ("locale", serde_json::json!("en-US")),
+        ("session_max_pcs", serde_json::json!(4)),
+        ("session_max_npcs", serde_json::json!(4)),
+        ("session_max_total", serde_json::json!(8)),
+        ("deploy_cohort", serde_json::json!(7)),
+    ] {
+        new_values.insert(k.into(), v);
+    }
+    MetaWriteIntent {
+        table: "reality_registry".into(),
+        operation: MetaWriteOp::Insert,
+        pk,
+        expected_before: ValueMap::new(),
+        new_values,
+        actor: actor(),
+        reason: String::new(),
+        request_context: Default::default(),
+    }
+}
+
+/// A matching CAS updates exactly the intended row; a stale CAS updates none
+/// and reports the conflict rather than succeeding quietly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_honours_the_cas_guard_and_hits_only_the_intended_row() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let target = Uuid::new_v4();
+    let bystander = Uuid::new_v4();
+    write(&pool, registry_intent(target, "provisioning")).expect("seed target");
+    write(&pool, registry_intent(bystander, "provisioning")).expect("seed bystander");
+
+    let mut ok = registry_intent(target, "active");
+    ok.operation = MetaWriteOp::Update;
+    ok.new_values = ValueMap::from_iter([("status".to_string(), serde_json::json!("active"))]);
+    ok.expected_before =
+        ValueMap::from_iter([("status".to_string(), serde_json::json!("provisioning"))]);
+    assert_eq!(write(&pool, ok.clone()).expect("matching CAS"), 1);
+
+    let after: String = sqlx::query_scalar("SELECT status FROM reality_registry WHERE reality_id=$1")
+        .bind(target)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(after, "active");
+
+    let untouched: String =
+        sqlx::query_scalar("SELECT status FROM reality_registry WHERE reality_id=$1")
+            .bind(bystander)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        untouched, "provisioning",
+        "the UPDATE reached a row it did not name — the WHERE is not pinning the PK"
+    );
+
+    // The same CAS again is now stale: the row moved to `active`.
+    let err = write(&pool, ok).expect_err("a stale CAS must not succeed");
+    assert!(
+        meta_rs::metawrite::is_concurrent(&err),
+        "a CAS miss must surface as ConcurrentStateTransition, not as a quiet \
+         zero-row success: {err}"
+    );
+}
+
+/// A CAS on a column that is ALSO the primary key must not retarget the row.
+/// Merging the two records made the CAS value overwrite the PK, so the UPDATE
+/// silently hit whatever row held the CAS value. This is the live half of
+/// `a_cas_on_a_pk_column_does_not_retarget_the_row`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cas_on_the_pk_column_cannot_reach_another_row() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let target = Uuid::new_v4();
+    let victim = Uuid::new_v4();
+    write(&pool, registry_intent(target, "provisioning")).expect("seed target");
+    write(&pool, registry_intent(victim, "provisioning")).expect("seed victim");
+
+    let mut evil = registry_intent(target, "active");
+    evil.operation = MetaWriteOp::Update;
+    evil.new_values = ValueMap::from_iter([("status".to_string(), serde_json::json!("frozen"))]);
+    // pk = target, but expected_before names the VICTIM's id for the same column.
+    evil.expected_before =
+        ValueMap::from_iter([("reality_id".to_string(), serde_json::json!(victim.to_string()))]);
+
+    // Unsatisfiable (`t.reality_id = target AND t.reality_id = victim`), so it
+    // must report a conflict — never touch the victim.
+    let err = write(&pool, evil).expect_err("no row can satisfy both");
+    assert!(meta_rs::metawrite::is_concurrent(&err), "{err}");
+
+    for (who, id) in [("victim", victim), ("target", target)] {
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM reality_registry WHERE reality_id=$1")
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(status, "provisioning", "{who} was modified");
+    }
+}
+
+/// `build_delete` removes the named row and only that one; a DELETE matching
+/// nothing is a conflict, not a silent success.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_removes_exactly_the_named_row() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let doomed = Uuid::new_v4();
+    let bystander = Uuid::new_v4();
+    write(&pool, registry_intent(doomed, "provisioning")).expect("seed");
+    write(&pool, registry_intent(bystander, "provisioning")).expect("seed");
+
+    let mut del = registry_intent(doomed, "provisioning");
+    del.operation = MetaWriteOp::Delete;
+    del.new_values = ValueMap::new();
+    del.reason = "live adapter test".into();
+    assert_eq!(write(&pool, del.clone()).expect("delete"), 1);
+
+    let gone: i64 = sqlx::query_scalar("SELECT count(*) FROM reality_registry WHERE reality_id=$1")
+        .bind(doomed)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(gone, 0);
+    let survived: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM reality_registry WHERE reality_id=$1")
+            .bind(bystander)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(survived, 1, "the DELETE reached a row it did not name");
+
+    let err = write(&pool, del).expect_err("deleting it twice must not be a quiet success");
+    assert!(meta_rs::metawrite::is_concurrent(&err), "{err}");
+}
+
+/// The topic reaches the ROW, not just the parser. `reality.ruleset.bound`
+/// declares none, so it must land NULL — the negative half; the positive half
+/// (`user.erased`) has no Rust writer to drive it and is covered by
+/// `a_declared_xreality_topic_survives_the_rust_parser` plus the Go appender's
+/// own live test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_event_with_no_declared_topic_lands_with_a_null_xreality_topic() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let reality = Uuid::new_v4();
+    write(
+        &pool,
+        bind_ruleset_intent(&reality.to_string(), 1, &"7".repeat(64), "created", actor()),
+    )
+    .expect("write");
+
+    let topic: Option<String> = sqlx::query_scalar(
+        "SELECT xreality_topic FROM meta_outbox WHERE payload->'pk'->>'reality_id' = $1",
+    )
+    .bind(reality.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("the outbox row exists");
+    assert_eq!(topic, None);
 }

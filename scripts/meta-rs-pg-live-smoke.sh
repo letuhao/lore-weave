@@ -60,6 +60,12 @@ psql_q postgres "CREATE DATABASE ${DB}" >/dev/null 2>&1 || { log "FAIL(setup): C
 # apply loop stops on the first error and names the file, rather than continuing
 # and failing later somewhere confusing.
 MIGRATIONS=(
+  # reality_registry is here for the ADAPTER, not for the binding: it is the
+  # only allowlisted, WRITABLE meta table in this set, so it is the only place
+  # build_update / build_delete / the CAS guard can be exercised against a real
+  # server. reality_ruleset_binding is append-only by design and can only ever
+  # prove that an UPDATE is refused.
+  001_reality_registry
   013_meta_write_audit
   027_meta_write_audit_scrub_version
   030_meta_outbox

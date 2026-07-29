@@ -82,3 +82,33 @@ fn the_parser_is_not_answering_yes_to_everything() {
          above is a parsed fact and not a parse failure"
     );
 }
+
+/// **`xreality_topic` is part of the SoT and the Rust parser silently dropped
+/// it.** `contracts/meta/allowlist.go` has read this field since the file was
+/// written; `EventBinding` here had no such field, and serde ignores unknown
+/// fields by default — so the two mirrors parsed the same bytes and disagreed
+/// about what was in them, with nothing failing on either side.
+///
+/// The consequence was invisible by construction: a Rust service writing a
+/// table whose event declares a topic would insert a `meta_outbox` row with
+/// `xreality_topic` NULL, the relay would forward it to the normal stream, and
+/// the cross-reality consumer would just stop receiving. No error, anywhere.
+///
+/// `pii_kek` is the one entry in the shipped SoT that declares a topic, so it
+/// is the only input that can prove the field survives the parse.
+#[test]
+fn a_declared_xreality_topic_survives_the_rust_parser() {
+    let a = shipped();
+    assert_eq!(
+        a.xreality_topic("user.erased"),
+        Some("xreality.user.erased"),
+        "the Rust mirror must see the same cross-reality topic Go's \
+         LoadXRealityTopics sees"
+    );
+    assert_eq!(
+        a.xreality_topic("reality.ruleset.bound"),
+        None,
+        "…and an event with no declared topic must resolve to None rather than \
+         to some default, or every event would look cross-reality"
+    );
+}
