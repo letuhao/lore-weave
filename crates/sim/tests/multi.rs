@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use sim::{input, Realm, TestDomain, TestPayload, TestPortable, TestRules, TestState};
-use sim_core::{Admitted, 
+use sim_core::{
+    RulesetEpoch,Admitted, 
     DiscardReason, DissolutionReason, EntityId, Fallback, Gen, InputId, Island, IslandId,
     IslandMessage, Lane, Outcome, Precondition, PreconditionKind, SeenWindow, Seq,
     StepStatus, Tick, Violation,
@@ -14,6 +15,7 @@ fn island(id: u64, seed: u64) -> Island<TestDomain> {
     Island::new(
         IslandId(id),
         seed,
+        RulesetEpoch(1),
         Arc::new(TestRules { max_counter: 1_000_000 }),
         SeenWindow::Unbounded,
         TestState::default(),

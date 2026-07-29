@@ -18,6 +18,7 @@ use commit_service::{
     Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, Ruleset, CombatState,
 };
 use sim_core::{
+    RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Precondition, PreconditionKind, Producer, QueuedInput, SeenWindow, Seq,
     StepStatus,
@@ -44,6 +45,7 @@ fn encounter(hero_hp: i64, foe_hp: i64) -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xE1CE,
+        RulesetEpoch(1),
         Arc::clone(&rules),
         SeenWindow::Unbounded,
         state,

@@ -91,7 +91,9 @@ async fn a_declared_quantity_survives_create_store_load_with_its_ordinals() {
     assert_eq!(created.quantities.ordinal_of("spirit_stone"), Some(1));
 
     // …and now the part B1 could not reach: out of the process and back.
-    let (loaded, digest) = load_reality(&reality, &store, &bindings).expect("loads");
+    let (loaded, lb) = load_reality(&reality, &store, &bindings).expect("loads");
+    let digest = ruleset_core::RulesetDigest::from_hex(&lb.digest).expect("64 hex");
+    assert_eq!(lb.epoch, 1, "the epoch must survive the round trip, not just the digest");
     assert_eq!(
         digest.to_hex(),
         binding.digest,

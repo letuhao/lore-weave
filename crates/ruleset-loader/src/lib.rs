@@ -345,13 +345,35 @@ pub fn load_reality(
     reality_id: &str,
     store: &RulesetStore,
     bindings: &dyn BindingStore,
-) -> Result<(Ruleset, ruleset_core::RulesetDigest), RealityError> {
-    let digest = bindings.digest_for(reality_id)?;
+) -> Result<(Ruleset, RealityBinding), RealityError> {
+    // THE WHOLE BINDING, not just its digest.
+    //
+    // This used to call `digest_for` and return `(Ruleset, RulesetDigest)`,
+    // throwing the EPOCH away — and `Island::new` then hardcoded epoch 1. So a
+    // reality bound at epoch 5 produced an island claiming epoch 1, and
+    // `RLS-I1` monotonicity was computed against 1: a redelivered switch to
+    // epoch 3 would be ACCEPTED, moving the island onto rules the reality had
+    // already moved past. The guard that exists to stop exactly that was
+    // defeated by the constructor.
+    //
+    // Two individually correct decisions - the binding carries the epoch, a
+    // fresh island starts at 1 - which together defeat a check. That is the
+    // NV-4 shape, and the reason the epoch now travels WITH the rules rather
+    // than being defaulted at the far end.
+    let binding = bindings
+        .load(reality_id)?
+        .ok_or_else(|| RealityError::Binding(BindingError::NotBound {
+            reality_id: reality_id.to_string(),
+        }))?;
+    let digest = ruleset_core::RulesetDigest::from_hex(&binding.digest).ok_or_else(|| {
+        RealityError::Binding(BindingError::BadDigest(binding.digest.clone()))
+    })?;
     match store.get(&digest)? {
-        Some(r) => Ok((r, digest)),
+        Some(r) => Ok((r, binding)),
         None => Err(RealityError::RulesetMissing {
             reality_id: reality_id.to_string(),
             digest: digest.to_hex(),
         }),
     }
 }
+

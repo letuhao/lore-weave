@@ -33,6 +33,7 @@ use commit_service::{
     Actor, CombatDomain, CombatEvent, Ruleset, CombatState, Vocabulary, COMBAT_V1_JSON,
 };
 use sim_core::{
+    RulesetEpoch,
     DiscardReason, EntityId, Island, IslandId, Lane, Outcome, PreconditionKind,
     SeenWindow, StepStatus,
 };
@@ -78,6 +79,7 @@ fn island() -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         SEED,
+        RulesetEpoch(1),
         Arc::clone(&rules),
         SeenWindow::Unbounded,
         state,

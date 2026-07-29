@@ -128,17 +128,6 @@ impl From<io::Error> for BindingError {
     }
 }
 
-fn parse_digest(hex: &str) -> Result<RulesetDigest, BindingError> {
-    if hex.len() != 64 || !hex.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
-        return Err(BindingError::BadDigest(hex.to_string()));
-    }
-    let mut out = [0u8; 32];
-    for (i, b) in out.iter_mut().enumerate() {
-        *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
-            .map_err(|_| BindingError::BadDigest(hex.to_string()))?;
-    }
-    Ok(RulesetDigest(out))
-}
 
 /// Where a reality's binding lives — **the seam this module was written to
 /// have**, and the file impl is now one implementation of it rather than the
@@ -205,7 +194,8 @@ pub trait BindingStore {
     /// the wrong rules.
     fn digest_for(&self, reality_id: &str) -> Result<RulesetDigest, BindingError> {
         match self.load(reality_id)? {
-            Some(b) => parse_digest(&b.digest),
+            Some(b) => RulesetDigest::from_hex(&b.digest)
+                .ok_or_else(|| BindingError::BadDigest(b.digest.clone())),
             None => Err(BindingError::NotBound {
                 reality_id: reality_id.to_string(),
             }),

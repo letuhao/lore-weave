@@ -117,7 +117,7 @@ pub fn prior_quantity_tables(
         // so it would be easy to fold them. Don't: `PriorRulesetMissing` tells
         // an operator to restore bytes, which is the wrong instruction when the
         // row itself is the damaged thing.
-        let digest = parse_hex(&b.digest).ok_or_else(|| {
+        let digest = RulesetDigest::from_hex(&b.digest).ok_or_else(|| {
             EpochSwitchError::Binding(BindingError::BadDigest(b.digest.clone()))
         })?;
         let rules = store.get(&digest)?.ok_or(EpochSwitchError::PriorRulesetMissing {
@@ -162,15 +162,4 @@ pub fn activate_reality_epoch(
     }
 
     Ok(bindings.activate_epoch(reality_id, digest, reason)?)
-}
-
-fn parse_hex(hex: &str) -> Option<RulesetDigest> {
-    if hex.len() != 64 {
-        return None;
-    }
-    let mut out = [0u8; 32];
-    for (i, b) in out.iter_mut().enumerate() {
-        *b = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
-    }
-    Some(RulesetDigest(out))
 }

@@ -71,13 +71,13 @@ TIER = [
 # moved to `tests/classification.rs` instead.
 ALLOWLIST: dict[str, tuple[int, str]] = {
     "crates/sim-core/src/island/mod.rs": (
-        616, "the island scheduler — the kernel's core loop. Was "
+        577, "the island scheduler — the kernel's core loop. Was "
              "`island.rs`; `Q0b B2a` made it a DIRECTORY module and moved the "
              "epoch switch to `island/epoch.rs`, a CHILD so it can still reach "
              "the parent's private fields (a sibling would have forced them "
              "`pub(crate)`, widening the kernel's mutable surface across the "
              "whole crate to satisfy a line count). The row does not grow: the "
-             "split paid for the addition rather than the allowlist absorbing it. `B2b` did it AGAIN — `island/registry.rs` — and the row went 650 -> 616 rather than up: two consecutive slices both paid in splits, which is what a ceiling is for"),
+             "split paid for the addition rather than the allowlist absorbing it. `B2b` did it AGAIN — `island/registry.rs` — and the row went 650 -> 616 rather than up: two consecutive slices both paid in splits, which is what a ceiling is for. Then the RLS-I1 audit fix did it a THIRD time - `new` joined `restore` in `island/lifecycle.rs`, where the two constructors belong within reading distance of each other - and the row went 616 -> 577"),
     "crates/sim-core/src/types.rs": (
         400, "the kernel's shared type vocabulary. `Q0b B2a` moved the ruleset "
              "vocabulary (digest, epoch, the two refusals) to `ruleset.rs` and "

@@ -55,7 +55,9 @@ fn editing_the_layer_file_after_creation_does_not_change_the_reality() {
     );
 
     // …and the reality does not care, because loading never looks at a layer.
-    let (loaded, digest) = load_reality("r-1", &e.store, &e.bindings).expect("loads");
+    let (loaded, binding) = load_reality("r-1", &e.store, &e.bindings).expect("loads");
+    let digest = ruleset_core::RulesetDigest::from_hex(&binding.digest).expect("64 hex");
+    assert_eq!(binding.epoch, 1, "load must surface the epoch, not just the digest");
     assert_eq!(
         loaded.combat.max_hit, 500,
         "a reality that already exists must run the rules it was CREATED with"
@@ -124,8 +126,10 @@ fn two_realities_on_one_node_keep_their_own_rules() {
     create_reality("r-gritty", &[gritty], &e.store, &e.bindings).unwrap();
     create_reality("r-heroic", &[heroic], &e.store, &e.bindings).unwrap();
 
-    let (g, dg) = load_reality("r-gritty", &e.store, &e.bindings).unwrap();
-    let (h, dh) = load_reality("r-heroic", &e.store, &e.bindings).unwrap();
+    let (g, gb) = load_reality("r-gritty", &e.store, &e.bindings).unwrap();
+    let dg = ruleset_core::RulesetDigest::from_hex(&gb.digest).unwrap();
+    let (h, hb) = load_reality("r-heroic", &e.store, &e.bindings).unwrap();
+    let dh = ruleset_core::RulesetDigest::from_hex(&hb.digest).unwrap();
     assert_eq!(g.combat.max_hit, 250);
     assert_eq!(h.combat.max_hit, 1_000_000);
     assert_ne!(dg, dh, "their events must be distinguishable by pin");
@@ -140,7 +144,8 @@ fn a_default_reality_is_still_bound_by_digest() {
     let (created, _) = create_reality("r-plain", &[], &e.store, &e.bindings).unwrap();
     assert_eq!(created, Ruleset::engine_default());
 
-    let (loaded, digest) = load_reality("r-plain", &e.store, &e.bindings).unwrap();
+    let (loaded, pb) = load_reality("r-plain", &e.store, &e.bindings).unwrap();
+    let digest = ruleset_core::RulesetDigest::from_hex(&pb.digest).unwrap();
     assert_eq!(loaded, Ruleset::engine_default());
     assert_eq!(digest, Ruleset::engine_default().digest());
     assert!(e.store.contains(&digest), "even the default is STORED, or a future replay cannot resolve it");

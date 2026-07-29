@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use sim::{input, Qi, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{Admitted, 
+use sim_core::{
+    RulesetEpoch,Admitted, 
     DetRng, DiscardReason, EntityId, Fallback, Island, IslandId, Lane, Outcome, Precondition,
     SeenWindow, StepStatus, Tick,
 };
@@ -23,6 +24,7 @@ fn island_with(
     Island::new(
         IslandId(1),
         seed,
+        RulesetEpoch(1),
         Arc::new(TestRules { max_counter }),
         window,
         st,

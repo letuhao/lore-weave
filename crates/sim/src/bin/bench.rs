@@ -6,7 +6,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use sim::{input, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{Admitted, EntityId, Fallback, Island, IslandId, Lane, SeenWindow, StepStatus};
+use sim_core::{
+    RulesetEpoch,Admitted, EntityId, Fallback, Island, IslandId, Lane, SeenWindow, StepStatus};
 
 fn main() {
     const N: u128 = 200_000;
@@ -14,6 +15,7 @@ fn main() {
     let mut isle: Island<TestDomain> = Island::new(
         IslandId(1),
         42,
+        RulesetEpoch(1),
         Arc::new(TestRules { max_counter: i64::MAX }),
         SeenWindow::TtlTicks(300), // cell-island shape: TTL window live
         TestState::default(),

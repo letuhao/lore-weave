@@ -23,6 +23,7 @@ use commit_service::{Actor, CombatDomain, Ruleset, CombatState};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
+    RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq, StepStatus,
 };
@@ -97,6 +98,7 @@ fn island() -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xC2D2,
+        RulesetEpoch(1),
         Arc::clone(&rules),
         // The TTL window is the realistic case: a recovered id stamped at a
         // PAST tick would expire on arrival and re-open the hole.

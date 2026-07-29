@@ -5,7 +5,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use sim::{input, Qi, TestDomain, TestPayload, TestRules, TestState};
-use sim_core::{Admitted, 
+use sim_core::{
+    RulesetEpoch,Admitted, 
     EntityId, Fallback, Island, IslandId, Lane, Precondition, SeenWindow,
     StepStatus,
 };
@@ -18,6 +19,7 @@ fn fresh(entities: u64) -> Island<TestDomain> {
     let mut isle = Island::new(
         IslandId(1),
         42,
+        RulesetEpoch(1),
         Arc::new(TestRules { max_counter: i64::MAX }),
         SeenWindow::TtlTicks(300),
         st,
@@ -171,6 +173,7 @@ fn main() {
         st.qi.insert(EntityId(99), i64::MAX / 2);
         let mut b = Island::new(
             IslandId(2), 43,
+            RulesetEpoch(1),
             Arc::new(TestRules { max_counter: i64::MAX }),
             SeenWindow::TtlTicks(300),
             st,

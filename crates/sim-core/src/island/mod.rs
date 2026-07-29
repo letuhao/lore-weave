@@ -12,7 +12,7 @@ use crate::domain::Domain;
 use crate::ingress::{Ingress, IngressItem, Lane};
 use crate::metrics::IslandMetrics;
 use crate::rng::DetRng;
-use crate::seen::{SeenSet, SeenWindow};
+use crate::seen::SeenSet;
 use crate::types::{
     Admitted,
     Class, DiscardReason, EntityId, Fallback, Gen, InputId,
@@ -85,45 +85,6 @@ pub struct Island<D: Domain> {
 }
 
 impl<D: Domain> Island<D> {
-    pub fn new(
-        id: IslandId,
-        seed: u64,
-        rules: Arc<D::Rules>,
-        seen_window: SeenWindow,
-        initial_state: D::State,
-    ) -> Self {
-        // RLS-A13 — DERIVED, never supplied. See `Domain::rules_digest`: a
-        // digest handed in beside the rules is a pair nothing forces to agree.
-        let digest = D::rules_digest(&rules);
-        Self {
-            id,
-            tick: Tick(0),
-            entities: BTreeMap::new(),
-            encounters: BTreeMap::new(),
-            ingress: Ingress::new(),
-            seen: SeenSet::new(seen_window),
-            state: initial_state,
-            rules,
-            digest,
-            // Doc 16 SS12: "assign epoch 1". Not 0 - `RulesetEpoch(0)` would be
-            // a sentinel meaning "unbound", and an island always runs SOME
-            // ruleset by construction (`new` takes it).
-            epoch: RulesetEpoch(1),
-            rng: DetRng::new(seed),
-            outcomes: Vec::new(),
-            externals: Vec::new(),
-            schedule: BTreeMap::new(),
-            buffered: Vec::new(),
-            currently_buffered: std::collections::BTreeSet::new(),
-            metrics: IslandMetrics::default(),
-            island_gen: Gen(0),
-            containment: true,
-            in_step: false,
-            poisoned: false,
-            quarantine: Vec::new(),
-        }
-    }
-
     /// Chaos-harness mode: panics PROPAGATE instead of poisoning (spec
     /// §10.4 — "do NOT catch in sim/debug builds"). Default is containment ON.
     pub fn set_containment(&mut self, on: bool) {

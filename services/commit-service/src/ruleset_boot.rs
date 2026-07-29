@@ -25,7 +25,8 @@
 
 use std::path::Path;
 
-use ruleset_core::{Ruleset, RulesetDigest};
+use ruleset_core::Ruleset;
+use ruleset_loader::RealityBinding;
 use ruleset_loader::{BindingStore, FileBindingStore, RulesetStore};
 use sqlx::postgres::PgPoolOptions;
 
@@ -115,8 +116,45 @@ impl RulesetBoot {
     /// binary hosts one channel, so "quarantine" is a clean refusal to start
     /// carrying the author's diagnostic; a node hosting forty realities marks
     /// this one `Unloadable` and carries on with the other thirty-nine.
-    pub fn load(&self, reality_id: &str) -> anyhow::Result<(Ruleset, RulesetDigest)> {
+    /// Returns the rules AND the binding — epoch included.
+    ///
+    /// It used to return `(Ruleset, RulesetDigest)`, and the caller then built
+    /// an island that defaulted to epoch 1. A reality durably bound at epoch 5
+    /// therefore ran on an island claiming epoch 1, and `RLS-I1` monotonicity
+    /// was computed against the wrong number. The epoch travels with the rules
+    /// now, so a caller cannot forget it.
+    pub fn load(&self, reality_id: &str) -> anyhow::Result<(Ruleset, RealityBinding)> {
         ruleset_loader::load_reality(reality_id, &self.store, self.bindings.as_ref())
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
+}
+
+/// Open the binding store, optionally create the reality, and load its rules
+/// **with its epoch**.
+///
+/// Lifted out of `spine.rs` wholesale when the audit fix pushed that binary past
+/// its ceiling. It is not a line-count dodge: the block was already the only
+/// part of the spine that knows what a *binding* is, and the epoch it returns is
+/// the value the whole `RLS-I1` chain hangs on — a caller that has to remember
+/// to read `binding.epoch` is a caller that can forget, which is precisely the
+/// bug this returns it to prevent.
+pub async fn boot_reality(
+    state_root: &str,
+    meta_url: Option<&str>,
+    allowlist: &str,
+    reality_id: &str,
+    create: bool,
+    ruleset_path: Option<&str>,
+) -> anyhow::Result<(std::sync::Arc<Ruleset>, sim_core::RulesetEpoch)> {
+    let boot = RulesetBoot::open(state_root, meta_url, allowlist).await?;
+    println!("BINDINGS <- {}", boot.provenance);
+    if create {
+        println!("{}", boot.create(reality_id, ruleset_path)?);
+    }
+    let (r, binding) = boot.load(reality_id)?;
+    println!(
+        "RULESET {} <- store (NOT re-resolved), reality epoch {}",
+        binding.digest, binding.epoch
+    );
+    Ok((std::sync::Arc::new(r), sim_core::RulesetEpoch(binding.epoch)))
 }

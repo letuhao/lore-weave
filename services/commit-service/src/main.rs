@@ -18,7 +18,7 @@ use commit_service::{
     Vocabulary, COMBAT_V1_JSON,
 };
 use loreweave_llm::{GatewayClient, ModelSource, ReasoningEffort};
-use sim_core::{
+use sim_core::{RulesetEpoch, 
     EntityId, Island, IslandId, Lane, SeenWindow, StepStatus,
 };
 use uuid::Uuid;
@@ -116,6 +116,11 @@ async fn main() -> anyhow::Result<()> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0x00C0_B0A7u64, // fixed seed — replay-exact runs
+        // A demo runner with no reality binding at all: it builds
+        // `engine_default` in-process, so epoch 1 is the truth here rather
+        // than a default that might be wrong. The spine, which DOES have a
+        // binding, reads the epoch from it.
+        RulesetEpoch(1),
         Arc::clone(&ruleset),
         SeenWindow::Unbounded,
         state,

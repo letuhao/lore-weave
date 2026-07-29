@@ -25,6 +25,7 @@ use commit_service::manager::{AdoptOutcome, Manager};
 use commit_service::{Actor, CombatDomain, CombatPayload, Ruleset, CombatState};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
+    RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq,
 };
@@ -52,6 +53,7 @@ fn build_island() -> Island<CombatDomain> {
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xFA1_10,
+        RulesetEpoch(1),
         Arc::clone(&rules),
         SeenWindow::TtlTicks(300),
         state,

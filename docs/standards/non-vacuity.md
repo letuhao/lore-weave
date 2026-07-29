@@ -12,7 +12,7 @@
 > returned **zero hits**.
 >
 > That is the repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing**. The
-> consequence is measurable: the same defect shipped **twenty-four times** (§4), each fixed locally in the
+> consequence is measurable: the same defect shipped **twenty-five times** (§4), each fixed locally in the
 > place it happened, because the next person had no page to read. This is that page.
 
 ---
@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — twenty-four occurrences, one caught by a test
+## 4. The register — twenty-five occurrences, one caught by a test
 
-Kept because the count is the argument. **Twenty-three of the twenty-four were found by a human or an agent
+Kept because the count is the argument. **Twenty-four of the twenty-five were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -157,6 +157,7 @@ that inspects the check itself can see it.
 | 22 | **`deferral-gate` satisfied its own requirement by existing.** It demands every tracked deferral be named by non-comment source; its own `PROSE_ONLY` dict keys are string literals in a `.py` file, so on the first run every prose-only row reported STALE — *"the id is now named by scripts/deferral-gate.py"*. A registry that mechanises a debt by declaring it has no mechanism | NV-2, self-inflicted | running it once, before believing it | fixed 2026-07-29 — the gate excludes its own file |
 | 23 | **a docstring is not a comment, and the stripper did not know.** The same gate stripped only LINE comments and certified **three** prose-only deferrals as MECHANISED: `D-META-LIVE-SMOKE-NOT-IN-CI` + `D-PUBLISHER-SMOKE-NOT-IN-CI` (whose sole non-`#` mention in the tree is `gate-wiring-gate`'s **module docstring**, where they are stated as a scope *limit*) and `D-GAME-WS-EDGE-CONTROLS` (three **JSDoc** headers). The first version had shipped a comment calling block comments "a known and stated limit" — the limit was the bug | NV-3 | bite-testing the discriminator instead of trusting it | fixed 2026-07-29 — `_strip` removes triple-quoted and `/* */` spans; the self-test reds if either arm is removed |
 | 24 | **the two-segment id predicate could not see `D-START`.** Requiring `D-<WORD>-<WORD>` is what keeps `READ-ONLY`/`LOAD-BEARING` out (the naive version reported `D-ONLY` 54 times), but single-segment ids exist on the platform track and would have been **silently skipped inside a governed block** | NV-3 | comparing strict vs loose predicates on the real file | fixed 2026-07-29 — the shape is now ENFORCED: an unparseable backticked `D-…` inside a block FAILS with a rename instruction, so the hole is loud instead of confessed |
+| 25 | **`RLS-I1` monotonicity was computed against a default.** `load_reality` returned `(Ruleset, RulesetDigest)` — reading the binding and **throwing its EPOCH away** — and `Island::new` then hardcoded `RulesetEpoch(1)`. A reality durably bound at epoch 5 ran on an island claiming epoch 1, so a redelivered switch to epoch **3** was `3 > 1` and **accepted**, moving the island onto rules the reality had already moved past. The guard written to prevent exactly that, defeated by the constructor | NV-4 | auditing `B2` against `B1b` immediately after both shipped — *"what connects the two epoch counters?"*, answer: **nothing** | fixed 2026-07-29 — the epoch travels WITH the rules (`load_reality` returns the binding) and `Island::new` takes it as a REQUIRED parameter, so the hole is a compile error at all 20 call sites |
 | 18 | migration 033's append-only trigger was an ORIGIN trigger, so `session_replication_role = replica` (`pg_restore --disable-triggers`, logical-replication apply) skipped it — the UPDATE rewrote a bound digest and the DELETE removed the epoch | NV-3 | probing the guard in the one mode that turns triggers off, before writing the test that asserts it | fixed 2026-07-29 (`Q1 B2a`) — `ENABLE ALWAYS` |
 
 **Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest

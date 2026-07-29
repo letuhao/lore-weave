@@ -1,4 +1,11 @@
-//! The rebuild boundary — `checkpoint`, `restore`, `dissolve`, `is_quiescent`.
+//! Construction and the rebuild boundary — `new`, `checkpoint`, `restore`,
+//! `dissolve`, `is_quiescent`.
+//!
+//! `new` joined them when the RLS-I1 audit fix pushed `mod.rs` past its ceiling,
+//! and the seam is better for it: everything here answers *"how does this island
+//! come to be, and how does it stop being this island"*, none of it is on the
+//! step path, and `new` and `restore` are the two constructors — they belong
+//! within reading distance of each other.
 //!
 //! A CHILD module of `island` for the same reason as `epoch`: it reads the
 //! parent's private fields directly, and a sibling would have forced them
@@ -18,9 +25,63 @@ use crate::checkpoint::{Dissolution, IslandCheckpoint};
 use crate::domain::Domain;
 use crate::ingress::{Ingress, IngressItem, Lane};
 use crate::metrics::IslandMetrics;
-use crate::types::{DissolutionReason, QueuedInput, RulesetMismatch};
+use crate::rng::DetRng;
+use crate::seen::{SeenSet, SeenWindow};
+use crate::types::{
+    DissolutionReason, Gen, IslandId, QueuedInput, RulesetEpoch, RulesetMismatch, Tick,
+};
 
 impl<D: Domain> Island<D> {
+    /// `epoch` is REQUIRED, and that is a correction rather than a shape.
+    ///
+    /// It used to default to `RulesetEpoch(1)`, and `load_reality` used to
+    /// throw the binding's epoch away — so a reality durably bound at epoch 5
+    /// produced an island claiming epoch 1, and `RLS-I1` monotonicity was
+    /// computed against 1. A redelivered switch to epoch 3 would then be
+    /// ACCEPTED, moving the island onto rules the reality had already moved
+    /// past: the guard defeated by the constructor.
+    ///
+    /// Both decisions were individually correct — the binding carries the
+    /// epoch, a brand-new reality starts at 1 — which is the `NV-4` shape and
+    /// the reason this is a parameter now instead of a default. A caller that
+    /// genuinely has a fresh reality passes `RulesetEpoch(1)` and says so.
+    pub fn new(
+        id: IslandId,
+        seed: u64,
+        epoch: RulesetEpoch,
+        rules: Arc<D::Rules>,
+        seen_window: SeenWindow,
+        initial_state: D::State,
+    ) -> Self {
+        // RLS-A13 — DERIVED, never supplied. See `Domain::rules_digest`: a
+        // digest handed in beside the rules is a pair nothing forces to agree.
+        let digest = D::rules_digest(&rules);
+        Self {
+            id,
+            tick: Tick(0),
+            entities: BTreeMap::new(),
+            encounters: BTreeMap::new(),
+            ingress: Ingress::new(),
+            seen: SeenSet::new(seen_window),
+            state: initial_state,
+            rules,
+            digest,
+            epoch,
+            rng: DetRng::new(seed),
+            outcomes: Vec::new(),
+            externals: Vec::new(),
+            schedule: BTreeMap::new(),
+            buffered: Vec::new(),
+            currently_buffered: std::collections::BTreeSet::new(),
+            metrics: IslandMetrics::default(),
+            island_gen: Gen(0),
+            containment: true,
+            in_step: false,
+            poisoned: false,
+            quarantine: Vec::new(),
+        }
+    }
+
     // ─── S2 checkpoint / restore / dissolve (spec §10.1 / §10.5) ───
 
     /// Snapshot everything needed to rebuild a stepping-identical island.

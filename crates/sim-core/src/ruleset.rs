@@ -113,6 +113,31 @@ impl RulesetDigest {
     /// producers write the same rules under different keys and nothing matches.
     /// Hand-rolled rather than a hex crate: 8 lines, and `sim-core` takes no
     /// runtime dependencies.
+    /// The inverse of [`RulesetDigest::to_hex`]. `None` unless the input is
+    /// exactly 64 LOWERCASE hex characters.
+    ///
+    /// It lives here because it had shipped THREE TIMES by the time anyone
+    /// looked: `binding::parse_digest`, `epoch::parse_hex`, and a third copy
+    /// added the same afternoon. Two of the three accepted upper-case and one
+    /// did not, which is the drift a duplicated parser always produces — and
+    /// the one spelling this value has outside Rust is lowercase (the DB
+    /// `CHAR(64)`, the wire schema's `^[0-9a-f]{64}$`). Rejecting upper-case is
+    /// therefore the correct strictness, not an oversight.
+    pub fn from_hex(hex: &str) -> Option<Self> {
+        if hex.len() != 64 {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        for (i, b) in out.iter_mut().enumerate() {
+            let pair = hex.get(i * 2..i * 2 + 2)?;
+            if !pair.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
+                return None;
+            }
+            *b = u8::from_str_radix(pair, 16).ok()?;
+        }
+        Some(Self(out))
+    }
+
     pub fn to_hex(&self) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(64);

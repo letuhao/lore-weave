@@ -243,3 +243,33 @@ fn a_corrupt_digest_in_the_history_is_a_binding_error_not_a_missing_ruleset() {
         "a corrupt row must not be reported as missing bytes: {err}"
     );
 }
+
+/// **The bug this test exists for, found by auditing `B2` against `B1b`.**
+///
+/// `load_reality` used to return only `(Ruleset, RulesetDigest)`, so the
+/// reality's EPOCH — durably recorded in the binding — was thrown away, and the
+/// caller then built an island that defaulted to epoch 1. A reality bound at
+/// epoch 5 therefore ran on an island claiming epoch 1, and `RLS-I1`
+/// monotonicity was computed against 1: a redelivered switch to epoch 3 would be
+/// ACCEPTED, moving the island onto rules the reality had already moved past.
+///
+/// Two individually correct decisions — the binding carries the epoch, a fresh
+/// island starts at 1 — which together defeat a check. The `NV-4` shape, and
+/// the reason the epoch now travels WITH the rules.
+#[test]
+fn loading_a_reality_surfaces_the_epoch_not_just_the_digest() {
+    let f = fixture("loadepoch");
+    f.create(&["qi"]);
+    f.switch(&["qi", "karma"]).expect("2");
+    f.switch(&["qi", "karma", "fire"]).expect("3");
+
+    let (_rules, binding) =
+        ruleset_loader::load_reality(R1, &f.store, &f.bindings).expect("loads");
+    assert_eq!(
+        binding.epoch, 3,
+        "load returned the wrong epoch — an island built from this would compute \
+         RLS-I1 monotonicity against the wrong number, and a redelivered switch to \
+         an epoch BETWEEN this and the real one would be accepted"
+    );
+    assert_eq!(binding.digest, f.bindings.load(R1).unwrap().unwrap().digest);
+}

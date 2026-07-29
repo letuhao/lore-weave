@@ -29,6 +29,7 @@ use std::sync::Arc;
 use std::thread;
 
 use sim_core::{
+    RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq, StepStatus,
 };
@@ -53,6 +54,7 @@ fn island_for(id: u64) -> Island<TestDomain> {
         // Seed derived from the island id: distinct streams per island, but
         // reproducible across runs and across thread counts.
         0xC0FFEE_u64.wrapping_mul(id + 1),
+        RulesetEpoch(1),
         Arc::new(TestRules { max_counter: MAX_COUNTER }),
         SeenWindow::Unbounded,
         TestState::default(),

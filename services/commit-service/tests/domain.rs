@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use commit_service::{Actor, CombatDomain, CombatEvent, CombatPayload, Ruleset, CombatState};
 use sim_core::{
+    RulesetEpoch,
     Class, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane, Outcome, Producer,
     QueuedInput, SeenWindow, Seq, StepStatus,
 };
@@ -18,6 +19,7 @@ fn island() -> Island<CombatDomain> {
     let mut isle = Island::new(
         IslandId(1),
         7,
+        RulesetEpoch(1),
         Arc::clone(&rules),
         SeenWindow::Unbounded,
         state,
@@ -170,6 +172,7 @@ fn an_island_reports_the_digest_of_the_rules_it_runs() {
     let isle_default: Island<CombatDomain> = Island::new(
         IslandId(1),
         7,
+        RulesetEpoch(1),
         Arc::new(Ruleset::engine_default()),
         SeenWindow::Unbounded,
         CombatState::default(),
@@ -177,6 +180,7 @@ fn an_island_reports_the_digest_of_the_rules_it_runs() {
     let isle_a: Island<CombatDomain> = Island::new(
         IslandId(2),
         7,
+        RulesetEpoch(1),
         Arc::new(a.clone()),
         SeenWindow::Unbounded,
         CombatState::default(),
@@ -220,6 +224,7 @@ fn restoring_under_different_rules_is_refused() {
     let isle: Island<CombatDomain> = Island::new(
         IslandId(9),
         7,
+        RulesetEpoch(1),
         Arc::clone(&rules_a),
         SeenWindow::Unbounded,
         CombatState::default(),

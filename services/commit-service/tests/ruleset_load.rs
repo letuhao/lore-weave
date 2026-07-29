@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use commit_service::{CombatDomain, CombatState, Ruleset};
 use ruleset_loader::{parse_layer, resolve, Layer, LoadError};
-use sim_core::{Island, IslandId, SeenWindow};
+use sim_core::{
+    RulesetEpoch,Island, IslandId, SeenWindow};
 
 /// V7 — the file's rules reach the island's pin, and the LAWS read them.
 #[test]
@@ -23,6 +24,7 @@ fn a_loaded_file_changes_both_the_pin_and_the_play() {
     let isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         7,
+        RulesetEpoch(1),
         Arc::clone(&rules),
         SeenWindow::Unbounded,
         CombatState::default(),

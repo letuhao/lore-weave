@@ -96,6 +96,7 @@ fn island(tag: u8) -> Island<EpochDomain> {
     Island::new(
         IslandId(1),
         7,
+        RulesetEpoch(1),
         Arc::new(EpochRules { tag }),
         SeenWindow::Unbounded,
         EpochState::default(),
@@ -441,4 +442,28 @@ fn a_switch_from_a_superseded_generation_is_discarded() {
         .outcomes()
         .iter()
         .any(|(_, o)| matches!(o, Outcome::Discarded { reason: DiscardReason::Superseded })));
+}
+
+/// The kernel half of the same finding: an island built for a reality already
+/// past epoch 1 must START there, or `RLS-I1` is computed against the wrong
+/// number and an intermediate replayed switch is accepted.
+#[test]
+fn an_island_starts_at_the_epoch_it_is_given_not_at_one() {
+    let mut isl = Island::<EpochDomain>::new(
+        IslandId(1),
+        7,
+        RulesetEpoch(5),
+        rules(5),
+        SeenWindow::Unbounded,
+        EpochState::default(),
+    );
+    assert_eq!(isl.epoch, RulesetEpoch(5));
+
+    // The switch a stale redelivery would carry. Accepted only by an island
+    // that wrongly believes it is at epoch 1.
+    let err = isl
+        .activate_epoch(RulesetEpoch(3), rules(3))
+        .expect_err("epoch 3 is BEHIND the reality's epoch 5");
+    assert!(matches!(err, EpochSwitchRefused::NotMonotonic { .. }), "{err}");
+    assert_eq!(isl.digest, EpochDomain_digest(5), "the island moved backwards");
 }
