@@ -116,7 +116,11 @@ async def audit_promises(
             input={
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
-                "response_format": {"type": "text"}, "temperature": 0.0,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "promise_audit", "schema": _AUDIT_SCHEMA},
+                },
+                "temperature": 0.0,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": "promise_audit"}, trace_id=trace_id,
@@ -142,6 +146,27 @@ async def audit_promises(
 # dropped on truncated arcs.
 
 _VERDICTS = ("paid", "progressing", "abandoned", "absent")
+
+#: `verdict` closed at the decoder. An eval that mis-labels a verdict does not merely lose a row —
+#: it reports a DIFFERENT number, and the whole point of an audit is that its counts are trustworthy.
+_AUDIT_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "promises": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "verdict": {"type": "string", "enum": list(_VERDICTS)},
+                },
+                "required": ["text", "verdict"],
+                "additionalProperties": True,
+            },
+        },
+    },
+    "required": ["promises"],
+}
 
 
 def build_extract_messages(premise: str, plan_text: str, source_language: str) -> tuple[str, str]:

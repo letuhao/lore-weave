@@ -42,6 +42,7 @@ from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.adaptive_k import adaptive_k
 from app.engine.critic import parse_critique_json
+from app.engine.llm_json import call_json, enum_of
 
 logger = logging.getLogger(__name__)
 
@@ -433,29 +434,59 @@ async def _llm_json(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     system: str, user: str, max_tokens: int, trace_id: str | None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    schema: dict[str, Any] | None = None, schema_name: str = "decompose",
 ) -> str | None:
     """One blocking chat completion returning the raw content, or None on
-    error / non-completion / empty (the caller degrades)."""
-    try:
-        job = await llm.submit_and_wait(
-            user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
-            input={
-                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": user}],
-                "response_format": {"type": "text"}, "temperature": 0.4,
-                "max_tokens": max_tokens, **_NO_THINK,
+    error / non-completion / empty (the caller degrades).
+
+    `schema` is enforced by the DECODER where the provider supports it (see `engine/llm_json.py`),
+    and falls back to free-form where it does not — so it can only ever add constraint, never remove
+    a code path the caller already relies on."""
+    return await call_json(
+        llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=max_tokens, schema=schema, schema_name=schema_name, temperature=0.4,
+        job_meta={"usage_purpose": "prose_plan", "extractor": "decompose"},
+        trace_id=trace_id, cancel_check=cancel_check,
+    )
+
+
+def chapter_map_schema(beat_keys: set[str], n_chapters: int) -> dict[str, Any] | None:
+    """The beat assignment, with the book's OWN beat vocabulary as a decoder-enforced enum.
+
+    This is the highest-value site in the service for enforcement. `parse_chapter_map` accepts a beat
+    only if it is in `beat_keys` and silently drops anything else — which is exactly how
+    D-PLANFORGE-BEATS-UNWIRED discarded 100% of the model's structural output while the checkpoint
+    reported a healthy arc. An enum makes the invalid beat unemittable rather than emitted-and-lost.
+
+    `None` when the vocabulary is empty: a closed set with nothing in it is not a constraint, it is
+    an unsatisfiable grammar, and the empty-vocabulary case already has its own loud warning."""
+    if not beat_keys:
+        return None
+    return {
+        "type": "object",
+        "properties": {
+            "chapters": {
+                "type": "array", "minItems": 1, "maxItems": max(1, n_chapters),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer", "minimum": 0},
+                        "beat": enum_of(sorted(beat_keys)),
+                        "intent": {"type": "string"},
+                    },
+                    "required": ["index", "beat", "intent"],
+                    # CLOSED, and not merely for tidiness: a grammar cannot stop early in a valid
+                    # place, so an open shape that invites extra fields turns a tight token budget
+                    # into guaranteed-invalid output (live-observed as an unterminated string at a
+                    # too-small budget). `parse_chapter_map` reads exactly these three fields, so
+                    # anything else is generation spent on something nobody will read.
+                    "additionalProperties": False,
+                },
             },
-            job_meta={"usage_purpose": "prose_plan", "extractor": "decompose"}, trace_id=trace_id,
-            cancel_check=cancel_check,
-        )
-    except LLMError as exc:
-        logger.warning("decompose LLM error: %s", exc)
-        return None
-    if job.status != "completed":
-        logger.info("decompose status=%s → degraded", job.status)
-        return None
-    content = extract_judge_content(job.result)
-    return content if content.strip() else None
+        },
+        "required": ["chapters"],
+    }
 
 
 async def decompose(
@@ -527,7 +558,9 @@ async def decompose(
     sys1, usr1 = build_chapter_map_messages(premise, beats, chapters, source_language)
     l1 = await _llm_json(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                          system=sys1, user=usr1, max_tokens=l1_max_tokens, trace_id=trace_id,
-                         cancel_check=cancel_check)
+                         cancel_check=cancel_check,
+                         schema=chapter_map_schema(beat_keys, len(chapters)),
+                         schema_name="chapter_map")
     if l1 is not None:
         mapped, unmapped = parse_chapter_map(l1, chapters, beat_keys)
     else:

@@ -43,6 +43,27 @@ _NO_THINK = {
 WorldKind = Literal["location", "faction", "concept"]
 WORLD_KINDS: tuple[str, ...] = ("location", "faction", "concept")
 
+#: The proposal shape, with `kind` closed over WORLD_KINDS. Loose on the descriptive fields — the
+#: point is to close the ENUM the parser already filters on, not to dictate the prose beside it.
+_WORLD_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "kind": {"type": "string", "enum": list(WORLD_KINDS)},
+                },
+                "required": ["name", "kind"],
+                "additionalProperties": True,
+            },
+        },
+    },
+    "required": ["items"],
+}
+
 #: A long-running book's world can be large; the principals are what stop re-invention. Capped
 #: PER KIND, not overall: a book with ninety locations and three factions must still show both.
 _MAX_KNOWN_WORLD = 40
@@ -298,7 +319,12 @@ async def propose_world(
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                "response_format": {"type": "text"},
+                # WORLD_KINDS enforced at the DECODER. The parser already drops an out-of-set
+                # kind; a grammar makes it unemittable, so a dropped entry stops being invisible.
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "world_plan", "schema": _WORLD_SCHEMA},
+                },
                 "temperature": 0.4,
                 "max_tokens": max_tokens,
                 **_NO_THINK,
