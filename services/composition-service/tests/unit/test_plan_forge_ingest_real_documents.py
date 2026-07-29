@@ -271,6 +271,84 @@ def test_a_hash_document_is_UNCHANGED_by_the_level_rule():
     assert [c["name"] for c in chars] == ["Lâm Uyên", "Tô Thanh Dao", "Lâm Trạch"]
 
 
+_TITLE_THEN_SECTIONS = """# The Weight of a Thousand Years
+
+A tragic epic about a cycle of betrayal.
+
+## Premise
+A woman is murdered by the man she loves on their wedding day.
+
+## Character: The Protagonist
+- **Name:** Seraphine
+- She returns through a cycle of resurrection.
+
+## Magic System: The Law of Displacement
+Power taken from one soul must be paid for by another.
+
+## Plot Structure
+Three cycles, each ending worse than the last.
+"""
+
+
+def test_a_lone_TITLE_does_not_swallow_the_whole_document():
+    """The single most ordinary markdown convention there is, and it read as nothing.
+
+    `# Title` then `## sections` — measured 2026-07-29 over every distinct `source_markdown` ever
+    submitted to `plan_run`, **5 of 17** real documents are written this way. "Shallowest level
+    present" found one heading at level 1 and read the entire document as ONE section named after its
+    own title; four of the five then produced a completely empty spec. The Mị Đế failure again, four
+    more times, still silent.
+    """
+    doc = ingest_markdown(_TITLE_THEN_SECTIONS)
+    assert [s["title"] for s in doc["sections"]] == [
+        "Premise", "Character: The Protagonist", "Magic System: The Law of Displacement",
+        "Plot Structure",
+    ], "the document title was read as the only section"
+    spec = propose_spec(doc)
+    assert [c["name"] for c in spec["layers"]["characters"]] == ["Seraphine"]
+    assert spec["arcs"], "a document with a plot structure produced no arc"
+
+
+def test_a_lone_section_with_a_lone_child_is_NOT_a_title():
+    """The counter-case that kills the simpler rule.
+
+    Two real documents are `# 1. Arc Overview` / `## <one arc>` / `### <many scenes>`. "Shallowest
+    level with ≥2 headings" descends past both to level 3 and shatters the arc the extractor reads.
+    Descent must stop at the first level that has siblings, never run to the deepest.
+    """
+    doc = ingest_markdown(
+        "# 1. Arc Overview\n## The Salt Ledger\n### The Tide Clerk\nMira audits the ledger.\n"
+        "### The Second Signature\nA second hand signed the manifest.\n"
+    )
+    assert [s["title"] for s in doc["sections"]] == ["Arc Overview"]
+    spec = propose_spec(doc)
+    assert len(spec["arcs"]) == 1 and len(spec["events"]) == 2
+
+
+def test_an_EMPTY_read_of_a_substantial_document_says_so():
+    """The hole in the honesty block: it reported what it could not CLASSIFY, never what it could not
+    EXTRACT.
+
+    Live case (`plan_run` checksum `02a9dc6c…`, 2,517 chars): one section matched a known kind, so
+    `unclassified` was empty and the note was empty — while the spec came back with 0 characters,
+    0 mechanics, 0 variables, 0 arcs, 0 events. A total failure reported as a clean read, which is
+    exactly the silent-degrade class this block exists to close.
+    """
+    body = "Some prose that names no character and states no rule.\n" * 20
+    doc = ingest_markdown(f"# Magic System\n{body}")
+    spec = propose_spec(doc)
+    unread = spec["meta"]["ingest_unread"]
+    assert unread.get("empty_read") is True
+    assert "FAILED read" in unread["note"]
+
+
+def test_a_SHORT_document_that_reads_as_nothing_is_not_called_a_failure():
+    """The guard must not cry wolf. A two-line note is plausibly just short, and a signal that fires
+    on every small document is one nobody reads — the same reason `front_matter` exists."""
+    spec = propose_spec(ingest_markdown("# Idea\nSomething about a ship.\n"))
+    assert not spec["meta"]["ingest_unread"].get("empty_read")
+
+
 def test_the_KIND_VOCABULARY_does_not_generalise_and_the_guard_says_so():
     """The decisive generalisation result, pinned so it is not quietly "fixed" by adding grimdark
     words to the map.

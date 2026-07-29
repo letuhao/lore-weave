@@ -1,5 +1,104 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⚠️ HANDOFF TO THE MOTIF-I18N TRACK — two files of mine are sitting in yours
+
+**The motif i18n refactor is being written in parallel, right now** — `9db0231e6` landed 15:10, then
+`docs/specs/2026-07-29-motif-i18n.md` (15:40), `app/db/motif_i18n_migrate.py` (15:47),
+`app/motif_i18n.py` (15:48), all during this session and none of it mine. Its **53 failing tests are
+the expected mid-refactor state**, not rot: static signature mismatches only
+(`MotifRetriever.retrieve() got an unexpected keyword argument 'language'` — now `display_language`;
+`_motif_id() takes 1 positional argument but 2 were given`). No DB involved, nothing in `plan_forge`
+touches them. **Excluding that track: 2,612 pass, 0 fail.** I did not touch its design.
+
+**But two things I wrote live inside it and are NOT committed — absorb them or you lose them:**
+
+- **`migrate.py`, 11 of its 94 added lines — a crash-loop fix.** The refactor renames
+  `motif.language` → `original_language` (line 929, inside `_MOTIF_SCHEMA_SQL`), and four legacy
+  index-repair statements *after* it still said `language`. That block is ONE `conn.execute`: the
+  rename succeeded, the first stale index failed, the transaction rolled back — restoring the old
+  column, so the next boot failed identically. **composition-service crash-looped and would not
+  serve.** Invisible until a rebuild, because the running containers were on an image predating the
+  rename. `motif_i18n_migrate.run_motif_i18n` does NOT cover this — it runs at line 2278, long after
+  the schema SQL, so the inline fix is still load-bearing.
+- **`tests/unit/test_migrate_rename_consistency.py`** (untracked) — the static guard for the whole
+  class: a renamed column referenced by its old name later in the same transaction. Verified against
+  the real defect, not just synthetically. It asserts a rename exists, so it is only meaningful
+  committed **with** this refactor.
+
+**A trap this session hit, worth not repeating:** the 10 `*_vi.json` seed packs are *moved* into
+`seed_motif_packs/translations/vi/`, and the destination is still untracked while the source deletions
+are tracked. Any commit that stages broadly picks up the delete side without the add side. I did
+exactly that and had to amend it out — and my own check missed it because I grepped `git status` for
+`^[AM]`, which filters out `D`.
+
+## ✅ POC CLEANUP — every bug the material-read POC surfaced is closed (2026-07-29, M)
+
+Verification-before-implementation, at the PO's instruction. Nothing was implemented on top; the
+existing engine was cleaned so post-implementation quality checks start from a true baseline.
+
+**The measurement that drove it.** Every distinct `source_markdown` ever submitted to `plan_run` — 17
+real documents ≥1,000 chars — run through the live rules path. Not an independent *corpus* (only one
+is by a non-agent author, the Mị Đế document) but a genuine **shape-diversity** arm, which is the axis
+the format-bound bug class actually lives on.
+
+| | before | after |
+|---|---|---|
+| documents yielding an EMPTY read | **6 / 17** | **1 / 17** (a paste of an LLM's own monologue) |
+| **SILENT** empty reads | **6** | **0** |
+
+**Four bugs closed, each measured, not inferred:**
+
+1. **A lone document title swallowed the whole document.** `# Title` then `## sections` — the most
+   ordinary markdown convention there is — collapsed to ONE section named after the title, because
+   the level rule was "shallowest heading present". **5 of 17** documents; four produced a completely
+   empty spec. Now the level descends past a lone heading when the level below holds ≥2 siblings, and
+   **stops at dotted `N.M` sub-numbering** (the golden regression caught that: `# 1. Nhân Vật Chính` /
+   `## 1.1 …` is a character sheet, and descending shattered the protagonist's profile). My first
+   attempt asked the kind map instead and got `# Story Premise: …` wrong — "premise" is vocabulary, so
+   a title classified as a section. Structure is decided by heading SHAPE, never by the advisory map.
+2. **`post_normalize_spec` welded one novel into every book — and deleted authored text.** It renamed
+   any placeholder protagonist to the Vietnamese literal `Nữ chính`, and REPLACED a mechanic's rules
+   with two fixed Vietnamese sentences whenever they were "not Vietnamese enough". Verified live
+   turning `["Partners share body heat…", "Resonance decays with distance…"]` into Mị Đế's cultivation
+   rules. Now identity. Nothing depended on the rename — placeholder *detection* already lives in
+   `existing_state._PLACEHOLDER_NAMES`.
+3. **The engine INVENTED a protagonist.** `_pad_traits_from_analyze` appended a character named
+   `Nữ chính` wearing the analyze step's anchors whenever the model returned none — so an English
+   premise and a paste of an LLM monologue both came back holding a character neither document
+   mentions. **I first recorded that as the model hallucinating; it was this line.** absent ≠ invented
+   now holds on the deterministic path too, where no model is in the loop to decline.
+4. **The honesty block had a hole.** It reported what it could not CLASSIFY, never what it could not
+   EXTRACT: a 2,517-char document whose single section matched a known kind reported a clean read
+   while producing 0 cast, 0 arcs, 0 events. `_note_empty_read` now says so. Mechanics/variables are
+   deliberately NOT counted — a lone `# Magic System` yields a stub mechanic, and counting it is
+   exactly what let the live case through.
+
+**The gate that let #2 and #3 ship** — `test_prompts_defixtured.py` bans the literal `Nữ chính`, but
+scanned `prompts.py` only. Widened to the deterministic engine source via AST (docstrings and comments
+excluded, so documenting the bug is fine and emitting it is not). **It caught #3 on its first run** —
+a second site I had not found by hand.
+
+**A live-run failure fixed on the way.** Regenerate-on-degenerate retried exactly ONCE and then parsed
+the result with nothing around it. On the author's real 4,278-char document: 31,401 chars → retry
+26,420 → both repetition loops → the whole propose died on a bare `ValueError: unbalanced JSON braces`.
+Now a bounded ladder (2 regenerations) that **escalates the repetition penalty**, not just temperature
+— the only lever that targets a loop, since a grammar cannot forbid one inside a string — and a final
+failure raises an actionable `PlanForgeLLMError`. Re-measured live: 3/3 documents hit a loop, 3/3
+recovered on the first regeneration, 0 repairs.
+
+**Head-to-head, 10 real documents, two local models.** LLM ≥ rules on **10/10**, strictly better on
+**8/10**, tied on 1 — and the tie is on the parser's own template. Even where rules does best (10
+events) it extracts **zero characters** while the LLM matches the events and recovers the cast.
+**There is no document shape where the rules path wins.**
+
+**Evidence:** 2,612 pass / 0 fail outside the motif track · provider-gate green · both containers
+rebuilt and verified to match source · live re-measurement on the rebuilt async path.
+
+**Still NOT done — the actual next step:** the default is still `mode="rules"`
+(`app/mcp/server.py` `plan_propose_spec`), i.e. the path measured not to generalise, and it is 251 of
+281 live runs. Flipping it was deliberately held until this cleanup landed, because flipping first
+would have amplified bugs #2 and #3 onto every author.
+
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 
 **Measured, not inferred, and it had already happened on the real book.** This project's Mị Đế

@@ -529,6 +529,51 @@ def _unclassified_notes(doc: dict[str, Any]) -> list[dict[str, str]]:
 
 # ── the spec ─────────────────────────────────────────────────────────────────────────────────────
 
+#: A document with less material than this is plausibly just short, so an empty read is not evidence
+#: of anything. Above it, an empty read is a failed read. The real corpus puts the smallest genuine
+#: planning document at ~1,100 chars and every silent-empty failure at 1,122–2,687.
+_EMPTY_READ_MIN_CHARS = 600
+
+
+def _note_empty_read(spec: dict[str, Any], doc: dict[str, Any]) -> None:
+    """Say so when a substantial document yielded NO structure — the hole in the honesty block.
+
+    `ingest._unread` reports sections it could not CLASSIFY. That misses the case where every section
+    classified fine and the extractors still produced nothing: `unread.note` is then empty, and an
+    entirely empty spec is reported as a clean read.
+
+    Live example, before this (`plan_run` checksum `02a9dc6c…`, 2,517 chars, 6 headings): one section
+    matched `mechanics`, `unclassified` was empty, the note was empty — and the spec came back with 0
+    characters, 0 arcs, 0 events, 0 variables. Indistinguishable from "this book is young", which is
+    the whole bug class this block exists to close.
+
+    Written onto the SAME key the author already reads (`meta.ingest_unread.note`), appended rather
+    than replacing, so a document that is both unclassifiable AND empty reports both facts.
+    """
+    # Cast, arcs and events only. Mechanics and variables are deliberately NOT counted: they are the
+    # cheapest things to produce — a lone `# Magic System` heading yields one stub mechanic from a
+    # section the extractors otherwise got nothing out of — and counting them is precisely what let
+    # the live 2,517-character case through. A spec with a mechanic and no cast, no arc and no event
+    # is not a thin plan, it is a failed read, and nothing downstream can compile it.
+    layers = spec.get("layers") or {}
+    if (layers.get("characters") or []) or (spec.get("arcs") or []) or (spec.get("events") or []):
+        return
+    size = int((doc.get("source") or {}).get("char_count") or 0)
+    if size < _EMPTY_READ_MIN_CHARS:
+        return
+    unread = spec.setdefault("meta", {}).setdefault("ingest_unread", {})
+    if not isinstance(unread, dict):
+        return
+    n = len(doc.get("sections") or [])
+    note = (
+        f"The planner read {n} section(s) from this {size}-character document but recovered no "
+        f"cast, no arcs and no events. Treat this as a FAILED read, not an empty book; the LLM "
+        f"propose mode reads the raw document instead of matching its headings."
+    )
+    unread["empty_read"] = True
+    unread["note"] = f"{unread['note']} {note}".strip() if unread.get("note") else note
+
+
 def propose_spec(
     doc: dict[str, Any], *, existing: "ExistingState | None" = None, inject_cast_max: int = 1,
 ) -> dict[str, Any]:
@@ -663,6 +708,7 @@ def propose_spec(
     if existing is not None:
         from app.engine.plan_forge.existing_state import merge_existing_into_spec
         spec = merge_existing_into_spec(spec, existing, inject_cast_max=inject_cast_max)
+    _note_empty_read(spec, doc)
     return spec
 
 

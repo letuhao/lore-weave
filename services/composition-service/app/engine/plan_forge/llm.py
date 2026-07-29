@@ -90,6 +90,7 @@ class ProviderPlanForgeLLM:
         max_tokens: int = 8000,
         cancel_check: Callable[[], Awaitable[bool]] | None = None,
         schema: dict[str, Any] | None = None,
+        frequency_penalty: float | None = None,
     ) -> str:
         """One chat step. With `schema`, the shape is enforced by the DECODER where the provider
         supports it — `provider-registry.forwardOptionalChatFields` passes `response_format` through
@@ -100,8 +101,15 @@ class ProviderPlanForgeLLM:
         parse failure spent a SECOND 12,000-token call asking the model to repair its own JSON.
 
         A provider that REJECTS the schema falls back to free-form, so the worst case is exactly
-        today's behaviour rather than a lost step."""
+        today's behaviour rather than a lost step.
+
+        `frequency_penalty` overrides the default anti-loop strength. Callers raise it when a
+        previous attempt came back as a repetition loop — the one lever that actually addresses that
+        failure, since the grammar cannot forbid a loop inside a string."""
         check = cancel_check if cancel_check is not None else self._cancel_check
+        anti_loop = dict(_ANTI_LOOP)
+        if frequency_penalty is not None:
+            anti_loop["frequency_penalty"] = frequency_penalty
         fmt: dict[str, Any] = {"type": "text"}
         if schema is not None:
             fmt = {"type": "json_schema",
@@ -122,7 +130,7 @@ class ProviderPlanForgeLLM:
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                     **_NO_THINK,
-                    **_ANTI_LOOP,
+                    **anti_loop,
                 },
                 job_meta={"usage_purpose": self._usage_purpose, "extractor": step},
                 cancel_check=check,

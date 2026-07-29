@@ -1,58 +1,51 @@
-"""D-PF-NORMALIZE — deterministic post-materialize / post-refine fixes."""
+"""D-PF-NORMALIZE — deterministic post-materialize / post-refine fixes.
+
+## Why this module now normalizes NOTHING, and why the hook survives anyway
+
+It used to do two things, both of which welded ONE novel into the engine every book runs through:
+
+1. It renamed any character called `Female Protagonist` — and, when the open questions mentioned a
+   name, any `[TBD]` protagonist — to the Vietnamese literal **`Nữ chính`**. On an English document
+   that is not a normalization, it is a translation nobody asked for. Measured 2026-07-29 across the
+   real `plan_run` corpus: an English grimdark braindump and a plain-English premise both came back
+   with a protagonist named `Nữ chính`, a string that appears in neither document.
+
+2. Worse, it REPLACED a mechanic's `rules` with two fixed Vietnamese sentences whenever the rules
+   were not Vietnamese enough (`_vn_char_ratio < 0.15`) and the name matched a yin-yang hint.
+   Verified live, exactly as written:
+
+       in   ["Partners share body heat to survive the cold vacuum of the derelict.",
+             "Resonance decays with distance and cannot be forced."]
+       out  ["Âm Dương Hợp Hoan: hấp thụ linh khí qua đối tác; cường độ tỷ lệ thân mật",
+             "Không gắn với cảnh giới tu luyện — chỉ theo trải nghiệm và biến số PA/HA"]
+
+   The author's own two rules were **deleted** and replaced with another book's. Silently, on every
+   propose, on both the rules and the LLM path.
+
+Same disease as the format-bound parser (`ingest._section_level`), and the same one
+`tests/unit/test_prompts_defixtured.py` already guards — that file even bans the exact literal
+`Nữ chính`, but it only ever scanned `prompts.py`, so the deterministic path did the banned thing
+unwatched. The guard now covers this module too.
+
+Nothing depended on the rename: placeholder DETECTION lives in `existing_state._PLACEHOLDER_NAMES`,
+which recognises `female protagonist` / `protagonist` / `main character` / `[TBD]` / empty on its
+own. Removing the rewrite therefore leaves A1 cast injection working unchanged.
+
+The hook stays because a *genuinely* book-agnostic deterministic fix belongs somewhere, and the call
+sites (`propose.propose_spec`, `propose_llm.materialize_from_analyze`) are the right place for it.
+It is identity today, and `test_normalize_never_rewrites_authored_content` keeps it honest: whatever
+lands here later must not rename what the author named or replace what the author wrote.
+"""
 
 from __future__ import annotations
 
-import re
 from typing import Any
-
-_ALWAYS_BLOCK_NAMES = frozenset({"Female Protagonist"})
-_TBD_PLACEHOLDER_NAMES = frozenset({"[TBD]", "Untitled Project (TBD)"})
-_YIN_YANG_NAME_HINTS = ("âm dương hợp hoan", "hợp hoan", "yin yang", "yin_yang")
-
-
-def _open_questions_name_tbd(spec: dict[str, Any]) -> bool:
-    for q in spec.get("meta", {}).get("open_questions") or []:
-        ql = q.lower()
-        if "tên" in ql or "name" in ql or "tbd" in ql:
-            return True
-    return False
-
-
-def _vn_char_ratio(text: str) -> float:
-    if not text:
-        return 0.0
-    vn = len(re.findall(r"[\u00C0-\u1EF9]", text))
-    return vn / max(len(text), 1)
-
-
-def _is_yin_yang_mechanic(mech: dict[str, Any]) -> bool:
-    blob = f"{mech.get('id', '')} {mech.get('name', '')}".lower()
-    return any(hint in blob for hint in _YIN_YANG_NAME_HINTS)
 
 
 def post_normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
-    """Apply deterministic normalizations after rules/LLM materialize or refine."""
-    name_tbd = _open_questions_name_tbd(spec)
-    for char in spec.get("layers", {}).get("characters") or []:
-        name = char.get("name") or ""
-        if name in _ALWAYS_BLOCK_NAMES:
-            char["name"] = "Nữ chính"
-        elif (
-            name_tbd
-            and char.get("role") == "protagonist"
-            and name in _TBD_PLACEHOLDER_NAMES
-        ):
-            char["name"] = "Nữ chính"
+    """Deterministic, book-AGNOSTIC normalizations after materialize / refine.
 
-    for mech in spec.get("layers", {}).get("mechanics") or []:
-        rules = mech.get("rules") or []
-        if not rules:
-            continue
-        joined = " ".join(str(r) for r in rules)
-        if _vn_char_ratio(joined) < 0.15 and _is_yin_yang_mechanic(mech):
-            mech["rules"] = [
-                "Âm Dương Hợp Hoan: hấp thụ linh khí qua đối tác; cường độ tỷ lệ thân mật",
-                "Không gắn với cảnh giới tu luyện — chỉ theo trải nghiệm và biến số PA/HA",
-            ]
-
+    Currently none. See the module docstring: everything that used to live here was specific to one
+    novel and destroyed authored content on every other one. Returns `spec` unchanged.
+    """
     return spec

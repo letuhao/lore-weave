@@ -85,35 +85,105 @@ _FENCE = re.compile(r"^\s*(?:```|~~~)")
 _HEADING = re.compile(r"^(#{1,6})\s+(?:(\d+)\.\s*)?(.+)$")
 
 
-def _section_level(lines: list[str]) -> int:
-    """The heading level THIS document uses for its sections — the shallowest one present.
+#: `## 2.3 Ngoại Hình` — a heading the author explicitly numbered as a CHILD of section 2. The
+#: dotted form is an authored statement of subordination, and `propose._characters` already relies on
+#: it for the same reason.
+_DOTTED_SUB = re.compile(r"^#{1,6}\s+\d+\.\d")
 
-    Hardcoding `# ` was the same level-binding as hardcoding `# <n>. `, one step less obvious. A
-    grimdark sci-fi planning document written for this test opens at `## ` (as plenty of people do,
-    especially when the title is plain text) and parsed to ZERO sections even after the numbering
-    fix — nine headings, none readable.
 
-    The shallowest level present is the document's own answer and needs no guessing. It also keeps
-    every existing document identical: a document with `# ` sections and `## ` sub-blocks resolves
-    to 1, so its character sub-headings stay sub-headings rather than being promoted into sections
-    (which would split one protagonist's profile into six people — the exact bug the dotted-number
-    rule in `propose._characters` exists to prevent).
+def _headings_by_level(lines: list[str]) -> dict[int, list[str]]:
+    """Every heading in the document as RAW text after the hashes, bucketed by level.
 
-    Fences are respected here too: a `#` comment inside a code block must not drag the level down to
-    something no real heading uses.
+    Raw rather than the parsed title because `_HEADING` eats a leading `N.` enumerator, which would
+    hide the `N.M` sub-numbering `_section_level` needs to see. Fences are respected: a `#` comment
+    inside a code block must not drag the level down to something no real heading uses.
     """
+    out: dict[int, list[str]] = {}
     in_fence = False
-    best = 7
     for line in lines:
         if _FENCE.match(line):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
-        m = _HEADING.match(line.strip())
+        stripped = line.strip()
+        m = _HEADING.match(stripped)
         if m and m.group(3).strip():
-            best = min(best, len(m.group(1)))
-    return best if best <= 6 else 1
+            out.setdefault(len(m.group(1)), []).append(stripped)
+    return out
+
+
+def _section_level(lines: list[str]) -> int:
+    """The heading level THIS document uses for its sections.
+
+    Hardcoding `# ` was the same level-binding as hardcoding `# <n>. `, one step less obvious. A
+    grimdark sci-fi planning document written for this test opens at `## ` (as plenty of people do,
+    especially when the title is plain text) and parsed to ZERO sections even after the numbering
+    fix — nine headings, none readable. So the level is READ from the document, not assumed.
+
+    "Shallowest present" was the first answer and it was still too simple, because it cannot tell a
+    SECTION from the document's TITLE. Measured 2026-07-29 over every distinct `source_markdown` ever
+    submitted to `plan_run`: **5 of 17** real documents are written
+
+        # Some Title
+        ## First real section
+        ## Second real section
+
+    — the single most ordinary markdown convention there is. Shallowest-present picks level 1, finds
+    exactly one heading, and reads the WHOLE document as one section named after its own title. Four
+    of those five then produced a completely empty spec: 0 characters, 0 mechanics, 0 arcs, 0 events.
+    Exactly the Mị Đế failure, four more times, still silent.
+
+    So: **descend past a lone heading only when the level BELOW it holds two or more.** One heading
+    with siblings underneath is a title wrapping the real sections; one heading with a single child
+    is a section that happens to be the document's only one.
+
+    Measured against every ambiguous document in the corpus — this rule, and only this rule, splits
+    them correctly:
+
+        # THE CORE TRAGEDY              L2 has 4  → descend    (title)
+        # Story Concept: The Weight…    L2 has 5  → descend    (title)
+        # The Weight of a Thousand…     L2 has 6  → descend    (title)
+        # Story Premise: The Weight…    L2 has 4  → descend    (title)
+        # Dracula's Legacy              L2 has 3  → descend    (title)
+        # 1. Arc Overview               L2 has 1  → STAY       (a real, lone section)
+
+    My first attempt asked the kind map instead — descend when the lone heading is UNRECOGNISED —
+    and it got `# Story Premise: The Weight of Divinity` wrong, because "premise" is vocabulary, so a
+    document title classified as a section and stayed collapsed. The heading SHAPE settles this
+    without consulting the vocabulary at all, which is also the right dependency direction: the kind
+    map is advisory, and structure should not be decided by an advisory signal.
+
+    Note this is deliberately not "the shallowest level with ≥2 headings". The two `# 1. Arc Overview`
+    documents have a lone `## ` arc and many `### ` scenes, so that formulation would descend all the
+    way to level 3 and shatter the arc the extractor reads. Descent stops as soon as a level has
+    siblings — one step at a time, never past the first level that holds more than one.
+
+    And it does not descend into DOTTED sub-numbering. The golden regression caught this: a real
+    character sheet reads
+
+        # 1. Nhân Vật Chính
+        ## 1.1 Hồ Sơ Cơ Bản
+        ## 1.2 Ngoại Hình
+
+    — a lone top heading with several children, structurally identical to a title-plus-sections
+    document. Descending shattered one protagonist's profile into sub-sections and lost the character
+    entirely. The `N.M` numbering is the author SAYING these are parts of section N, so it is taken
+    at its word; `propose._characters` already leans on the same signal for the same reason.
+    """
+    by_level = _headings_by_level(lines)
+    if not by_level:
+        return 1
+    levels = sorted(by_level)
+    level = levels[0]
+    for nxt in levels[1:]:
+        children = by_level[nxt]
+        if len(by_level[level]) > 1 or len(children) < 2:
+            break
+        if any(_DOTTED_SUB.match(h) for h in children):
+            break
+        level = nxt
+    return level
 
 
 def _parse_top_sections(text: str) -> list[dict[str, Any]]:
