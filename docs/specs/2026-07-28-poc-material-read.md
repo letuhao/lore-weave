@@ -205,10 +205,7 @@ you get*, not whether there is discrimination at all.
 and it could not, because the boundary is not in the text: `Lòng tốt thường bị xem là điểm yếu` is
 simultaneously a world rule and a tone principle. Forcing an exclusive verdict destroys it either way.
 
-⇒ **The machine must never adjudicate.** Retrieve with high recall, show the author, let them keep or
-drop. That is one glance for them and it is the only step that can actually decide. It is also what
-the intent-FSM spec already said — *the agent proposes, the author corrects* — except this is now
-measured, and the measurement says the judging step must **not exist**, not merely be reviewable.
+⇒ **The machine must never adjudicate.** — **This conclusion was WRONG. See §6c.**
 
 **Capability map, measured:**
 
@@ -217,6 +214,77 @@ measured, and the measurement says the judging step must **not exist**, not mere
 | classifying a section (8/9) | judging whether something is absent (0/3, then all-yes) |
 | extracting entities, grounded (4/4, 4 runs, zero invention) | category boundaries on multi-category text (1 discrimination in 18) |
 | retrieving by kind with high recall (3/3 probes) | asking a good question **unless** constrained + fully-informed + told to name something real |
+
+## 6c · §6b's conclusion was wrong. The lever is the QUESTION SHAPE.
+
+§6b concluded, from three verifier framings that each collapsed to a constant, that *the weak model
+has no usable category boundary and must never adjudicate*. That conclusion was **not safe**, and it
+is now retracted: all three arms asked the same question shape — **binary membership on one item in
+isolation** — so what they measured was that shape, not the model.
+
+Reframed as the task the model demonstrably already does well (§2 measured classification at 8/9),
+the identical judgement scores **macro F1 0.85**.
+
+| method | mechanism | result |
+|---|---|---|
+| binary · strict + reject-examples | membership | F1 **0.00** — degenerate all-no |
+| binary · permissive | membership | 0.55 — degenerate all-yes |
+| binary · ranked 0–3 | membership | 0.60 |
+| binary · **thinking ENABLED** | membership | 0.50 |
+| self-consistency vote ×3 | membership | 0.29 |
+| rank the list, take top-k | comparative | fails to emit an ordering at all |
+| few-shot, positive AND negative | membership | 0.86 *(8 lines)* |
+| **classify · 6-way, single label** | **closed-set assignment** | **0.83** *(18 lines)* |
+| **classify · 6-way, MULTI label** | **closed-set, non-exclusive** | **0.85** |
+
+Measured on 18 lines from the author's real document, labelled before the run, macro-F1 so a
+degenerate arm cannot score well.
+
+### The residual is one kind, and the label was at fault — not the model
+
+Errors are not spread. `character_seed`, `arc_overview`, `open_questions` all score **1.00**;
+everything hard is `writing_principles` (0.67 single-label). Because
+`Thế giới cực kỳ tàn khốc, lấy lợi ích và sinh tồn làm trung tâm` **is** a statement of how the world
+works *and* a statement of the story's tone. A single-label classifier must destroy one of them, and
+which one is a coin toss dressed as a decision. Allowing overlap: **0.67 → 0.86**.
+
+### Reasoning does not help here — measured, because the PO asked
+
+Every call this session ran with `_NO_THINK` (`reasoning_effort: "none"`), so it was the one variable
+never varied. Turning it on: **macro F1 0.83 → 0.83**, and on the hardest kind **0.67 → 0.40** — with
+thinking on it reclassified the author's own tone lines as `other`. It became more literal, not more
+discerning. Worth knowing; not the lever.
+
+### The pattern that actually generalises
+
+**Every hand-authored steering instruction I added made it worse. Four times:**
+
+| what I added | intent | effect |
+|---|---|---|
+| a worked example of the kind | define the target | recall → 0 (narrowed to things resembling the example) |
+| "be strict" + examples of wrong kinds | raise precision | **all-no**, including the author's own emphasised blockquote |
+| a tie-break rule for the recurring collision | resolve ambiguity | `writing_principles` 0.86 → **0.60** |
+| thinking enabled | better judgement | hardest kind 0.67 → **0.40** |
+
+**Every improvement was structural** — a change to the shape of the question, or the removal of an
+artificial constraint: binary → closed-set assignment; exclusive → multi-label; drop the example;
+drop the yes/no gate. Not one of them was a better instruction.
+
+### And my instrument was wrong more often than the model was
+
+Recorded because it is the more useful lesson:
+
+- a grounding check flagged `Huyết Vô Thường (Huyết Chủ)` as invention — both names are the author's,
+  merged correctly (§4);
+- the rank arm was scored **0.00 twice** on two different parser bugs (prose around the JSON, then a
+  bare array where I only handled an object). Re-run properly it is still poor — the model does not
+  emit an ordering — but I had dismissed it for the wrong reason;
+- "grounded in the cast" was used as a question-quality metric; the questions were grounded **and**
+  off-topic, so it measured nothing.
+
+**What this changes for the design.** The machine *can* adjudicate — ask it as a classification, let
+labels overlap. Propose-to-the-author remains right, but for the reason the FSM spec gave in the
+first place (authorial taste, and trust), **not** because the model is incapable of judging.
 
 ## 7 · Deferred / follow-ups this produced
 
