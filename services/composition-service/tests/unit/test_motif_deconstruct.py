@@ -193,7 +193,7 @@ async def test_imported_motif_and_arc_carry_the_request_language():
         model_source="platform_model", model_ref="m-ref", language="zh",
     )
     assert result["language"] == "zh"
-    assert motif_repo.created[0]["args"].language == "zh"
+    assert motif_repo.created[0]["args"].original_language == "zh"
     assert arc_repo.created[0]["args"].language == "zh"
 
 

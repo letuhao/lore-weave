@@ -1,219 +1,660 @@
 [
   {
     "code": "survival.rules_of_the_new_world",
-    "language": "en",
     "kind": "sequence",
     "category": "survival.rules",
     "name": "Learning the Rule the Hard Way",
     "summary": "The ordinary world stops working according to its old rules — the dead walk, the sky changes, the network dies, the tide does not go out — and the first lesson is paid for with somebody. From that death a rule is inferred and stated aloud, and the group survives to the next chapter precisely to the extent that they obey a rule they cannot yet explain.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "horror", "disaster"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "horror",
+      "disaster"
+    ],
     "roles": [
-      {"key": "survivor", "actant": "subject", "label": "the one who infers the rule", "constraints": ["has only one data point to work from"]},
-      {"key": "rule", "actant": "object", "label": "the inferred rule", "constraints": ["is unexplained and provisional"]},
-      {"key": "lost", "actant": "sender", "label": "the one whose death taught it", "constraints": ["died doing the ordinary thing"]},
-      {"key": "world", "actant": "opponent", "label": "the changed world", "constraints": ["gives no warnings and no second chances"]}
+      {
+        "key": "survivor",
+        "actant": "subject",
+        "label": "the one who infers the rule",
+        "constraints": [
+          "has only one data point to work from"
+        ]
+      },
+      {
+        "key": "rule",
+        "actant": "object",
+        "label": "the inferred rule",
+        "constraints": [
+          "is unexplained and provisional"
+        ]
+      },
+      {
+        "key": "lost",
+        "actant": "sender",
+        "label": "the one whose death taught it",
+        "constraints": [
+          "died doing the ordinary thing"
+        ]
+      },
+      {
+        "key": "world",
+        "actant": "opponent",
+        "label": "the changed world",
+        "constraints": [
+          "gives no warnings and no second chances"
+        ]
+      }
     ],
     "beats": [
-      {"key": "break", "label": "The ordinary stops working", "intent": "the familiar world visibly ceases to behave as it should", "tension_target": 4, "order": 1},
-      {"key": "lesson", "label": "The first lesson costs someone", "intent": "a death demonstrates a boundary nobody knew existed", "tension_target": 5, "order": 2},
-      {"key": "infer", "label": "The rule is inferred", "intent": "a provisional rule is stated aloud from a single instance", "tension_target": 3, "order": 3},
-      {"key": "obey", "label": "Survive by obeying it", "intent": "the group lives by a rule it cannot yet explain", "tension_target": 4, "order": 4}
+      {
+        "key": "break",
+        "label": "The ordinary stops working",
+        "intent": "the familiar world visibly ceases to behave as it should",
+        "tension_target": 4,
+        "order": 1
+      },
+      {
+        "key": "lesson",
+        "label": "The first lesson costs someone",
+        "intent": "a death demonstrates a boundary nobody knew existed",
+        "tension_target": 5,
+        "order": 2
+      },
+      {
+        "key": "infer",
+        "label": "The rule is inferred",
+        "intent": "a provisional rule is stated aloud from a single instance",
+        "tension_target": 3,
+        "order": 3
+      },
+      {
+        "key": "obey",
+        "label": "Survive by obeying it",
+        "intent": "the group lives by a rule it cannot yet explain",
+        "tension_target": 4,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a world whose operating rules have changed without notice"}],
+    "preconditions": [
+      {
+        "text": "a world whose operating rules have changed without notice"
+      }
+    ],
     "effects": [
-      {"text": "the group holds a working rule that is not yet understood"},
-      {"text": "the cost of learning each further rule is now known to be a life"}
+      {
+        "text": "the group holds a working rule that is not yet understood"
+      },
+      {
+        "text": "the cost of learning each further rule is now known to be a life"
+      }
     ],
     "annotations": {},
     "tension_target": 4,
     "emotion_target": "dread",
-    "examples": [{"text": "Nobody knew why the ones who ran were taken and the ones who stood still were not, but by the second day nobody ran."}],
+    "examples": [
+      {
+        "text": "Nobody knew why the ones who ran were taken and the ones who stood still were not, but by the second day nobody ran."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   },
   {
     "code": "survival.not_enough_for_everyone",
-    "language": "en",
     "kind": "situation",
     "category": "survival.scarcity",
     "name": "Not Enough for Everyone",
     "summary": "A resource that keeps people alive — water, insulin, seats, ammunition, fuel — is counted and found short, and the shortfall has names attached to it. The allocation is made by people who have to keep living with each other afterwards, and what the group learns about itself in that hour outlasts the resource by a long way.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "scarcity", "moral-choice"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "scarcity",
+      "moral-choice"
+    ],
     "roles": [
-      {"key": "allocator", "actant": "subject", "label": "the one who must decide", "constraints": ["will have to live with those excluded"]},
-      {"key": "resource", "actant": "object", "label": "the short resource", "constraints": ["is countable and plainly insufficient"]},
-      {"key": "excluded", "actant": "receiver", "label": "those who do not get it", "constraints": ["are present and named"]}
+      {
+        "key": "allocator",
+        "actant": "subject",
+        "label": "the one who must decide",
+        "constraints": [
+          "will have to live with those excluded"
+        ]
+      },
+      {
+        "key": "resource",
+        "actant": "object",
+        "label": "the short resource",
+        "constraints": [
+          "is countable and plainly insufficient"
+        ]
+      },
+      {
+        "key": "excluded",
+        "actant": "receiver",
+        "label": "those who do not get it",
+        "constraints": [
+          "are present and named"
+        ]
+      }
     ],
     "beats": [
-      {"key": "count", "label": "The count comes up short", "intent": "the shortfall is established as an arithmetic fact", "tension_target": 3, "order": 1},
-      {"key": "name", "label": "The shortfall has names", "intent": "the abstraction resolves into specific people", "tension_target": 4, "order": 2},
-      {"key": "allocate", "label": "The allocation is made", "intent": "someone decides, by whatever principle they can defend", "tension_target": 5, "order": 3},
-      {"key": "remember", "label": "The excluded remember", "intent": "the decision becomes a permanent fact of the group", "tension_target": 4, "order": 4}
+      {
+        "key": "count",
+        "label": "The count comes up short",
+        "intent": "the shortfall is established as an arithmetic fact",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "name",
+        "label": "The shortfall has names",
+        "intent": "the abstraction resolves into specific people",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "allocate",
+        "label": "The allocation is made",
+        "intent": "someone decides, by whatever principle they can defend",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "remember",
+        "label": "The excluded remember",
+        "intent": "the decision becomes a permanent fact of the group",
+        "tension_target": 4,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a countable resource and more claimants than units"}],
+    "preconditions": [
+      {
+        "text": "a countable resource and more claimants than units"
+      }
+    ],
     "effects": [
-      {"text": "the group's real hierarchy is now visible to everyone in it"},
-      {"text": "the excluded have a grievance with a name attached"}
+      {
+        "text": "the group's real hierarchy is now visible to everyone in it"
+      },
+      {
+        "text": "the excluded have a grievance with a name attached"
+      }
     ],
     "annotations": {},
     "tension_target": 5,
     "emotion_target": "despair",
-    "examples": [{"text": "There were nine doses and eleven people, and the argument took four minutes, and nobody ever spoke about it again."}],
+    "examples": [
+      {
+        "text": "There were nine doses and eleven people, and the argument took four minutes, and nobody ever spoke about it again."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   },
   {
     "code": "survival.shelter_has_a_price",
-    "language": "en",
     "kind": "sequence",
     "category": "survival.shelter",
     "name": "The Shelter That Charges",
     "summary": "A refuge is found that is genuinely safe — walls, food, warmth, a lock that works — and the relief is real. Then the terms emerge: a labour, an obedience, a person handed over, a rule about who is allowed to leave. The group must weigh a certain safety against a price they cannot pay indefinitely.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "shelter", "moral-choice"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "shelter",
+      "moral-choice"
+    ],
     "roles": [
-      {"key": "arrivals", "actant": "subject", "label": "those who arrive", "constraints": ["have nowhere else to go"]},
-      {"key": "shelter", "actant": "object", "label": "the refuge", "constraints": ["is genuinely safe"]},
-      {"key": "holders", "actant": "opponent", "label": "those who hold it", "constraints": ["are not villains, only established"]}
+      {
+        "key": "arrivals",
+        "actant": "subject",
+        "label": "those who arrive",
+        "constraints": [
+          "have nowhere else to go"
+        ]
+      },
+      {
+        "key": "shelter",
+        "actant": "object",
+        "label": "the refuge",
+        "constraints": [
+          "is genuinely safe"
+        ]
+      },
+      {
+        "key": "holders",
+        "actant": "opponent",
+        "label": "those who hold it",
+        "constraints": [
+          "are not villains, only established"
+        ]
+      }
     ],
     "beats": [
-      {"key": "find", "label": "Refuge is found", "intent": "a genuinely safe place is reached and the relief is real", "tension_target": 2, "order": 1},
-      {"key": "trust", "label": "Trust is extended", "intent": "the group commits to staying and gives something up to do so", "tension_target": 2, "order": 2},
-      {"key": "terms", "label": "The terms emerge", "intent": "the price of remaining becomes clear", "tension_target": 4, "order": 3},
-      {"key": "decide", "label": "Pay it or leave", "intent": "certain safety is weighed against an unpayable price", "tension_target": 5, "order": 4}
+      {
+        "key": "find",
+        "label": "Refuge is found",
+        "intent": "a genuinely safe place is reached and the relief is real",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "trust",
+        "label": "Trust is extended",
+        "intent": "the group commits to staying and gives something up to do so",
+        "tension_target": 2,
+        "order": 2
+      },
+      {
+        "key": "terms",
+        "label": "The terms emerge",
+        "intent": "the price of remaining becomes clear",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "decide",
+        "label": "Pay it or leave",
+        "intent": "certain safety is weighed against an unpayable price",
+        "tension_target": 5,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a group with no viable alternative to the shelter offered"}],
+    "preconditions": [
+      {
+        "text": "a group with no viable alternative to the shelter offered"
+      }
+    ],
     "effects": [
-      {"text": "the group has either submitted to terms or is exposed again"},
-      {"text": "what each member was willing to accept is now known to the others"}
+      {
+        "text": "the group has either submitted to terms or is exposed again"
+      },
+      {
+        "text": "what each member was willing to accept is now known to the others"
+      }
     ],
     "annotations": {},
     "tension_target": 4,
     "emotion_target": "unease",
-    "examples": [{"text": "The gate closed behind them and the food was hot and real, and in the morning someone explained about the work rota, and about the rule."}],
+    "examples": [
+      {
+        "text": "The gate closed behind them and the food was hot and real, and in the morning someone explained about the work rota, and about the rule."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   },
   {
     "code": "survival.one_of_us_is_compromised",
-    "language": "en",
     "kind": "situation",
     "category": "survival.suspicion",
     "name": "One of Us Is Already Gone",
     "summary": "Someone in the group is infected, turned, informing, or otherwise no longer safe, and the test that would prove it is unreliable, slow, or does not exist. Suspicion does the work that evidence cannot, the group turns on the most plausible rather than the actual, and the wrong call costs more than the compromise would have.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "paranoia", "horror"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "paranoia",
+      "horror"
+    ],
     "roles": [
-      {"key": "group", "actant": "subject", "label": "the group that must decide", "constraints": ["cannot verify what it needs to know"]},
-      {"key": "compromised", "actant": "object", "label": "the one actually compromised", "constraints": ["may not know it themselves"]},
-      {"key": "accused", "actant": "receiver", "label": "the most plausible suspect", "constraints": ["is plausible for reasons unrelated to the truth"]}
+      {
+        "key": "group",
+        "actant": "subject",
+        "label": "the group that must decide",
+        "constraints": [
+          "cannot verify what it needs to know"
+        ]
+      },
+      {
+        "key": "compromised",
+        "actant": "object",
+        "label": "the one actually compromised",
+        "constraints": [
+          "may not know it themselves"
+        ]
+      },
+      {
+        "key": "accused",
+        "actant": "receiver",
+        "label": "the most plausible suspect",
+        "constraints": [
+          "is plausible for reasons unrelated to the truth"
+        ]
+      }
     ],
     "beats": [
-      {"key": "sign", "label": "A sign appears", "intent": "evidence emerges that one of the group is no longer safe", "tension_target": 4, "order": 1},
-      {"key": "untestable", "label": "The test fails them", "intent": "no reliable way exists to identify who", "tension_target": 4, "order": 2},
-      {"key": "suspect", "label": "Suspicion picks a target", "intent": "the group converges on the most plausible rather than the actual", "tension_target": 5, "order": 3},
-      {"key": "wrong", "label": "The wrong call lands", "intent": "the decision is executed and its error becomes visible", "tension_target": 5, "order": 4}
+      {
+        "key": "sign",
+        "label": "A sign appears",
+        "intent": "evidence emerges that one of the group is no longer safe",
+        "tension_target": 4,
+        "order": 1
+      },
+      {
+        "key": "untestable",
+        "label": "The test fails them",
+        "intent": "no reliable way exists to identify who",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "suspect",
+        "label": "Suspicion picks a target",
+        "intent": "the group converges on the most plausible rather than the actual",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "wrong",
+        "label": "The wrong call lands",
+        "intent": "the decision is executed and its error becomes visible",
+        "tension_target": 5,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a threat that hides inside the group and resists verification"}],
+    "preconditions": [
+      {
+        "text": "a threat that hides inside the group and resists verification"
+      }
+    ],
     "effects": [
-      {"text": "the group has acted irreversibly on a guess"},
-      {"text": "the actual compromise is still present and now harder to raise"}
+      {
+        "text": "the group has acted irreversibly on a guess"
+      },
+      {
+        "text": "the actual compromise is still present and now harder to raise"
+      }
     ],
     "annotations": {},
     "tension_target": 5,
     "emotion_target": "paranoia",
-    "examples": [{"text": "They watched each other's hands for three days, and in the end it was the man nobody had watched who did not wake up right."}],
+    "examples": [
+      {
+        "text": "They watched each other's hands for three days, and in the end it was the man nobody had watched who did not wake up right."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   },
   {
     "code": "survival.mercy_at_the_door",
-    "language": "en",
     "kind": "situation",
     "category": "survival.mercy",
     "name": "Someone Is Asking to Come In",
     "summary": "An outsider asks for entry with a story that may or may not be true, and both answers are defensible: opening the door risks everyone, closing it kills someone who is asking. The choice is made under time pressure with incomplete information, and the consequence — whichever way — is charged to the person who made it.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "moral-choice", "shelter"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "moral-choice",
+      "shelter"
+    ],
     "roles": [
-      {"key": "decider", "actant": "subject", "label": "the one who answers the door", "constraints": ["must choose before knowing"]},
-      {"key": "outsider", "actant": "object", "label": "the one asking", "constraints": ["their story cannot be checked in time"]},
-      {"key": "inside", "actant": "receiver", "label": "those already inside", "constraints": ["bear the risk either way"]}
+      {
+        "key": "decider",
+        "actant": "subject",
+        "label": "the one who answers the door",
+        "constraints": [
+          "must choose before knowing"
+        ]
+      },
+      {
+        "key": "outsider",
+        "actant": "object",
+        "label": "the one asking",
+        "constraints": [
+          "their story cannot be checked in time"
+        ]
+      },
+      {
+        "key": "inside",
+        "actant": "receiver",
+        "label": "those already inside",
+        "constraints": [
+          "bear the risk either way"
+        ]
+      }
     ],
     "beats": [
-      {"key": "ask", "label": "Someone asks to come in", "intent": "an outsider requests entry with an uncheckable story", "tension_target": 3, "order": 1},
-      {"key": "weigh", "label": "Compassion against arithmetic", "intent": "both answers are shown to be defensible", "tension_target": 4, "order": 2},
-      {"key": "answer", "label": "The door opens or does not", "intent": "the decision is made under time pressure", "tension_target": 5, "order": 3},
-      {"key": "consequence", "label": "It is charged to the decider", "intent": "the outcome attaches to the person who chose", "tension_target": 4, "order": 4}
+      {
+        "key": "ask",
+        "label": "Someone asks to come in",
+        "intent": "an outsider requests entry with an uncheckable story",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "weigh",
+        "label": "Compassion against arithmetic",
+        "intent": "both answers are shown to be defensible",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "answer",
+        "label": "The door opens or does not",
+        "intent": "the decision is made under time pressure",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "consequence",
+        "label": "It is charged to the decider",
+        "intent": "the outcome attaches to the person who chose",
+        "tension_target": 4,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a defended place and an outsider whose account cannot be verified in time"}],
+    "preconditions": [
+      {
+        "text": "a defended place and an outsider whose account cannot be verified in time"
+      }
+    ],
     "effects": [
-      {"text": "the group's threshold for admitting strangers is now set by precedent"},
-      {"text": "the decider carries a specific outcome personally"}
+      {
+        "text": "the group's threshold for admitting strangers is now set by precedent"
+      },
+      {
+        "text": "the decider carries a specific outcome personally"
+      }
     ],
     "annotations": {},
     "tension_target": 5,
     "emotion_target": "anguish",
-    "examples": [{"text": "She was still talking through the door when they voted, and afterwards nobody could agree on how long the voice had gone on."}],
+    "examples": [
+      {
+        "text": "She was still talking through the door when they voted, and afterwards nobody could agree on how long the voice had gone on."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   },
   {
     "code": "survival.someone_has_to_decide",
-    "language": "en",
     "kind": "sequence",
     "category": "survival.leadership",
     "name": "Authority Made in an Afternoon",
     "summary": "Nobody is in charge and a decision cannot wait, so someone makes it — not the strongest or the most senior, but whoever was willing to say a sentence out loud while everyone else was still looking at each other. The decision turns out well enough, and authority is granted retroactively by people who will resent it later.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "leadership", "group"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "leadership",
+      "group"
+    ],
     "roles": [
-      {"key": "leader", "actant": "subject", "label": "whoever spoke first", "constraints": ["had no standing to decide"]},
-      {"key": "decision", "actant": "object", "label": "the decision that could not wait", "constraints": ["had to be made before it could be discussed"]},
-      {"key": "group", "actant": "receiver", "label": "those who let it happen", "constraints": ["granted authority by not objecting"]}
+      {
+        "key": "leader",
+        "actant": "subject",
+        "label": "whoever spoke first",
+        "constraints": [
+          "had no standing to decide"
+        ]
+      },
+      {
+        "key": "decision",
+        "actant": "object",
+        "label": "the decision that could not wait",
+        "constraints": [
+          "had to be made before it could be discussed"
+        ]
+      },
+      {
+        "key": "group",
+        "actant": "receiver",
+        "label": "those who let it happen",
+        "constraints": [
+          "granted authority by not objecting"
+        ]
+      }
     ],
     "beats": [
-      {"key": "vacuum", "label": "Nobody is in charge", "intent": "a decision is required and no authority exists to make it", "tension_target": 4, "order": 1},
-      {"key": "speak", "label": "Someone says it out loud", "intent": "a person with no standing states what will be done", "tension_target": 4, "order": 2},
-      {"key": "hold", "label": "The decision holds", "intent": "the choice works well enough that nobody reverses it", "tension_target": 3, "order": 3},
-      {"key": "grant", "label": "Authority granted, resentment banked", "intent": "leadership is conceded by people who will resent conceding it", "tension_target": 3, "order": 4}
+      {
+        "key": "vacuum",
+        "label": "Nobody is in charge",
+        "intent": "a decision is required and no authority exists to make it",
+        "tension_target": 4,
+        "order": 1
+      },
+      {
+        "key": "speak",
+        "label": "Someone says it out loud",
+        "intent": "a person with no standing states what will be done",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "hold",
+        "label": "The decision holds",
+        "intent": "the choice works well enough that nobody reverses it",
+        "tension_target": 3,
+        "order": 3
+      },
+      {
+        "key": "grant",
+        "label": "Authority granted, resentment banked",
+        "intent": "leadership is conceded by people who will resent conceding it",
+        "tension_target": 3,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a group with no established authority facing a decision that cannot wait"}],
+    "preconditions": [
+      {
+        "text": "a group with no established authority facing a decision that cannot wait"
+      }
+    ],
     "effects": [
-      {"text": "a leader now exists whose legitimacy rests on one afternoon"},
-      {"text": "those who deferred have a grievance available to them later"}
+      {
+        "text": "a leader now exists whose legitimacy rests on one afternoon"
+      },
+      {
+        "text": "those who deferred have a grievance available to them later"
+      }
     ],
     "annotations": {},
     "tension_target": 4,
     "emotion_target": "tension",
-    "examples": [{"text": "He said 'we go north' and started walking, and eleven people followed him, and that was the entire process."}],
+    "examples": [
+      {
+        "text": "He said 'we go north' and started walking, and eleven people followed him, and that was the entire process."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   },
   {
     "code": "survival.relic_of_before",
-    "language": "en",
     "kind": "situation",
     "category": "survival.memory",
     "name": "A Thing From Before",
     "summary": "An object from the world that ended surfaces — a photograph, a working radio, a jar of something sweet, a child's shoe — and it is worthless by every survival calculus and priceless by every other. What people are willing to spend to keep it says more about where they are than any inventory does.",
-    "genre_tags": ["survival", "mat-the", "apocalypse", "memory", "aftermath"],
+    "genre_tags": [
+      "survival",
+      "mat-the",
+      "apocalypse",
+      "memory",
+      "aftermath"
+    ],
     "roles": [
-      {"key": "keeper", "actant": "subject", "label": "the one who wants to keep it", "constraints": ["cannot justify it on survival terms"]},
-      {"key": "relic", "actant": "object", "label": "the object from before", "constraints": ["has no practical value"]},
-      {"key": "pragmatist", "actant": "opponent", "label": "the one who counts the cost", "constraints": ["is arithmetically correct"]}
+      {
+        "key": "keeper",
+        "actant": "subject",
+        "label": "the one who wants to keep it",
+        "constraints": [
+          "cannot justify it on survival terms"
+        ]
+      },
+      {
+        "key": "relic",
+        "actant": "object",
+        "label": "the object from before",
+        "constraints": [
+          "has no practical value"
+        ]
+      },
+      {
+        "key": "pragmatist",
+        "actant": "opponent",
+        "label": "the one who counts the cost",
+        "constraints": [
+          "is arithmetically correct"
+        ]
+      }
     ],
     "beats": [
-      {"key": "surface", "label": "The relic surfaces", "intent": "an object from the ended world is found", "tension_target": 2, "order": 1},
-      {"key": "worthless", "label": "Worthless and priceless", "intent": "its uselessness and its meaning are both stated plainly", "tension_target": 3, "order": 2},
-      {"key": "spend", "label": "What keeping it costs", "intent": "a real price is named for carrying it further", "tension_target": 4, "order": 3},
-      {"key": "reveal", "label": "The choice says where they are", "intent": "the decision reveals how much of the old world they still hold", "tension_target": 3, "order": 4}
+      {
+        "key": "surface",
+        "label": "The relic surfaces",
+        "intent": "an object from the ended world is found",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "worthless",
+        "label": "Worthless and priceless",
+        "intent": "its uselessness and its meaning are both stated plainly",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "spend",
+        "label": "What keeping it costs",
+        "intent": "a real price is named for carrying it further",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "reveal",
+        "label": "The choice says where they are",
+        "intent": "the decision reveals how much of the old world they still hold",
+        "tension_target": 3,
+        "order": 4
+      }
     ],
-    "preconditions": [{"text": "a survival calculus strict enough that sentiment has a measurable cost"}],
+    "preconditions": [
+      {
+        "text": "a survival calculus strict enough that sentiment has a measurable cost"
+      }
+    ],
     "effects": [
-      {"text": "how far the group has travelled from who they were is now explicit"},
-      {"text": "a division exists between those who would spend for meaning and those who would not"}
+      {
+        "text": "how far the group has travelled from who they were is now explicit"
+      },
+      {
+        "text": "a division exists between those who would spend for meaning and those who would not"
+      }
     ],
     "annotations": {},
     "tension_target": 3,
     "emotion_target": "melancholy",
-    "examples": [{"text": "The radio would never work again and weighed as much as two days of water, and he carried it for nine days before he put it down."}],
+    "examples": [
+      {
+        "text": "The radio would never work again and weighed as much as two days of water, and he carried it for nine days before he put it down."
+      }
+    ],
     "source": "authored",
     "source_version": 1
   }

@@ -1,7 +1,6 @@
 [
   {
     "code": "rebirth.second_chance_wake",
-    "language": "en",
     "kind": "sequence",
     "category": "rebirth.wake",
     "name": "Waking Before the Ruin",
@@ -98,7 +97,6 @@
   },
   {
     "code": "rebirth.foreknowledge_leverage",
-    "language": "en",
     "kind": "situation",
     "category": "rebirth.leverage",
     "name": "Positioned Before It Happens",
@@ -192,7 +190,6 @@
   },
   {
     "code": "rebirth.butterfly_divergence",
-    "language": "en",
     "kind": "sequence",
     "category": "rebirth.divergence",
     "name": "The Memory Stops Matching",
@@ -286,7 +283,6 @@
   },
   {
     "code": "rebirth.known_traitor_untouchable",
-    "language": "en",
     "kind": "situation",
     "category": "rebirth.traitor",
     "name": "The Traitor Everyone Still Trusts",
@@ -383,7 +379,6 @@
   },
   {
     "code": "rebirth.save_what_was_lost",
-    "language": "en",
     "kind": "sequence",
     "category": "rebirth.rescue",
     "name": "The Date That Is Coming",
@@ -477,7 +472,6 @@
   },
   {
     "code": "rebirth.outsider_knowledge",
-    "language": "en",
     "kind": "situation",
     "category": "rebirth.knowledge",
     "name": "Knowledge From Somewhere Else",
@@ -571,7 +565,6 @@
   },
   {
     "code": "rebirth.inherited_debts",
-    "language": "en",
     "kind": "situation",
     "category": "rebirth.inheritance",
     "name": "Answering for a Life Not Lived",
@@ -665,7 +658,6 @@
   },
   {
     "code": "rebirth.slip_of_the_impossible",
-    "language": "en",
     "kind": "situation",
     "category": "rebirth.exposure",
     "name": "The Slip That Cannot Be Explained",

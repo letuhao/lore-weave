@@ -307,7 +307,7 @@ def _motif_args(spec: dict[str, Any], *, index: int, language: str) -> MotifCrea
     return MotifCreateArgs(
         code=_slug(spec.get("code"), f"mined.motif-{index}"),
         name=str(spec.get("name") or f"Mined Motif {index + 1}")[:500],
-        language=language,
+        original_language=language,
         kind=kind,
         summary=str(spec.get("summary") or "")[:20000],
         roles=roles,

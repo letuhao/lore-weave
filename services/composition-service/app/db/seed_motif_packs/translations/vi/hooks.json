@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "cho thấy lòng phản trắc ẩn giấu của một người được tin tưởng",
+        "label": "Vết rạn ngờ vực"
+      }
+    },
+    "effects": [
+      "độc giả nghi ngờ nhân vật ấy và đọc tiếp"
+    ],
+    "emotion_target": "unease",
+    "examples": [
+      "Người bạn lâu năm nhất của nàng mỉm cười, gật đầu — rồi luồn chiếc chìa thứ hai vào tay áo mình."
+    ],
+    "name": "Bóng Gió Phản Bội",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một người được tin tưởng để lộ một vết rạn ngờ vực ngay chỗ cắt."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "ép buộc một quyết định không thể đảo ngược",
+        "label": "Dồn vào một lựa chọn"
+      }
+    },
+    "effects": [
+      "độc giả đọc tiếp để biết quyết định"
+    ],
+    "emotion_target": "anxiety",
+    "examples": [
+      "Hai cánh cửa, một chiếc chìa, và nước đã dâng tới đầu gối hắn."
+    ],
+    "name": "Buộc Phải Chọn",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Nhân vật điểm nhìn bị dồn vào một quyết định không thể đảo ngược ngay chỗ cắt."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "để một mối nguy còn dang dở ngay chỗ ngắt chương",
+        "label": "Cắt ngang ở một mối nguy chưa lời giải"
+      }
+    },
+    "effects": [
+      "độc giả bị cuốn sang chương kế tiếp"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Niêm phong đã bị phá từ trước — và xà lim bên trong trống không."
+    ],
+    "name": "Câu Hỏi Treo",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Kết chương ở một mối nguy chưa lời giải, kéo độc giả sang chương sau."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "áp một khoảng thời gian hữu hạn lên mục tiêu",
+        "label": "Đặt thời hạn"
+      }
+    },
+    "effects": [
+      "độc giả cảm nhận đồng hồ đang chạy và đọc tiếp"
+    ],
+    "emotion_target": "anticipation",
+    "examples": [
+      "Ba ngày. Quá hạn đó, lời đề nghị — và cả tòa thành — sẽ biến mất."
+    ],
+    "name": "Đồng Hồ Đếm Ngược",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một thời hạn hay đồng hồ được đặt ra, biến những gì tiếp theo thành cuộc đua."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "kết bằng một câu lật lại toàn bộ mọi thứ",
+        "label": "Câu thoại nổ tung, rồi cắt"
+      }
+    },
+    "effects": [
+      "độc giả choáng váng và đọc tiếp"
+    ],
+    "emotion_target": "shock",
+    "examples": [
+      "\"Cô nên hỏi cha cô,\" bà ta nói, \"vì sao ông ấy chôn một cỗ quan tài rỗng.\""
+    ],
+    "name": "Bom Lời Thoại",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một câu thoại nổ tung và chương kết thúc ngay tại đó."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "ám chỉ một danh tính thật mà không xác nhận",
+        "label": "Ám chỉ thân phận"
+      }
+    },
+    "effects": [
+      "độc giả đọc tiếp để biết họ thực sự là ai"
+    ],
+    "emotion_target": "intrigue",
+    "examples": [
+      "Gã ăn mày hất mũ trùm xuống, và đám lính quỳ rạp cả xuống."
+    ],
+    "name": "Khơi Gợi Thân Phận",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một ám chỉ về danh tính hay vai trò thật của ai đó, để ngỏ chưa giải ngay chỗ cắt."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "gọi tên một mối nguy còn chưa giáng xuống",
+        "label": "Hiểm họa được báo là đang đến"
+      }
+    },
+    "effects": [
+      "độc giả nơm nớp chờ hiểm họa ập đến"
+    ],
+    "emotion_target": "dread",
+    "examples": [
+      "Đến rạng sáng, đại quân sẽ tới chân thành — và cổng thành sẽ không trụ nổi."
+    ],
+    "name": "Hiểm Họa Cận Kề",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một mối nguy có tên đang ập đến, nhưng chưa tới nơi."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "đặt một thứ trân quý ngay bên bờ vực bị mất",
+        "label": "Mất mát kề bên miệng vực"
+      }
+    },
+    "effects": [
+      "độc giả sợ hãi mất mát ấy và đọc tiếp"
+    ],
+    "emotion_target": "dread",
+    "examples": [
+      "Vị thầy lang lắc đầu. Bà nói, thuốc chỉ còn đủ cho một trong hai đứa trẻ."
+    ],
+    "name": "Mất Mát Trước Mắt",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một thứ nhân vật điểm nhìn yêu quý sắp bị tước đoạt ngay chỗ cắt."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "lật đổ đáp án đã đoán định bằng một manh mối mới",
+        "label": "Manh mối mâu thuẫn"
+      }
+    },
+    "effects": [
+      "độc giả mở lại câu hỏi và đọc tiếp"
+    ],
+    "emotion_target": "curiosity",
+    "examples": [
+      "Nét chữ của người chết hãy còn mới — và đề ngày mai."
+    ],
+    "name": "Bí Ẩn Càng Sâu",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một manh mối mới phủ định đáp án vốn đã đoán định ngay chỗ cắt."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "hé lộ một năng lực mà không giải thích nó",
+        "label": "Sức mạnh lóe lên không lời giải"
+      }
+    },
+    "effects": [
+      "độc giả khao khát lời giải thích"
+    ],
+    "emotion_target": "anticipation",
+    "examples": [
+      "Trong một nhịp tim, đôi mắt gã thư lại nhát gan cháy lên màu vàng kim — rồi ngọn đèn vụt tắt."
+    ],
+    "name": "Thoáng Thấy Sức Mạnh",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một năng lực ẩn giấu lóe lên, không lời giải thích, ngay chỗ cắt."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "phơi bày một phần bí mật, giữ lại phần còn lại",
+        "label": "Hé một nửa rồi cắt"
+      }
+    },
+    "effects": [
+      "độc giả đọc tiếp để biết phần còn lại"
+    ],
+    "emotion_target": "curiosity",
+    "examples": [
+      "Hắn lật mặt sau chiếc mề đay. Gương mặt bên trong chính là của nàng."
+    ],
+    "name": "Hé Lộ Nửa Vời",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một bí mật được hé lộ một nửa rồi giữ lại ngay chỗ cắt."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "đảo ngược ý nghĩa của phân cảnh ngay chỗ cắt",
+        "label": "Lật nghĩa ở câu cuối"
+      }
+    },
+    "effects": [
+      "độc giả hiểu lại phân cảnh và đọc tiếp"
+    ],
+    "emotion_target": "shock",
+    "examples": [
+      "Cuối cùng nàng cũng tin hắn — đúng thứ hắn đã chờ suốt ba năm qua."
+    ],
+    "name": "Lật Ngược Bất Ngờ",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một sự thật ở câu cuối lật ngược ý nghĩa của cả phân cảnh."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "đưa vào một người lẽ ra không thể có mặt",
+        "label": "Sự xuất hiện không thể nào"
+      }
+    },
+    "effects": [
+      "độc giả cần biết là ai và vì sao"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Cánh cửa mở ra, và người mà họ đã chôn mùa đông năm ngoái bước vào."
+    ],
+    "name": "Kẻ Đến Bất Ngờ",
+    "preconditions": [
+      "một phân cảnh đang diễn ra"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Một người lẽ ra không nên ở đây bước vào ngay chỗ cắt."
+  }
+}

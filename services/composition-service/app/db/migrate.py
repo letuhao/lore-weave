@@ -842,7 +842,13 @@ CREATE TABLE IF NOT EXISTS motif (
   book_id         UUID,                                   -- per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global user/system tier
   book_shared     BOOLEAN NOT NULL DEFAULT false,         -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (visible to the book's VIEW-grantees, writable by EDIT-grantees, access = the book grant resolved at the caller — owner is attribution only); false = model-A private label / global / system
   code            TEXT NOT NULL,
-  language        TEXT NOT NULL DEFAULT 'en',             -- part of the dedup/embed key (R1.1.3)
+  -- MOTIF-I18N: the language the motif was AUTHORED in (parity with books/chapters.
+  -- original_language). It is NO LONGER part of the identity key — one motif = one row,
+  -- and every other language is a row in `motif_translation` resolved with fallback to
+  -- this one. Platform seed is 'en' for all 84. (Was `language`, which sat in
+  -- uq_motif_* and made "the same motif in 2 languages" two unrelated rows — see
+  -- docs/specs/2026-07-29-motif-i18n.md.)
+  original_language TEXT NOT NULL DEFAULT 'en',
   visibility      TEXT NOT NULL DEFAULT 'private'
                     CHECK (visibility IN ('private','unlisted','public')),
   kind            TEXT NOT NULL DEFAULT 'sequence'
@@ -901,22 +907,87 @@ CREATE TABLE IF NOT EXISTS motif (
 -- (idempotent; a no-op on a fresh DB where CREATE TABLE already declared it). The shape CHECK +
 -- the model-A re-narrow live in the ALTER block lower down (guarded for existing DBs).
 ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
+-- EVERY statement after this rename must say `original_language`. The whole block runs as ONE
+-- `conn.execute`, i.e. one implicit transaction: four legacy index-repair statements further down
+-- still named `language`, so on any DB that actually HAD the old column the rename succeeded, the
+-- first of those indexes failed with `column "language" does not exist`, the transaction rolled
+-- back — and composition-service crash-looped on startup, restoring the old column each time so the
+-- next attempt failed identically. Invisible until a rebuild, because the running containers were
+-- on an image from before the rename existed.
+-- MOTIF-I18N rename (idempotent): on an EXISTING DB the column is still `language`.
+-- A rename carries the data and re-points every dependent index automatically, so it
+-- beats add+copy+drop. On a fresh DB the CREATE TABLE above already declared
+-- `original_language` and this is a no-op. The index RESHAPE (dropping the language
+-- column OUT of the identity keys) is data-dependent and lives in the marker-gated
+-- motif_i18n migration, not here.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'motif' AND column_name = 'language')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'motif' AND column_name = 'original_language') THEN
+    ALTER TABLE motif RENAME COLUMN language TO original_language;
+  END IF;
+END $$;
+
+-- ── motif_translation: the per-language VIEW of a motif's authored text.
+-- Structure/identity never appears here (code, kind, category, genre_tags, the
+-- roles[].key/actant, the beats[].key/tension_target/order, tension_target,
+-- annotations, info_asymmetry all live ONLY on the source row) — a translation can
+-- therefore never add, drop, or reshape a motif, only re-word it.
+--
+-- PK is (motif_id, language_code), deliberately NOT glossary's
+-- (…, source_content_hash): glossary caches SNAPSHOTS, which legitimately carry
+-- concurrent versions, so the hash belongs in its key. A motif has exactly one current
+-- text per language — hash-in-key would grow rows without bound and turn the fallback
+-- read into a "newest matching" subquery. Keeping the hash as a COLUMN preserves the
+-- staleness signal while the read stays one LEFT JOIN — the same shape motif already
+-- uses for vectors (embedded_summary_hash is a column, not a key).
+CREATE TABLE IF NOT EXISTS motif_translation (
+  motif_id       UUID NOT NULL REFERENCES motif(id) ON DELETE CASCADE,
+  language_code  TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  summary        TEXT NOT NULL DEFAULT '',
+  emotion_target TEXT,
+  roles          JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{key,label,constraints}] — key MUST match source
+  beats          JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{key,label,intent}]      — key MUST match source
+  preconditions  JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{text}] positional
+  effects        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  examples       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- hash of the SOURCE translatable payload this translation was produced from.
+  -- Mismatch vs the live source = stale (still served, but flagged) — never silently wrong.
+  source_content_hash TEXT NOT NULL DEFAULT '',
+  -- 'authored' = human-written (the hand-written vi packs); NEVER machine-overwritten.
+  -- 'machine'  = produced by scripts/motif_translate.py or a user-paid job.
+  source         TEXT NOT NULL DEFAULT 'machine'
+                   CHECK (source IN ('authored','machine')),
+  translated_by  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (motif_id, language_code)
+);
+CREATE INDEX IF NOT EXISTS idx_motif_translation_lang ON motif_translation(language_code);
 -- tenancy partials keyed incl. language (R1.1.3). A user's GLOBAL tier (book_id NULL) and
 -- PER-BOOK labels (book_id set, D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter) dedup
 -- INDEPENDENTLY, so the same source may be adopted globally AND into a book without a false
 -- code collision (the confirm path uses clone(), which raises on collision). The read
 -- predicate is UNCHANGED — book_id only narrows what the OWNER sees, never widens visibility.
+-- MOTIF-I18N: `language` is GONE from every identity key — a motif is one row per
+-- (tier, code) and its other languages are motif_translation rows. On an existing DB
+-- these names already exist with the old (…, language) shape, so `IF NOT EXISTS` here
+-- is a NO-OP by design; the marker-gated motif_i18n migration does the DROP+CREATE
+-- reshape after it has collapsed the duplicate rows. Fresh DBs are born in this shape.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user
-  ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+  ON motif(owner_user_id, code) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
 -- model-A private book label: per-(owner,book) dedup, scoped to NOT shared. The SHARED tier
 -- (book_shared) dedups per-BOOK instead (uq_motif_book_shared) — one code+language per book
 -- across ALL collaborators, so two grantees can't fork the same shared code.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
-  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+  ON motif(owner_user_id, book_id, code) WHERE book_id IS NOT NULL AND NOT book_shared;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
-  ON motif(book_id, code, language) WHERE book_shared;
+  ON motif(book_id, code) WHERE book_shared;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_system
-  ON motif(code, language)                WHERE owner_user_id IS NULL;
+  ON motif(code)                          WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_owner  ON motif(owner_user_id) WHERE owner_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book   ON motif(book_id)        WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id)   WHERE book_shared;
@@ -924,8 +995,11 @@ CREATE INDEX IF NOT EXISTS idx_motif_public ON motif(visibility, updated_at DESC
 CREATE INDEX IF NOT EXISTS idx_motif_genre  ON motif USING GIN (genre_tags);
 -- retrieval pre-filter (genre ∩ + status + tier predicate) runs in SQL BEFORE loading
 -- vectors (audit data-R1). The composite supports the active-status list scan.
+-- MOTIF-I18N: retrieval no longer filters by language (one row per motif; the caller's
+-- display language is resolved AFTER selection, via motif_translation). Reshaped by the
+-- marker-gated migration on existing DBs — see the uq_motif_* note above.
 CREATE INDEX IF NOT EXISTS idx_motif_retrieve
-  ON motif(status, language) WHERE status = 'active';
+  ON motif(status) WHERE status = 'active';
 
 -- ── motif_link: composition + legal succession + variant (ATU + plot-graph). Cycle
 -- guard on precedes/composed_of (H-2) + user edges may not touch system motifs (H-2).
@@ -1203,6 +1277,9 @@ END $$;
 ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS imported_derived BOOLEAN NOT NULL DEFAULT false;
 -- D-MOTIF-SYNC-3WAY-BASE: the merge-base snapshot column (additive ALTER for an existing motif).
 ALTER TABLE motif ADD COLUMN IF NOT EXISTS adopted_base JSONB;
+-- MOTIF-I18N: these legacy repair statements are no-ops on a migrated DB, but they are
+-- LIVE code — if a condition ever fired while they still named `original_language` in the
+-- key they would resurrect the exact language-in-identity schema motif_i18n_v1 removed.
 -- D-MOTIF-ADOPT-PER-BOOK: the per-book label column + the book-scoped uniqueness partial
 -- (additive, for an already-created motif). On an EXISTING DB the base `CREATE UNIQUE INDEX
 -- IF NOT EXISTS uq_motif_user` above is a no-op (the index already exists with the OLD
@@ -1216,11 +1293,12 @@ BEGIN
   ) THEN
     DROP INDEX uq_motif_user;
     CREATE UNIQUE INDEX uq_motif_user
-      ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+      ON motif(owner_user_id, code)
+      WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
   END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
-  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
+  ON motif(owner_user_id, book_id, code) WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book ON motif(book_id) WHERE book_id IS NOT NULL;
 -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): the shared-tier marker + its per-book dedup, the
 -- orthogonality CHECK, and the re-narrowed model-A partial — all additive for an existing motif.
@@ -1240,11 +1318,12 @@ BEGIN
   ) THEN
     DROP INDEX uq_motif_user_book;
     CREATE UNIQUE INDEX uq_motif_user_book
-      ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+      ON motif(owner_user_id, book_id, code)
+      WHERE book_id IS NOT NULL AND NOT book_shared;
   END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
-  ON motif(book_id, code, language) WHERE book_shared;
+  ON motif(book_id, code) WHERE book_shared;
 CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id) WHERE book_shared;
 CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
 BEGIN
@@ -2195,6 +2274,13 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         if rekeyed:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
+        # MOTIF-I18N: collapse per-language motif rows into one source row + its
+        # motif_translation rows. Must precede _seed_motif_packs (which would
+        # otherwise re-create the very rows this removes) and follows the motif DDL
+        # (it needs motif_translation + the original_language rename).
+        from app.db.motif_i18n_migrate import run_motif_i18n
+        if await run_motif_i18n(conn):
+            logger.info("composition migrate: motif i18n motif_i18n_v1 applied this boot")
         await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
         await conn.execute(_GLOSSARY_BUILD_SQL)        # glossary-build pipeline FSM (spec 2026-07-27)
         await conn.execute(_ERROR_BLOCK_SQL)           # atom-edit Phase D: author-marked error blocks

@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "kẻ thân cận nhất trở mặt vào thời khắc tồi tệ nhất",
+        "label": "Phản bội giáng xuống"
+      },
+      "fall": {
+        "intent": "nhân vật chính bị tước sạch mọi thứ",
+        "label": "Sụp đổ và mất mát"
+      },
+      "trust": {
+        "intent": "một mối thâm tình được dựng lên để rồi bị bẻ gãy",
+        "label": "Gây dựng lòng tin"
+      },
+      "vow": {
+        "intent": "bị đuổi đi, người sống sót thề sẽ trở về",
+        "label": "Lưu đày cùng một lời thề"
+      }
+    },
+    "effects": [
+      "nhân vật chính bị tước đoạt địa vị và bị đuổi đi",
+      "một lời thề báo thù thôi thúc được lập ra"
+    ],
+    "emotion_target": "grief",
+    "examples": [
+      "Ngay trước thềm khải hoàn, kẻ thân tín nhất trở mặt; bị tước sạch mọi thứ và đuổi đi, người sống sót thề sẽ quay về."
+    ],
+    "name": "Phản bội rồi lưu đày",
+    "preconditions": [
+      "nhân vật chính đang nắm giữ lòng tin, địa vị hoặc quyền lực"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "thân cận, được tin tưởng"
+        ],
+        "label": "huynh đệ kết nghĩa / kẻ phản bội"
+      },
+      "lost_kin": {
+        "constraints": [
+          "bị cuốn theo trong cơn sụp đổ"
+        ],
+        "label": "thân quyến hoặc đồng minh đã mất"
+      },
+      "protagonist": {
+        "constraints": [
+          "cả tin, đang trên đà lên"
+        ],
+        "label": "người sống sót bị phản bội"
+      },
+      "vengeance": {
+        "constraints": [
+          "đã thề, thôi thúc khôn nguôi"
+        ],
+        "label": "lời thề báo thù"
+      }
+    },
+    "summary": "Ngay trước thềm khải hoàn, kẻ thân tín nhất trở mặt; bị tước sạch mọi thứ và đuổi đi, người sống sót thề sẽ quay về."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "đưa ra bằng chứng không thể chối cãi",
+        "label": "Đối mặt cùng bằng chứng"
+      },
+      "exact": {
+        "intent": "bắt chúng phải trả giá",
+        "label": "Đòi đủ cái giá"
+      },
+      "locate": {
+        "intent": "tìm ra một kẻ đã chung tay gây tội",
+        "label": "Truy ra kẻ có tội"
+      },
+      "respond": {
+        "intent": "kẻ có tội cầu xin hoặc ngang nhiên thách thức",
+        "label": "Kẻ có tội van xin hay ngoan cố"
+      }
+    },
+    "effects": [
+      "một trong những kẻ có tội bị bắt phải trả giá",
+      "chuỗi thanh toán tiến dần tới kẻ chủ mưu"
+    ],
+    "emotion_target": "grim-resolve",
+    "examples": [
+      "Lần lượt từng kẻ một, người báo thù truy tìm những kẻ đã chung tay gây tội và bắt từng đứa phải trả giá."
+    ],
+    "name": "Đòi món nợ máu",
+    "preconditions": [
+      "nhiều kẻ cùng chung tội với một oan khuất trong quá khứ, và chính những bí mật của kẻ thù đã chỉ ra đứa nào làm chuyện gì"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "một trong số nhiều kẻ"
+        ],
+        "label": "kẻ có tội"
+      },
+      "protagonist": {
+        "constraints": [
+          "bị thôi thúc, tính toán bài bản"
+        ],
+        "label": "kẻ báo thù"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "nỗi oan đang được đòi lại công bằng"
+        ],
+        "label": "người đã khuất bị hàm oan"
+      }
+    },
+    "summary": "Lần lượt từng kẻ một, người báo thù truy tìm những kẻ đã chung tay gây tội, đối mặt với từng đứa cùng bằng chứng, và bắt chúng phải trả giá."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "nhân vật chính bị bôi nhọ trước mặt mọi người",
+        "label": "Bị kết tội công khai"
+      },
+      "evidence_hidden": {
+        "intent": "sự thật bị vùi lấp; điểm trũng nhất",
+        "label": "Chứng cứ bị che giấu"
+      },
+      "framed": {
+        "intent": "chứng cứ ngụy tạo gán tội cho nhân vật chính",
+        "label": "Bị gài tội"
+      },
+      "unmasked": {
+        "intent": "bàn tay thật sự bị lôi ra ánh sáng",
+        "label": "Lật mặt sự thật"
+      }
+    },
+    "effects": [
+      "thanh danh của nhân vật chính được rửa sạch",
+      "thủ phạm thật sự bị phơi bày"
+    ],
+    "emotion_target": "indignation",
+    "examples": [
+      "Bị gán tội phản đồ bằng chứng cứ ngụy tạo, kẻ bị hàm oan chịu nhục cho đến khi bàn tay thật sự bị lôi ra ánh sáng."
+    ],
+    "name": "Vu oan giá họa",
+    "preconditions": [
+      "nhân vật chính có thể bị đổ tội một cách có vẻ hợp lý"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "ban đầu bị vùi lấp"
+        ],
+        "label": "nhân chứng hoặc manh mối bị che giấu"
+      },
+      "framer": {
+        "constraints": [
+          "giấu mặt, tính toán bài bản"
+        ],
+        "label": "kẻ giăng bẫy vu khống"
+      },
+      "judges": {
+        "constraints": [
+          "bị vẻ ngoài đánh lừa"
+        ],
+        "label": "hội đồng xét xử"
+      },
+      "protagonist": {
+        "constraints": [
+          "bị kết tội trước bàn dân thiên hạ"
+        ],
+        "label": "kẻ bị vu oan"
+      }
+    },
+    "summary": "Bị gán tội phản đồ bằng chứng cứ ngụy tạo, kẻ bị hàm oan nhẫn nhịn chịu nhục trước bàn dân thiên hạ cho đến khi bàn tay thật sự bị lôi ra ánh sáng."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "kẻ sát nhân nằm đó không còn sức kháng cự",
+        "label": "Kẻ thù nằm trong tay"
+      },
+      "choice": {
+        "intent": "người báo thù phải định đoạt",
+        "label": "Buộc phải lựa chọn"
+      },
+      "consequence": {
+        "intent": "lựa chọn ấy định hình lại con người họ",
+        "label": "Hệ quả ập đến"
+      },
+      "reason": {
+        "intent": "một lý do để không ra tay bỗng hiện ra",
+        "label": "Lý do để tha thứ hiện ra"
+      }
+    },
+    "effects": [
+      "nhân vật chính bị chính lựa chọn của mình làm thay đổi",
+      "vòng xoáy báo thù khép lại hoặc cứ thế tiếp diễn"
+    ],
+    "emotion_target": "moral-tension",
+    "examples": [
+      "Khi kẻ sát nhân đã nằm trong tay, một lý do để tha thứ bỗng hiện ra; lựa chọn của người báo thù định hình lại con người họ sẽ trở thành."
+    ],
+    "name": "Khoan dung hay báo thù",
+    "preconditions": [
+      "nhân vật chính đang nắm kẻ thù trong tay, mặc cho mình định đoạt"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "nằm trong tay nhân vật chính, mặc cho định đoạt"
+        ],
+        "label": "kẻ thù không còn sức kháng cự"
+      },
+      "moral_voice": {
+        "constraints": [
+          "thân quyến, lương tri hoặc một nhân chứng"
+        ],
+        "label": "tiếng nói kêu gọi khoan dung"
+      },
+      "protagonist": {
+        "constraints": [
+          "nắm trong tay quyền kết liễu tất cả"
+        ],
+        "label": "kẻ báo thù bên bờ vực"
+      }
+    },
+    "summary": "Khi kẻ sát nhân đã nằm trong tay, một lý do để tha thứ bỗng hiện ra; lựa chọn của người báo thù định hình lại con người họ sẽ trở thành."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "leo dần lên hàng ngũ của kẻ thù",
+        "label": "Lấy lòng tin từ bên trong"
+      },
+      "enter": {
+        "intent": "trà trộn vào kẻ thù dưới lớp vỏ bọc",
+        "label": "Trà trộn dưới tên giả"
+      },
+      "gather": {
+        "intent": "âm thầm góp nhặt bí mật và bằng chứng",
+        "label": "Thu thập thóp"
+      },
+      "strike": {
+        "intent": "quay bí mật của kẻ thù lại chống chính chúng",
+        "label": "Ra đòn từ bên trong"
+      }
+    },
+    "effects": [
+      "kẻ thù tự sụp đổ bởi chính bí mật của mình",
+      "thân phận thật của kẻ báo thù lộ ra vào khoảnh khắc ra đòn"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Dưới một danh tính mượn tạm, kẻ báo thù leo dần lên chính hàng ngũ của kẻ địch, rồi quay lại dùng chính bí mật của chúng để hạ chúng."
+    ],
+    "name": "Ẩn nhẫn trà trộn",
+    "preconditions": [
+      "nhân vật chính có thể trà trộn vào vòng trong của kẻ thù mà không bị nhận ra"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "một đồng minh thầm lặng trong nội bộ"
+        ],
+        "label": "nội ứng bên trong"
+      },
+      "leverage": {
+        "constraints": [
+          "bí mật, bằng chứng"
+        ],
+        "label": "thóp đã nắm được"
+      },
+      "protagonist": {
+        "constraints": [
+          "giấu kín thân phận của mình"
+        ],
+        "label": "kẻ báo thù cải trang"
+      },
+      "target_house": {
+        "constraints": [
+          "thế lực hùng mạnh, phòng bị nghiêm ngặt"
+        ],
+        "label": "gia tộc kẻ thù"
+      }
+    },
+    "summary": "Dưới một danh tính mượn tạm, kẻ báo thù leo dần lên chính hàng ngũ của kẻ địch, thu thập thóp nắm trong tay, rồi quay lại dùng chính bí mật của chúng để hạ chúng từ bên trong."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "kẻ báo thù đối diện với sự trống rỗng",
+        "label": "Dư âm trống rỗng"
+      },
+      "confront": {
+        "intent": "cuộc thanh toán cuối cùng ập đến",
+        "label": "Trận đối đầu cuối cùng"
+      },
+      "cost": {
+        "intent": "cái giá của cuộc truy đuổi hiện rõ",
+        "label": "Cái giá khuất lấp lộ ra"
+      },
+      "victory": {
+        "intent": "kẻ thù gục ngã",
+        "label": "Giành được chiến thắng"
+      }
+    },
+    "effects": [
+      "kẻ thù không đội trời chung bị đánh bại",
+      "kẻ báo thù đối diện với cái giá của mối thù mình đã trả"
+    ],
+    "emotion_target": "melancholy",
+    "examples": [
+      "Kẻ thù rốt cuộc cũng gục ngã — và trong khoảng lặng sau đó, kẻ báo thù nhìn ra cái giá mà những năm tháng hận thù đã lấy đi."
+    ],
+    "name": "Chiến thắng cay đắng",
+    "preconditions": [
+      "nhân vật chính sắp đi đến hồi kết của một cuộc truy đuổi báo thù dằng dặc"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "mục tiêu cuối cùng"
+        ],
+        "label": "kẻ thù không đội trời chung"
+      },
+      "protagonist": {
+        "constraints": [
+          "bị cuộc truy đuổi dằng dặc gặm mòn"
+        ],
+        "label": "kẻ báo thù"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "trống rỗng một khi đã đạt được"
+        ],
+        "label": "mối thù đã trả xong"
+      }
+    },
+    "summary": "Kẻ thù rốt cuộc cũng gục ngã, và trong khoảng lặng sau đó, kẻ báo thù nhìn ra cái giá mà những năm tháng hận thù đã lấy đi."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "âm thầm khổ luyện mài giũa",
+        "label": "Trỗi dậy đầy cay đắng"
+      },
+      "breakthrough": {
+        "intent": "nhân vật chính vượt qua ngưỡng cửa sức mạnh",
+        "label": "Đột phá"
+      },
+      "encounter": {
+        "intent": "một bước ngoặt tình cờ mở ra con đường tới sức mạnh",
+        "label": "Cơ duyên bất ngờ"
+      },
+      "humiliation": {
+        "intent": "kẻ bị ruồng bỏ bị đánh gục và bị ra kỳ hạn",
+        "label": "Nhục nhã"
+      },
+      "return": {
+        "intent": "trở về lật đổ kẻ đã hủy hoại mình",
+        "label": "Trở về và lật ngược thế cờ"
+      }
+    },
+    "effects": [
+      "nhân vật chính trở về với diện mạo đổi thay và đầy sức mạnh",
+      "kẻ đã hủy hoại mình bị lật đổ"
+    ],
+    "emotion_target": "vindication",
+    "examples": [
+      "Được cho một kỳ hạn để mạnh lên hoặc là chết, kẻ bị ruồng bỏ ẩn nhẫn khổ luyện rồi trở về lật đổ kẻ đã hủy hoại mình."
+    ],
+    "name": "Giao ước ba năm",
+    "preconditions": [
+      "nhân vật chính đã bị đánh gục và làm nhục",
+      "một khoảng thời gian hữu hạn để mạnh lên được ấn định"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "sát cánh suốt chặng leo lên"
+        ],
+        "label": "đồng minh trung thành"
+      },
+      "mentor": {
+        "constraints": [
+          "ẩn dật, khắt khe"
+        ],
+        "label": "kỳ nhân chốn hoang dã"
+      },
+      "protagonist": {
+        "constraints": [
+          "được định cho một kỳ hạn để mạnh lên"
+        ],
+        "label": "kẻ bị ruồng bỏ"
+      },
+      "rival": {
+        "constraints": [
+          "yên vị trong chiến thắng"
+        ],
+        "label": "kẻ đã hủy hoại mình"
+      }
+    },
+    "summary": "Được cho một kỳ hạn để mạnh lên hoặc là chết, kẻ bị ruồng bỏ ẩn nhẫn khổ luyện qua nhục nhã và một cơ duyên bất ngờ, rồi trở về lật đổ kẻ đã hủy hoại mình."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "người thừa kế chân chính bị chối bỏ",
+        "label": "Bị đuổi đi như kẻ mạo nhận"
+      },
+      "reclaim": {
+        "intent": "bằng chứng trồi lên và quyền thừa kế được khôi phục",
+        "label": "Đòi lại phần chính danh"
+      },
+      "seek_proof": {
+        "intent": "người thừa kế truy tìm bằng chứng còn sót lại",
+        "label": "Truy tìm bằng chứng huyết thống"
+      },
+      "stolen": {
+        "intent": "quyền thừa kế bị chiếm đoạt bằng giấy tờ giả mạo",
+        "label": "Quyền chính danh bị cướp"
+      }
+    },
+    "effects": [
+      "kẻ tiếm đoạt bị phơi bày",
+      "nhân vật chính đòi lại quyền thừa kế chính danh của mình"
+    ],
+    "emotion_target": "vindication",
+    "examples": [
+      "Quyền thừa kế bị cướp đoạt và một di chúc giả mạo khiến người thừa kế chân chính thành kẻ ăn mày — cho đến khi bằng chứng không ai phá hủy nổi lại trồi lên."
+    ],
+    "name": "Cướp đoạt gia sản kế thừa",
+    "preconditions": [
+      "nhân vật chính nắm giữ một quyền chính danh có thể bị cướp đoạt"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "phần gia sản đang bị tranh đoạt"
+        ],
+        "label": "quyền thừa kế chính danh"
+      },
+      "protagonist": {
+        "constraints": [
+          "bị cướp mất thứ vốn thuộc về mình"
+        ],
+        "label": "người thừa kế bị tước đoạt"
+      },
+      "retainer": {
+        "constraints": [
+          "canh giữ bằng chứng"
+        ],
+        "label": "gia nhân trung thành"
+      },
+      "usurper": {
+        "constraints": [
+          "nắm giữ phần quyền thừa kế đã cướp"
+        ],
+        "label": "kẻ tiếm đoạt"
+      }
+    },
+    "summary": "Quyền thừa kế bị cướp đoạt và một di chúc giả mạo khiến người thừa kế chân chính thành kẻ ăn mày, cho đến khi bằng chứng không ai phá hủy nổi lại trồi lên."
+  }
+}

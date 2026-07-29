@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "các đối thủ đẩy giá lên cao",
+        "label": "Cuộc tranh giá"
+      },
+      "outbid": {
+        "intent": "nhân vật chính bị áp đảo về tài lực và bị chế giễu",
+        "label": "Đối thủ vượt giá"
+      },
+      "secret_win": {
+        "intent": "nhân vật chính giành lấy nó bằng một cách bất ngờ",
+        "label": "Đắc thắng bằng cách bí ẩn"
+      },
+      "surface": {
+        "intent": "một di vật khiến ai cũng thèm khát được đem ra đấu giá",
+        "label": "Bảo vật hiếm xuất hiện"
+      }
+    },
+    "effects": [
+      "nhân vật chính giành được bảo vật",
+      "một đối thủ giàu có bị áp đảo công khai"
+    ],
+    "emotion_target": "triumph",
+    "examples": [
+      "Một di vật xuất hiện tại phiên đấu giá; bị áp đảo về tài lực và bị chế giễu, nhân vật chính giành lấy nó bằng một cách không ai ngờ tới."
+    ],
+    "name": "Bảo Vật Đấu Giá",
+    "preconditions": [
+      "một tài nguyên ai cũng thèm khát được mở ra tranh đoạt công khai"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "chỗ dựa được giấu kín"
+        ],
+        "label": "một hậu thuẫn ẩn giấu"
+      },
+      "protagonist": {
+        "constraints": [
+          "thiếu tài nguyên"
+        ],
+        "label": "người ra giá"
+      },
+      "rival": {
+        "constraints": [
+          "ngạo mạn, túi tiền rủng rỉnh"
+        ],
+        "label": "đối thủ giàu có"
+      },
+      "treasure": {
+        "constraints": [
+          "hiếm có, ai cũng thèm khát"
+        ],
+        "label": "di vật được đấu giá"
+      }
+    },
+    "summary": "Một bảo vật hiếm xuất hiện tại phiên đấu giá; bị áp đảo về tài lực và bị chế giễu, nhân vật chính lại giành được nó nhờ một hậu thuẫn ẩn giấu hoặc một cách bất ngờ."
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "đoạt lấy nó từ một tử địa",
+        "label": "Đoạt lấy giữa hiểm nguy"
+      },
+      "advance": {
+        "intent": "đột phá nhờ uy lực của nó",
+        "label": "Hấp thụ và thăng tiến"
+      },
+      "named": {
+        "intent": "linh vật cần thiết được nhận diện",
+        "label": "Xác định tài nguyên"
+      },
+      "stall": {
+        "intent": "tiến triển khựng lại trước một bức tường",
+        "label": "Cảnh giới đình trệ"
+      }
+    },
+    "effects": [
+      "nhân vật chính có được tài nguyên cần thiết",
+      "nhân vật chính thăng lên một cấp"
+    ],
+    "emotion_target": "determination",
+    "examples": [
+      "Mắc kẹt dưới một bức tường cảnh giới, tu sĩ săn tìm một linh vật được canh giữ vào tử địa và đột phá nhờ uy lực của nó."
+    ],
+    "name": "Săn Tìm Tài Nguyên Phá Quan",
+    "preconditions": [
+      "nhân vật chính bị chặn lại tại một nút thắt",
+      "biết rõ một tài nguyên cụ thể có thể phá vỡ nó"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "chí mạng, hung hãn giữ lãnh địa"
+        ],
+        "label": "yêu thú trấn giữ"
+      },
+      "protagonist": {
+        "constraints": [
+          "cần một tài nguyên cụ thể"
+        ],
+        "label": "tu sĩ bị đình trệ"
+      },
+      "resource": {
+        "constraints": [
+          "hiếm có, được canh giữ"
+        ],
+        "label": "linh thảo / yêu đan"
+      }
+    },
+    "summary": "Đình trệ dưới một bức tường cảnh giới, tu sĩ săn tìm một linh vật được canh giữ vào tử địa và đột phá nhờ uy lực của nó."
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "cảnh giới ngưng trệ kháng cự",
+        "label": "Đụng phải bức tường nội tâm"
+      },
+      "breakthrough": {
+        "intent": "sống sót và đột phá thành công",
+        "label": "Đột phá cảnh giới"
+      },
+      "crisis": {
+        "intent": "kiếp nạn suýt lấy mạng tu sĩ",
+        "label": "Cận kề cái chết"
+      },
+      "insight": {
+        "intent": "một tầng lĩnh ngộ phá vỡ bức tường",
+        "label": "Đốn ngộ"
+      },
+      "seclusion": {
+        "intent": "lui về tĩnh tu để phá nút thắt",
+        "label": "Vào bế quan"
+      },
+      "tribulation": {
+        "intent": "trời cao khảo nghiệm bước thăng tiến",
+        "label": "Thiên kiếp giáng xuống"
+      }
+    },
+    "effects": [
+      "nhân vật chính thăng lên một cảnh giới hoặc một cấp",
+      "danh tiếng và thực lực của họ tăng vọt rõ rệt"
+    ],
+    "emotion_target": "anticipation",
+    "examples": [
+      "Bế quan để phá cảnh giới ngưng trệ, tu sĩ đối mặt bức tường nội tâm, một đạo thiên kiếp, cận kề cái chết rồi đột phá lên cảnh giới mới."
+    ],
+    "name": "Bế Quan Đột Phá",
+    "preconditions": [
+      "nhân vật chính bị chặn lại tại một nút thắt tu luyện",
+      "có sẵn một lượng tài nguyên hoặc lĩnh ngộ"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "không bắt buộc"
+        ],
+        "label": "đồng minh canh giữ cửa bế quan"
+      },
+      "protagonist": {
+        "constraints": [
+          "mắc kẹt dưới bức tường cảnh giới"
+        ],
+        "label": "tu sĩ bị đình trệ"
+      },
+      "tribulation": {
+        "constraints": [
+          "vô tình, ngày càng dữ dội"
+        ],
+        "label": "thiên kiếp"
+      }
+    },
+    "summary": "Bế quan để phá cảnh giới ngưng trệ, tu sĩ đối mặt với bức tường nội tâm, gắng chịu thiên kiếp, cận kề sinh tử rồi đột phá lên một cảnh giới mới."
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "tu sĩ phải cự tuyệt lời dối an ủi",
+        "label": "Đối mặt với chính mình"
+      },
+      "emerge": {
+        "intent": "đạo tâm đứng vững, được tôi luyện",
+        "label": "Bước ra kiên định"
+      },
+      "false_memory": {
+        "intent": "một ảo cảnh tái hiện nỗi day dứt sâu nặng nhất",
+        "label": "Khảo nghiệm ký ức giả"
+      },
+      "surface": {
+        "intent": "nỗi hoài nghi của tu sĩ hiện hình",
+        "label": "Tâm ma trỗi dậy"
+      }
+    },
+    "effects": [
+      "ý chí của nhân vật chính được tôi luyện và sáng tỏ",
+      "loại bỏ điểm yếu trước ảo cảnh hoặc cám dỗ"
+    ],
+    "emotion_target": "resolve",
+    "examples": [
+      "Một ảo cảnh khảo nghiệm tái hiện nỗi day dứt sâu nặng nhất của tu sĩ; chỉ khi cự tuyệt lời dối an ủi thì đạo tâm mới đứng vững."
+    ],
+    "name": "Tôi Luyện Đạo Tâm",
+    "preconditions": [
+      "nhân vật chính mang một nỗi day dứt hoặc chấp niệm chưa hóa giải"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "thứ đang bị đặt cược"
+        ],
+        "label": "đạo tâm / ý chí"
+      },
+      "inner_demon": {
+        "constraints": [
+          "đeo một gương mặt an ủi"
+        ],
+        "label": "tâm ma"
+      },
+      "protagonist": {
+        "constraints": [
+          "mang nỗi day dứt chưa hóa giải"
+        ],
+        "label": "tu sĩ"
+      }
+    },
+    "summary": "Tâm ma trỗi dậy trong một ảo cảnh khảo nghiệm tái hiện nỗi day dứt sâu nặng nhất của tu sĩ; chỉ khi cự tuyệt lời dối an ủi thì đạo tâm mới đứng vững."
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "kẻ kế thừa kiêu căng cười nhạo nhân vật chính",
+        "label": "Phe ngạo mạn chế giễu"
+      },
+      "reveal": {
+        "intent": "nhân vật chính hiển lộ một công pháp cao thâm hơn",
+        "label": "Phơi bày sức mạnh ẩn giấu"
+      },
+      "reversal": {
+        "intent": "kẻ chế giễu bị vả mặt công khai",
+        "label": "Đảo ngược nỗi nhục"
+      },
+      "underestimate": {
+        "intent": "đám đông coi như họ chẳng là gì",
+        "label": "Nhân vật chính bị xem thường"
+      }
+    },
+    "effects": [
+      "thực lực thật sự của nhân vật chính được phơi bày trước mắt mọi người",
+      "phe ngạo mạn bị bẽ mặt và trở thành kẻ thù"
+    ],
+    "emotion_target": "satisfaction",
+    "examples": [
+      "Một kẻ kế thừa vênh váo cười nhạo 'phế vật'; giữa trận đấu phế vật hiển lộ công pháp cao thâm hơn và kẻ kia bị vả mặt công khai."
+    ],
+    "name": "Phản Đòn Vả Mặt",
+    "preconditions": [
+      "nhân vật chính bị xem thường hoặc lăng nhục trước đám đông",
+      "nhân vật chính ngầm sở hữu sức mạnh vượt xa cấp bậc bề ngoài"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "kiêu căng, hậu thuẫn vững"
+        ],
+        "label": "thiên tài ngạo mạn"
+      },
+      "protagonist": {
+        "constraints": [
+          "bị coi rẻ trước đám đông"
+        ],
+        "label": "kẻ bị xem thường"
+      },
+      "witnesses": {
+        "constraints": [
+          "khán giả công khai"
+        ],
+        "label": "đám đông đang nhìn"
+      }
+    },
+    "summary": "Một phe ngạo mạn chế giễu nhân vật chính bị xem thường, người này liền phơi bày sức mạnh ẩn giấu và giáng trả nỗi nhục lên kẻ chế giễu ngay trước mặt đám đông."
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "cơ duyên tình cờ làm thay đổi tất cả",
+        "label": "Phát hiện di vật / cao nhân"
+      },
+      "inheritance": {
+        "intent": "ban cho sức mạnh ràng buộc bởi một món nợ hoặc bí mật",
+        "label": "Nhận truyền thừa kèm giá phải trả"
+      },
+      "isolation": {
+        "intent": "đẩy nhân vật chính vào tuyệt cảnh không người cứu giúp, lúc khốn cùng nhất",
+        "label": "Cô lập sau khi sa cơ"
+      },
+      "trial": {
+        "intent": "cao nhân hoặc di vật thử thách tư cách",
+        "label": "Khảo nghiệm của truyền thừa"
+      }
+    },
+    "effects": [
+      "nhân vật chính có được một sức mạnh hoặc công pháp ẩn giấu",
+      "hình thành một món nợ hoặc mối ràng buộc bí mật với cao nhân"
+    ],
+    "emotion_target": "hope",
+    "examples": [
+      "Bị ném vào hẻm núi phong ấn, kẻ phế vật vô tình gặp một cao nhân hấp hối khảo nghiệm rồi truyền lại cấm thuật — ràng buộc bởi một món nợ trung thành."
+    ],
+    "name": "Kỳ Ngộ → Truyền Thừa",
+    "preconditions": [
+      "nhân vật chính yếu kém, bị nhục mạ hoặc bị trục xuất",
+      "không có đồng minh nào bên cạnh"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "cấm kỵ hoặc cái thế vô song"
+        ],
+        "label": "công pháp hoặc huyết mạch được truyền thừa"
+      },
+      "mentor": {
+        "constraints": [
+          "sắp tắt mạng hoặc đang trầm ngủ"
+        ],
+        "label": "cao nhân hấp hối / khí linh của di vật"
+      },
+      "protagonist": {
+        "constraints": [
+          "hiện đang yếu kém hoặc thất thế"
+        ],
+        "label": "kẻ phế vật cô độc"
+      }
+    },
+    "summary": "Một phế vật bị nhục mạ, cô lập sau khi sa cơ hoặc bị trục xuất, tình cờ phát hiện một di vật hoặc cao nhân sắp tắt mạng, trải qua khảo nghiệm và nhận được truyền thừa ẩn giấu, đổi lại bằng một món nợ ràng buộc."
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "một trận quyết đấu được phát ra",
+        "label": "Lời khiêu chiến"
+      },
+      "reversal": {
+        "intent": "kẻ được sủng ái gục ngã ngay khoảnh khắc chắc thắng",
+        "label": "Đảo ngược chí mạng"
+      },
+      "stakes": {
+        "intent": "cái chết được đặt làm giá phải trả",
+        "label": "Lập thề sinh tử"
+      },
+      "turn": {
+        "intent": "thế trận đảo chiều bất ngờ",
+        "label": "Cục diện xoay chuyển"
+      }
+    },
+    "effects": [
+      "một đối thủ bị đánh bại dứt khoát, thường là tới chết",
+      "địa vị của nhân vật chính bị đảo lộn hoàn toàn"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Một trận quyết đấu sinh tử trên đấu đài; kẻ con cưng được sủng ái thua cuộc đúng vào khoảnh khắc hắn nghĩ mình đã thắng."
+    ],
+    "name": "Sinh Tử Quyết Đấu",
+    "preconditions": [
+      "một cuộc đối đầu công khai, đặt cược lớn được lập thề"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "đấu đài công khai"
+        ],
+        "label": "đám đông đang nhìn"
+      },
+      "protagonist": {
+        "constraints": [
+          "bề ngoài có vẻ thua kém"
+        ],
+        "label": "kẻ khiêu chiến hoặc bị khiêu chiến"
+      },
+      "rival": {
+        "constraints": [
+          "tự tin, có hậu thuẫn"
+        ],
+        "label": "đối thủ được sủng ái"
+      }
+    },
+    "summary": "Một trận quyết đấu sinh tử được lập thề trên đấu đài; kẻ con cưng được sủng ái thua cuộc đúng vào khoảnh khắc hắn tin rằng mình đã thắng."
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "sư phụ đòi đền đáp vào một thời khắc gian nan",
+        "label": "Ân nghĩa bị đòi"
+      },
+      "incur": {
+        "intent": "hình thành một nghĩa vụ vượt quá khả năng dễ dàng đền đáp",
+        "label": "Mang nợ không thể trả hết"
+      },
+      "loyalty_test": {
+        "intent": "lòng trung thành của đệ tử bị thử thách",
+        "label": "Thử thách lòng trung"
+      },
+      "taught": {
+        "intent": "sư phụ cứu giúp hoặc chỉ dạy nhân vật chính",
+        "label": "Được cứu hoặc truyền dạy"
+      }
+    },
+    "effects": [
+      "một nghĩa vụ ràng buộc trói nhân vật chính với sư phụ",
+      "lòng trung thành của nhân vật chính được chứng minh hoặc tan vỡ"
+    ],
+    "emotion_target": "obligation",
+    "examples": [
+      "Được một sư phụ ẩn thế cứu giúp, đệ tử mang một món nợ bị đòi vào đúng thời khắc tồi tệ nhất."
+    ],
+    "name": "Ân Nghĩa Sư Đồ",
+    "preconditions": [
+      "nhân vật chính nhận được sự cứu giúp hoặc truyền dạy làm thay đổi cuộc đời"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "cường đại, khắt khe"
+        ],
+        "label": "sư phụ ẩn thế"
+      },
+      "obligation": {
+        "constraints": [
+          "ràng buộc, đắt giá"
+        ],
+        "label": "ân nghĩa / nghĩa vụ"
+      },
+      "protagonist": {
+        "constraints": [
+          "mắc nợ sư phụ"
+        ],
+        "label": "đệ tử mang ân nghĩa"
+      }
+    },
+    "summary": "Được một sư phụ ẩn thế cứu giúp hoặc truyền dạy, đệ tử mang một món nợ không thể trả hết, để rồi bị đòi vào đúng thời khắc tồi tệ nhất."
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "kẻ ngoại lai đến mà không có chút thân phận",
+        "label": "Đến nơi vô danh"
+      },
+      "exceed": {
+        "intent": "linh khí trắc nghiệm bị làm vỡ tan",
+        "label": "Vượt ngưỡng trắc nghiệm"
+      },
+      "recruited": {
+        "intent": "các trưởng lão tranh nhau thu nhận họ",
+        "label": "Được thu nhận kèm điều kiện"
+      },
+      "underestimated": {
+        "intent": "đệ tử giữ cửa coi rẻ họ",
+        "label": "Bị xem thường tại khảo nghiệm"
+      }
+    },
+    "effects": [
+      "nhân vật chính có được một chỗ đứng và một người chống lưng",
+      "gieo mầm mối thù với phe giữ cửa"
+    ],
+    "emotion_target": "triumph",
+    "examples": [
+      "Một kẻ ngoại lai vô hạng làm vỡ tan giới hạn của linh khí trắc nghiệm; các trưởng lão tranh nhau thu nhận họ."
+    ],
+    "name": "Khảo Nghiệm Nhập Môn",
+    "preconditions": [
+      "một khảo nghiệm hoặc trắc nghiệm mở quyết định việc gia nhập một thế lực"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "phán xét và chiêu mộ"
+        ],
+        "label": "trưởng lão tông môn"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "kẻ cả khinh khỉnh"
+        ],
+        "label": "đệ tử giữ cửa"
+      },
+      "protagonist": {
+        "constraints": [
+          "vô hạng, ngoài dự liệu"
+        ],
+        "label": "kẻ ngoại lai vô danh"
+      }
+    },
+    "summary": "Một kẻ ngoại lai vô danh vô hạng làm vỡ tan linh khí trắc nghiệm tại khảo nghiệm nhập môn của tông môn; các trưởng lão tranh nhau thu nhận, kèm theo những điều kiện đánh cược."
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "nhân vật chính bị đối xử như kẻ tàn phế",
+        "label": "Khuyết tật ẩn giấu"
+      },
+      "explained": {
+        "intent": "khiếm khuyết được nhìn ra là một thể chất hiếm có",
+        "label": "Khuyết tật được lý giải"
+      },
+      "gift": {
+        "intent": "khiếm khuyết thúc đẩy một bước thăng tiến phi thường",
+        "label": "Khuyết tật hóa thiên phú"
+      },
+      "vindication": {
+        "intent": "những kẻ khinh miệt bị chứng minh là sai lầm",
+        "label": "Rửa hận"
+      }
+    },
+    "effects": [
+      "tiềm năng ẩn giấu của nhân vật chính được khai mở",
+      "những kẻ từng khinh miệt buộc phải thừa nhận họ"
+    ],
+    "emotion_target": "vindication",
+    "examples": [
+      "Thân thể bị gọi là 'tàn phế' hóa ra ẩn chứa một thể chất hiếm có; chính khiếm khuyết ấy trở thành động lực thăng tiến."
+    ],
+    "name": "Phế Vật Hóa Thiên Tài — Rửa Hận",
+    "preconditions": [
+      "nhân vật chính bị coi là vô dụng hoặc tàn phế"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "coi rẻ, trọng địa vị"
+        ],
+        "label": "gia tộc khinh miệt"
+      },
+      "diagnostician": {
+        "constraints": [
+          "có thể nhìn ra thể chất thật sự"
+        ],
+        "label": "trưởng lão / người chẩn mạch"
+      },
+      "protagonist": {
+        "constraints": [
+          "bị cho là thiếu tư chất"
+        ],
+        "label": "'phế nhân' bị khinh miệt"
+      }
+    },
+    "summary": "Một khuyết tật ẩn giấu bị khinh miệt là tàn phế lại được chẩn đoán là một thiên phú hiếm có; chính khiếm khuyết ấy trở thành động lực thăng tiến và nhân vật chính được minh oan."
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "sống sót để phi thăng, hoặc tan biến",
+        "label": "Phi thăng hoặc rơi rụng"
+      },
+      "merit": {
+        "intent": "uy lực đạt tới ngưỡng phi thăng",
+        "label": "Tích lũy công đức"
+      },
+      "notice": {
+        "intent": "thiên kiếp tụ tập",
+        "label": "Trời cao để mắt"
+      },
+      "tribulation": {
+        "intent": "từng đợt nối tiếp nhau phải gắng chịu",
+        "label": "Lôi kiếp giáng xuống"
+      }
+    },
+    "effects": [
+      "nhân vật chính phi thăng lên một tầng trời hoặc cảnh giới cao hơn",
+      "địa vị nơi thế giới cũ của họ bị bỏ lại phía sau"
+    ],
+    "emotion_target": "awe",
+    "examples": [
+      "Uy lực chiêu dẫn thiên uy giáng nộ; chín đợt lôi kiếp phải được vượt qua để phi thăng."
+    ],
+    "name": "Độ Kiếp Phi Thăng",
+    "preconditions": [
+      "nhân vật chính đã đạt tới ngưỡng phi thăng"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "giữ vững phòng tuyến"
+        ],
+        "label": "đồng minh làm điểm tựa"
+      },
+      "protagonist": {
+        "constraints": [
+          "đứng trước ngưỡng phi thăng"
+        ],
+        "label": "tu sĩ sắp phi thăng"
+      },
+      "tribulation": {
+        "constraints": [
+          "ngày càng dữ dội, chí mạng"
+        ],
+        "label": "thiên kiếp"
+      }
+    },
+    "summary": "Uy lực tích tụ chiêu dẫn thiên uy giáng nộ; chín đợt lôi kiếp phải được vượt qua để phi thăng, được một đồng minh trấn giữ làm điểm tựa."
+  }
+}

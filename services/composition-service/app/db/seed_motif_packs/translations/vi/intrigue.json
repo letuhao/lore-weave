@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "cả phủ dựa cậy vào người thân tín",
+        "label": "Người thân tín ra tay"
+      },
+      "note": {
+        "intent": "một chỗ rò rỉ quá chính xác để có thể là tình cờ",
+        "label": "Chợt thấy điểm bất nhất"
+      },
+      "trap": {
+        "intent": "gài một bí mật giả đã được dựng sẵn",
+        "label": "Giăng bẫy để xác thực"
+      },
+      "unmask": {
+        "intent": "xác nhận tên nội gián rồi lật ngược lại",
+        "label": "Lột mặt nạ và thu phục"
+      }
+    },
+    "effects": [
+      "tên nội gián bị nhận diện rồi bị thu phục hoặc bị trừ khử",
+      "lòng tin trong phủ được sắp xếp lại"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Một chỗ rò rỉ quá chính xác để có thể là tình cờ; một bí mật giả được gài mồi chứng minh ai là kẻ mách lẻo — và mách cho ai."
+    ],
+    "name": "Lật Mặt Nội Gián",
+    "preconditions": [
+      "một chỗ rò rỉ quá chính xác cho thấy có một người thân tín đã bị mua chuộc"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "giúp giăng mồi"
+        ],
+        "label": "người tâm phúc"
+      },
+      "mole": {
+        "constraints": [
+          "người thân tín bên trong"
+        ],
+        "label": "tên nội gián"
+      },
+      "protagonist": {
+        "constraints": [
+          "lặng lẽ truy lùng chỗ rò rỉ"
+        ],
+        "label": "người sinh nghi"
+      }
+    },
+    "summary": "Một chỗ rò rỉ quá chính xác để có thể là tình cờ; một bí mật giả được gài mồi sẽ chứng minh ai là kẻ mách lẻo — và mách cho ai — rồi quay ngược chính tên nội gián đó."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "bội ước đúng lúc có lợi",
+        "label": "Trở mặt tại bước ngoặt"
+      },
+      "offer": {
+        "intent": "đề nghị một giao ước mà đồng minh sẽ chấp nhận",
+        "label": "Chìa ra liên minh"
+      },
+      "realign": {
+        "intent": "biến sự phản trắc thành thế đứng",
+        "label": "Sắp xếp lại thế cục"
+      },
+      "rely": {
+        "intent": "đồng minh dốc nguồn lực hoặc lòng tin",
+        "label": "Đồng minh đặt niềm tin"
+      },
+      "share": {
+        "intent": "tiết lộ vừa đủ để được tin",
+        "label": "Hé lộ nửa phần sự thật"
+      }
+    },
+    "effects": [
+      "đồng minh bị vứt bỏ ngay tại thời điểm còn lợi thế nhất",
+      "kẻ bày mưu chiếm được lợi thế"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Một lời thề chân thành, một bí mật chung vừa đủ thật để khiến người ta tin — cho đến khoảnh khắc bội ước trở nên có lợi."
+    ],
+    "name": "Liên Minh Giả Trá",
+    "preconditions": [
+      "kẻ bày mưu và mục tiêu cùng có một mục đích chung nghe hợp tình hợp lý"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "phần thưởng của sự phản trắc"
+        ],
+        "label": "lợi thế mưu cầu"
+      },
+      "false_ally": {
+        "constraints": [
+          "dựa cậy vào giao ước"
+        ],
+        "label": "đồng minh bị lừa"
+      },
+      "schemer": {
+        "constraints": [
+          "chìa ra một giao ước giả dối"
+        ],
+        "label": "kẻ bày mưu"
+      }
+    },
+    "summary": "Một lời thề chân thành và một bí mật chung vừa đủ thật để khiến người ta tin tưởng, cho đến khoảnh khắc bội ước có lợi nhất tại bước ngoặt."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "ra tay dựa trên sự thật đã hé lộ",
+        "label": "Ban thưởng hay thanh trừng"
+      },
+      "observe": {
+        "intent": "rình xem kẻ nào cắn mồi",
+        "label": "Quan sát phản ứng"
+      },
+      "stage": {
+        "intent": "bày ra một cơ hội đã gài mồi",
+        "label": "Dàn dựng một cám dỗ"
+      },
+      "verdict": {
+        "intent": "phép thử ngã ngũ chuyện trung thành hay phản bội",
+        "label": "Trung thành hay phản trắc"
+      }
+    },
+    "effects": [
+      "lòng trung thật sự của bên bị thử lộ ra",
+      "kẻ nắm quyền theo đó mà ban thưởng hoặc thanh trừng"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Một cánh cửa cố ý để hé mời gọi thực chất là một phép thử; kẻ nào bước qua liền để lộ đúng điều mà người rình theo dõi cần biết."
+    ],
+    "name": "Bẫy Thử Lòng Trung",
+    "preconditions": [
+      "kẻ nắm quyền ngờ rằng có một mối bất trung đang giấu kín"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "điều mà phép thử moi ra"
+        ],
+        "label": "bằng chứng lòng trung"
+      },
+      "power_holder": {
+        "constraints": [
+          "dàn dựng nên cám dỗ"
+        ],
+        "label": "kẻ nắm quyền"
+      },
+      "suspect": {
+        "constraints": [
+          "bên bị đem ra thử"
+        ],
+        "label": "kẻ bị nghi phản bội"
+      }
+    },
+    "summary": "Một cánh cửa cố ý để hé mời gọi thực chất là một phép thử; kẻ nào bước qua liền để lộ đúng điều mà người rình theo dõi cần biết."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "nạn nhân sa vào bẫy",
+        "label": "Nạn nhân hành động theo niềm tin sai lệch"
+      },
+      "bait": {
+        "intent": "nhử cho nạn nhân phản ứng",
+        "label": "Dụ nạn nhân ra tay"
+      },
+      "counter": {
+        "intent": "hậu quả được lái về phía có lợi cho kẻ bày mưu",
+        "label": "Trở giáo"
+      },
+      "plant": {
+        "intent": "đặt chứng cứ ngụy tạo vào nơi sẽ bị phát hiện",
+        "label": "Gài chứng cứ giả"
+      },
+      "reveal": {
+        "intent": "'chứng cứ' nổi lên, kẻ bày mưu vẫn vô can",
+        "label": "Phơi bày mà không lộ tay"
+      }
+    },
+    "effects": [
+      "nạn nhân bị bôi nhọ hoặc bị định tội trên căn cứ giả tạo",
+      "bàn tay của kẻ bày mưu vẫn ẩn trong bóng tối"
+    ],
+    "emotion_target": "dread",
+    "examples": [
+      "Một cuốn sổ sách đã bị sửa chữa được lén đặt vào nơi đối thủ sẽ tìm ra rồi 'vạch trần' — để rồi bước thẳng vào cái bẫy chỉ đích danh chính mình."
+    ],
+    "name": "Gài Bằng Chứng Giả",
+    "preconditions": [
+      "kẻ bày mưu có thể đặt được chứng cứ mà bậc quyền uy sẽ tin"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "mang mồi nhử mà không hề hay biết"
+        ],
+        "label": "con tốt vô tình"
+      },
+      "authority": {
+        "constraints": [
+          "phán xét dựa trên chứng cứ bày ra trước mắt"
+        ],
+        "label": "bậc quyền uy phán xử"
+      },
+      "schemer": {
+        "constraints": [
+          "gài chứng cứ giả"
+        ],
+        "label": "kẻ bày mưu"
+      },
+      "victim": {
+        "constraints": [
+          "hành động theo niềm tin sai lệch"
+        ],
+        "label": "nạn nhân bị nhắm tới"
+      }
+    },
+    "summary": "Một chứng cứ đã bị ngụy tạo được lén đặt vào nơi đối thủ sẽ tìm thấy rồi 'vạch trần', dụ nạn nhân hành động theo niềm tin sai lệch mà bước thẳng vào cái bẫy không thể truy ngược."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "chọn ra một con dê tế thần dễ đổ tội",
+        "label": "Vu oan cho kẻ thấp cổ"
+      },
+      "must_pin": {
+        "intent": "tội lỗi buộc phải giáng xuống một ai đó",
+        "label": "Tội phải có người gánh"
+      },
+      "steer": {
+        "intent": "dẫn cuộc tra xét hướng về con dê tế thần",
+        "label": "Lái chứng cứ"
+      },
+      "walk_free": {
+        "intent": "thủ phạm thật lọt khỏi tầm mắt",
+        "label": "Kẻ thật sự gây án thoát thân"
+      }
+    },
+    "effects": [
+      "con dê tế thần gánh lấy tội lỗi",
+      "kẻ thật sự gây án thoát khỏi sự truy cứu"
+    ],
+    "emotion_target": "dread",
+    "examples": [
+      "Khi tội lỗi buộc phải có chỗ giáng xuống, bàn tay khôn khéo bảo đảm nó giáng vào một kẻ khác."
+    ],
+    "name": "Thế Thân Gánh Tội",
+    "preconditions": [
+      "một vụ án đòi phải có thủ phạm mà kẻ thật sự gây ra phải ẩn mình"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "bị lái sang nhắm nhầm đối tượng"
+        ],
+        "label": "phía tra xét"
+      },
+      "scapegoat": {
+        "constraints": [
+          "một kẻ thấp cổ bé họng dễ đổ tội"
+        ],
+        "label": "con dê tế thần"
+      },
+      "schemer": {
+        "constraints": [
+          "kẻ thật sự ra tay"
+        ],
+        "label": "kẻ bày mưu"
+      }
+    },
+    "summary": "Khi tội lỗi buộc phải có chỗ giáng xuống, bàn tay khôn khéo bảo đảm nó giáng vào kẻ thấp cổ bé họng, còn kẻ thật sự gây ra thì nhởn nhơ thoát thân."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "mục tiêu mất đi chỗ đứng",
+        "label": "Mục tiêu bị cô lập"
+      },
+      "seed": {
+        "intent": "cài một mối nghi ngờ",
+        "label": "Gieo lời đồn"
+      },
+      "spread": {
+        "intent": "mối nghi ngờ được lặp lại qua những cái miệng vô tình",
+        "label": "Lời đồn lan ra"
+      },
+      "withdraw": {
+        "intent": "người bảo trợ của mục tiêu lui bước",
+        "label": "Kẻ chống lưng rút che chở"
+      }
+    },
+    "effects": [
+      "mục tiêu bị cô lập và mất đi kẻ chống lưng",
+      "nguồn cơn thật sự của lời đồn vẫn ẩn kín"
+    ],
+    "emotion_target": "unease",
+    "examples": [
+      "Một mối nghi ngờ gieo sẵn, được lặp lại qua những cái miệng chẳng biết cội nguồn của nó, cho đến khi mục tiêu trơ trọi một mình."
+    ],
+    "name": "Phao Tin Đồn Thổi",
+    "preconditions": [
+      "mục tiêu phải dựa vào sự coi trọng của một người chống lưng hay của triều đình"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "vô tình tiếp tay lan truyền lời đồn"
+        ],
+        "label": "triều đình hay hội đồng"
+      },
+      "schemer": {
+        "constraints": [
+          "dựng nên lời đồn"
+        ],
+        "label": "kẻ bày mưu"
+      },
+      "target": {
+        "constraints": [
+          "bị lời đồn cô lập"
+        ],
+        "label": "mục tiêu"
+      }
+    },
+    "summary": "Một mối nghi ngờ gieo sẵn, được truyền qua những cái miệng không hề biết cội nguồn của nó, cô lập mục tiêu cho đến khi kẻ chống lưng rút lui không còn che chở."
+  }
+}

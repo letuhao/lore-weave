@@ -444,7 +444,7 @@ def _motif_args(spec: dict[str, Any], *, index: int, language: str = "en") -> Mo
     effects = [{"text": str(e)[:2000]} for e in (spec.get("effects") or []) if e]
     return MotifCreateArgs(
         code=_slug(spec.get("code"), f"imported.motif-{index}"),
-        language=language,
+        original_language=language,
         name=str(spec.get("name") or f"Imported Motif {index + 1}")[:500],
         kind=spec.get("kind") if spec.get("kind") in
         {"sequence", "scheme", "reveal", "reversal", "relationship"} else "sequence",

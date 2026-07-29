@@ -577,7 +577,17 @@ class Motif(BaseModel):
     book_id: UUID | None = None                    # per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global/system. Owner's full dump only — NOT in the public/non-owner projections.
     book_shared: bool = False                      # D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (book-grant gated). Owner full dump only — never on the public catalog allow-list.
     code: _Code
-    language: _Lang = "en"
+    # MOTIF-I18N: the language this motif was AUTHORED in (books/chapters call it the
+    # same thing). NOT part of identity — other languages are motif_translation rows.
+    original_language: _Lang = "en"
+    # Read-path metadata, stamped when the caller asked for a display language. A
+    # consumer — model prompt or FE — must never receive text without knowing which
+    # language it is in; the bug this replaces briefed an English book in Vietnamese
+    # and said nothing. `text_stale` = a translation made from older source text
+    # (still served: right language, older wording beats wrong language).
+    text_language: _Lang | None = None
+    text_fallback: bool = False
+    text_stale: bool = False
     visibility: MotifVisibility = "private"
     kind: MotifKind = "sequence"
     category: _Code | None = None
@@ -894,7 +904,9 @@ class ArcCandidate(BaseModel):
 class MotifCreateArgs(_ForbidExtra):
     code: _Code
     name: _Title
-    language: _Lang = "en"
+    # The language the AUTHOR is writing in. We never machine-translate a user's motif
+    # — theirs stays in the language they wrote it, exactly like their book.
+    original_language: _Lang = "en"
     kind: MotifKind = "sequence"
     category: _Code | None = None
     summary: _Long = ""

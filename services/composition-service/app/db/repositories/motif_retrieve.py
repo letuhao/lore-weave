@@ -4,7 +4,7 @@ The signature is FROZEN in F0 so W2 (planner) builds against it concurrently and
 mocks retrieve() until W3 lands. The impl (W3):
 
   1. SQL PRE-FILTER (audit data-R1) — bound the candidate set in SQL BEFORE loading any
-     vector: status='active' AND language=$lang AND (genre_tags && $genres) AND the
+     vector: status='active' AND the
      R1.1 read predicate (system | public | owned). Cheap pre-rank (own-tier, popularity,
      quality, recency) + a HARD `LIMIT motif_candidate_ceiling` so the brute-force pass
      is O(ceiling), never O(table) even as the library grows.
@@ -38,6 +38,7 @@ from loreweave_vecmath import cosine_similarity as _cosine
 from app.clients.embedding_client import EmbeddingError
 from app.config import settings
 from app.db.models import ArcCandidate, ArcTemplate, Motif, MotifCandidate
+from app.db.repositories.motif_repo import apply_display_language, normalize_display_language
 from app.engine.motif_embed import (
     EmbedConfigError, _platform_embed_model, arc_summary_text, embed_motif_summary,
     embed_private_summary, embed_query, embed_query_with, is_strictly_private,
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 # (loaded ONLY for the bounded candidate set; the vector never leaves this repo — the
 # returned Motif omits it, the reference_source rule).
 _RETRIEVE_COLS = """
-  id, owner_user_id, book_shared, code, language, visibility, kind, category, name, summary,
+  id, owner_user_id, book_shared, code, original_language, visibility, kind, category, name, summary,
   genre_tags, roles, beats, preconditions, effects, info_asymmetry, annotations,
   tension_target, emotion_target, examples, abstraction_confidence, source,
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
@@ -281,7 +282,7 @@ class MotifRetriever:
 
     async def retrieve(
         self, caller_id: UUID, *, book_id: UUID, project_id: UUID,
-        genre_tags: list[str], language: str,
+        genre_tags: list[str], display_language: str,
         beat_role: str | None, tension: int | None,
         prev_effects: list[str] | None = None, limit: int = 10,
         user_model: tuple[str, str] | None = None,
@@ -313,7 +314,7 @@ class MotifRetriever:
         # (1) SQL BOUND → candidate rows (with vectors). data-R1. Genre/language now PRE-RANK
         #     rather than pre-filter, so this is empty only when the library itself is (or the
         #     caller can see none of it) — not because a book's genre happened to be unrepresented.
-        rows = await self._fetch_candidates(caller_id, genre_tags, language, ceiling)
+        rows = await self._fetch_candidates(caller_id, genre_tags, ceiling)
         if not rows:
             return []  # nothing visible to rank → W2 falls back to invent
 
@@ -394,11 +395,32 @@ class MotifRetriever:
         # mining_support DESC, judge DESC, code ASC. No cross-space sort — a U-space 0.8 ≠
         # a P-space 0.8.
         def _top(items: list[tuple[float, str, int, float, MotifCandidate]]) -> list[MotifCandidate]:
+            # MOTIF-I18N: a `_dedupe_by_code` pass used to live here, because every system
+            # motif existed as an `en` row AND a `vi` row with the same code, so one pattern
+            # could occupy two of the 15 candidate slots and hand the planner the wrong
+            # language's text. There is now one row per motif, so there is nothing to dedupe
+            # — the duplication was the bug, and the dedupe was only ever its symptom-level
+            # mitigation. Display language is resolved AFTER selection.
             nth = _round_robin_index(items)
             items.sort(key=lambda t: (-t[0], nth[id(t[4])], -t[2], -t[3], t[1]))
             return [c for _rank, _code, _ms, _js, c in items[: max(0, limit)]]
 
-        return _top(mine) + _top(library)
+        # Selection is language-blind (one row per motif, multilingual vectors); the caller's
+        # reading language is applied HERE, at the very end, as a re-wording with fallback.
+        # Keeping it out of selection is the point: a language preference must never change
+        # WHICH motifs a book can reach, only how they are worded.
+        return await self._localize_candidates(_top(mine) + _top(library), display_language)
+
+    async def _localize_candidates(
+        self, cands: list[MotifCandidate], display_language: str | None,
+    ) -> list[MotifCandidate]:
+        if not cands or not normalize_display_language(display_language):
+            return cands
+        async with self._pool.acquire() as c:
+            motifs = await apply_display_language(c, [x.motif for x in cands], display_language)
+        return [
+            cand.model_copy(update={"motif": m}) for cand, m in zip(cands, motifs, strict=True)
+        ]
 
     async def _embed_and_persist_motif(
         self, row: asyncpg.Record | dict[str, Any], caller_id: UUID, *,
@@ -628,30 +650,42 @@ class MotifRetriever:
             return None
 
     async def _fetch_candidates(
-        self, caller_id: UUID, genre_tags: list[str], language: str, ceiling: int,
+        self, caller_id: UUID, genre_tags: list[str], ceiling: int,
     ) -> list[asyncpg.Record]:
         """The BOUNDING query (data-R1). Loads `embedding` for the bounded set ONLY.
-        $1 caller_id · $2 ceiling · then language / genres, each only when it can match.
+        $1 caller_id · $2 ceiling · genres, only when they can match.
 
         A genre-less book ([]) OMITS the `&&` clause (MD-2) — an empty array && is always
         false and would zero out retrieval; the tier+ceiling bound still applies.
 
-        D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL — the SAME guard now applies to `language`, and
-        for the same reason. `language` is a concrete stored code (`en`, `vi`); the callers'
-        NEUTRAL default is the sentinel **`"auto"`**, which no row can ever equal. So
-        `AND language = 'auto'` matched **zero of 147 motifs**, `retrieve` returned `[]`, and the
-        motifs pass emitted `{"motifs": []}` with no `degraded` flag — indistinguishable from "this
-        book legitimately has no motifs". Live-verified: every `motif_plan` artifact in the database
-        had 0 motifs, so pass 6 has always decomposed scenes with no motif layer at all.
+        MOTIF-I18N (2026-07-29) — language has left this query ENTIRELY, in both its filter
+        and its pre-rank form. It no longer means anything here: there is one row per motif,
+        and the language a caller reads it in is resolved after selection from
+        `motif_translation`. The history is worth keeping, because the same mistake was made
+        twice in two different shapes:
 
-        `auto` means "unspecified", so the honest query is "any language" — exactly the treatment
-        an empty genre list already got.
+        · D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL — `language` was a concrete stored code
+          (`en`, `vi`) but the callers' neutral default was the sentinel `"auto"`, which no row
+          could ever equal. `AND language = 'auto'` matched ZERO of 147 motifs, `retrieve`
+          returned `[]`, and the pass emitted `{"motifs": []}` with no `degraded` flag —
+          indistinguishable from "this book legitimately has no motifs". Every `motif_plan`
+          artifact in the database had 0 motifs; pass 6 had never once seen a motif layer.
+        · D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY — fixing the sentinel left the mechanism.
+          The vectors are all `platform-bge-m3`, which is MULTILINGUAL: equivalent text in
+          different languages lands in the same space, so cross-language cosine already worked.
+          `language = $lang` threw that away and hid 48 Vietnamese motifs from every English
+          book and vice versa. Moving it to a pre-RANK term fixed reachability but left both
+          rows of every motif in the candidate set, which then cost slots and leaked the wrong
+          language's text into the planner's prompt.
 
-        D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY — the `auto` fix above treated the SENTINEL but
-        left the mechanism, and the mechanism is what does the damage. Both clauses were WHERE, so
-        both could only ever subtract:
+        The actual defect under all three was the schema: language was part of a motif's
+        IDENTITY. A motif is a structural pattern, not prose — the language you read it in is a
+        view of it, and views do not belong in identity keys.
 
-        · GENRE. `genre_tags && $genres` is array overlap, and `'{}' && '{fantasy}'` is FALSE — so
+        GENRE stayed, and stayed a pre-RANK term for the same reason a WHERE clause was wrong
+        for it: a filter can only ever SUBTRACT.
+
+        · `genre_tags && $genres` is array overlap, and `'{}' && '{fantasy}'` is FALSE — so
           the 21 untagged motifs could never match any genre-tagged book, ever. Worse, 40 more are
           tagged with what they ARE rather than what they suit (`hook`, `connective`, `emotion_arc`
           — rows like "Cliff Question" and "Betrayal Hinted", which are genre-AGNOSTIC by design),
@@ -659,26 +693,18 @@ class MotifRetriever:
           motifs, 52% of the library, unreachable by construction. Measured per genre on live data:
           fantasy 0 · scifi 0 · romance 0 · mystery 0 · thriller 0 · literary 0 — only xianxia (14)
           and intrigue/court (6) matched anything at all.
-        · LANGUAGE. The vectors are all `platform-bge-m3`, which is MULTILINGUAL: equivalent text in
-          different languages lands in the same space, so cross-language cosine already works. The
-          `language = $lang` clause was throwing that away and hiding 48 Vietnamese motifs from
-          every English book and vice versa. A motif is a STRUCTURAL pattern, not prose — its
-          stored language is incidental to what it matches.
 
-        So both move from PRE-FILTER to PRE-RANK. In-genre and same-language candidates still win
-        the ceiling, which is what the bound is actually for; nothing is excluded outright. The
+        So genre moves from PRE-FILTER to PRE-RANK. In-genre candidates still win the
+        ceiling, which is what the bound is actually for; nothing is excluded outright. The
         quality gate was never the genre column — it is `motif_min_score` (0.30 cosine), which drops
         a semantically distant motif whatever its tags say. And the ceiling is 500 against 118
         active rows, so today this widens the candidate set without binding at all."""
         params: list[Any] = [caller_id, max(0, ceiling)]
-        # `$3::text[]` / `$4` are always bound (possibly to a no-match value) so the ORDER BY can
-        # reference them unconditionally — a rank term that vanishes with its clause would silently
+        # `$3::text[]` is always bound (possibly to an empty array) so the ORDER BY can
+        # reference it unconditionally — a rank term that vanishes with its clause would silently
         # re-order the ceiling depending on what the caller happened to supply.
         params.append(list(genre_tags) if genre_tags else [])
         genre_param = f"${len(params)}::text[]"
-        real_lang = (language or "").strip().lower() not in ("", "auto", "unknown", "und")
-        params.append(language if real_lang else "")
-        lang_param = f"${len(params)}"
         sql = f"""
         SELECT {_RETRIEVE_COLS}
         FROM motif
@@ -687,7 +713,6 @@ class MotifRetriever:
         ORDER BY
           (owner_user_id = $1) DESC NULLS LAST,
           (genre_tags && {genre_param}) DESC,
-          (language = {lang_param}) DESC,
           mining_support DESC NULLS LAST,
           judge_score DESC NULLS LAST,
           updated_at DESC

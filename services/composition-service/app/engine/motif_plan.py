@@ -154,7 +154,7 @@ async def select_arc_motifs(
     async def _retrieve(query: str | None) -> list[Any]:
         return await retriever.retrieve(
             UUID(str(user_id)), book_id=book_id, project_id=project_id,
-            genre_tags=genre_tags, language=source_language,
+            genre_tags=genre_tags, display_language=source_language,
             beat_role=None, tension=None, prev_effects=None, limit=candidate_limit,
             query=query,
         )

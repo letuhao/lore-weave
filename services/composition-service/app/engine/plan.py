@@ -656,7 +656,7 @@ async def decompose(
         sel = await select_motif_for_chapter(
             ch, retriever,
             book_id=book_id, project_id=project_id, caller_id=UUID(str(user_id)),
-            genre_tags=genre_tags or [], language=source_language,
+            genre_tags=genre_tags or [], display_language=source_language,
             prev_effects=prev_effects,
             min_score=motif_min_score, high_threshold=high_threshold,
             connective_floor_margin=motif_connective_floor_margin,

@@ -1,7 +1,6 @@
 [
   {
     "code": "wuxia.contested_manual",
-    "language": "en",
     "kind": "sequence",
     "category": "wuxia.manual",
     "name": "The Manual Everyone Wants",
@@ -103,7 +102,6 @@
   },
   {
     "code": "wuxia.righteous_debt",
-    "language": "en",
     "kind": "situation",
     "category": "wuxia.debt",
     "name": "The Debt the Code Demands",
@@ -205,7 +203,6 @@
   },
   {
     "code": "wuxia.inherited_feud",
-    "language": "en",
     "kind": "sequence",
     "category": "wuxia.feud",
     "name": "A Grudge Older Than the Holder",
@@ -299,7 +296,6 @@
   },
   {
     "code": "wuxia.tavern_provocation",
-    "language": "en",
     "kind": "situation",
     "category": "wuxia.provocation",
     "name": "An Insult in a Public House",
@@ -393,7 +389,6 @@
   },
   {
     "code": "wuxia.forbidden_shortcut",
-    "language": "en",
     "kind": "sequence",
     "category": "wuxia.temptation",
     "name": "The Method No One Practises Any More",
@@ -488,7 +483,6 @@
   },
   {
     "code": "wuxia.recognition_between_equals",
-    "language": "en",
     "kind": "situation",
     "category": "wuxia.bond",
     "name": "Two Strangers of Matching Skill",
@@ -582,7 +576,6 @@
   },
   {
     "code": "wuxia.escort_under_watch",
-    "language": "en",
     "kind": "sequence",
     "category": "wuxia.escort",
     "name": "The Cargo That Must Arrive",
@@ -684,7 +677,6 @@
   },
   {
     "code": "wuxia.retired_blade_recalled",
-    "language": "en",
     "kind": "situation",
     "category": "wuxia.return",
     "name": "The One Who Put the Blade Down",

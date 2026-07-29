@@ -191,7 +191,10 @@ async def list_motifs(
     genre: str | None = Query(default=None, max_length=100),
     kind: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # MOTIF-I18N: this is the language to READ the motifs in, not a filter on which
+    # motifs exist. It never subtracts rows; a motif with no translation falls back to
+    # its original language and says so via `text_fallback`.
+    display_language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -205,7 +208,7 @@ async def list_motifs(
     repo_scope = "user" if scope == "mine" else scope  # repo names the owned scope 'user'
     rows = await repo.list_for_caller(
         user_id, scope=repo_scope, genre=genre, kind=kind, status=status,
-        q=q, language=language, limit=limit, offset=offset,
+        q=q, display_language=display_language, limit=limit, offset=offset,
     )
     return {
         "motifs": [m.model_dump(mode="json") for m in rows],
@@ -220,7 +223,10 @@ async def catalog_motifs(
     genre: str | None = Query(default=None, max_length=100),
     kind: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # MOTIF-I18N: this is the language to READ the motifs in, not a filter on which
+    # motifs exist. It never subtracts rows; a motif with no translation falls back to
+    # its original language and says so via `text_fallback`.
+    display_language: str | None = Query(default=None, max_length=20),
     sort: str = Query(default="recent", pattern="^(recent|name)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -231,7 +237,7 @@ async def catalog_motifs(
     may read it (no grant). The projection is an explicit allow-list — embedding /
     examples / raw source_ref are structurally excluded."""
     items, total = await repo.list_public(
-        genre=genre, kind=kind, q=q, language=language,
+        genre=genre, kind=kind, q=q, display_language=display_language,
         sort=sort, limit=limit, offset=offset,
     )
     # serialize the allow-list rows (UUID/datetime/Decimal → json) + adopt hint.
@@ -269,7 +275,10 @@ async def list_book_motifs(
     genre: str | None = Query(default=None, max_length=100),
     kind: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # MOTIF-I18N: this is the language to READ the motifs in, not a filter on which
+    # motifs exist. It never subtracts rows; a motif with no translation falls back to
+    # its original language and says so via `text_fallback`.
+    display_language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
     user_id: UUID = Depends(get_current_user),
@@ -283,7 +292,7 @@ async def list_book_motifs(
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     rows = await repo.list_in_book(
         user_id, book_id, genre=genre, kind=kind, status=status,
-        q=q, language=language, limit=limit,
+        q=q, display_language=display_language, limit=limit,
     )
     return {
         "motifs": [_book_view(m, caller_id=user_id) for m in rows],
@@ -316,7 +325,7 @@ async def create_motif(
 ) -> dict[str, Any]:
     """Create a user-tier motif; owner_user_id is server-stamped = caller (the
     body cannot carry it — _ForbidExtra). A public/unlisted create runs the
-    publish quota pre-check first. A duplicate (owner, code, language) → 409."""
+    publish quota pre-check first. A duplicate (owner, code) → 409."""
     if body.visibility in ("public", "unlisted"):
         await _publish_quota_guard(repo, user_id)
     try:
@@ -324,7 +333,7 @@ async def create_motif(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "MOTIF_CODE_EXISTS",
-            "message": "a motif with this code + language already exists",
+            "message": "a motif with this code already exists",
         })
     return motif.model_dump(mode="json")
 
@@ -374,7 +383,7 @@ async def patch_motif(
         except asyncpg.UniqueViolationError:
             raise HTTPException(status_code=409, detail={
                 "code": "MOTIF_CODE_EXISTS",
-                "message": "a motif with this code + language already exists in this book",
+                "message": "a motif with this code already exists in this book",
             })
         if motif is None:
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
@@ -403,7 +412,7 @@ async def patch_motif(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "MOTIF_CODE_EXISTS",
-            "message": "a motif with this code + language already exists",
+            "message": "a motif with this code already exists",
         })
     if motif is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)

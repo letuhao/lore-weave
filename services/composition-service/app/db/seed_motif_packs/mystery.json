@@ -1,7 +1,6 @@
 [
   {
     "code": "mystery.impossible_detail",
-    "language": "en",
     "kind": "sequence",
     "category": "mystery.opening",
     "name": "The Detail That Should Not Be There",
@@ -102,7 +101,6 @@
   },
   {
     "code": "mystery.false_lead",
-    "language": "en",
     "kind": "sequence",
     "category": "mystery.misdirection",
     "name": "The Lead That Fits Too Well",
@@ -196,7 +194,6 @@
   },
   {
     "code": "mystery.impossible_circumstance",
-    "language": "en",
     "kind": "situation",
     "category": "mystery.locked",
     "name": "It Could Not Have Happened",
@@ -290,7 +287,6 @@
   },
   {
     "code": "mystery.witness_who_lies",
-    "language": "en",
     "kind": "situation",
     "category": "mystery.testimony",
     "name": "The Witness Whose Lie Is Not the Crime",
@@ -384,7 +380,6 @@
   },
   {
     "code": "mystery.second_death",
-    "language": "en",
     "kind": "sequence",
     "category": "mystery.escalation",
     "name": "The Investigation Provokes a Second",
@@ -481,7 +476,6 @@
   },
   {
     "code": "mystery.hidden_connection",
-    "language": "en",
     "kind": "situation",
     "category": "mystery.pattern",
     "name": "Two Facts, One Origin",
@@ -568,7 +562,6 @@
   },
   {
     "code": "mystery.assembled_confrontation",
-    "language": "en",
     "kind": "sequence",
     "category": "mystery.reveal",
     "name": "The Chain Laid Out",
@@ -677,7 +670,6 @@
   },
   {
     "code": "mystery.investigator_compromised",
-    "language": "en",
     "kind": "situation",
     "category": "mystery.compromise",
     "name": "The Investigator Has a Stake",

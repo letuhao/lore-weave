@@ -1,7 +1,6 @@
 [
   {
     "code": "revenge.betrayal_to_exile",
-    "language": "en",
     "kind": "sequence",
     "category": "revenge.fall",
     "name": "Betrayal to Exile",
@@ -101,7 +100,6 @@
   },
   {
     "code": "revenge.three_year_pact",
-    "language": "en",
     "kind": "pattern",
     "category": "revenge.arc",
     "name": "Three-Year Pact",
@@ -211,7 +209,6 @@
   },
   {
     "code": "revenge.false_accusation",
-    "language": "en",
     "kind": "situation",
     "category": "revenge.injustice",
     "name": "False Accusation",
@@ -311,7 +308,6 @@
   },
   {
     "code": "revenge.patient_infiltration",
-    "language": "en",
     "kind": "sequence",
     "category": "revenge.infiltration",
     "name": "Patient Infiltration",
@@ -411,7 +407,6 @@
   },
   {
     "code": "revenge.blood_debt_collection",
-    "language": "en",
     "kind": "situation",
     "category": "revenge.reckoning",
     "name": "Blood-Debt Collection",
@@ -503,7 +498,6 @@
   },
   {
     "code": "revenge.mercy_or_vengeance",
-    "language": "en",
     "kind": "situation",
     "category": "revenge.choice",
     "name": "Mercy or Vengeance",
@@ -595,7 +589,6 @@
   },
   {
     "code": "revenge.pyrrhic_victory",
-    "language": "en",
     "kind": "sequence",
     "category": "revenge.aftermath",
     "name": "Pyrrhic Victory",
@@ -687,7 +680,6 @@
   },
   {
     "code": "revenge.usurped_inheritance",
-    "language": "en",
     "kind": "situation",
     "category": "revenge.birthright",
     "name": "Usurped Inheritance",

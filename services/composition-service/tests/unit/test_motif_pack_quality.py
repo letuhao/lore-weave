@@ -103,25 +103,35 @@ def test_every_new_pack_row_carries_an_example(by_code):
     assert not missing, f"motifs with no author-written example: {missing}"
 
 
-def test_vi_siblings_mirror_their_base_pack_exactly(by_code):
-    """A vi pack that drifts from its en base breaks the shared `links.json` manifest (edges
-    are emitted per language only where BOTH endpoints exist) and silently halves a language's
-    chain coverage."""
-    for pack in _MOTIF_PACKS:
-        if pack.endswith("_vi"):
-            continue
-        en = {r["code"] for r in _read_pack(pack)}
-        vi = {r["code"] for r in _read_pack(f"{pack}_vi")}
-        assert en == vi, (
-            f"{pack}_vi drifted from {pack}: "
-            f"only-en={sorted(en - vi)} only-vi={sorted(vi - en)}")
+def test_vi_translation_covers_every_source_motif(by_code):
+    """MOTIF-I18N: `vi` used to be a parallel FULL pack; it is now a translation file. Total
+    coverage still matters, and it fails more quietly than it used to: a motif that loses its
+    Vietnamese entry raises nothing, it just silently renders in English for every Vietnamese
+    reader. The loader already rejects an UNKNOWN code (drift in that direction is loud) —
+    this is the other direction, which is only visible by counting."""
+    from app.db.seed_motifs import _motif_id, load_motif_rows, load_translation_rows
+
+    rows = load_motif_rows()
+    vi = {
+        t["motif_id"]: t["payload"]
+        for t in load_translation_rows(rows) if t["language_code"] == "vi"
+    }
+    missing = sorted(c for c in by_code if _motif_id(c) not in vi)
+    assert not missing, (
+        f"{len(missing)} motif(s) have no Vietnamese translation: {missing[:10]}")
+    # A present-but-hollow entry would pass a pure coverage count while rendering blank.
+    hollow = sorted(
+        c for c in by_code
+        if not (vi[_motif_id(c)]["name"] and vi[_motif_id(c)]["summary"])
+    )
+    assert not hollow, f"Vietnamese entries with an empty name/summary: {hollow[:10]}"
 
 
 def test_pack_rows_are_valid_json_objects_with_stable_keys(by_code):
     """Cheap structural backstop: the packs are hand-edited JSON and a stray key would only
     surface at seed time (or, worse, be silently dropped by the loader's explicit column list)."""
     allowed = {
-        "code", "language", "kind", "category", "name", "summary", "genre_tags", "roles",
+        "code", "kind", "category", "name", "summary", "genre_tags", "roles",
         "beats", "preconditions", "effects", "info_asymmetry", "annotations",
         "tension_target", "emotion_target", "examples", "source", "source_version",
     }

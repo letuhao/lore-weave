@@ -33,6 +33,7 @@ from app.clients.embedding_client import EmbeddingError
 from app.config import settings
 from app.db.models import Motif, MotifCreateArgs, MotifPatchArgs
 from app.db.repositories import VersionMismatchError
+from app.motif_i18n import resolve_text
 from app.engine.motif_embed import (
     EmbedConfigError, _platform_embed_model, embed_motif_summary, embed_query,
     motif_summary_text, summary_hash,
@@ -46,7 +47,7 @@ _SEARCH_CEILING = 500
 
 # vector + hash deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
-  id, owner_user_id, book_id, book_shared, code, language, visibility, kind, category, name, summary,
+  id, owner_user_id, book_id, book_shared, code, original_language, visibility, kind, category, name, summary,
   genre_tags, roles, beats, preconditions, effects, info_asymmetry, annotations,
   tension_target, emotion_target, examples, abstraction_confidence, source,
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
@@ -79,6 +80,72 @@ def _row_to_motif(row: asyncpg.Record) -> Motif:
 def _jsonb(value: Any) -> str:
     """Dump a JSONB write value (list/dict/pydantic) to a json string for ::jsonb."""
     return json.dumps(value)
+
+
+# ── display-language resolution ────────────────────────────────────────────
+# `language` used to mean two different things at once — the language a row was
+# STORED in (a filter) and the language a caller wanted to READ (a preference) — and
+# the conflation is what let an English book's plan pass be briefed in Vietnamese.
+# They are now two names: `original_language` on the row, `display_language` on reads.
+_TR_COLS = (
+    "motif_id, language_code, name, summary, emotion_target, "
+    "roles, beats, preconditions, effects, examples, source_content_hash"
+)
+_TR_JSONB = ("roles", "beats", "preconditions", "effects", "examples")
+
+# Values callers send that mean "unspecified" rather than a real language. Same list
+# the retrieval path uses — `language='auto'` once matched zero rows and zeroed the
+# whole library (D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL).
+_UNSPECIFIED_LANGS = frozenset({"", "auto", "unknown", "und"})
+
+
+def normalize_display_language(value: str | None) -> str | None:
+    """A real language code, or None when the caller expressed no preference."""
+    want = (value or "").strip().lower()
+    return None if want in _UNSPECIFIED_LANGS else want
+
+
+async def apply_display_language(
+    conn: asyncpg.Connection, motifs: list[Motif], display_language: str | None
+) -> list[Motif]:
+    """Re-word a batch of motifs into `display_language`, falling back per leaf.
+
+    ONE query for the whole batch (never per-motif — a 15-motif plan brief would
+    otherwise cost 15 round-trips). Motifs already in the wanted language are skipped
+    entirely. Every returned motif carries `text_language`/`text_fallback`/`text_stale`
+    so no consumer can be handed text without knowing what language it is in.
+    """
+    want = normalize_display_language(display_language)
+    if not want or not motifs:
+        return motifs
+
+    need = [m.id for m in motifs if m.original_language != want]
+    by_id: dict[Any, dict[str, Any]] = {}
+    if need:
+        rows = await conn.fetch(
+            f"SELECT {_TR_COLS} FROM motif_translation "
+            f"WHERE language_code = $1 AND motif_id = ANY($2::uuid[])",
+            want, need,
+        )
+        for r in rows:
+            tr = dict(r)
+            for f in _TR_JSONB:
+                if isinstance(tr.get(f), str):
+                    tr[f] = json.loads(tr[f])
+            by_id[tr["motif_id"]] = tr
+
+    out: list[Motif] = []
+    for m in motifs:
+        if m.original_language == want:
+            out.append(m.model_copy(update={"text_language": want}))
+            continue
+        resolved = resolve_text(m, by_id.get(m.id), want)
+        # `extract_translatable` normalizes a NULL scalar to "" so the hash is stable;
+        # the column is nullable, so put the NULL back rather than storing an empty string.
+        if not resolved.get("emotion_target"):
+            resolved["emotion_target"] = None
+        out.append(m.model_copy(update=resolved))
+    return out
 
 
 def _coerce_jsonb_value(value: Any) -> Any:
@@ -165,7 +232,7 @@ class MotifRepo:
         # The owner is STILL server-stamped = user_id (no owner arg → no cross-tenant injection).
         query = f"""
         INSERT INTO motif
-          (owner_user_id, code, language, visibility, kind, category, name, summary,
+          (owner_user_id, code, original_language, visibility, kind, category, name, summary,
            genre_tags, roles, beats, preconditions, effects, info_asymmetry,
            annotations, tension_target, emotion_target, examples, source,
            imported_derived, status, judge_score, mining_support, book_id, book_shared)
@@ -177,7 +244,7 @@ class MotifRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
                 query,
-                user_id, args.code, args.language, args.visibility, args.kind,
+                user_id, args.code, args.original_language, args.visibility, args.kind,
                 args.category, args.name, args.summary, args.genre_tags,
                 _jsonb(_dump_models(args.roles)), _jsonb(_dump_models(args.beats)),
                 _jsonb(args.preconditions), _jsonb(args.effects),
@@ -541,10 +608,19 @@ class MotifRepo:
             )
         return _row_to_motif(row) if row is not None else None
 
+    async def _localize(
+        self, motifs: list[Motif], display_language: str | None
+    ) -> list[Motif]:
+        """`apply_display_language` for a caller that has already released its connection."""
+        if not motifs or not normalize_display_language(display_language):
+            return motifs
+        async with self._pool.acquire() as c:
+            return await apply_display_language(c, motifs, display_language)
+
     async def list_in_book(
         self, caller_id: UUID, book_id: UUID, *, genre: str | None = None,
         kind: str | None = None, status: str | None = "active", q: str | None = None,
-        language: str | None = None, limit: int = 100,
+        display_language: str | None = None, limit: int = 100,
     ) -> list[Motif]:
         """Book-context list (D-MOTIF-ADOPT-BOOK-COLLAB-TIER). The CALLER MUST have VIEW-gated
         `book_id` first — the grant is resolved at the router/tool, NEVER here. Returns, for this
@@ -567,15 +643,16 @@ class MotifRepo:
         if status is not None:
             params.append(status)
             where.append(f"status = ${len(params)}")
-        if language is not None:
-            params.append(language)
-            where.append(f"language = ${len(params)}")
+        # NOTE: `display_language` is deliberately NOT a WHERE clause. It used to be —
+        # and a filter can only ever SUBTRACT, so asking for Vietnamese hid every motif
+        # not stored in Vietnamese instead of showing them translated. It is applied
+        # after selection, as a re-wording with fallback.
         if q:
             ranked = await self._rank_by_query(
                 where, params, q, limit, "book_shared DESC, owner_user_id NULLS FIRST, name",
                 caller_id=caller_id)
             if ranked is not None:
-                return ranked
+                return await self._localize(ranked, display_language)
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
         params.append(max(0, limit))
@@ -587,7 +664,8 @@ class MotifRepo:
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, *params)
-        return [_row_to_motif(r) for r in rows]
+            return await apply_display_language(
+                c, [_row_to_motif(r) for r in rows], display_language)
 
     async def get_in_book(
         self, caller_id: UUID, motif_id: UUID, book_id: UUID,
@@ -759,13 +837,14 @@ class MotifRepo:
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
         kind: str | None = None, status: str | None = "active", q: str | None = None,
-        language: str | None = None, book_id: UUID | None = None, limit: int = 100,
+        display_language: str | None = None, book_id: UUID | None = None, limit: int = 100,
         offset: int = 0,
     ) -> list[Motif]:
         """Tier-merged list under the read predicate (system | public | owner).
         `scope` narrows the predicate: 'system' (owner NULL), 'user' (owner=caller),
         'public' (visibility=public), 'all' (the full predicate). genre filters the
-        GIN array; q is an ILIKE on name/summary; language/status/kind are exact.
+        GIN array; q is an ILIKE on name/summary; status/kind are exact. `display_language`
+        is a re-wording applied AFTER selection, never a filter — see `apply_display_language`.
         System rows sort first (NULLS FIRST), then name."""
         # caller_id is bound as $1 ONLY when the scope's SQL references it. A
         # 'system'/'public' scope filters on owner_user_id/visibility alone — binding an
@@ -792,9 +871,6 @@ class MotifRepo:
         if status is not None:
             params.append(status)
             where.append(f"status = ${len(params)}")
-        if language is not None:
-            params.append(language)
-            where.append(f"language = ${len(params)}")
         if book_id is not None:
             # The book-library view (D-MOTIF-ADOPT-PER-BOOK): motifs AVAILABLE to this book
             # = its per-book clones PLUS the caller's globals (book_id NULL). Combined with
@@ -809,7 +885,7 @@ class MotifRepo:
                     where, params, q, limit, "owner_user_id NULLS FIRST, name",
                     caller_id=caller_id)
                 if ranked is not None:
-                    return ranked
+                    return await self._localize(ranked, display_language)
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
         params.append(max(0, limit))
@@ -823,7 +899,8 @@ class MotifRepo:
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, *params)
-        return [_row_to_motif(r) for r in rows]
+            return await apply_display_language(
+                c, [_row_to_motif(r) for r in rows], display_language)
 
     async def clone(
         self, caller_id: UUID, src_motif_id: UUID, *, target_owner: UUID,
@@ -872,7 +949,7 @@ class MotifRepo:
             row = await c.fetchrow(
                 f"""
                 INSERT INTO motif
-                  (owner_user_id, book_id, book_shared, code, language, visibility, kind, category, name,
+                  (owner_user_id, book_id, book_shared, code, original_language, visibility, kind, category, name,
                    summary, genre_tags, roles, beats, preconditions, effects,
                    info_asymmetry, annotations, tension_target, emotion_target,
                    examples, abstraction_confidence, source, imported_derived,
@@ -885,7 +962,7 @@ class MotifRepo:
                         $21,$22,$23,$24,$26::jsonb)
                 RETURNING {_SELECT_COLS}
                 """,
-                target_owner, s["code"], s["language"], s["kind"], s["category"],
+                target_owner, s["code"], s["original_language"], s["kind"], s["category"],
                 s["name"], s["summary"], genres,
                 _passthru_jsonb(s["roles"]), _passthru_jsonb(s["beats"]),
                 _passthru_jsonb(s["preconditions"]), _passthru_jsonb(s["effects"]),
@@ -909,7 +986,7 @@ class MotifRepo:
     # struct. The full meso content (roles/beats/preconditions/effects) is also
     # excluded from the LIGHT catalog list (MD-1(a)) — it is one get_visible away.
     _CATALOG_COLS = (
-        "id", "code", "language", "kind", "category", "name", "summary",
+        "id", "code", "original_language", "kind", "category", "name", "summary",
         "genre_tags", "tension_target", "emotion_target", "source",
         "abstraction_confidence", "judge_score", "version", "updated_at",
     )
@@ -928,7 +1005,7 @@ class MotifRepo:
         pg_advisory_xact_lock keyed on the caller id, so two users adopting the
         same source never block each other while one user double-submitting is
         ordered (the uniqueness it protects — uq_motif_user on
-        (owner_user_id, code, language) — is per-owner, so the lock is too; H-7).
+        (owner_user_id, code) — is per-owner, so the lock is too; H-7).
 
         `created` is True for a fresh adopt and False when an identical adopt of
         the SAME source already exists in the caller's tier (matched by the
@@ -941,7 +1018,7 @@ class MotifRepo:
             lock_key = f"motif-adopt-book:{book_id}" if book_shared else f"motif-adopt:{caller_id}"
             await c.execute("SELECT pg_advisory_xact_lock(hashtext($1))", lock_key)
             src = await c.fetchrow(
-                f"SELECT code, language FROM motif WHERE id = $2 AND {_VISIBLE_PREDICATE}",
+                f"SELECT code, original_language FROM motif WHERE id = $2 AND {_VISIBLE_PREDICATE}",
                 caller_id, src_motif_id,
             )
             if src is None:
@@ -994,7 +1071,7 @@ class MotifRepo:
         advisory lock is held by the caller). Column-enumerated copy (glossary
         adoptBookOntology precedent), single-target (user tier only — book tier
         dropped, H-7), the read predicate inlined so you may only adopt what you
-        can see. Returns the new row, or None if the (owner, code, language)
+        can see. Returns the new row, or None if the (owner, code)
         collides on uq_motif_user (caller retries with the next suffix). Any other
         UniqueViolationError propagates. Raises LookupError if the source vanished."""
         src = await c.fetchrow(
@@ -1016,7 +1093,7 @@ class MotifRepo:
                 return await c.fetchrow(
                     f"""
                     INSERT INTO motif
-                      (owner_user_id, book_id, book_shared, code, language, visibility, kind, category, name,
+                      (owner_user_id, book_id, book_shared, code, original_language, visibility, kind, category, name,
                        summary, genre_tags, roles, beats, preconditions, effects,
                        info_asymmetry, annotations, tension_target, emotion_target,
                        examples, abstraction_confidence, source, imported_derived,
@@ -1028,7 +1105,7 @@ class MotifRepo:
                             $21,$22,$23,$24)
                     RETURNING {_SELECT_COLS}
                     """,
-                    caller_id, code, s["language"], s["kind"], s["category"],
+                    caller_id, code, s["original_language"], s["kind"], s["category"],
                     s["name"], s["summary"], genres,
                     _passthru_jsonb(s["roles"]), _passthru_jsonb(s["beats"]),
                     _passthru_jsonb(s["preconditions"]), _passthru_jsonb(s["effects"]),
@@ -1108,7 +1185,7 @@ class MotifRepo:
 
     async def list_public(
         self, *, genre: str | None = None, kind: str | None = None,
-        q: str | None = None, language: str | None = None,
+        q: str | None = None, display_language: str | None = None,
         sort: str = "recent", limit: int = 50, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """The PUBLIC catalog (B-3). visibility='public' AND status='active' ONLY
@@ -1124,9 +1201,6 @@ class MotifRepo:
         if kind is not None:
             params.append(kind)
             where.append(f"kind = ${len(params)}")
-        if language is not None:
-            params.append(language)
-            where.append(f"language = ${len(params)}")
         if q:
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
@@ -1147,7 +1221,35 @@ class MotifRepo:
         async with self._pool.acquire() as c:
             rows = await c.fetch(list_q, *params)
             total = await c.fetchval(count_q, *count_params)
-        return [dict(r) for r in rows], int(total or 0)
+            out = [dict(r) for r in rows]
+            # The catalog is a narrow allow-list of columns, not a Motif model, so it
+            # gets the same treatment by hand: overlay only its three text fields.
+            # Most rows here are user-published motifs, which are NEVER machine-
+            # translated on the platform's dime — so falling back to the author's
+            # original language is the expected outcome, not a degradation.
+            want = normalize_display_language(display_language)
+            ids = [r["id"] for r in out if r.get("original_language") != want] if want else []
+            if ids:
+                trs = {
+                    t["motif_id"]: t
+                    for t in await c.fetch(
+                        "SELECT motif_id, name, summary, emotion_target FROM motif_translation "
+                        "WHERE language_code = $1 AND motif_id = ANY($2::uuid[])",
+                        want, ids,
+                    )
+                }
+                for r in out:
+                    if r.get("original_language") == want:
+                        r["text_language"] = want
+                        continue
+                    t = trs.get(r["id"])
+                    if t:
+                        for f in ("name", "summary", "emotion_target"):
+                            if t[f]:
+                                r[f] = t[f]
+                    r["text_language"] = want if t else r.get("original_language")
+                    r["text_fallback"] = t is None
+        return out, int(total or 0)
 
     async def count_shared_by_owner(self, owner_id: UUID) -> int:
         """The publish-ceiling input (B-4): motifs the user holds at a SHAREABLE

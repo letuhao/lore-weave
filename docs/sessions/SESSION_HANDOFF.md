@@ -1,35 +1,51 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ⚠️ HANDOFF TO THE MOTIF-I18N TRACK — two files of mine are sitting in yours
+## ✅ MOTIF-I18N — landed (2026-07-29). Language is no longer part of a motif's identity.
 
-**The motif i18n refactor is being written in parallel, right now** — `9db0231e6` landed 15:10, then
-`docs/specs/2026-07-29-motif-i18n.md` (15:40), `app/db/motif_i18n_migrate.py` (15:47),
-`app/motif_i18n.py` (15:48), all during this session and none of it mine. Its **53 failing tests are
-the expected mid-refactor state**, not rot: static signature mismatches only
-(`MotifRetriever.retrieve() got an unexpected keyword argument 'language'` — now `display_language`;
-`_motif_id() takes 1 positional argument but 2 were given`). No DB involved, nothing in `plan_forge`
-touches them. **Excluding that track: 2,612 pass, 0 fail.** I did not touch its design.
+**The defect.** `motif.language` sat inside every identity key (`uq_motif_system(code, language)`),
+so one motif in two languages was **two unrelated rows** — 168 system rows for 84 motifs, duplicated
+vectors, a duplicated link graph, and a measured wrong-language leak: an English book's plan pass
+selected `mystery.witness_who_lies` and got the *Vietnamese* row, so the scene decomposer was briefed
+in Vietnamese. 3 of 15 library slots were the wrong language, and nothing in the payload said so.
 
-**But two things I wrote live inside it and are NOT committed — absorb them or you lose them:**
+**The shape now** (spec: `docs/specs/2026-07-29-motif-i18n.md`): one row per (tier, code) in its
+`original_language` (parity with books/chapters) + a `motif_translation` row per language, resolved
+**per leaf** with fallback. Every read carries `text_language` / `text_fallback` / `text_stale`, so no
+consumer — model prompt or FE — can receive text without knowing which language it is in.
 
-- **`migrate.py`, 11 of its 94 added lines — a crash-loop fix.** The refactor renames
-  `motif.language` → `original_language` (line 929, inside `_MOTIF_SCHEMA_SQL`), and four legacy
-  index-repair statements *after* it still said `language`. That block is ONE `conn.execute`: the
-  rename succeeded, the first stale index failed, the transaction rolled back — restoring the old
-  column, so the next boot failed identically. **composition-service crash-looped and would not
-  serve.** Invisible until a rebuild, because the running containers were on an image predating the
-  rename. `motif_i18n_migrate.run_motif_i18n` does NOT cover this — it runs at line 2278, long after
-  the schema SQL, so the inline fix is still load-bearing.
-- **`tests/unit/test_migrate_rename_consistency.py`** (untracked) — the static guard for the whole
-  class: a renamed column referenced by its old name later in the same transaction. Verified against
-  the real defect, not just synthetically. It asserts a rename exists, so it is only meaningful
-  committed **with** this refactor.
+- **Selection is language-blind.** Language left the candidate query in BOTH its forms (it was a
+  WHERE, then a pre-RANK term). A language preference changes the WORDS, never the SET.
+- **Embedding untouched** — one vector per motif from its original-language summary. bge-m3 is
+  multilingual; cross-language cosine already worked.
+- **Users are never machine-translated.** Platform seed = English + committed translations, free.
+  A user's motif stays in the language they wrote it in; an adopter pays for their own languages.
+- `_dedupe_by_code` was **deleted** — it was a symptom-level mitigation for the duplication itself.
 
-**A trap this session hit, worth not repeating:** the 10 `*_vi.json` seed packs are *moved* into
-`seed_motif_packs/translations/vi/`, and the destination is still untracked while the source deletions
-are tracked. Any commit that stages broadly picks up the delete side without the add side. I did
-exactly that and had to amend it out — and my own check missed it because I grepped `git status` for
-`^[AM]`, which filters out `D`.
+**Migration `motif_i18n_v1` applied 08:53, verified:** 168 → 84 system rows · 84 `vi` translations
+(`source='authored'`, machine-overwrite-proof) · link graph 116 → 61 (55 duplicate edges gone,
+pre-flight proved every one had an `en` counterpart before the cascade) · 0 orphaned
+`motif_application` · **all 84 hand-written Vietnamese motifs verified byte-for-byte against git.**
+
+**Live smoke** (`GET /v1/composition/motifs`): `display_language=vi` → Vietnamese, `text_language=vi`;
+`=ja` → English with `text_fallback=true` (announced, not silent); beat `tension_target`/`order`
+preserved in all three. 2838 composition tests · 220 FE motif tests · 8/8 mutation cuts caught.
+
+**Absorbed from the parallel plan-forge session, as asked:** their `migrate.py` crash-loop fix (four
+legacy index-repair statements still said `language` after the rename, in the same transaction) and
+`tests/unit/test_migrate_rename_consistency.py`, its static guard — both committed here. I extended
+the fix: those statements had been corrected to the new column NAME but still carried
+`original_language` **in the key**, so if a condition ever fired they would have resurrected the exact
+schema this migration removes.
+
+### ▶ NEXT on this track
+1. **`scripts/motif_translate.py`** — clone `scripts/i18n_translate.py` (flatten · chunk-by-key-count ·
+   verify · self-heal · isolate-retry · gap-fill resume · `_FAILED.json`) onto the seed packs, with
+   **key-invariance as a HARD check**. Then translate the 84 motifs into the remaining 16 locales.
+2. **The user-paid runtime translate path** — a metered job through provider-registry + a UI
+   affordance. Deliberately NOT in this cycle; the policy it serves (never translate a user's motif
+   for free) is what landed. Without it a user cannot translate their own motifs at all.
+3. **Arc templates have the identical defect** — `arc_template.language` is still in
+   `uq_arc_template_*`. Same fix, same shape; out of scope here on purpose.
 
 ## ✅ POC CLEANUP — every bug the material-read POC surfaced is closed (2026-07-29, M)
 

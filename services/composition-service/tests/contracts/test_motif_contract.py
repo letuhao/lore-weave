@@ -53,7 +53,7 @@ def test_motif_repo_signatures_frozen():
     assert _params(MotifRepo.archive) == ["self", "caller_id", "motif_id"]
     list_params = _params(MotifRepo.list_for_caller)
     assert list_params[:2] == ["self", "caller_id"]
-    for kw in ("scope", "genre", "kind", "status", "q", "language", "limit"):
+    for kw in ("scope", "genre", "kind", "status", "q", "display_language", "limit"):
         assert kw in list_params, f"list_for_caller missing kw '{kw}'"
     clone_params = _params(MotifRepo.clone)
     assert clone_params[:3] == ["self", "caller_id", "src_motif_id"]
@@ -65,7 +65,7 @@ def test_motif_retriever_signature_frozen():
     params = _params(MotifRetriever.retrieve)
     assert params[:2] == ["self", "caller_id"]
     for kw in (
-        "book_id", "project_id", "genre_tags", "language",
+        "book_id", "project_id", "genre_tags", "display_language",
         "beat_role", "tension", "prev_effects", "limit",
     ):
         assert kw in params, f"retrieve missing kw '{kw}'"
@@ -95,7 +95,7 @@ async def test_retriever_is_implemented_w3():
     retr = MotifRetriever(_Pool())  # type: ignore[arg-type]
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=3,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=3,
     )
     assert out == []
 
@@ -116,8 +116,8 @@ def test_create_args_forbid_extra_and_no_owner_or_embed_field():
 
 def test_patch_args_forbid_extra_and_immutable_identity():
     MotifPatchArgs(name="new")
-    # code/language/source/owner are identity/lineage — not patchable here.
-    for forbidden in ("code", "language", "source", "owner_user_id"):
+    # code/original_language/source/owner are identity/lineage — not patchable here.
+    for forbidden in ("code", "original_language", "source", "owner_user_id"):
         with pytest.raises(Exception):
             MotifPatchArgs(**{forbidden: "x"})
 

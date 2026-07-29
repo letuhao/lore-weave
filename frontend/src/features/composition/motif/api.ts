@@ -59,7 +59,10 @@ export type MotifListParams = {
   kind?: string;
   status?: string;
   q?: string;
-  language?: string;
+  /** MOTIF-I18N: the language to READ the motifs in. It re-words them; it never
+   *  filters. (It used to be a filter, which meant asking for Vietnamese HID every
+   *  motif not stored in Vietnamese instead of translating them.) */
+  display_language?: string;
   limit?: number;
   offset?: number;   // §2#9 scale — paginate a >limit library
 };
@@ -70,7 +73,7 @@ export type CatalogParams = {
   genre?: string;
   kind?: string;
   q?: string;
-  language?: string;
+  display_language?: string;   // re-words the catalog; never filters it
   sort?: 'recent' | 'name';
   limit?: number;
   offset?: number;

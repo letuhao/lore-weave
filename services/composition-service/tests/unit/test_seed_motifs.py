@@ -10,6 +10,7 @@ Map to W7 §5: tests #1-#11.
 from __future__ import annotations
 
 import re
+import uuid
 
 import pytest
 
@@ -60,13 +61,14 @@ def test_every_pack_row_validates_against_motif_model(rows):
     for r in rows:
         # write-arg model (strict ForbidExtra) — source/source_version are seed-only
         # loader fields, never user write-args, so strip them for the write-arg check.
-        create_view = {k: v for k, v in r.items() if k not in ("source", "source_version")}
+        create_view = {k: v for k, v in r.items()
+                       if k not in ("source", "source_version", "language")}
         MotifCreateArgs.model_validate(create_view)
         # read-row model with the loader-stamped system fields.
         m = Motif.model_validate(
             {
                 **r,
-                "id": _motif_id(r["code"], r.get("language", "en")),
+                "id": _motif_id(r["code"]),
                 "owner_user_id": None,
                 "visibility": _SYSTEM_VISIBILITY,
             }
@@ -75,15 +77,15 @@ def test_every_pack_row_validates_against_motif_model(rows):
         assert m.source == "authored"  # W7 is authored-only
 
 
-# ── test #2 — codes unique per language + match the naming convention.
-def test_codes_unique_per_language(rows):
+# ── test #2 — codes are unique OUTRIGHT (MOTIF-I18N: language left the identity key,
+# so a code may no longer appear twice for any reason) + match the naming convention.
+def test_codes_unique(rows):
     seen = set()
     genre_re = re.compile(r"^[a-z_]+\.[a-z_]+$")
     connective_re = re.compile(r"^(hook|emotion_arc)\.[a-z_]+$")
     for r in rows:
-        key = (r["code"], r.get("language", "en"))
-        assert key not in seen, f"duplicate (code, language): {key}"
-        seen.add(key)
+        assert r["code"] not in seen, f"duplicate code: {r['code']}"
+        seen.add(r["code"])
         code = r["code"]
         assert genre_re.match(code) or connective_re.match(code), f"bad code shape: {code}"
 
@@ -94,9 +96,7 @@ def test_kind_matches_pack():
 
     for pack in _MOTIF_PACKS:
         pack_rows = _read_pack(pack)
-        # the *_vi sibling packs (D-W7-VI-PACK) carry the same kind contract as their
-        # en base — normalize the suffix so the per-pack kind check applies to both.
-        base = pack[:-3] if pack.endswith("_vi") else pack
+        base = pack
         for r in pack_rows:
             kind = r.get("kind")
             if base == "hooks":
@@ -138,29 +138,31 @@ def test_roles_have_subject(rows):
             assert role["actant"] in GREIMAS_ACTANTS, f"{r['code']} bad actant {role['actant']}"
 
 
-# ── test #6 — deterministic ids are pure + key on (code, language).
+# ── test #6 — deterministic ids are pure + keyed on `code` alone.
 def test_deterministic_ids_stable():
-    a1 = _motif_id("cultivation.face_slap", "en")
-    a2 = _motif_id("cultivation.face_slap", "en")
-    assert a1 == a2  # pure
-    assert _motif_id("cultivation.face_slap", "en") != _motif_id("cultivation.closed_door_breakthrough", "en")
-    # language is part of the key → distinct rows.
-    assert _motif_id("cultivation.face_slap", "en") != _motif_id("cultivation.face_slap", "vi")
-    # link ids are likewise pure + distinct.
-    l1 = _link_id("a.b", "c.d", "precedes", "en")
-    assert l1 == _link_id("a.b", "c.d", "precedes", "en")
-    assert l1 != _link_id("a.b", "c.d", "composed_of", "en")
+    assert _motif_id("cultivation.face_slap") == _motif_id("cultivation.face_slap")  # pure
+    assert _motif_id("cultivation.face_slap") != _motif_id("cultivation.closed_door_breakthrough")
+    # MOTIF-I18N: the id formula still hashes a literal `en` segment even though language
+    # left the identity key, because every already-seeded row in every environment carries
+    # that id. Pin the exact value — "cleaning up" the formula would mint a second id per
+    # code and re-insert the whole library as duplicates.
+    assert str(_motif_id("cultivation.face_slap")) == str(
+        uuid.uuid5(uuid.UUID("6d0746f0-0000-5000-8000-000000000001"),
+                   "motif|en|cultivation.face_slap"))
+    l1 = _link_id("a.b", "c.d", "precedes")
+    assert l1 == _link_id("a.b", "c.d", "precedes")
+    assert l1 != _link_id("a.b", "c.d", "composed_of")
 
 
 # ── test #7 — every link endpoint resolves; composed_of parents are patterns.
 def test_link_endpoints_resolve(rows, edges):
     assert edges, "no link edges loaded"
-    ids = {_motif_id(r["code"], r.get("language", "en")) for r in rows}
+    ids = {_motif_id(r["code"]) for r in rows}
     for e in edges:
         assert e["from_id"] in ids, f"dangling from_id in {e}"
         assert e["to_id"] in ids, f"dangling to_id in {e}"
     # composed_of parents must be kind='pattern' (load_link_edges enforces; re-assert).
-    by_id_kind = {_motif_id(r["code"], r.get("language", "en")): r.get("kind") for r in rows}
+    by_id_kind = {_motif_id(r["code"]): r.get("kind") for r in rows}
     for e in edges:
         if e["kind"] == "composed_of":
             assert by_id_kind[e["from_id"]] == "pattern"
@@ -233,16 +235,15 @@ def test_inventory_counts(rows, edges):
     from app.db.seed_motifs import _read_pack
 
     counts = {pack: len(_read_pack(pack)) for pack in _MOTIF_PACKS}
-    # en base packs (§2 inventory) — and each `*_vi` sibling mirrors its base 1:1.
     for base, n in (("cultivation", 11), ("revenge", 8), ("intrigue", 6),
                     ("hooks", 13), ("emotion_arcs", 6),
                     ("romance", 9), ("mystery", 8), ("rebirth", 8),
                     ("wuxia", 8), ("survival", 7)):
         assert counts[base] == n, f"{base} count {counts[base]} != {n}"
-        assert counts[f"{base}_vi"] == n, f"{base}_vi count {counts[f'{base}_vi']} != {n}"
-    # (11+8+6+13+6) original + (9+8+8+8+7) genre-breadth 2026-07-29 = 84, × 2 languages.
-    assert len(rows) == 168
-    # links.json is one manifest; the loader emits it per shared language → both the
-    # en and vi chains are wired (D-W7-VI-PACK): 12+34 precedes + 7+2 composed_of, ×2.
-    assert sum(1 for e in edges if e["kind"] == "precedes") == 92
-    assert sum(1 for e in edges if e["kind"] == "composed_of") == 18
+    # (11+8+6+13+6) original + (9+8+8+8+7) genre-breadth 2026-07-29 = 84.
+    # MOTIF-I18N: ONE row per motif — this was 168 when every motif shipped twice.
+    assert len(rows) == 84
+    # links.json is one manifest and now emits ONE graph (it used to emit a parallel copy
+    # per language): 12+34 precedes + 7+2 composed_of.
+    assert sum(1 for e in edges if e["kind"] == "precedes") == 46
+    assert sum(1 for e in edges if e["kind"] == "composed_of") == 9
