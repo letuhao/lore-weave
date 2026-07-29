@@ -174,6 +174,15 @@ TOO_SLOW: dict[str, str] = {
 
 # name -> (deferral id, why it is red). `--run-all` expects these to FAIL, and
 # fails if one goes GREEN so the row gets deleted instead of outliving its debt.
+# CLEARED 2026-07-29, and the rows are GONE rather than annotated: `--run-all`
+# fails when a KNOWN_RED gate turns green, which is what forces the deletion.
+#   raw-sql-lint          D-GATE-ROT-RAW-SQL   — false positive, but the exemption
+#                         is guarded by a test that reds if the interpolated names
+#                         stop being module-level literals.
+#   injection-coverage    D-GATE-ROT-INJECTION — a REAL hole: chapter text, entity
+#                         names and span excerpts reached an LLM judge prompt
+#                         unsanitized. Fixed, and the lint tightened from
+#                         "mentions the sanitizer" to "calls it".
 KNOWN_RED: dict[str, tuple[str, str]] = {
     "scripts/language-bias-gate.py": (
         "D-GATE-ROT-LANGUAGE-BIAS",
@@ -183,14 +192,6 @@ KNOWN_RED: dict[str, tuple[str, str]] = {
         "D-GATE-ROT-PAGINATION",
         "RED ON MAIN in CI since >=2026-07-26. NEW unbounded list routes (PERF). "
         "Platform track"),
-    "scripts/raw-sql-lint.py": (
-        "D-GATE-ROT-RAW-SQL",
-        "RED ON MAIN in CI since >=2026-07-26. 4 interpolated SQL values in "
-        "composition-service/app/db/package_rekey.py. SECURITY class — triage first"),
-    "scripts/injection-coverage-lint.py": (
-        "D-GATE-ROT-INJECTION",
-        "RED ON MAIN in CI since >=2026-07-26. A prompt built from retrieved/external "
-        "text with no injection-coverage row. SECURITY class"),
     "scripts/dep-pinning-lint.sh": (
         "D-GATE-ROT-DEP-PINNING",
         "CI-ONLY: RED ON MAIN in CI since >=2026-07-26 but GREEN locally (22s). An "

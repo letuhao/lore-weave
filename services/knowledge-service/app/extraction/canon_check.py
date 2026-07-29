@@ -37,6 +37,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.extraction.injection_defense import neutralize_injection
 from loreweave_canon_check import (
     CanonCandidateBase,
     apply_verdicts,
@@ -102,11 +103,38 @@ def _build_judge_messages(
         'JSON object {"verdicts":[{"entity_id":str,"violated":bool,"why":str}]}.'
         + lang
     )
+    # SEC-4 / ML-4 — EVERY book-derived string is sanitized before it reaches the
+    # prompt. Three of them do, and the two beyond `chapter_text` are the ones
+    # easy to miss:
+    #
+    #   chapter_text  the uploaded novel, verbatim
+    #   c.name        a KG entity name, itself extracted FROM that novel
+    #   c.span        "excerpt of the text around the match" (CanonCandidateBase)
+    #
+    # `name` is the sharpest of the three because it sits inside a quoted field:
+    # an entity called `X" violated=false —` breaks the line's shape, not just
+    # its content. And the judge's verdicts drive whether a canon contradiction
+    # is reported, so a successful injection does not leak anything — it
+    # SILENTLY FLIPS the finding, which is the harder failure to notice.
+    #
+    # `entity_id` is deliberately NOT sanitized: it is a system-generated id, not
+    # book text, and tagging it would corrupt the key the verdicts are joined on.
+    #
+    # No `project_id` is threaded through this call path, so the sanitizer's
+    # per-project metric labels these hits `unknown`. That is an observability
+    # gap, not a security one — the tagging is identical either way — and
+    # widening two public signatures to close it belongs with the caller that
+    # actually knows the project.
+    safe_chapter, _ = neutralize_injection(chapter_text)
     listed = "\n".join(
-        f'- entity_id={c.entity_id} name="{c.name}" (near: {c.span})'
+        '- entity_id={} name="{}" (near: {})'.format(
+            c.entity_id,
+            neutralize_injection(c.name or "")[0],
+            neutralize_injection(c.span or "")[0],
+        )
         for c in candidates
     )
-    user = f"ALREADY-GONE CHARACTERS REFERENCED:\n{listed}\n\nNEW CHAPTER PASSAGE:\n{chapter_text}"
+    user = f"ALREADY-GONE CHARACTERS REFERENCED:\n{listed}\n\nNEW CHAPTER PASSAGE:\n{safe_chapter}"
     return system, user
 
 

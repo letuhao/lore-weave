@@ -992,6 +992,49 @@ An exploratory design for a **rendered 2D / 2.5D LLM-driven MMO RPG** (near-real
 >   `events_allowlist.yaml` row. A missing row fails at RUNTIME (`table not allowlisted`), not at
 >   commit. Pre-existing, surfaced here.
 >
+> 🔒 **BOTH SECURITY ROWS CLEARED (2026-07-29) — one false positive, one REAL hole.**
+>
+> **`D-GATE-ROT-INJECTION` was real.** `knowledge-service/app/extraction/canon_check.py` built an
+> LLM-judge prompt out of **three** book-derived strings with no sanitizer at all — the uploaded
+> `chapter_text`, the KG `entity.name` (itself extracted FROM the novel), and `span` (*"excerpt of the
+> text around the match"*). `name` was the sharpest: it sits inside a **quoted field**, so a crafted
+> name breaks the line's shape, not merely its content. Impact is not disclosure — the judge's verdicts
+> decide whether a canon contradiction is **reported**, so a successful injection *silently flips the
+> finding*. Fixed by routing all three through the sanitizer that lives **in the same package**.
+> `entity_id` is deliberately left alone: it is system-generated and the verdicts are joined on it.
+>
+> **The lint could not have caught the fix being undone**, and that mattered more than the fix.
+> `injection-coverage-lint` required only that a module *mention* `neutralize_injection`. Measured:
+> with the sanitizer bypassed and the import left in place, it still printed
+> *"OK — every retrieved-text prompt-assembly module routes through the sanitizer"*. It now requires a
+> **call** (`name\s*\(`). Verified free before tightening: of the 16 non-test modules referencing the
+> sanitizer, **all 16 call it**; the only mention-without-call is a metric help-string in
+> `metrics.py`, which assembles no prompt. 8 unit tests assert the prompt string itself, including a
+> spy proving all three fields reach the sanitizer and a negative control that clean prose survives
+> verbatim (else a gate that tagged everything would pass).
+>
+> **`D-GATE-ROT-RAW-SQL` was a false positive — but the exemption is GUARDED, not asserted.** All four
+> sites in `composition-service/app/db/package_rekey.py` interpolate **module-level literals**
+> (`_MARKER`, and table names from literal tuples); the builders have no caller outside the module;
+> the public entries take `(conn, apply_schema)` — no name crosses a request boundary; and they emit
+> `DO $$ … $$` blocks, which **cannot take bind parameters at all**, so `$1` was never available.
+> Baselined with that reasoning — and because the reasoning rests entirely on those names staying
+> literal, `tests/unit/test_package_rekey_constants.py` parses the module with `ast` and reds if any
+> stops being a module-level tuple of string literals, or if a public entry gains a parameter. A
+> baseline row that outlives the fact it was granted for converts a real injection into a documented
+> non-finding (**NV-4**).
+>
+> **The shrink-the-list rule did its job:** both `KNOWN_RED` rows are **deleted**, not annotated —
+> `--run-all` fails when a tracked-red gate turns green, which is what forces the deletion. Registry
+> is now 5 tracked-red, down from 7.
+>
+> **VERIFY:** knowledge-service **3970 passed** · composition-service **2383 passed, 1 skipped** ·
+> `raw-sql-lint` OK (4 baselined) · `injection-coverage-lint` OK (15 baselined) · gate-wiring OK
+> (63 discovered, 7 exempt, 5 tracked-red) · **4 bite-proofs**: bypassing the sanitizer reds 4 of the
+> 8 new tests while the negative controls stay green; the OLD lint stayed green on that same bypass
+> and the TIGHTENED one fails it; making the table list dynamic reds the ast guard; adding a `table`
+> parameter to a public entry reds it too.
+>
 > 🧹 **DRIFT SWEEP (2026-07-29) — the audit was WRONG, and what it found instead was worse.**
 >
 > **My first number was `26 of 58 gates run nowhere`. It was wrong.** `lint-foundation.yml` wires its

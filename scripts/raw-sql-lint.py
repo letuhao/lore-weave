@@ -68,7 +68,32 @@ ALLOWLIST_PREFIXES: tuple[str, ...] = (
 # so this is intentionally EMPTY — the lint's whole job is to catch the next
 # regression. If a legitimate exception ever appears, add a
 # "relpath::matched-line-substring" row here with a comment explaining why.
-BASELINE: frozenset[str] = frozenset()
+BASELINE: frozenset[str] = frozenset({
+    # ── composition-service package re-key (2026-07-29) ───────────────────────
+    # Four sites in one BOOT-TIME MIGRATION builder. Traced before exempting:
+    #
+    #   * every interpolated value is a MODULE-LEVEL LITERAL — `_MARKER =
+    #     "pkg_rekey_v1"`, and the table names come from the literal tuples
+    #     `_USER_ID_RENAMES` / `_OWNER_USER_ID_RENAMES` / `_BOOK_ID_TABLES`;
+    #     the column names are literals at the call sites ("user_id", …).
+    #   * the builders are private and have NO caller outside this module (its
+    #     own integration test aside), and the public entries take
+    #     `(conn, apply_schema)` — no table name crosses a request boundary.
+    #   * they emit `DO $$ … $$` blocks, which in Postgres **cannot take bind
+    #     parameters at all**, so `$1` is not an available alternative even
+    #     where the position is a value rather than an identifier.
+    #
+    # THE EXEMPTION IS GUARDED, not asserted: the reasoning above rests entirely
+    # on those names staying literal, and a baseline row that outlived that fact
+    # would silently bless a real injection (non-vacuity NV-4 — an adjacent
+    # decision defeating the check). `tests/unit/test_package_rekey_constants.py`
+    # parses the module with `ast` and reds if any of them stops being a
+    # module-level tuple of string literals.
+    "services/composition-service/app/db/package_rekey.py::DELETE FROM package_migration WHERE marker =",
+    "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = 'created_by'",
+    "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{t}' AND column_name = 'book_id'",
+    "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = '{old}'",
+})
 
 # ── detection ─────────────────────────────────────────────────────────────
 
