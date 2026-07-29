@@ -72,7 +72,15 @@ def test_accepting_CAST_requires_its_seed_proposal_to_be_APPLIED():
     disagree."""
     src = inspect.getsource(pfs.PlanForgeService._assert_seed_applied)
     assert 'if proposal.status != "applied":' in src
-    assert "apply it first (PF-7)" in src
+    # Assert the message's PROPERTIES, not its wording. This line used to pin the literal sentence
+    # "apply it first (PF-7)" — which is exactly the sentence that walked an author into a loop
+    # during the 2026-07-29 dogfood: it names no proposal, so the obvious next move is
+    # `bootstrap/propose`, which mints a SECOND proposal; approving and applying that one leaves
+    # this gate reading the pass-opened proposal and refusing with the identical words. A test that
+    # pins the wording protects the wording; these pin what the author needs to get unstuck.
+    assert "proposal.id" in src, "the refusal must name WHICH proposal the gate reads"
+    assert "Do NOT call bootstrap/propose" in src, "the decoy must be called out"
+    assert "PF-7" in src
     # …and it is actually called on the approve path
     review = inspect.getsource(pfs.PlanForgeService._review_pass)
     assert "await self._assert_seed_applied(book_id, run, pass_id)" in review

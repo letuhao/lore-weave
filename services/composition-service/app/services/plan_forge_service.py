@@ -1135,9 +1135,17 @@ class PlanForgeService:
         if proposal is None:
             raise ValueError(f"cast's seed proposal {proposal_id} no longer exists")
         if proposal.status != "applied":
+            # NAME THE PROPOSAL. Without the id this message sends the author to
+            # `POST /bootstrap/propose`, which mints a SECOND, competing proposal — approving and
+            # applying that one leaves the gate reading this same pass-opened proposal and refusing
+            # with the identical sentence. Walked into live during the 2026-07-29 dogfood: the loop
+            # is invisible because both the instruction and the failure are word-for-word the same.
             raise ValueError(
                 f"cast cannot be accepted while its glossary seed proposal is "
-                f"'{proposal.status}' — apply it first (PF-7)",
+                f"'{proposal.status}' — approve and apply THAT proposal (id {proposal.id}) via "
+                f"/plan/bootstrap/{proposal.id}/approve then /apply. Do NOT call bootstrap/propose "
+                f"again: it creates a different proposal and this gate only reads the one the cast "
+                f"pass opened (PF-7).",
             )
 
     async def _bind_roster(self, created_by: UUID, book_id: UUID, run: PlanRun) -> None:

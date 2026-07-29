@@ -33,7 +33,19 @@ def compile_artifacts(
     because the spec has nowhere to declare a genre — absent, the package declares none
     rather than inventing one.
     """
-    arc = next((a for a in spec.get("arcs", []) if a["id"] == arc_id), None)
+    arcs = spec.get("arcs") or []
+    arc = next((a for a in arcs if a.get("id") == arc_id), None)
+    if arc is None and arcs:
+        # SAY WHICH IDS EXIST. A wrong id used to sail through here as `arc = None`, produce a
+        # package with no chapters, and fail three layers later as "there is nothing to link" —
+        # which names neither the cause nor the fix. Live in the 2026-07-29 dogfood: the spec's ids
+        # are `arc_01`/`arc_02` and the obvious guess, `arc_1`, is wrong. Nothing anywhere listed
+        # them, so the only way to find out was to query the artifact by hand.
+        available = ", ".join(str(a.get("id")) for a in arcs if a.get("id"))
+        raise ValueError(
+            f"no arc {arc_id!r} in this spec — it has: {available}. "
+            f"(Ids are the spec's own, not positional; `arc_1` and `arc_01` are different.)"
+        )
     arc_events = [e for e in spec.get("events", []) if e.get("arc_id") == arc_id]
 
     glossary_seeds: list[dict[str, Any]] = []

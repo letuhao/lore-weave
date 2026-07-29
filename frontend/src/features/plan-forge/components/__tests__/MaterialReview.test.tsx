@@ -130,3 +130,15 @@ it('a nothing-missing packet says so instead of rendering three empty headings',
   })} />);
   expect(screen.getByTestId('material-nothing')).toBeInTheDocument();
 });
+
+it('the unavailable bucket offers a retry — it told the author to try again with nothing to press', async () => {
+  const find = vi.fn();
+  render(<MaterialReview state={state({ find })} />);
+  await userEvent.click(screen.getByTestId('material-retry-btn'));
+  expect(find).toHaveBeenCalled();
+});
+
+it('no retry button when nothing was unavailable', () => {
+  render(<MaterialReview state={state({ packet: { ...PACKET, unavailable: [] } })} />);
+  expect(screen.queryByTestId('material-retry-btn')).toBeNull();
+});

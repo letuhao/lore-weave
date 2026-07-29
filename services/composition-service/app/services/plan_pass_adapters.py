@@ -107,6 +107,49 @@ class PassContext:
         return str(self.package.get("canon") or "")
 
     @property
+    def author_notes(self) -> str:
+        """The author's own paragraphs that no extractor could place, as a labelled block.
+
+        **The same bug as `canon` above, one iteration later, and I shipped the amplification.**
+        `ingest` carries unclassified sections so the matcher cannot delete the author's prose;
+        `compile` copies them to `planning_package.author_notes`; and — verified on a live package —
+        **nothing read them.** Every mention in the repo was a comment, a docstring, or a count in
+        the UI. `ingest.py`'s own comment said "where the LLM passes read it", which was already
+        untrue; then `apply_kept_material` routed FOUR of the six kinds here and told the author and
+        the model it reached the passes. A stored-and-unread field is a bug, not a feature.
+
+        Rendered with an explicit heading rather than folded into `canon`: canon is what the author
+        has FIXED, these are words nobody could file. Merging them silently would promote an
+        unplaced note to an established fact.
+        """
+        notes = self.package.get("author_notes")
+        if not isinstance(notes, list) or not notes:
+            return ""
+        lines: list[str] = []
+        for n in notes:
+            if not isinstance(n, dict):
+                continue
+            text = str(n.get("text") or "").strip()
+            if not text:
+                continue
+            title = str(n.get("title") or "").strip()
+            lines.append(f"— {title}: {text}" if title else f"— {text}")
+        if not lines:
+            return ""
+        return "THE AUTHOR'S OWN NOTES (their words, unfiled — treat as authored, not as canon):\n" \
+            + "\n".join(lines)
+
+    @property
+    def grounding(self) -> str:
+        """`canon` plus the author's unfiled notes — what every package-reading pass should see.
+
+        One name, one home: the adapters ask for THIS rather than each remembering to concatenate,
+        which is how `author_notes` came to be threaded into zero of them.
+        """
+        parts = [p for p in (self.canon, self.author_notes) if p]
+        return "\n\n".join(parts)
+
+    @property
     def structure(self) -> dict[str, Any]:
         """Which story structure supplied `beats`, and whether the author chose it (compile's
         `resolve_structure` provenance block). Read so the beats checkpoint can SAY what shaped the
@@ -195,7 +238,7 @@ async def run_cast(ctx: PassContext) -> dict[str, Any]:
         # arc PREMISE, so an established character the premise happens not to mention came back as
         # a brand-new invention (often under a fresh name), and the author's canon anchors were
         # compiled and discarded.
-        known_cast=ctx.known_cast, canon=ctx.canon,
+        known_cast=ctx.known_cast, canon=ctx.grounding,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     return {"cast": [
@@ -218,7 +261,7 @@ async def run_world(ctx: PassContext) -> dict[str, Any]:
         # premise, so an established capital came back as a fresh invention (often renamed); and
         # the canon anchors, which constrain invented factions and concepts more than anything
         # else, were compiled on every run and never reached the pass that does the inventing.
-        known_world=ctx.known_world, canon=ctx.canon,
+        known_world=ctx.known_world, canon=ctx.grounding,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     return {"entities": [

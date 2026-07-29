@@ -1,5 +1,57 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ✅ THE DOGFOOD'S FINDINGS, RESOLVED (2026-07-29)
+
+**The worst one was mine, and it was a silent no-op I shipped the same day.**
+
+`apply_kept_material` routes four of the six planning kinds into `spec.author_notes`, and told the
+author (UI), the model (MCP description) and the next reader (docstring) that they reach the passes.
+Verified on a live package: `planning_package.author_notes` **exists**, and `grep author_notes` across
+every service and the frontend found **only** comments, a docstring, and a count rendered in the UI.
+`plan_pass_adapters.py` referenced it **zero** times. So keeping a character, variable, mechanic or
+arc **did nothing at all**.
+
+It is the same bug as `canon` one iteration later — that block was *"compiled on EVERY run and read by
+nobody"* until E6 added a reader — so it is fixed the same way: `PassContext.author_notes` renders a
+labelled block, `PassContext.grounding` = canon + notes, and `run_cast` / `run_world` now pass
+`ctx.grounding`. Rendered with its own heading rather than folded into canon: canon is what the author
+FIXED, these are words nobody could file, and merging them silently promotes a note to a fact.
+Live-verified on the rebuilt image.
+
+| finding | resolution |
+|---|---|
+| **author_notes read by nobody** | `PassContext.grounding`; `cast` + `world` consume it; the test asserts CONSUMPTION, not the field |
+| **PF-7 decoy** (#2) | the refusal names the proposal id and says *"Do NOT call bootstrap/propose again"* |
+| **`arc_id` undiscoverable** (#5) | a wrong id now fails at `compile` **naming the ids that exist** (`arc_01` vs the guessable `arc_1`) instead of surfacing three layers later as "nothing to link" |
+| **`unknown` absent on the default path** (#4) | the LLM propose attaches its own read provenance — `degraded_steps`, a regenerated or repaired step — and the board treats it exactly like `unclassified` |
+| **no retry for `unavailable`** (#8) | a "Check these again" button; the bucket told the author to try again and gave them nothing to press |
+
+**A brittle test rewritten, because it was complicit.** The cast-gate test pinned the literal string
+`"apply it first (PF-7)"` — the very sentence that loops an author. It now asserts the message's
+*properties* (names the proposal, warns off the decoy). A test that pins wording protects the wording.
+
+**Evidence:** composition **2,904 pass / 0 fail** · FE plan-forge **171 pass** · tsc clean ·
+provider-gate green · the grounding block verified on the deployed image.
+
+### Still open, with recommendations
+
+- **#1 the author's original book is gone** — data loss already suffered, not a fix. Needs the PO's
+  call on whether anything is worth reconstructing.
+- **#3 `blocked_at` does not block a non-dependent pass** — needs a semantic decision first: does the
+  field mean "the batch runner stops" (then say so) or "no later pass may run" (then refuse)?
+- **#6 review does not survive a reload** — needs persistence; the packet is component state, so
+  re-opening re-searches and re-spends.
+- **#7 four of six kinds still cannot land structurally** — now genuinely useful (the notes reach the
+  prompts), but a kept variable is still not a `{code, name}` row. The honest fix is a small form
+  that asks the author for the missing field, never a guess.
+- **#9 no independent third corpus** — cannot be built, only obtained.
+- **`D-PLANFORGE-NO-PREMISE-KIND`** — `premise` currently maps to `mechanics`, which is why the
+  dogfood's mechanics came back as `['Bối cảnh', 'Thiết lập linh hồn']`: the story's premise filed as
+  a world rule. A 7th kind touches the board, the search meanings, the questions and the apply map.
+
+**Then:** write chương 1 from the scene plan the dogfood produced.
+
+
 ## 🐕 DOGFOOD RESUMED — the author flow, end to end (2026-07-29)
 
 Book **Mị Đế** `019f9f2d-f9f1-7037-ba78-8ccc3e19c956` (test account), the author's REAL 4,278-char

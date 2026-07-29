@@ -162,9 +162,15 @@ def spec_coverage_board(spec: dict[str, Any]) -> dict[str, Any]:
     unread = ((spec.get("meta") or {}).get("ingest_unread") or {}) if isinstance(spec.get("meta"), dict) else {}
     read_failed = bool(unread.get("empty_read"))
     unclassified = list(unread.get("unclassified") or [])
+    # The LLM path's equivalent: a step that had to be REGENERATED (a repetition loop) or REPAIRED
+    # (unparseable output) produced an answer, but not cleanly. Added because the board could
+    # otherwise only ever say `absent` on the path that is now the DEFAULT — the rules propose is
+    # the only writer of `unclassified`, so the degrade signal did not exist where most runs go.
+    degraded_steps = list(unread.get("degraded_steps") or [])
     # An unclassified section is material the matcher could not place — so anything it might have
-    # contained is unaccounted for, and "absent" would be an overstatement.
-    read_incomplete = read_failed or bool(unclassified)
+    # contained is unaccounted for, and "absent" would be an overstatement. Same for a step the
+    # model had to be asked twice for.
+    read_incomplete = read_failed or bool(unclassified) or bool(degraded_steps)
 
     kinds: list[dict[str, Any]] = []
     for kind, path, label_key in _BOARD_KINDS:
@@ -197,6 +203,8 @@ def spec_coverage_board(spec: dict[str, Any]) -> dict[str, Any]:
         "read": {
             "failed": read_failed,
             "unclassified": unclassified,
+            "degraded_steps": degraded_steps,
+            "path": unread.get("path") or "rules",
             "note": unread.get("note") or "",
         },
     }

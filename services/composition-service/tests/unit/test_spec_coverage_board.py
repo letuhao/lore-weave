@@ -167,3 +167,47 @@ async def test_the_service_returns_the_board_even_when_everything_else_degrades(
     assert board is not None, "the board did not reach the caller"
     cast = next(k for k in board["kinds"] if k["kind"] == "character_seed")
     assert cast["evidence"] == ["Seraphine"]
+
+
+def test_a_REGENERATED_step_makes_absence_unclaimable_on_the_llm_path():
+    """The gap the dogfood found: the board could only ever say `absent` on the DEFAULT path.
+
+    `unclassified` is written by the RULES propose alone, so the LLM path — where most runs now go —
+    had no degrade signal at all. Its equivalent is a step that had to be regenerated (a repetition
+    loop) or repaired (unparseable output): the answer arrived, but not cleanly, so an empty kind may
+    be the read's fault rather than the document's.
+    """
+    spec = _spec()
+    spec["meta"]["ingest_unread"] = {"path": "llm", "unclassified": [],
+                                     "degraded_steps": ["analyze_retry1"], "note": "…"}
+    board = spec_coverage_board(spec)
+    assert set(board["unknown"]) == _ALL_KINDS
+    assert board["absent"] == []
+    assert board["read"]["degraded_steps"] == ["analyze_retry1"]
+    assert board["read"]["path"] == "llm"
+
+
+def test_a_CLEAN_llm_read_still_claims_absence_confidently():
+    """The guard must not cry wolf on every LLM run — a clean read is a clean read."""
+    spec = _spec()
+    spec["meta"]["ingest_unread"] = {"path": "llm", "unclassified": [], "degraded_steps": [],
+                                     "note": ""}
+    board = spec_coverage_board(spec)
+    assert set(board["absent"]) == _ALL_KINDS and board["unknown"] == []
+
+
+def test_the_llm_propose_ACTUALLY_attaches_the_block():
+    """Consumption, not shape: the board can only report what the producer writes."""
+    from app.engine.plan_forge.propose_llm_async import _attach_read_provenance
+
+    spec = {"meta": {}}
+    _attach_read_provenance(spec, [{"step": "analyze"}, {"step": "materialize_repair"}])
+    blk = spec["meta"]["ingest_unread"]
+    assert blk["path"] == "llm"
+    assert blk["degraded_steps"] == ["materialize_repair"]
+    assert "not cleanly" in blk["note"]
+
+    clean = {"meta": {}}
+    _attach_read_provenance(clean, [{"step": "analyze"}, {"step": "materialize"}])
+    assert clean["meta"]["ingest_unread"]["degraded_steps"] == []
+    assert clean["meta"]["ingest_unread"]["note"] == ""

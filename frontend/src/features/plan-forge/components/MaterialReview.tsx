@@ -183,6 +183,19 @@ export function MaterialReview({ state, disabled }: Props) {
               </li>
             ))}
           </ul>
+          {/* The bucket told the author to try again and gave them nothing to press. A dead end that
+              says "try again" is worse than one that says nothing: it names an action the surface
+              does not offer. Re-runs the whole check — there is no per-kind endpoint, and inventing
+              one to avoid re-searching the cheap kinds would be optimising the wrong thing. */}
+          <button
+            type="button" data-testid="material-retry-btn" disabled={busy || !!disabled}
+            onClick={() => void state.find()}
+            className="rounded border border-border px-2 py-1 hover:bg-secondary disabled:opacity-40"
+          >
+            {busy
+              ? t('planner.material.finding', { defaultValue: 'Looking…' })
+              : t('planner.material.retry', { defaultValue: 'Check these again' })}
+          </button>
         </div>
       )}
 

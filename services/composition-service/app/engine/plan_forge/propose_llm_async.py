@@ -194,7 +194,44 @@ async def propose_spec_llm_async(
     spec = await materialize_from_analyze_async(
         analyze, checksum, client, existing=existing, inject_cast_max=inject_cast_max,
     )
+    _attach_read_provenance(spec, client.io_log)
     return spec, analyze, client.io_log
+
+
+def _attach_read_provenance(spec: dict[str, Any], io_log: list[dict[str, Any]]) -> None:
+    """Say whether THIS read was clean — the honesty block, for the path that is now the default.
+
+    `meta.ingest_unread` is written by the RULES propose and carries what the heading matcher could
+    not classify. The LLM path does not classify anything, so it wrote nothing — and the coverage
+    board, which reads that key to decide `absent` vs `unknown`, could therefore only ever say
+    `absent` on the path most runs now take. The degrade signal built to stop a failed read reading
+    as an empty book did not exist where it was most needed.
+
+    This path has its own, better signal: whether a step had to be REGENERATED (a repetition loop) or
+    REPAIRED (unparseable output). Either means the model's answer was not produced cleanly, so an
+    empty kind is not safely `absent`. Same key on purpose — one name for one concept, and the board
+    and the author's UI already read it.
+    """
+    degraded = [str(e.get("step")) for e in io_log
+                if "retry" in str(e.get("step") or "") or "repair" in str(e.get("step") or "")]
+    meta = spec.setdefault("meta", {})
+    block: dict[str, Any] = {
+        "path": "llm",
+        # The LLM read the raw document, so there is no such thing as an unclassified section here.
+        # Empty rather than omitted: a key that appears only sometimes cannot be told from an older
+        # artifact that never reported.
+        "unclassified": [],
+        "degraded_steps": degraded,
+        "note": (
+            f"{len(degraded)} step(s) had to be regenerated or repaired ({', '.join(degraded)}) — "
+            f"the read completed but not cleanly, so a missing part of the plan may be the read's "
+            f"fault rather than the document's."
+            if degraded else ""
+        ),
+    }
+    existing_block = meta.get("ingest_unread")
+    # Never clobber a rules-side block if one is somehow present; merge so both stories survive.
+    meta["ingest_unread"] = {**existing_block, **block} if isinstance(existing_block, dict) else block
 
 
 async def refine_spec_async(
