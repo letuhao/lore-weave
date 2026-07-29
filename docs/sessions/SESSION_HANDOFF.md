@@ -1,5 +1,47 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔬 ATOM-EDIT F2 — the empty column has a harness now, and it says 2/11 (2026-07-30)
+
+F2's real column is *real-run proven?* and it had been empty for all 11 composition
+`*_edit` families. `scripts/atom-edit-roundtrip.py` is that column as a **re-runnable
+script** rather than a transcript: per family CREATE → read back → PATCH → read back and
+assert the field CHANGED → DELETE → read back and assert GONE. DELETE-first on purpose —
+it is the op that failed silently on four of six PlanForge kinds (B6).
+
+**It counts out loud: `F2 real-run proven: 2/11 (7 pending a fixture, 2 failed)`.** A
+harness that walks a few families and prints OK is the silent-cap failure this board
+punishes elsewhere (`cold-path-smoke` once reported 10/10 while never running the `world`
+pass). The 7 needing a Work/outline fixture are printed as PENDING **with the fixture they
+want**, so the gap is a line of output, never an absence.
+
+### PROVEN (2): `motif`, `arc_template`
+Full create → patch → verify-changed → archive → verify-archived, live, through the gateway.
+
+### The first run found nothing about the product and FOUR things about my harness
+Worth recording, because "the harness is wrong" is the outcome a proof harness should
+produce most often, and reading its red as a product bug is how a fake finding gets filed:
+1. optimistic concurrency on these routes is an **`If-Match` header**, not
+   `?expected_version=` — the 412 was mine;
+2. `GET /motifs/{id}/links` wraps rows in `{motif_id, links, count}`;
+3. structure templates live at **`/templates`**, and there is **no single-GET route** (405)
+   — the read-back has to be the LIST;
+4. probe rows must be uniquely named or the second run 409s on the first run's leftovers.
+
+### STILL FAILING (2) — harness gaps, not confirmed product bugs
+- `motif_link` — the edge does not come back on the read *inside the harness*, while the
+  identical sequence by hand through curl DOES return it. Unresolved; the difference has
+  not been isolated, so it is NOT filed as a product defect.
+- `structure_template` — `PATCH /templates/{id}` answers 404 for an id the LIST just
+  returned. Also unresolved.
+
+### ⚠ A real contract discrepancy found on the way, flagged not confirmed
+The wire returns a **nested** neighbour: `{id, kind, ord, direction, neighbor:{id,code,name}}`.
+`frontend/src/features/composition/motif/api.ts` declares `MotifLinkRow` **FLAT** —
+`neighbor_id` / `neighbor_code` / `neighbor_name`, fields the server does not send. If the
+FE link list reads those, it renders undefined. Needs one browser check before it is a
+finding; recorded here so it cannot be lost.
+
+
 ## 🌏 language-bias-gate is GREEN — and a red gate proved its own point (2026-07-30)
 
 The gate had 19 NEW offenders on top of its 41-row baseline, so it failed on every run and
