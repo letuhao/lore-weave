@@ -264,3 +264,42 @@ export interface BootstrapProposal {
   created_at: string;
   updated_at: string;
 }
+
+// ── Material review (find what the plan is missing, in the author's own words) ────────────────
+/** One line found VERBATIM in the author's document. `why` is the model's rationale, shown for
+ *  orientation only — it is never written anywhere. */
+export interface MaterialCandidate { quote: string; why: string }
+
+export interface MaterialReviewRow {
+  kind: string;
+  /** `absent` = the read was clean and this kind really is missing. `unknown` = the read itself was
+   *  incomplete, so absence is not established — say so when asking. */
+  status: 'absent' | 'unknown';
+  candidates: MaterialCandidate[];
+  /** How many returned lines were NOT in the document and were dropped as invented. A list that
+   *  looks clean can still come from a bad call. */
+  dropped_ungrounded: number;
+  note: string;
+}
+
+export interface MaterialAskRow { kind: string; status: 'absent' | 'unknown'; question: string }
+export interface MaterialUnavailableRow { kind: string; status: string; reason: string }
+
+export interface MaterialPacket {
+  version: number;
+  recovered: string[];
+  review: MaterialReviewRow[];
+  ask: MaterialAskRow[];
+  /** The search could not run. NEVER render these as questions — asking the author to rewrite what
+   *  they may already have written, because a model call failed, is the bug this bucket exists for. */
+  unavailable: MaterialUnavailableRow[];
+  read: { failed: boolean; unclassified: string[]; note: string };
+}
+
+export interface KeepMaterialResult {
+  run_id: string;
+  changed: boolean;
+  applied_to_slot: Record<string, number>;
+  carried_as_author_notes: Record<string, number>;
+  note?: string;
+}

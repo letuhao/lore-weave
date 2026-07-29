@@ -17,6 +17,8 @@ import { useBootstrap } from '../hooks/useBootstrap';
 import { usePlanRun } from '../hooks/usePlanRun';
 import type { PlanRunMode } from '../types';
 import { BootstrapPanel } from './BootstrapPanel';
+import { MaterialReview } from './MaterialReview';
+import { useMaterialReview } from '../hooks/useMaterialReview';
 import { PlanRunView } from './PlanRunView';
 import { PlanRunsListView } from './PlanRunsListView';
 import { registerPlanArtifactDocumentProvider, PLAN_ARTIFACT_DOC_TYPE } from '../documents/planArtifactDocument';
@@ -122,6 +124,9 @@ export function PlannerPanel(props: IDockviewPanelProps) {
 
   // Bootstrap only makes sense once a run is compiled (it reads the run's package artifact).
   const compiledRunId = plan.run?.status === 'compiled' ? plan.run.id : null;
+  // The material keep-or-drop acts on the SPEC, which exists from `proposed` onward -- deliberately
+  // NOT gated on `compiled`: its whole value is fixing the spec BEFORE compile reads it.
+  const material = useMaterialReview(bookId ?? null, plan.run?.id ?? null, accessToken ?? null);
 
   const onPropose = () => {
     void plan.createRun({
@@ -298,6 +303,7 @@ export function PlannerPanel(props: IDockviewPanelProps) {
                 onApplyFix={() => void plan.runRepairRefine(effectiveModelRef, (plan.selfCheck?.gaps ?? []).map((g) => g.path))}
                 onAutofix={() => void plan.runAutofix(effectiveModelRef)}
               />
+              <MaterialReview state={material} disabled={plan.busy || plan.polling} />
               {compiledRunId && (
                 <BootstrapPanel
                   proposal={bootstrap.proposal}

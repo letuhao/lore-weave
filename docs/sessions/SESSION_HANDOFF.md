@@ -315,9 +315,59 @@ your variable".
 Nothing in that chain lies: the report said "filed as a note" and the board still says `unknown`.
 A new `spec` artifact is appended rather than edited in place, so the previous one stays recoverable.
 
-**POC §6e/6f is built and closed.** Remaining, and NOT part of this loop: the FE surface for the
-keep-or-drop (the agent carries it in conversation today), and the original session goal — the author
-dogfood into chương 1, which now has a clean pipeline under it.
+## ✅ THE GUI SURFACE — reusing the pass editor, NOT a new panel (2026-07-29)
+
+**The survey changed the plan, and that was the point of doing it.** Three components already were
+what I was about to build: `PassRailPanel` (the state-machine view), `CheckpointReview` (the review
+shell, "saving an edit is a HELD revision, never a blind approve"), and **`PassArtifactEditor`** —
+which already is keep-or-drop: it sends the WHOLE list back so removing a row really removes it, with
+`SHAPE` machine-checked against `contracts/plan-artifacts.contract.json`.
+
+**My first idea — `material` as pass 0, blocking — was WRONG, and only the survey shows why.** Every
+pass reads `package`, the output of `compile`; material review improves the **spec that compile reads**:
+
+```
+propose → spec → compile → package → [7 passes]
+                  ↑ material review belongs HERE
+```
+
+As a pass it would run after compile and lose its entire point. Two further frictions confirmed it:
+`PassContext` has no raw document at all (`premise` is a property derived from the package;
+`source_markdown` reaches only the propose worker op), and a new artifact kind would drag in
+`PlanPassId` · `PASS_ORDER` · `PASS_REGISTRY` · `PlanArtifactKind` · the DB CHECK · the generated
+contract — six closed sets, for a packet none of them describes.
+
+**So: reuse the COMPONENT, not the pass machinery.** `MaterialReview` + `useMaterialReview` live in
+`PlannerPanel` (the propose/spec phase, ungated on `compiled`), and render through `PassArtifactEditor`
+via one new optional `shape` prop. The three buckets survive as a `kind` column on a flat row list,
+which is why no second editor was needed — and why the deep-merge-cannot-delete trap cannot recur here.
+
+`unavailable` is rendered as **"could not check"**, never as a question. An emptied kind sends an
+explicit `[]` rather than a missing key, so `kinds_to_ask` re-opens it — a missing key would read as
+"untouched" and the question would never come back.
+
+**Live through the gateway on the author's own run — the GUI's own REST path, not MCP:**
+
+```
+find    REVIEW planner_variables → 'Ký ức ↓ Nhân cách ↓ Ý chí ↓ Đạo tâm ↓ Chân Linh'
+        ASK    open_questions
+keep    applied_to_slot {open_questions: 1}
+board   open_questions     present n=1  ['Nữ chính có nhớ kiếp đầu tiên không?']
+        planner_variables  unknown n=0  ← still correct: filed as a note, not guessed
+        recovered: 4 kinds → 5
+```
+
+Re-keeping the same line reported `{}` — idempotence, proven rather than assumed.
+
+**Evidence:** FE **169 pass** (15 files) · BE **2,663 pass** · the drop-a-row test is
+**mutation-verified** (making the component send the original list instead of the survivors reds
+exactly the two tests that must red).
+
+**Not done:** no browser smoke — the baked FE image at :5174 was not rebuilt, so this is proven at the
+REST/component level, not through a rendered page.
+
+**Remaining:** the original session goal — the author dogfood into chương 1, which now has a clean
+pipeline under it.
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
 

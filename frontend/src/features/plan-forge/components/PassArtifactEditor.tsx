@@ -29,8 +29,23 @@ interface Col {
   readOnly?: boolean;
 }
 
+export interface EditorShape { field: string; cols: Col[] }
+
 interface Props {
-  kind: PlanArtifactKind;
+  /** The artifact kind, when the shape comes from SHAPE below. Omitted when `shape` is given. */
+  kind?: PlanArtifactKind;
+  /** An EXPLICIT shape, for a list that is not a pass artifact.
+   *
+   *  Added for the material keep-or-drop (`MaterialReview`), which is the same interaction this
+   *  editor already implements — a list of rows where REMOVING one is the decision, and save sends
+   *  the WHOLE list back so a removal really removes. Reusing it was worth a prop; re-implementing
+   *  it would have meant a second surface with the same job and a second chance at the
+   *  deep-merge-cannot-delete trap.
+   *
+   *  Deliberately NOT a new `PlanArtifactKind`: the material packet is not persisted as an artifact,
+   *  so inventing a kind would drag in the Literal, the DB CHECK and the generated contract for a
+   *  shape none of them describe. */
+  shape?: EditorShape;
   content: unknown;
   busy: boolean;
   onSave: (edits: Record<string, unknown>) => void;
@@ -99,7 +114,7 @@ export const SHAPE: Partial<Record<PlanArtifactKind, { field: string; cols: Col[
 };
 
 /** cast_plan tolerates `cast` OR `roster`; read whichever the artifact actually carries. */
-function readRows(kind: PlanArtifactKind, content: unknown, field: string): Row[] {
+function readRows(kind: PlanArtifactKind | undefined, content: unknown, field: string): Row[] {
   const obj = content as Record<string, unknown> | null;
   const raw = obj?.[field] ?? (kind === 'cast_plan' ? obj?.roster : undefined);
   return Array.isArray(raw) ? raw.map((r) => ({ ...(r as Row) })) : [];
@@ -117,9 +132,9 @@ function readEnum(content: unknown, source: string): { key: string; label: strin
     .filter((o) => o.key !== '');
 }
 
-export function PassArtifactEditor({ kind, content, busy, onSave, onCancel }: Props) {
+export function PassArtifactEditor({ kind, shape: explicitShape, content, busy, onSave, onCancel }: Props) {
   const { t } = useTranslation('studio');
-  const shape = SHAPE[kind];
+  const shape = explicitShape ?? (kind ? SHAPE[kind] : undefined);
   const [rows, setRows] = useState<Row[]>(() => (shape ? readRows(kind, content, shape.field) : []));
 
   if (!shape) return null; // unknown kind → no structured editor (caller keeps the read-only view)

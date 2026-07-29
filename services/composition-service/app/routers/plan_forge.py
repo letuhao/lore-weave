@@ -486,6 +486,61 @@ async def self_check_plan_run(
     return report
 
 
+class PlanKeptMaterial(BaseModel):
+    """`{planning kind: [exact quotes the author kept]}`.
+
+    Declared explicitly rather than accepting a bare dict: Pydantic's `extra='ignore'` would silently
+    DROP an undeclared field, which is the `rest-write-mirror-drops-fields` bug the request models
+    above already carry a warning about. Each quote is capped — it is the author's own line, not a
+    document, and an uncapped string here is a write-amplification surface.
+    """
+
+    kept: dict[str, list[Annotated[str, StringConstraints(max_length=400)]]] = Field(
+        default_factory=dict,
+    )
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/missing-material")
+async def find_missing_material(
+    book_id: UUID,
+    run_id: UUID,
+    model_ref: UUID | None = None,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """What the plan is missing, and what of it the author already wrote (GUI parity with
+    `plan_find_missing_material`). EDIT, not VIEW: it spends the author's LLM budget."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        out = await svc.find_missing_material(user_id, book_id, run_id, model_ref=model_ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return out
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/keep-material")
+async def keep_material(
+    book_id: UUID,
+    run_id: UUID,
+    body: PlanKeptMaterial,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """Write the kept lines into the run's spec, verbatim (GUI parity with `plan_keep_material`)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        out = await svc.keep_material(user_id, book_id, run_id, kept=body.kept)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return out
+
+
 @router.post("/books/{book_id}/plan/runs/{run_id}/compile")
 async def compile_plan_run(
     book_id: UUID,
