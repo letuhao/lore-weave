@@ -103,6 +103,35 @@ _HEADING = re.compile(r"^(#{1,6})\s+(?:(\d+)\.\s*)?(.+)$")
 _DOTTED_SUB = re.compile(r"^#{1,6}\s+\d+\.\d")
 
 
+#: `一、立意` — CJK section numbering. Not markdown, and the third corpus (a mainland web-novel
+#: planning document) uses it for EVERY section and contains not one `#`: authors write in Word or
+#: the site's own editor, where markdown is not a thing. The rules path therefore read it as zero
+#: sections — the same format-binding as `# <n>.` and `# ` before it, on a new axis.
+_CJK_SECTION = re.compile(r"^\s*([一二三四五六七八九十百千]+|\d+)\s*[、．.]\s*(\S.*)$")
+
+
+def _cjk_sections(lines: list[str]) -> list[str]:
+    """CJK-numbered section lines, but ONLY for a document with no markdown headings at all.
+
+    The guard is what keeps this safe. In a markdown document a line like `1. 第一步` is an ordinary
+    ordered-list item, and promoting it to a section would shred every numbered list in the corpus.
+    A document with zero `#` has no other structure to lose, so the convention can be trusted there
+    and nowhere else.
+    """
+    in_fence = False
+    out: list[str] = []
+    for line in lines:
+        if _FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _CJK_SECTION.match(line)
+        if m and len(m.group(2).strip()) <= 60:
+            out.append(line.rstrip())
+    return out
+
+
 def _headings_by_level(lines: list[str]) -> dict[int, list[str]]:
     """Every heading in the document as RAW text after the hashes, bucketed by level.
 
@@ -200,6 +229,28 @@ def _section_level(lines: list[str]) -> int:
 
 def _parse_top_sections(text: str) -> list[dict[str, Any]]:
     lines = text.splitlines()
+
+    # A document with NO markdown headings may still be sectioned. A mainland web-novel planning
+    # document numbers every section `一、` and contains not one `#`, because its author writes in
+    # Word or the site's own editor where markdown is not a thing — so the rules path read the whole
+    # thing as zero sections. Same format-binding as `# <n>.` and `# ` before it, third axis.
+    #
+    # Tried ONLY when there is nothing else to read. In a markdown document `1. 第一步` is an
+    # ordinary list item and promoting it would shred every numbered list in the corpus; a document
+    # with zero `#` has no other structure to lose.
+    if not _headings_by_level(lines):
+        cjk = _cjk_sections(lines)
+        if len(cjk) >= 2:
+            starts = {}
+            for i, ln in enumerate(lines, start=1):
+                if ln.rstrip() in cjk and ln.rstrip() not in starts:
+                    starts[ln.rstrip()] = i
+            return _sections_from(lines, [
+                (str(n + 1), m.group(2).strip(), starts[h])
+                for n, h in enumerate(cjk)
+                if (m := _CJK_SECTION.match(h))
+            ])
+
     level = _section_level(lines)
     headers: list[tuple[str, str, int]] = []
     in_fence = False
@@ -221,6 +272,14 @@ def _parse_top_sections(text: str) -> list[dict[str, Any]]:
             # documents); fall back to reading order when they did not.
             headers.append((m.group(2) or str(len(headers) + 1), m.group(3).strip(), i))
 
+    return _sections_from(lines, headers)
+
+
+def _sections_from(
+    lines: list[str], headers: list[tuple[str, str, int]],
+) -> list[dict[str, Any]]:
+    """Slice bodies between headers. ONE implementation, so the markdown and the CJK path cannot
+    disagree about what a section's body is."""
     sections: list[dict[str, Any]] = []
     for idx, (num, title, start) in enumerate(headers):
         end = headers[idx + 1][2] - 1 if idx + 1 < len(headers) else len(lines)

@@ -462,3 +462,47 @@ def test_a_PREMISE_section_is_not_filed_as_a_world_rule():
     pkg = compile_artifacts(spec, spec["arcs"][0]["id"])["planning_package"]
     assert pkg["premise"].startswith("Premise: Bộ tiểu thuyết"), \
         "the book's premise must lead the block every pass reads, ahead of the arc's"
+
+
+_CN = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "plan-forge" / "corpus-cn-webnovel.md"
+
+
+def test_a_document_numbered_the_CJK_way_is_not_read_as_nothing():
+    """Third corpus, third axis of the same disease.
+
+    A mainland web-novel planning document numbers every section `一、` and contains not one `#` —
+    its author writes in Word or the site's own editor, where markdown is not a thing. The rules path
+    read the whole document as ZERO sections, exactly as it once did for `# <n>.` and for `# `.
+
+    Structure generalises, so this is fixed. VOCABULARY does not, so it is NOT: the eight sections
+    come back as `other`, the honesty block names all eight, and their text travels as author notes —
+    which now genuinely reach the pass prompts. Adding 人物设定 / 世界观 / 大纲 to the kind map would be
+    fitting it to the one Chinese document I have, which is the mistake this module's own docstring
+    warns about.
+    """
+    doc = ingest_markdown(_CN.read_text(encoding="utf-8"))
+    titles = [s["title"] for s in doc["sections"]]
+    assert len(titles) == 8, titles
+    assert "人物设定" in titles and "主线大纲" in titles
+
+    unread = doc["unread"]
+    assert len(unread["unclassified"]) == 8, "the classifier's silence must be reported, not hidden"
+    spec = propose_spec(doc)
+    assert sum(len(n["text"]) for n in spec["author_notes"]) > 800, \
+        "the author's words must travel even when no kind matched"
+
+
+def test_CJK_numbering_is_ONLY_tried_when_there_is_no_markdown():
+    """The guard that makes it safe. In a markdown document `1. 第一步` is an ordinary list item, and
+    promoting it to a section would shred every numbered list in the corpus."""
+    md = "# Nhân vật\n\n1. Lâm Uyên\n2. Tô Thanh Dao\n3. Lâm Trạch\n"
+    doc = ingest_markdown(md)
+    assert [s["title"] for s in doc["sections"]] == ["Nhân vật"], \
+        "an ordered list was promoted to sections"
+
+
+def test_a_single_CJK_numbered_line_is_not_a_document_structure():
+    """One `1.` line is a list that happens to have one item, not a sectioned document."""
+    doc = ingest_markdown("一些散文。\n\n1. 只有一条\n\n更多散文。\n")
+    assert doc["sections"] == []
+    assert "no '# ' headings" in doc["unread"]["note"]

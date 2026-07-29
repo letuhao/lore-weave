@@ -1,5 +1,65 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🇨🇳 THIRD CORPUS — mainland Chinese web-novel (2026-07-29)
+
+`tests/fixtures/plan-forge/corpus-cn-webnovel.md` — 《余烬纪元》, a末世修真 planning document written
+the way a 起点 author writes: **no markdown at all**, `一、二、三、` section numbering, 【】 name
+brackets, full-width punctuation, no spaces between words.
+
+**It is NOT the independence arm and must not be recorded as one.** I wrote it, so it carries the
+same caveat as the grimdark corpus. What it adds is a **script + convention** axis neither existing
+corpus touches. Independence still requires a planning document by someone else, and that remains the
+one thing on this list that cannot be built, only obtained.
+
+### What it measured
+
+**The LLM path, on a document with zero headings:**
+
+```
+characters  沈砚 · 姜芜 · 裴钧            3/4 — missed 【无名者】
+variables   抗灵性 · 人性残余 · 寿元账 · 信任度（姜芜）   4/4, exact
+arcs        4 volumes + 结局
+mechanics   灵蜕 · "Dead Matter Path"    ← an ENGLISH name in a Chinese document
+```
+
+**The material loop recovered everything the propose missed, `dropped_ungrounded = 0` everywhere** —
+the grounding gate works on CJK with no spaces:
+
+- `writing_principles` → 4 real style rules, verbatim
+- `open_questions` → all 3, verbatim
+- `premise` → the 核心一句话 line (the seventh kind, proven on a third corpus)
+
+### The fix it earned, and the fix it did NOT
+
+**Structure generalises → fixed.** The rules path read the whole document as **0 sections**, the same
+format-binding as `# <n>.` and `# ` before it, third axis. `_cjk_sections` now recognises `一、`
+numbering — but **only for a document with no markdown headings at all**, because in a markdown
+document `1. 第一步` is an ordinary list item and promoting it would shred every numbered list in the
+corpus. Result: **0 → 8 sections**, 1,237 chars of the author's prose carried as author notes (which
+now reach the pass prompts).
+
+**Vocabulary does NOT generalise → deliberately not fixed.** All 8 sections come back `other` and the
+honesty block names all 8. Adding 人物设定 / 世界观 / 大纲 to `SECTION_KIND_MAP` would be fitting it to
+the one Chinese document I have — the exact mistake that module's own docstring warns about, and the
+one this session already caught twice.
+
+### Two open findings from this corpus
+
+- **Language leak:** a mechanic came back named `"Dead Matter Path"` in an all-Chinese document; the
+  source says 死物道. The spec should be in the document's language.
+- **`无名者` was missed** by the propose — a 【】-bracketed name whose whole point is that he has no
+  name. The material search found the section, so the loop covers it, but the propose did not.
+
+**Also noted:** `test_motif_translate_tool::test_every_committed_translation_is_structurally_sound_and_in_sync`
+failed once under `-n auto` and passes alone and on two subsequent full runs. Flaky under
+parallelism, not caused by this change — recorded rather than ignored, because a suite whose counts
+move is a suite whose counts lie.
+
+**Evidence:** composition **2,924 pass / 0 fail**, twice.
+
+**Next:** write chương 1 from the dogfood's scene plan (book `019f9f2d`, run `019fadb5`).
+
+
 ## ✅ #6 — THE REVIEW SURVIVES A RELOAD, AND SAYS WHEN IT IS STALE (2026-07-29)
 
 The search **spends the author's budget**, so throwing the packet away when they closed the panel
@@ -317,6 +377,50 @@ falls back to English **with `text_fallback=true`**.
   had 1,428 across 17. Nothing errored. Rebuilt service **and worker** → `1428 / 17`. This is the
   same class as the dogfood find that `composition-worker` was running a 03:16 image; the lesson
   keeps being *count the thing, do not trust that a restart picked it up*.
+
+## ✅ THE THREE FINDINGS, FIXED AT THE CLASS LEVEL (2026-07-29)
+
+Each had been patched as an instance during the translation work. These are the fixes that
+stop the class.
+
+**1 · A quality check keyed on a signal only SOME inputs carry is not a check for the rest.**
+The translator's "possibly untranslated" heuristic looked for the target SCRIPT, so for every
+Latin-script locale it did nothing at all — and the completeness gate only asserts a key is
+PRESENT and NON-EMPTY, which English satisfies forever. `chat.toolApproval.never_allowed` was
+English in **all 17 locales**, ja/ko/ru/ar included, and no check anywhere could see it.
+Replaced with a byte-comparison that works for every language, in `i18n_translate.py` so both
+corpora share one definition. Calibrated, not naive: raw equality flagged 339 German strings of
+which ONE was real (`Status`, `Pause`, `Editor` are German; `{{op}} {{status}}` and
+`https://…` have nothing to translate), so it counts translatable PROSE words with
+placeholders/tags/URLs stripped and needs a phrase, not a label. Wired into `verify_chunk`'s
+soft failures so the existing isolate-retry acts on it.
+**Result: 321 echoed + 68 missing → 7 echoed, 0 missing across the 17 FE locales.** The 7 are
+loan words that re-translate to themselves (`Text-to-Speech`, `temporal (valid_from +
+provenance)`) — stable across two passes, which is the designed convergence.
+
+**2 · The staleness signal had nothing enforcing it.** Editing an English pack without
+re-translating is invisible: files stay present, non-empty and structurally valid. Both tools
+now have `--audit` (four independent detectors — MISSING · BROKEN · STALE · ECHOED — because
+each is invisible to the others) writing a committed `AUDIT.md`, plus `--rounds` self-healing
+that re-translates whatever the audit flags until clean. A composition test runs the same audit
+over the committed corpus, so the drift reds in CI. **All four detectors were proven to fire
+by deliberately breaking one entry each way.**
+
+**3 · The freshness guard could not see six first-party build targets.** It assumed
+`services/<container-name>` and SKIPPED anything that did not match — silently excluding every
+worker twin (they build from their *service's* Dockerfile) plus both frontends. That is how
+`composition-worker` ran a 12-hour-old plan path, and how a composition image built mid-run
+served 12 of 17 locales while the repo held 17; both with a green `/health`. It now derives the
+source dir from compose's own `build.dockerfile`, which IS the mapping. **Coverage 27 → 33
+services**, and it immediately flagged the worker twins as stale. Three tests guard it,
+including one asserting the parse still resolves ≥30 services to real directories — so if the
+regex ever stops matching, that reds instead of the twins going dark again.
+
+**A fourth, in my own test.** The gate in (2) passed alone, passed under `-n 2`, and failed the
+full `-n auto` run: its companion "prove the audit can fail" test mutated the real
+`_source_hash.json` and restored it in a `finally`. Another worker read it mid-mutation. A test
+that edits shared repo state is a race whatever it cleans up afterwards — rewritten against a
+temp tree, then re-run three times to confirm.
 
 ### ▶ NEXT on this track
 1. **The user-paid runtime translate path** — a metered job through provider-registry + a UI
