@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "Rivalen treiben den Preis in die Höhe",
+        "label": "Preisschlacht"
+      },
+      "outbid": {
+        "intent": "der Protagonist wird überboten und verspottet",
+        "label": "Überboten werden"
+      },
+      "secret_win": {
+        "intent": "der Protagonist sichert sich den Zuschlag durch ein unerwartetes Mittel",
+        "label": "Geheimer Sieg"
+      },
+      "surface": {
+        "intent": "ein begehrtes Relikt wird zur Auktion gebracht",
+        "label": "Seltenes Objekt erscheint"
+      }
+    },
+    "effects": [
+      "der Protagonist erhält den Schatz",
+      "ein wohlhabender Rivale wird öffentlich geschlagen"
+    ],
+    "emotion_target": "Triumph",
+    "examples": [
+      "Ein Relikt taucht bei einer Auktion auf; nachdem der Protagonist überboten und verspottet wurde, gewinnt er es auf eine Weise, mit der niemand gerechnet hat."
+    ],
+    "name": "Auktionhaus-Schatz",
+    "preconditions": [
+      "eine begehrte Ressource steht im Rahmen eines öffentlichen Wettbewerbs zur Verfügung"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "geheime Unterstützung"
+        ],
+        "label": "ein verborgener Gönner"
+      },
+      "protagonist": {
+        "constraints": [
+          "knapp an Ressourcen"
+        ],
+        "label": "der Bieter"
+      },
+      "rival": {
+        "constraints": [
+          "arrogant, über unerschöpfliche Mittel verfügend"
+        ],
+        "label": "der wohlhabende Rivale"
+      },
+      "treasure": {
+        "constraints": [
+          "selten, begehrt"
+        ],
+        "label": "das versteigerte Relikt"
+      }
+    },
+    "summary": "Ein seltenes Objekt erscheint bei einer Auktion; nachdem der Protagonist überboten und verspottet wurde, gewinnt er es durch einen verborgenen Geldgeber oder auf unerwartete Weise."
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "die Ressource aus tödlicher Distanz sichern",
+        "label": "Gefährliche Aneignung"
+      },
+      "advance": {
+        "intent": "die Macht der Essenz nutzen, um den Durchbruch zu erzielen",
+        "label": "Verzehr und Durchbruch"
+      },
+      "named": {
+        "intent": "die benötigte Essenz wird lokalisiert",
+        "label": "Ressource identifiziert"
+      },
+      "stall": {
+        "intent": "der Fortschritt kommt an einer Grenze zum Stillstand",
+        "label": "Stagnation des Ranges"
+      }
+    },
+    "effects": [
+      "der Protagonist erwirbt die benötigte Ressource",
+      "der Protagonist steigt in ein höheres Rangniveau auf"
+    ],
+    "emotion_target": "Entschlossenheit",
+    "examples": [
+      "Gefangen vor einer unüberwindbaren Barriere, lockt der Kultivator eine bewachte Essenz in tödliche Reichweite und nutzt ihre Macht für den Durchbruch."
+    ],
+    "name": "Jagd nach der Engpass-Essenz",
+    "preconditions": [
+      "der Protagonist steckt in einem Engpass fest",
+      "eine spezifische Ressource ist als Schlüssel für den Durchbruch bekannt"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "tödlich, territorial"
+        ],
+        "label": "das Wächterwesen"
+      },
+      "protagonist": {
+        "constraints": [
+          "benötigt eine spezifische Ressource"
+        ],
+        "label": "der stagnierende Kultivierende"
+      },
+      "resource": {
+        "constraints": [
+          "selten, bewacht"
+        ],
+        "label": "die Geist-Heilpflanze / der Kern"
+      }
+    },
+    "summary": "An einer Schwelle feststeckend, lockt der Kultivierende eine bewachte Essenz in tödliche Reichweite, um mit ihrer Macht den Durchbruch zu erzielen."
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "der stagnierende Rang leistet Widerstand",
+        "label": "Aufprall an der inneren Wand"
+      },
+      "breakthrough": {
+        "intent": "überleben und den Durchbruch vollziehen",
+        "label": "Ein neues Reich erreichen"
+      },
+      "crisis": {
+        "intent": "die Prüfung bringt den Kultivierenden an den Rand des Todes",
+        "label": "Beinahe-Tod"
+      },
+      "insight": {
+        "intent": "eine Einsicht durchbricht die Barriere",
+        "label": "Plötzliche Erkenntnis"
+      },
+      "seclusion": {
+        "intent": "Rückzug, um das Nadelöhr zu durchbrechen",
+        "label": "Einschluss in die Isolation"
+      },
+      "tribulation": {
+        "intent": "der Himmel prüft den Aufstieg",
+        "label": "Himmlische Prüfung"
+      }
+    },
+    "effects": [
+      "der Protagonist steigt in ein neues Reich oder einen neuen Rang auf",
+      "ihr Ruf und ihre Macht steigen spürbar an"
+    ],
+    "emotion_target": "Antizipation",
+    "examples": [
+      "Um einen stagnierenden Rang zu durchbrechen, wird der Kultivierende isoliert; er konfrontiert eine innere Barriere, übersteht eine himmlische Prüfung, entgeht dem Tod und steigt in ein neues Reich auf."
+    ],
+    "name": "Durchbruch in der Isolation",
+    "preconditions": [
+      "der Protagonist steckt in einem Kultivierungs-Engpass fest",
+      "eine gewisse Menge an Ressourcen oder Einsicht steht bereit"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "optional"
+        ],
+        "label": "Verbündeter, der die Tür bewacht"
+      },
+      "protagonist": {
+        "constraints": [
+          "steckt unterhalb einer Rangschranke fest"
+        ],
+        "label": "der stagnierende Kultivierende"
+      },
+      "tribulation": {
+        "constraints": [
+          "unpersönlich, eskalierend"
+        ],
+        "label": "die Prüfung des Himmels"
+      }
+    },
+    "summary": "Um eine stagnierende Rangstufe zu durchbrechen, zieht sich der Kultivierende in die Isolation zurück, konfrontiert eine innere Barriere, übersteht eine Prüfung des Himmels, entgeht dem Tod und steigt in eine neue Sphäre auf."
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "der Kultivierende muss die tröstende Lüge zurückweisen",
+        "label": "Konfrontation mit dem Selbst"
+      },
+      "emerge": {
+        "intent": "das Dao-Herz bleibt standhaft, gestählt",
+        "label": "Entstehen in Entschlossenheit"
+      },
+      "false_memory": {
+        "intent": "eine Illusion lässt die schlimmste Schuld erneut geschehen",
+        "label": "Prüfung der falschen Erinnerung"
+      },
+      "surface": {
+        "intent": "der Zweifel des Kultivierenden nimmt Gestalt an",
+        "label": "Auftauchen des inneren Dämons"
+      }
+    },
+    "effects": [
+      "die Entschlossenheit des Protagonisten wird gestählt und geschärft",
+      "eine Anfälligkeit für Illusionen oder Versuchungen wird beseitigt"
+    ],
+    "emotion_target": "Entschlossenheit",
+    "examples": [
+      "Eine illusionäre Prüfung lässt die schlimmste Schuld des Kultivierenden wieder aufleben; nur indem er die tröstliche Lüge zurückweist, bleibt das Dao-Herz bestehen."
+    ],
+    "name": "Dao-Herz-Läuterung",
+    "preconditions": [
+      "der Protagonist trägt eine ungelöste Schuld oder eine tiefe Bindung in sich"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "der alles entscheidende Einsatz"
+        ],
+        "label": "das Dao-Herz / die Entschlossenheit"
+      },
+      "inner_demon": {
+        "constraints": [
+          "trägt eine tröstende Maske"
+        ],
+        "label": "der innere Dämon"
+      },
+      "protagonist": {
+        "constraints": [
+          "trägt ungelöste Schuld in sich"
+        ],
+        "label": "der Kultivierende"
+      }
+    },
+    "summary": "Ein innerer Dämon tritt in einer illusionären Prüfung hervor, welche die schlimmsten Schuldgefühle des Kultivierenden wiederholt; nur wer die tröstende Lüge ablehnt, bewahrt sein Dao-Herz."
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "der stolze Erbe höhnt den Protagonisten aus",
+        "label": "Hochmütiger Spott"
+      },
+      "reveal": {
+        "intent": "der Protagonist offenbart eine überlegene Kunst",
+        "label": "Enthüllung verborgener Macht"
+      },
+      "reversal": {
+        "intent": "der Spötter wird vor aller Augen gedemütigt",
+        "label": "Umkehrung der Demütigung"
+      },
+      "underestimate": {
+        "intent": "die Menge tut ihn als bedeutungslos ab",
+        "label": "Unterschätzung des Protagonisten"
+      }
+    },
+    "effects": [
+      "die wahre Stärke des Protagonisten wird den Zeugen offenbart",
+      "die arrogante Partei wird gedemütigt und zum Feind gemacht"
+    ],
+    "emotion_target": "Genugtuung",
+    "examples": [
+      "Ein hochmütiger Erbe spottet über den «Versager»; mitten im Wettkampf offenbart der Versager eine höhere Kunst und der Erbe wird öffentlich zunichtegemacht."
+    ],
+    "name": "Demütigung und Vergeltung",
+    "preconditions": [
+      "der Protagonist wird in der Öffentlichkeit unterschätzt oder beleidigt",
+      "der Protagonist verbirgt eine Macht, die weit über seinen scheinbaren Rang hinausgeht"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "hochmütig, gut abgesichert"
+        ],
+        "label": "das arrogante Genie"
+      },
+      "protagonist": {
+        "constraints": [
+          "öffentlich herabgesetzt"
+        ],
+        "label": "der Unterschätzte"
+      },
+      "witnesses": {
+        "constraints": [
+          "ein öffentliches Publikum"
+        ],
+        "label": "die zuschauende Menge"
+      }
+    },
+    "summary": "Eine hochmütige Person verspottet den unterschätzten Protagonisten, der daraufhin seine verborgene Macht offenbart und die Schmach vor den Augen der Zeugen direkt auf den Spötter zurückwirft."
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "die zufällige Begegnung, die alles verändert",
+        "label": "Das Relikt/den Meister entdecken"
+      },
+      "inheritance": {
+        "intent": "eine Macht verleihen, die an eine Schuld oder ein Geheimnis gebunden ist",
+        "label": "Das Vermächtnis mit einem Preis empfangen"
+      },
+      "isolation": {
+        "intent": "den Protagonisten hilflos und am Tiefpunkt zurücklassen",
+        "label": "Isolation nach dem Sturz"
+      },
+      "trial": {
+        "intent": "der Mentor oder das Relikt prüft die Würdigkeit",
+        "label": "Prüfung durch das Vermächtnis"
+      }
+    },
+    "effects": [
+      "der Protagonist erlangt eine verborgene Macht oder Technik",
+      "eine Schuld oder eine geheime Verbindung zum Mentor entsteht"
+    ],
+    "emotion_target": "Hoffnung",
+    "examples": [
+      "In eine versiegelte Schlucht geworfen, stößt der Schwächling auf einen sterbenden Meister, der ihn prüft und ihm daraufhin eine verbotene Kunst schenkt – gebunden durch eine Schuld der Loyalität."
+    ],
+    "name": "Zufällige Begegnung → Vermächtnis",
+    "preconditions": [
+      "der Protagonist ist schwach, gedemütigt oder verstoßen",
+      "es sind keine Verbündeten anwesend"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "verboten oder unvergleichlich"
+        ],
+        "label": "die geerbte Kunst oder Blutlinie"
+      },
+      "mentor": {
+        "constraints": [
+          "dem Tode nahe oder in Tiefschlaf versunken"
+        ],
+        "label": "sterbender Meister / Reliktgeist"
+      },
+      "protagonist": {
+        "constraints": [
+          "derzeit schwach oder entehrt"
+        ],
+        "label": "der isolierte Schwächling"
+      }
+    },
+    "summary": "Ein gedemütigter Schwächling, isoliert durch einen Sturz oder Verbannung, entdeckt ein Relikt oder einen sterbenden Meister, wird auf seine Eignung geprüft und erhält ein verborgenes Vermächtnis auf Kosten einer bindenden Schuld."
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "ein Duell wird gefordert",
+        "label": "Herausforderung ausgesprochen"
+      },
+      "reversal": {
+        "intent": "die favorisierte Partei fällt im Augenblick der Gewissheit",
+        "label": "Tödliche Umkehrung"
+      },
+      "stakes": {
+        "intent": "der Tod wird als Preis festgelegt",
+        "label": "Einsatz geschworen"
+      },
+      "turn": {
+        "intent": "das Blatt wendet sich unerwartet",
+        "label": "Wende im Duell"
+      }
+    },
+    "effects": [
+      "ein Rivale wird endgültig besiegt, oft tödlich",
+      "die Stellung des Protagonisten wird grundlegend verändert"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Ein Duell auf Leben und Tod in der Arena; der favorisierte Sohn verliert in dem Moment, in dem er glaubt, gewonnen zu haben."
+    ],
+    "name": "Tödliches Duell",
+    "preconditions": [
+      "eine öffentliche, alles entscheidende Konfrontation wird geschworen"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "eine öffentliche Arena"
+        ],
+        "label": "die zuschauende Menge"
+      },
+      "protagonist": {
+        "constraints": [
+          "scheinbar unterlegen"
+        ],
+        "label": "der Herausfordernde oder Herausgeforderte"
+      },
+      "rival": {
+        "constraints": [
+          "selbstbewusst, unterstützt"
+        ],
+        "label": "der favorisierte Rivale"
+      }
+    },
+    "summary": "In der Arena wird ein Duell auf Leben und Tod geschworen; der Favorit verliert in dem Augenblick, in dem er glaubt, den Sieg errungen zu haben."
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "Der Meister fordert die Tilgung in einer kritischen Stunde ein.",
+        "label": "Fälligkeit der Schuld"
+      },
+      "incur": {
+        "intent": "Es entsteht eine Verpflichtung, die nicht einfach zu begleichen ist.",
+        "label": "Unbezahlbare Schuld entsteht"
+      },
+      "loyalty_test": {
+        "intent": "die Treue des Schülers wird auf die Probe gestellt",
+        "label": "Loyalitätsprüfung"
+      },
+      "taught": {
+        "intent": "Der Meister rettet den Protagonisten oder unterweist ihn.",
+        "label": "Gerettet oder unterrichtet"
+      }
+    },
+    "effects": [
+      "eine unauflösliche Verpflichtung bindet den Protagonisten an den Meister",
+      "die Loyalität des Protagonisten wird bewiesen oder bricht zusammen"
+    ],
+    "emotion_target": "Verpflichtung",
+    "examples": [
+      "Von einem zurückgezogenen Meister gerettet, schuldet der Schüler eine Schuld, die zur schlimmsten Zeit fällig wird."
+    ],
+    "name": "Meister-Schüler-Schuld",
+    "preconditions": [
+      "der Protagonist erhält lebensverändernde Hilfe oder eine Lehre"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "mächtig, fordernd"
+        ],
+        "label": "der zurückgezogene Meister"
+      },
+      "obligation": {
+        "constraints": [
+          "bindend, kostspielig"
+        ],
+        "label": "die Schuld / Verpflichtung"
+      },
+      "protagonist": {
+        "constraints": [
+          "steht in der Schuld des Meisters"
+        ],
+        "label": "der verschuldete Schüler"
+      }
+    },
+    "summary": "Vom einsamen Meister gerettet oder unterrichtet, steht der Schüler in einer unbezahlbaren Schuld, die in der denkbar ungünstigsten Stunde fällig wird."
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "der Außenseiter erscheint ohne Status",
+        "label": "Ankunft als Unbekannter"
+      },
+      "exceed": {
+        "intent": "der Prüfstein wird zerschmettert",
+        "label": "Das Maß überschreiten"
+      },
+      "recruited": {
+        "intent": "die Ältesten streiten darum, sie für sich zu beanspruchen",
+        "label": "Rekrutierung mit hohem Einsatz"
+      },
+      "underestimated": {
+        "intent": "der Torwächter tut ihn ab",
+        "label": "Unterschätzung beim Test"
+      }
+    },
+    "effects": [
+      "der Protagonist gewinnt eine Position und einen Gönner",
+      "eine Rivalität mit der prüfenden Instanz wird gesät"
+    ],
+    "emotion_target": "Triumph",
+    "examples": [
+      "Ein unrangierter Außenseiter sprengt die Kapazität des Prüfsteins; die Ältesten streiten darum, ihn für sich zu beanspruchen."
+    ],
+    "name": "Aufnahmeprüfung der Sekte",
+    "preconditions": [
+      "eine offene Prüfung oder ein Test ermöglicht den Eintritt in eine Fraktion"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "richtet und rekrutiert"
+        ],
+        "label": "der Sekten-Älteste"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "herablassend"
+        ],
+        "label": "der Torwächter-Schüler"
+      },
+      "protagonist": {
+        "constraints": [
+          "ranglos, unerwartet"
+        ],
+        "label": "der unbekannte Außenseiter"
+      }
+    },
+    "summary": "Ein rangloser Außenseiter sprengt das Prüfmaß bei der Aufnahmeprüfung einer Sekte; die Ältesten kämpfen mit hohem Einsatz darum, ihn für sich zu gewinnen."
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "der Protagonist wird als verkrüppelt behandelt",
+        "label": "Verborgenes Gebrechen"
+      },
+      "explained": {
+        "intent": "der Makel wird als seltene Konstitution erkannt",
+        "label": "Aufklärung des Gebrechens"
+      },
+      "gift": {
+        "intent": "der Makel treibt einen unmöglichen Aufstieg voran",
+        "label": "Das Gebrechen wird zur Gabe"
+      },
+      "vindication": {
+        "intent": "die Verächter werden eines Besseren belehrt",
+        "label": "Rechtfertigung"
+      }
+    },
+    "effects": [
+      "das verborgene Potenzial des Protagonisten wird freigesetzt",
+      "die ehemaligen Verächter sind gezwungen, ihn anzuerkennen"
+    ],
+    "emotion_target": "Rechtfertigung",
+    "examples": [
+      "Der als «gelähmt» bezeichnete Körper entpuppt sich als Träger einer seltenen Konstitution; genau dieser Makel wird zum Motor des Aufstiegs."
+    ],
+    "name": "Veredelung des Unwürdigen",
+    "preconditions": [
+      "der Protagonist wird als talentlos oder körperlich beeinträchtigt abgetan"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "herablassend, an Status gebunden"
+        ],
+        "label": "der verächtliche Clan"
+      },
+      "diagnostician": {
+        "constraints": [
+          "fähig, die wahre Konstitution zu lesen"
+        ],
+        "label": "Ältester / Diagnostiker"
+      },
+      "protagonist": {
+        "constraints": [
+          "dem man jegliches Talent abspricht"
+        ],
+        "label": "der verachtete «Krüppel»"
+      }
+    },
+    "summary": "Eine verborgene Gebrechen, das als lähmend verachtet wird, entpuppt sich als seltene Gabe; eben dieser Makel wird zum Motor des Aufstiegs und führt zur Rechtfertigung des Protagonisten."
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "überleben, um aufzusteigen, oder am Scheitern zugrunde gehen",
+        "label": "Aufstieg oder Fall"
+      },
+      "merit": {
+        "intent": "die Macht erreicht die Schwelle des Aufstiegs",
+        "label": "Angesammelte Verdienste"
+      },
+      "notice": {
+        "intent": "die Prüfung formiert sich",
+        "label": "Der Himmel nimmt es wahr"
+      },
+      "tribulation": {
+        "intent": "Welle um Welle muss überdauert werden",
+        "label": "Blitzprüfung"
+      }
+    },
+    "effects": [
+      "der Protagonist steigt in eine höhere Ebene oder ein neues Reich auf",
+      "die alte Stellung in der Welt wird hinter sich gelassen"
+    ],
+    "emotion_target": "Ehrfurcht",
+    "examples": [
+      "Macht zieht den Zorn des Himmels herauf; neun Wellen der Prüfung müssen überlebt werden, um aufzusteigen."
+    ],
+    "name": "Aufstieg durch die Prüfung",
+    "preconditions": [
+      "der Protagonist hat eine Schwelle zur Erhebung erreicht"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "hält die Stellung"
+        ],
+        "label": "der Verbündete als Anker"
+      },
+      "protagonist": {
+        "constraints": [
+          "an der Schwelle zum Aufstieg"
+        ],
+        "label": "der aufsteigende Kultivator"
+      },
+      "tribulation": {
+        "constraints": [
+          "eskalierend, tödlich"
+        ],
+        "label": "die himmlische Prüfung"
+      }
+    },
+    "summary": "Angesammelte Macht zieht den Zorn des Himmels herauf; neun Wellen der Blitzprüfung müssen überlebt werden, um aufzusteigen, gestützt durch einen Verbündeten."
+  }
+}

@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "신뢰하던 인물의 숨겨진 불충을 보여줌",
+        "label": "의구심의 균열"
+      }
+    },
+    "effects": [
+      "독자가 해당 인물을 불신하게 되며 다음 내용을 읽게 됨"
+    ],
+    "emotion_target": "불안감",
+    "examples": [
+      "그녀의 오랜 친구는 미소 지으며 동의했지만, 두 번째 열쇠를 자신의 소매 속으로 슬쩍 밀어 넣었다."
+    ],
+    "name": "배신의 암시",
+    "preconditions": [
+      "사건이 진행 중인 장면"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "신뢰하던 인물이 결정적인 순간에 의구심을 품은 듯한 틈을 보인다."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "되돌릴 수 없는 결정을 강요함",
+        "label": "선택의 막다른 길로 몰아넣기"
+      }
+    },
+    "effects": [
+      "독자가 그 결정을 확인하기 위해 계속 읽게 됨"
+    ],
+    "emotion_target": "불안",
+    "examples": [
+      "두 개의 문, 하나의 열쇠, 그리고 이미 무릎까지 차오른 물."
+    ],
+    "name": "강요된 선택",
+    "preconditions": [
+      "장면이 진행 중임"
+    ],
+    "roles": {
+      "pov": {
+        "label": "화자"
+      }
+    },
+    "summary": "장면이 전환되는 시점에 화자가 되돌릴 수 없는 결정을 내려야만 하는 막다른 길에 몰립니다."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "장의 끝에서 위협을 미결 상태로 남겨둡니다.",
+        "label": "해결되지 않은 위기에서 장면 전환"
+      }
+    },
+    "effects": [
+      "독자가 자연스럽게 다음 장으로 몰입하게 됩니다."
+    ],
+    "emotion_target": "서스펜스",
+    "examples": [
+      "봉인은 이미 깨져 있었다. 그리고 그 너머의 감옥은 비어 있었다."
+    ],
+    "name": "클리프행어 질문",
+    "preconditions": [
+      "사건이 진행 중인 장면"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "해결되지 않은 위기 상황으로 장을 마무리하여, 독자가 다음 장을 넘기지 않고는 못 배기게 만듭니다."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "목표를 달성할 수 있는 시간적 범위를 제한함",
+        "label": "마감 기한 설정"
+      }
+    },
+    "effects": [
+      "독자가 시간의 흐름을 체감하며 긴박하게 읽어 내려감"
+    ],
+    "emotion_target": "기대감",
+    "examples": [
+      "사흘. 그 시간이 지나면 제안도, 이 도시도 사라지고 말 것이다."
+    ],
+    "name": "카운트다운의 시작",
+    "preconditions": [
+      "사건이 진행 중인 장면"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "마감 기한이나 타이머가 설정되어, 이후의 사건들을 하나의 경주처럼 만듭니다."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "모든 상황을 재정의하는 대사로 끝맺음",
+        "label": "폭발적인 대사, 그리고 끊기"
+      }
+    },
+    "effects": [
+      "독자가 충격을 받고 다음 장을 넘기게 만듦"
+    ],
+    "emotion_target": "충격",
+    "examples": [
+      "«그건 당신이 아버지에게 물어봐야 할 문제야.» 그녀가 말했다. «왜 빈 관을 묻었는지 말이야.»"
+    ],
+    "name": "대화의 폭탄",
+    "preconditions": [
+      "장면이 진행 중이어야 함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "단 한 줄의 대사가 폭발하듯 터지며 장을 마무리합니다."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "정체를 확정 짓지 않으면서도 본모습에 대한 단서를 흘림",
+        "label": "정체의 암시"
+      }
+    },
+    "effects": [
+      "독자가 그 인물의 진짜 정체를 알기 위해 계속해서 읽어 내려가게 만듦"
+    ],
+    "emotion_target": "호기심",
+    "examples": [
+      "거지가 후드를 벗어 올리자, 경비병들이 무릎을 꿇었다."
+    ],
+    "name": "정체가 암시됨",
+    "preconditions": [
+      "장면이 진행 중임"
+    ],
+    "roles": {
+      "pov": {
+        "label": "서술자"
+      }
+    },
+    "summary": "누군가의 본명이나 역할에 대한 실마리를 던진 뒤, 결말을 내지 않은 채 장면을 끊음으로써 궁금증을 유발함."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "아직 닥치지 않은 구체적인 위험을 명시한다",
+        "label": "위협의 접근 선언"
+      }
+    },
+    "effects": [
+      "독자가 위협의 도래를 예감하게 함"
+    ],
+    "emotion_target": "공포",
+    "examples": [
+      "새벽이 밝으면 군대가 성문에 들이닥칠 것이고, 성문은 결코 버텨내지 못할 것이다."
+    ],
+    "name": "임박한 위협",
+    "preconditions": [
+      "사건이 진행 중인 장면"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "실체가 분명한 위험이 다가오고 있으나, 아직 도착하지는 않은 상태."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "소중한 대상을 상실의 벼랑 끝으로 몰아넣는다",
+        "label": "상실의 직전"
+      }
+    },
+    "effects": [
+      "독자는 상실을 두려워하며 계속해서 읽어 내려간다"
+    ],
+    "emotion_target": "공포",
+    "examples": [
+      "치유사가 고개를 저었다. 아이들 중 한 명에게만 줄 수 있는 양뿐이라고, 그녀가 말했다."
+    ],
+    "name": "임박한 상실",
+    "preconditions": [
+      "장면이 진행 중이다"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 인물"
+      }
+    },
+    "summary": "시점 인물이 소중히 여기는 무언가가 곧 사라질 위기에 처한다."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "새로운 단서를 통해 기존의 추측을 뒤집는다",
+        "label": "모순되는 단서"
+      }
+    },
+    "effects": [
+      "독자가 의문을 다시 품고 계속해서 읽어 내려간다"
+    ],
+    "emotion_target": "호기심",
+    "examples": [
+      "죽은 자의 필체는 아주 선명했다. 게다가 날짜는 내일로 되어 있었다."
+    ],
+    "name": "심화되는 미스터리",
+    "preconditions": [
+      "사건이 진행 중인 장면"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "새로운 단서가 장면의 끝에서 추측했던 해답을 뒤엎는다."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "능력을 설명 없이 드러내기",
+        "label": "설명되지 않은 힘의 발현"
+      }
+    },
+    "effects": [
+      "독자가 그 이유를 궁금해하게 만듦"
+    ],
+    "emotion_target": "기대감",
+    "examples": [
+      "찰나의 순간, 겁에 질린 점원의 눈이 금빛으로 타올랐다. 그리고 곧 등불이 꺼졌다."
+    ],
+    "name": "엿본 힘",
+    "preconditions": [
+      "장면이 진행 중임"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "장면이 전환되는 찰나, 설명되지 않은 능력이 번뜩이며 나타난다."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "비밀의 일부를 드러내어 충격을 준 뒤, 나머지는 감춘다",
+        "label": "부분적 폭로 후 장면 전환"
+      }
+    },
+    "effects": [
+      "독자가 나머지 진실을 알기 위해 계속 읽게 만듦"
+    ],
+    "emotion_target": "호기심",
+    "examples": [
+      "그가 로켓을 뒤집었다. 그 안의 사진 속 얼굴은 바로 그녀 자신이었다."
+    ],
+    "name": "폭로의 단서",
+    "preconditions": [
+      "사건이 진행 중인 장면"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "비밀의 일부가 드러난 순간, 장면을 끊어 정보를 유보한다."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "장면이 끝나는 지점에서 극의 의미를 역전시킴",
+        "label": "마지막 문장의 의미 반전"
+      }
+    },
+    "effects": [
+      "독자가 장면을 재해석하며 계속 읽어 내려감"
+    ],
+    "emotion_target": "경악",
+    "examples": [
+      "그녀는 마침내 그를 신뢰하게 되었다 — 그것은 바로 그가 3년 동안 기다려온 순간이었다."
+    ],
+    "name": "급작스러운 반전",
+    "preconditions": [
+      "장면이 진행 중임"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "마지막 문장의 사실 하나가 장면 전체의 의미를 뒤집어버립니다."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "그 자리에 있어서는 안 될 인물을 등장시킨다",
+        "label": "불가능한 등장"
+      }
+    },
+    "effects": [
+      "독자가 그 인물이 누구인지, 왜 나타났는지 알게 해야 함"
+    ],
+    "emotion_target": "긴장감",
+    "examples": [
+      "문이 열리고, 지난겨울 그들이 매장했던 남자가 안으로 걸어 들어왔다."
+    ],
+    "name": "뜻밖의 등장",
+    "preconditions": [
+      "장면이 진행 중인 상태"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "결정적인 순간, 이곳에 있어서는 안 될 인물이 나타난다."
+  }
+}

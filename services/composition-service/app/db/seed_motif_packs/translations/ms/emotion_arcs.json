@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "detik yang ditakuti tiba",
+        "label": "Klimaks"
+      },
+      "fear": {
+        "intent": "meningkatkan kebimbangan ke arah panik",
+        "label": "Ketakutan yang memuncak"
+      },
+      "release": {
+        "intent": "bahaya telah berlalu; kelegaan pun tiba",
+        "label": "Pelepasan"
+      },
+      "unease": {
+        "intent": "menanam benih kebimbangan yang rendah",
+        "label": "Kegelisahan"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir dengan ketegangan yang terlerai"
+    ],
+    "emotion_target": "kelegaan",
+    "examples": [
+      "Ketakutan itu terus membina dan membina sehingga ke kemuncaknya — dan kemudian, secara tidak disangka, semuanya berakhir dan mereka akhirnya dapat bernafas lega."
+    ],
+    "name": "Kebimbangan ke Kelegaan",
+    "preconditions": [
+      "sesuatu unit naratif memerlukan bentuk emosi"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Kegelisahan memuncak menjadi ketakutan dan klimaks, kemudian dilepaskan menjadi kelegaan."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "menetapkan garis dasar emosi yang stabil",
+        "label": "Keselesaan"
+      },
+      "loss": {
+        "intent": "menjatuhkan watak ke dalam lubang",
+        "label": "Kehilangan"
+      },
+      "struggle": {
+        "intent": "permulaan pendakian keluar",
+        "label": "Perjuangan"
+      },
+      "triumph": {
+        "intent": "muncul semula pada tahap yang lebih tinggi daripada permulaan",
+        "label": "Kejayaan"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir dengan kebangkitan katarsis"
+    ],
+    "emotion_target": "katarsis",
+    "examples": [
+      "Keadaan yang stabil, kemudian hancur, kemudian merangkak naik — dan akhirnya berdiri di tempat yang lebih tinggi daripada sebelum kejatuhan."
+    ],
+    "name": "Kejatuhan dan Kebangkitan (Manusia dalam Lubang)",
+    "preconditions": [
+      "sesuatu unit naratif memerlukan bentuk emosi"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Keselesaan beralih kepada kehilangan dan perjuangan, sebelum berakhir dengan kejayaan yang sukar diraih — lengkok katarsis «manusia dalam lubang»."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "terhempas dalam kehilangan",
+        "label": "Kedukaan"
+      },
+      "hope": {
+        "intent": "menanam sekelumit harapan yang rapuh",
+        "label": "Harapan membara"
+      },
+      "near": {
+        "intent": "membawa matlamat ke dalam jangkauan",
+        "label": "Kejayaan hampir digapai"
+      },
+      "turn": {
+        "intent": "merampasnya pada saat terakhir",
+        "label": "Tikungan kejam"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir dengan patah hati"
+    ],
+    "emotion_target": "patah hati",
+    "examples": [
+      "Begitu hampir sehingga hampir dapat disentuh — dan kemudian ia lenyap, dan tiada apa lagi yang boleh dilakukan melainkan meratap."
+    ],
+    "name": "Harapan ke Patah Hati",
+    "preconditions": [
+      "sesuatu unit naratif memerlukan bentuk emosi"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Harapan mula membara menuju kejayaan yang hampir dicapai, sebelum satu tikungan kejam menamatkannya dalam kedukaan."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "meningkat menuju kejayaan",
+        "label": "Pendakian"
+      },
+      "downfall": {
+        "intent": "jatuh dari ketinggian",
+        "label": "Kejatuhan"
+      },
+      "flaw": {
+        "intent": "kecacatan maut mula menonjol",
+        "label": "Kecacatan muncul"
+      },
+      "peak": {
+        "intent": "mencapai kemuncak",
+        "label": "Puncak"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir dengan kejatuhan tragis"
+    ],
+    "emotion_target": "tragedi",
+    "examples": [
+      "Semakin tinggi dan tinggi, sehingga perkara yang mengangkat mereka menjadi punca kejatuhan mereka."
+    ],
+    "name": "Naik lalu Jatuh (Icarus)",
+    "preconditions": [
+      "sesuatu unit naratif memerlukan bentuk emosi"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Pendakian menuju puncak di mana satu kecacatan muncul dan memacu kejatuhan — lengkok tragedi Icarus."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "mencapai titik terendah",
+        "label": "Keruntuhan"
+      },
+      "decline": {
+        "intent": "kejatuhan semakin memuncak",
+        "label": "Kemerosotan"
+      },
+      "erosion": {
+        "intent": "kehilangan pegangan selangkah demi selangkah",
+        "label": "Hakisan"
+      },
+      "start_high": {
+        "intent": "bermula pada tahap yang tinggi",
+        "label": "Bermula di puncak"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir dengan keruntuhan yang suram"
+    ],
+    "emotion_target": "keputusasaan",
+    "examples": [
+      "Ia bertahan, namun kemudian ia hancur — sebuah perlerai perlahan yang tidak mampu dijelaskan oleh satu kehilangan pun."
+    ],
+    "name": "Kejatuhan Beransur",
+    "preconditions": [
+      "sesuatu unit naratif memerlukan bentuk emosi"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Bermula dari puncak yang tinggi melalui hakisan demi hakisan sehingga runtuh — sebuah penurunan ke lembah keputusasaan."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "mencapai puncak yang telah diperjuangkan",
+        "label": "Pencapaian kemuncak"
+      },
+      "climb": {
+        "intent": "membina momentum",
+        "label": "Pendakian berterusan"
+      },
+      "start_low": {
+        "intent": "bermula dari tahap paling bawah",
+        "label": "Permulaan yang rendah"
+      },
+      "wins": {
+        "intent": "mengumpul pencapaian",
+        "label": "Kemenangan berulang"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir dengan kejayaan yang sewajarnya"
+    ],
+    "emotion_target": "kejayaan",
+    "examples": [
+      "Tiada apa-apa, kemudian sedikit demi sedikit, kemudian lebih banyak — setiap langkah adalah hasil usaha, sehingga titik terendah hanyalah memori yang jauh."
+    ],
+    "name": "Kebangkitan Berperingkat (Daripada Sifar kepada Juara)",
+    "preconditions": [
+      "sesuatu unit naratif memerlukan bentuk emosi"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Bermula dari titik terendah melalui kemenangan demi kemenangan sehingga mencapai kemuncak — lengkok kejayaan daripada kemiskinan kepada kemewahan."
+  }
+}

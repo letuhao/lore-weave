@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "el grupo confía plenamente en el infiltrado",
+        "label": "Actuación del infiltrado"
+      },
+      "note": {
+        "intent": "una filtración demasiado precisa para ser casualidad",
+        "label": "Inconsistencia detectada"
+      },
+      "trap": {
+        "intent": "se planta un secreto falso como cebo",
+        "label": "Trampa para confirmar"
+      },
+      "unmask": {
+        "intent": "confirmar al infiltrado y darle la vuelta",
+        "label": "Desenmascarar y reclutar"
+      }
+    },
+    "effects": [
+      "el infiltrado es identificado y reclutado o eliminado",
+      "la confianza dentro del grupo se reestructura"
+    ],
+    "emotion_target": "suspenso",
+    "examples": [
+      "Una filtración demasiado precisa para ser casualidad; un secreto falso y tendido sirve para demostrar quién cuenta los secretos —y ante quién—."
+    ],
+    "name": "Revelación del doble agente",
+    "preconditions": [
+      "una filtración demasiado precisa sugiere que alguien de confianza ha sido comprometido"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "ayuda a preparar el cebo"
+        ],
+        "label": "el confidente"
+      },
+      "mole": {
+        "constraints": [
+          "miembro de confianza"
+        ],
+        "label": "el topo"
+      },
+      "protagonist": {
+        "constraints": [
+          "rastreando la filtración en silencio"
+        ],
+        "label": "quien sospecha"
+      }
+    },
+    "summary": "Una filtración demasiado precisa para ser casualidad; un secreto falso utilizado como cebo demuestra quién cuenta los secretos —y a quién— para luego dar la vuelta al topo."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "romper el pacto cuando sea conveniente",
+        "label": "Traicionar en el punto de inflexión"
+      },
+      "offer": {
+        "intent": "proponer un pacto que el aliado aceptará",
+        "label": "Ofrecer alianza"
+      },
+      "realign": {
+        "intent": "convertir la traición en una ventaja estratégica",
+        "label": "Reajuste"
+      },
+      "rely": {
+        "intent": "el aliado compromete sus recursos o su confianza",
+        "label": "El aliado confía en ello"
+      },
+      "share": {
+        "intent": "revelar lo justo para ser creído",
+        "label": "Compartir una verdad parcial"
+      }
+    },
+    "effects": [
+      "el aliado es descartado en el momento de mayor ventaja",
+      "el conspirador obtiene la ventaja"
+    ],
+    "emotion_target": "tensión",
+    "examples": [
+      "Un pacto sincero, un secreto compartido lo suficientemente real como para inspirar confianza... hasta que llega el momento de romperlo para obtener el beneficio."
+    ],
+    "name": "Alianza fingida",
+    "preconditions": [
+      "el conspirador y el objetivo comparten un objetivo común plausible"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "el botín de la traición"
+        ],
+        "label": "la ventaja buscada"
+      },
+      "false_ally": {
+        "constraints": [
+          "confía en el pacto"
+        ],
+        "label": "el aliado engañado"
+      },
+      "schemer": {
+        "constraints": [
+          "ofrece un pacto falso"
+        ],
+        "label": "el estratega"
+      }
+    },
+    "summary": "Un pacto sincero y un secreto compartido con la dosis justa de verdad para generar confianza, hasta que llega el momento de romperlo en el punto de inflexión."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "actuar según la verdad revelada",
+        "label": "Recompensa o purga"
+      },
+      "observe": {
+        "intent": "vigilar quién muerde el anzuelo",
+        "label": "Observar la reacción"
+      },
+      "stage": {
+        "intent": "establecer una oportunidad con cebo",
+        "label": "Planteamiento de la tentación"
+      },
+      "verdict": {
+        "intent": "el test resuelve la confianza o la traición",
+        "label": "Veredicto de lealtad o fracaso"
+      }
+    },
+    "effects": [
+      "se revela la verdadera lealtad de la parte sometida a prueba",
+      "el detentor del poder recompensa o purga en consecuencia"
+    ],
+    "emotion_target": "suspenso",
+    "examples": [
+      "Una puerta dejada entreabierta de forma tentadora es, en realidad, una prueba; quien cruza el umbral revela exactamente lo que el observador necesitaba saber."
+    ],
+    "name": "Trampa de la prueba de lealtad",
+    "preconditions": [
+      "quien ostenta el poder sospecha una deslealtad oculta"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "lo que el test extrae"
+        ],
+        "label": "la prueba de lealtad"
+      },
+      "power_holder": {
+        "constraints": [
+          "prepara la tentación"
+        ],
+        "label": "el detentor del poder"
+      },
+      "suspect": {
+        "constraints": [
+          "la parte sometida a prueba"
+        ],
+        "label": "el sospechoso de traición"
+      }
+    },
+    "summary": "Una puerta dejada entreabierta de forma tentadora es, en realidad, una prueba; quien cruce el umbral revela exactamente lo que el observador necesitaba saber."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "la víctima cae en la trampa",
+        "label": "La víctima actúa bajo la creencia falsa"
+      },
+      "bait": {
+        "intent": "atraer a la víctima para que reaccione",
+        "label": "Tender la trampa a la víctima"
+      },
+      "counter": {
+        "intent": "las consecuencias se redirigen para beneficio del conspirador",
+        "label": "Contramedida"
+      },
+      "plant": {
+        "intent": "colocar la evidencia manipulada donde será hallada",
+        "label": "Sembrar la prueba falsa"
+      },
+      "reveal": {
+        "intent": "la «prueba» sale a la luz y el conspirador queda impune",
+        "label": "Revelación de negación plausible"
+      }
+    },
+    "effects": [
+      "la víctima queda desacreditada o condenada por motivos falsos",
+      "la mano del conspirador permanece oculta"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Se desliza un libro contable falsificado donde el rival lo encontrará y «expondrá», cayendo directamente en la trampa que lo incrimina."
+    ],
+    "name": "Esquema de la prueba plantada",
+    "preconditions": [
+      "el conspirador es capaz de colocar pruebas que la autoridad aceptará como válidas"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "transporta el cebo sin saberlo"
+        ],
+        "label": "el agente involuntario"
+      },
+      "authority": {
+        "constraints": [
+          "juzga basándose en la prueba visible"
+        ],
+        "label": "la autoridad decisora"
+      },
+      "schemer": {
+        "constraints": [
+          "siembra la prueba falsa"
+        ],
+        "label": "el estratega"
+      },
+      "victim": {
+        "constraints": [
+          "actúa movida por la creencia falsa"
+        ],
+        "label": "la víctima señalada"
+      }
+    },
+    "summary": "Se desliza una prueba manipulada en un lugar donde el rival la encontrará y «expondrá», incitando a la víctima a actuar basándose en una creencia falsa y a caer en una trampa de la que el autor pueda desvincularse."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "seleccionar a un chivo expiatorio incriminable",
+        "label": "Incriminar a un tercero"
+      },
+      "must_pin": {
+        "intent": "la culpa debe recaer en alguien",
+        "label": "Se debe asignar el crimen"
+      },
+      "steer": {
+        "intent": "guiar la investigación hacia el chivo expiatorio",
+        "label": "Evidencia manipulada"
+      },
+      "walk_free": {
+        "intent": "el verdadero culpable pasa desapercibido",
+        "label": "El verdadero culpable queda libre"
+      }
+    },
+    "effects": [
+      "el chivo expiatorio asume la culpa",
+      "el verdadero autor elude su responsabilidad"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Cuando la culpa debe recaer en alguien, la mano astuta se asegura de que caiga sobre un tercero."
+    ],
+    "name": "Sustitución del chivo expiatorio",
+    "preconditions": [
+      "un crimen exige un culpable y el verdadero autor debe permanecer oculto"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "dirigidos hacia el objetivo equivocado"
+        ],
+        "label": "los investigadores"
+      },
+      "scapegoat": {
+        "constraints": [
+          "una parte vulnerable y culpable"
+        ],
+        "label": "el chivo expiatorio"
+      },
+      "schemer": {
+        "constraints": [
+          "el verdadero culpable"
+        ],
+        "label": "el estratega"
+      }
+    },
+    "summary": "Cuando la culpa debe recaer en alguien, la mano astuta se asegura de que caiga sobre un tercero de menor importancia mientras el verdadero culpable queda libre."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "el objetivo pierde su prestigio",
+        "label": "Objetivo aislado"
+      },
+      "seed": {
+        "intent": "plantar una duda única",
+        "label": "Sembrar el rumor"
+      },
+      "spread": {
+        "intent": "la duda se repite a través de voces involuntarias",
+        "label": "El rumor se propaga"
+      },
+      "withdraw": {
+        "intent": "el protector del objetivo se retira",
+        "label": "El protector retira su apoyo"
+      }
+    },
+    "effects": [
+      "el objetivo queda aislado y pierde a su patrón",
+      "la verdadera fuente del rumor permanece oculta"
+    ],
+    "emotion_target": "inquietud",
+    "examples": [
+      "Una sola duda sembrada, repetida por voces que desconocen su origen, hasta que el objetivo se queda solo."
+    ],
+    "name": "Campaña de desprestigio",
+    "preconditions": [
+      "el objetivo depende del favor de un patrón o de la corte"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "difunde el rumor sin saberlo"
+        ],
+        "label": "la corte o el consejo"
+      },
+      "schemer": {
+        "constraints": [
+          "es el autor del rumor"
+        ],
+        "label": "el conspirador"
+      },
+      "target": {
+        "constraints": [
+          "queda aislado por el rumor"
+        ],
+        "label": "el objetivo"
+      }
+    },
+    "summary": "Una sola duda sembrada, repetida por voces que desconocen su origen, aísla al objetivo hasta que su protector le retira el apoyo."
+  }
+}

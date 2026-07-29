@@ -242,14 +242,29 @@ without `--force-authored`, and the seeder's upsert refuses to let a `machine` r
 Proof run: `ja`/`mystery`, 8 motifs / 173 keys, 0 failures, 59s — output verified literary and
 key-faithful (`The Witness Whose Lie Is Not the Crime` → `罪とは無関係な嘘をつく目撃者`, every beat key intact).
 
-### ⏳ IN FLIGHT — the full 16-locale run
-`python -u scripts/motif_translate.py --workers 6` is translating 84 motifs × 16 locales
-(2,346 chunks, ~4h). **It is resumable and idempotent** — gap-fill carries every already-good key, so
-re-running after an interruption costs only what is missing. When it finishes:
-1. `python scripts/motif_translate.py --check <lang>` per locale.
-2. The run started before `_source_hash.json` existed, so **regenerate the sidecars** for the machine
-   locales (honest: those files were translated from the current source minutes earlier).
-3. Commit `translations/` — and check BOTH sides if any pack moves.
+### ✅ ALL 17 LOCALES TRANSLATED — 84 motifs × 17 languages = 1,428 entries
+
+`ar bn de es fr hi id ja ko ms pt-BR ru th tr vi zh-CN zh-TW`. Run: 2,346 chunks in 3h56m,
+**0 keys left as English**, every locale structurally valid (`--check` × 17 = 0 problems), sidecar
+recorded for each. Live: 1,428 rows seeded, six scripts verified end-to-end, an unsupported locale
+falls back to English **with `text_fallback=true`**.
+
+**Two things this surfaced, both worth keeping:**
+
+- **The tool was BLIND to a whole failure mode on half the supported languages.** Its inherited soft
+  check ("possibly untranslated") keys off the target SCRIPT, so for every Latin-script target —
+  de/es/fr/id/ms/pt-BR/tr — an English string echoed straight back shipped looking exactly like a
+  translation. Added a byte-comparison detector (works for every language) + `--retry-echoed`, which
+  gives each echoed leaf one isolated second attempt. It converged cleanly: bn 2→0, tr 1→0, de 3→2.
+  What remains is **genuine cognates** (`paranoia` really is the Spanish/Portuguese/Malay word;
+  `anticipation`, `suspense`, `catharsis` really are French) — re-translating those returns the same
+  word, which is the right answer, so the check reports rather than fails.
+- **The running container was a STALE IMAGE and said so only by counting.** composition-service has
+  no bind mount — `app/` is COPYed at build. An image built mid-run captured 12 of 17 locales (and 6
+  of ms's 10 packs), so the boot log read `977 translations across 12 language(s)` while the source
+  had 1,428 across 17. Nothing errored. Rebuilt service **and worker** → `1428 / 17`. This is the
+  same class as the dogfood find that `composition-worker` was running a 03:16 image; the lesson
+  keeps being *count the thing, do not trust that a restart picked it up*.
 
 ### ▶ NEXT on this track
 1. **The user-paid runtime translate path** — a metered job through provider-registry + a UI

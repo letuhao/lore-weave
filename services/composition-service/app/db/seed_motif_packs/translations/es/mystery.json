@@ -1,0 +1,439 @@
+{
+  "mystery.assembled_confrontation": {
+    "beats": {
+      "assemble": {
+        "intent": "todos los involucrados son reunidos en una misma estancia",
+        "label": "La reunión de los implicados"
+      },
+      "consequence": {
+        "intent": "la cuestión deja de ser la culpabilidad para centrarse en qué se hará al respecto",
+        "label": "Lo que sigue es la consecuencia"
+      },
+      "deny": {
+        "intent": "el implicado se niega y ofrece su contraargumento más contundente",
+        "label": "La negación"
+      },
+      "lay": {
+        "intent": "se reconstruye la secuencia utilizando solo los hechos presentados",
+        "label": "La cadena de hechos se despliega"
+      },
+      "prove": {
+        "intent": "surge un elemento que no admite interpretación alguna",
+        "label": "La prueba irrefutable"
+      }
+    },
+    "effects": [
+      "la responsabilidad queda fijada públicamente",
+      "el coste de la revelación recae sobre personas que no eran culpables"
+    ],
+    "emotion_target": "catarsis",
+    "examples": [
+      "Se lo explicó dos veces, y la segunda vez se detuvo en el punto exacto en el que solo una persona en la sala podría haber sabido la hora."
+    ],
+    "name": "La cadena de hechos",
+    "preconditions": [
+      "suficientes hechos establecidos para construir una cadena lógica sin necesidad de nuevas pruebas"
+    ],
+    "roles": {
+      "assembled": {
+        "constraints": [
+          "cada uno tenía un motivo plausible para ser sospechoso"
+        ],
+        "label": "los presentes"
+      },
+      "culprit": {
+        "constraints": [
+          "niega antes de confesar"
+        ],
+        "label": "el señalado"
+      },
+      "investigator": {
+        "constraints": [
+          "utiliza únicamente lo que ya se ha mostrado"
+        ],
+        "label": "quien expone los hechos"
+      },
+      "proof": {
+        "constraints": [
+          "no requiere interpretación para ser contundente"
+        ],
+        "label": "la prueba irrefutable"
+      }
+    },
+    "summary": "La servidumbre y los allegados se reúnen en una sola estancia para presenciar cómo se reconstruye la secuencia de los hechos, paso a paso, ante sus ojos; cada eslabón se apoya únicamente en lo que ya se ha demostrado: el horario, el libro de contabilidad, quién podía conocer la hora exacta. La negación surge, como es de esperar, y es refutada por ese único objeto que no admite interpretación alguna; tras esto, lo que queda no es la duda sobre la culpabilidad, sino la cuestión de qué se hará ahora al respecto."
+  },
+  "mystery.false_lead": {
+    "beats": {
+      "collapse": {
+        "intent": "el rastro falso se convierte en la prueba más contundente sobre quién lo plantó",
+        "label": "La pista colapsa hacia arriba"
+      },
+      "commit": {
+        "intent": "se apuesta la reputación, los recursos o los sentimientos en la pista",
+        "label": "La investigación se compromete"
+      },
+      "emerge": {
+        "intent": "las pruebas convergen sobre una persona con una pulcritud inusual",
+        "label": "Surge un sospechoso ideal"
+      },
+      "seam": {
+        "intent": "aparece una costura que revela que la evidencia fue dispuesta en lugar de hallada",
+        "label": "El encaje es demasiado perfecto"
+      }
+    },
+    "effects": [
+      "el investigador ha perdido su prestigio y debe continuar con menos recursos",
+      "se establece la existencia de alguien que ha orquestado la escena deliberadamente"
+    ],
+    "emotion_target": "inquietud",
+    "examples": [
+      "Cada documento que necesitaban estaba en el primer cajón que registraron, y fue precisamente eso lo que finalmente la inquietó."
+    ],
+    "name": "La pista que encaja demasiado bien",
+    "preconditions": [
+      "una investigación bajo la presión de dar con un nombre"
+    ],
+    "roles": {
+      "arranger": {
+        "constraints": [
+          "permanece en la sombra mientras la pista avanza"
+        ],
+        "label": "quien orquestó el encaje"
+      },
+      "investigator": {
+        "constraints": [
+          "se involucra antes de verificar"
+        ],
+        "label": "el investigador que se entrega a la pista"
+      },
+      "suspect": {
+        "constraints": [
+          "está genuinamente implicado por los hechos"
+        ],
+        "label": "el sospechoso demasiado conveniente"
+      }
+    },
+    "summary": "Surge un sospechoso cuyas pruebas encajan a la perfección: las cartas están en el único cajón que se registró primero, las deudas constan en los registros, la coartada es débil... y la investigación se entrega a ese encaje de forma pública, costosa o emocional. El caso se desmorona, no por la aparición de nuevas pruebas, sino al notar que el encaje era demasiado perfecto: alguien dispuso que esos documentos se encontraran en ese orden exacto, y ese alguien es el verdadero culpable."
+  },
+  "mystery.hidden_connection": {
+    "beats": {
+      "join": {
+        "intent": "un detalle incidental revela que ambos provienen del mismo lugar",
+        "label": "Aparece un origen común"
+      },
+      "redraw": {
+        "intent": "los hechos conocidos se reordenan alrededor del nuevo centro",
+        "label": "El caso se redibuja"
+      },
+      "separate": {
+        "intent": "ambos son conocidos y ninguno tiene conexión con el otro",
+        "label": "Dos hechos aislados"
+      }
+    },
+    "effects": [
+      "el eje del caso se ha desplazado sin necesidad de nuevas pruebas",
+      "los implicados previamente descartados vuelven a estar bajo sospecha"
+    ],
+    "emotion_target": "curiosidad",
+    "examples": [
+      "El banco del libro de contabilidad y la aldea de la carta resultaron estar a apenas cien pasos de distancia, y todo lo demás se reordenó en torno a ese hallazgo."
+    ],
+    "name": "Dos hechos, un origen",
+    "preconditions": [
+      "un expediente que contiene hechos establecidos que nunca se han contrastado entre sí"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "ya poseía ambos hechos"
+        ],
+        "label": "quien los une"
+      },
+      "origin": {
+        "constraints": [
+          "estaba a la vista, pero sin importancia"
+        ],
+        "label": "el origen compartido"
+      },
+      "source": {
+        "constraints": [
+          "es algo incidental, no una prueba directa"
+        ],
+        "label": "lo que provoca la unión"
+      }
+    },
+    "summary": "Dos elementos que han permanecido en el expediente como hechos inconexos —dos nombres, dos fechas, una cifra en un libro de contabilidad y un pueblo en una carta— resultan compartir un mismo origen, y la estructura del caso se redibuja en torno a él. No se descubre nada nuevo; un dato que ya se tenía a mano se convierte simplemente en el centro, y personas que habían sido exoneradas vuelven a estar bajo sospecha."
+  },
+  "mystery.impossible_circumstance": {
+    "beats": {
+      "bound": {
+        "intent": "se demuestra que el crimen queda excluido por las restricciones conocidas",
+        "label": "Se establece la imposibilidad"
+      },
+      "dissolve": {
+        "intent": "al eliminar la presunción, la secuencia se vuelve ordinaria",
+        "label": "La imposibilidad se disuelve"
+      },
+      "enumerate": {
+        "intent": "cada condición se expone para ser analizada en lugar de solo sentida",
+        "label": "Se enumeran las restricciones"
+      },
+      "identify": {
+        "intent": "se halla una restricción que nadie llegó a comprobar realmente",
+        "label": "Una es solo una suposición"
+      }
+    },
+    "effects": [
+      "el método queda revelado, aunque el autor siga siendo un misterio",
+      "quién se benefició de la presunción compartida es la nueva incógnita"
+    ],
+    "emotion_target": "curiosidad",
+    "examples": [
+      "Cuatro personas juraron que la puerta estuvo vigilada toda la noche, y cada una de ellas decía la verdad sobre una noche distinta."
+    ],
+    "name": "Era imposible que ocurriera",
+    "preconditions": [
+      "un conjunto de condiciones tratadas como hechos por todos los presentes"
+    ],
+    "roles": {
+      "assumption": {
+        "constraints": [
+          "nunca fue verificada por nadie"
+        ],
+        "label": "la suposición compartida"
+      },
+      "constraint": {
+        "constraints": [
+          "se mantiene firme hasta que un elemento es reclasificado"
+        ],
+        "label": "la imposibilidad"
+      },
+      "investigator": {
+        "constraints": [
+          "debe enunciarlas con honestidad para poder romperlas"
+        ],
+        "label": "quien enumera las restricciones"
+      }
+    },
+    "summary": "El crimen está acotado por restricciones que lo hacen imposible: una habitación cerrada por dentro, una escalera vigilada durante toda la noche, una coartada jurada por extraños o una distancia que nadie podría recorrer en el tiempo disponible. Las limitaciones se enumeran con honestidad, una a una, y la respuesta surge al hallar aquella que nunca fue un hecho comprobado, sino una suposición que todos en la casa compartían."
+  },
+  "mystery.impossible_detail": {
+    "beats": {
+      "detail": {
+        "intent": "un único hecho no puede explicarse mediante la interpretación inocente",
+        "label": "Un detalle se resiste a encajar"
+      },
+      "discover": {
+        "intent": "se descubre algo que tiene una interpretación inocente y obvia",
+        "label": "Se descubre el disturbio"
+      },
+      "fix": {
+        "intent": "la anomalía se describe con la precisión suficiente como para ser investigada",
+        "label": "La pregunta queda planteada"
+      },
+      "open": {
+        "intent": "alguien se compromete a resolverla, desafiando el deseo de dar el asunto por cerrado",
+        "label": "Se abre la investigación"
+      }
+    },
+    "effects": [
+      "una pregunta específica y sin respuesta pasa a regir todo lo que sigue",
+      "al menos una de las partes preferiría que la pregunta no se hiciera"
+    ],
+    "emotion_target": "curiosidad",
+    "examples": [
+      "Todo en la habitación indicaba que había estado bebiendo a solas; solo la segunda taza, lavada, seca y colgada de nuevo en su sitio, decía lo contrario."
+    ],
+    "name": "El detalle que no debería estar ahí",
+    "preconditions": [
+      "un suceso que posee una explicación inocente y evidente"
+    ],
+    "roles": {
+      "authority": {
+        "constraints": [
+          "prefieren la explicación convencional"
+        ],
+        "label": "quienes quieren dar el caso por cerrado"
+      },
+      "investigator": {
+        "constraints": [
+          "ve lo que los demás pasan por alto"
+        ],
+        "label": "quien lo nota"
+      },
+      "question": {
+        "constraints": [
+          "es más aguda que un simple «¿quién lo hizo?»"
+        ],
+        "label": "la pregunta que abre el caso"
+      },
+      "scene": {
+        "constraints": [
+          "presenta hechos mayoritariamente ordinarios"
+        ],
+        "label": "el disturbio en sí"
+      }
+    },
+    "summary": "Se descubre un disturbio —un cuerpo en el suelo, un robo, una desaparición, un libro de contabilidad que no cuadra— y entre los hechos ordinarios yace un pequeño objeto físico que ninguna explicación inocente puede justificar: una segunda taza lavada y colgada en su percha, una llave en el lado equivocado de la puerta, un abrigo demasiado seco para el clima. Esa única anomalía es lo que convierte una desgracia en una incógnita, y la incógnita es de lo que trata realmente la investigación."
+  },
+  "mystery.investigator_compromised": {
+    "beats": {
+      "bend": {
+        "intent": "se toma una decisión que el interés personal explica mejor que las pruebas",
+        "label": "El juicio se sesga"
+      },
+      "expose": {
+        "intent": "el interés personal se vuelve del conocimiento de los demás",
+        "label": "La conexión sale a la luz"
+      },
+      "reearn": {
+        "intent": "las conclusiones previas deben volver a demostrarse ante una audiencia escéptica",
+        "label": "Todo debe volver a ganarse"
+      },
+      "stake": {
+        "intent": "el investigador está vinculado al caso sin reconocerlo",
+        "label": "El interés existe sin ser visto"
+      }
+    },
+    "effects": [
+      "las conclusiones anteriores pierden toda autoridad hasta que se vuelvan a probar",
+      "la continuidad del investigador en el caso se convierte en un objeto de disputa"
+    ],
+    "emotion_target": "inquietud",
+    "examples": [
+      "No es que hubiera mentido sobre su relación con la familia; es que nadie se había planteado preguntárselo, y él lo había permitido durante tres semanas."
+    ],
+    "name": "El investigador tiene un interés personal",
+    "preconditions": [
+      "un investigador con un vínculo previo con alguna de las partes implicadas en el caso"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "tienen razones para desconfiar"
+        ],
+        "label": "quienes ahora desconfían de él"
+      },
+      "investigator": {
+        "constraints": [
+          "no eligió este interés personal"
+        ],
+        "label": "el investigador comprometido"
+      },
+      "stake": {
+        "constraints": [
+          "es genuino y descalificante"
+        ],
+        "label": "el interés personal"
+      }
+    },
+    "summary": "Quien hace las preguntas resulta estar implicado en el caso —ya sea por un vínculo con una de las partes, una deuda pendiente o por ser la causa misma de lo ocurrido— y no lo ha revelado. El juicio se sesga antes de que nadie note la inclinación y, una vez que la conexión sale a la luz, cada conclusión registrada en el expediente debe volver a ganarse ante personas que ahora tienen motivos para dudar de todo."
+  },
+  "mystery.second_death": {
+    "beats": {
+      "carry": {
+        "intent": "la responsabilidad de haber provocado la muerte altera su forma de proceder",
+        "label": "El investigador carga con ello"
+      },
+      "narrow": {
+        "intent": "solo quienes sabían lo que vendría podrían haber actuado",
+        "label": "El círculo se estrecha"
+      },
+      "provoke": {
+        "intent": "una indagación alcanza a alguien que se convierte en un estorbo",
+        "label": "Las preguntas dan en el blanco"
+      },
+      "silence": {
+        "intent": "la persona que iba a hablar es eliminada",
+        "label": "El testigo es silenciado"
+      }
+    },
+    "effects": [
+      "el expediente ahora contiene hechos confirmados sobre quiénes tenían conocimiento previo, aunque aún sin conexión entre sí",
+      "el grupo de sospechosos se reduce a aquellos que sabían lo que el testigo muerto estaba a punto de declarar",
+      "el investigador ahora tiene un interés personal que no eligió"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Ella le había pedido que viniera por la mañana; lo encontraron antes del amanecer, lo cual le reveló más que cualquier respuesta que él pudiera haber dado."
+    ],
+    "name": "La investigación provoca una segunda muerte",
+    "preconditions": [
+      "una investigación que se ha vuelto evidente para su sujeto"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "carga con la responsabilidad de la provocación"
+        ],
+        "label": "quien provocó el suceso con sus preguntas"
+      },
+      "killer": {
+        "constraints": [
+          "debía saber lo que estaba por ocurrir"
+        ],
+        "label": "quienquiera que haya actuado para silenciar"
+      },
+      "silenced": {
+        "constraints": [
+          "estaba a punto de revelar algo crucial"
+        ],
+        "label": "la segunda víctima"
+      }
+    },
+    "summary": "El acto de interrogar convierte a alguien en un peligro para otros, y surge un segundo cadáver; típicamente, la persona que había aceptado declarar por la mañana y que aparece muerta antes de que amanezca. La entrevista que nunca ocurrió dice más que la respuesta misma: solo aquellos que sabían lo que estaba por decirse podrían haber actuado, el círculo de sospechosos se estrecha sobre ellos, y el investigador carga ahora con una muerte provocada por sus propias preguntas."
+  },
+  "mystery.witness_who_lies": {
+    "beats": {
+      "contradict": {
+        "intent": "un detalle verificable no coincide con el relato",
+        "label": "Un pequeño hecho lo contradice"
+      },
+      "press": {
+        "intent": "se pone la contradicción directamente ante el testigo",
+        "label": "Se confronta la mentira"
+      },
+      "reason": {
+        "intent": "el testigo confiesa algo ajeno al crimen que replantea el caso por completo",
+        "label": "El motivo es el hallazgo"
+      },
+      "testify": {
+        "intent": "un testigo ofrece un relato que es mayormente coherente",
+        "label": "Se da el testimonio"
+      }
+    },
+    "effects": [
+      "el expediente contiene un nuevo hecho establecido —una relación oculta— que aún no se vincula con nada",
+      "la cronología del testigo se corrige, situando a otra persona en un lugar distinto"
+    ],
+    "emotion_target": "tensión",
+    "examples": [
+      "No había estado en el almacén y no quiso decir dónde había estado; tardamos dos días más en descubrir que se encontraba en un hospital."
+    ],
+    "name": "El testigo cuya mentira no es el crimen",
+    "preconditions": [
+      "un testigo que tiene algo que perder que no es el crimen mismo"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "debe presionar sin asumir la culpabilidad"
+        ],
+        "label": "el que presiona"
+      },
+      "secret": {
+        "constraints": [
+          "es lo suficientemente vergonzoso como para mentir por ello"
+        ],
+        "label": "el secreto ajeno"
+      },
+      "witness": {
+        "constraints": [
+          "miente sobre algo, pero no sobre esto"
+        ],
+        "label": "el testigo mentiroso"
+      }
+    },
+    "summary": "Se ofrece un testimonio que contradice un detalle minúsculo y verificable —la hora en un recibo, qué tren estaba en marcha, qué ventana da al patio— y, al presionar sobre la contradicción, no surge una confesión del crimen, sino la confesión de algo totalmente distinto: una deuda, un romance, una noche en un hospital que no se atreven a nombrar. La mentira es real, el motivo no tiene relación con el delito, y es precisamente ese motivo ajeno lo que resuelve el caso."
+  }
+}

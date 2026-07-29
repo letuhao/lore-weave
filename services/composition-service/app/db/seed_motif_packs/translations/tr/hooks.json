@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "güvenilen bir figürün gizli sadakatsizliğini göstermek",
+        "label": "Şüphe çatlağı"
+      }
+    },
+    "effects": [
+      "okuyucu figüre olan güvenini yitirir ve okumaya devam eder"
+    ],
+    "emotion_target": "huzursuzluk",
+    "examples": [
+      "En eski dostu gülümsedi, onayladı — ve ikinci anahtarı kendi kolunun içine gizledi."
+    ],
+    "name": "İhanet İpucu",
+    "preconditions": [
+      "bir sahne devam etmektedir"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Güvenilen bir figür, en kritik anda bir şüphe çatlağı gösterir."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "geri dönülemez bir karar aldırmak",
+        "label": "Seçime zorlamak"
+      }
+    },
+    "effects": [
+      "okuyucu kararın sonucunu öğrenmek için okumaya devam eder"
+    ],
+    "emotion_target": "kaygı",
+    "examples": [
+      "İki kapı, tek bir anahtar ve dizlerine kadar yükselen sular."
+    ],
+    "name": "Zorunlu Seçim",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Bakış açısı karakteri, sahnenin kırılma noktasında geri dönüşü olmayan bir karara sürüklenir."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "bölüm sonunda bir tehlikeyi çözülmemiş halde bırakın",
+        "label": "Cevapsız bir tehlikeyle sahneyi kesin"
+      }
+    },
+    "effects": [
+      "okuyucu bir sonraki bölüme sürüklenir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Mühür çoktan kırılmıştı — ve ardındaki hücre boştu."
+    ],
+    "name": "Askıda Kalan Soru",
+    "preconditions": [
+      "bir sahne devam etmektedir"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Okuyucuyu bir sonraki bölüme sürükleyecek, cevapsız kalmış bir tehlikeyle noktayı koyun."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "hedef için sınırlı bir zaman dilimi dayat",
+        "label": "Son tarihi belirle"
+      }
+    },
+    "effects": [
+      "okuyucu zamanın daraldığını hisseder ve okumaya devam eder"
+    ],
+    "emotion_target": "beklenti",
+    "examples": [
+      "Üç gün. Ondan sonra teklif —ve şehir— yok olup gidecekti."
+    ],
+    "name": "Geri Sayım Başladı",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Bir son tarih veya zamanlayıcı belirlenir; bu durum, gelişen olayları bir yarışa dönüştürür."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "her şeyi yeniden çerçeveleyen bir sözle bitir",
+        "label": "Patlayan diyalog ve ardından kesiş"
+      }
+    },
+    "effects": [
+      "okuyucu sarsılır ve okumaya devam eder"
+    ],
+    "emotion_target": "şok",
+    "examples": [
+      "«Babanıza sormalısın,» dedi kadın, «neden boş bir tabut gömdüğünü.»"
+    ],
+    "name": "Diyalog Bombası",
+    "preconditions": [
+      "bir sahne devam etmektedir"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Bir diyalog patlar ve bölüm o sözle sona erer."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "gerçek kimliği teyit etmeden ona dair bir ipucu vermek",
+        "label": "Kimliğe dair imâ"
+      }
+    },
+    "effects": [
+      "okuyucu, gerçekte kim olduklarını öğrenmek için okumaya devam eder"
+    ],
+    "emotion_target": "merak",
+    "examples": [
+      "Dilenci kapüşonunu geriye çektiğinde, muhafızlar diz çöktü."
+    ],
+    "name": "Kimliğe Dair İpucu",
+    "preconditions": [
+      "bir sahne devam ederken"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Birinin gerçek ismine veya rolüne dair, sahne kesildiğinde cevapsız bırakılan bir imâ."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "henüz ulaşmamış bir tehlikeyi tanımlayın",
+        "label": "Tehdidin yaklaştığı bildirilir"
+      }
+    },
+    "effects": [
+      "okuyucu tehlikenin gelişini beklemeye başlar"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Şafak söktüğünde ordu kapıların önünde olacaktı ve o kapılar dayanmayacaktı."
+    ],
+    "name": "Yaklaşan Tehdit",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Somutlaşmış bir tehlike yoldadır, henüz varmamıştır."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "değer verilen bir şeyi kaybetmenin eşiğine getirmek",
+        "label": "Eşiğinde olunan kayıp"
+      }
+    },
+    "effects": [
+      "okuyucu kaybın korkusuna kapılır ve okumaya devam eder"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Şifacı başını iki yana salladı. Çocuklardan sadece biri için yeterli ilaç kaldığını söyledi."
+    ],
+    "name": "Yakın Kayıp",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Bakış açısı karakterinin sevdiği bir şey, sahnenin kırılma noktasında elinden alınmak üzeredir."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "yeni bir ipucuyla varsayılan cevabı altüst etmek",
+        "label": "Çelişen ipucu"
+      }
+    },
+    "effects": [
+      "okuyucu soruyu zihninde yeniden canlandırır ve okumaya devam eder"
+    ],
+    "emotion_target": "merak",
+    "examples": [
+      "Ölü adamın el yazısı henüz tazeydi — ve yarının tarihini taşıyordu."
+    ],
+    "name": "Gizem Derinleşiyor",
+    "preconditions": [
+      "bir sahne devam etmektedir"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Yeni bir ipucu, sahnenin kesildiği noktada varsayılan cevabın aksini kanıtlar."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "yetenek hakkında açıklama yapmadan bir kabiliyeti açığa çıkarmak",
+        "label": "Açıklanamayan güç parıltısı"
+      }
+    },
+    "effects": [
+      "okur açıklama bekler hale gelir"
+    ],
+    "emotion_target": "merak ve beklenti",
+    "examples": [
+      "Korku içindeki memurun gözleri bir anlığına altın rengiyle parladı — sonra lamba söndü."
+    ],
+    "name": "Gücün Parıltısı",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Sahnenin kırılma noktasında, açıklanamayan gizli bir yetenek anlık bir parıltıyla belirir."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "bir sırrın bir kısmını açığa çıkar, geri kalanını sakla",
+        "label": "Yarıda kesilen ifşa"
+      }
+    },
+    "effects": [
+      "okuyucu geri kalanını öğrenmek için okumaya devam eder"
+    ],
+    "emotion_target": "merak",
+    "examples": [
+      "Madalyonu ters çevirdi. İçindeki yüz kendisinindi."
+    ],
+    "name": "Sır Perdesi",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Bir sır, tam açığa çıkmadan, tam ortasında kesilir."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "sahnenin anlamını kesme noktasında tersine çevirmek",
+        "label": "Son satırda anlamın değişmesi"
+      }
+    },
+    "effects": [
+      "okuyucu sahneyi yeniden yorumlar ve okumaya devam eder"
+    ],
+    "emotion_target": "şok",
+    "examples": [
+      "Ona sonunda güvenmeye başlamıştı — ki bu, adamın üç yıldır beklediği şeyin ta kendisiydi."
+    ],
+    "name": "Ani Tersyüz",
+    "preconditions": [
+      "bir sahne devam etmektedir"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Son satırdaki bir gerçek, tüm sahnenin anlamını altüst eder."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "orada bulunmaması gereken birini tanıtmak",
+        "label": "İmkânsız geliş"
+      }
+    },
+    "effects": [
+      "okurun kimin geldiğini ve neden geldiğini bilmesi gerekir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Kapı açıldı ve geçen kış gömdükleri adam içeri adım attı."
+    ],
+    "name": "Beklenmedik Geliş",
+    "preconditions": [
+      "devam eden bir sahne"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Burada olmaması gereken biri, tam en kritik anda içeri girer."
+  }
+}

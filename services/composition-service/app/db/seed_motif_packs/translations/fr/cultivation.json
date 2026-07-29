@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "les rivaux font grimper les prix",
+        "label": "Guerre d'enchères"
+      },
+      "outbid": {
+        "intent": "le protagoniste est surclassé par les enchères et se voit tourner en dérision",
+        "label": "Le rival surpasse l'offre"
+      },
+      "secret_win": {
+        "intent": "le protagoniste l'emporte par un moyen inattendu",
+        "label": "Moyen de victoire secret"
+      },
+      "surface": {
+        "intent": "une relique convoitée est mise en vente",
+        "label": "Apparition de l'objet rare"
+      }
+    },
+    "effects": [
+      "le protagoniste obtient le trésor",
+      "un rival fortuné est humilié publiquement"
+    ],
+    "emotion_target": "triomphe",
+    "examples": [
+      "Une relique apparaît aux enchères ; surclassé et moqué, le protagoniste l'emporte par un moyen que nul n'avait prévu."
+    ],
+    "name": "Le Trésor de la Maison de Ventes",
+    "preconditions": [
+      "une ressource convoitée est mise en vente lors d'une compétition ouverte"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "soutien dissimulé"
+        ],
+        "label": "un protecteur de l'ombre"
+      },
+      "protagonist": {
+        "constraints": [
+          "manque de ressources"
+        ],
+        "label": "l'enchérisseur"
+      },
+      "rival": {
+        "constraints": [
+          "arrogant, aux moyens illimités"
+        ],
+        "label": "le rival fortuné"
+      },
+      "treasure": {
+        "constraints": [
+          "rare, convoitée"
+        ],
+        "label": "la relique mise aux enchères"
+      }
+    },
+    "summary": "Un objet rare apparaît lors d'une vente aux enchères ; surclassé par les prix et couvert de moqueries, le protagoniste l'emporte grâce à un soutien occulte ou par des moyens inattendus."
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "s'en emparer depuis une zone de danger mortel",
+        "label": "Acquisition périlleuse"
+      },
+      "advance": {
+        "intent": "percer son niveau grâce à sa puissance",
+        "label": "Consommation et percée"
+      },
+      "named": {
+        "intent": "l'essence nécessaire est identifiée",
+        "label": "Identification de la ressource"
+      },
+      "stall": {
+        "intent": "le progrès s'arrête devant un mur",
+        "label": "Stagnation du rang"
+      }
+    },
+    "effects": [
+      "le protagoniste acquiert la ressource nécessaire",
+      "le protagoniste franchit un nouveau rang"
+    ],
+    "emotion_target": "détermination",
+    "examples": [
+      "Bloqué par un goulot d'étranglement, le cultivateur traque une essence gardée jusqu'à une distance mortelle, puis perce son niveau en s'emparant de sa puissance."
+    ],
+    "name": "Chasse à la ressource de percée",
+    "preconditions": [
+      "le protagoniste est bloqué par un goulot d'étranglement",
+      "une ressource spécifique est connue pour permettre de le franchir"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "mortelle, territoriale"
+        ],
+        "label": "la bête gardienne"
+      },
+      "protagonist": {
+        "constraints": [
+          "a besoin d'une ressource spécifique"
+        ],
+        "label": "le cultivateur en stagnation"
+      },
+      "resource": {
+        "constraints": [
+          "rare, gardée"
+        ],
+        "label": "l'herbe spirituelle / le noyau"
+      }
+    },
+    "summary": "Bloqué par un palier, le cultivateur traque une essence gardée jusqu'à une zone mortelle pour briser son plafond grâce à sa puissance."
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "le rang stagnant résiste",
+        "label": "Rencontre du mur intérieur"
+      },
+      "breakthrough": {
+        "intent": "survivre et franchir le cap",
+        "label": "Ascension d'un royaume"
+      },
+      "crisis": {
+        "intent": "l'épreuve menace de tuer le cultivateur",
+        "label": "Frôler la mort"
+      },
+      "insight": {
+        "intent": "une intuition brise le mur",
+        "label": "Éclair de compréhension"
+      },
+      "seclusion": {
+        "intent": "se retirer pour briser le goulot d'étranglement",
+        "label": "Entrée en méditation"
+      },
+      "tribulation": {
+        "intent": "les cieux mettent l'ascension à l'épreuve",
+        "label": "Épreuve céleste"
+      }
+    },
+    "effects": [
+      "le protagoniste progresse vers un nouveau royaume ou un nouveau rang",
+      "sa réputation et sa puissance augmentent de manière manifeste"
+    ],
+    "emotion_target": "anticipation",
+    "examples": [
+      "Isolé pour briser une stagnation, le cultivateur affronte un mur intérieur, une épreuve céleste, une mort imminente, puis accède à un nouveau royaume."
+    ],
+    "name": "Percée en méditation",
+    "preconditions": [
+      "le protagoniste est bloqué par un goulot d'étranglement de cultivation",
+      "une quantité de ressources ou une illumination est à portée de main"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "optionnel"
+        ],
+        "label": "l'allié qui garde la porte"
+      },
+      "protagonist": {
+        "constraints": [
+          "bloqué sous un palier de rang"
+        ],
+        "label": "le cultivateur en stagnation"
+      },
+      "tribulation": {
+        "constraints": [
+          "impersonnelle, croissante"
+        ],
+        "label": "l'épreuve céleste"
+      }
+    },
+    "summary": "Isolé pour briser un palier de progression, le cultivateur se confronte à un mur intérieur, endure une épreuve céleste, frôle la mort et accède à un nouveau royaume."
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "le cultivateur doit rejeter le mensonge apaisant",
+        "label": "Confrontation de soi"
+      },
+      "emerge": {
+        "intent": "le cœur du dao demeure, forgé",
+        "label": "Émergence résolue"
+      },
+      "false_memory": {
+        "intent": "une illusion rejoue la culpabilité la plus profonde",
+        "label": "Épreuve du faux souvenir"
+      },
+      "surface": {
+        "intent": "le doute du cultivateur prend forme",
+        "label": "Émergence du démon"
+      }
+    },
+    "effects": [
+      "la détermination du protagoniste est éprouvée et clarifiée",
+      "une vulnérabilité à l'illusion ou à la tentation est éliminée"
+    ],
+    "emotion_target": "détermination",
+    "examples": [
+      "Une épreuve illusoire rejoue la pire culpabilité du cultivateur ; seul le refus du mensonge réconfortant permet au cœur du dao de tenir."
+    ],
+    "name": "Tempérage du Cœur-Dao",
+    "preconditions": [
+      "le protagoniste porte en lui une culpabilité ou un attachement non résolu"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "l'enjeu ultime"
+        ],
+        "label": "le cœur-dao / la résolution"
+      },
+      "inner_demon": {
+        "constraints": [
+          "arbore un visage réconfortant"
+        ],
+        "label": "le démon intérieur"
+      },
+      "protagonist": {
+        "constraints": [
+          "porteur d'une culpabilité non résolue"
+        ],
+        "label": "le cultivateur"
+      }
+    },
+    "summary": "Un démon intérieur surgit lors d'une épreuve illusoire qui rejoue la pire culpabilité du cultivateur ; seul le refus du mensonge réconfortant permet au cœur-dao de subsister."
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "l'héritier orgueilleux ricane face au protagoniste",
+        "label": "L'arrogance s'exprime"
+      },
+      "reveal": {
+        "intent": "le protagoniste dévoile une maîtrise supérieure",
+        "label": "Révélation de la puissance cachée"
+      },
+      "reversal": {
+        "intent": "le moqueur est humilié publiquement",
+        "label": "L'humiliation s'inverse"
+      },
+      "underestimate": {
+        "intent": "la foule le juge incapable",
+        "label": "Le protagoniste est sous-estimé"
+      }
+    },
+    "effects": [
+      "la véritable force du protagoniste est révélée aux témoins",
+      "la partie arrogante est humiliée et devient un ennemi"
+    ],
+    "emotion_target": "satisfaction",
+    "examples": [
+      "Un héritier hautain méprise un « déchet » ; au milieu du concours, ce dernier dévoile un art supérieur et l'héritier est publiquement décrédibilisé."
+    ],
+    "name": "Le Retournement de l'Affront",
+    "preconditions": [
+      "le protagoniste est sous-estimé ou insulté en public",
+      "le protagoniste détient secrètement une puissance dépassant son rang apparent"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "orgueilleux et soutenu par une influence"
+        ],
+        "label": "le génie arrogant"
+      },
+      "protagonist": {
+        "constraints": [
+          "publicement méprisé"
+        ],
+        "label": "celui qui est sous-estimé"
+      },
+      "witnesses": {
+        "constraints": [
+          "un public présent"
+        ],
+        "label": "la foule spectatrice"
+      }
+    },
+    "summary": "Une partie arrogante se moque du protagoniste sous-estimé, qui révèle alors sa puissance cachée et renvoie l'humiliation à l'agresseur devant les témoins."
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "la rencontre fortuite qui change tout",
+        "label": "Découverte de la relique ou du maître"
+      },
+      "inheritance": {
+        "intent": "transmettre un pouvoir lié à une dette ou à un secret",
+        "label": "Recevoir l'héritage à un prix"
+      },
+      "isolation": {
+        "intent": "isoler le protagoniste hors de portée de tout secours, à son point le plus bas",
+        "label": "L'isolement après la chute"
+      },
+      "trial": {
+        "intent": "le mentor ou la relique teste la valeur du héros",
+        "label": "L'épreuve de l'héritage"
+      }
+    },
+    "effects": [
+      "le protagoniste acquiert un pouvoir ou une technique cachés",
+      "une dette ou un lien secret avec le mentor est créé"
+    ],
+    "emotion_target": "espoir",
+    "examples": [
+      "Jeté dans un ravin scellé, le faible trébuche sur un maître mourant qui le teste puis lui offre un art interdit — lié par une dette de loyauté."
+    ],
+    "name": "Rencontre fortuite → Héritage",
+    "preconditions": [
+      "le protagoniste est faible, humilié ou exilé",
+      "aucun allié n'est présent"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "interdit ou sans égal"
+        ],
+        "label": "l'art hérité ou la lignée de sang"
+      },
+      "mentor": {
+        "constraints": [
+          "proche de la mort ou en sommeil"
+        ],
+        "label": "maître mourant / esprit de la relique"
+      },
+      "protagonist": {
+        "constraints": [
+          "actuellement faible ou déshonoré"
+        ],
+        "label": "le faible isolé"
+      }
+    },
+    "summary": "Un être faible et humilié, isolé par une chute ou un bannissement, découvre une relique ou un maître mourant, est mis à l'épreuve, et reçoit un héritage caché au prix d'une dette contraignante."
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "un duel est déclaré",
+        "label": "Le défi est lancé"
+      },
+      "reversal": {
+        "intent": "le favori s'effondre à l'instant même où il se croit victorieux",
+        "label": "Renversement fatal"
+      },
+      "stakes": {
+        "intent": "la mort est fixée comme prix",
+        "label": "L'enjeu est juré"
+      },
+      "turn": {
+        "intent": "le cours du combat change de manière inattendue",
+        "label": "Le duel bascule"
+      }
+    },
+    "effects": [
+      "un rival est vaincu de manière irrévocable, souvent mortellement",
+      "le statut du protagoniste est transformé"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Un duel à mort dans l'arène ; le fils favori perd l'instant même où il pense avoir gagné."
+    ],
+    "name": "Duel à mort",
+    "preconditions": [
+      "un affrontement public et décisif est juré"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "une arène publique"
+        ],
+        "label": "la foule spectatrice"
+      },
+      "protagonist": {
+        "constraints": [
+          "apparemment surclassé"
+        ],
+        "label": "le défiant ou le défié"
+      },
+      "rival": {
+        "constraints": [
+          "sûr de lui, soutenu"
+        ],
+        "label": "le rival favori"
+      }
+    },
+    "summary": "Un duel à mort est juré dans l'arène ; le fils favori perd l'instant même où il croit avoir triomphé."
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "le maître exige le remboursement à un moment critique",
+        "label": "Exigence de la dette"
+      },
+      "incur": {
+        "intent": "une obligation impossible à rembourser facilement est créée",
+        "label": "Incurvation d'une dette impayable"
+      },
+      "loyalty_test": {
+        "intent": "la fidélité du disciple est mise à l'épreuve",
+        "label": "Épreuve de loyauté"
+      },
+      "taught": {
+        "intent": "le maître sauve ou instruit le protagoniste",
+        "label": "Sauvetage ou enseignement"
+      }
+    },
+    "effects": [
+      "une obligation contraignante lie le protagoniste au maître",
+      "la loyauté du protagoniste est prouvée ou brisée"
+    ],
+    "emotion_target": "obligation",
+    "examples": [
+      "Sauvé par un maître reclus, le disciple contracte une dette qui est exigée à l'heure la plus inopportune."
+    ],
+    "name": "Dette de Maître à Disciple",
+    "preconditions": [
+      "le protagoniste reçoit une aide ou un enseignement qui change le cours de sa vie"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "puissant, exigeant"
+        ],
+        "label": "le maître solitaire"
+      },
+      "obligation": {
+        "constraints": [
+          "contraignante, coûteuse"
+        ],
+        "label": "la dette / l'obligation"
+      },
+      "protagonist": {
+        "constraints": [
+          "doit une dette au maître"
+        ],
+        "label": "le disciple endetté"
+      }
+    },
+    "summary": "Sauvé ou formé par un maître solitaire, le disciple contracte une dette impayable qui est exigée à l'heure la plus inopportune."
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "l'étranger arrive sans aucun statut social",
+        "label": "Arrivée anonyme"
+      },
+      "exceed": {
+        "intent": "la pierre de test est brisée",
+        "label": "Dépasser la mesure"
+      },
+      "recruited": {
+        "intent": "les anciens se disputent pour les recruter",
+        "label": "Recrutement à enjeux"
+      },
+      "underestimated": {
+        "intent": "le gardien le méprise",
+        "label": "Sous-estimé lors du test"
+      }
+    },
+    "effects": [
+      "le protagoniste obtient un rang et un protecteur",
+      "une rivalité s'installe avec l'organisation chargée de la sélection"
+    ],
+    "emotion_target": "triomphe",
+    "examples": [
+      "Un étranger sans rang brise le plafond de verre de la pierre de test ; les anciens se disputent pour l'intégrer."
+    ],
+    "name": "Épreuve d'entrée de la secte",
+    "preconditions": [
+      "un examen ouvert ou une épreuve d'admission à une faction"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "juge et recrute"
+        ],
+        "label": "l'ancien de la secte"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "condescendant"
+        ],
+        "label": "le disciple gardien"
+      },
+      "protagonist": {
+        "constraints": [
+          "sans rang, inattendu"
+        ],
+        "label": "l'étranger inconnu"
+      }
+    },
+    "summary": "Un étranger sans rang brise l'instrument de mesure lors de l'épreuve d'entrée d'une secte ; les anciens se disputent alors son recrutement, avec des enjeux cruciaux."
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "le protagoniste est traité comme un infirme",
+        "label": "Affliction cachée"
+      },
+      "explained": {
+        "intent": "le défaut est révélé comme une constitution rare",
+        "label": "Explication de l'affliction"
+      },
+      "gift": {
+        "intent": "le défaut propulse une ascension impossible",
+        "label": "L'affliction devient un don"
+      },
+      "vindication": {
+        "intent": "ceux qui méprisaient le héros sont contredits par les faits",
+        "label": "Réhabilitation"
+      }
+    },
+    "effects": [
+      "le potentiel caché du protagoniste est révélé",
+      "les anciens détracteurs sont contraints de le reconnaître"
+    ],
+    "emotion_target": "réhabilitation",
+    "examples": [
+      "Le corps qualifié d'« infirme » s'avère être le réceptacle d'une constitution rare ; ce défaut même devient le moteur de son ascension."
+    ],
+    "name": "La Réhabilitation du Génie Dédaigné",
+    "preconditions": [
+      "le protagoniste est écarté car jugé sans talent ou infirme"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "dédaigneux et obsédé par le statut"
+        ],
+        "label": "le clan méprisant"
+      },
+      "diagnostician": {
+        "constraints": [
+          "capable de percevoir la véritable nature de la constitution"
+        ],
+        "label": "l'aîné / le diagnostiqueur"
+      },
+      "protagonist": {
+        "constraints": [
+          "présenté comme étant dépourvu de talent"
+        ],
+        "label": "le « handicapé » méprisé"
+      }
+    },
+    "summary": "Une affliction cachée, méprisée comme un handicap paralysant, est diagnostiquée comme un don rare ; ce défaut devient alors le moteur de l'ascension et le protagoniste est enfin réhabilité."
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "survivre pour s'élever, ou être anéanti",
+        "label": "Ascension ou chute"
+      },
+      "merit": {
+        "intent": "la puissance atteint le seuil de l'ascension",
+        "label": "Mérite accumulé"
+      },
+      "notice": {
+        "intent": "la tribulation se rassemble",
+        "label": "Le regard des Cieux"
+      },
+      "tribulation": {
+        "intent": "chaque vague doit être endurée l'une après l'autre",
+        "label": "Tribulation de foudre"
+      }
+    },
+    "effects": [
+      "le protagoniste s'élève vers un plan ou un royaume supérieur",
+      "son statut dans l'ancien monde est laissé derrière lui"
+    ],
+    "emotion_target": "émerveillement",
+    "examples": [
+      "La puissance attire la colère des cieux ; neuf vagues de tribulations doivent être surmontées pour réussir l'ascension."
+    ],
+    "name": "Ascension par la Tribulation",
+    "preconditions": [
+      "le protagoniste a atteint le seuil de l'ascension"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "tient la ligne"
+        ],
+        "label": "l'allié ancrage"
+      },
+      "protagonist": {
+        "constraints": [
+          "au seuil de l'ascension"
+        ],
+        "label": "le cultivateur en ascension"
+      },
+      "tribulation": {
+        "constraints": [
+          "escaladante et mortelle"
+        ],
+        "label": "la tribulation céleste"
+      }
+    },
+    "summary": "La puissance accumulée attire la colère des cieux ; neuf vagues de tribulations de foudre doivent être surmontées pour atteindre l'ascension, avec pour ancrage un allié fidèle."
+  }
+}

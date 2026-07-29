@@ -1,0 +1,450 @@
+{
+  "wuxia.contested_manual": {
+    "beats": {
+      "blood": {
+        "intent": "Der Konflikt wird mit Gewalt entschieden, deren Preis in keinem Verhältnis zum Gewinn steht",
+        "label": "Blut für Papier"
+      },
+      "converge": {
+        "intent": "Fraktionen mit konkurrierenden Ansprüchen treffen am selben Ort ein",
+        "label": "Alle ziehen zusammen"
+      },
+      "surface": {
+        "intent": "Die Nachricht von der Abhandlung erreicht die Welt der Kampfkunst",
+        "label": "Das Handbuch taucht auf"
+      },
+      "unread": {
+        "intent": "Der Sieger stellt fest, dass der Text ohne die vorausgesetzte Grundlage unbrauchbar ist",
+        "label": "Besitz ist nicht Meisterschaft"
+      }
+    },
+    "effects": [
+      "Der Besitzer ist nun ein Gejagter statt eines Inhabers",
+      "Die wahre Voraussetzung für die Technik wird zum neuen Problem"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Elf Männer starben für die zweite Hälfte des Manuskripts, und der Mann, der mit ihm entkam, konnte die Handschrift nicht entziffern, in der es verfasst war."
+    ],
+    "name": "Das begehrte Handbuch",
+    "preconditions": [
+      "Eine Welt der Kampfkunst, in der eine Technik echtes Ansehen verleiht"
+    ],
+    "roles": {
+      "factions": {
+        "constraints": [
+          "besitzen jeweils einen legitimen Anspruch"
+        ],
+        "label": "die aufeinanderprallenden Fraktionen"
+      },
+      "jianghu": {
+        "constraints": [
+          "wird darüber richten, wie es erlangt wurde"
+        ],
+        "label": "die weite Welt der Kampfkunst"
+      },
+      "manual": {
+        "constraints": [
+          "ist unvollständig oder an Bedingungen geknüpft"
+        ],
+        "label": "die Kampfkunst-Abhandlung"
+      },
+      "seeker": {
+        "constraints": [
+          "besitzt nicht das Fundament, das der Text voraussetzt"
+        ],
+        "label": "derjenige, der es an sich reißt"
+      }
+    },
+    "summary": "Ein halbes Schriftstück taucht in einer Taverne oder im Bündel eines Grabräubers auf, und jede Schule, die jemals eine Abstammung von seinem Verfasser beansprucht hat, zieht gleichzeitig auf der Landstraße zusammen – denn im Kern geht es nicht um die Seiten, sondern darum, wessen Abstammungslinie die rechtmäßige ist. Blut wird für Papier vergossen. Wer auch immer es am Ende in den Händen hält, muss feststellen, dass der Text für einen Körper geschrieben wurde, der genau so trainiert wurde wie die Schüler des Autors; ihn zu lesen bedeutet nicht, ihn zu beherrschen."
+  },
+  "wuxia.escort_under_watch": {
+    "beats": {
+      "ambush": {
+        "intent": "der Angriff erfolgt genau dort und zu dem Zeitpunkt, der vorherbestimmt war",
+        "label": "Der Hinterhalt nach Plan"
+      },
+      "charge": {
+        "intent": "Die Verantwortung für die sichere Zustellung wird übertragen und angenommen",
+        "label": "Der Auftrag wird angenommen"
+      },
+      "deliver": {
+        "intent": "die Fracht kommt an, bezahlt mit etwas, das der Eskorte weitaus wertvoller war",
+        "label": "Lieferung um den Preis der Seele"
+      },
+      "watched": {
+        "intent": "Es wird deutlich, dass die Route bereits vor dem Aufbruch kompromittiert wurde",
+        "label": "Der Weg ist bereits bekannt"
+      }
+    },
+    "effects": [
+      "das Versprechen wurde gehalten, doch etwas anderes ging verloren",
+      "wer die Route verraten hat, ist nun eine offene Frage"
+    ],
+    "emotion_target": "grimmige Entschlossenheit",
+    "examples": [
+      "Sie wussten, welcher Furt und etwa welche Stunde, und das Einzige, was noch zu entscheiden stand, war, was er bereit war, am Ufer zurückzulassen."
+    ],
+    "name": "Die Ladung, die ankommen muss",
+    "preconditions": [
+      "eine Ladung, deren Route und Wert den Interessenten bereits bekannt sind"
+    ],
+    "roles": {
+      "cargo": {
+        "constraints": [
+          "kann sich nicht selbst verteidigen"
+        ],
+        "label": "das Ziel der Reise"
+      },
+      "consignor": {
+        "constraints": [
+          "hat nicht alles offenbart"
+        ],
+        "label": "der Auftraggeber"
+      },
+      "escort": {
+        "constraints": [
+          "hat sein Wort gegeben"
+        ],
+        "label": "die verantwortliche Person für die Zustellung"
+      },
+      "watchers": {
+        "constraints": [
+          "kennen die Route bereits"
+        ],
+        "label": "die Wartenden am Weg"
+      }
+    },
+    "summary": "Etwas muss von hier nach dort transportiert werden – eine Truhe, ein Zeuge, eine Braut, ein Sarg – auf einem Weg, dessen Verlauf jedem Beteiligten bereits bekannt ist. Der Hinterhalt ist keine Überraschung, sondern ein fester Zeitplan, und die Ankunft wird nur dadurch ermöglicht, dass man genau mit dem Preis bezahlt, den die Eskorte am wenigsten entbehren kann."
+  },
+  "wuxia.forbidden_shortcut": {
+    "beats": {
+      "offer": {
+        "intent": "jemand, der über die Auswirkungen ehrlich ist, legt das verbrannte Buch in Reichweite",
+        "label": "Ein verbotenes Handbuch wird angeboten"
+      },
+      "price": {
+        "intent": "die Veränderung wird für andere Praktizierende sichtbar und die orthodoxen Schulen verleugnen den Namen",
+        "label": "Der Körper liest es, bevor es Worte tun"
+      },
+      "take": {
+        "intent": "die dämonische Methode wird erlernt und liefert exakt das, was versprochen wurde",
+        "label": "Es wird im Geheimen praktiziert"
+      },
+      "wall": {
+        "intent": "das, was der Meister lehrte, reicht für das Kommende nicht mehr aus",
+        "label": "Der eigene Pfad der Schule versiegt"
+      }
+    },
+    "effects": [
+      "die Fähigkeit hat sich wahrhaftig gesteigert und kann nicht wieder zurückgegeben werden",
+      "ein Preis wird fällig, der für andere schließlich sichtbar wird"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Es tat alles, was der alte Mann versprochen hatte. Es dauerte zwei Winter, bis jemand bemerkte, dass er die Kälte nicht mehr spürte."
+    ],
+    "name": "Die Methode, die niemand mehr praktiziert",
+    "preconditions": [
+      "ein Praktizierender, der vor einer Mauer steht, die der orthodoxe Pfad nicht überwinden kann"
+    ],
+    "roles": {
+      "method": {
+        "constraints": [
+          "wirkt exakt wie beworben"
+        ],
+        "label": "die verbotene Methode"
+      },
+      "offerer": {
+        "constraints": [
+          "lügt nicht über die Wirkung, lässt aber den Preis unerwähnt"
+        ],
+        "label": "derjenige, der sie anbietet"
+      },
+      "practitioner": {
+        "constraints": [
+          "hat den orthodoxen Weg wahrhaftig erschöpft"
+        ],
+        "label": "derjenige an der Wand"
+      }
+    },
+    "summary": "Ein verbotenes Handbuch einer Schule – jene Art von Schriften, die die rechtschaffenen Sekten verbrannten und über die sie dennoch flüstern – wird von jemandem angeboten, der nicht über seine Wirkung lügt. Sie wirkt exakt so, wie sie verspricht. Der Preis wird nicht in Rang oder Status gemessen: Der Körper verändert sich auf eine Weise, die andere Praktizierende sofort im Raum lesen können; die orthodoxen Schulen, die sie einst ausbildeten, verleugnen ihren Namen, und der Praktizierende findet sich auf der dämonischen Seite einer Grenze wieder, die er nie zu überschreiten gedachte."
+  },
+  "wuxia.inherited_feud": {
+    "beats": {
+      "break": {
+        "intent": "der Erbe muss sich zwischen den Toten und den Lebenden entscheiden",
+        "label": "Den Kreislauf fortsetzen oder ihn durchbrechen"
+      },
+      "inherit": {
+        "intent": "Eine Fehde wird zusammen mit dem Rang und der Klinge geerbt",
+        "label": "Die Weitergabe des Grolls"
+      },
+      "origin": {
+        "intent": "Das Gründungsvergehen wird zurückverfolgt und erweist sich als ungerechtfertigt für das vergossene Blut",
+        "label": "Die Suche nach dem Ursprung"
+      },
+      "side": {
+        "intent": "Ein Vorfall macht Neutralität unmöglich",
+        "label": "Die erzwungene Parteinahme"
+      }
+    },
+    "effects": [
+      "die Fehde wird entweder mit vollem Bewusstsein erneuert oder öffentlich abgelehnt",
+      "der Erbe entfremdet sich von einer Seite des eigenen Hauses"
+    ],
+    "emotion_target": "Melancholie",
+    "examples": [
+      "Vier Generationen von Toten, und am Ende steht ein Streit um einen Brunnen, der schon ausgetrocknet war, bevor einer von ihnen geboren wurde."
+    ],
+    "name": "Ein Groll, älter als sein Träger",
+    "preconditions": [
+      "eine alte Feindschaft, die neu entfacht wird und deren Ursprung niemand mehr, der noch am Leben ist, miterlebt hat"
+    ],
+    "roles": {
+      "elders": {
+        "constraints": [
+          "glauben, sie bewahren die Ehre der Toten"
+        ],
+        "label": "die Bewahrer der Fehde"
+      },
+      "inheritor": {
+        "constraints": [
+          "hat die Seite, in die er hineingeboren wurde, nicht selbst gewählt"
+        ],
+        "label": "der Erbe des Grolls"
+      },
+      "wrong": {
+        "constraints": [
+          "ist geringfügiger oder älter, als die Fehde es verlangt"
+        ],
+        "label": "das ursprüngliche Unrecht"
+      }
+    },
+    "summary": "Ein Blutfehde wird mit dem Schwert weitergegeben – zwei Häuser, zwei Schulen, zwei Familien, die sich seit Generationen gegenseitig töten, länger, als es noch lebende Zeugen rechtfertigen könnten. Gezwungen, Partei zu ergreifen, sucht der Erbe nach dem ursprünglichen Unrecht und findet, dass es entweder weniger schwerwiegend war, als es das Sterben rechtfertigte, oder bereits längst vergeltet wurde; er muss sich nun zwischen dem Teufelskreis und der Wahrheit entscheiden."
+  },
+  "wuxia.recognition_between_equals": {
+    "beats": {
+      "meet": {
+        "intent": "ein Zusammentreffen zwischen Parteien, die sich nichts schuldig sind",
+        "label": "Begegnung zweier Fremder"
+      },
+      "recognize": {
+        "intent": "jeder findet den ersten Ebenbürtigen, dem er seit Jahren begegnet ist",
+        "label": "Anerkennung vor der Namensnennung"
+      },
+      "swear": {
+        "intent": "Es entsteht eine Verbindung, die bestehende Loyalitäten durchbricht",
+        "label": "Ein Bund beim Wein"
+      },
+      "test": {
+        "intent": "Geschick wird als Prüfung und nicht als Streit gemessen",
+        "label": "Ein Austausch ohne Groll"
+      }
+    },
+    "effects": [
+      "es existiert nun eine Loyalität, die nicht entlang von Fraktionsgrenzen verläuft",
+      "beide haben einen Anspruch auf den anderen, den ihre eigenen Häuser nicht autorisiert haben"
+    ],
+    "emotion_target": "Wärme",
+    "examples": [
+      "Keiner von beiden fragte den anderen erst beim dritten Becher nach dem Namen, und zu diesem Zeitpunkt spielte es kaum noch eine Rolle, wie die Antwort lautete."
+    ],
+    "name": "Zwei Fremde von gleichem Geschick",
+    "preconditions": [
+      "zwei Parteien von vergleichbarem Können ohne gegenseitige Verpflichtung, von denen jeder im anderen eine Fähigkeit erkannt hat, die nicht offenbart wurde"
+    ],
+    "roles": {
+      "first": {
+        "constraints": [
+          "prüft ohne Hintergedanken"
+        ],
+        "label": "der Initiator"
+      },
+      "second": {
+        "constraints": [
+          "antwortet auf gleiche Weise"
+        ],
+        "label": "der ebenbürtige Fremde"
+      },
+      "world": {
+        "constraints": [
+          "werden diese Verbindung letztlich auf die Probe stellen"
+        ],
+        "label": "die Loyalitäten ihrer Herkunft"
+      }
+    },
+    "summary": "Zwei Menschen, die sich nichts schuldig sind, messen sich in Worten oder Waffen – nicht aus Zorn, sondern als Prüfung. Jeder findet im anderen den ersten ebenbürtigen Gegner seit Jahren, dem man nicht mit Schonung begegnen muss. Die gegenseitige Anerkennung erfolgt, noch bevor Namen fallen, und das Band, das sie später beim Trinken schließen, wird die meisten Loyalitäten überdauern, in die sie hineingeboren wurden."
+  },
+  "wuxia.retired_blade_recalled": {
+    "beats": {
+      "arrive": {
+        "intent": "etwas aus der Zeit davor erscheint, das nicht abgewiesen werden kann",
+        "label": "Die Vergangenheit an der Tür"
+      },
+      "quiet": {
+        "intent": "ein ehemaliger Krieger lebt unentdeckt und zufrieden",
+        "label": "Das stille Leben"
+      },
+      "raise": {
+        "intent": "die Klinge wird erneut geführt, weil das Alternativszenario schlimmer ist",
+        "label": "Das Gelübde bricht"
+      },
+      "recognized": {
+        "intent": "die Technik wird identifiziert und das stille Leben endet",
+        "label": "Das Jianghu erkennt die Hand"
+      }
+    },
+    "effects": [
+      "eine alte Feindschaft, die ihren Ursprung längst hinter sich gelassen hat, erwacht zu neuem Leben und findet den Versteck",
+      "die angenommene Identität bietet keinen Schutz mehr"
+    ],
+    "emotion_target": "Melancholie",
+    "examples": [
+      "Neun Jahre lang war er als Fährmann tätig; es brauchte nur einen Abend und einen einzigen Hieb, damit drei Provinzen wussten, dass er es nicht war."
+    ],
+    "name": "Der, der das Schwert niederlegte",
+    "preconditions": [
+      "eine abgelegte Vergangenheit, die andere anhand der Kampftechnik noch immer identifizieren können"
+    ],
+    "roles": {
+      "arrival": {
+        "constraints": [
+          "kann nicht abgewiesen werden"
+        ],
+        "label": "die Vergangenheit an der Tür"
+      },
+      "jianghu": {
+        "constraints": [
+          "erinnert sich an die Technik"
+        ],
+        "label": "die Welt, die die Hand erkennt"
+      },
+      "quiet_life": {
+        "constraints": [
+          "wird aufrichtig geschätzt"
+        ],
+        "label": "das verlorene Leben"
+      },
+      "retired": {
+        "constraints": [
+          "hat abgeschworen und meinte es ernst"
+        ],
+        "label": "derjenige, der es niederlegte"
+      }
+    },
+    "summary": "Jemand, der der Welt der Kampfkünste abgeschworen hat, lebt unter falschem Namen in bescheidenem Frieden, bis die Vergangenheit an die Tür klopft — ein alter Feind, ein ehemaliger Schüler oder eine Schuld, die sie einholt. Das Gelübde wird nicht für Ruhm gebrochen, sondern weil die Alternative schlimmer ist, und das Jianghu erkennt die Hand, die geführt wird, innerhalb weniger Tage wieder."
+  },
+  "wuxia.righteous_debt": {
+    "beats": {
+      "aid": {
+        "intent": "Reis wird geteilt oder ein Name wird für jemanden eingestanden, noch bevor man weiß, wer es ist",
+        "label": "Ein Fremder auf der Straße wird geholfen"
+      },
+      "bind": {
+        "intent": "Wer einmal für diesen Menschen eingestanden ist, darf nicht länger zusehen",
+        "label": "Der Kodex des Jianghu bindet den Helfer"
+      },
+      "call": {
+        "intent": "dem Fremden beizustehen, kostet den Helfer nun den eigenen Vorteil",
+        "label": "Die Forderung kommt zur schlimmsten Zeit"
+      },
+      "choose": {
+        "intent": "die Entscheidung fällt an einem Ort, an dem Reisende sie in jedes Gasthaus tragen werden",
+        "label": "Bezahlt durch den Ruf, vor den Augen von Fremden"
+      }
+    },
+    "effects": [
+      "die Stellung des Helfers im Jianghu wird durch diese Entscheidung besiegelt",
+      "ein konkreter Vorteil wurde aufgegeben oder ein Kodex wurde gebrochen"
+    ],
+    "emotion_target": "Entschlossenheit",
+    "examples": [
+      "Er hatte im Regen seinen Reis mit einem Bettler geteilt, und der Bettler kehrte in Seidengewändern mit einer Eskorte zurück – ausgerechnet im denkbar schlechtesten Moment."
+    ],
+    "name": "Die Schuld, die der Kodex fordert",
+    "preconditions": [
+      "eine Welt der Kampfkünste, in der der Ruf eine bindende Währung ist"
+    ],
+    "roles": {
+      "debtor": {
+        "constraints": [
+          "erweist sich als eine kostspielige Schuld"
+        ],
+        "label": "derjenige, dem geholfen wurde"
+      },
+      "helper": {
+        "constraints": [
+          "handelte, bevor er wusste, wer es war"
+        ],
+        "label": "derjenige, der ohne Kalkül half"
+      },
+      "interest": {
+        "constraints": [
+          "ist real und gewaltig"
+        ],
+        "label": "der Preis der Ehre bei der Tilgung"
+      },
+      "witnesses": {
+        "constraints": [
+          "werden sich an die Entscheidung erinnern"
+        ],
+        "label": "die Zeugen des Jianghu"
+      }
+    },
+    "summary": "Ein Fremder auf der Straße wird ohne Hintergedanken geholfen – eine Schale Reis, die man sich in einer Herberge teilt, eine Wunde, die verbunden wird, ein Name, der vor einem Magistrat für einen anderen einsteht – und der Kodex der Welt des Jianghu bindet den HELFER, nicht den Hilfsbedürftigen: Wer einmal für diesen Menschen eingestanden ist, darf nun nicht mehr schweigen. Die Forderung wird zur denkbar schlechtesten Stunde laut, und sie wird mit dem Ruf unter Fremden beglichen, die von dieser Entscheidung in jeder Herberge erzählen werden, von hier bis zur Provinzgrenze."
+  },
+  "wuxia.tavern_provocation": {
+    "beats": {
+      "exchange": {
+        "intent": "eine einzige, kurze Demonstration beendet die Angelegenheit",
+        "label": "Ein Austausch entscheidet die Sache"
+      },
+      "restraint": {
+        "intent": "die beleidigte Person wägt ab, was eine Antwort kosten wird",
+        "label": "Die Selbstbeherrschung wird geprüft"
+      },
+      "slight": {
+        "intent": "eine Beleidigung wird ausgesprochen, die nicht im Privaten ignoriert werden kann",
+        "label": "Die Herabwürdigung erfolgt"
+      },
+      "travel": {
+        "intent": "der Bericht verbreitet sich und verändert das Ansehen beider Seiten",
+        "label": "Die Geschichte verbreitet sich"
+      }
+    },
+    "effects": [
+      "das Ansehen beider Parteien hat sich durch das Gerücht verschoben, nicht durch das eigentliche Ereignis",
+      "jemand im Raum hat nun Kenntnis von einer Fähigkeit erlangt, die zuvor nicht offenbart wurde"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Der Becher fiel nicht um. Niemand im Raum konnte danach sagen, wer von beiden sich bewegt hatte; nur dass der Wein nicht verschüttet worden war."
+    ],
+    "name": "Eine Beleidigung in der Schenke",
+    "preconditions": [
+      "ein öffentlicher Ort, an dem der Ruf durch bloße Weitergabe von Informationen entstehen oder zerstört werden kann"
+    ],
+    "roles": {
+      "insulted": {
+        "constraints": [
+          "muss die Selbstbeherrschung gegen den Ruf abwägen"
+        ],
+        "label": "die beleidigte Person"
+      },
+      "provoker": {
+        "constraints": [
+          "testet eher, als dass er kämpft"
+        ],
+        "label": "der Provokateur"
+      },
+      "room": {
+        "constraints": [
+          "trägt die Geschichte in die Welt hinaus"
+        ],
+        "label": "die Zeugenschaft"
+      }
+    },
+    "summary": "Eine Herabwürdigung erfolgt in einem Raum voller Menschen, die die Geschichte weitertragen werden – ein Name wird verspottet, eine Schule beleidigt oder ein Becher absichtlich umgestoßen. Die Selbstbeherrschung wird vor Zeugen auf die Probe gestellt; ein kurzer Schlagabtausch entscheidet die Sache, und der Bericht über das Geschehene verbreitet sich schneller und weiter, als es beide Parteien beabsichtigt hatten."
+  }
+}

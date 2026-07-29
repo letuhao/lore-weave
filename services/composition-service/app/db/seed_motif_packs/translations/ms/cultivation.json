@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "pencabar melonjakkan harga",
+        "label": "Perang bidaan"
+      },
+      "outbid": {
+        "intent": "protagonis ditewaskan dalam bidaan dan dihina",
+        "label": "Pencabar memintas bidaan"
+      },
+      "secret_win": {
+        "intent": "protagonis memperolehnya melalui cara yang tidak disangka-sangka",
+        "label": "Cara rahsia untuk menang"
+      },
+      "surface": {
+        "intent": "sebuah artifak rebutan dibawa ke lelongan",
+        "label": "Barangan nadir muncul"
+      }
+    },
+    "effects": [
+      "protagonis memperoleh harta karun tersebut",
+      "pencabar yang kaya-raya tewas secara terbuka"
+    ],
+    "emotion_target": "kemenangan",
+    "examples": [
+      "Sebuah relik muncul di lelongan; setelah ditewaskan dalam bidaan dan dihina, protagonis memenanginya dengan cara yang tidak dijangka oleh sesiapa pun."
+    ],
+    "name": "Khazanah Rumah Lelong",
+    "preconditions": [
+      "sumber yang diidamkan tersedia melalui persaingan terbuka"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "sokongan tersembunyi"
+        ],
+        "label": "penyokong rahsia"
+      },
+      "protagonist": {
+        "constraints": [
+          "kekurangan sumber"
+        ],
+        "label": "pembida"
+      },
+      "rival": {
+        "constraints": [
+          "angkuh, bermodal besar"
+        ],
+        "label": "pencabar kaya"
+      },
+      "treasure": {
+        "constraints": [
+          "nadir, menjadi rebutan"
+        ],
+        "label": "artifak lelongan"
+      }
+    },
+    "summary": "Sebuah barangan nadir muncul di lelongan; setelah tewas dalam persaingan harga dan dihina, protagonis akhirnya memenanginya melalui penyokong rahsia atau cara yang tidak disangka-sangka."
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "merampasnya dari jarak yang maut",
+        "label": "Pemerolehan berbahaya"
+      },
+      "advance": {
+        "intent": "mencapai tahap baharu melalui kuasanya",
+        "label": "Makan dan mara"
+      },
+      "named": {
+        "intent": "esensi yang diperlukan telah dikenal pasti",
+        "label": "Sumber dikenal pasti"
+      },
+      "stall": {
+        "intent": "kemajuan terhenti di hadapan tembok",
+        "label": "Peringkat terhenti"
+      }
+    },
+    "effects": [
+      "protagonis memperoleh sumber yang diperlukan",
+      "protagonis meningkat ke tahap seterusnya"
+    ],
+    "emotion_target": "keazaman",
+    "examples": [
+      "Tersekat di ambang kebuntuan, sang pengultivasi memburu intipati yang dikawal ketat ke dalam jarak maut dan mencapai tahap baharu melalui kuasanya."
+    ],
+    "name": "Pemburuan Sumber Halangan",
+    "preconditions": [
+      "protagonis terhenti di satu tahap kebuntuan",
+      "suatu sumber khusus diketahui dapat menembusi kebuntuan tersebut"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "mematikan, menjaga wilayah"
+        ],
+        "label": "binatang penjaga"
+      },
+      "protagonist": {
+        "constraints": [
+          "memerlukan sumber yang khusus"
+        ],
+        "label": "sang kultivator yang tersekat"
+      },
+      "resource": {
+        "constraints": [
+          "jarang ditemui, dikawal ketat"
+        ],
+        "label": "herba semangat / teras"
+      }
+    },
+    "summary": "Tersekat di hadapan satu tembok, sang kultivator memburu esensi yang dikawal masuk ke dalam jarak maut dan memecahkan tahapnya melalui kuasa tersebut."
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "tahap yang buntu memberi rintangan",
+        "label": "Menghadapi tembok batin"
+      },
+      "breakthrough": {
+        "intent": "bertahan hidup dan menembusi sempadan",
+        "label": "Mendaki satu alam"
+      },
+      "crisis": {
+        "intent": "cubaan tersebut hampir meragut nyawa sang kultivator",
+        "label": "Pertemuan dengan maut"
+      },
+      "insight": {
+        "intent": "pemahaman mendalam meretakkan tembok batin",
+        "label": "Pencerahan tiba-tiba"
+      },
+      "seclusion": {
+        "intent": "mengasingkan diri untuk memecahkan kebuntuan",
+        "label": "Memulakan pengasingan"
+      },
+      "tribulation": {
+        "intent": "langit menguji pendakian",
+        "label": "Ujian Langit"
+      }
+    },
+    "effects": [
+      "protagonis maju ke alam atau tahap yang lebih tinggi",
+      "reputasi dan kekuatan mereka meningkat secara ketara"
+    ],
+    "emotion_target": "antisipasi",
+    "examples": [
+      "Dikurung untuk memecahkan tahap yang statik, sang kultivator berhadapan dengan tembok batin, cubaan langit, saat hampir maut, lalu mendaki ke satu alam baharu."
+    ],
+    "name": "Pencapaian Pintu Tertutup",
+    "preconditions": [
+      "protagonis terhalang pada tahap kebuntuan kultivasi",
+      "terdapat sumber atau pencerahan yang mencukupi di tangan"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "pilihan"
+        ],
+        "label": "sekutu yang menjaga pintu"
+      },
+      "protagonist": {
+        "constraints": [
+          "tersekat di bawah tembok tahap"
+        ],
+        "label": "sang kultivator yang buntu"
+      },
+      "tribulation": {
+        "constraints": [
+          "tidak berjiwa, semakin memuncak"
+        ],
+        "label": "ujian langit"
+      }
+    },
+    "summary": "Mengasingkan diri untuk memecahkan tahap yang buntu, sang kultivator berhadapan dengan tembok batin, menempuh ujian langit, menghampiri maut, dan akhirnya mendaki ke alam yang lebih tinggi."
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "sang pengultivasi mesti menolak penipuan yang menenangkan",
+        "label": "Berhadapan dengan diri sendiri"
+      },
+      "emerge": {
+        "intent": "dao-heart tetap teguh, telah ditempa",
+        "label": "Bangkit dengan teguh"
+      },
+      "false_memory": {
+        "intent": "sebuah ilusi mengulang kembali rasa bersalah yang paling mendalam",
+        "label": "Ujian memori palsu"
+      },
+      "surface": {
+        "intent": "keraguan sang pengultivasi menjelma menjadi bentuk nyata",
+        "label": "Iblis dalaman muncul"
+      }
+    },
+    "effects": [
+      "tekad protagonis menjadi lebih teguh dan jernih",
+      "kerentanan terhadap ilusi atau godaan telah dihapuskan"
+    ],
+    "emotion_target": "keteguhan hati",
+    "examples": [
+      "Satu ujian ilusi mengulang kembali rasa bersalah terburuk sang pengultivasi; hanya dengan menolak penipuan yang menenangkan, barulah dao-heart dapat bertahan."
+    ],
+    "name": "Penempaan Hati-Dao",
+    "preconditions": [
+      "protagonis memikul rasa bersalah atau keterikatan yang belum terselesaikan"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "perkara yang menjadi pertaruhan"
+        ],
+        "label": "hati-Dao / keteguhan hati"
+      },
+      "inner_demon": {
+        "constraints": [
+          "berwajah tenang dan menenangkan"
+        ],
+        "label": "iblis dalaman"
+      },
+      "protagonist": {
+        "constraints": [
+          "memikul rasa bersalah yang belum terlerai"
+        ],
+        "label": "sang pengultivasi"
+      }
+    },
+    "summary": "Seorang iblis dalaman muncul dalam ujian ilusi yang mengulang kembali rasa bersalah terburuk sang pengultivasi; hanya dengan menolak penipuan yang menenangkan, hati-Dao dapat bertahan."
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "waris yang sombong mencerca watak utama",
+        "label": "Pihak angkuh memperlekeh"
+      },
+      "reveal": {
+        "intent": "watak utama mempamerkan kemahiran yang lebih tinggi",
+        "label": "Kekuatan tersembunyi didedahkan"
+      },
+      "reversal": {
+        "intent": "penghina dipermalukan di khalayak ramai",
+        "label": "Penghinaan dibalikkan"
+      },
+      "underestimate": {
+        "intent": "khalayak menganggap mereka tidak berguna",
+        "label": "Watak utama dipandang rendah"
+      }
+    },
+    "effects": [
+      "kekuatan sebenar protagonis didedahkan kepada saksi",
+      "pihak yang sombong itu dipermalukan dan menjadi musuh"
+    ],
+    "emotion_target": "kepuasan",
+    "examples": [
+      "Seorang pewaris yang angkuh mencemooh si «sampah»; di tengah pertandingan, si sampah itu mempamerkan seni tahap tinggi dan si pewaris dipermalukan di khalayak ramai."
+    ],
+    "name": "Pembalikan Penghinaan",
+    "preconditions": [
+      "protagonis dipandang rendah atau dihina di hadapan orang ramai",
+      "protagonis secara rahsia memiliki kekuatan yang melampaui kedudukan zahirnya"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "sombong, mempunyai pengaruh kuat"
+        ],
+        "label": "si genius yang angkuh"
+      },
+      "protagonist": {
+        "constraints": [
+          "dihina secara terbuka"
+        ],
+        "label": "si yang dipandang rendah"
+      },
+      "witnesses": {
+        "constraints": [
+          "penonton awam"
+        ],
+        "label": "khalayak yang memerhati"
+      }
+    },
+    "summary": "Pihak yang angkuh memperlekehkan watak utama yang dipandang rendah, sebelum watak tersebut mendedahkan kekuatan tersembunyi dan membalikkan penghinaan itu kembali kepada si penghina di hadapan saksi."
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "pertemuan kebetulan yang mengubah segala-galanya",
+        "label": "Menemui relik/guru"
+      },
+      "inheritance": {
+        "intent": "mengurniakan kuasa yang terikat dengan hutang budi atau rahsia",
+        "label": "Menerima warisan dengan bayaran"
+      },
+      "isolation": {
+        "intent": "membiarkan protagonis terdampar tanpa bantuan, pada titik terendah mereka",
+        "label": "Keterasingan selepas kejatuhan"
+      },
+      "trial": {
+        "intent": "guru atau relik menguji kelayakan",
+        "label": "Ujian melalui warisan"
+      }
+    },
+    "effects": [
+      "protagonis memperoleh kuasa atau teknik tersembunyi",
+      "tercipta sebuah hutang atau ikatan rahsia dengan sang guru"
+    ],
+    "emotion_target": "harapan",
+    "examples": [
+      "Dibuang ke dalam jurang yang terpencil, si lemah terjumpa seorang guru yang sedang nazak; setelah diuji, guru itu menghadiahkan seni terlarang — yang terikat dengan hutang kesetiaan."
+    ],
+    "name": "Pertemuan Kebetulan → Warisan",
+    "preconditions": [
+      "protagonis berada dalam keadaan lemah, dihina, atau dibuang",
+      "tiada sekutu yang berada di sisi"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "terlarang atau tiada tandingan"
+        ],
+        "label": "seni atau talian darah warisan"
+      },
+      "mentor": {
+        "constraints": [
+          "hampir mati atau sedang kaku"
+        ],
+        "label": "guru yang nazak / roh relik"
+      },
+      "protagonist": {
+        "constraints": [
+          "sedang lemah atau terhina"
+        ],
+        "label": "si lemah yang terasing"
+      }
+    },
+    "summary": "Seorang yang lemah dan dihina, terasing akibat kejatuhan atau pengasingan, menemui sebuah relik atau guru yang sedang nazak, diuji, dan menerima warisan tersembunyi dengan bayaran hutang yang mengikat."
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "pertarungan dimulakan",
+        "label": "Cabaran dilemparkan"
+      },
+      "reversal": {
+        "intent": "pihak yang diunggulkan tersungkur pada saat dia merasa yakin akan kemenangan",
+        "label": "Pembalikan maut"
+      },
+      "stakes": {
+        "intent": "kematian ditetapkan sebagai harganya",
+        "label": "Pertaruhan diikrarkan"
+      },
+      "turn": {
+        "intent": "arus keadaan berubah secara mengejut",
+        "label": "Pertarungan berubah"
+      }
+    },
+    "effects": [
+      "seorang pesaing tewas dengan pasti, sering kali hingga mati",
+      "kedudukan watak utama berubah sepenuhnya"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Pertarungan maut di arena; si anak emas tewas pada saat dia menyangka dia telah menang."
+    ],
+    "name": "Pertarungan Hidup Mati",
+    "preconditions": [
+      "sebuah pertarungan terbuka yang mempertaruhkan segalanya telah diikrarkan"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "arena terbuka"
+        ],
+        "label": "penonton yang memerhati"
+      },
+      "protagonist": {
+        "constraints": [
+          "kelihatan tidak setanding"
+        ],
+        "label": "pencabar atau yang dicabar"
+      },
+      "rival": {
+        "constraints": [
+          "yakin, disokong"
+        ],
+        "label": "pencabar pilihan"
+      }
+    },
+    "summary": "Pertarungan maut dipertaruhkan di arena; si anak emas tewas pada saat dia menyangka kemenangan sudah di tangan."
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "guru menuntut balasan pada saat yang sukar",
+        "label": "Hutang dituntut"
+      },
+      "incur": {
+        "intent": "terciptanya satu kewajipan yang sukar untuk dibalas",
+        "label": "Hutang yang tidak terbalas terjalin"
+      },
+      "loyalty_test": {
+        "intent": "kesetiaan murid diuji",
+        "label": "Ujian kesetiaan"
+      },
+      "taught": {
+        "intent": "guru menyelamatkan atau memberi bimbingan kepada protagonis",
+        "label": "Diselamatkan atau diajar"
+      }
+    },
+    "effects": [
+      "suatu kewajipan yang mengikat menamatkan protagonis dengan sang guru",
+      "kesetiaan protagonis terbukti atau terkhianati"
+    ],
+    "emotion_target": "kewajipan",
+    "examples": [
+      "Diselamatkan oleh seorang guru yang menyendiri, sang murid menanggung hutang budi yang dituntut pada saat yang paling malang."
+    ],
+    "name": "Hutang Guru-Murid",
+    "preconditions": [
+      "protagonis menerima bantuan atau bimbingan yang mengubah hidupnya"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "berkuasa, menuntut"
+        ],
+        "label": "guru yang menyendiri"
+      },
+      "obligation": {
+        "constraints": [
+          "mengikat, membebankan"
+        ],
+        "label": "hutang / kewajipan"
+      },
+      "protagonist": {
+        "constraints": [
+          "berhutang budi kepada guru"
+        ],
+        "label": "murid yang berhutang budi"
+      }
+    },
+    "summary": "Diselamatkan atau diajar oleh seorang guru yang menyendiri, murid tersebut memikul hutang budi yang tidak terbalas, yang dituntut pada saat yang paling genting."
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "orang luar tiba tanpa sebarang kedudukan",
+        "label": "Tiba tanpa dikenali"
+      },
+      "exceed": {
+        "intent": "batu ujian hancur berkecai",
+        "label": "Melampaui ukuran"
+      },
+      "recruited": {
+        "intent": "para tetua bertelag untuk menuntut mereka",
+        "label": "Direkrut dengan pertaruhan"
+      },
+      "underestimated": {
+        "intent": "penjaga pintu memandang remeh mereka",
+        "label": "Dipandang rendah semasa ujian"
+      }
+    },
+    "effects": [
+      "protagonis memperoleh kedudukan dan penaung",
+      "bibit persaingan dengan pihak penjaga pintu mula tertanam"
+    ],
+    "emotion_target": "kemenangan",
+    "examples": [
+      "Seorang orang luar tanpa pangkat memecahkan had siling batu ujian; para tetua bertelag untuk menuntut mereka."
+    ],
+    "name": "Ujian Kemasukan Sekte",
+    "preconditions": [
+      "sesuatu ujian terbuka atau pintu masuk ke sesebuah kumpulan"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "hakim dan perekrut"
+        ],
+        "label": "tetua sekte"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "angkuh"
+        ],
+        "label": "murid penjaga pintu"
+      },
+      "protagonist": {
+        "constraints": [
+          "tanpa kedudukan, tidak dijangka"
+        ],
+        "label": "orang luar yang tidak dikenali"
+      }
+    },
+    "summary": "Seorang orang luar tanpa kedudukan memecahkan ukuran ujian semasa ujian kemasukan sesebuah sekte; para tetua bertarung untuk merebut mereka, dengan pertaruhan yang tinggi."
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "protagonis dilayan sebagai orang cacat",
+        "label": "Kecacatan tersembunyi"
+      },
+      "explained": {
+        "intent": "kekurangan tersebut dikenal pasti sebagai susunan tubuh yang nadir",
+        "label": "Penjelasan kecacatan"
+      },
+      "gift": {
+        "intent": "kekurangan tersebut memacu kebangkitan yang mustahil",
+        "label": "Kecacatan menjadi anugerah"
+      },
+      "vindication": {
+        "intent": "mereka yang menghina akhirnya terbukti salah",
+        "label": "Pembuktian diri"
+      }
+    },
+    "effects": [
+      "potensi tersembunyi protagonis mula terserlah",
+      "mereka yang pernah menghina terpaksa mengakui kehebatan protagonis"
+    ],
+    "emotion_target": "pembuktian diri",
+    "examples": [
+      "Tubuh yang dianggap «cacat» rupa-rupanya memiliki susunan tenaga yang nadir; kekurangan itulah yang menjadi pemacu utama kebangkitan."
+    ],
+    "name": "Pembuktian Si Sampah Menjadi Genius",
+    "preconditions": [
+      "protagonis dipandang rendah sebagai orang yang tidak berbakat atau cacat"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "bersikap acuh tak acuh, mementingkan status"
+        ],
+        "label": "klan yang memandang hina"
+      },
+      "diagnostician": {
+        "constraints": [
+          "mampu membaca hakikat sebenar susunan tubuh"
+        ],
+        "label": "tetua / pakar diagnosis"
+      },
+      "protagonist": {
+        "constraints": [
+          "disangka tidak berbakat"
+        ],
+        "label": "si «cacat» yang dihina"
+      }
+    },
+    "summary": "Sesuatu yang dianggap sebagai kecacatan yang melumpuhkan sebenarnya adalah anugerah nadir yang tersembunyi; kekurangan tersebut menjadi pemacu kebangkitan dan protagonis akhirnya dibuktikan kebenarannya."
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "bertahan untuk mendaki, atau musnah sepenuhnya",
+        "label": "Mendaki atau rebah"
+      },
+      "merit": {
+        "intent": "kuasa mencapai ambang pendakian",
+        "label": "Pencapaian terkumpul"
+      },
+      "notice": {
+        "intent": "tribulasi mula berkumpul",
+        "label": "Langit mula menyedari"
+      },
+      "tribulation": {
+        "intent": "gelombang demi gelombang mesti ditanggung",
+        "label": "Tribulasi kilat"
+      }
+    },
+    "effects": [
+      "protagonis mendaki ke alam atau dimensi yang lebih tinggi",
+      "kedudukan mereka di dunia lama ditinggalkan sepenuhnya"
+    ],
+    "emotion_target": "kagum",
+    "examples": [
+      "Kuasa yang terkumpul mengundang murka langit; sembilan gelombang kesengsaraan mesti diatasi untuk mendaki."
+    ],
+    "name": "Pendakian Tribulasi",
+    "preconditions": [
+      "protagonis telah mencapai ambang kenaikan"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "mempertahankan kedudukan"
+        ],
+        "label": "sekutu penyokong"
+      },
+      "protagonist": {
+        "constraints": [
+          "di ambang pendakian"
+        ],
+        "label": "pengkultivasi yang mendaki"
+      },
+      "tribulation": {
+        "constraints": [
+          "semakin memuncak, membawa maut"
+        ],
+        "label": "tribulasi samawi"
+      }
+    },
+    "summary": "Kuasa yang terkumpul menarik kemurkaan langit; sembilan gelombang tribulasi kilat mesti diatasi untuk mendaki, dengan sokongan daripada seorang sekutu."
+  }
+}

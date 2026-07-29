@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "pihak dalaman bergantung sepenuhnya kepada orang dalam tersebut",
+        "label": "Tindakan orang dalam yang dipercayai"
+      },
+      "note": {
+        "intent": "kebocoran maklumat yang terlalu tepat untuk dianggap sebagai kebetulan",
+        "label": "Ketidakkonsistenan kecil dikesan"
+      },
+      "trap": {
+        "intent": "rahsia palsu yang dijadikan umpan telah ditanam",
+        "label": "Perangkap dipasang untuk pengesahan"
+      },
+      "unmask": {
+        "intent": "mendedahkan identiti pengkhianat dan membelot mereka",
+        "label": "Pendedahan wajah dan pembalikan arah"
+      }
+    },
+    "effects": [
+      "pengkhianat dikenal pasti dan dijadikan ejen talam dua muka atau disingkirkan",
+      "tahap kepercayaan dalam kumpulan disusun semula"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Kebocoran yang terlalu tepat untuk dianggap sebagai kebetulan; rahsia palsu yang dijadikan umpan membuktikan siapa pembawa berita — dan kepada siapa."
+    ],
+    "name": "Pendedahan Perisik Talam Dua Muka",
+    "preconditions": [
+      "kebocoran maklumat yang terlalu tepat menunjukkan orang dalam yang dipercayai telah dikhianati"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "membantu memasang umpan"
+        ],
+        "label": "orang kepercayaan"
+      },
+      "mole": {
+        "constraints": [
+          "orang dalam yang dipercayai"
+        ],
+        "label": "sang pengkhianat"
+      },
+      "protagonist": {
+        "constraints": [
+          "sedang memburu pembocor secara senyap"
+        ],
+        "label": "pihak yang mengesyaki"
+      }
+    },
+    "summary": "Kebocoran maklumat yang terlalu tepat untuk dianggap sebagai kebetulan; rahsia palsu yang dijadikan umpan membuktikan siapa pembocor berita — dan kepada siapa — sebelum akhirnya memalingkan arah kesetiaan sang pengkhianat."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "mungkir janji apabila ia menguntungkan",
+        "label": "Khianati pada titik perubahan"
+      },
+      "offer": {
+        "intent": "mencadangkan perjanjian yang akan diterima oleh sekutu",
+        "label": "Tawarkan pakatan"
+      },
+      "realign": {
+        "intent": "menukar pengkhianatan menjadi kedudukan strategik",
+        "label": "Penyusunan Semula"
+      },
+      "rely": {
+        "intent": "sekutu menyerahkan sumber atau kepercayaan mereka",
+        "label": "Sekutu mula percaya"
+      },
+      "share": {
+        "intent": "mendedahkan maklumat yang cukup untuk dipercayai",
+        "label": "Kongsi kebenaran separa"
+      }
+    },
+    "effects": [
+      "sekutu dibuang pada saat pengaruh berada di kemuncak",
+      "si perancang memperoleh kelebihan"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Satu pakatan ikhlas, sebuah rahsia bersama yang cukup nyata untuk dipercayai — sehinggalah tiba saatnya untuk memungkirinya demi keuntungan."
+    ],
+    "name": "Pakatan Palsu",
+    "preconditions": [
+      "si perancang dan sasaran berkongsi matlamat bersama yang munasabah"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "ganjaran daripada pengkhianatan"
+        ],
+        "label": "kelebihan yang dicari"
+      },
+      "false_ally": {
+        "constraints": [
+          "bergantung sepenuhnya pada pakatan tersebut"
+        ],
+        "label": "sekutu yang terpedaya"
+      },
+      "schemer": {
+        "constraints": [
+          "menawarkan pakatan palsu"
+        ],
+        "label": "si perancang"
+      }
+    },
+    "summary": "Satu perjanjian ikhlas dan rahsia bersama yang cukup nyata untuk dipercayai, sehinggalah tiba saatnya untuk mengkhianati janji tersebut pada titik perubahan."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "bertindak berdasarkan kebenaran yang terbongkar",
+        "label": "Ganjaran atau pembersihan"
+      },
+      "observe": {
+        "intent": "memerhati siapa yang memakan umpan",
+        "label": "Perhatikan tindak balas"
+      },
+      "stage": {
+        "intent": "menetapkan peluang yang telah dipancing",
+        "label": "Sediakan godaan"
+      },
+      "verdict": {
+        "intent": "ujian ini menentukan kepercayaan atau pengkhianatan",
+        "label": "Lulus atau gagal kesetiaan"
+      }
+    },
+    "effects": [
+      "kesetiaan sebenar pihak yang diuji terbongkar",
+      "pemegang kuasa memberi ganjaran atau menghapuskan mereka mengikut kesesuaian"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Pintu yang dibiarkan terbuka luas sebenarnya adalah satu ujian; sesiapa yang melangkah masuk akan mendedahkan apa yang ingin diketahui oleh si pemerhati."
+    ],
+    "name": "Perangkap Ujian Kesetiaan",
+    "preconditions": [
+      "pemegang kuasa mengesyaki adanya ketidaksetiaan yang tersembunyi"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "apa yang diekstrak melalui ujian tersebut"
+        ],
+        "label": "bukti kesetiaan"
+      },
+      "power_holder": {
+        "constraints": [
+          "merancang godaan"
+        ],
+        "label": "pemegang kuasa"
+      },
+      "suspect": {
+        "constraints": [
+          "pihak yang diuji"
+        ],
+        "label": "suspek pengkhianat"
+      }
+    },
+    "summary": "Pintu yang dibiarkan terbuka luas sebenarnya adalah satu ujian; sesiapa yang melangkah masuk akan mendedahkan apa yang sebenarnya ingin diketahui oleh si pemerhati."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "mangsa terjerumus ke dalam perangkap",
+        "label": "Mangsa bertindak berdasarkan kepercayaan palsu"
+      },
+      "bait": {
+        "intent": "memancing mangsa agar bertindak balas",
+        "label": "Umpan mangsa untuk bertindak"
+      },
+      "counter": {
+        "intent": "impak kejadian dikemudi demi keuntungan perancang",
+        "label": "Tindak balas"
+      },
+      "plant": {
+        "intent": "meletakkan bukti yang telah diubah suai di tempat yang pasti akan ditemui",
+        "label": "Tanam bukti palsu"
+      },
+      "reveal": {
+        "intent": "‘bukti’ muncul ke permukaan, perancang kekal bersih",
+        "label": "Pendedahan yang boleh dinafikan"
+      }
+    },
+    "effects": [
+      "mangsa dipandang hina atau dihukum atas dasar yang salah",
+      "tangan perancang kekal tersembunyi"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Sebuah buku lejar yang dipalsukan diselitkan di tempat yang akan ditemui dan ‘didedahkan’ oleh pesaing — menyebabkan mereka melangkah terus ke dalam perangkap yang menjerat diri mereka sendiri."
+    ],
+    "name": "Skema Bukti Palsu",
+    "preconditions": [
+      "perancang mampu meletakkan bukti yang akan dipercayai oleh pihak berkuasa"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "membawa umpan tanpa menyedarinya"
+        ],
+        "label": "ejen yang tidak sedar"
+      },
+      "authority": {
+        "constraints": [
+          "menghukum berdasarkan bukti yang nyata"
+        ],
+        "label": "pihak berkuasa pemutus"
+      },
+      "schemer": {
+        "constraints": [
+          "menanam bukti palsu"
+        ],
+        "label": "si perancang"
+      },
+      "victim": {
+        "constraints": [
+          "bertindak berdasarkan kepercayaan palsu"
+        ],
+        "label": "mangsa sasaran"
+      }
+    },
+    "summary": "Bukti yang telah diubah suai diselitkan di tempat yang akan ditemui dan «didedahkan» oleh pesaing, memancing mangsa untuk bertindak berdasarkan kepercayaan palsu lalu terperangkap dalam jerat yang sukar dikesan."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "memilih kambing hitam yang boleh dipersalahkan",
+        "label": "Memperdaya pihak yang lemah"
+      },
+      "must_pin": {
+        "intent": "kesalahan mesti jatuh kepada seseorang",
+        "label": "Jenayah mesti dituduh"
+      },
+      "steer": {
+        "intent": "mengarahkan siasatan kepada kambing hitam",
+        "label": "Bukti dihalakan"
+      },
+      "walk_free": {
+        "intent": "pelaku sebenar terlepas daripada pengesanan",
+        "label": "Pelaku sebenar terlepas"
+      }
+    },
+    "effects": [
+      "kambing hitam menanggung segala kesalahan",
+      "pelaku sebenar terlepas daripada tanggungjawab"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Apabila kesalahan perlu dituding kepada seseorang, tangan yang licik memastikan ia jatuh ke bahu pihak yang tidak bersalah."
+    ],
+    "name": "Penggantian Kambing Hitam",
+    "preconditions": [
+      "sesuatu jenayah memerlukan pesalah dan pelaku sebenar mesti kekal tersembunyi"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "dihalakan ke sasaran yang salah"
+        ],
+        "label": "penyiasat"
+      },
+      "scapegoat": {
+        "constraints": [
+          "pihak yang lebih lemah dan layak dipersalahkan"
+        ],
+        "label": "kambing hitam"
+      },
+      "schemer": {
+        "constraints": [
+          "pelaku sebenar"
+        ],
+        "label": "si perancang"
+      }
+    },
+    "summary": "Apabila kesalahan mesti diletakkan pada seseorang, tangan yang licik memastikan ia jatuh kepada pihak yang lebih lemah sementara pelaku sebenar terlepas begitu sahaja."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "sasaran kehilangan kedudukan",
+        "label": "Sasaran dipencilkan"
+      },
+      "seed": {
+        "intent": "menanam satu keraguan",
+        "label": "Menanam khabar angin"
+      },
+      "spread": {
+        "intent": "keraguan itu diulang melalui mulut-mulut yang tidak sedar",
+        "label": "Khabar angin tersebar"
+      },
+      "withdraw": {
+        "intent": "pelindung sasaran mula menjauhkan diri",
+        "label": "Penyokong menarik balik sokongan"
+      }
+    },
+    "effects": [
+      "sasaran terasing dan kehilangan penaungnya",
+      "punca sebenar khabar angin itu kekal tersembunyi"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Satu keraguan yang sengaja ditanam, diulang-ulang oleh mulut-mulut yang tidak tahu asal-usulnya, sehingga sasaran berdiri sendirian."
+    ],
+    "name": "Kempen Bisikan",
+    "preconditions": [
+      "sasaran bergantung pada restu atau pengaruh seorang penaung atau pihak istana"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "menyebarkan khabar angin tanpa sedar"
+        ],
+        "label": "pihak istana atau lembaga"
+      },
+      "schemer": {
+        "constraints": [
+          "mencetuskan khabar angin"
+        ],
+        "label": "perancang"
+      },
+      "target": {
+        "constraints": [
+          "dipencilkan oleh khabar angin"
+        ],
+        "label": "sasaran"
+      }
+    },
+    "summary": "Satu keraguan yang sengaja ditanam, diulang-ulang oleh mulut-mulut yang tidak tahu asalnya, memencilkan sasaran sehingga penyokong mereka menarik balik sokongan."
+  }
+}

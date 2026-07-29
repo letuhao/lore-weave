@@ -1,0 +1,439 @@
+{
+  "mystery.assembled_confrontation": {
+    "beats": {
+      "assemble": {
+        "intent": "semua yang terlibat dikumpulkan di dalam satu bilik",
+        "label": "Pihak-pihak berkumpul"
+      },
+      "consequence": {
+        "intent": "persoalan beralih daripada salah atau tidak, kepada apa yang perlu dilakukan dengannya sekarang",
+        "label": "Apa yang menyusul adalah natijahnya"
+      },
+      "deny": {
+        "intent": "pihak yang dinamakan menafikan tuduhan dan mengemukakan hujah balas yang paling kuat",
+        "label": "Penafian"
+      },
+      "lay": {
+        "intent": "rentetan peristiwa ditelusuri menggunakan fakta yang telah dibuktikan sahaja",
+        "label": "Rantaian fakta terbentang"
+      },
+      "prove": {
+        "intent": "satu perkara muncul yang tidak memerlukan sebarang tafsiran",
+        "label": "Bukti yang tidak boleh disangkal"
+      }
+    },
+    "effects": [
+      "tanggungjawab ditetapkan secara terbuka",
+      "beban akibat daripada pendedahan itu jatuh kepada mereka yang tidak bersalah"
+    ],
+    "emotion_target": "katarsis",
+    "examples": [
+      "Dia membentangkan rantaian itu kepada mereka sebanyak dua kali, dan pada kali kedua, dia berhenti pada bahagian di mana hanya seorang sahaja di dalam bilik itu yang tahu waktu sebenar."
+    ],
+    "name": "Rantaian Fakta Terbentang",
+    "preconditions": [
+      "fakta yang cukup kukuh untuk membina rantaian bukti tanpa memerlukan bukti baharu"
+    ],
+    "roles": {
+      "assembled": {
+        "constraints": [
+          "setiap satunya mempunyai alasan munasabah untuk dicurigai"
+        ],
+        "label": "pihak yang berkumpul"
+      },
+      "culprit": {
+        "constraints": [
+          "menafikan sebelum mengakui"
+        ],
+        "label": "si tertuduh"
+      },
+      "investigator": {
+        "constraints": [
+          "hanya menggunakan apa yang telah dibuktikan"
+        ],
+        "label": "si pendedah fakta"
+      },
+      "proof": {
+        "constraints": [
+          "tidak memerlukan tafsiran untuk menjadi nyata"
+        ],
+        "label": "bukti yang tidak boleh disangkal"
+      }
+    },
+    "summary": "Seluruh isi rumah berkumpul di dalam satu bilik dan rentetan peristiwa ditelusuri di hadapan mereka, langkah demi langkah, di mana setiap langkah hanya bersandarkan pada perkara yang telah dibuktikan — jadual waktu, buku lejar, atau siapa yang sepatutnya mengetahui waktu tersebut. Penafian akan muncul, sebagaimana mestinya, dan ia dijawab oleh satu bukti tunggal yang tidak memerlukan sebarang tafsiran, yang mana selepas itu, apa yang berbaki bukanlah persoalan tentang kesalahan, tetapi persoalan tentang apa yang perlu dilakukan terhadapnya."
+  },
+  "mystery.false_lead": {
+    "beats": {
+      "collapse": {
+        "intent": "jejak palsu itu menjadi bukti paling kukuh tentang siapa yang merancangnya",
+        "label": "Petunjuk runtuh ke arah yang berlawanan"
+      },
+      "commit": {
+        "intent": "sumber, reputasi, atau perasaan dipertaruhkan pada petunjuk tersebut",
+        "label": "Siasatan mula menjurus"
+      },
+      "emerge": {
+        "intent": "bukti tertumpu kepada seorang individu dengan susunan yang luar biasa kemas",
+        "label": "Suspek yang jelas muncul"
+      },
+      "seam": {
+        "intent": "terdapat kesan yang menunjukkan bukti itu telah diatur, bukannya ditinggalkan secara semula jadi",
+        "label": "Kesesuaian yang terlalu sempurna"
+      }
+    },
+    "effects": [
+      "penyiasat telah hilang kredibiliti dan terpaksa meneruskan tugas dengan sumber yang terhad",
+      "kewujudan perancang yang sengaja mengatur segala-galanya kini telah terbukti"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Setiap dokumen yang mereka perlukan berada di dalam laci tunggal yang mereka periksa terlebih dahulu, dan itulah perkara yang akhirnya mengusik fikirannya."
+    ],
+    "name": "Petunjuk Yang Terlalu Sempurna",
+    "preconditions": [
+      "siasatan yang berada di bawah tekanan untuk mengemukakan nama suspek"
+    ],
+    "roles": {
+      "arranger": {
+        "constraints": [
+          "kekal di sebalik tabir selagi petunjuk itu disiasat"
+        ],
+        "label": "si pengatur kesesuaian bukti"
+      },
+      "investigator": {
+        "constraints": [
+          "melabur sebelum mengesahkan"
+        ],
+        "label": "penyiasat yang terlalu menjurus"
+      },
+      "suspect": {
+        "constraints": [
+          "benar-benar terpalit oleh fakta yang ada"
+        ],
+        "label": "suspek yang terlalu mudah disalahkan"
+      }
+    },
+    "summary": "Seorang suspek muncul dengan bukti yang sangat padan — surat-surat berada di laci tunggal yang diperiksa terlebih dahulu, hutang-piutang tercatat dengan jelas, alibi pula sangat lemah — dan si penyiasat mula menjurus kepada kesesuaian itu secara terbuka, mahal, atau emosional. Ia runtuh bukan kerana bukti baharu, tetapi kerana menyedari bahawa kesesuaian itu terlalu kemas: seseorang telah mengatur agar dokumen-dokumen ini ditemui mengikut urutan tersebut, dan orang itulah subjek yang sebenar."
+  },
+  "mystery.hidden_connection": {
+    "beats": {
+      "join": {
+        "intent": "sesuatu yang kebetulan mendedahkan bahawa kedua-duanya berasal dari satu punca",
+        "label": "Munculnya asal-usul yang sama"
+      },
+      "redraw": {
+        "intent": "fakta-fakta yang diketahui disusun semula mengelilingi pusat baharu",
+        "label": "Kes disusun semula"
+      },
+      "separate": {
+        "intent": "kedua-duanya sudah diketahui dan tiada kaitan antara satu sama lain",
+        "label": "Dua fakta yang terasing"
+      }
+    },
+    "effects": [
+      "pusat kes telah beralih tanpa penemuan bukti baharu",
+      "pihak-pihak yang sebelum ini telah dikecualikan kini kembali dalam pemerhatian"
+    ],
+    "emotion_target": "perasaan ingin tahu",
+    "examples": [
+      "Bank dalam buku lejar dan kampung dalam surat itu rupa-rupanya hanya berjarak seratus langkah, dan segala-galanya disusun semula di sekeliling fakta tersebut."
+    ],
+    "name": "Dua Fakta, Satu Asal-usul",
+    "preconditions": [
+      "fail kes yang mengandungi fakta-fakta sedia ada yang belum pernah dibandingkan antara satu sama lain"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "sudah pun memiliki kedua-dua fakta tersebut"
+        ],
+        "label": "si penyambung titik"
+      },
+      "origin": {
+        "constraints": [
+          "terpampang jelas tetapi tidak dianggap penting"
+        ],
+        "label": "asal-usul yang dikongsi"
+      },
+      "source": {
+        "constraints": [
+          "bersifat kebetulan, bukan bukti konklusif"
+        ],
+        "label": "pencetus penyambungan"
+      }
+    },
+    "summary": "Dua perkara yang selama ini tersimpan dalam fail kes sebagai entiti yang tidak berkaitan — dua nama, dua tarikh, jumlah dalam buku lejar dan sebuah kampung dalam sepucuk surat — rupa-rupanya berkongsi satu asal-usul yang sama, dan struktur kes tersebut kini berubah bentuk mengelilinginya. Tiada perkara baharu yang ditemui; fakta yang sedia ada sekadar menjadi pusat perhatian, dan individu yang sebelum ini telah dibebaskan kini kembali dalam radar siasatan."
+  },
+  "mystery.impossible_circumstance": {
+    "beats": {
+      "bound": {
+        "intent": "jenayah tersebut ditunjukkan sebagai sesuatu yang mustahil berdasarkan kekangan yang diketahui",
+        "label": "Kemustahilan dinyatakan"
+      },
+      "dissolve": {
+        "intent": "apabila andaian itu dihapuskan, urutan peristiwa menjadi sesuatu yang biasa",
+        "label": "Kemustahilan terurai"
+      },
+      "enumerate": {
+        "intent": "setiap keadaan diperincikan supaya ia boleh diuji, bukannya sekadar dirasai",
+        "label": "Kekangan disenaraikan"
+      },
+      "identify": {
+        "intent": "satu kekangan ditemui yang sebenarnya tidak pernah disemak oleh sesiapa",
+        "label": "Satu daripadanya hanyalah andaian"
+      }
+    },
+    "effects": [
+      "kaedah jenayah kini diketahui walaupun pelakunya belum dikenal pasti",
+      "siapa yang mendapat keuntungan daripada andaian bersama itu menjadi persoalan baharu"
+    ],
+    "emotion_target": "perasaan ingin tahu",
+    "examples": [
+      "Empat orang bersumpah bahawa pintu itu telah dikawal sepanjang malam, namun setiap daripada mereka menceritakan kebenaran tentang malam yang berbeza."
+    ],
+    "name": "Ia Tidak Mungkin Berlaku",
+    "preconditions": [
+      "satu set keadaan yang dianggap sebagai fakta oleh semua orang yang hadir"
+    ],
+    "roles": {
+      "assumption": {
+        "constraints": [
+          "tidak pernah disahkan oleh sesiapa pun"
+        ],
+        "label": "andaian bersama"
+      },
+      "constraint": {
+        "constraints": [
+          "kekal sehingga satu perkara diklasifikasikan semula"
+        ],
+        "label": "kemustahilan"
+      },
+      "investigator": {
+        "constraints": [
+          "mesti menyatakannya secara jujur untuk meruntuhkannya"
+        ],
+        "label": "penyemak kekangan"
+      }
+    },
+    "summary": "Jenayah ini terkurung oleh kekangan yang menjadikannya mustahil — sebuah bilik yang terkunci dari dalam, tangga yang dikawal sepanjang malam, alibi yang disumpah oleh orang asing, atau jarak yang tidak mungkin ditempuh dalam tempoh masa yang ada. Kekangan-kekangan ini disenaraikan secara jujur, satu demi satu, dan jawapannya ditemui apabila menyedari bahawa salah satu daripadanya bukanlah fakta yang telah disahkan, melainkan sekadar andaian yang dikongsi oleh semua orang di dalam rumah tersebut."
+  },
+  "mystery.impossible_detail": {
+    "beats": {
+      "detail": {
+        "intent": "satu fakta tunggal tidak dapat dijelaskan melalui tafsiran tidak bersalah tersebut",
+        "label": "Satu perincian enggan diterima"
+      },
+      "discover": {
+        "intent": "sesuatu ditemui yang mempunyai tafsiran tidak bersalah yang jelas",
+        "label": "Gangguan ditemui"
+      },
+      "fix": {
+        "intent": "kejanggalan dinyatakan dengan cukup terperinci untuk disiasat",
+        "label": "Persoalan telah ditetapkan"
+      },
+      "open": {
+        "intent": "seseorang tekad untuk mencari jawapan walaupun lebih selesa jika perkara itu dibiarkan",
+        "label": "Siasatan bermula"
+      }
+    },
+    "effects": [
+      "satu persoalan khusus yang tidak terjawab kini mengawal rentak naratif seterusnya",
+      "sekurang-kurangnya satu pihak lebih suka agar persoalan itu tidak dibangkitkan"
+    ],
+    "emotion_target": "perasaan ingin tahu",
+    "examples": [
+      "Segala yang ada di dalam bilik itu menunjukkan dia sedang minum sendirian; hanya cawan kedua, yang telah dicuci, kering, dan diletakkan semula pada tempatnya, yang menyangkal kenyataan itu."
+    ],
+    "name": "Perincian Yang Tidak Sepatutnya Ada",
+    "preconditions": [
+      "suatu peristiwa yang mempunyai penjelasan munasabah yang sedia ada"
+    ],
+    "roles": {
+      "authority": {
+        "constraints": [
+          "lebih selesa dengan penjelasan yang biasa"
+        ],
+        "label": "mereka yang mahu kes ini ditutup"
+      },
+      "investigator": {
+        "constraints": [
+          "melihat apa yang terlepas daripada pandangan orang lain"
+        ],
+        "label": "si pemerhati"
+      },
+      "question": {
+        "constraints": [
+          "lebih tajam daripada sekadar 'siapa pelakunya'"
+        ],
+        "label": "persoalan yang membuka jalan"
+      },
+      "scene": {
+        "constraints": [
+          "membentangkan fakta-fakta yang kebanyakannya biasa"
+        ],
+        "label": "gangguan itu sendiri"
+      }
+    },
+    "summary": "Sesuatu gangguan ditemui — mayat di lantai, kecurian, kehilangan, atau lejar yang tidak seimbang — dan di celah-celah fakta biasa, terselit satu perkara fizikal kecil yang tidak dapat dijelaskan oleh mana-mana keterangan yang tidak bersalah: cawan kedua yang telah dicuci dan diletakkan semula di tempatnya, kunci di sebelah pintu yang salah, atau sehelai kot yang terlalu kering untuk cuaca ketika itu. Ketidakselesaan tunggal itulah yang mengubah satu kemalangan menjadi satu persoalan, dan persoalan itulah inti pati sebenar sesuatu siasatan."
+  },
+  "mystery.investigator_compromised": {
+    "beats": {
+      "bend": {
+        "intent": "sesuatu keputusan dibuat yang lebih dijelaskan oleh kepentingan peribadi berbanding oleh bukti",
+        "label": "Pertimbangan terpesong"
+      },
+      "expose": {
+        "intent": "kepentingan peribadi itu diketahui oleh pihak lain",
+        "label": "Kaitan terbongkar"
+      },
+      "reearn": {
+        "intent": "kesimpulan terdahulu mesti dibuktikan semula di hadapan khalayak yang meragui",
+        "label": "Segalanya perlu dibuktikan semula"
+      },
+      "stake": {
+        "intent": "penyiasat mempunyai kaitan dengan kes tanpa mengakuinya",
+        "label": "Kepentingan wujud tanpa disedari"
+      }
+    },
+    "effects": [
+      "kesimpulan terdahulu tidak lagi mempunyai autoriti sehingga ia dibuktikan semula",
+      "penglibatan berterusan penyiasat itu sendiri kini menjadi pertikaian"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Bukannya dia berbohong tentang mengenali keluarga itu; tetapi tiada siapa yang terfikir untuk bertanya, dan dia membiarkan perkara itu tanpa penjelasan selama tiga minggu."
+    ],
+    "name": "Penyiasat Mempunyai Kepentingan Peribadi",
+    "preconditions": [
+      "seorang penyiasat yang mempunyai hubungan lampau dengan salah satu pihak dalam kes tersebut"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "mempunyai alasan yang sah untuk ragu"
+        ],
+        "label": "mereka yang kini meragui penyiasat"
+      },
+      "investigator": {
+        "constraints": [
+          "tidak memilih kepentingan tersebut"
+        ],
+        "label": "penyiasat yang terpalit kepentingan"
+      },
+      "stake": {
+        "constraints": [
+          "adalah tulen dan membatalkan kredibiliti"
+        ],
+        "label": "kepentingan peribadi"
+      }
+    },
+    "summary": "Individu yang mengajukan soalan rupa-rupanya terlibat dalam kes tersebut — sama ada mempunyai kaitan dengan mana-mana pihak, mempunyai urusan hutang, atau merupakan punca kejadian itu berlaku — namun merahsiakannya. Pertimbangan mula terpesong sebelum sesiapa menyedarinya, dan sebaik sahaja kaitan itu terbongkar, setiap kesimpulan yang telah dicatatkan dalam fail mesti dibuktikan semula di hadapan orang ramai yang kini mempunyai alasan untuk meragui segala-galanya."
+  },
+  "mystery.second_death": {
+    "beats": {
+      "carry": {
+        "intent": "tanggungjawab atas kematian yang tercetus mengubah cara mereka bertindak",
+        "label": "Penyiasat memikul beban itu"
+      },
+      "narrow": {
+        "intent": "hanya mereka yang tahu apa yang bakal didedahkan sahaja yang mampu bertindak",
+        "label": "Skop suspek mengecil"
+      },
+      "provoke": {
+        "intent": "siasatan mula mengancam seseorang yang kini menjadi liabiliti",
+        "label": "Soalan mula menyentuh nadi"
+      },
+      "silence": {
+        "intent": "individu yang bakal bersuara telah dihapuskan",
+        "label": "Saksi dibungkam"
+      }
+    },
+    "effects": [
+      "fail kes kini mengandungi fakta-fakta kukuh tentang siapa yang mempunyai pengetahuan awal, namun masih belum saling berkait",
+      "kumpulan suspek mengecil kepada mereka yang tahu apa yang bakal diungkapkan oleh saksi yang mati itu",
+      "penyiasat kini memikul beban peribadi yang tidak pernah mereka inginkan"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Dia telah meminta lelaki itu datang pada waktu pagi; namun dia ditemui sebelum fajar menyingsing, yang memberikan lebih banyak petunjuk daripada jawapan yang sepatutnya diberikan."
+    ],
+    "name": "Siasatan Mencetuskan Kematian Kedua",
+    "preconditions": [
+      "satu siasatan yang telah mula dikesan oleh subjeknya"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "memikul tanggungjawab atas provokasi tersebut"
+        ],
+        "label": "pihak yang soal siasatnya mencetuskan kematian"
+      },
+      "killer": {
+        "constraints": [
+          "mesti sudah mengetahui apa yang bakal berlaku"
+        ],
+        "label": "siapa sahaja yang bertindak untuk membungkam"
+      },
+      "silenced": {
+        "constraints": [
+          "bakal mendedahkan sesuatu yang penting"
+        ],
+        "label": "mangsa kedua"
+      }
+    },
+    "summary": "Soalan-soalan yang diajukan menjadikan seseorang itu ancaman kepada pihak lain, dan mayat kedua muncul — biasanya mangsa adalah individu yang telah bersetuju untuk memberi keterangan pada pagi hari, namun ditemui mati sebelum fajar menyingsing. Temubual yang tidak pernah berlaku itu memberikan petunjuk yang lebih besar daripada jawapan yang sepatutnya diberikan: hanya mereka yang tahu apa yang bakal diungkapkan sahaja yang mampu bertindak, mengecilkan skop suspek kepada mereka, dan kini penyiasat memikul beban kematian yang dicetuskan oleh soal siasatnya sendiri."
+  },
+  "mystery.witness_who_lies": {
+    "beats": {
+      "contradict": {
+        "intent": "perincian yang boleh disahkan tidak sepadan dengan keterangan tersebut",
+        "label": "Satu fakta kecil bercanggah dengannya"
+      },
+      "press": {
+        "intent": "percanggahan itu dikemukakan secara langsung kepada saksi",
+        "label": "Pembohongan didesak"
+      },
+      "reason": {
+        "intent": "saksi mengaku melakukan sesuatu yang tidak berkaitan yang mengubah kerangka kes tersebut",
+        "label": "Sebab itulah penemuan utamanya"
+      },
+      "testify": {
+        "intent": "seorang saksi memberikan keterangan yang kebanyakannya konsisten",
+        "label": "Kenyataan diberikan"
+      }
+    },
+    "effects": [
+      "fail kes kini mengandungi satu fakta baharu yang sahih — sebuah hubungan tersembunyi — yang masih belum dikaitkan dengan apa-apa lagi",
+      "garis masa saksi diperbetulkan, sekali gus mengalihkan kedudukan watak lain"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Dia tidak berada di gudang itu dan enggan memberitahu di mana dia berada, dan hanya selepas dua hari barulah diketahui bahawa dia berada di sebuah hospital."
+    ],
+    "name": "Saksi Yang Pembohongannya Bukanlah Jenayah Tersebut",
+    "preconditions": [
+      "seorang saksi yang mempunyai rahsia yang bakal memudaratkan dirinya, namun ia bukan berkaitan dengan jenayah tersebut"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "mesti mendesak tanpa membuat andaian bersalah"
+        ],
+        "label": "si penyiasat yang mendesak"
+      },
+      "secret": {
+        "constraints": [
+          "cukup memalukan untuk dijadikan alasan berbohong"
+        ],
+        "label": "rahsia yang tidak berkaitan"
+      },
+      "witness": {
+        "constraints": [
+          "sedang berbohong tentang sesuatu, tetapi bukan tentang perkara ini"
+        ],
+        "label": "saksi yang berbohong"
+      }
+    },
+    "summary": "Satu kenyataan diberikan yang bercanggah dengan satu fakta kecil yang boleh disahkan — waktu pada resit, tren mana yang sedang beroperasi, atau tingkap siapa yang menghadap ke halaman — dan apabila percanggahan itu ditekan, ia tidak menghasilkan pengakuan terhadap jenayah tersebut, sebaliknya pengakuan terhadap sesuatu yang lain sama sekali: sebuah hutang, sebuah hubungan sulit, atau malam yang dihabiskan di sebuah hospital yang enggan mereka namakan. Pembohongan itu benar, sebabnya tidak berkaitan, dan sebab yang tidak berkaitan itulah yang merungkai kes tersebut."
+  }
+}

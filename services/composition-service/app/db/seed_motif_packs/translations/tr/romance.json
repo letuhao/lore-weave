@@ -1,0 +1,486 @@
+{
+  "romance.confession_interrupted": {
+    "beats": {
+      "cost": {
+        "intent": "olaylar, o sözlerin hiçbir zaman söylenmemiş olduğu varsayımıyla ilerler",
+        "label": "Sessizliğin bedeli"
+      },
+      "interrupt": {
+        "intent": "gerçek bir hak iddiası olan bir olay anı keser",
+        "label": "Daha acil bir şey araya girer"
+      },
+      "pocket": {
+        "intent": "itiraf ertelenir ve o an bir daha geri gelmez",
+        "label": "Sözler söylenmeden geri konur"
+      },
+      "ready": {
+        "intent": "itirafın nihayet kararlaştırılması ve söylenmeye başlanması",
+        "label": "Sözler hazır"
+      }
+    },
+    "effects": [
+      "söylenmemiş olan o şey, artık takip eden her kararı çarpıtır",
+      "onu söylemek için gelecek bir sonraki fırsat, şimdikinden çok daha ağır bir bedele mal olacaktır"
+    ],
+    "emotion_target": "özlem",
+    "examples": [
+      "Hâlâ onun ismini söylemek üzereyken kapıdan bir ulak girdi; oda boşaldığında ise kadın çoktan yola çıkmıştı bile."
+    ],
+    "name": "Söylenemeyen Sözler",
+    "preconditions": [
+      "dile getirilmeye hazır hale gelmiş bir duygu"
+    ],
+    "roles": {
+      "interruption": {
+        "constraints": [
+          "o an için gerçekten daha acildir"
+        ],
+        "label": "araya giren şey"
+      },
+      "listener": {
+        "constraints": [
+          "aslında cevap verecekti"
+        ],
+        "label": "duymayan"
+      },
+      "speaker": {
+        "constraints": [
+          "nihayet konuşmaya karar vermiştir"
+        ],
+        "label": "söylemeye hazırlanan"
+      }
+    },
+    "summary": "İtiraf nihayet hazır ve an nihayet doğru andır; ancak tam o sırada, ondan daha acil bir şey araya girer — bir çağrı, bir yaralanma, bir ayrılış ya da çoktan verilmiş bir yalan — ve söylenmemiş olan o şey tekrar cebe geri konur. Bunun bedeli, o sözler henüz harcanmamışken, sonrasında yaşananlarla ölçülür."
+  },
+  "romance.contract_bond": {
+    "beats": {
+      "admit": {
+        "intent": "rol yapmaya devam etmek, itiraf etmekten daha sancılı bir hal alır",
+        "label": "Gerçek, yalandan daha ağır bir bedel ödetir"
+      },
+      "breach": {
+        "intent": "kurallar, tarafların hiçbirini rahatsız etmeyecek şekilde, küçük ve gizli biçimlerde çiğnenir",
+        "label": "Kurallar çiğnenir"
+      },
+      "rules": {
+        "intent": "açık kurallar, durumun neye dönüşmemesi gerektiğini belirler",
+        "label": "Şartlar belirlenir"
+      },
+      "strike": {
+        "intent": "açıkça ticari gerekçelerle bağlayıcı bir anlaşma yapılır",
+        "label": "Pazarlık tamamlanır"
+      }
+    },
+    "effects": [
+      "işlemsel çerçeve, artık mevcut olan durumu tanımlamaya yetmez",
+      "anlaşmayı sonlandırmanın, tarafların ikisinin de öngörmediği duygusal bir bedeli vardır"
+    ],
+    "emotion_target": "hasret",
+    "examples": [
+      "Dördüncü madde ayrı odalarda kalınacağını söylüyordu; kış geldiğinde ikisi de hangi geceden itibaren bu kuralın ihlal edildiğini hatırlamıyordu."
+    ],
+    "name": "Artık Bir Anlaşma Olmayan O Düzen",
+    "preconditions": [
+      "sevgisiz bir bağı, rasyonel bir seçenek haline getiren bir baskı"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "açıkça romantik olmayan bir sebeple yola çıkar"
+        ],
+        "label": "anlaşmaya muhtaç olan taraf"
+      },
+      "partner": {
+        "constraints": [
+          "kabul etmek için kendince bir sebebe sahiptir"
+        ],
+        "label": "sözleşmedeki ortak"
+      },
+      "pressure": {
+        "constraints": [
+          "reddetmeyi, kabul etmekten daha maliyetli kılar"
+        ],
+        "label": "zorlayıcı unsur: aile, borç veya kurum"
+      },
+      "watchers": {
+        "constraints": [
+          "durumun gerçek olduğuna ikna edilmelidir"
+        ],
+        "label": "anlaşmanın icra edildiği gözlemciler"
+      }
+    },
+    "summary": "Duygularla uzaktan yakından ilgisi olmayan sebeplerle —bir borç, bir miras, aile onuru, vize veya bir antlaşma— bir bağ kurulur; şartlar, kimsenin durumu yanlış anlamaması için açıkça ortaya konur. Ardından kurallar, küçük maddeler halinde birer birer çiğnenmeye başlanır; ta ki gerçeği itiraf etmek, o anlaşmanın değerinden daha ağır bir bedele mal olana dek."
+  },
+  "romance.forced_proximity": {
+    "beats": {
+      "crack": {
+        "intent": "savunmasız bir an, kişinin maskesinin ardındakini gösterir",
+        "label": "Savunmanın düşüşü"
+      },
+      "friction": {
+        "intent": "yakınlık, tahammülsüzliği ve farklılıkları gün yüzüne çıkarır",
+        "label": "Kısıtlı alanda sürtünme"
+      },
+      "intimacy": {
+        "intent": "hiçbirinin planlamadığı o yakınlık, her ikisi için de artık inkar edilemez bir hal alır",
+        "label": "İstemsiz yakınlık"
+      },
+      "trapped": {
+        "intent": "dışsal bir koşul, ayrılma seçeneğini ortadan kaldırır",
+        "label": "Birlikte hapsolmak"
+      }
+    },
+    "effects": [
+      "aralarındaki mesafenin artık alışkanlıklarla korunması mümkün değildir",
+      "her biri, diğerinin kendiliğinden sergilediği bir yanına tanık olmuştur"
+    ],
+    "emotion_target": "özlem",
+    "examples": [
+      "Yol heyelanla kapanır ve sığınılabilecek tek yer, tek bir lamba ile aydınlanan tek odalı bir barınaktır; üçüncü gecenin sonunda tartışmalar kesilir ve ikisi de nedenini söylemek istemez."
+    ],
+    "name": "Zorunlu Yakınlık",
+    "preconditions": [
+      "birbirlerinden uzak durmak için geçerli sebepleri olan iki taraf"
+    ],
+    "roles": {
+      "circumstance": {
+        "constraints": [
+          "dışsaldır ve taraflardan birinin suçu değildir"
+        ],
+        "label": "onları tuzağa düşüren koşul"
+      },
+      "lead": {
+        "constraints": [
+          "paylaşılan mekânı terk edemez"
+        ],
+        "label": "bakış açısı kahramanı"
+      },
+      "other": {
+        "constraints": [
+          "ayrılmanın neden önemli olduğunun sebebidir"
+        ],
+        "label": "diğer taraf"
+      }
+    },
+    "summary": "Birbirinin arkadaşlığını asla seçmeyecek iki kişi; bir fırtına, ortak bir görev, kilitli bir ev veya tek bir yatak gibi çıkış yolu olmayan aynı mekâna hapsolur. Ayrılmaya imkân tanımayan bu sürtünme, savunma mekanizmalarını yıkarak, ikisinin de planlamadığı ve artık görmezden gelemeyeceği istemsiz bir yakınlığın yüzeye çıkmasına neden olur."
+  },
+  "romance.misunderstanding_rift": {
+    "beats": {
+      "conclude": {
+        "intent": "parça, soru sormak yerine korku tarafından tamamlanır",
+        "label": "Yanlış sonuç yerleşir"
+      },
+      "glimpse": {
+        "intent": "bağlamından koparılmış, gerçek ama eksik bir şeye tanıklık edilir",
+        "label": "Kısmi gerçek görülür"
+      },
+      "silence": {
+        "intent": "gurur, mesafe yeni bir norm haline gelene dek sorunun söylenmeden kalmasına neden olur",
+        "label": "Sessizlik katılaşır"
+      },
+      "truth": {
+        "intent": "eksik bağlam, artık kurtarılamayacak kadar geç bir zamanda gün yüzüne çıkar",
+        "label": "Resmin tamamı ortaya çıkar"
+      }
+    },
+    "effects": [
+      "aralarındaki bağ, dile getirilmeden ve onarılmadan öylece kalır",
+      "güven artık bir varsayım değil, yeniden inşa edilmesi gereken bir şeydir",
+      "sormama alışkanlığı, asıl kusur olarak gün yüzüne çıkar"
+    ],
+    "emotion_target": "kalp kırıklığı",
+    "examples": [
+      "Yüzüğün bir başka kadının eline takıldığını görür ve durumu açıklayacak olan cümlenin tamamlanmasını beklemeden arkasını dönüp gider."
+    ],
+    "name": "Katılaşan Yanlış Anlama",
+    "preconditions": [
+      "yanılmanın can yakacak kadar güçlü bir bağlılık"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "kendisine sorulmayan bir açıklaması vardır"
+        ],
+        "label": "yanlış anlaşılan kişi"
+      },
+      "fragment": {
+        "constraints": [
+          "gerçekten doğrudur ancak gerçekten eksiktir"
+        ],
+        "label": "kısmi kanıt"
+      },
+      "witness": {
+        "constraints": [
+          "sormadan bir sonuca varır"
+        ],
+        "label": "parçayı gören kişi"
+      }
+    },
+    "summary": "Taraflardan biri gerçekliğin bir parçasını —bir kucaklaşmayı, bir mektubu, bir ödemeyi— görür ve o parçanın sunduğu sonucu çıkarır. Gurur ya da korku, sorunun sorulmasını engeller; sessizlik beton gibi sertleşir ve resmin tamamı ortaya çıktığında, verilen hasar artık yanlış anlamanın kendisiyle değil, sessizliğin neyi kanıtladığıyla ilgilidir."
+  },
+  "romance.past_lover_returns": {
+    "beats": {
+      "choose": {
+        "intent": "geçmişin usulünce sonlandırılması ya da şimdiki zamanın feda edilmesi",
+        "label": "Ya kapat ya da yeniden aç"
+      },
+      "compare": {
+        "intent": "şimdiki an, yanıt veremeyeceği bir anıyla ölçülür",
+        "label": "Kıyaslama kaçınılmazdır"
+      },
+      "name": {
+        "intent": "aslında hiç bitmemiş olan şey nihayet yüksek sesle dile getirilir",
+        "label": "Yarım kalan şeyin adı konur"
+      },
+      "return": {
+        "intent": "geçmişteki bir bağ uyarı vermeksizin yeniden belirir",
+        "label": "Geçmiş geri adım atar"
+      }
+    },
+    "effects": [
+      "eski hikâyenin sadece uykuya dalmak yerine gerçekten kapanması",
+      "şimdiki bağın kendi konumunu tam olarak kavraması"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Yedi yıl geçmişti ama hâlâ çayı onun artık içmediği şekilde sipariş etmişti; akşamı mahveden şey özür dilemesi değil, işte tam olarak buydu."
+    ],
+    "name": "Geri Dönen",
+    "preconditions": [
+      "hiçbir zaman nihayete ermemiş eski bir bağ"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "geçmişteki bağı hiçbir zaman resmen bitirmemiş"
+        ],
+        "label": "arada kalan"
+      },
+      "present": {
+        "constraints": [
+          "kıyaslanmaya rıza göstermeden kıyaslanan"
+        ],
+        "label": "şimdiki bağ"
+      },
+      "returner": {
+        "constraints": [
+          "çözülmemiş sonu beraberinde getiren"
+        ],
+        "label": "geri dönen"
+      }
+    },
+    "summary": "Geçmişteki bir bağ, yarım kalmışlık hissiyle yeniden belirir; şimdiki ilişki, kendisinden rekabet etmesi beklenmeyen bir anıyla kıyaslanmaya başlar. Asıl sınav, kimin tercih edileceği değil, eski hikâyenin gerçekten mi bittiği yoksa sadece mi yarım bırakıldığıdır."
+  },
+  "romance.protective_sacrifice": {
+    "beats": {
+      "absorb": {
+        "intent": "koruyan kişi bedeli üstlenir ve bunu yaptığını gizler",
+        "label": "Sessizce üstlenilir"
+      },
+      "discover": {
+        "intent": "sevilen kişi, bedelin ne zaman ve ne pahasına ödendiğini öğrenir",
+        "label": "Gizlilik bozulur"
+      },
+      "reckon": {
+        "intent": "sevilen kişi, şükran ile öfkeyi aynı avuçta tutmak zorundadır",
+        "label": "Aynı anda hem bağlılık hem ihanet"
+      },
+      "threat": {
+        "intent": "gerçek bir bedel, yanlış kişinin üzerine yıkılmak üzeredir",
+        "label": "Zarar sevilen kişinin üzerine doğru gelir"
+      }
+    },
+    "effects": [
+      "artık aralarında ödenemez bir borç durmaktadır",
+      "koruyucunun tek başına karar verme alışkanlığı artık bir sorun teşkil eder"
+    ],
+    "emotion_target": "kalp kırıklığı",
+    "examples": [
+      "Alacaklılar bahar mevsiminde gelmeyi bıraktılar; onun isminin yerine senette kimin adının yazıldığını öğrenmesi iki yılı buldu."
+    ],
+    "name": "Sessizce Ödenen Bedel",
+    "preconditions": [
+      "taraflardan biri, diğeri için hazırlanan bir zararı göğüsleyecek konumdadır"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "bilgilendirilmez ve bilseydi reddederdi"
+        ],
+        "label": "korunan kişi"
+      },
+      "protector": {
+        "constraints": [
+          "ödemeyi gizler"
+        ],
+        "label": "bedeli ödeyen"
+      },
+      "threat": {
+        "constraints": [
+          "gerçektir ve doğrudan hedefe ulaşacaktı"
+        ],
+        "label": "üstlenilen zarar"
+      }
+    },
+    "summary": "Zarar, sevilen kişinin üzerine doğru gelir ve diğeri bunu ona söylemeden üstlenir — ödenmiş bir borç, feda edilmiş bir itibar, kolun altında gizlenen bir yara veya verilmiş bir isim. Bu gizleme bir koruma amacı taşır ancak bir mahrumiyet işlevi görür; bu yüzden gerçeklerin ortaya çıkışı, aynı anda hem bir bağlılık hem de bir ihanet gibi hissedilir."
+  },
+  "romance.rival_forces_the_question": {
+    "beats": {
+      "claim": {
+        "intent": "üçüncü bir taraf, başkahramanın halihazırda çözülmüş saydığı bir konunun peşine açıkça düşer",
+        "label": "Rakip hak iddia eder"
+      },
+      "jealousy": {
+        "intent": "duygu, başkahraman bunu kelimelere dökmeden önce yüzeye çıkar",
+        "label": "Kıskançlık önce gelir"
+      },
+      "stake": {
+        "intent": "ana karakter ya bunu yüksek sesle dile getirir ya da sessiz kalarak durumu kabullenir",
+        "label": "Ya söyle ya da fırsatı kaçır"
+      },
+      "untenable": {
+        "intent": "söylenmemiş kalmak artık kendi başına bir cevaptır",
+        "label": "Belirsizlik katlanılmaz hale gelir"
+      }
+    },
+    "effects": [
+      "ilişkinin statüsü, hangi yöne evrilirse evrilsin artık netleşmiştir",
+      "rakibin varlığı, artık doğal karşılanan durumları kalıcı olarak değiştirmiştir"
+    ],
+    "emotion_target": "kaygı",
+    "examples": [
+      "Kalabalık bir masada, bir başkası ona bir isim takana dek, ona hiçbir zaman özel bir sıfatla hitap etmemişti; o kelime ise bir kapının kapanması gibi yankılandı."
+    ],
+    "name": "Soru Sormaya Zorlayan Rakip",
+    "preconditions": [
+      "aralarındaki bağın henüz açıkça adlandırılmamış olması"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "seçme özgürlüğüne sahiptir"
+        ],
+        "label": "hak iddia edilen"
+      },
+      "lead": {
+        "constraints": [
+          "belirsizliğe güvenmiştir"
+        ],
+        "label": "söylemeye gerek duymayan"
+      },
+      "rival": {
+        "constraints": [
+          "sırf bir engel olsun diye uydurulmuş bir figür değil, gerçek bir seçenektir"
+        ],
+        "label": "rakip aday"
+      }
+    },
+    "summary": "Üçüncü bir taraf, başkahramanın hayatındaki yeri daha önce adlandırılmaya gerek duyulmamış birine hak iddia eder. Kıskançlık, itiraftan önce gelir; o konforlu belirsizlik artık katlanılmaz bir hal alır ve başkahraman ya açıkça bir hak iddia etmek ya da sorunun bir başkası tarafından yanıtlanışını izlemek zorunda bırakılır."
+  },
+  "romance.slow_thaw": {
+    "beats": {
+      "mercies": {
+        "intent": "karşılık beklemeyen, tekrarlanan sessiz nezaketler",
+        "label": "Fark edilmeyen küçük lütuflar"
+      },
+      "pressure": {
+        "intent": "bir kriz, savunma mekanizması devreye girmeden bir tepki vermeye zorlar",
+        "label": "Baskı savunmayı düşürür"
+      },
+      "refusal": {
+        "intent": "mesafeli taraf, bir alışkanlık olarak teması geri çevirir",
+        "label": "Yerleşik bir alışkanlık olarak reddediş"
+      },
+      "warmth": {
+        "intent": "her iki taraf da, geriye dönüp baktıklarında, buzların aslında ne kadar çok eridiğini fark eder",
+        "label": "Aşılan mesafenin büyüklüğü"
+      }
+    },
+    "effects": [
+      "kapalı olan taraf artık kayıtsızlık iddiasında bulunamaz",
+      "değişim, onları önceden tanıyan başkaları tarafından fark edilir"
+    ],
+    "emotion_target": "şefkat",
+    "examples": [
+      "Çay için ona hiçbir zaman teşekkür etmemişti ve çayın hiç soğumasına da izin vermemişti; mesele tamamen buydu."
+    ],
+    "name": "Yavaş Çözülme",
+    "preconditions": [
+      "soğukluğu bir hükümden ziyade bir savunma mekanizması olan bir taraf"
+    ],
+    "roles": {
+      "cold": {
+        "constraints": [
+          "sevgisizlikten değil, ilkesinden dolayı reddeder"
+        ],
+        "label": "mesafeli taraf"
+      },
+      "pressure": {
+        "constraints": [
+          "düşünülmemiş bir tepki vermeye zorlar"
+        ],
+        "label": "değişimi ortaya çıkaran baskı"
+      },
+      "warm": {
+        "constraints": [
+          "teşekkür beklenmeden sunar"
+        ],
+        "label": "sürekli sunan taraf"
+      }
+    },
+    "summary": "Soğuk veya mesafeli bir taraf, büyük ilanlarla değil, birikimlerle ısınır; üzerinde durulmayan, karşılık beklenmeden sunulan küçük lütufların birikmesiyle... Ta ki gerçek bir baskı anı gelip, sessizce ne kadar mesafe aşıldığını ortaya çıkarana dek. Bu ark, sıradan nezaketlerin toplamıdır ve asıl etkisi geriye dönük bir farkındalıkla gelir."
+  },
+  "romance.status_gap": {
+    "beats": {
+      "attraction": {
+        "intent": "dünyanın olamaz dediği yerde bir bağ kurulur",
+        "label": "Sınırın ötesinde bir bağ"
+      },
+      "enforce": {
+        "intent": "aile veya kurum, onların iyiliği için onları ayırmak için harekete geçer",
+        "label": "Sınırın uygulanması"
+      },
+      "pay": {
+        "intent": "bedel ödenir, reddedilir ya da bir başkası onlar adına bu bedeli öder",
+        "label": "Ya öde ya da kop"
+      },
+      "price": {
+        "intent": "feda edilmesi gereken şeyin ne olduğu somutlaşır",
+        "label": "Geçişin bedeli"
+      }
+    },
+    "effects": [
+      "taraflardan biri veya her ikisi, geri dönüşü olmayan bir şeyden vazgeçmiştir",
+      "denetleyici tarafın onlar üzerindeki otoritesi, her iki durumda da kesinleşmiştir"
+    ],
+    "emotion_target": "hasret",
+    "examples": [
+      "Babası bunu yasaklamadı; sadece alt sınıftan biriyle evlenmenin kardeşlerine neye mal olacağını açıkça ortaya koydu ve hesabı kendisinin yapmasına izin verdi."
+    ],
+    "name": "Sınırın Ötesinde",
+    "preconditions": [
+      "arkasında gerçek yaptırımları olan toplumsal bir sınır"
+    ],
+    "roles": {
+      "guardians": {
+        "constraints": [
+          "kötü niyetle değil, görev veya sevgi duygusuyla hareket edenler"
+        ],
+        "label": "sınırı koruyanlar"
+      },
+      "higher": {
+        "constraints": [
+          "mevkiinin gerçek ve vazgeçilmesi ağır bir bedel olan"
+        ],
+        "label": "mevkiine bağlı olan"
+      },
+      "lower": {
+        "constraints": [
+          "kazancı en yüksek, toplumsal statüsü en düşük olan"
+        ],
+        "label": "maddi kaybı en az olacak olan"
+      }
+    },
+    "summary": "Bağlılık, dünyanın dayattığı bir sınırın —rütbe, klan, servet, kast, tür, grup veya savaşın yanlış tarafı— ötesinde filizlenir; bu sınırı koruyanlar ise aslında iyi niyetli olan insanlardır. Sevgililer, bu sınırı geçmenin bedelini somut bir şeyle ödemeye zorlanır: bir miras, bir aile, bir makam ya da bir can."
+  }
+}

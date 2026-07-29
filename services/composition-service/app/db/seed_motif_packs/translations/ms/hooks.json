@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "menunjukkan ketidaksetiaan tersembunyi seorang watak kepercayaan",
+        "label": "Retakan keraguan"
+      }
+    },
+    "effects": [
+      "pembaca mula meragui watak tersebut dan terus membaca"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Sahabat lamanya tersenyum, bersetuju — dan menyelitkan kunci kedua itu ke dalam lengan bajunya sendiri."
+    ],
+    "name": "Isyarat Pengkhianatan",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Seorang watak kepercayaan menunjukkan retakan keraguan pada saat yang genting."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "memaksa satu keputusan yang tidak boleh diubah",
+        "label": "Terperangkap dalam pilihan"
+      }
+    },
+    "effects": [
+      "pembaca terus membaca demi mengetahui keputusan tersebut"
+    ],
+    "emotion_target": "kebimbangan",
+    "examples": [
+      "Dua pintu, satu kunci, dan air sudah mencecah lututnya."
+    ],
+    "name": "Pilihan Terpaksa",
+    "preconditions": [
+      "sebuah bab sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Watak POV terperangkap dalam satu keputusan yang tidak boleh diubah pada penghujung bab."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "biarkan bahaya tidak terselesaikan pada peralihan bab",
+        "label": "Potong pada bahaya yang belum terjawab"
+      }
+    },
+    "effects": [
+      "pembaca terus hanyut ke bab seterusnya"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Mohor itu sudah pun pecah — dan sel di sebaliknya kosong."
+    ],
+    "name": "Persoalan Tergantung",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Akhiri dengan bahaya yang belum terjawab bagi menarik pembaca ke bab seterusnya."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "menetapkan tempoh masa yang terhad terhadap matlamat",
+        "label": "Tetapkan tarikh akhir"
+      }
+    },
+    "effects": [
+      "pembaca merasakan tekanan masa dan terus membaca"
+    ],
+    "emotion_target": "antisipasi",
+    "examples": [
+      "Tiga hari. Selepas itu, tawaran tersebut — dan kota itu — akan lenyap."
+    ],
+    "name": "Hitungan Mundur Bermula",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Satu tarikh akhir atau pemasa ditetapkan, menjadikan peristiwa seterusnya terasa seperti sebuah perlumbaan."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "berakhir pada baris yang mengubah persepsi terhadap segala-galanya",
+        "label": "Baris letupan, kemudian tamat"
+      }
+    },
+    "effects": [
+      "pembaca terpaku dan terus membaca"
+    ],
+    "emotion_target": "kejutan",
+    "examples": [
+      "«Sepatutnya kamu tanya ayah kamu,» katanya, «mengapa dia menanam keranda kosong.»"
+    ],
+    "name": "Bom Dialog",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Satu baris dialog meledak dan bab berakhir tepat pada baris tersebut."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "memberi bayangan tentang identiti sebenar tanpa mengesahkannya",
+        "label": "Identiti dibayangkan"
+      }
+    },
+    "effects": [
+      "pembaca terus membaca untuk mengetahui siapa mereka yang sebenarnya"
+    ],
+    "emotion_target": "misteri",
+    "examples": [
+      "Pengemis itu menyingsing tudungnya, dan para pengawal terus melutut."
+    ],
+    "name": "Identiti Terpapar",
+    "preconditions": [
+      "sesuatu babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Petunjuk tentang nama sebenar atau peranan seseorang, dibiarkan tergantung sebelum bab berakhir."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "namakan satu bahaya yang belum lagi mendarat",
+        "label": "Ancaman diisytiharkan sedang menghampiri"
+      }
+    },
+    "effects": [
+      "pembaca menjangkakan kedatangan ancaman tersebut"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Menjelang fajar, tentera itu akan tiba di pintu gerbang, dan pintu gerbang itu tidak akan mampu bertahan."
+    ],
+    "name": "Ancaman Menjelang",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Bahaya yang telah dikenal pasti kini sedang menghampiri, namun belum tiba."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "meletakkan sesuatu yang amat berharga di ambang kehilangan",
+        "label": "Kehilangan di ambang mata"
+      }
+    },
+    "effects": [
+      "pembaca berasa cemas akan kehilangan tersebut dan terus membaca"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Penyembuh itu menggelengkan kepalanya. Hanya cukup untuk salah seorang daripada kanak-kanak itu, katanya."
+    ],
+    "name": "Kehilangan yang Kian Dekat",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Sesuatu yang dicintai oleh watak POV bakal dirampas pada kemuncak babak."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "menjungkirbalikkan jawapan yang disangkakan dengan petunjuk baharu",
+        "label": "Petunjuk yang menyangkal"
+      }
+    },
+    "effects": [
+      "pembaca akan mempersoalkan semula perkara tersebut dan terus membaca"
+    ],
+    "emotion_target": "perasaan ingin tahu",
+    "examples": [
+      "Tulisan tangan si mati itu masih segar — dan bertarikh esok."
+    ],
+    "name": "Misteri Semakin Mendalam",
+    "preconditions": [
+      "sesuatu babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Suatu petunjuk baharu menyangkal jawapan yang telah disangkakan pada penghujung bab."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "mendedahkan kebolehan tanpa menjelaskannya",
+        "label": "Kilasan kuasa tanpa penjelasan"
+      }
+    },
+    "effects": [
+      "pembaca mahukan penjelasan"
+    ],
+    "emotion_target": "antisipasi",
+    "examples": [
+      "Untuk seketika, mata kerani yang ketakutan itu menyala keemasan — kemudian lampu terpadam."
+    ],
+    "name": "Kuasa Terpancar",
+    "preconditions": [
+      "sesuatu babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Kebolehan tersembunyi muncul sekilas, tanpa penjelasan, pada penghujung bab."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "mendedahkan sebahagian rahsia, kemudian menyembunyikan selebihnya",
+        "label": "Pendedahan separa dan noktah tergantung"
+      }
+    },
+    "effects": [
+      "pembaca terus membaca untuk mengetahui baki rahsia tersebut"
+    ],
+    "emotion_target": "perasaan ingin tahu",
+    "examples": [
+      "Dia membalikkan loket itu. Wajah di dalamnya adalah wajahnya sendiri."
+    ],
+    "name": "Pendedahan Tergantung",
+    "preconditions": [
+      "sesuatu babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Sesuatu rahsia didedahkan sebahagian, lalu disembunyikan tepat pada saat yang mendebarkan."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "menerbalikkan makna adegan pada saat penutup",
+        "label": "Pusingan makna baris terakhir"
+      }
+    },
+    "effects": [
+      "pembaca mentafsir semula adegan tersebut dan terus membaca"
+    ],
+    "emotion_target": "kejutan",
+    "examples": [
+      "Dia akhirnya mempercayainya — dan itulah sebenarnya perkara yang telah dinantikan lelaki itu selama tiga tahun."
+    ],
+    "name": "Pusingan Mengejut",
+    "preconditions": [
+      "sebuah adegan sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Satu fakta di baris terakhir mengubah seluruh makna adegan tersebut."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "memperkenalkan seseorang yang tidak sepatutnya hadir",
+        "label": "Kehadiran mustahil"
+      }
+    },
+    "effects": [
+      "pembaca perlu tahu siapa dan mengapa"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Pintu terbuka, dan lelaki yang telah mereka tanam musim sejuk lalu melangkah masuk ke dalam."
+    ],
+    "name": "Kehadiran yang Tidak Disangka",
+    "preconditions": [
+      "sebuah babak sedang berlangsung"
+    ],
+    "roles": {
+      "pov": {
+        "label": "watak POV"
+      }
+    },
+    "summary": "Seseorang yang tidak sepatutnya berada di situ melangkah masuk pada saat yang genting."
+  }
+}

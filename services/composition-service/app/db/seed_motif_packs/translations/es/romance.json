@@ -1,0 +1,486 @@
+{
+  "romance.confession_interrupted": {
+    "beats": {
+      "cost": {
+        "intent": "los acontecimientos transcurren bajo la premisa de que las palabras nunca fueron ciertas",
+        "label": "El coste del silencio"
+      },
+      "interrupt": {
+        "intent": "un evento con una demanda real interrumpe el momento",
+        "label": "Algo más urgente irrumpe"
+      },
+      "pocket": {
+        "intent": "la confesión se pospone y el momento no regresa",
+        "label": "Las palabras vuelven a guardarse"
+      },
+      "ready": {
+        "intent": "la confesión finalmente se ha decidido y se ha comenzado",
+        "label": "Las palabras están listas"
+      }
+    },
+    "effects": [
+      "lo no dicho distorsiona ahora cada decisión que se tome a continuación",
+      "la próxima oportunidad de confesarlo costará más que la que se ha perdido"
+    ],
+    "emotion_target": "anhelo",
+    "examples": [
+      "Apenas alcanzó a pronunciar su nombre cuando el mensajero irrumpió en la habitación; para cuando el salón quedó vacío, ella ya se encontraba en el camino."
+    ],
+    "name": "Las palabras que no llegaron",
+    "preconditions": [
+      "un sentimiento que ha madurado hasta estar listo para ser expresado"
+    ],
+    "roles": {
+      "interruption": {
+        "constraints": [
+          "es legítimamente más urgente en ese instante"
+        ],
+        "label": "lo que llega en su lugar"
+      },
+      "listener": {
+        "constraints": [
+          "habría respondido"
+        ],
+        "label": "quien no llega a oírlo"
+      },
+      "speaker": {
+        "constraints": [
+          "finalmente ha decidido hablar"
+        ],
+        "label": "quien está a punto de decirlo"
+      }
+    },
+    "summary": "La confesión finalmente está lista y el momento es el adecuado, pero entonces surge algo más urgente que eso —un llamado, una herida, una partida, una mentira ya en marcha— y lo no dicho vuelve al bolsillo. Su coste se mide en lo que sucede después, mientras las palabras siguen sin pronunciarse."
+  },
+  "romance.contract_bond": {
+    "beats": {
+      "admit": {
+        "intent": "mantener la apariencia se vuelve más doloroso que la confesión",
+        "label": "La verdad resulta más costosa que la mentira"
+      },
+      "breach": {
+        "intent": "las cláusulas se vulneran de forma privada y sutil, sin que ninguna de las partes lo denuncie",
+        "label": "Las reglas se desmoronan"
+      },
+      "rules": {
+        "intent": "unas reglas explícitas marcan aquello en lo que esto no tiene permitido convertirse",
+        "label": "Se fijan los términos"
+      },
+      "strike": {
+        "intent": "se acuerda un vínculo por razones abiertamente transaccionales",
+        "label": "Se sella el trato"
+      }
+    },
+    "effects": [
+      "el marco transaccional deja de describir la realidad de lo que existe",
+      "poner fin al acuerdo conlleva ahora un precio emocional que nadie previó"
+    ],
+    "emotion_target": "anhelo",
+    "examples": [
+      "La cláusula cuarta dictaba habitaciones separadas; al llegar el invierno, ninguno de los dos recordaba en qué noche se había dejado de cumplir."
+    ],
+    "name": "El acuerdo que deja de serlo",
+    "preconditions": [
+      "una presión externa que convierte un vínculo sin amor en la opción más racional"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "entra en el pacto por un motivo declarado, no romántico"
+        ],
+        "label": "la parte que necesita el acuerdo"
+      },
+      "partner": {
+        "constraints": [
+          "tiene sus propios motivos para aceptar"
+        ],
+        "label": "la contraparte contractual"
+      },
+      "pressure": {
+        "constraints": [
+          "hace que el rechazo sea más costoso que el consentimiento"
+        ],
+        "label": "la familia, la deuda o la institución que lo impone"
+      },
+      "watchers": {
+        "constraints": [
+          "deben ser convencidos de que es real"
+        ],
+        "label": "aquellos para quienes se lleva a cabo el acuerdo"
+      }
+    },
+    "summary": "Se establece un vínculo por razones que nada tienen que ver con el sentimiento —una deuda, una herencia, el prestigio familiar, un visado o un tratado— y los términos se estipulan con claridad para que nadie lo confunda con algo más. Entonces, las reglas se rompen cláusula tras cláusula, hasta que admitir la verdad resulta más costoso que el propio acuerdo."
+  },
+  "romance.forced_proximity": {
+    "beats": {
+      "crack": {
+        "intent": "un momento de vulnerabilidad revela a la persona que se esconde tras la fachada",
+        "label": "La guardia cae"
+      },
+      "friction": {
+        "intent": "la cercanía física saca a la luz la irritación y las diferencias",
+        "label": "Fricción en el encierro"
+      },
+      "intimacy": {
+        "intent": "una cercanía que ninguno pretendía se vuelve innegable para ambos",
+        "label": "Intimidad involuntaria"
+      },
+      "trapped": {
+        "intent": "una circunstancia externa elimina la opción de marcharse",
+        "label": "Confinados"
+      }
+    },
+    "effects": [
+      "la distancia entre ellos ya no puede sostenerse por pura costumbre",
+      "cada uno ha presenciado algo del otro que no le fue mostrado"
+    ],
+    "emotion_target": "anhelo",
+    "examples": [
+      "El camino se desmorona y el único refugio es una habitación con una sola lámpara; para la tercera noche, las discusiones han cesado y ninguno de los dos quiere explicar por qué."
+    ],
+    "name": "Proximidad forzada",
+    "preconditions": [
+      "dos partes con motivos para mantener la distancia entre sí"
+    ],
+    "roles": {
+      "circumstance": {
+        "constraints": [
+          "es externa y no es culpa de ninguno de los dos"
+        ],
+        "label": "la circunstancia que los atrapa"
+      },
+      "lead": {
+        "constraints": [
+          "no puede abandonar el espacio compartido"
+        ],
+        "label": "el protagonista desde cuya perspectiva se narra"
+      },
+      "other": {
+        "constraints": [
+          "es la razón por la cual la huida es vital"
+        ],
+        "label": "la otra parte"
+      }
+    },
+    "summary": "Dos personas que jamás elegirían la compañía de la otra se ven confinadas en el mismo espacio sin posibilidad de escape —una tormenta, una tarea compartida, una casa cerrada, una sola cama— y la fricción de la imposibilidad de huir va derribando sus defensas hasta que surge una intimidad involuntaria que ninguno planeó y que ninguno puede ignorar."
+  },
+  "romance.misunderstanding_rift": {
+    "beats": {
+      "conclude": {
+        "intent": "el fragmento se completa mediante el miedo en lugar de mediante la pregunta",
+        "label": "Se asienta la conclusión errónea"
+      },
+      "glimpse": {
+        "intent": "se presencia algo real pero incompleto fuera de su contexto",
+        "label": "Se percibe la verdad parcial"
+      },
+      "silence": {
+        "intent": "el orgullo impide que la pregunta se pronuncie hasta que la distancia se convierte en la nueva normalidad",
+        "label": "El silencio se endurece"
+      },
+      "truth": {
+        "intent": "el contexto ausente llega, demasiado tarde para evitar el daño",
+        "label": "Llega la imagen completa"
+      }
+    },
+    "effects": [
+      "el afecto entre ambos queda sin pronunciar y sin reparar",
+      "la confianza debe reconstruirse en lugar de darse por sentada",
+      "el hábito de no preguntar queda expuesto como la verdadera culpa"
+    ],
+    "emotion_target": "angustia",
+    "examples": [
+      "Ella ve el anillo en la mano de otra mujer y se da la vuelta antes de que termine la frase que lo habría explicado todo."
+    ],
+    "name": "El malentendido que se endurece",
+    "preconditions": [
+      "un vínculo lo suficientemente fuerte como para que el error duela"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "tiene una explicación que nadie le pide"
+        ],
+        "label": "quien es malinterpretado"
+      },
+      "fragment": {
+        "constraints": [
+          "es genuinamente real y genuinamente incompleta"
+        ],
+        "label": "la evidencia parcial"
+      },
+      "witness": {
+        "constraints": [
+          "saca una conclusión sin preguntar"
+        ],
+        "label": "quien ve el fragmento"
+      }
+    },
+    "summary": "Una de las partes presencia un fragmento de una verdad —un abrazo, una carta, un pago— y extrae la conclusión que dicho fragmento sugiere. El orgullo o el miedo impiden que se haga la pregunta; el silencio se asienta como el cemento y, para cuando llega la imagen completa, el daño ya no trata sobre el malentendido, sino sobre lo que el silencio ha demostrado."
+  },
+  "romance.past_lover_returns": {
+    "beats": {
+      "choose": {
+        "intent": "el pasado se cierra debidamente o el presente se abandona",
+        "label": "Cerrarlo o reabrirlo"
+      },
+      "compare": {
+        "intent": "el presente se mide contra un recuerdo al que no puede responder",
+        "label": "La comparación es forzada"
+      },
+      "name": {
+        "intent": "lo que nunca llegó a concluirse se dice finalmente en voz alta",
+        "label": "Se nombra lo inacabado"
+      },
+      "return": {
+        "intent": "un afecto anterior reaparece sin previo aviso",
+        "label": "El pasado regresa"
+      }
+    },
+    "effects": [
+      "la historia anterior se cierra en lugar de quedar simplemente latente",
+      "el vínculo presente sabe exactamente en qué posición se encuentra"
+    ],
+    "emotion_target": "melancolía",
+    "examples": [
+      "Siete años después, él seguía pidiendo el té de la forma en que ella había dejado de tomarlo, y eso —no la disculpa— fue lo que desmoronó la velada."
+    ],
+    "name": "El que regresó",
+    "preconditions": [
+      "un vínculo anterior que terminó sin llegar a su conclusión"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "nunca terminó formalmente el vínculo anterior"
+        ],
+        "label": "quien se encuentra atrapado entre dos mundos"
+      },
+      "present": {
+        "constraints": [
+          "es comparado sin haber consentido serlo"
+        ],
+        "label": "el vínculo presente"
+      },
+      "returner": {
+        "constraints": [
+          "carga con el desenlace irresuelto"
+        ],
+        "label": "el que regresó"
+      }
+    },
+    "summary": "Un vínculo del pasado reaparece con el asunto aún sin resolver, y la relación presente se mide frente a un recuerdo con el que nunca aceptó competir. Lo que realmente se pone a prueba no es a quién se prefiere, sino si la vieja historia se cerró alguna vez o si simplemente se dejó a medias."
+  },
+  "romance.protective_sacrifice": {
+    "beats": {
+      "absorb": {
+        "intent": "el protector asume el coste y oculta que lo ha hecho",
+        "label": "Se absorbe en silencio"
+      },
+      "discover": {
+        "intent": "el ser amado descubre qué se pagó y cuándo",
+        "label": "El secreto sale a la luz"
+      },
+      "reckon": {
+        "intent": "el ser amado debe sostener la gratitud y la ira en la misma mano",
+        "label": "Devoción y traición a la vez"
+      },
+      "threat": {
+        "intent": "un coste real está a punto de recaer sobre la persona equivocada",
+        "label": "El daño se dirige hacia el ser amado"
+      }
+    },
+    "effects": [
+      "una deuda impagable se interpone ahora entre ambos",
+      "la tendencia del protector a decidir por cuenta propia queda al descubierto"
+    ],
+    "emotion_target": "angustia",
+    "examples": [
+      "Los acreedores dejaron de venir en primavera; pasaron dos años antes de que ella supiera qué nombre había sustituido al suyo en el pagaré."
+    ],
+    "name": "El precio pagado en silencio",
+    "preconditions": [
+      "una de las partes está en posición de interceptar un daño destinado a la otra"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "no es informado, y habría rechazado el sacrificio"
+        ],
+        "label": "quien es protegido"
+      },
+      "protector": {
+        "constraints": [
+          "oculta el sacrificio"
+        ],
+        "label": "quien paga el precio"
+      },
+      "threat": {
+        "constraints": [
+          "es real y habría alcanzado a su destinatario"
+        ],
+        "label": "el daño absorbido"
+      }
+    },
+    "summary": "El daño se dirige hacia el ser amado y el otro lo absorbe sin decírselo: una deuda saldada, una reputación sacrificada, una herida oculta bajo la manga, un nombre entregado. El ocultamiento tiene la intención de proteger, pero funciona como un secreto, de modo que el descubrimiento se siente, a la vez, como devoción y como traición."
+  },
+  "romance.rival_forces_the_question": {
+    "beats": {
+      "claim": {
+        "intent": "un tercero persigue abiertamente lo que el protagonista daba por sentado",
+        "label": "Un rival se posiciona"
+      },
+      "jealousy": {
+        "intent": "el sentimiento aflora antes de que el protagonista pueda ponerle palabras",
+        "label": "Los celos llegan primero"
+      },
+      "stake": {
+        "intent": "el protagonista lo declara en voz alta o se rinde mediante el silencio",
+        "label": "Hablar o perder la oportunidad"
+      },
+      "untenable": {
+        "intent": "el silencio se convierte ahora en una respuesta por sí mismo",
+        "label": "La ambigüedad se vuelve insostenible"
+      }
+    },
+    "effects": [
+      "el estatus de la relación queda definido, sea cual sea el desenlace",
+      "la presencia del rival ha alterado para siempre aquello que se daba por sentado"
+    ],
+    "emotion_target": "ansiedad",
+    "examples": [
+      "Él nunca la había llamado de ninguna forma especial —hasta que alguien más lo hizo, en una mesa llena de gente, y la palabra resonó como el portazo de una puerta."
+    ],
+    "name": "El rival que fuerza la pregunta",
+    "preconditions": [
+      "un vínculo entre ambos que nunca se ha verbalizado"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "es libre de elegir"
+        ],
+        "label": "quien es objeto del reclamo"
+      },
+      "lead": {
+        "constraints": [
+          "ha dependido de la ambigüedad"
+        ],
+        "label": "quien nunca tuvo que decirlo"
+      },
+      "rival": {
+        "constraints": [
+          "es una opción real, no un mero pretexto"
+        ],
+        "label": "el rival que reclama"
+      }
+    },
+    "summary": "Un tercero reclama a alguien cuyo lugar en la vida del protagonista nunca había necesitado nombre. Los celos surgen antes que la confesión, la cómoda ambigüedad se vuelve insostenible y el protagonista se ve obligado a declarar su postura en voz alta o a ver cómo alguien más responde a la pregunta."
+  },
+  "romance.slow_thaw": {
+    "beats": {
+      "mercies": {
+        "intent": "amabilidad silenciosa y repetida que no pide nada a cambio",
+        "label": "Pequeñas piedades, sin comentarios"
+      },
+      "pressure": {
+        "intent": "una crisis fuerza una reacción antes de que se pueda levantar la guardia",
+        "label": "La presión derriba la guardia"
+      },
+      "refusal": {
+        "intent": "el personaje hermético rebana cualquier contacto como algo natural",
+        "label": "El rechazo como hábito establecido"
+      },
+      "warmth": {
+        "intent": "ambos ven, en retrospectiva, hasta dónde se había extendido ya el deshielo",
+        "label": "Cuánto terreno se ha cedido"
+      }
+    },
+    "effects": [
+      "el grupo hermético ya no puede fingir indiferencia",
+      "el cambio es evidente para quienes los conocían antes"
+    ],
+    "emotion_target": "ternura",
+    "examples": [
+      "Él nunca le había dado las gracias por el té, y nunca había dejado que se enfriara, y eso era todo."
+    ],
+    "name": "Deshielo lento",
+    "preconditions": [
+      "un grupo cuya frialdad es una defensa más que un veredicto"
+    ],
+    "roles": {
+      "cold": {
+        "constraints": [
+          "rechaza por principio, no por antipatía"
+        ],
+        "label": "el personaje hermético"
+      },
+      "pressure": {
+        "constraints": [
+          "provoca una reacción espontánea"
+        ],
+        "label": "la presión que revela el cambio"
+      },
+      "warm": {
+        "constraints": [
+          "ofrece sin exigir reconocimiento"
+        ],
+        "label": "quien ofrece constantemente"
+      }
+    },
+    "summary": "Un personaje frío o hermético no se conmueve mediante declaraciones, sino por acumulación: una serie de pequeños actos de piedad que nunca se mencionan, ofrecidos sin esperar nada a cambio, hasta que un momento de verdadera tensión revela cuánto terreno se ha cedido en silencio. El arco es la suma de gentilezas anodinas, y su recompensa es retrospectiva."
+  },
+  "romance.status_gap": {
+    "beats": {
+      "attraction": {
+        "intent": "se forja un vínculo donde el mundo dicta que no debería existir",
+        "label": "Afecto más allá de la frontera"
+      },
+      "enforce": {
+        "intent": "la familia o la institución interviene para separarlos por su propio bien",
+        "label": "Se impone la frontera"
+      },
+      "pay": {
+        "intent": "el precio se paga, se rechaza o alguien más lo paga por ellos",
+        "label": "Pagar o quebrarse"
+      },
+      "price": {
+        "intent": "se define con exactitud qué es lo que debe ser sacrificado",
+        "label": "El precio del cruce"
+      }
+    },
+    "effects": [
+      "uno o ambos han renunciado a algo que no se puede recuperar",
+      "la autoridad de quienes imponen la norma sobre ellos queda establecida, se acepte o no"
+    ],
+    "emotion_target": "anhelo",
+    "examples": [
+      "Su padre no se lo prohibió; simplemente detalló lo que le costaría a sus hermanos casarse con alguien de un rango inferior, y dejó que ella misma hiciera las cuentas."
+    ],
+    "name": "Más allá de la frontera",
+    "preconditions": [
+      "una frontera social con mecanismos de control reales"
+    ],
+    "roles": {
+      "guardians": {
+        "constraints": [
+          "actúan por deber o afecto, no por malicia"
+        ],
+        "label": "quienes vigilan la frontera"
+      },
+      "higher": {
+        "constraints": [
+          "su posición es real y renunciar a ella tiene un alto coste"
+        ],
+        "label": "quien está atado por su posición"
+      },
+      "lower": {
+        "constraints": [
+          "tiene mucho que ganar pero escaso estatus"
+        ],
+        "label": "quien menos perdería materialmente"
+      }
+    },
+    "summary": "El afecto surge a través de un límite impuesto por el mundo —rango, clan, riqueza, casta, especie, facción o el bando equivocado de una guerra— y la vigilancia recae en personas que actúan con buena intención. Se obliga a los amantes a tasar el cruce con algo tangible: una herencia, una familia, un cargo o la propia vida."
+  }
+}

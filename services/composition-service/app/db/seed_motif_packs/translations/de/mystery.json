@@ -1,0 +1,439 @@
+{
+  "mystery.assembled_confrontation": {
+    "beats": {
+      "assemble": {
+        "intent": "alle Betroffenen werden in einem Raum zusammengebracht",
+        "label": "Die Beteiligten werden versammelt"
+      },
+      "consequence": {
+        "intent": "Die Frage wandelt sich von der Schuld hin zu der Frage, was nun damit geschieht",
+        "label": "Was folgt, ist die Konsequenz"
+      },
+      "deny": {
+        "intent": "Die genannte Person leugnet die Tat und bringt das stärkste Gegenargument vor",
+        "label": "Die Leugnung"
+      },
+      "lay": {
+        "intent": "die Abfolge wird unter ausschließlicher Verwendung gezeigter Fakten rekonstruiert",
+        "label": "Die Kette wird dargelegt"
+      },
+      "prove": {
+        "intent": "Ein einzelnes Detail tritt zutage, das keinerlei Interpretation bedarf",
+        "label": "Der unumstößliche Beweis"
+      }
+    },
+    "effects": [
+      "Die Verantwortung wird öffentlich fixiert",
+      "Der Preis der Enthüllung wird von Unschuldigen getragen"
+    ],
+    "emotion_target": "Katharsis",
+    "examples": [
+      "Er ging es zweimal mit ihnen durch, und beim zweiten Mal hielt er an dem Punkt inne, an dem nur eine einzige Person im Raum die Stunde hätte wissen können."
+    ],
+    "name": "Die Kette der Beweise",
+    "preconditions": [
+      "Genügend feststehende Fakten, um eine Beweiskette ohne neue Indizien zu knüpfen"
+    ],
+    "roles": {
+      "assembled": {
+        "constraints": [
+          "jeder hatte einen plausiblen Grund, verdächtigt zu werden"
+        ],
+        "label": "die Anwesenden"
+      },
+      "culprit": {
+        "constraints": [
+          "leugnet, bevor er eingesteht"
+        ],
+        "label": "der Beschuldigte"
+      },
+      "investigator": {
+        "constraints": [
+          "verwendet nur das, was bereits gezeigt wurde"
+        ],
+        "label": "derjenige, der die Beweise legt"
+      },
+      "proof": {
+        "constraints": [
+          "benötigt keine Interpretation, um zu wirken"
+        ],
+        "label": "der unumstößliche Beweis"
+      }
+    },
+    "summary": "Die gesamte Hausgemeinschaft ist in einem Raum versammelt, während die Ereignisse vor ihren Augen Schritt für Schritt nachvollzogen werden. Jeder Schritt stützt sich ausschließlich auf bereits dargelegte Fakten – der Zeitplan, das Kassenbuch, die Frage, wer die Stunde hätte kennen müssen. Wie unvermeidlich folgt die Leugnung, die wiederum durch jenen einen Gegenstand entkräftet wird, der keinerlei Interpretation bedarf; danach bleibt nicht mehr die Frage nach der Schuld, sondern die Frage, was nun mit ihr geschieht."
+  },
+  "mystery.false_lead": {
+    "beats": {
+      "collapse": {
+        "intent": "die falsche Fährte wird zum stärksten Beweis dafür, wer sie gelegt hat",
+        "label": "Die Spur bricht nach oben hin weg"
+      },
+      "commit": {
+        "intent": "Ressourcen, Ansehen oder Gefühle werden an diese Spur gebunden",
+        "label": "Die Ermittlungen legen sich fest"
+      },
+      "emerge": {
+        "intent": "Die Beweise konzentrieren sich mit ungewöhnlicher Ordnung auf eine Person",
+        "label": "Ein eindeutiger Verdächtiger tritt hervor"
+      },
+      "seam": {
+        "intent": "Eine Nahtstelle offenbart, dass die Beweise arrangiert wurden, statt sie einfach liegen zu lassen",
+        "label": "Die Spur ist zu perfekt"
+      }
+    },
+    "effects": [
+      "der Ermittler hat an Ansehen verloren und muss nun mit eingeschränkten Mitteln weitermachen",
+      "die Existenz eines Drahtziehers, der alles arrangiert hat, ist nun zweifelsfrei erwiesen"
+    ],
+    "emotion_target": "Unbehagen",
+    "examples": [
+      "Jedes Dokument, das sie brauchten, lag in genau der Schublade, die sie als Erstes durchsucht hatten – genau das war es, was ihr schließlich an der Sache verdächtig vorkam."
+    ],
+    "name": "Die Spur, die zu perfekt passt",
+    "preconditions": [
+      "eine Untersuchung unter dem Druck, endlich einen Namen nennen zu müssen"
+    ],
+    "roles": {
+      "arranger": {
+        "constraints": [
+          "bleibt im Hintergrund, während die Spur verfolgt wird"
+        ],
+        "label": "wer auch immer die Spur gelegt hat"
+      },
+      "investigator": {
+        "constraints": [
+          "investiert, bevor er verifiziert"
+        ],
+        "label": "der Ermittler, der sich festlegt"
+      },
+      "suspect": {
+        "constraints": [
+          "ist durch die Fakten tatsächlich belastet"
+        ],
+        "label": "der zu bequeme Verdächtige"
+      }
+    },
+    "summary": "Ein Verdächtiger tritt auf, auf den alle Beweise reibungslos passen – die Briefe liegen in genau der Schublade, die als Erstes durchsucht wurde, die Schulden sind aktenkundig, das Alibi ist dünn – und die Ermittlungen verschreiben sich dieser Spur, sei es öffentlich, kostspielig oder emotional. Das Kartenhaus bricht nicht durch neue Beweise zusammen, sondern durch die Erkenntnis, dass die Übereinstimmung zu perfekt war: Jemand hat dafür gesorgt, dass diese Dokumente in genau dieser Reihenfolge gefunden werden, und diese Person ist der eigentliche Täter."
+  },
+  "mystery.hidden_connection": {
+    "beats": {
+      "join": {
+        "intent": "ein nebensächliches Detail offenbart, dass sie aus derselben Quelle stammen",
+        "label": "Ein gemeinsamer Ursprung tritt zutage"
+      },
+      "redraw": {
+        "intent": "die bekannten Fakten ordnen sich um das neue Zentrum herum neu an",
+        "label": "Der Fall zeichnet sich neu"
+      },
+      "separate": {
+        "intent": "beide sind bekannt und keines steht in Verbindung zum anderen",
+        "label": "Zwei Fakten stehen unverbunden nebeneinander"
+      }
+    },
+    "effects": [
+      "der Kern des Falls hat sich verschoben, ohne dass neue Beweise auftauchten",
+      "zuvor entlastete Personen rücken wieder in den Fokus"
+    ],
+    "emotion_target": "Neugier",
+    "examples": [
+      "Die Bank im Geschäftsbuch und das Dorf im Brief erwiesen sich als nur hundert Schritte voneinander entfernt, und alles andere ordnete sich um diese Erkenntnis herum neu."
+    ],
+    "name": "Zwei Fakten, ein Ursprung",
+    "preconditions": [
+      "eine Fallakte mit feststehenden Fakten, die bisher noch nie nebeneinandergestellt wurden"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "besaß bereits beide Fakten"
+        ],
+        "label": "die Person, die sie verknüpft"
+      },
+      "origin": {
+        "constraints": [
+          "lag offen vor Augen, war aber unbedeutend"
+        ],
+        "label": "der gemeinsame Ursprung"
+      },
+      "source": {
+        "constraints": [
+          "ist ein Zufall, kein Beweismittel"
+        ],
+        "label": "der Auslöser der Verknüpfung"
+      }
+    },
+    "summary": "Zwei Dinge, die bisher als völlig unzusammenhängend in der Fallakte lagen – zwei Namen, zwei Daten, eine Summe in einem Hauptbuch und ein Dorf in einem Brief – entpuppen sich als aus demselben Ursprung stammend, wodurch sich die gesamte Struktur des Falls neu zusammensetzt. Es wird nichts Neues entdeckt; eine bereits vorliegende Tatsache wird schlicht zum neuen Mittelpunkt, und Personen, die bereits entlastet wurden, rücken wieder in den Fokus."
+  },
+  "mystery.impossible_circumstance": {
+    "beats": {
+      "bound": {
+        "intent": "das Verbrechen wird als durch die bekannten Umstände ausgeschlossen dargestellt",
+        "label": "Die Unmöglichkeit wird dargelegt"
+      },
+      "dissolve": {
+        "intent": "Sob die falsche Annahme entfernt ist die Abfolge wieder ganz gewöhnlich",
+        "label": "Die Unmöglichkeit löst sich auf"
+      },
+      "enumerate": {
+        "intent": "jede Bedingung wird so präzise dargelegt, dass sie geprüft werden kann, anstatt nur als Gefühl zu wirken",
+        "label": "Die Hindernisse werden aufgelistet"
+      },
+      "identify": {
+        "intent": "ein Hindernis wird als eines identifiziert, das niemand jemals tatsächlich überprüft hat",
+        "label": "Eines ist nur eine Annahme"
+      }
+    },
+    "effects": [
+      "die Methode ist nun bekannt, auch wenn die Täterschaft es noch nicht ist",
+      "wer von der gemeinsamen Annahme profitierte, ist die neue Frage"
+    ],
+    "emotion_target": "Neugier",
+    "examples": [
+      "Vier Personen schworen, die Tür sei die ganze Nacht bewacht worden, und jede von ihnen sprach die Wahrheit über eine andere Nacht."
+    ],
+    "name": "Es hätte nicht geschehen können",
+    "preconditions": [
+      "eine Reihe von Bedingungen, die von allen Anwesenden als Fakten behandelt werden"
+    ],
+    "roles": {
+      "assumption": {
+        "constraints": [
+          "wurde von niemandem jemals überprüft"
+        ],
+        "label": "die gemeinsame Annahme"
+      },
+      "constraint": {
+        "constraints": [
+          "besteht so lange fort, bis ein Element neu klassifiziert wird"
+        ],
+        "label": "die Unmöglichkeit"
+      },
+      "investigator": {
+        "constraints": [
+          "muss sie ehrlich benennen, um sie zu entkräften"
+        ],
+        "label": "die Person, die die Hindernisse aufzählt"
+      }
+    },
+    "summary": "Das Verbrechen ist durch Hindernisse begrenzt, die es unmöglich machen – ein von innen verriegelter Raum, eine Treppe, die die ganze Nacht bewacht wurde, ein von Fremden bezeugtes Alibi, eine Distanz, die in der verfügbaren Zeit nicht zu Fuß oder zu Pferd zu bewältigen war. Die Einschränkungen werden ehrlich, Punkt für Punkt, aufgezählt, und die Lösung ergibt sich aus der Erkenntnis, dass eines dieser Hindernisse gar kein geprüfter Fakt war, sondern eine bloße Annahme, die jeder im Haus teilte."
+  },
+  "mystery.impossible_detail": {
+    "beats": {
+      "detail": {
+        "intent": "ein einzelner Fakt lässt sich durch die unschuldige Deutung nicht erklären",
+        "label": "Ein Detail lässt sich nicht einfügen"
+      },
+      "discover": {
+        "intent": "etwas wird entdeckt, das eine offensichtlich unschuldige Deutung zulässt",
+        "label": "Die Störung wird entdeckt"
+      },
+      "fix": {
+        "intent": "die Unstimmigkeit wird präzise genug benannt, um sie zu verfolgen",
+        "label": "Die Frage ist gestellt"
+      },
+      "open": {
+        "intent": "jemand entschließt sich, die Frage zu stellen, obwohl ein schnelles Ende der Angelegenheit erwünscht wäre",
+        "label": "Die Ermittlung beginnt"
+      }
+    },
+    "effects": [
+      "eine spezifische, unbeantwortete Frage bestimmt nun den weiteren Verlauf",
+      "mindestens eine beteiligte Person möchte lieber nicht, dass diese Frage gestellt wird"
+    ],
+    "emotion_target": "Neugier",
+    "examples": [
+      "Alles im Raum sprach dafür, dass er alleine getrunken hatte; nur die zweite Tasse, gewaschen, trocken und zurück an ihrem Haken, widersprach dem."
+    ],
+    "name": "Das Detail, das nicht sein dürfte",
+    "preconditions": [
+      "ein Ereignis, für das es eine leicht verfügbare, harmlose Erklärung gibt"
+    ],
+    "roles": {
+      "authority": {
+        "constraints": [
+          "bevorzugen die gewöhnliche Erklärung"
+        ],
+        "label": "diejenigen, die den Fall abschließen wollen"
+      },
+      "investigator": {
+        "constraints": [
+          "sieht, was anderen entgeht"
+        ],
+        "label": "die Person, die es bemerkt"
+      },
+      "question": {
+        "constraints": [
+          "ist weitaus schärfer als das bloße «Wer war es?»"
+        ],
+        "label": "die alles eröffnende Frage"
+      },
+      "scene": {
+        "constraints": [
+          "präsentiert überwiegend gewöhnliche Fakten"
+        ],
+        "label": "die Störung selbst"
+      }
+    },
+    "summary": "Ein Störfall wird entdeckt – eine Leiche auf dem Boden, ein Diebstahl, ein Verschwinden, ein Kassenbuch, das nicht aufgeht – und inmitten der gewöhnlichen Fakten liegt eine kleine, physische Sache, die durch keine unschuldige Erklärung zu rechtfertigen ist: eine zweite, gewaschene Tasse, die wieder an ihrem Haken hängt; ein Schlüssel auf der falschen Seite der Tür; ein Mantel, der für das Wetter viel zu trocken ist. Diese eine Unstimmigkeit verwandelt ein Unglück in eine Frage, und diese Frage ist das eigentliche Ziel der Ermittlung."
+  },
+  "mystery.investigator_compromised": {
+    "beats": {
+      "bend": {
+        "intent": "eine Entscheidung wird getroffen, die eher durch das Eigeninteresse als durch die Beweislage erklärbar ist",
+        "label": "Das Urteil beugt sich"
+      },
+      "expose": {
+        "intent": "das Eigeninteresse wird für die anderen sichtbar",
+        "label": "Die Verbindung tritt zutage"
+      },
+      "reearn": {
+        "intent": "frühere Schlussfolgerungen müssen vor einem zweifelnden Publikum erneut bewiesen werden",
+        "label": "Alles muss neu bewiesen werden"
+      },
+      "stake": {
+        "intent": "der Ermittler ist mit dem Fall verknüpft, ohne es zu offenbaren",
+        "label": "Das Interesse bleibt verborgen"
+      }
+    },
+    "effects": [
+      "frühere Schlussfolgerungen besitzen keine Autorität mehr, bis sie erneut erbracht wurden",
+      "die fortgesetzte Beteiligung des Ermittlers wird selbst zum Gegenstand von Zweifeln"
+    ],
+    "emotion_target": "Unbehagen",
+    "examples": [
+      "Es war nicht so, dass er über die Verbindung zur Familie gelogen hätte; es war vielmehr, dass niemand daran gedacht hatte, nachzufragen, und er es drei Wochen lang so stehen gelassen hatte."
+    ],
+    "name": "Der Ermittler ist befangen",
+    "preconditions": [
+      "ein Ermittler mit einer bestehenden Verbindung zu einer am Fall Beteiligten"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "haben berechtigten Grund zu zweifeln"
+        ],
+        "label": "die Zweifler"
+      },
+      "investigator": {
+        "constraints": [
+          "hat die Befangenheit nicht selbst gewählt"
+        ],
+        "label": "der befangene Ermittler"
+      },
+      "stake": {
+        "constraints": [
+          "ist echt und macht die Person unparteiisch"
+        ],
+        "label": "das persönliche Interesse"
+      }
+    },
+    "summary": "Die Person, die die Fragen stellt, erweist sich als Teil des Falls – sei es durch eine persönliche Verbindung, eine ausstehende Schuld oder als eigentlicher Auslöser des Geschehens – und hat dies verschwiegen. Das Urteilsvermögen beugt sich, noch bevor jemand die Verzerrung bemerkt, und sobald die Verbindung ans Licht kommt, muss jede bereits in die Akten eingetragene Schlussfolgerung vor den Augen derer erneut erbracht werden, die nun berechtigten Grund haben, an allem zu zweifeln."
+  },
+  "mystery.second_death": {
+    "beats": {
+      "carry": {
+        "intent": "die Verantwortung für die Provokation des Todes verändert ihr weiteres Vorgehen",
+        "label": "Der Ermittler trägt die Last"
+      },
+      "narrow": {
+        "intent": "nur wer wusste, was bevorsteht, konnte gehandelt haben",
+        "label": "Der Kreis verengt sich"
+      },
+      "provoke": {
+        "intent": "eine Befragung erreicht jemanden, der nun zur Belastung wird",
+        "label": "Die Fragen treffen ins Schwarze"
+      },
+      "silence": {
+        "intent": "die Person, die kurz vor einer Aussage stand, wird eliminiert",
+        "label": "Der Zeuge wird zum Schweigen gebracht"
+      }
+    },
+    "effects": [
+      "die Fallakte enthält nun gesicherte Fakten darüber, wer Vorwissen hatte, wobei die Details noch nicht miteinander verknüpft sind",
+      "der Kreis der Verdächtigen reduziert sich auf jene, die wussten, was der verstorbene Zeuge ausgesagt hätte",
+      "der Ermittler ist nun in ein persönliches Schicksal verwickelt, das er nicht selbst gewählt hat"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Sie hatte ihn gebeten, am Morgen zu erscheinen; doch man fand ihn schon vor dem Morgengrauen – was ihr mehr offenbarte, als seine Antwort es je hätte tun können."
+    ],
+    "name": "Die Ermittlung provoziert einen zweiten Mord",
+    "preconditions": [
+      "eine Untersuchung, die für ihr Zielobjekt sichtbar geworden ist"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "trägt die Verantwortung für die Provokation"
+        ],
+        "label": "die Person, deren Fragen ihn provoziert haben"
+      },
+      "killer": {
+        "constraints": [
+          "muss gewusst haben, was bevorsteht"
+        ],
+        "label": "wer auch immer zum Schweigen brachte"
+      },
+      "silenced": {
+        "constraints": [
+          "stand kurz davor, etwas Entscheidendes auszusagen"
+        ],
+        "label": "das zweite Opfer"
+      }
+    },
+    "summary": "Das Stellen von Fragen macht jemanden für einen anderen zur Gefahr, und ein zweiter Leichnam folgt – charakteristischerweise die Person, die zugestimmt hatte, am nächsten Morgen auszusagen, die aber noch vor dem Morgengrauen aufgefunden wurde. Das Interview, das nie stattfand, sagt mehr aus als die Antwort es je getan hätte: Nur wer wusste, was gleich gesagt werden würde, konnte gehandelt haben; der Kreis der Verdächtigen verengt sich auf diese Personen, und der Ermittler trägt nun die Last eines Todes, den seine eigenen Fragen provoziert haben."
+  },
+  "mystery.witness_who_lies": {
+    "beats": {
+      "contradict": {
+        "intent": "ein überprüfbares Detail stimmt nicht mit der Schilderung überein",
+        "label": "Ein kleines Detail widerspricht ihr"
+      },
+      "press": {
+        "intent": "der Widerspruch wird dem Zeugen direkt vorgehalten",
+        "label": "Die Lüge wird thematisiert"
+      },
+      "reason": {
+        "intent": "Der Zeuge gesteht etwas völlig anderes, das den Fall in ein neues Licht rückt",
+        "label": "Der Grund ist der entscheidende Fund"
+      },
+      "testify": {
+        "intent": "ein Zeuge liefert eine Schilderung, die weitgehend schlüssig ist",
+        "label": "Die Aussage wird gemacht"
+      }
+    },
+    "effects": [
+      "Die Fallakte enthält eine neue, gesicherte Tatsache — eine verborgene Beziehung — die jedoch noch nicht in Zusammenhang mit dem Verbrechen steht",
+      "Der Zeitplan des Zeugen wird korrigiert, wodurch eine andere Person in den Fokus rückt"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Er war nicht im Lagerhaus gewesen und wollte nicht sagen, wo er stattdessen war; es dauerte zwei weitere Tage, bis man herausfand, dass er in einem Krankenhaus war."
+    ],
+    "name": "Der Zeuge, dessen Lüge nicht das Verbrechen ist",
+    "preconditions": [
+      "Ein Zeuge, der etwas zu verbergen hat, das jedoch nichts mit dem eigentlichen Verbrechen zu tun hat"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "muss den Widerspruch aufzeigen, ohne eine Schuld vorauszusetzen"
+        ],
+        "label": "die prüfende Person"
+      },
+      "secret": {
+        "constraints": [
+          "ist beschämend genug, um dafür zu lügen"
+        ],
+        "label": "das unbeteiligte Geheimnis"
+      },
+      "witness": {
+        "constraints": [
+          "lügt über etwas, aber nicht über die Tat"
+        ],
+        "label": "der lügende Zeuge"
+      }
+    },
+    "summary": "Es wird eine Aussage gemacht, die im Widerspruch zu einer kleinen, überprüfbaren Tatsache steht – der Stunde auf einem Beleg, der Fahrt eines Zuges, der Ausrichtung eines Fensters zum Hinterhof. Das Aufzeigen dieses Widerspruchs führt nicht zum Geständnis der Tat, sondern zu einem Geständnis über etwas völlig anderes: eine Schuld, eine Affäre, eine Nacht in einem Krankenhaus, das man nicht beim Namen nennen will. Die Lüge ist echt, der Grund ist ein anderer, und genau dieser unbeteiligte Grund ist es, der den Fall löst."
+  }
+}

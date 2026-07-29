@@ -1,0 +1,486 @@
+{
+  "romance.confession_interrupted": {
+    "beats": {
+      "cost": {
+        "intent": "peristiwa-peristiwa berlanjut dengan anggapan bahwa kata-kata itu tidak pernah benar",
+        "label": "Harga dari sebuah keheningan"
+      },
+      "interrupt": {
+        "intent": "sebuah peristiwa dengan urgensi nyata memutus momen tersebut",
+        "label": "Sesuatu yang lebih mendesak datang"
+      },
+      "pocket": {
+        "intent": "pengakuan tertunda dan momen itu tidak pernah kembali",
+        "label": "Kata-kata kembali tersimpan tak terucap"
+      },
+      "ready": {
+        "intent": "pengakuan akhirnya diputuskan dan mulai terucap",
+        "label": "Kata-kata telah siap"
+      }
+    },
+    "effects": [
+      "hal yang tak terucapkan itu kini mendistorsi setiap keputusan yang menyusul setelahnya",
+      "kesempatan berikutnya untuk mengatakannya akan memakan biaya yang lebih besar daripada kesempatan kali ini"
+    ],
+    "emotion_target": "kerinduan",
+    "examples": [
+      "Ia baru saja sempat menyebut namanya sebelum sang utusan datang menerobos pintu, dan saat ruangan itu telah kosong, wanita itu sudah dalam perjalanan."
+    ],
+    "name": "Kata-kata yang Tak Terucap",
+    "preconditions": [
+      "sebuah perasaan yang telah siap untuk diungkapkan"
+    ],
+    "roles": {
+      "interruption": {
+        "constraints": [
+          "memang lebih mendesak pada saat itu"
+        ],
+        "label": "apa yang datang menggantikan"
+      },
+      "listener": {
+        "constraints": [
+          "seharusnya akan menjawab"
+        ],
+        "label": "sosok yang tidak mendengarnya"
+      },
+      "speaker": {
+        "constraints": [
+          "akhirnya telah memutuskan untuk bicara"
+        ],
+        "label": "sosok yang hendak mengatakannya"
+      }
+    },
+    "summary": "Pengakuan itu akhirnya siap dan momennya pun akhirnya tepat, namun kemudian sesuatu datang yang lebih mendesak daripadanya — sebuah panggilan, sebuah luka, sebuah kepergian, atau sebuah kebohongan yang sudah terlanjur berjalan — dan hal yang tak terkatakan itu kembali tersimpan dalam saku. Harga yang harus dibayar diukur dari apa yang terjadi selanjutnya selagi kata-kata itu masih tersimpan tak terpakai."
+  },
+  "romance.contract_bond": {
+    "beats": {
+      "admit": {
+        "intent": "mempertahankan kepura-puraan menjadi lebih menyakitkan daripada mengakui kenyataan",
+        "label": "Kebenaran terasa lebih mahal daripada kebohongan"
+      },
+      "breach": {
+        "intent": "aturan-aturan dilanggar secara sembunyi-sembunyi dalam hal-hal kecil yang tidak dilaporkan oleh kedua belah pihak",
+        "label": "Aturan mulai luntur"
+      },
+      "rules": {
+        "intent": "aturan eksplisit menandai batasan tentang apa yang tidak boleh terjadi dalam hubungan ini",
+        "label": "Syarat-syarat ditetapkan"
+      },
+      "strike": {
+        "intent": "sebuah ikatan disetujui demi alasan transaksional yang terbuka",
+        "label": "Kesepakatan tercapai"
+      }
+    },
+    "effects": [
+      "kerangka transaksional tidak lagi mampu menggambarkan realitas yang ada",
+      "mengakhiri kesepakatan tersebut kini menuntut harga emosional yang tidak pernah diantisipasi oleh keduanya"
+    ],
+    "emotion_target": "kerinduan",
+    "examples": [
+      "Klausul keempat menyatakan kamar terpisah; namun saat musim dingin tiba, tak satu pun dari mereka ingat di malam mana aturan itu mulai diabaikan."
+    ],
+    "name": "Perjanjian yang Tak Lagi Sama",
+    "preconditions": [
+      "sebuah tekanan yang membuat ikatan tanpa cinta menjadi pilihan yang paling rasional"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "masuk ke dalam ikatan karena alasan non-romantis yang dinyatakan secara jelas"
+        ],
+        "label": "pihak yang membutuhkan perjanjian"
+      },
+      "partner": {
+        "constraints": [
+          "memiliki alasannya sendiri dalam menyetujui perjanjian"
+        ],
+        "label": "mitra kontrak"
+      },
+      "pressure": {
+        "constraints": [
+          "membuat penolakan terasa lebih merugikan daripada kesepakatan"
+        ],
+        "label": "keluarga, utang, atau institusi yang memaksanya"
+      },
+      "watchers": {
+        "constraints": [
+          "harus diyakinkan bahwa hubungan itu nyata"
+        ],
+        "label": "mereka yang menjadi saksi atas perjanjian tersebut"
+      }
+    },
+    "summary": "Sebuah ikatan dijalin demi alasan yang sama sekali tidak melibatkan perasaan — utang, warisan, harga diri keluarga, visa, atau sebuah traktat — dan syarat-syaratnya ditetapkan secara gamblang agar tidak ada yang salah mengartikannya. Namun, aturan-aturan itu mulai dilanggar satu demi satu, hingga mengakui kebenaran yang ada menjadi jauh lebih mahal daripada nilai perjanjian itu sendiri."
+  },
+  "romance.forced_proximity": {
+    "beats": {
+      "crack": {
+        "intent": "momen tanpa sandiwara menunjukkan sosok asli di balik topeng mereka",
+        "label": "Pertahanan runtuh"
+      },
+      "friction": {
+        "intent": "kedekatan memaksa rasa jengkel dan perbedaan muncul ke permukaan",
+        "label": "Gesekan dalam keterbatasan"
+      },
+      "intimacy": {
+        "intent": "kedekatan yang tak disengaja menjadi kenyataan yang tak terbantahkan bagi keduanya",
+        "label": "Keintiman tak terduga"
+      },
+      "trapped": {
+        "intent": "keadaan eksternal menghilangkan pilihan untuk pergi",
+        "label": "Terkurung bersama"
+      }
+    },
+    "effects": [
+      "jarak di antara mereka tak lagi bisa dipertahankan hanya dengan kebiasaan",
+      "masing-masing telah melihat sisi lain dari pasangannya yang tidak sengaja terungkap"
+    ],
+    "emotion_target": "kerinduan",
+    "examples": [
+      "Jalanan tergerus banjir dan satu-satunya tempat berlindung adalah satu ruangan dengan satu lampu; pada malam ketiga, pertengkaran telah usai dan tak satu pun dari mereka ingin menjelaskan alasannya."
+    ],
+    "name": "Kedekatan Terpaksa",
+    "preconditions": [
+      "dua pihak yang memiliki alasan untuk saling menjaga jarak"
+    ],
+    "roles": {
+      "circumstance": {
+        "constraints": [
+          "bersifat eksternal dan bukan disebabkan oleh salah satu pihak"
+        ],
+        "label": "keadaan yang menjebak mereka"
+      },
+      "lead": {
+        "constraints": [
+          "tidak dapat meninggalkan ruang bersama"
+        ],
+        "label": "tokoh utama sudut pandang"
+      },
+      "other": {
+        "constraints": [
+          "adalah alasan mengapa kepergian menjadi sangat penting"
+        ],
+        "label": "pihak lainnya"
+      }
+    },
+    "summary": "Dua orang yang tidak akan pernah memilih untuk bersama terjebak dalam ruang yang sama tanpa jalan keluar — badai, tugas bersama, rumah yang terkunci, satu tempat tidur — dan gesekan akibat ketidakmampuan untuk pergi perlahan meruntuhkan pertahanan mereka, hingga muncul keintiman tak terduga yang tidak direncanakan oleh keduanya dan tidak dapat lagi mereka abaikan."
+  },
+  "romance.misunderstanding_rift": {
+    "beats": {
+      "conclude": {
+        "intent": "fragmen tersebut dilengkapi oleh rasa takut, bukan melalui pertanyaan",
+        "label": "Kesimpulan yang salah menetap"
+      },
+      "glimpse": {
+        "intent": "sesuatu yang nyata namun tidak lengkap disaksikan tanpa konteks",
+        "label": "Kebenaran parsial terlihat"
+      },
+      "silence": {
+        "intent": "harga diri menahan pertanyaan agar tetap tak terucap hingga jarak menjadi norma baru",
+        "label": "Keheningan mengeras"
+      },
+      "truth": {
+        "intent": "konteks yang hilang akhirnya terungkap, namun sudah terlambat untuk memperbaiki keadaan",
+        "label": "Gambaran utuh tiba"
+      }
+    },
+    "effects": [
+      "ikatan di antara mereka tidak lagi terucap secara terbuka, dan tidak lagi terjalin",
+      "kepercayaan kini harus dibangun kembali, bukan lagi sekadar asumsi",
+      "kebiasaan untuk tidak bertanya terungkap sebagai kesalahan yang sesungguhnya"
+    ],
+    "emotion_target": "kepedihan hati",
+    "examples": [
+      "Ia melihat sebuah cincin tersemat di tangan wanita lain dan berbalik pergi sebelum kalimat yang seharusnya menjelaskan segalanya sempat terucap."
+    ],
+    "name": "Kesalahpahaman yang Mengeras",
+    "preconditions": [
+      "ikatan yang cukup kuat sehingga kesalahan dalam menafsirkan sesuatu terasa sangat menyakitkan"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "memiliki penjelasan yang tidak pernah ditanyakan"
+        ],
+        "label": "pihak yang disalahpahami"
+      },
+      "fragment": {
+        "constraints": [
+          "benar-benar nyata namun tidak lengkap"
+        ],
+        "label": "bukti parsial"
+      },
+      "witness": {
+        "constraints": [
+          "menarik kesimpulan tanpa bertanya"
+        ],
+        "label": "pihak yang melihat fragmen"
+      }
+    },
+    "summary": "Satu pihak melihat sekelumit kebenaran — sebuah pelukan, sepucuk surat, sebuah pembayaran — dan menarik kesimpulan yang dipicu oleh fragmen tersebut. Harga diri atau rasa takut membuat pertanyaan tak pernah terucap, keheningan membeku bagai semen, dan saat gambaran utuhnya akhirnya tiba, kerusakan yang terjadi bukan lagi soal kesalahpahaman itu sendiri, melainkan soal apa yang telah dibuktikan oleh keheningan tersebut."
+  },
+  "romance.past_lover_returns": {
+    "beats": {
+      "choose": {
+        "intent": "masa lalu telah berakhir dengan tuntas atau masa kini harus dilepaskan",
+        "label": "Tuntaskan atau buka kembali"
+      },
+      "compare": {
+        "intent": "masa kini diukur dengan sebuah kenangan yang tak mampu ia jawab",
+        "label": "Perbandingan yang dipaksakan"
+      },
+      "name": {
+        "intent": "apa yang sebenarnya tidak pernah benar-benar berakhir akhirnya terucap dengan lantang",
+        "label": "Hal yang belum usai mulai terucap"
+      },
+      "return": {
+        "intent": "sebuah ikatan masa lalu muncul kembali tanpa peringatan",
+        "label": "Masa lalu melangkah masuk kembali"
+      }
+    },
+    "effects": [
+      "kisah lama tersebut benar-benar ditutup, bukan sekadar tertidur",
+      "ikatan di masa kini mengetahui dengan pasti di mana posisinya"
+    ],
+    "emotion_target": "melankolis",
+    "examples": [
+      "Tujuh tahun berlalu dan ia masih memesankan teh dengan cara yang dulu sempat ia hentikan, dan hal itulah — bukan permintaan maafnya — yang menghancurkan malam itu."
+    ],
+    "name": "Sang Mantan yang Kembali",
+    "preconditions": [
+      "ikatan masa lalu yang berakhir tanpa penyelesaian"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "tidak pernah mengakhiri hubungan sebelumnya secara resmi"
+        ],
+        "label": "sosok yang terjebak di tengah"
+      },
+      "present": {
+        "constraints": [
+          "dibanding-bandingkan tanpa pernah menyetujuinya"
+        ],
+        "label": "ikatan saat ini"
+      },
+      "returner": {
+        "constraints": [
+          "membawa akhir cerita yang belum tuntas"
+        ],
+        "label": "sang mantan yang kembali"
+      }
+    },
+    "summary": "Sebuah ikatan masa lalu muncul kembali dengan segala urusan yang belum terselesaikan, dan hubungan saat ini diukur dengan sebuah kenangan yang tak pernah sepakat untuk bersaing. Yang benar-benar diuji bukanlah siapa yang lebih dipilih, melainkan apakah kisah lama itu benar-benar telah usai atau sekadar ditinggalkan begitu saja."
+  },
+  "romance.protective_sacrifice": {
+    "beats": {
+      "absorb": {
+        "intent": "sang pelindung menanggung beban tersebut dan menyembunyikan tindakannya",
+        "label": "Diterima dalam senyap"
+      },
+      "discover": {
+        "intent": "sang kekasih mengetahui apa yang telah dikorbankan dan kapan hal itu terjadi",
+        "label": "Rahasia terungkap"
+      },
+      "reckon": {
+        "intent": "sang kekasih harus menggenggam rasa syukur dan amarah secara bersamaan",
+        "label": "Pengabdian sekaligus pengkhianatan"
+      },
+      "threat": {
+        "intent": "sebuah konsekuensi nyata akan menimpa orang yang salah",
+        "label": "Bahaya mengancam sang kekasih"
+      }
+    },
+    "effects": [
+      "sebuah utang budi yang tak terbayar kini membentang di antara mereka",
+      "kebiasaan sang pelindung dalam mengambil keputusan sepihak kini menjadi persoalan"
+    ],
+    "emotion_target": "kepedihan hati",
+    "examples": [
+      "Para penagih utang berhenti datang di musim semi; butuh waktu dua tahun sebelum ia menyadari nama siapa yang telah menggantikan namanya di surat utang itu."
+    ],
+    "name": "Pengorbanan dalam Senyap",
+    "preconditions": [
+      "salah satu pihak berada dalam posisi untuk mencegat bahaya yang ditujukan bagi pihak lainnya"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "tidak diberitahu, dan akan menolak jika tahu"
+        ],
+        "label": "sang yang dilindungi"
+      },
+      "protector": {
+        "constraints": [
+          "menyembunyikan pengorbanannya"
+        ],
+        "label": "sang pembayar"
+      },
+      "threat": {
+        "constraints": [
+          "nyata dan seharusnya mengenai sasaran"
+        ],
+        "label": "bahaya yang ditanggung"
+      }
+    },
+    "summary": "Bahaya mengancam sang kekasih dan pihak lain menanggungnya tanpa sepatah kata pun — sebuah utang yang dilunasi, reputasi yang dikorbankan, luka yang disembunyikan di balik lengan baju, atau nama yang diserahkan. Penyembunyian ini diniatkan sebagai perlindungan, namun justru menjadi sebuah pengkhianatan melalui pembungkaman, sehingga saat rahasia terungkap, ia terasa sebagai bentuk pengabdian sekaligus pengkhianatan di saat yang bersamaan."
+  },
+  "romance.rival_forces_the_question": {
+    "beats": {
+      "claim": {
+        "intent": "pihak ketiga secara terbuka mengejar sosok yang selama ini dianggap sudah menjadi milik sang tokoh utama",
+        "label": "Sang rival menyatakan klaim"
+      },
+      "jealousy": {
+        "intent": "perasaan itu muncul sebelum sang tokoh utama mampu merangkainya dalam kata-kata",
+        "label": "Cemburu datang lebih dulu"
+      },
+      "stake": {
+        "intent": "tokoh utama menyatakan perasaannya secara terbuka atau menyerah dalam keheningan",
+        "label": "Bersuara atau kehilangan kesempatan"
+      },
+      "untenable": {
+        "intent": "membiarkan segalanya tetap tak terucap kini menjadi sebuah jawaban tersendiri",
+        "label": "Ambiguitas menjadi tak tertahankan"
+      }
+    },
+    "effects": [
+      "status hubungan tersebut kini menjadi jelas, apa pun hasilnya",
+      "kehadiran sang rival telah mengubah hal-hal yang selama ini dianggap sudah pasti"
+    ],
+    "emotion_target": "kecemasan",
+    "examples": [
+      "Ia tidak pernah memanggilnya dengan sebutan khusus — sampai orang lain melakukannya, di meja yang penuh orang, dan kata itu jatuh bagaikan pintu yang tertutup rapat."
+    ],
+    "name": "Sang Rival yang Memaksa Sebuah Jawaban",
+    "preconditions": [
+      "ikatan di antara mereka yang selama ini tidak pernah terucap"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "bebas untuk memilih"
+        ],
+        "label": "sosok yang sedang diperebutkan"
+      },
+      "lead": {
+        "constraints": [
+          "selama ini bersandar pada ketidakpastian"
+        ],
+        "label": "sosok yang tak pernah merasa perlu mengatakannya"
+      },
+      "rival": {
+        "constraints": [
+          "merupakan pilihan yang nyata, bukan sekadar kambing hitam"
+        ],
+        "label": "sang rival penantang"
+      }
+    },
+    "summary": "Pihak ketiga mulai mengklaim seseorang yang selama ini kedudukannya dalam hidup sang tokoh utama tak pernah perlu didefinisikan. Rasa cemburu muncul sebelum pengakuan sempat terucap, ambiguitas yang selama ini terasa nyaman kini menjadi tak tertahankan, dan sang tokoh utama dipaksa untuk menyatakan haknya secara terbuka atau menyaksikan jawaban atas pertanyaan itu diberikan oleh orang lain."
+  },
+  "romance.slow_thaw": {
+    "beats": {
+      "mercies": {
+        "intent": "kebaikan sunyi yang berulang dan tidak mengharapkan imbalan",
+        "label": "Kebaikan kecil, tanpa kata"
+      },
+      "pressure": {
+        "intent": "sebuah krisis memaksa munculnya reaksi sebelum pertahanan sempat dibangun",
+        "label": "Tekanan meruntuhkan pertahanan"
+      },
+      "refusal": {
+        "intent": "pihak yang tertutup menepis kontak sebagai hal yang lumrah",
+        "label": "Penolakan sebagai kebiasaan yang menetap"
+      },
+      "warmth": {
+        "intent": "keduanya menyadari, secara retrospektif, sejauh mana kehangatan itu telah meresap",
+        "label": "Sejauh mana ruang telah diberikan"
+      }
+    },
+    "effects": [
+      "pihak yang tertutup tersebut tidak lagi bisa berpura-pura tidak peduli",
+      "perubahan tersebut terlihat nyata oleh orang lain yang telah mengenal mereka sebelumnya"
+    ],
+    "emotion_target": "kelembutan",
+    "examples": [
+      "Ia tak pernah sekali pun berterima kasih atas teh yang disuguhkan, namun ia tak pernah sekali pun membiarkannya menjadi dingin, dan hanya itulah bentuk perhatiannya."
+    ],
+    "name": "Pencairan Perlahan",
+    "preconditions": [
+      "sebuah pihak yang bersikap dingin sebagai bentuk pertahanan diri, bukan sebagai vonis akhir"
+    ],
+    "roles": {
+      "cold": {
+        "constraints": [
+          "menolak berdasarkan prinsip, bukan karena rasa benci"
+        ],
+        "label": "pihak yang tertutup"
+      },
+      "pressure": {
+        "constraints": [
+          "memaksa munculnya reaksi yang tak terduga"
+        ],
+        "label": "tekanan yang mengungkap perubahan"
+      },
+      "warm": {
+        "constraints": [
+          "memberi tanpa menuntut pengakuan"
+        ],
+        "label": "sang pemberi yang tekun"
+      }
+    },
+    "summary": "Pihak yang dingin atau tertutup tidak mencair melalui pernyataan besar, melainkan melalui akumulasi — rangkaian kebaikan kecil yang berulang tanpa pernah dibahas, diberikan tanpa pamrih, hingga sebuah momen tekanan nyata mengungkap betapa banyak ruang yang telah diberikan secara diam-diam. Busur ceritanya adalah kumpulan dari kebaikan-kebaikan sederhana, dan puncaknya bersifat retrospektif."
+  },
+  "romance.status_gap": {
+    "beats": {
+      "attraction": {
+        "intent": "sebuah ikatan terbentuk di tempat yang menurut dunia seharusnya tidak ada",
+        "label": "Ikatan melampaui batas"
+      },
+      "enforce": {
+        "intent": "keluarga atau institusi bergerak untuk memisahkan mereka demi kebaikan mereka sendiri",
+        "label": "Batas ditegakkan"
+      },
+      "pay": {
+        "intent": "harga harus dibayar, ditolak, atau seseorang membayarkannya demi mereka",
+        "label": "Bayar atau hancur"
+      },
+      "price": {
+        "intent": "apa yang harus dikorbankan menjadi sangat nyata",
+        "label": "Harga penyeberangan ditetapkan"
+      }
+    },
+    "effects": [
+      "salah satu atau keduanya telah melepaskan sesuatu yang tidak dapat kembali lagi",
+      "otoritas pihak penegak hukum atas mereka tetap tak terelakkan, apa pun pilihannya"
+    ],
+    "emotion_target": "kerinduan",
+    "examples": [
+      "Ayahnya tidak melarangnya; ia hanya memaparkan apa konsekuensi bagi saudara-saudaranya jika ia menikahi pria dari kelas rendah, lalu membiarkan gadis itu menghitung risikonya sendiri."
+    ],
+    "name": "Melampaui Batas",
+    "preconditions": [
+      "sebuah batasan sosial dengan konsekuensi nyata yang mengintai di baliknya"
+    ],
+    "roles": {
+      "guardians": {
+        "constraints": [
+          "bertindak atas dasar kewajiban atau kasih sayang, bukan kebencian"
+        ],
+        "label": "mereka yang menjaga batas"
+      },
+      "higher": {
+        "constraints": [
+          "posisi mereka nyata dan sangat mahal jika dilepaskan"
+        ],
+        "label": "sosok yang terikat oleh posisi"
+      },
+      "lower": {
+        "constraints": [
+          "memiliki keuntungan terbesar namun kedudukan paling rendah"
+        ],
+        "label": "sosok yang paling sedikit kehilangan secara materi"
+      }
+    },
+    "summary": "Ikatan tumbuh melintasi sekat yang dipaksakan oleh dunia — pangkat, klan, kekayaan, kasta, spesies, faksi, atau pihak yang salah dalam sebuah perang — dan penegakan batas ini dilakukan oleh orang-orang yang berniat baik. Para kekasih dipaksa untuk menakar harga dari penyeberangan tersebut dengan sesuatu yang nyata: warisan, keluarga, jabatan, atau nyawa."
+  }
+}

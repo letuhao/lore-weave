@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "對手不斷抬高價格",
+        "label": "競價戰"
+      },
+      "outbid": {
+        "intent": "主角因出價不足而遭到羞辱",
+        "label": "被對手加價超越"
+      },
+      "secret_win": {
+        "intent": "主角透過意想不到的方式贏得寶物",
+        "label": "隱秘的獲取手段"
+      },
+      "surface": {
+        "intent": "一件令人垂涎的遺物進入拍賣",
+        "label": "稀世珍寶現身"
+      }
+    },
+    "effects": [
+      "主角獲得了該件珍寶",
+      "一位富有的對手在眾人面前落敗"
+    ],
+    "emotion_target": "凱旋",
+    "examples": [
+      "一件古物在拍賣會上現身；主角在出價落後並遭受嘲弄後，以一種出人意料的方式贏得了它。"
+    ],
+    "name": "拍賣行珍寶",
+    "preconditions": [
+      "一項令人垂涎的資源透過公開競標出現"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "隱蔽的支援"
+        ],
+        "label": "隱藏的靠山"
+      },
+      "protagonist": {
+        "constraints": [
+          "資源匱乏"
+        ],
+        "label": "競標者"
+      },
+      "rival": {
+        "constraints": [
+          "傲慢且財力雄厚"
+        ],
+        "label": "富有的對手"
+      },
+      "treasure": {
+        "constraints": [
+          "稀有且令人垂涎"
+        ],
+        "label": "拍賣遺物"
+      }
+    },
+    "summary": "一件稀世珍寶在拍賣會上現身；主角在財力被碾壓並遭受嘲弄後，最終透過隱藏的靠山或出人意料的手段贏得寶物。"
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "在生死一線間奪取資源",
+        "label": "險中奪取"
+      },
+      "advance": {
+        "intent": "藉由其力量突破瓶頸",
+        "label": "吞噬突破"
+      },
+      "named": {
+        "intent": "確認所需的精華目標",
+        "label": "目標現蹤"
+      },
+      "stall": {
+        "intent": "修煉進度遭遇瓶頸",
+        "label": "境界停滯"
+      }
+    },
+    "effects": [
+      "主角獲得了所需的資源",
+      "主角晉升了一個境界"
+    ],
+    "emotion_target": "決心",
+    "examples": [
+      "困於瓶頸之牆，修煉者將受守護的精華引誘至致命範圍內，並藉由其力量完成突破。"
+    ],
+    "name": "瓶頸資源獵取",
+    "preconditions": [
+      "主角受困於修煉瓶頸",
+      "已知某種特定資源能助其突破"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "致命且具領地意識"
+        ],
+        "label": "守護獸"
+      },
+      "protagonist": {
+        "constraints": [
+          "需要特定的資源"
+        ],
+        "label": "停滯不前的修煉者"
+      },
+      "resource": {
+        "constraints": [
+          "稀有且受守護"
+        ],
+        "label": "靈草 / 內丹"
+      }
+    },
+    "summary": "修煉者受困於境界瓶頸，為了突破，必須深入危險禁區，獵取受守護的精華能量，並藉由其力量完成突破。"
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "停滯的境界產生阻力",
+        "label": "遭遇心魔障礙"
+      },
+      "breakthrough": {
+        "intent": "渡過難關並突破瓶頸",
+        "label": "晉升境界"
+      },
+      "crisis": {
+        "intent": "天劫險些令修煉者喪命",
+        "label": "死裡逃生"
+      },
+      "insight": {
+        "intent": "悟性破開障礙",
+        "label": "頓悟"
+      },
+      "seclusion": {
+        "intent": "退隱以衝擊瓶頸",
+        "label": "進入閉關"
+      },
+      "tribulation": {
+        "intent": "天劫考驗修為",
+        "label": "天劫降臨"
+      }
+    },
+    "effects": [
+      "主角晉升一個境界或等階",
+      "其名望與實力顯著提升"
+    ],
+    "emotion_target": "期待感",
+    "examples": [
+      "為了突破停滯不前的境界而閉關，修煉者面對內心的心魔、天劫的考驗、死生一瞬的危機，最終晉升境界。"
+    ],
+    "name": "閉關突破",
+    "preconditions": [
+      "主角受困於修為瓶頸",
+      "手握足以突破的資源或感悟"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "可有可無"
+        ],
+        "label": "守門的盟友"
+      },
+      "protagonist": {
+        "constraints": [
+          "受困於境界瓶頸"
+        ],
+        "label": "停滯不前的修煉者"
+      },
+      "tribulation": {
+        "constraints": [
+          "無情且不斷升級"
+        ],
+        "label": "天劫"
+      }
+    },
+    "summary": "為了突破停滯的境界而閉關，修煉者面對心魔障礙，歷經天劫，在死生邊緣掙扎，最終晉升新境界。"
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "修煉者必須拒絕那虛假的慰藉",
+        "label": "直面自我"
+      },
+      "emerge": {
+        "intent": "道心穩固，淬鍊完成",
+        "label": "破繭而出，意志堅定"
+      },
+      "false_memory": {
+        "intent": "幻象重演最深重的罪疚",
+        "label": "偽記憶試煉"
+      },
+      "surface": {
+        "intent": "修煉者的自我懷疑具象化",
+        "label": "心魔現身"
+      }
+    },
+    "effects": [
+      "主角的意志得到淬鍊，更加堅定清明",
+      "消除了對幻象或誘惑的弱點"
+    ],
+    "emotion_target": "決然",
+    "examples": [
+      "一場幻境試煉重現了修煉者最深重的愧疚；唯有拒絕那虛假的慰藉，道心方能屹立不倒。"
+    ],
+    "name": "道心淬煉",
+    "preconditions": [
+      "主角心中懷有未竟的愧疚或執念"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "成敗的關鍵"
+        ],
+        "label": "道心 / 意志"
+      },
+      "inner_demon": {
+        "constraints": [
+          "披著溫柔的偽裝"
+        ],
+        "label": "心魔"
+      },
+      "protagonist": {
+        "constraints": [
+          "背負著未竟的愧疚"
+        ],
+        "label": "修煉者"
+      }
+    },
+    "summary": "心魔於幻境試煉中浮現，重演修煉者最深沉的愧疚；唯有拒絕那虛假的慰藉，道心方能屹立不倒。"
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "驕傲的傳人對主角嗤之以鼻",
+        "label": "傲慢者的嘲弄"
+      },
+      "reveal": {
+        "intent": "主角展現更高境界的造詣",
+        "label": "隱藏實力展露"
+      },
+      "reversal": {
+        "intent": "嘲弄者在眾人面前狼狽不堪",
+        "label": "羞辱反轉"
+      },
+      "underestimate": {
+        "intent": "群眾對其不抱期待",
+        "label": "主角被低估"
+      }
+    },
+    "effects": [
+      "主角的真實實力在見證者面前揭曉",
+      "傲慢者遭受羞辱並與主角結怨"
+    ],
+    "emotion_target": "暢快感",
+    "examples": [
+      "一位趾高氣昂的繼承人對「廢柴」嗤之以鼻；比賽中，該廢柴展現出更高深的造詣，令繼承人當眾挫敗。"
+    ],
+    "name": "打臉反轉",
+    "preconditions": [
+      "主角在公開場合遭到輕視或羞辱",
+      "主角隱藏著遠超其表面地位的實力"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "狂妄且背景深厚"
+        ],
+        "label": "傲慢的天才"
+      },
+      "protagonist": {
+        "constraints": [
+          "在公開場合被輕視"
+        ],
+        "label": "被低估者"
+      },
+      "witnesses": {
+        "constraints": [
+          "公眾觀眾"
+        ],
+        "label": "圍觀群眾"
+      }
+    },
+    "summary": "傲慢者嘲弄被低估的主角，隨後主角展現隱藏實力，在眾目睽睽之下將羞辱反彈給嘲弄者。"
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "改變命運的偶然邂逅",
+        "label": "發現遺物或高人"
+      },
+      "inheritance": {
+        "intent": "賦予受限於債務或秘密的力量",
+        "label": "付出代價獲得傳承"
+      },
+      "isolation": {
+        "intent": "將主角置於求助無門、人生最低谷的境地",
+        "label": "墜落後的孤立"
+      },
+      "trial": {
+        "intent": "高人或遺物對其 worthy（適任性）的測試",
+        "label": "傳承的考驗"
+      }
+    },
+    "effects": [
+      "主角獲得了一種隱藏的力量或秘術",
+      "與導師之間建立了債務或秘密的羈絆"
+    ],
+    "emotion_target": "希望",
+    "examples": [
+      "被放逐至封印深谷的弱者，偶然遇見一位垂死的宗師；在經歷考驗後，獲得了禁忌神功——卻也背負了忠誠的債務。"
+    ],
+    "name": "奇遇與傳承",
+    "preconditions": [
+      "主角處於弱小、受辱或被放逐的狀態",
+      "身邊沒有任何盟友"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "禁忌或舉世無雙"
+        ],
+        "label": "傳承的秘術或血脈"
+      },
+      "mentor": {
+        "constraints": [
+          "瀕臨死亡或處於沉睡狀態"
+        ],
+        "label": "垂死的高人 / 遺物靈魂"
+      },
+      "protagonist": {
+        "constraints": [
+          "當前處於弱小或蒙羞狀態"
+        ],
+        "label": "孤立的弱者"
+      }
+    },
+    "summary": "一名因遭放逐或跌落巔峰而陷入孤立的落魄弱者，偶然發現了上古遺物或垂死的高人，在經歷考驗後，以承擔宿命債務為代價，獲得了隱世的傳承。"
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "發起一場決鬥",
+        "label": "發出挑戰"
+      },
+      "reversal": {
+        "intent": "當勝券在握之時，優勢方卻瞬間潰敗",
+        "label": "致命逆轉"
+      },
+      "stakes": {
+        "intent": "以生命作為代價",
+        "label": "立下賭注"
+      },
+      "turn": {
+        "intent": "局勢發生意想不到的逆轉",
+        "label": "戰局轉向"
+      }
+    },
+    "effects": [
+      "對手遭到徹底擊敗，且往往是致命的",
+      "主角的地位發生了翻天覆地的轉變"
+    ],
+    "emotion_target": "緊張感",
+    "examples": [
+      "在競技場上進行一場生死決鬥；那位備受看好的繼承人，在以為勝券在握的那一刻，卻瞬間落敗。"
+    ],
+    "name": "生死決鬥",
+    "preconditions": [
+      "雙方在眾目睽睽之下，立下生死決鬥的誓言"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "公開的競技場"
+        ],
+        "label": "圍觀群眾"
+      },
+      "protagonist": {
+        "constraints": [
+          "看似實力懸殊"
+        ],
+        "label": "挑戰者或被挑戰者"
+      },
+      "rival": {
+        "constraints": [
+          "自信且有強大後援"
+        ],
+        "label": "備受青睞的對手"
+      }
+    },
+    "summary": "在競技場上立下生死之約；那位備受寵愛的子嗣，在勝券在握的瞬間，卻迎來了敗局。"
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "師傅在最艱難的時刻要求償還恩情",
+        "label": "償還恩情"
+      },
+      "incur": {
+        "intent": "產生了一份難以輕易償還的義務",
+        "label": "背負無法償還的恩情"
+      },
+      "loyalty_test": {
+        "intent": "弟子的忠誠受到考驗",
+        "label": "忠誠試煉"
+      },
+      "taught": {
+        "intent": "師傅救助或指導主角",
+        "label": "獲救或受教"
+      }
+    },
+    "effects": [
+      "一份無法擺脫的恩情將主角與師父緊緊聯繫在一起",
+      "主角的忠誠得以證明，或是徹底崩塌"
+    ],
+    "emotion_target": "義務感",
+    "examples": [
+      "被隱世高人所救，弟子背負著一份沉重的恩情，而這份債務卻在最不湊巧的時刻被要求償還。"
+    ],
+    "name": "師徒恩情",
+    "preconditions": [
+      "主角獲得了足以改變命運的援助或教導"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "實力強大且要求嚴苛"
+        ],
+        "label": "隱世師傅"
+      },
+      "obligation": {
+        "constraints": [
+          "具有束縛性且代價高昂"
+        ],
+        "label": "恩情 / 義務"
+      },
+      "protagonist": {
+        "constraints": [
+          "欠下師傅人情"
+        ],
+        "label": "負恩的弟子"
+      }
+    },
+    "summary": "弟子曾受隱世高人救命或傳授技藝，背負著一份無法輕易償還的恩情，而這份債務往往會在最艱難的時刻被要求償還。"
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "外來者在毫無地位的情況下抵達",
+        "label": "隱姓埋名而來"
+      },
+      "exceed": {
+        "intent": "測試靈石被擊碎",
+        "label": "超越測量極限"
+      },
+      "recruited": {
+        "intent": "長老們為了收編此人而展開爭奪",
+        "label": "伴隨著利益爭奪而被招攬"
+      },
+      "underestimated": {
+        "intent": "守門弟子對其不屑一顧",
+        "label": "測試中被輕視"
+      }
+    },
+    "effects": [
+      "主角獲得了地位與靠山",
+      "與負責守門的勢力埋下了宿怨"
+    ],
+    "emotion_target": "成就感",
+    "examples": [
+      "一名無名外來者擊碎了測試靈石的上限；長老們為了收編此人而展開爭奪。"
+    ],
+    "name": "宗門入試",
+    "preconditions": [
+      "一場開放式的試煉，用以篩選宗門門戶的入選者"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "負責評估與招攬"
+        ],
+        "label": "宗門長老"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "態度傲慢"
+        ],
+        "label": "守門弟子"
+      },
+      "protagonist": {
+        "constraints": [
+          "無品階、出乎意料"
+        ],
+        "label": "無名外來者"
+      }
+    },
+    "summary": "一名無名外來者在宗門入試中擊碎了測試法器；長老們為了爭奪其收門徒之位而展開爭奪，且其中牽涉重大利益。"
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "主角被視為殘缺之軀",
+        "label": "隱藏的缺陷"
+      },
+      "explained": {
+        "intent": "缺陷被解讀為罕見的特殊體質",
+        "label": "缺陷的真相"
+      },
+      "gift": {
+        "intent": "缺陷成為驅動不可能之崛起的動力",
+        "label": "缺陷轉化為天賦"
+      },
+      "vindication": {
+        "intent": "那些輕視者被證明是錯的",
+        "label": "平反與證言"
+      }
+    },
+    "effects": [
+      "主角隱藏的潛能被釋放",
+      "曾經的輕視者被迫承認其價值"
+    ],
+    "emotion_target": "平反",
+    "examples": [
+      "被稱為「廢體」的身體被發現蘊含著稀有的體質；正是這個缺陷，成為了主角攀登巔峰的動力。"
+    ],
+    "name": "廢柴逆襲：天才證言",
+    "preconditions": [
+      "主角被視為平庸之輩或天生殘疾"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "傲慢且唯利是圖"
+        ],
+        "label": "輕蔑的宗族"
+      },
+      "diagnostician": {
+        "constraints": [
+          "能看穿真實的體質"
+        ],
+        "label": "長輩 / 診斷者"
+      },
+      "protagonist": {
+        "constraints": [
+          "被認為缺乏天賦"
+        ],
+        "label": "受蔑視的「廢柴」"
+      }
+    },
+    "summary": "一種被蔑視為殘疾的隱疾，被診斷出實為稀世天賦；正是這個缺陷成為了崛起的引擎，讓主角最終獲得正名。"
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "唯有在劫難中生存方能飛升，否則將灰飛煙滅",
+        "label": "成仙或隕落"
+      },
+      "merit": {
+        "intent": "修為達到突破天劫的門檻",
+        "label": "功德圓滿"
+      },
+      "notice": {
+        "intent": "天劫開始匯聚",
+        "label": "天意降臨"
+      },
+      "tribulation": {
+        "intent": "必須一波接一波地死裡求生",
+        "label": "雷劫降世"
+      }
+    },
+    "effects": [
+      "主角飛升至更高的位面或境界",
+      "主角將拋下舊有的世俗地位"
+    ],
+    "emotion_target": "敬畏",
+    "examples": [
+      "力量引來天劫；必須挺過九波雷劫方能完成飛升。"
+    ],
+    "name": "渡劫升仙",
+    "preconditions": [
+      "主角已達到突破境界的門檻"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "在旁穩住陣腳"
+        ],
+        "label": "守護盟友"
+      },
+      "protagonist": {
+        "constraints": [
+          "正處於突破境界的關頭"
+        ],
+        "label": "渡劫者"
+      },
+      "tribulation": {
+        "constraints": [
+          "威力遞增且致命"
+        ],
+        "label": "天劫"
+      }
+    },
+    "summary": "積累的修為引來天劫；必須在盟友的守護下，挺過九波雷劫方能成就仙身。"
+  }
+}

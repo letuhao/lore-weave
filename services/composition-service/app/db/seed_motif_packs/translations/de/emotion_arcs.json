@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "der befürchtete Moment tritt ein",
+        "label": "Höhepunkt"
+      },
+      "fear": {
+        "intent": "das Grauen bis hin zur Panik steigern",
+        "label": "Ansteigende Angst"
+      },
+      "release": {
+        "intent": "die Gefahr ist abgewendet; die Erleichterung setzt ein",
+        "label": "Entladung"
+      },
+      "unease": {
+        "intent": "ein unterschwelliges Grauen säen",
+        "label": "Unbehagen"
+      }
+    },
+    "effects": [
+      "die Einheit endet in gelöster Spannung"
+    ],
+    "emotion_target": "Erleichterung",
+    "examples": [
+      "Die Angst baute sich immer weiter auf, bis der schlimmste Moment gekommen war – und dann, wie durch ein Wunder, war es vorbei und sie konnten wieder aufatmen."
+    ],
+    "name": "Von der Beklemmung zur Erleichterung",
+    "preconditions": [
+      "eine erzählerische Einheit benötigt eine emotionale Form"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die POV-Figur"
+      }
+    },
+    "summary": "Unbehagen schwillt zu Angst und einem Höhepunkt an, um sich anschließend in Erleichterung zu entladen."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "eine gefestigte emotionale Ausgangslage etablieren",
+        "label": "Geborgenheit"
+      },
+      "loss": {
+        "intent": "den Charakter in das Loch stürzen",
+        "label": "Verlust"
+      },
+      "struggle": {
+        "intent": "der Aufstieg beginnt",
+        "label": "Kampf"
+      },
+      "triumph": {
+        "intent": "höher als zuvor wieder auftauchen",
+        "label": "Triumph"
+      }
+    },
+    "effects": [
+      "die Einheit endet in einer kathartischen Erhebung"
+    ],
+    "emotion_target": "Katharsis",
+    "examples": [
+      "Erst Sicherheit, dann Ruin, dann das verzweifelte Hochklettern – um schließlich auf höherem Boden zu stehen als vor dem Sturz."
+    ],
+    "name": "Fall und Aufstieg (Der Mann im Loch)",
+    "preconditions": [
+      "eine erzählerische Einheit benötigt eine emotionale Form"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Geborgenheit weicht Verlust und Kampf, gefolgt von einem hart erkämpften Triumph – die Katharsis-Kurve des ‚Mann-im-Loch‘-Motivs."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "im Schmerz des Verlusts landen",
+        "label": "Trauer"
+      },
+      "hope": {
+        "intent": "eine zerbrechliche Hoffnung wecken",
+        "label": "Hoffnung keimt auf"
+      },
+      "near": {
+        "intent": "das Ziel in greifbare Nähe rücken",
+        "label": "Beinahe-Erfolg"
+      },
+      "turn": {
+        "intent": "es im letzten Moment wieder entreißen",
+        "label": "Grausame Wendung"
+      }
+    },
+    "effects": [
+      "die Einheit endet im Herzschmerz"
+    ],
+    "emotion_target": "Herzschmerz",
+    "examples": [
+      "So nah, dass sie es fast berühren konnten – und dann war es fort, und es blieb nichts anderes übrig, als zu trauern."
+    ],
+    "name": "Von der Hoffnung zum Herzschmerz",
+    "preconditions": [
+      "eine erzählerische Einheit benötigt eine emotionale Form"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Die Hoffnung keimt heran, bis sie kurz vor dem Erfolg steht, bevor eine grausame Wendung sie in tiefer Trauer enden lässt."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "Streben nach Erfolg",
+        "label": "Aufstieg"
+      },
+      "downfall": {
+        "intent": "Sturz aus der Höhe",
+        "label": "Niedergang"
+      },
+      "flaw": {
+        "intent": "der fatale Fehler offenbart sich",
+        "label": "Makel tritt hervor"
+      },
+      "peak": {
+        "intent": "die Höhe erreichen",
+        "label": "Gipfelpunkt"
+      }
+    },
+    "effects": [
+      "die Einheit endet in einem tragischen Verfall"
+    ],
+    "emotion_target": "Tragödie",
+    "examples": [
+      "Immer höher und höher, bis genau das, was sie emporhob, zu dem wurde, was sie zu Fall brachte."
+    ],
+    "name": "Aufstieg und Fall (Ikarus)",
+    "preconditions": [
+      "eine erzählerische Einheit benötigt eine emotionale Form"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Erzählperspektive"
+      }
+    },
+    "summary": "Ein Aufstieg zu einem Gipfel, an dem ein Makel zutage tritt und den Sturz herbeiführt – die Tragödie der Ikarus-Kurve."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "den Tiefpunkt erreichen",
+        "label": "Zusammenbruch"
+      },
+      "decline": {
+        "intent": "der Fall beschleunigt sich",
+        "label": "Niedergang"
+      },
+      "erosion": {
+        "intent": "schrittweise an Boden verlieren",
+        "label": "Erosionen"
+      },
+      "start_high": {
+        "intent": "auf einem Höhepunkt beginnen",
+        "label": "Hoher Ausgangspunkt"
+      }
+    },
+    "effects": [
+      "die Einheit endet in einem trostlosen Zusammenbruch"
+    ],
+    "emotion_target": "Verzweiflung",
+    "examples": [
+      "Es hielt noch, und dann nicht mehr — ein langsames Entwirren, das kein einzelner Verlust allein erklären konnte."
+    ],
+    "name": "Stetiger Verfall",
+    "preconditions": [
+      "eine erzählerische Einheit benötigt eine emotionale Form"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Von einem hohen Ausgangspunkt über schleichende Erosionen bis hin zum Zusammenbruch — der Abstieg in die Verzweiflung."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "die errungene Höhe erreichen",
+        "label": "Ankunft"
+      },
+      "climb": {
+        "intent": "Momentum aufbauen",
+        "label": "Fortgesetzter Aufstieg"
+      },
+      "start_low": {
+        "intent": "am Tiefpunkt beginnen",
+        "label": "Niedriger Start"
+      },
+      "wins": {
+        "intent": "Gewinne anhäufen",
+        "label": "Wiederholte Siege"
+      }
+    },
+    "effects": [
+      "die Einheit endet in einem verdienten Triumph"
+    ],
+    "emotion_target": "Triumph",
+    "examples": [
+      "Nichts, dann ein wenig, dann mehr — jeder Schritt war verdient, bis der Tiefpunkt nur noch eine ferne Erinnerung war."
+    ],
+    "name": "Stetiger Aufstieg (Vom Tellerwäscher zum Millionär)",
+    "preconditions": [
+      "eine Erzähleinheit benötigt eine emotionale Form"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Erzählperspektive"
+      }
+    },
+    "summary": "Von einem niedrigen Ausgangspunkt über wiederholte Erfolge bis hin zur Ankunft — die Triumphkurve des sozialen oder persönlichen Aufstiegs."
+  }
+}

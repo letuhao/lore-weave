@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "가장 가까운 동료가 최악의 순간에 등을 돌림",
+        "label": "배신의 발현"
+      },
+      "fall": {
+        "intent": "주인공이 모든 것을 박탈당함",
+        "label": "몰락과 상실"
+      },
+      "trust": {
+        "intent": "파괴될 운명인 친밀한 유대감이 형성됨",
+        "label": "신뢰의 구축"
+      },
+      "vow": {
+        "intent": "추방당한 생존자는 귀환을 맹세함",
+        "label": "맹세와 함께 맞이한 추방"
+      }
+    },
+    "effects": [
+      "주인공이 지위를 박탈당하고 쫓겨남",
+      "복수를 향한 강렬한 맹세가 서약됨"
+    ],
+    "emotion_target": "비탄",
+    "examples": [
+      "승리를 눈앞에 둔 순간 가장 가까운 동료가 등을 돌린다. 모든 것을 빼앗긴 채 쫓겨난 생존자는 반드시 돌아오겠노라 맹세한다."
+    ],
+    "name": "배신과 추방",
+    "preconditions": [
+      "주인공이 신뢰, 지위, 혹은 권력을 쥐고 있음"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "친밀한, 신뢰받는"
+        ],
+        "label": "의형제이자 배신자"
+      },
+      "lost_kin": {
+        "constraints": [
+          "몰락의 과정에서 희생된"
+        ],
+        "label": "잃어버린 혈육 또는 동료"
+      },
+      "protagonist": {
+        "constraints": [
+          "신뢰하는, 승천하는 중인"
+        ],
+        "label": "배신당한 생존자"
+      },
+      "vengeance": {
+        "constraints": [
+          "서약된, 삶을 움직이는"
+        ],
+        "label": "복수의 맹세"
+      }
+    },
+    "summary": "승리를 눈앞에 둔 순간, 가장 믿었던 동료가 등을 돌린다. 모든 것을 빼앗긴 채 쫓겨난 생존자는 반드시 돌아오리라 맹세한다."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "부인할 수 없는 증거를 제시함",
+        "label": "증거로 대면하기"
+      },
+      "exact": {
+        "intent": "그들에게 죄의 대가를 치르게 한다",
+        "label": "대가를 치르게 함"
+      },
+      "locate": {
+        "intent": "범죄에 가담한 자를 찾아냄",
+        "label": "가해자 추적"
+      },
+      "respond": {
+        "intent": "가해자가 빌거나 혹은 당당하게 맞섬",
+        "label": "가해자의 반응: 참회 혹은 저항"
+      }
+    },
+    "effects": [
+      "죄를 지은 자 중 한 명이 심판을 받는다",
+      "심판의 연쇄가 사건의 주동자를 향해 나아간다"
+    ],
+    "emotion_target": "비장한 결의",
+    "examples": [
+      "복수자는 범죄를 함께 저지른 자들을 하나씩 찾아내어, 그들 각자에게 죄의 대가를 묻는다."
+    ],
+    "name": "피의 채무 집행",
+    "preconditions": [
+      "과거의 잘못을 공유한 공범들이 존재하며, 적의 숨겨진 비밀을 통해 각자가 저지른 구체적인 행위가 드러나 있다"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "여러 명 중 한 명"
+        ],
+        "label": "가해자"
+      },
+      "protagonist": {
+        "constraints": [
+          "집요하고 체계적인"
+        ],
+        "label": "복수자"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "심판의 원인이 되는 존재"
+        ],
+        "label": "원한을 품고 죽은 자"
+      }
+    },
+    "summary": "복수자는 범죄에 가담한 자들을 하나씩 찾아내어, 증거로 그들을 대면시키고 마땅한 대가를 치르게 한다."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "주인공이 대중 앞에서 명예를 잃는다",
+        "label": "공개적인 단죄"
+      },
+      "evidence_hidden": {
+        "intent": "진실이 은폐됨; 최악의 침체기",
+        "label": "은폐된 증거"
+      },
+      "framed": {
+        "intent": "조작된 증거가 주인공에게 낙인을 찍는다",
+        "label": "범죄의 누명을 쓰다"
+      },
+      "unmasked": {
+        "intent": "배후의 실체가 세상에 드러남",
+        "label": "진실의 폭로"
+      }
+    },
+    "effects": [
+      "주인공의 결백이 증명됨",
+      "진범이 정체를 드러냄"
+    ],
+    "emotion_target": "분노",
+    "examples": [
+      "조작된 증거로 인해 반역자로 낙인찍힌 주인공은, 배후의 실체가 세상에 드러날 때까지 대중의 멸시를 견뎌낸다."
+    ],
+    "name": "누명",
+    "preconditions": [
+      "주인공이 범죄의 혐의를 받을 만한 그럴듯한 정황이 존재함"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "초반에는 은폐된 상태"
+        ],
+        "label": "숨겨진 목격자 또는 단서"
+      },
+      "framer": {
+        "constraints": [
+          "치밀하고 은밀한"
+        ],
+        "label": "모함하는 자"
+      },
+      "judges": {
+        "constraints": [
+          "외관에 현혹되는"
+        ],
+        "label": "심판자들"
+      },
+      "protagonist": {
+        "constraints": [
+          "대중에게 낙인찍힌 상태"
+        ],
+        "label": "누명을 쓴 자"
+      }
+    },
+    "summary": "조작된 증거로 인해 반역자로 낙인찍힌 주인공은, 진범이 세상에 드러날 때까지 대중의 멸시를 견뎌내야 한다."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "살인자가 무력하게 쓰러져 있음",
+        "label": "적의 무력함"
+      },
+      "choice": {
+        "intent": "복수자가 결단을 내려야 함",
+        "label": "강요된 선택"
+      },
+      "consequence": {
+        "intent": "그 선택이 주인공의 본질을 재정의한다",
+        "label": "결과의 도래"
+      },
+      "reason": {
+        "intent": "공격하지 말아야 할 이유가 나타남",
+        "label": "용서의 명분"
+      }
+    },
+    "effects": [
+      "주인공은 자신의 선택으로 인해 변화를 겪는다",
+      "복수의 굴레가 종결되거나, 혹은 영속된다"
+    ],
+    "emotion_target": "도덕적 갈등",
+    "examples": [
+      "살인마가 무력하게 쓰러진 순간, 그를 살려주어야 할 이유가 나타난다. 복수자의 선택은 그가 어떤 사람이 될지를 결정짓는다."
+    ],
+    "name": "자비 혹은 복수",
+    "preconditions": [
+      "주인공이 적을 완전히 제압하여 생사여탈권을 쥐게 된다"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "주인공의 처분에 생사가 달림"
+        ],
+        "label": "무력해진 적"
+      },
+      "moral_voice": {
+        "constraints": [
+          "혈육, 양심, 혹은 목격자"
+        ],
+        "label": "자비의 목소리"
+      },
+      "protagonist": {
+        "constraints": [
+          "생사를 결정할 권력을 쥐고 있음"
+        ],
+        "label": "벼랑 끝에 선 복수자"
+      }
+    },
+    "summary": "살인자가 무력하게 쓰러진 순간, 용서해야 할 이유가 나타납니다. 복수자의 선택은 그가 어떤 사람이 될지를 결정짓는 분기점이 됩니다."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "적의 계급 체계 내에서 입지를 다짐",
+        "label": "내부의 신뢰를 얻기"
+      },
+      "enter": {
+        "intent": "위장 신분으로 적의 진영에 침투함",
+        "label": "가명으로 잠입하기"
+      },
+      "gather": {
+        "intent": "비밀과 증거를 은밀히 수집한다",
+        "label": "약점 수집하기"
+      },
+      "strike": {
+        "intent": "적의 비밀을 역이용하여 적을 무너뜨린다",
+        "label": "내부로부터의 타격"
+      }
+    },
+    "effects": [
+      "적이 스스로 숨긴 비밀에 의해 파멸한다",
+      "공격이 시작되는 순간 복수자의 정체가 드러난다"
+    ],
+    "emotion_target": "긴장감",
+    "examples": [
+      "복수자는 가명을 쓰고 적의 계급 체계 속으로 잠입하여, 그들의 비밀을 수집한 뒤 내부에서 그 비밀을 무기로 적을 궤멸시킨다."
+    ],
+    "name": "잠입하는 복수자",
+    "preconditions": [
+      "주인공이 적의 세력 내부로 정체를 들키지 않고 잠입할 수 있어야 한다"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "내부에 숨어있는 조용한 아군"
+        ],
+        "label": "내부 조력자"
+      },
+      "leverage": {
+        "constraints": [
+          "비밀, 증거"
+        ],
+        "label": "수집된 약점"
+      },
+      "protagonist": {
+        "constraints": [
+          "정체를 숨겨야 함"
+        ],
+        "label": "변장한 복수자"
+      },
+      "target_house": {
+        "constraints": [
+          "강력하고 삼엄한 경비"
+        ],
+        "label": "적대 세력"
+      }
+    },
+    "summary": "가명을 쓴 복수자가 적의 진영 내부로 침투하여, 약점을 수집한 뒤 그들의 비밀을 역이용해 내부에서부터 무너뜨린다."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "복수자가 마주한 허망함",
+        "label": "허망한 여파"
+      },
+      "confront": {
+        "intent": "마지막 심판의 시간이 도래한다",
+        "label": "최후의 대결"
+      },
+      "cost": {
+        "intent": "추격의 대가가 수면 위로 드러난다",
+        "label": "숨겨진 대가의 폭로"
+      },
+      "victory": {
+        "intent": "적이 쓰러진다",
+        "label": "승리 달성"
+      }
+    },
+    "effects": [
+      "숙적이 패배함",
+      "복수자가 자신이 치른 대가를 직시함"
+    ],
+    "emotion_target": "우울",
+    "examples": [
+      "마침내 적이 쓰러진다. 그리고 뒤따르는 정적 속에서, 복수자는 지난 세월의 증오가 무엇을 앗아갔는지 깨닫는다."
+    ],
+    "name": "피로스의 승리",
+    "preconditions": [
+      "주인공이 오랜 복수극의 종착지에 다다름"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "최종적인 목표물"
+        ],
+        "label": "숙적"
+      },
+      "protagonist": {
+        "constraints": [
+          "오랜 추격에 영혼이 잠식된 자"
+        ],
+        "label": "복수자"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "손에 넣는 순간 허망해지는 것"
+        ],
+        "label": "성취된 복수"
+      }
+    },
+    "summary": "마침내 적이 쓰러지고, 뒤따라온 정적 속에서 복수자는 지난 세월의 증오가 치른 대가를 깨닫는다."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "은둔 속에서 겪는 고난과 처절한 성장",
+        "label": "고통스러운 비상"
+      },
+      "breakthrough": {
+        "intent": "주인공이 힘의 임계점을 넘어서다",
+        "label": "돌파구"
+      },
+      "encounter": {
+        "intent": "우연한 계기가 힘을 얻을 길을 열어줌",
+        "label": "뜻밖의 만남"
+      },
+      "humiliation": {
+        "intent": "추방당한 자가 꺾이고, 성장을 위한 시한부를 부여받음",
+        "label": "굴욕"
+      },
+      "return": {
+        "intent": "자신을 무너뜨린 자를 뒤엎기 위해 돌아오다",
+        "label": "귀환과 전도"
+      }
+    },
+    "effects": [
+      "주인공이 완전히 변모하여 강력한 힘을 가진 채 귀환함",
+      "주인공을 파멸시켰던 자가 몰락함"
+    ],
+    "emotion_target": "정당한 복수",
+    "examples": [
+      "성장하거나 혹은 죽거나, 정해진 기한이 주어지자 추방당한 자는 은둔 속에서 수련을 거듭하며, 마침내 자신을 무너뜨린 자를 뒤엎기 위해 돌아온다."
+    ],
+    "name": "3년의 계약",
+    "preconditions": [
+      "주인공이 처참하게 짓밟히고 굴욕을 당함",
+      "성장하거나 혹은 죽거나, 정해진 기한이 주어짐"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "고난의 여정을 곁에서 지킴"
+        ],
+        "label": "충직한 조력자"
+      },
+      "mentor": {
+        "constraints": [
+          "정체를 숨기며 엄격함"
+        ],
+        "label": "황야의 스승"
+      },
+      "protagonist": {
+        "constraints": [
+          "성장을 위한 시한부 과제를 부여받음"
+        ],
+        "label": "추방당한 자"
+      },
+      "rival": {
+        "constraints": [
+          "승리에 도취해 있음"
+        ],
+        "label": "파멸을 안긴 자"
+      }
+    },
+    "summary": "성장하거나 죽거나, 주어진 유예 기간 동안 추방당한 자는 굴욕과 뜻밖의 기회를 거치며 은둔 속에서 수련한다. 그리고 마침내 자신을 무너뜨린 자를 뒤엎기 위해 돌아온다."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "진정한 후계자가 가문에서 버림받음",
+        "label": "가짜라는 낙인과 추방"
+      },
+      "reclaim": {
+        "intent": "증거가 다시 나타나며 정당한 권리가 회복된다",
+        "label": "권리의 회복"
+      },
+      "seek_proof": {
+        "intent": "후계자는 살아남은 증거를 찾아 헤맨다",
+        "label": "혈통의 증거를 찾아서"
+      },
+      "stolen": {
+        "intent": "위조된 서류에 의해 상속권이 강탈됨",
+        "label": "정당한 권리의 탈취"
+      }
+    },
+    "effects": [
+      "찬탈자의 실체가 드러난다",
+      "주인공이 자신의 타고난 권리를 되찾는다"
+    ],
+    "emotion_target": "정당함의 증명",
+    "examples": [
+      "탈취된 천부적 권리와 위조된 유언장은 진정한 후계자를 거지로 만들지만, 누구도 없앨 수 없었던 증거가 다시 나타나며 모든 것이 뒤바뀐다."
+    ],
+    "name": "찬탈당한 상속권",
+    "preconditions": [
+      "주인공은 탈취당할 수 있는 정당한 권리를 가지고 있다"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "분쟁 중인 상속 재산"
+        ],
+        "label": "천부적 권리"
+      },
+      "protagonist": {
+        "constraints": [
+          "마땅히 누려야 할 권리를 박탈당함"
+        ],
+        "label": "모든 것을 빼앗긴 후계자"
+      },
+      "retainer": {
+        "constraints": [
+          "증거를 수호함"
+        ],
+        "label": "충직한 가신"
+      },
+      "usurper": {
+        "constraints": [
+          "도둑질한 권리를 보유함"
+        ],
+        "label": "찬탈자"
+      }
+    },
+    "summary": "도둑맞은 천부적 권리와 위조된 유언장은 진정한 후계자를 거지로 만들지만, 누구도 파괴할 수 없었던 증거가 다시 모습을 드러낸다."
+  }
+}

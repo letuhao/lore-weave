@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "sekutu paling akrab berpaling pada saat yang paling buruk",
+        "label": "Pengkhianatan berlaku"
+      },
+      "fall": {
+        "intent": "protagonis dilucutkan segala-galanya",
+        "label": "Kejatuhan dan kehilangan"
+      },
+      "trust": {
+        "intent": "ikatan akrab dibina untuk kemudian dikhianati",
+        "label": "Kepercayaan terbina"
+      },
+      "vow": {
+        "intent": "dibuang jauh, si mangsa bersumpah untuk kembali",
+        "label": "Pembuangan dengan sumpah"
+      }
+    },
+    "effects": [
+      "protagonis dilucutkan kedudukan dan dibuang jauh",
+      "sumpah dendam yang membara diikrarkan"
+    ],
+    "emotion_target": "kesedihan",
+    "examples": [
+      "Pada ambang kejayaan, sekutu paling rapat berpaling tadah; setelah dilucutkan segala-galanya dan dibuang jauh, si mangsa bersumpah untuk kembali."
+    ],
+    "name": "Pengkhianatan ke Pengasingan",
+    "preconditions": [
+      "protagonis memegang kepercayaan, kedudukan, atau kuasa"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "sangat akrab, dipercayai"
+        ],
+        "label": "saudara angkat / pengkhianat"
+      },
+      "lost_kin": {
+        "constraints": [
+          "terkorban dalam kejatuhan"
+        ],
+        "label": "saudara atau sekutu yang hilang"
+      },
+      "protagonist": {
+        "constraints": [
+          "penuh percaya, sedang menuju kejayaan"
+        ],
+        "label": "mangsa yang dikhianati"
+      },
+      "vengeance": {
+        "constraints": [
+          "diikrarkan, menjadi pendorong"
+        ],
+        "label": "sumpah dendam"
+      }
+    },
+    "summary": "Menjelang saat kemenangan, sekutu paling akrab berpaling tadah; setelah segala-galanya dirampas dan dibuang, si mangsa bersumpah untuk kembali."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "membentangkan bukti yang tidak dapat disangkal",
+        "label": "Berhadapan dengan bukti"
+      },
+      "exact": {
+        "intent": "memastikan mereka mempertanggungjawabkan perbuatan itu",
+        "label": "Menuntut bayaran"
+      },
+      "locate": {
+        "intent": "mencari mereka yang bersubahat dalam jenayah",
+        "label": "Mencari si pelaku"
+      },
+      "respond": {
+        "intent": "si pelaku merayu belas kasihan atau berdiri dengan angkuh",
+        "label": "Si pelaku merayu atau melawan"
+      }
+    },
+    "effects": [
+      "seorang daripada pihak yang bersalah akhirnya diadili",
+      "rantaian pembalasan semakin menghampiri dalang utama"
+    ],
+    "emotion_target": "tekad-yang-kelam",
+    "examples": [
+      "Satu demi satu, sang pendendam menjejaki mereka yang bersubahkat dalam jenayah tersebut dan memaksa setiap daripada mereka mempertanggungjawabkan perbuatan itu."
+    ],
+    "name": "Tuntutan Hutang Darah",
+    "preconditions": [
+      "beberapa pihak berkongsi rasa bersalah atas kesalahan masa lalu, dan rahsia musuh itu sendiri telah mendedahkan peranan setiap individu dalam jenayah tersebut"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "salah seorang daripada beberapa orang"
+        ],
+        "label": "pihak yang bersalah"
+      },
+      "protagonist": {
+        "constraints": [
+          "bertekad teguh, sistematik"
+        ],
+        "label": "sang pembalas"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "punca tuntutan keadilan"
+        ],
+        "label": "si mati yang dizalimi"
+      }
+    },
+    "summary": "Satu demi satu, sang pembalas mencari mereka yang bersubahat dalam jenayah tersebut, berhadapan dengan setiap satunya dengan bukti, dan menuntut keadilan atas perbuatan itu."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "protagonis menanggung kehinaan di hadapan khalayak",
+        "label": "Dihukum secara terbuka"
+      },
+      "evidence_hidden": {
+        "intent": "kebenaran disembunyikan; titik terendah",
+        "label": "Bukti disembunyikan"
+      },
+      "framed": {
+        "intent": "bukti yang telah dirancang mencalarkan maruah protagonis",
+        "label": "Difitnah atas jenayah"
+      },
+      "unmasked": {
+        "intent": "dalang sebenar didedahkan ke cahaya",
+        "label": "Kebenaran terbongkar"
+      }
+    },
+    "effects": [
+      "nama protagonis dibersihkan",
+      "pelaku sebenar didedahkan"
+    ],
+    "emotion_target": "kemarahan yang mendalam",
+    "examples": [
+      "Dituduh sebagai pengkhianat atas bukti palsu, si tertuduh menanggung kehinaan awam sehinggalah dalang sebenar didedahkan ke cahaya."
+    ],
+    "name": "Tuduhan Palsu",
+    "preconditions": [
+      "protagonis boleh dituduh melakukan jenayah secara munasabah"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "pada mulanya disembunyikan"
+        ],
+        "label": "saksi atau petunjuk tersembunyi"
+      },
+      "framer": {
+        "constraints": [
+          "tersembunyi, penuh muslihat"
+        ],
+        "label": "si pemfitnah"
+      },
+      "judges": {
+        "constraints": [
+          "terpedaya oleh rupa luaran"
+        ],
+        "label": "pihak yang menghakimi"
+      },
+      "protagonist": {
+        "constraints": [
+          "dihina secara terbuka"
+        ],
+        "label": "si tertuduh yang tidak bersalah"
+      }
+    },
+    "summary": "Dicap sebagai pengkhianat melalui bukti yang telah dirancang, si tertuduh menanggung kehinaan di mata umum sehinggalah dalang sebenar terbongkar ke cahaya."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "si pembunuh terbaring tidak berdaya",
+        "label": "Musuh dalam genggaman"
+      },
+      "choice": {
+        "intent": "sang pendendam harus membuat keputusan",
+        "label": "Pilihan terpaksa"
+      },
+      "consequence": {
+        "intent": "pilihan tersebut membentuk semula jati diri mereka",
+        "label": "Impak keputusan"
+      },
+      "reason": {
+        "intent": "muncul alasan untuk tidak menyerang",
+        "label": "Alasan untuk mengampun muncul"
+      }
+    },
+    "effects": [
+      "protagonis berubah akibat pilihan yang dibuat",
+      "kitaran dendam terhenti atau berterusan"
+    ],
+    "emotion_target": "ketegangan-moral",
+    "examples": [
+      "Apabila si pembunuh tidak lagi berdaya, muncul alasan untuk mengampuni; pilihan sang pendendam membentuk semula siapa diri mereka yang sebenarnya."
+    ],
+    "name": "Belas Kasihan atau Dendam",
+    "preconditions": [
+      "protagonis mempunyai musuh dalam genggaman"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "tergantung pada belas kasihan protagonis"
+        ],
+        "label": "musuh yang tidak berdaya"
+      },
+      "moral_voice": {
+        "constraints": [
+          "saudara, hati nurani, atau saksi"
+        ],
+        "label": "suara belas kasihan"
+      },
+      "protagonist": {
+        "constraints": [
+          "memegang kuasa untuk menamatkan segalanya"
+        ],
+        "label": "sang pendendam di ambang keputusan"
+      }
+    },
+    "summary": "Apabila si pembunuh tidak lagi berdaya, muncul alasan untuk mengampun; pilihan sang pendendam bakal membentuk semula jati diri mereka."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "mendaki hierarki musuh",
+        "label": "Membina kepercayaan"
+      },
+      "enter": {
+        "intent": "menyusup ke dalam musuh secara rahsia",
+        "label": "Masuk dengan nama palsu"
+      },
+      "gather": {
+        "intent": "mengumpul rahsia dan bukti secara senyap",
+        "label": "Mengumpul kelebihan"
+      },
+      "strike": {
+        "intent": "mempergunakan rahsia musuh untuk menjatuhkan mereka",
+        "label": "Serangan dari dalam"
+      }
+    },
+    "effects": [
+      "musuh tewas akibat rahsia mereka sendiri",
+      "identiti sebenar sang pendendam terbongkar semasa serangan dilakukan"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Dengan menggunakan nama samaran, sang pendendam menyusup ke dalam barisan musuh, lalu menggunakan rahsia mereka untuk membalas dendam dari dalam."
+    ],
+    "name": "Penyusupan Sabar",
+    "preconditions": [
+      "protagonis mampu menyusup masuk ke dalam lingkaran musuh tanpa dikesan"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "sekutu senyap di dalam"
+        ],
+        "label": "orang dalam"
+      },
+      "leverage": {
+        "constraints": [
+          "rahsia, bukti"
+        ],
+        "label": "kelebihan yang dikumpul"
+      },
+      "protagonist": {
+        "constraints": [
+          "menyembunyikan identiti asal"
+        ],
+        "label": "sang pendendam yang menyamar"
+      },
+      "target_house": {
+        "constraints": [
+          "berkuasa, dikawal ketat"
+        ],
+        "label": "kubu musuh"
+      }
+    },
+    "summary": "Menggunakan nama samaran, sang pendendam menyusup ke dalam barisan musuh, mengumpul kelebihan, lalu menggunakan rahsia mereka untuk menyerang dari dalam."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "sang pendendam merenung kekosongan yang tersisa",
+        "label": "Pasca-kejadian yang hampa"
+      },
+      "confront": {
+        "intent": "detik perhitungan terakhir tiba",
+        "label": "Konfrontasi terakhir"
+      },
+      "cost": {
+        "intent": "harga sebuah pengejaran mula terserlah",
+        "label": "Kos tersembunyi terbongkar"
+      },
+      "victory": {
+        "intent": "musuh akhirnya tumbang",
+        "label": "Kemenangan dicapai"
+      }
+    },
+    "effects": [
+      "musuh utama telah tewas",
+      "sang pendendam berhadapan dengan harga yang perlu dibayar atas dendamnya"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Musuh akhirnya tumbang — dan dalam keheningan selepas itu, sang pendendam menyedari apa yang telah dikorbankan oleh bertahun-tahun kebencian."
+    ],
+    "name": "Kemenangan Pyrrhic",
+    "preconditions": [
+      "protagonis menghampiri penghujung sebuah pengembaraan dendam yang panjang"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "sasaran terakhir"
+        ],
+        "label": "musuh ketat"
+      },
+      "protagonist": {
+        "constraints": [
+          "terpaku oleh pengejaran yang panjang"
+        ],
+        "label": "sang pendendam"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "terasa hampa setelah dimenangi"
+        ],
+        "label": "balas dendam yang tercapai"
+      }
+    },
+    "summary": "Musuh akhirnya tewas, dan dalam keheningan yang menyusul, sang pendendam menyedari segala harga yang perlu dibayar akibat kebencian bertahun-tahun."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "pertumbuhan yang tersembunyi dan penuh kepayahan",
+        "label": "Pendakian yang pahit"
+      },
+      "breakthrough": {
+        "intent": "protagonis melangkaui ambang kekuatan baharu",
+        "label": "Pencapaian Kemuncak"
+      },
+      "encounter": {
+        "intent": "perubahan nasib membuka jalan menuju kekuatan",
+        "label": "Pertemuan tidak sengaja"
+      },
+      "humiliation": {
+        "intent": "si terbuang dihancurkan dan diberikan tempoh masa",
+        "label": "Penghinaan"
+      },
+      "return": {
+        "intent": "kembali untuk menjatuhkan sosok yang telah menghancurkan mereka",
+        "label": "Kepulangan dan pembalikan nasib"
+      }
+    },
+    "effects": [
+      "protagonis kembali dengan transformasi dan kekuatan yang hebat",
+      "sosok yang menghancurkan mereka akhirnya tewas"
+    ],
+    "emotion_target": "pembuktian diri",
+    "examples": [
+      "Diberikan tempoh untuk menjadi kuat atau mati, si terbuang berlatih dalam ketersisihan dan kembali untuk menjatuhkan sosok yang telah menghancurkan mereka."
+    ],
+    "name": "Pakatan Tiga Tahun",
+    "preconditions": [
+      "protagonis telah dihancurkan dan dihina",
+      "tempoh masa yang terhad untuk menjadi kuat telah ditetapkan"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "sentiasa ada sepanjang pendakian"
+        ],
+        "label": "sekutu yang setia"
+      },
+      "mentor": {
+        "constraints": [
+          "tersembunyi, menuntut"
+        ],
+        "label": "guru di alam liar"
+      },
+      "protagonist": {
+        "constraints": [
+          "diberi tempoh masa untuk berkembang"
+        ],
+        "label": "si terbuang"
+      },
+      "rival": {
+        "constraints": [
+          "selesa dalam kemenangan"
+        ],
+        "label": "dia yang menghancurkan mereka"
+      }
+    },
+    "summary": "Diberi tempoh untuk menjadi kuat atau mati, si terbuang berlatih dalam ketersisihan melalui penghinaan dan satu titik perubahan yang tidak disangka, lalu kembali untuk menjatuhkan dia yang telah menghancurkannya."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "pewaris sah disingkirkan daripada keluarga",
+        "label": "Disingkirkan sebagai penyamar"
+      },
+      "reclaim": {
+        "intent": "bukti muncul semula dan hak tuntutan dipulihkan",
+        "label": "Tuntutan dikembalikan"
+      },
+      "seek_proof": {
+        "intent": "waris memburu bukti yang masih tersisa",
+        "label": "Pencarian bukti keturunan"
+      },
+      "stolen": {
+        "intent": "hak kelahiran dirampas melalui pemalsuan",
+        "label": "Tuntutan sah dicuri"
+      }
+    },
+    "effects": [
+      "perampas terbongkar",
+      "protagonis menuntut semula hak kelahiran mereka"
+    ],
+    "emotion_target": "pembuktian hak",
+    "examples": [
+      "Hak kelahiran yang dicuri dan wasiat palsu menjadikan waris sebenar seorang pengemis — sehinggalah bukti yang tidak dapat dimusnahkan muncul semula."
+    ],
+    "name": "Pewarisan yang Dirampas",
+    "preconditions": [
+      "protagonis memiliki hak waris sah yang boleh dirampas"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "harta pusaka yang dipertikaikan"
+        ],
+        "label": "hak kelahiran"
+      },
+      "protagonist": {
+        "constraints": [
+          "dirampas hak yang sepatutnya"
+        ],
+        "label": "pewaris yang kehilangan hak"
+      },
+      "retainer": {
+        "constraints": [
+          "menjaga bukti"
+        ],
+        "label": "pengikut setia"
+      },
+      "usurper": {
+        "constraints": [
+          "memegang tuntutan yang dicuri"
+        ],
+        "label": "perampas takhta"
+      }
+    },
+    "summary": "Hak kelahiran yang dicuri dan wasiat palsu menjadikan pewaris sah sebagai pengemis, sehinggalah bukti yang tidak dapat dimusnahkan muncul semula."
+  }
+}

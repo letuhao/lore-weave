@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "mostrar a deslealdade oculta de uma figura de confiança",
+        "label": "Fresta de dúvida"
+      }
+    },
+    "effects": [
+      "o leitor passa a desconfiar da figura e continua a leitura"
+    ],
+    "emotion_target": "desconforto",
+    "examples": [
+      "Sua amiga de longa data sorriu, concordou — e deslizou a segunda chave para dentro da própria manga."
+    ],
+    "name": "Traição Insinuada",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Uma figura de confiança revela uma fresta de dúvida no momento crucial."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "forçar uma decisão irreversível",
+        "label": "Encurralar para uma escolha"
+      }
+    },
+    "effects": [
+      "o leitor continua a leitura em busca da decisão"
+    ],
+    "emotion_target": "ansiedade",
+    "examples": [
+      "Duas portas, uma chave, e a água já batendo em seus joelhos."
+    ],
+    "name": "Escolha Forçada",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "O ponto de vista é encurralado em uma decisão irreversível no corte da cena."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "deixe um perigo sem resolução no fechamento do capítulo",
+        "label": "Corte em um perigo sem resposta"
+      }
+    },
+    "effects": [
+      "o leitor é levado para o próximo capítulo"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "O selo já estava rompido — e a cela além dele estava vazia."
+    ],
+    "name": "Questão de Suspense",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Termine com um perigo sem resposta que impulsiona o leitor para o próximo capítulo."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "impor uma janela de tempo finita para o objetivo",
+        "label": "Estabelecer o prazo"
+      }
+    },
+    "effects": [
+      "o leitor sente a pressão do tempo e continua a leitura"
+    ],
+    "emotion_target": "antecipação",
+    "examples": [
+      "Três dias. Depois disso, a oferta — e a cidade — teriam acabado."
+    ],
+    "name": "Contagem Regressiva Iniciada",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Um prazo ou cronômetro é estabelecido, transformando o que se segue em uma corrida contra o tempo."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "terminar com uma fala que ressignifica tudo",
+        "label": "Linha de detonação, seguido de corte"
+      }
+    },
+    "effects": [
+      "o leitor fica atordoado e continua a leitura"
+    ],
+    "emotion_target": "choque",
+    "examples": [
+      "«Você deveria perguntar ao seu pai», disse ela, «por que ele enterrou um caixão vazio.»"
+    ],
+    "name": "Bomba de Diálogo",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Uma linha de diálogo explode e o capítulo termina nela."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "dar uma pista sobre uma identidade real sem confirmá-la",
+        "label": "Identidade sugerida"
+      }
+    },
+    "effects": [
+      "o leitor continua a leitura para descobrir quem eles realmente são"
+    ],
+    "emotion_target": "intriga",
+    "examples": [
+      "O mendigo puxou o capuz, e os guardas caíram de joelhos."
+    ],
+    "name": "Identidade Sugerida",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Um indício sobre o verdadeiro nome ou o papel de alguém, deixado sem resolução no corte."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "nomear um perigo que ainda não se manifestou",
+        "label": "Ameaça declarada como iminente"
+      }
+    },
+    "effects": [
+      "o leitor antecipa a chegada da ameaça"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Ao amanhecer, o exército estaria diante dos portões, e os portões não resistiriam."
+    ],
+    "name": "Ameaça Iminente",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Um perigo nomeado está a caminho, mas ainda não chegou."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "colocar algo precioso à beira da perda",
+        "label": "Perda iminente"
+      }
+    },
+    "effects": [
+      "o leitor teme a perda e continua a leitura"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "A curandeira balançou a cabeça. Só haveria o suficiente para uma das crianças, disse ela."
+    ],
+    "name": "Perda Iminente",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Algo que o ponto de vista ama está prestes a ser tirado no corte."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "subverter a resposta presumida com uma nova pista",
+        "label": "Pista contraditória"
+      }
+    },
+    "effects": [
+      "o leitor reabre a questão e continua a leitura"
+    ],
+    "emotion_target": "curiosidade",
+    "examples": [
+      "A caligrafia do homem morto estava fresca — e datada de amanhã."
+    ],
+    "name": "Mistério Intensificado",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Uma nova pista contradiz a resposta presumida no corte da cena."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "revelar uma habilidade sem explicá-la",
+        "label": "Lampejo de poder inexplicável"
+      }
+    },
+    "effects": [
+      "o leitor deseja a explicação"
+    ],
+    "emotion_target": "antecipação",
+    "examples": [
+      "Por um breve instante, os olhos do balconista aterrorizado brilharam em ouro — então a lâmpada se apagou."
+    ],
+    "name": "Poder Vislumbrado",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Uma capacidade oculta brilha, sem explicação, no corte da cena."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "expor parte de um segredo, ocultar o restante",
+        "label": "Revelação parcial e corte"
+      }
+    },
+    "effects": [
+      "o leitor continua a leitura para descobrir o resto"
+    ],
+    "emotion_target": "curiosidade",
+    "examples": [
+      "Ele virou o medalhão. O rosto lá dentro era o dela."
+    ],
+    "name": "Revelação Interrompida",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Um segredo é parcialmente revelado e retido no corte."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "reverter o significado da cena no corte final",
+        "label": "Inversão de sentido na última linha"
+      }
+    },
+    "effects": [
+      "o leitor reinterpreta a cena e continua a leitura"
+    ],
+    "emotion_target": "choque",
+    "examples": [
+      "Ela finalmente confiou nele — que era exatamente o que ele vinha esperando há três anos."
+    ],
+    "name": "Reviravolta Repentina",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Um fato revelado na última linha inverte o sentido de toda a cena."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "introduzir alguém que não deveria estar presente",
+        "label": "Chegada impossível"
+      }
+    },
+    "effects": [
+      "o leitor precisa saber quem é e por que a pessoa está ali"
+    ],
+    "emotion_target": "tensão",
+    "examples": [
+      "A porta se abriu, e o homem que eles haviam enterrado no inverno passado entrou no recinto."
+    ],
+    "name": "Chegada Inesperada",
+    "preconditions": [
+      "uma cena está em andamento"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Alguém que não deveria estar ali entra em cena no momento crucial."
+  }
+}

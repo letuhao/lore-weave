@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "das Umfeld vertraut dem Insider voll und ganz",
+        "label": "Handeln des Insiders"
+      },
+      "note": {
+        "intent": "ein Informationsleck, das zu präzise ist, um Zufall zu sein",
+        "label": "Kleine Inkonsistenz bemerkt"
+      },
+      "trap": {
+        "intent": "ein gezielt gestreutes, falsches Geheimnis wird platziert",
+        "label": "Falle zur Bestätigung"
+      },
+      "unmask": {
+        "intent": "den Maulwurf entlarven und für die eigene Seite gewinnen",
+        "label": "Entlarvung und Umkehr"
+      }
+    },
+    "effects": [
+      "der Maulwurf wird identifiziert und entweder gewendet oder entfernt",
+      "das Vertrauensgefüge innerhalb der Gruppe wird neu geordnet"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Ein Leck, das zu präzise ist, um Zufall zu sein; ein gezielt eingesetztes falsches Geheimnis beweist, wer Informationen weiterträgt – und an wen."
+    ],
+    "name": "Entlarvung des Doppelagenten",
+    "preconditions": [
+      "ein präzises Leck deutet darauf hin, dass ein Vertrauensperson korrumpiert wurde"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "hilft beim Auslegen des Köders"
+        ],
+        "label": "der Vertraute"
+      },
+      "mole": {
+        "constraints": [
+          "vertrauter Insider"
+        ],
+        "label": "der Maulwurf"
+      },
+      "protagonist": {
+        "constraints": [
+          "sucht still und heimlich nach dem Leck"
+        ],
+        "label": "der Verdächtige"
+      }
+    },
+    "summary": "Ein Leck, das zu präzise ist, um Zufall zu sein; ein gezielt gestreuter falscher Geheimnis-Hinweis entlarvt den Verräter – und wem er Informationen zuspielt – und macht den Maulwurf schließlich zum Agenten der Gegenseite."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "den Pakt brechen, sobald es sich auszahlt",
+        "label": "Verrat am Wendepunkt"
+      },
+      "offer": {
+        "intent": "einen Pakt vorschlagen, den der Verbündete annehmen wird",
+        "label": "Allianz anbieten"
+      },
+      "realign": {
+        "intent": "den Verrat in einen strategischen Vorteil verwandeln",
+        "label": "Neuausrichtung"
+      },
+      "rely": {
+        "intent": "der Verbündete setzt Ressourcen oder Vertrauen ein",
+        "label": "Verbündeter vertraut darauf"
+      },
+      "share": {
+        "intent": "gerade genug offenbaren, um geglaubt zu werden",
+        "label": "Teil Wahrheit teilen"
+      }
+    },
+    "effects": [
+      "der Verbündete wird im Moment des größten Hebels ausgespielt",
+      "der Drahtzieher erlangt die Oberhand"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Ein ernsthafter Pakt, ein gemeinsames Geheimnis, das gerade genug Wahrheit enthält, um Vertrauen zu rechtfertigen – bis zu dem Moment, in dem es sich auszahlt, ihn zu brechen."
+    ],
+    "name": "Vorgetäuschte Allianz",
+    "preconditions": [
+      "der Drahtzieher und das Ziel teilen ein plausibles, gemeinsames Ziel"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "die Beute des Verrats"
+        ],
+        "label": "der angestrebte Vorteil"
+      },
+      "false_ally": {
+        "constraints": [
+          "verlässt sich auf den Pakt"
+        ],
+        "label": "der getäuschte Verbündete"
+      },
+      "schemer": {
+        "constraints": [
+          "bietet einen falschen Pakt an"
+        ],
+        "label": "der Hinterlistige"
+      }
+    },
+    "summary": "Ein ernstgemeinter Pakt und ein gemeinsames Geheimnis, das gerade genug Wahrheit enthält, um Vertrauen zu erwecken – bis zum Moment des Wendepunkts, an dem der Bruch des Bundes den entscheidenden Vorteil bringt."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "auf die enthüllte Wahrheit reagieren",
+        "label": "Belohnung oder Säuberung"
+      },
+      "observe": {
+        "intent": "beobachten, wer an den Köder geht",
+        "label": "Die Reaktion beobachten"
+      },
+      "stage": {
+        "intent": "eine köderartige Gelegenheit auslegen",
+        "label": "Eine Versuchung inszenieren"
+      },
+      "verdict": {
+        "intent": "die Prüfung entscheidet über Vertrauen oder Verrat",
+        "label": "Loyalität oder Verrat"
+      }
+    },
+    "effects": [
+      "die wahre Loyalität der prüfenden Person wird offenbart",
+      "die Machtperson belohnt oder säubert entsprechend"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Eine Tür, die einladend offen steht, ist in Wahrheit eine Falle; wer sie durchschreitet, offenbart genau das, was der Beobachter wissen wollte."
+    ],
+    "name": "Loyalitätsfalle",
+    "preconditions": [
+      "die Person mit der Macht ahnt eine verborgene Untreue"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "das Ergebnis der Prüfung"
+        ],
+        "label": "der Loyalitätsbeweis"
+      },
+      "power_holder": {
+        "constraints": [
+          "inszeniert die Versuchung"
+        ],
+        "label": "die machtvolle Person"
+      },
+      "suspect": {
+        "constraints": [
+          "die zu prüfende Person"
+        ],
+        "label": "der verdächtige Verräter"
+      }
+    },
+    "summary": "Eine einladend offenstehende Tür ist in Wahrheit eine Prüfung; wer sie durchschreitet, offenbart genau das, was der Beobachter wissen wollte."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "Das Opfer lässt sich auf die Falle ein",
+        "label": "Das Opfer handelt aufgrund des falschen Glaubens"
+      },
+      "bait": {
+        "intent": "das Opfer zu einer Reaktion verführen",
+        "label": "Das Opfer zum Handeln verleiten"
+      },
+      "counter": {
+        "intent": "Die Konsequenzen werden zum Vorteil des Drahtziehers gelenkt",
+        "label": "Gegenmaßnahme"
+      },
+      "plant": {
+        "intent": "manipuliertes Beweismittel dort deponieren, wo es gefunden wird",
+        "label": "Falschbeweis platzieren"
+      },
+      "reveal": {
+        "intent": "Der «Beweis» taucht auf, während der Drahtzieher ungeschoren bleibt",
+        "label": "Leugbar offengelegt"
+      }
+    },
+    "effects": [
+      "Das Opfer wird aufgrund falscher Tatsachen diskreditiert oder verurteilt",
+      "Die Hand des Drahtziehers bleibt verborgen"
+    ],
+    "emotion_target": "Beklemmung",
+    "examples": [
+      "Ein gefälschtes Kontobuch wird so platziert, dass der Rivale es findet und «enthüllt» – und damit direkt in die Falle tappt, die ihn als Schuldigen brandmarkt."
+    ],
+    "name": "Falschbeweis-Schema",
+    "preconditions": [
+      "Der Drahtzieher kann Beweismittel platzieren, denen die Autorität vertraut"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "trägt den Köder unwissentlich vor sich her"
+        ],
+        "label": "der unwissende Akteur"
+      },
+      "authority": {
+        "constraints": [
+          "urteilt auf Basis des sichtbaren Beweises"
+        ],
+        "label": "die entscheidende Instanz"
+      },
+      "schemer": {
+        "constraints": [
+          "platziert den gefälschten Beweis"
+        ],
+        "label": "der Drahtzieher"
+      },
+      "victim": {
+        "constraints": [
+          "handelt aufgrund des falschen Glaubens"
+        ],
+        "label": "das anvisierte Opfer"
+      }
+    },
+    "summary": "Ein gefälschter Beweis wird dort platziert, wo der Rivale ihn finden und «enthüllen» wird; dies lockt das Opfer dazu, aufgrund eines falschen Glaubens zu handeln und direkt in eine unbestreitbare Falle zu tappen."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "einen beschuldigbaren Sündenbock auswählen",
+        "label": "Eine unbedeutende Partei diskreditieren"
+      },
+      "must_pin": {
+        "intent": "die Schuld muss bei jemandem landen",
+        "label": "Schuld muss zugeschrieben werden"
+      },
+      "steer": {
+        "intent": "die Untersuchung auf den Sündenbock lenken",
+        "label": "Beweise umgelenkt"
+      },
+      "walk_free": {
+        "intent": "der wahre Täter bleibt unentdeckt",
+        "label": "Der wahre Täter kommt ungestraft davon"
+      }
+    },
+    "effects": [
+      "der Sündenbock übernimmt die Schuld",
+      "der wahre Täter entgeht der Verantwortung"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Wenn die Schuld irgendwo landen muss, sorgt die geschickte Hand dafür, dass sie auf jemand anderen fällt."
+    ],
+    "name": "Sündenbock-Austausch",
+    "preconditions": [
+      "ein Verbrechen verlangt nach einem Schuldigen und der wahre Täter muss im Verborgenen bleiben"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "auf das falsche Ziel gelenkt"
+        ],
+        "label": "die Ermittler"
+      },
+      "scapegoat": {
+        "constraints": [
+          "eine unbedeutende, beschuldigbare Partei"
+        ],
+        "label": "der Sündenbock"
+      },
+      "schemer": {
+        "constraints": [
+          "der wahre Täter"
+        ],
+        "label": "der Drahtzieher"
+      }
+    },
+    "summary": "Wenn die Schuld irgendwo landen muss, sorgt die listige Hand dafür, dass sie auf eine unbedeutende Partei fällt, während der wahre Täter ungestraft bleibt."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "das Ziel verliert an Ansehen",
+        "label": "Zielperson isoliert"
+      },
+      "seed": {
+        "intent": "einen einzelnen Zweifel pflanzen",
+        "label": "Das Gerücht säen"
+      },
+      "spread": {
+        "intent": "der Zweifel wiederholt sich durch unwissende Stimmen",
+        "label": "Das Gerücht verbreitet sich"
+      },
+      "withdraw": {
+        "intent": "der Beschützer des Ziels zieht sich zurück",
+        "label": "Der Gönner entzieht die Unterstützung"
+      }
+    },
+    "effects": [
+      "das Ziel wird isoliert und verliert seinen Mäzen",
+      "die wahre Quelle des Gerüchts bleibt verborgen"
+    ],
+    "emotion_target": "Unbehagen",
+    "examples": [
+      "Ein einzelner, gezielt gesäter Zweifel, der von Stimmen wiederholt wird, die seinen Ursprung nicht kennen, bis das Ziel völlig vereinsamt ist."
+    ],
+    "name": "Rufmord-Kampagne",
+    "preconditions": [
+      "das Ziel ist auf das Ansehen eines Mäzens oder eines Hofes angewiesen"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "trägt das Gerücht unwissend weiter"
+        ],
+        "label": "der Hof oder das Gremium"
+      },
+      "schemer": {
+        "constraints": [
+          "verfasst das Gerücht"
+        ],
+        "label": "der Drahtzieher"
+      },
+      "target": {
+        "constraints": [
+          "wird durch das Gerücht isoliert"
+        ],
+        "label": "das Ziel"
+      }
+    },
+    "summary": "Ein einzelner, gezielt gesäter Zweifel, der von Mund zu Mund wandert, ohne dass dessen Ursprung bekannt ist, isoliert das Ziel, bis dessen Gönner die Unterstützung zurückzieht."
+  }
+}

@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "o momento temido acontece",
+        "label": "Clímax"
+      },
+      "fear": {
+        "intent": "elevar o pavor em direção ao pânico",
+        "label": "Medo crescente"
+      },
+      "release": {
+        "intent": "o perigo passa; o alívio se estabelece",
+        "label": "Liberação"
+      },
+      "unease": {
+        "intent": "plantar um pavor latente",
+        "label": "Mal-estar"
+      }
+    },
+    "effects": [
+      "a unidade termina com a tensão liberada"
+    ],
+    "emotion_target": "alívio",
+    "examples": [
+      "O medo foi crescendo e crescendo até o pior momento — e então, de forma impossível, tudo passou e eles puderam respirar."
+    ],
+    "name": "Do Pavor ao Alívio",
+    "preconditions": [
+      "uma unidade narrativa precisa de uma forma emocional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "O mal-estar cresce até se tornar medo e um clímax, liberando-se então em alívio."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "estabelecer uma base emocional estável",
+        "label": "Conforto"
+      },
+      "loss": {
+        "intent": "lançar o personagem no buraco",
+        "label": "Perda"
+      },
+      "struggle": {
+        "intent": "o início da escalada",
+        "label": "Luta"
+      },
+      "triumph": {
+        "intent": "emergir em um patamar superior ao inicial",
+        "label": "Triunfo"
+      }
+    },
+    "effects": [
+      "a unidade culmina em um alívio catártico"
+    ],
+    "emotion_target": "catarse",
+    "examples": [
+      "Estabilidade, seguida de ruína, depois o esforço desesperado para subir — até finalmente estar em um terreno mais elevado do que antes da queda."
+    ],
+    "name": "Queda e Ascensão (O Homem no Buraco)",
+    "preconditions": [
+      "uma unidade narrativa precisa de uma forma emocional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "O conforto dá lugar à perda e à luta, culminando em um triunfo conquistado a duras penas — a curva de catarse do homem no buraco."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "desfechar no vazio da perda",
+        "label": "Luto"
+      },
+      "hope": {
+        "intent": "despertar uma esperança frágil",
+        "label": "Esperança acesa"
+      },
+      "near": {
+        "intent": "trazer o objetivo ao alcance das mãos",
+        "label": "Quase lá"
+      },
+      "turn": {
+        "intent": "arrancá-lo no último instante",
+        "label": "Reviravolta cruel"
+      }
+    },
+    "effects": [
+      "a unidade culmina no desespero"
+    ],
+    "emotion_target": "desespero",
+    "examples": [
+      "Tão perto que poderiam tocá-lo — e então tudo se foi, e não restou nada a fazer a não ser lamentar."
+    ],
+    "name": "Da Esperança ao Desespero",
+    "preconditions": [
+      "uma unidade narrativa precisa de uma forma emocional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "A esperança é acesa em direção ao quase-sucesso, mas uma reviravolta cruel a encerra em luto."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "subida em direção ao sucesso",
+        "label": "Ascensão"
+      },
+      "downfall": {
+        "intent": "queda a partir da altura",
+        "label": "Queda"
+      },
+      "flaw": {
+        "intent": "o defeito fatal se manifesta",
+        "label": "A falha emerge"
+      },
+      "peak": {
+        "intent": "alcançar o ponto mais alto",
+        "label": "Ápice"
+      }
+    },
+    "effects": [
+      "a unidade culmina em um declínio trágico"
+    ],
+    "emotion_target": "tragédia",
+    "examples": [
+      "Cada vez mais alto, até que aquilo que os elevava se tornasse o próprio instrumento de sua queda."
+    ],
+    "name": "Ascensão e Queda (Ícaro)",
+    "preconditions": [
+      "uma unidade narrativa precisa de uma forma emocional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "Ascensão a um ápice onde uma falha emerge e impulsiona a ruína — a curva trágica de Ícaro."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "atingir o fundo",
+        "label": "Colapso"
+      },
+      "decline": {
+        "intent": "a queda se acelera",
+        "label": "Declínio"
+      },
+      "erosion": {
+        "intent": "perder terreno passo a passo",
+        "label": "Erosões"
+      },
+      "start_high": {
+        "intent": "começar no auge",
+        "label": "Ponto alto inicial"
+      }
+    },
+    "effects": [
+      "a unidade culmina em um colapso sombrio"
+    ],
+    "emotion_target": "desespero",
+    "examples": [
+      "Resistiu, mas depois não resistiu mais — um desenlace lento que nenhuma perda isolada poderia explicar."
+    ],
+    "name": "Queda Constante",
+    "preconditions": [
+      "uma unidade narrativa precisa de uma forma emocional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "De um ponto alto, através de erosões, até o colapso — a descida ao desespero."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "alcançar o ápice merecido",
+        "label": "Chegada"
+      },
+      "climb": {
+        "intent": "ganhar impulso",
+        "label": "Ascensão contínua"
+      },
+      "start_low": {
+        "intent": "começar na base da pirâmide",
+        "label": "Ponto de partida baixo"
+      },
+      "wins": {
+        "intent": "acumular ganhos",
+        "label": "Vitórias sucessivas"
+      }
+    },
+    "effects": [
+      "a unidade culmina em um triunfo conquistado"
+    ],
+    "emotion_target": "triunfo",
+    "examples": [
+      "Nada, depois um pouco, depois mais — cada passo foi merecido, até que o abismo se tornasse uma memória distante."
+    ],
+    "name": "Ascensão Constante (Do Nada ao Tudo)",
+    "preconditions": [
+      "uma unidade narrativa precisa de uma forma emocional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "o personagem do ponto de vista"
+      }
+    },
+    "summary": "De um ponto de partida humilde, através de vitórias sucessivas, até o triunfo final — a curva de ascensão do sucesso conquistado."
+  }
+}

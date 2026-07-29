@@ -225,6 +225,74 @@ def assemble(plan: dict, motifs: list[dict]) -> dict:
             "failed_keys": sorted(failed)}
 
 
+def _flat_entry(entry, prefix: str = "") -> dict[str, str]:
+    """String leaves of an on-disk entry, dotted — the same shape plan_pack chunks."""
+    out: dict[str, str] = {}
+    if isinstance(entry, dict):
+        for k, v in entry.items():
+            out.update(_flat_entry(v, f"{prefix}.{k}" if prefix else k))
+    elif isinstance(entry, list):
+        for i, v in enumerate(entry):
+            out.update(_flat_entry(v, f"{prefix}[{i}]"))
+    elif isinstance(entry, str):
+        out[prefix] = entry
+    return out
+
+
+def echoed_keys(lang: str, pack: str, motifs: list[dict]) -> dict[str, str]:
+    """Leaves the model handed back in ENGLISH, verbatim.
+
+    The inherited soft check only fires for a language with a distinctive script, so
+    every LATIN-script target — de, es, fr, id, ms, pt-BR, tr, half the supported set —
+    had NO signal for this at all: an untranslated string shipped looking exactly like a
+    translated one. Comparing against the English source works for every language.
+
+    Some echoes are CORRECT: proper names, and true cognates (`Triumph` really is the
+    German word; `tension` and `suspense` really are French). So this reports rather
+    than fails, and --retry-echoed gives each one a single isolated second attempt —
+    a legitimate cognate simply comes back the same, which is the right answer.
+    """
+    doc = _existing(TRANSLATION_DIR / lang / f"{pack}.json")
+    out: dict[str, str] = {}
+    for motif in motifs:
+        code = motif["code"]
+        if code not in doc:
+            continue
+        src_flat = _flat_entry(entry_of(motif))
+        for k, v in _flat_entry(doc[code]).items():
+            if src_flat.get(k) == v:
+                out[f"{code}|{k}"] = v
+    return out
+
+
+def strip_echoed(lang: str, pack: str, motifs: list[dict]) -> int:
+    """Remove echoed leaves so gap-fill re-translates exactly those keys."""
+    keys = echoed_keys(lang, pack, motifs)
+    if not keys:
+        return 0
+    path = TRANSLATION_DIR / lang / f"{pack}.json"
+    doc = _existing(path)
+    for compound in keys:
+        code, _, leaf = compound.partition("|")
+        node = doc.get(code)
+        parts = [p for p in leaf.replace("[", ".").replace("]", "").split(".") if p]
+        for part in parts[:-1]:
+            node = node[int(part)] if part.isdigit() else node.get(part)
+            if node is None:
+                break
+        if node is None:
+            continue
+        last = parts[-1]
+        if isinstance(node, list) and last.isdigit():
+            node[int(last)] = ""
+        elif isinstance(node, dict):
+            node.pop(last, None)
+    path.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    return len(keys)
+
+
 def write_source_hashes(lang: str, pack: str, motifs: list[dict]) -> None:
     """Record WHICH source text each translation was made from, in `_source_hash.json`.
 
@@ -278,6 +346,12 @@ def check(lang: str, source: dict[str, list[dict]]) -> int:
             print(f"  {pack:<14} {len(stale)} translation(s) made from OLDER source "
                   f"(re-run to refresh): {stale[:4]}")
             problems += len(stale)
+        echoed = echoed_keys(lang, pack, motifs)
+        if echoed:
+            # Reported, NOT counted as a problem — a cognate is a correct translation.
+            print(f"  {pack:<14} {len(echoed)} leaf/leaves identical to English "
+                  f"(cognate or untranslated — --retry-echoed gives each one an "
+                  f"isolated retry): {sorted(echoed)[:3]}")
     print(f"{lang}: {problems} problem(s)")
     return problems
 
@@ -294,6 +368,10 @@ def main() -> int:
     ap.add_argument("--force-authored", action="store_true",
                     help="allow writing a HUMAN-AUTHORED language (vi). You almost certainly "
                          "do not want this — it overwrites hand-written literary prose.")
+    ap.add_argument("--retry-echoed", action="store_true",
+                    help="drop every leaf that came back identical to English, so this run "
+                         "re-translates exactly those. One pass, not a loop: a real cognate "
+                         "comes back the same and stays.")
     ap.add_argument("--check", help="verify one language's committed files and exit")
     args = ap.parse_args()
 
@@ -318,6 +396,11 @@ def main() -> int:
             langs.remove(code)
     if not langs:
         return 1
+
+    if args.retry_echoed:
+        dropped = sum(strip_echoed(lang, pack, motifs)
+                      for lang in langs for pack, motifs in source.items())
+        print(f"--retry-echoed: dropped {dropped} leaf/leaves identical to English")
 
     plans = []
     for lang in langs:

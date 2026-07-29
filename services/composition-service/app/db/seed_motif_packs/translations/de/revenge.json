@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "der engste Verbündete wendet sich im denkbar schlechtesten Moment ab",
+        "label": "Der Verrat geschieht"
+      },
+      "fall": {
+        "intent": "dem Protagonisten wird alles entzogen",
+        "label": "Sturz und Verlust"
+      },
+      "trust": {
+        "intent": "eine tiefe Bindung wird aufgebaut, nur um gebrochen zu werden",
+        "label": "Vertrauen wird gefestigt"
+      },
+      "vow": {
+        "intent": "verstoßen, schwört der Überlebende die Rückkehr",
+        "label": "Exil mit einem Schwur"
+      }
+    },
+    "effects": [
+      "dem Protagonisten werden Ansehen und Status entzogen und er wird verstoßen",
+      "ein alles verzehrender Rachegelübde wird abgelegt"
+    ],
+    "emotion_target": "Trauer",
+    "examples": [
+      "Am Vorabend des Triumphs wendet sich der engste Verbündete ab; nach dem Verlust von allem und der Verbannung schwört der Überlebende seine Rückkehr."
+    ],
+    "name": "Verrat und Verbannung",
+    "preconditions": [
+      "der Protagonist genießt Vertrauen, Ansehen oder Macht"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "vertraut, eng verbunden"
+        ],
+        "label": "der Schwurbruder / Verräter"
+      },
+      "lost_kin": {
+        "constraints": [
+          "im Sturzfall mitgerissen"
+        ],
+        "label": "die verlorenen Verwandten oder Verbündeten"
+      },
+      "protagonist": {
+        "constraints": [
+          "vertrauensvoll, auf dem Höhepunkt des Erfolgs"
+        ],
+        "label": "der verratene Überlebende"
+      },
+      "vengeance": {
+        "constraints": [
+          "feierlich, antreibend"
+        ],
+        "label": "der Rachegelübde"
+      }
+    },
+    "summary": "Am Vorabend des Triumphs wendet sich der engste Verbündete ab; nach dem Verlust von allem und der Ausstoßung schwört der Überlebende, zurückzukehren."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "unwiderlegbare Beweise vorlegen",
+        "label": "Konfrontation mit Beweisen"
+      },
+      "exact": {
+        "intent": "sie zur Rechenschaft ziehen",
+        "label": "Den Preis eintreiben"
+      },
+      "locate": {
+        "intent": "jemanden finden, der an dem Verbrechen beteiligt war",
+        "label": "Die Schuldigen ausfindig machen"
+      },
+      "respond": {
+        "intent": "der Schuldige fleht um Gnade oder zeigt sich trotzig",
+        "label": "Schuldgeständnis oder Trotz"
+      }
+    },
+    "effects": [
+      "einer der Schuldigen wird zur Rechenschaft gezogen",
+      "die Kette der Vergeltung rückt dem Hauptverantwortlichen immer näher"
+    ],
+    "emotion_target": "grimmige Entschlossenheit",
+    "examples": [
+      "Einer nach dem anderen spürt der Rächer jene auf, die gemeinsam die Tat begingen, und zwingt jeden Einzelnen, dafür einzustehen."
+    ],
+    "name": "Einforderung der Blutschuld",
+    "preconditions": [
+      "Mehrere Beteiligte tragen die Schuld an einem vergangenen Unrecht, und die eigenen Geheimnisse des Feindes haben offenbart, wer welche Tat begangen hat"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "einer von mehreren"
+        ],
+        "label": "die Schuldigen"
+      },
+      "protagonist": {
+        "constraints": [
+          "getrieben, methodisch"
+        ],
+        "label": "der Rächer"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "der Grund der Vergeltung"
+        ],
+        "label": "die unrechtmäßig Getöteten"
+      }
+    },
+    "summary": "Einer nach dem anderen spürt der Rächer jene auf, die an dem Verbrechen beteiligt waren, stellt sie mit Beweisen zur Rede und zwingt sie, für ihre Taten zu büßen."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "Der Protagonist wird vor aller Augen gedemütigt",
+        "label": "Öffentlich verurteilt"
+      },
+      "evidence_hidden": {
+        "intent": "die Wahrheit wird unterdrückt; der Tiefpunkt",
+        "label": "Beweismittel werden unterdrückt"
+      },
+      "framed": {
+        "intent": "Gefälschte Beweise brandmarken den Protagonisten",
+        "label": "Eines Verbrechens bezichtigt"
+      },
+      "unmasked": {
+        "intent": "die wahre Täterschaft wird entlarvt",
+        "label": "Die Wahrheit kommt ans Licht"
+      }
+    },
+    "effects": [
+      "der Ruf des Protagonisten wird wiederhergestellt",
+      "der wahre Schuldige wird überführt"
+    ],
+    "emotion_target": "Empörung",
+    "examples": [
+      "Aufgrund gefälschter Beweise als Verräter gebrandmarkt, erträgt der Beschuldigte die öffentliche Schande, bis die wahre Täterschaft ans Licht kommt."
+    ],
+    "name": "Falsche Anschuldigung",
+    "preconditions": [
+      "dem Protagonisten kann ein Verbrechen plausibel angelastet werden"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "anfangs unterdrückt"
+        ],
+        "label": "der verborgene Zeuge oder Hinweis"
+      },
+      "framer": {
+        "constraints": [
+          "verborgen, methodisch"
+        ],
+        "label": "der Drahtzieher"
+      },
+      "judges": {
+        "constraints": [
+          "von den bloßen Anschein getäuscht"
+        ],
+        "label": "das Urteilende Gremium"
+      },
+      "protagonist": {
+        "constraints": [
+          "öffentlich verurteilt"
+        ],
+        "label": "der fälschlich Beschuldigte"
+      }
+    },
+    "summary": "Aufgrund gefälschter Beweise als Verräter gebrandmarkt, erträgt der Beschuldigte die öffentliche Schande, bis die wahre Täterschaft ans Licht gezerrt wird."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "der Mörder liegt wehrlos am Boden",
+        "label": "Feind in der Klemme"
+      },
+      "choice": {
+        "intent": "der Rächer muss sich entscheiden",
+        "label": "Erzwungene Entscheidung"
+      },
+      "consequence": {
+        "intent": "die Entscheidung prägt das Wesen der Figur neu",
+        "label": "Die Konsequenz folgt"
+      },
+      "reason": {
+        "intent": "ein Grund, nicht zuzuschlagen, offenbart sich",
+        "label": "Grund für Gnade tritt hervor"
+      }
+    },
+    "effects": [
+      "der Protagonist wird durch seine Entscheidung innerlich verändert",
+      "der Kreislauf der Vergeltung wird entweder durchbrochen oder fortgesetzt"
+    ],
+    "emotion_target": "moralische-spannung",
+    "examples": [
+      "Da der Mörder wehrlos ist, zeigt sich ein Grund, ihn zu verschonen; die Wahl des Rächer bestimmt, wer er letztlich sein wird."
+    ],
+    "name": "Gnade oder Vergeltung",
+    "preconditions": [
+      "der Protagonist hat den Feind in die Enge getrieben und ist in der Position der Macht"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "ist dem Protagonisten ausgeliefert"
+        ],
+        "label": "der wehrlose Feind"
+      },
+      "moral_voice": {
+        "constraints": [
+          "Verwandte, das Gewissen oder ein Zeuge"
+        ],
+        "label": "die Stimme der Gnade"
+      },
+      "protagonist": {
+        "constraints": [
+          "besitzt die Macht, ein Ende zu setzen"
+        ],
+        "label": "der Rächer am Abgrund"
+      }
+    },
+    "summary": "Der Mörder ist wehrlos, und ein Grund zur Gnade tritt zutage; die Entscheidung des Rächer lässt seine wahre Natur neu entstehen."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "in den Rangordnungen des Feindes aufsteigen",
+        "label": "Vertrauen gewinnen"
+      },
+      "enter": {
+        "intent": "den Feind unter Deckmantel infiltrieren",
+        "label": "Unter falschem Namen eintreten"
+      },
+      "gather": {
+        "intent": "stillschweigend Geheimnisse und Beweise sammeln",
+        "label": "Druckmittel sammeln"
+      },
+      "strike": {
+        "intent": "die Geheimnisse des Feindes gegen ihn selbst wenden",
+        "label": "Der Schlag von innen"
+      }
+    },
+    "effects": [
+      "der Feind wird durch seine eigenen Geheimnisse zu Fall gebracht",
+      "die wahre Identität des Rächer wird im Moment des Schlages enthüllt"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Unter einem falschen Namen klettert der Rächer in die Reihen des Feindes auf, um dessen Geheimnisse schließlich gegen ihn zu wenden."
+    ],
+    "name": "Geduldige Infiltration",
+    "preconditions": [
+      "der Protagonist kann unbemerkt in den Kreis des Feindes eindringen"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "ein stiller Verbündeter im Inneren"
+        ],
+        "label": "der interne Kontakt"
+      },
+      "leverage": {
+        "constraints": [
+          "Geheimnisse, Beweise"
+        ],
+        "label": "das gesammelte Druckmittel"
+      },
+      "protagonist": {
+        "constraints": [
+          "die eigene Identität verbergen"
+        ],
+        "label": "der getarnte Rächer"
+      },
+      "target_house": {
+        "constraints": [
+          "mächtig, gut bewacht"
+        ],
+        "label": "das feindliche Haus"
+      }
+    },
+    "summary": "Unter falschem Namen klettert der Rächer in die Reihen des Feindes, sammelt Druckmittel und wendet deren Geheimnisse schließlich von innen heraus gegen sie selbst."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "der Rächer setzt sich mit der Leere auseinander",
+        "label": "Hohles Nachspiel"
+      },
+      "confront": {
+        "intent": "die letzte Abrechnung steht bevor",
+        "label": "Letzte Konfrontation"
+      },
+      "cost": {
+        "intent": "der Preis der Jagd tritt zutage",
+        "label": "Verborgene Kosten offenbart"
+      },
+      "victory": {
+        "intent": "der Feind fällt",
+        "label": "Sieg errungen"
+      }
+    },
+    "effects": [
+      "der Erzfeind ist besiegt",
+      "der Rächer erkennt den Preis seiner Vergeltung"
+    ],
+    "emotion_target": "Melancholie",
+    "examples": [
+      "Der Feind fällt endlich – und in der Stille danach erkennt der Rächer, was die Jahre des Hasses ihn gekostet haben."
+    ],
+    "name": "Pyrrhischer Sieg",
+    "preconditions": [
+      "der Protagonist nähert sich dem Ende einer jahrelangen Rachesuche"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "das letzte Ziel"
+        ],
+        "label": "der Erzfeind"
+      },
+      "protagonist": {
+        "constraints": [
+          "verzehrt von der jahrelangen Jagd"
+        ],
+        "label": "der Rächer"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "hohl nach dem Sieg"
+        ],
+        "label": "die vollzogene Rache"
+      }
+    },
+    "summary": "Der Feind ist endlich gefallen, und in der Stille danach erkennt der Rächer, was die Jahre des Hasses ihn gekostet haben."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "verborgenes, mühsames Reifen",
+        "label": "Bitterer Aufstieg"
+      },
+      "breakthrough": {
+        "intent": "der Protagonist überschreitet die Schwelle zur Stärke",
+        "label": "Durchbruch"
+      },
+      "encounter": {
+        "intent": "eine unvorhergesehene Wendung ebnet den Weg zur Macht",
+        "label": "Glücklicher Zufall"
+      },
+      "humiliation": {
+        "intent": "der Ausgestoßene wird gebrochen und erhält eine Frist",
+        "label": "Demütigung"
+      },
+      "return": {
+        "intent": "Rückkehr, um denjenigen zu stürzen, der ihn einst zerbrochen hat",
+        "label": "Rückkehr und Umkehrung"
+      }
+    },
+    "effects": [
+      "der Protagonist kehrt transformiert und mächtig zurück",
+      "derjenige, der ihn zerbrochen hat, wird entmachtet"
+    ],
+    "emotion_target": "Genugtuung",
+    "examples": [
+      "Nachdem ihm ein Zeitraum gegeben wurde, um entweder stark zu werden oder zu scheitern, trainiert der Ausgestoßene in der Verborgenheit und kehrt zurück, um denjenigen zu stürzen, der ihn einst gedemütigt hat."
+    ],
+    "name": "Drei-Jahres-Pakt",
+    "preconditions": [
+      "der Protagonist wurde gebrochen und gedemütigt",
+      "ein zeitlich begrenztes Fenster für das Erlangen von Stärke wird gesetzt"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "steht ihm beim Aufstieg treu zur Seite"
+        ],
+        "label": "der loyale Verbündete"
+      },
+      "mentor": {
+        "constraints": [
+          "verborgen, fordernd"
+        ],
+        "label": "der Mentor der Wildnis"
+      },
+      "protagonist": {
+        "constraints": [
+          "mit einer gesetzten Frist zur Entwicklung"
+        ],
+        "label": "der Ausgestoßene"
+      },
+      "rival": {
+        "constraints": [
+          "sich des Sieges sicher"
+        ],
+        "label": "derjenige, der ihn zerbrach"
+      }
+    },
+    "summary": "Mit der Zeitspanne, entweder zu Stärke zu finden oder zu scheitern, trainiert der Ausgestoßene in der Verborgenheit durch Demütigung und einen glücklichen Zufall, um schließlich zurückzukehren und jene zu stürzen, die ihn einst zerbrochen haben."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "der rechtmäßige Erbe wird enterbt",
+        "label": "Als Hochstapler verstoßen"
+      },
+      "reclaim": {
+        "intent": "Der Beweis taucht wieder auf und der rechtmäßige Anspruch wird wiederhergestellt",
+        "label": "Anspruch zurückgefordert"
+      },
+      "seek_proof": {
+        "intent": "Der Erbe jagt den Beweis, der überdauert hat",
+        "label": "Suche nach dem Stammbaum-Beweis"
+      },
+      "stolen": {
+        "intent": "das Geburtsrecht wird durch Fälschung an sich gerissen",
+        "label": "Rechtmäßiger Anspruch gestohlen"
+      }
+    },
+    "effects": [
+      "Der Usurpator wird entlarvt",
+      "Die Protagonistin oder der Protagonist erhält ihr Geburtsrecht zurück"
+    ],
+    "emotion_target": "Rehabilitation",
+    "examples": [
+      "Ein gestohlenes Geburtsrecht und ein gefälschtes Testament lassen den rechtmäßigen Erben als Bettler zurück — bis der Beweis, den niemand vernichten konnte, wieder ans Licht kommt."
+    ],
+    "name": "Entfremdetes Erbe",
+    "preconditions": [
+      "Die Protagonistin oder der Protagonist besitzt einen rechtmäßigen Anspruch, der gestohlen werden kann"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "das umstrittene Erbe"
+        ],
+        "label": "das Geburtsrecht"
+      },
+      "protagonist": {
+        "constraints": [
+          "um sein Recht gebracht"
+        ],
+        "label": "der enteignete Erbe"
+      },
+      "retainer": {
+        "constraints": [
+          "hütet den Beweis"
+        ],
+        "label": "der loyale Gefährte"
+      },
+      "usurper": {
+        "constraints": [
+          "besitzt den gestohlenen Anspruch"
+        ],
+        "label": "der Usurpator"
+      }
+    },
+    "summary": "Ein geraubtes Geburtsrecht und ein gefälschtes Testament lassen den rechtmäßigen Erben als Bettler zurück, bis ein unzerstörbarer Beweis wieder ans Licht kommt."
+  }
+}

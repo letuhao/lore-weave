@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "die verborgene Untreue einer vertrauten Person offenbaren",
+        "label": "Riss des Zweifels"
+      }
+    },
+    "effects": [
+      "der Leser misstraut der Person und liest weiter"
+    ],
+    "emotion_target": "Unbehagen",
+    "examples": [
+      "Ihre engste Freundin lächelte, stimmte zu – und ließ den zweiten Schlüssel in ihrem Ärmel verschwinden."
+    ],
+    "name": "Verrat angedeutet",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Eine vertraute Person zeigt im entscheidenden Moment einen Riss aus Zweifel."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "eine unumkehrbare Entscheidung erzwingen",
+        "label": "In die Enge treiben"
+      }
+    },
+    "effects": [
+      "der Leser liest weiter, um die Entscheidung zu erfahren"
+    ],
+    "emotion_target": "Angst",
+    "examples": [
+      "Zwei Türen, ein Schlüssel und das Wasser reicht ihm bereits bis zu den Knien."
+    ],
+    "name": "Erzwungene Entscheidung",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Erzählfigur"
+      }
+    },
+    "summary": "Die Erzählperspektive wird am Ende einer Szene in eine unumkehrbare Entscheidung gedrängt."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "eine Gefahr am Kapitelende ungelöst lassen",
+        "label": "Schnitt bei einer unbeantworteten Gefahr"
+      }
+    },
+    "effects": [
+      "der Leser wird in das nächste Kapitel mitgerissen"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Das Siegel war bereits gebrochen – und die Zelle dahinter war leer."
+    ],
+    "name": "Cliffhanger-Frage",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Erzählperspektive"
+      }
+    },
+    "summary": "Ein Kapitel endet mit einer unbeantworteten Gefahr, die den Leser unwiderstehlich in das nächste Kapitel zieht."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "ein zeitlich begrenztes Zeitfenster für das Ziel festlegen",
+        "label": "Die Frist setzen"
+      }
+    },
+    "effects": [
+      "der Leser spürt das Verstreichen der Zeit und liest weiter"
+    ],
+    "emotion_target": "Antizipation",
+    "examples": [
+      "Drei Tage. Danach wäre das Angebot – und die Stadt – verschwunden."
+    ],
+    "name": "Countdown läuft",
+    "preconditions": [
+      "eine Szene ist bereits im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Eine Frist oder ein Timer wird gesetzt, wodurch das Geschehen als Wettlauf gegen die Zeit gerahmt wird."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "das Kapitel mit einer Zeile beenden, die alles in einem neuen Licht erscheinen lässt",
+        "label": "Einschlagender Satz, dann harter Schnitt"
+      }
+    },
+    "effects": [
+      "der Leser ist fassungslos und liest sofort weiter"
+    ],
+    "emotion_target": "Schock",
+    "examples": [
+      "«Du solltest deinen Vater fragen«, sagte sie, «warum er einen leeren Sarg begraben hat.»"
+    ],
+    "name": "Dialog-Bombe",
+    "preconditions": [
+      "eine Szene ist bereits im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Erzählperspektive"
+      }
+    },
+    "summary": "Ein einziger Dialogsatz schlägt ein und das Kapitel endet genau dort."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "einen Hinweis auf die wahre Identität geben, ohne sie zu bestätigen",
+        "label": "Identität angedeutet"
+      }
+    },
+    "effects": [
+      "der Leser liest weiter, um zu erfahren, wer die Person wirklich ist"
+    ],
+    "emotion_target": "Neugier",
+    "examples": [
+      "Der Bettler zog seine Kapuze zurück, und die Wachen fielen auf die Knie."
+    ],
+    "name": "Identität angedeutet",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Erzähler-Perspektive"
+      }
+    },
+    "summary": "Ein Hinweis auf den wahren Namen oder die wahre Rolle einer Person, der am Ende der Szene offen bleibt."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "eine Gefahr benennen, die noch nicht eingetroffen ist",
+        "label": "Gefahr wird als herannahend angekündigt"
+      }
+    },
+    "effects": [
+      "der Leser erwartet die Ankunft der Bedrohung"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Bis zum Morgengrauen würde das Heer vor den Toren stehen, und die Tore würden dem Widerstand nicht standhalten."
+    ],
+    "name": "Drohende Gefahr",
+    "preconditions": [
+      "eine Szene ist bereits im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Eine benannte Gefahr ist im Anmarsch, hat aber noch nicht zugeschlagen."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "ein kostbares Gut an den Rand des Verlusts bringen",
+        "label": "Verlust steht bevor"
+      }
+    },
+    "effects": [
+      "der Leser fürchtet den Verlust und liest weiter"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Die Heilerin schüttelte den Kopf. Es reiche, sagte sie, nur für eines der Kinder."
+    ],
+    "name": "Unmittelbarer Verlust",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Erzählfigur"
+      }
+    },
+    "summary": "Etwas, das der Erzählperspektive lieb ist, steht kurz davor, weggenommen zu werden."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "die bisherige Vermutung durch einen neuen Hinweis entkräften",
+        "label": "Widersprüchlicher Hinweis"
+      }
+    },
+    "effects": [
+      "der Leser stellt die Frage neu und liest weiter"
+    ],
+    "emotion_target": "Neugier",
+    "examples": [
+      "Die Handschrift des Toten war noch frisch – und datiert auf morgen."
+    ],
+    "name": "Vertiefung des Rätsels",
+    "preconditions": [
+      "eine Szene läuft gerade"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Ein neuer Hinweis widerspricht der bisher angenommenen Lösung am Ende der Szene."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "eine Fähigkeit offenbaren, ohne sie zu erklären",
+        "label": "Unerklärliches Machtleuchten"
+      }
+    },
+    "effects": [
+      "der Leser verlangt nach einer Erklärung"
+    ],
+    "emotion_target": "Erwartung",
+    "examples": [
+      "Für einen Herzschlag lang leuchteten die Augen des verängstigten Beamten gold — dann erlosch die Lampe."
+    ],
+    "name": "Machtahnung",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Eine verborgene Fähigkeit blitzt unerklärt am Schnittpunkt auf."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "einen Teil eines Geheimnisses preisgeben, den Rest verschweigen",
+        "label": "Teilweise Enthüllung und Schnitt"
+      }
+    },
+    "effects": [
+      "der Leser liest weiter, um den Rest zu erfahren"
+    ],
+    "emotion_target": "Neugier",
+    "examples": [
+      "Er drehte das Medaillon um. Das Gesicht darin war ihr eigenes."
+    ],
+    "name": "Enthüllungs-Cliffhanger",
+    "preconditions": [
+      "eine Szene ist im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Ein Geheimnis wird nur teilweise offenbart und am entscheidenden Punkt zurückgehalten."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "die Bedeutung der Szene am Schnittpunkt umkehren",
+        "label": "Bedeutungsumkehr im letzten Satz"
+      }
+    },
+    "effects": [
+      "der Leser interpretiert die Szene neu und liest weiter"
+    ],
+    "emotion_target": "Schock",
+    "examples": [
+      "Sie vertraute ihm endlich – und genau darauf hatte er drei Jahre lang gewartet."
+    ],
+    "name": "Plötzliche Umkehrung",
+    "preconditions": [
+      "eine Szene läuft bereits"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Perspektive"
+      }
+    },
+    "summary": "Ein Fakt im letzten Satz kehrt die gesamte Bedeutung der Szene um."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "jemanden einführen, der nicht anwesend sein dürfte",
+        "label": "Unmögliches Erscheinen"
+      }
+    },
+    "effects": [
+      "der Leser muss erfahren, wer es ist und warum die Person da ist"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Die Tür schwang auf, und der Mann, den sie letzten Winter begraben hatten, trat ein."
+    ],
+    "name": "Unerwartetes Eintreffen",
+    "preconditions": [
+      "eine Szene ist bereits im Gange"
+    ],
+    "roles": {
+      "pov": {
+        "label": "die Ich-Erzähler-Perspektive"
+      }
+    },
+    "summary": "Eine Person, die nicht hier sein dürfte, tritt im entscheidenden Moment ein."
+  }
+}

@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "最亲密的盟友在最糟糕的时刻反戈",
+        "label": "背叛突袭"
+      },
+      "fall": {
+        "intent": "主角被剥夺了一切",
+        "label": "坠落与丧失"
+      },
+      "trust": {
+        "intent": "建立一段注定会被打破的亲密纽带",
+        "label": "建立信任"
+      },
+      "vow": {
+        "intent": "被驱逐出境，幸存者发誓归来",
+        "label": "带着誓言被放逐"
+      }
+    },
+    "effects": [
+      "主角被剥夺地位并被放逐",
+      "发下复仇的坚定誓言"
+    ],
+    "emotion_target": "悲恸",
+    "examples": [
+      "在胜利前夕，最亲密的盟友倒戈；在被剥夺一切并被驱逐后，幸存者发誓归来。"
+    ],
+    "name": "背叛与流亡",
+    "preconditions": [
+      "主角拥有信任、地位或权力"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "关系亲密，备受信任"
+        ],
+        "label": "结拜兄弟 / 背叛者"
+      },
+      "lost_kin": {
+        "constraints": [
+          "在覆灭中丧生"
+        ],
+        "label": "丧失的亲人或盟友"
+      },
+      "protagonist": {
+        "constraints": [
+          "深具信任感，正处于上升期"
+        ],
+        "label": "遭背叛的幸存者"
+      },
+      "vengeance": {
+        "constraints": [
+          "庄严的，驱动性的"
+        ],
+        "label": "复仇誓言"
+      }
+    },
+    "summary": "在胜利前夕，最亲密的盟友反戈一击；在被剥夺一切并驱逐出境后，幸存者立誓归来。"
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "出示无可辩驳的证据",
+        "label": "铁证对质"
+      },
+      "exact": {
+        "intent": "让他们为此付出代价",
+        "label": "索取代价"
+      },
+      "locate": {
+        "intent": "寻获参与犯罪的一员",
+        "label": "锁定罪人"
+      },
+      "respond": {
+        "intent": "罪人哀求饶恕或垂死挣扎",
+        "label": "罪人求饶或抗拒"
+      }
+    },
+    "effects": [
+      "其中一名罪人被追究责任",
+      "清算的链条向着幕后主使推进"
+    ],
+    "emotion_target": "冷峻的决绝",
+    "examples": [
+      "复仇者逐一寻获那些共谋犯罪的人，并让他们每个人都为此付出代价。"
+    ],
+    "name": "血债清算",
+    "preconditions": [
+      "多方共同背负着过去的罪孽，而仇敌自身的秘密已揭示出每个人分别扮演的角色"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "共犯之一"
+        ],
+        "label": "罪魁祸首"
+      },
+      "protagonist": {
+        "constraints": [
+          "意志坚定，步步为营"
+        ],
+        "label": "复仇者"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "罪行清算的起因"
+        ],
+        "label": "受难的亡者"
+      }
+    },
+    "summary": "复仇者逐一寻获当年的共犯，用铁证与他们对质，并让他们为罪行付出代价。"
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "主角在众人面前名誉扫地",
+        "label": "公开审判"
+      },
+      "evidence_hidden": {
+        "intent": "真相被掩盖；陷入低谷",
+        "label": "证据被掩盖"
+      },
+      "framed": {
+        "intent": "栽赃的证据将主角钉在罪人的耻辱柱上",
+        "label": "深陷罪名"
+      },
+      "unmasked": {
+        "intent": "真凶终见天日",
+        "label": "真相大白"
+      }
+    },
+    "effects": [
+      "主角洗清冤屈",
+      "真凶败露"
+    ],
+    "emotion_target": "愤懑",
+    "examples": [
+      "因伪造的证据而被烙上叛徒的烙印，被指控者在真凶现身之前，始终忍受着公众的唾弃。"
+    ],
+    "name": "诬陷",
+    "preconditions": [
+      "主角极有可能被指控犯下罪行"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "起初被刻意掩盖"
+        ],
+        "label": "隐匿的证人或线索"
+      },
+      "framer": {
+        "constraints": [
+          "行踪隐秘，手段缜密"
+        ],
+        "label": "栽赃者"
+      },
+      "judges": {
+        "constraints": [
+          "受表象所误"
+        ],
+        "label": "审判方"
+      },
+      "protagonist": {
+        "constraints": [
+          "身负公愤"
+        ],
+        "label": "受冤者"
+      }
+    },
+    "summary": "因栽赃的证据而被贴上叛徒的标签，被指控者在真相大白、真凶现身之前，必须忍受众叛亲离的耻辱。"
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "凶手已陷入绝境",
+        "label": "掌控生死"
+      },
+      "choice": {
+        "intent": "复仇者必须做出决定",
+        "label": "被迫抉择"
+      },
+      "consequence": {
+        "intent": "这一抉择重塑了他们的本质",
+        "label": "因果降临"
+      },
+      "reason": {
+        "intent": "一个不该痛下杀手的理由出现了",
+        "label": "宽恕的契机"
+      }
+    },
+    "effects": [
+      "主角因其抉择而发生蜕变",
+      "复仇的循环就此终结，或是陷入无尽的轮回"
+    ],
+    "emotion_target": "道德张力",
+    "examples": [
+      "当凶手已无还手之力，宽恕的理由悄然浮现；复仇者的抉择，将重塑其灵魂。"
+    ],
+    "name": "宽恕或复仇",
+    "preconditions": [
+      "主角已将仇敌置于生死掌控之中"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "任由主角处置"
+        ],
+        "label": "无助的仇敌"
+      },
+      "moral_voice": {
+        "constraints": [
+          "亲人、良知或见证者"
+        ],
+        "label": "仁慈的呼唤者"
+      },
+      "protagonist": {
+        "constraints": [
+          "掌握着终结一切的权力"
+        ],
+        "label": "处于临界点的复仇者"
+      }
+    },
+    "summary": "当凶手已无还手之力，宽恕的理由悄然浮现；复仇者的抉择将重塑其灵魂。"
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "在敌方阵营中步步高升",
+        "label": "赢得信任"
+      },
+      "enter": {
+        "intent": "在掩护下渗透进敌方内部",
+        "label": "化名潜入"
+      },
+      "gather": {
+        "intent": "悄无声息地搜集秘密与证据",
+        "label": "搜集把柄"
+      },
+      "strike": {
+        "intent": "利用敌人的秘密反噬敌人",
+        "label": "从内部发起打击"
+      }
+    },
+    "effects": [
+      "敌人被其自身的秘密所毁灭",
+      "复仇者在发动打击时揭示真实身份"
+    ],
+    "emotion_target": "紧张感",
+    "examples": [
+      "复仇者化名潜入敌人的内部阶层，搜集筹码，最终从内部利用他们的秘密进行反击。"
+    ],
+    "name": "潜伏渗透",
+    "preconditions": [
+      "主角能够隐匿身份，潜入敌人的圈子"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "一名沉默的盟友"
+        ],
+        "label": "内部接应"
+      },
+      "leverage": {
+        "constraints": [
+          "秘密或实证"
+        ],
+        "label": "搜集的把柄"
+      },
+      "protagonist": {
+        "constraints": [
+          "必须隐藏真实身份"
+        ],
+        "label": "伪装的复仇者"
+      },
+      "target_house": {
+        "constraints": [
+          "权势显赫且戒备森严"
+        ],
+        "label": "敌方势力"
+      }
+    },
+    "summary": "复仇者化名潜入敌方阵营，在层层攀升中搜集把柄，最终从内部利用其秘密发起反击。"
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "复仇者在空虚中审视自我",
+        "label": "空虚的余波"
+      },
+      "confront": {
+        "intent": "最后的清算降临",
+        "label": "最终对决"
+      },
+      "cost": {
+        "intent": "追逐所付出的代价浮出水面",
+        "label": "代价显现"
+      },
+      "victory": {
+        "intent": "仇敌倒下",
+        "label": "赢得胜利"
+      }
+    },
+    "effects": [
+      "宿敌被击败",
+      "复仇者直面复仇所付出的代价"
+    ],
+    "emotion_target": "忧郁",
+    "examples": [
+      "敌人终于倒下——而在随之而来的死寂中，复仇者看清了多年仇恨所付出的代价。"
+    ],
+    "name": "惨胜",
+    "preconditions": [
+      "主角即将完成长期的复仇之路"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "最终的目标"
+        ],
+        "label": "宿敌"
+      },
+      "protagonist": {
+        "constraints": [
+          "被长期的追逐所吞噬"
+        ],
+        "label": "复仇者"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "得胜后却感到空虚"
+        ],
+        "label": "达成的复仇"
+      }
+    },
+    "summary": "仇敌终倒，在随之而来的死寂中，复仇者才看清多年的恨意究竟付出了怎样的代价。"
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "隐秘且艰苦的磨砺",
+        "label": "苦涩的攀升"
+      },
+      "breakthrough": {
+        "intent": "主角跨越力量的门槛",
+        "label": "突破"
+      },
+      "encounter": {
+        "intent": "一次偶然的转机开启了通往力量之路",
+        "label": "奇遇"
+      },
+      "humiliation": {
+        "intent": "流浪者身心受挫，并被下达了最后通牒",
+        "label": "屈辱"
+      },
+      "return": {
+        "intent": "回归并推翻曾经摧毁自己的人",
+        "label": "回归与反转"
+      }
+    },
+    "effects": [
+      "主角以蜕变后的强大姿态回归",
+      "曾经摧毁他们的人被彻底颠覆"
+    ],
+    "emotion_target": "平反雪恨",
+    "examples": [
+      "在变强或死亡的期限内，被放逐者在寂寞中苦练，最终归来，推翻了曾经摧毁自己的人。"
+    ],
+    "name": "三年之约",
+    "preconditions": [
+      "主角曾遭受毁灭性的打击与羞辱",
+      "设定了一个变强或死亡的有限期限"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "在攀登历程中始终相随"
+        ],
+        "label": "忠诚盟友"
+      },
+      "mentor": {
+        "constraints": [
+          "行踪隐秘，要求严苛"
+        ],
+        "label": "荒野导师"
+      },
+      "protagonist": {
+        "constraints": [
+          "被赋予了成长的期限"
+        ],
+        "label": "流浪者"
+      },
+      "rival": {
+        "constraints": [
+          "沉溺于胜利的安稳"
+        ],
+        "label": "摧毁者"
+      }
+    },
+    "summary": "被赋予了变强或死去的期限，流浪者在屈辱与奇遇中于隐秘处苦修，最终归来，彻底颠覆曾经摧毁自己的人。"
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "真正的继承人被剥夺了家族身份",
+        "label": "被驱逐为冒名者"
+      },
+      "reclaim": {
+        "intent": "证据重现，正统地位得以恢复",
+        "label": "夺回正统地位"
+      },
+      "seek_proof": {
+        "intent": "继承人搜寻那份幸存至今的证据",
+        "label": "追寻血脉证据"
+      },
+      "stolen": {
+        "intent": "出生权利通过伪造手段被夺走",
+        "label": "正统权利被窃"
+      }
+    },
+    "effects": [
+      "篡位者败露",
+      "主角夺回其生而拥有的权利"
+    ],
+    "emotion_target": "平反",
+    "examples": [
+      "被窃取的生辰权利与伪造的遗嘱让真正的继承人沦为乞丐——直到那份无人能毁掉的证据重见天日。"
+    ],
+    "name": "篡夺的继承权",
+    "preconditions": [
+      "主角拥有一项可能被窃取的合法权利"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "存在争议的遗产"
+        ],
+        "label": "出生权利"
+      },
+      "protagonist": {
+        "constraints": [
+          "被夺走了应得的一切"
+        ],
+        "label": "被剥夺继承权的继承人"
+      },
+      "retainer": {
+        "constraints": [
+          "守护着证据"
+        ],
+        "label": "忠诚的追随者"
+      },
+      "usurper": {
+        "constraints": [
+          "占据着窃取的权利"
+        ],
+        "label": "篡位者"
+      }
+    },
+    "summary": "被窃取的出生权利与伪造的遗嘱让真正的继承人沦为乞丐，直到那份无人能毁掉的证据重新浮出水面。"
+  }
+}

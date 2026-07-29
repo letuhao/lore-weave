@@ -1,0 +1,428 @@
+{
+  "rebirth.butterfly_divergence": {
+    "beats": {
+      "adapt": {
+        "intent": "o protagonista deve agir sem qualquer presságio ou conhecimento prévio pela primeira vez",
+        "label": "O julgamento substitui a memória"
+      },
+      "intervene": {
+        "intent": "uma intervenção ocorre e altera um desfecho inicial",
+        "label": "Uma mudança precoce tem sucesso"
+      },
+      "mismatch": {
+        "intent": "um evento memorizado deixa de ocorrer ou ocorre de forma errada",
+        "label": "O roteiro deixa de coincidir"
+      },
+      "ripple": {
+        "intent": "as consequências se acumulam além da mudança pretendida",
+        "label": "O efeito cascata se espalha"
+      }
+    },
+    "effects": [
+      "o conhecimento do futuro deixa de ser confiável e não pode ser restaurado",
+      "a competência do protagonista deve agora ser demonstrada por meio de ações, em vez de ser apenas presumida"
+    ],
+    "emotion_target": "ansiedade",
+    "examples": [
+      "A revolta do trigo, para a qual ela se preparara desde a primavera, simplesmente nunca ocorreu; ela permaneceu ali, no mercado, compreendendo que, de agora em diante, estaria tão cega quanto todos os outros ali presentes."
+    ],
+    "name": "A Memória Deixa de Coincidir",
+    "preconditions": [
+      "uma sequência de eventos memorizada que uma intervenção já alterou em um ponto específico no tempo"
+    ],
+    "roles": {
+      "changed": {
+        "constraints": [
+          "agora agem de formas que a memória não consegue prever"
+        ],
+        "label": "aqueles cujas vidas já divergiram"
+      },
+      "returner": {
+        "constraints": [
+          "construiu seus planos baseados no roteiro memorizado"
+        ],
+        "label": "aquele que perde o mapa"
+      },
+      "script": {
+        "constraints": [
+          "degrada-se na proporção de seu próprio sucesso"
+        ],
+        "label": "o futuro memorizado"
+      }
+    },
+    "summary": "Uma intervenção precoce funciona, e suas consequências se espalham para além do que ela pretendia mudar: pessoas que deveriam ter morrido se casam, uma casa que deveria ter desmoronado permanece de pé, uma guerra começa uma estação atrasada. Um a um, as datas memorizadas deixam de se concretizar, até que a vantagem que tornava o protagonista intocável expire silenciosamente, e ele caminhe em direção a um futuro tão desconhecido para si quanto é para todos os outros — tendo esgotado o último fragmento do mapa."
+  },
+  "rebirth.foreknowledge_leverage": {
+    "beats": {
+      "arrive": {
+        "intent": "o evento lembrado acontece exatamente como esperado",
+        "label": "O evento chega no tempo certo"
+      },
+      "bank": {
+        "intent": "o lucro é consolidado e a dúvida sobre como o fato foi previsto é plantada",
+        "label": "Lucro e suspeita entrelaçados"
+      },
+      "position": {
+        "intent": "um compromisso é assumido que parece imprudente para qualquer observador",
+        "label": "A posição é assumida precocemente"
+      },
+      "recall": {
+        "intent": "um evento futuro datado é recordado com precisão útil",
+        "label": "O evento é lembrado"
+      }
+    },
+    "effects": [
+      "uma vantagem material ou política é assegurada antes de todos os outros",
+      "pelo menos um observador passa a questionar como aquilo era previsível"
+    ],
+    "emotion_target": "antecipação",
+    "examples": [
+      "Ele comprou as terras inundáveis pelo preço das terras secas e suportou o escárnio por onze meses; então, veio a chuva."
+    ],
+    "name": "Posicionado Antes de Acontecer",
+    "preconditions": [
+      "um evento futuro lembrado, com data marcada e uma consequência tangível"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "estão raciocinando corretamente com base no que sabem"
+        ],
+        "label": "aqueles que consideram um ato imprudente"
+      },
+      "position": {
+        "constraints": [
+          "parece irracional antes do evento"
+        ],
+        "label": "a posição assumida precocemente"
+      },
+      "returner": {
+        "constraints": [
+          "não pode explicar como sabe"
+        ],
+        "label": "aquele que se lembra"
+      }
+    },
+    "summary": "Um evento lembrado ainda aguarda no futuro — a inundação que levará as terras baixas, a casa que cobrará suas dívidas, a questão que cairá no exame, a caravana que chegará na primavera — de modo que uma posição é assumida com meses de antecedência e parece ruína para todos os que observam: comprar terras sem valor, recusar um bom pretendente, vender no auge de um mercado em ascensão. O evento chega conforme o previsto, a aposta dá frutos, e o lucro é indissociável da questão de como aquilo poderia ter sido previsto."
+  },
+  "rebirth.inherited_debts": {
+    "beats": {
+      "answer": {
+        "intent": "o recém-chegado paga, recusa ou renegocia à sua própria maneira",
+        "label": "As dívidas são respondidas"
+      },
+      "become": {
+        "intent": "a maneira de responder ao passado transforma a vida emprestada em algo genuinamente seu",
+        "label": "Escrito na própria vida"
+      },
+      "claim": {
+        "intent": "as obrigações e inimizades da vida anterior se manifestam",
+        "label": "As reivindicações chegam"
+      },
+      "mute": {
+        "intent": "a explicação real seria pior do que a acusação",
+        "label": "A verdade não pode ser dita"
+      }
+    },
+    "effects": [
+      "as obrigações herdadas são resolvidas sob os próprios termos do recém-chegado",
+      "o recém-chegado torna-se o autor desta vida, em vez de apenas seu inquilino"
+    ],
+    "emotion_target": "tensão",
+    "examples": [
+      "Três homens vieram cobrar uma dívida que ela jamais contraíra, e ela descobriu que poderia tanto negar uma assinatura feita por sua própria mão quanto pagá-la."
+    ],
+    "name": "Respondendo por uma Vida Não Vivida",
+    "preconditions": [
+      "um corpo e uma identidade ocupados, cujas obrigações preexistentes não pertencem ao protagonista, mas possuem testemunhas"
+    ],
+    "roles": {
+      "claimants": {
+        "constraints": [
+          "possuem reivindicações legítimas"
+        ],
+        "label": "aqueles a quem o ocupante anterior deve"
+      },
+      "history": {
+        "constraints": [
+          "é documentada e testemunhada"
+        ],
+        "label": "a história herdada"
+      },
+      "newcomer": {
+        "constraints": [
+          "não cometeu os atos"
+        ],
+        "label": "aquele que agora habita a vida"
+      }
+    },
+    "summary": "O corpo chega com sua própria história acoplada: credores ao portão com um bilhete de caligrafia idêntica à deles, um noivado acordado por outra pessoa, inimigos feitos ao longo de anos que não viveram, uma reputação que já circula por aí. A verdade é indizível, então as dívidas precisam ser pagas, repudiadas ou assumidas — e a maneira de responder é o que transforma uma vida emprestada em algo próprio."
+  },
+  "rebirth.known_traitor_untouchable": {
+    "beats": {
+      "mute": {
+        "intent": "qualquer aviso pareceria loucura ou malícia",
+        "label": "A acusação é impossível"
+      },
+      "prepare": {
+        "intent": "o terreno é preparado discretamente sem que se nomeie o motivo",
+        "label": "Contraofensiva em silêncio"
+      },
+      "recognize": {
+        "intent": "o futuro traidor é encontrado antes que qualquer ofensa exista",
+        "label": "Reconhecer o rosto"
+      },
+      "spring": {
+        "intent": "a traição ocorre conforme o planejado, mas fracassa",
+        "label": "A traição cai em solo preparado"
+      }
+    },
+    "effects": [
+      "a sequência de eventos lembrada foi alterada em um ponto específico: a traição aconteceu, mas falhou",
+      "a ameaça foi neutralizada sem que o protagonista revelasse como descobriu a verdade",
+      "os preparativos do protagonista o fazem parecer calculista perante seu próprio círculo"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Ele mesmo serviu o vinho, sorrindo, e ela o agradeceu, enquanto anotava em qual armário o selo fora guardado."
+    ],
+    "name": "O Traidor em Quem Todos Ainda Confiam",
+    "preconditions": [
+      "o conhecimento de uma traição cometida por alguém que, no momento, é inocente"
+    ],
+    "roles": {
+      "circle": {
+        "constraints": [
+          "ficariam do lado do traidor hoje"
+        ],
+        "label": "aqueles que confiam nele"
+      },
+      "returner": {
+        "constraints": [
+          "não pode acusar sem provas de um ato futuro"
+        ],
+        "label": "aquele que sabe"
+      },
+      "traitor": {
+        "constraints": [
+          "é atualmente inocente e digno de confiança"
+        ],
+        "label": "o futuro traidor"
+      }
+    },
+    "summary": "Aquele que os entregará está no pátio servindo o vinho, querido por todos e culpado de absolutamente nada até o momento; qualquer acusação soaria como loucura ou malícia. Por isso, a contraofensiva é construída de forma lateral e silenciosa — um selo movido para um armário diferente, um documento copiado discretamente, um oficial subalterno cultivado — até que a traição chegue no dia de sempre e desabe sobre um terreno que já havia sido preparado para ela."
+  },
+  "rebirth.outsider_knowledge": {
+    "beats": {
+      "apply": {
+        "intent": "um saber sem origem local é usado abertamente",
+        "label": "Aplicado onde não pode ter origem"
+      },
+      "attribute": {
+        "intent": "o mundo atribui uma causa que possa aceitar",
+        "label": "Uma explicação é escolhida"
+      },
+      "bind": {
+        "intent": "a atribuição aceita torna-se um papel que deve ser mantido",
+        "label": "A explicação aprisiona"
+      },
+      "work": {
+        "intent": "o resultado é inegável diante de testemunhas",
+        "label": "O efeito é evidente"
+      }
+    },
+    "effects": [
+      "o protagonista agora ocupa um papel atribuído por terceiros",
+      "a verdadeira origem do conhecimento é um segredo com consequências"
+    ],
+    "emotion_target": "desconforto",
+    "examples": [
+      "Ele ferveu a água e a proteção parou de morrer; na segunda semana, já tinham decidido que ele era tocado por um deus, o que era mais fácil para todos."
+    ],
+    "name": "Conhecimento de Outro Lugar",
+    "preconditions": [
+      "um cenário cujo repertório de conhecimento exclui claramente aquilo que está sendo usado"
+    ],
+    "roles": {
+      "knowledge": {
+        "constraints": [
+          "é comprovadamente eficaz"
+        ],
+        "label": "o conhecimento importado"
+      },
+      "outsider": {
+        "constraints": [
+          "não pode citar uma fonte que exista neste mundo"
+        ],
+        "label": "aquele que detém o saber impossível"
+      },
+      "witnesses": {
+        "constraints": [
+          "devem enquadrá-lo em seu próprio modelo de mundo"
+        ],
+        "label": "aqueles que viram o efeito"
+      }
+    },
+    "summary": "Um remédio, um modo de ferver a água, um método de fazer contas, um truque de feitiçaria ou de enxertia vindo de outro mundo ou de outro século é utilizado onde ninguém ali poderia tê-lo derivado, e o efeito se manifesta claramente diante de testemunhas. O resultado deve então receber uma causa que este mundo consiga compreender — um prodígio, o favor de um deus, uma linhagem perdida, uma heresia — e a explicação que o mundo escolher se torna um papel que deverá ser interpretado de então em diante."
+  },
+  "rebirth.save_what_was_lost": {
+    "beats": {
+      "alive": {
+        "intent": "a pessoa perdida está presente e age de forma comum",
+        "label": "Vivo novamente, sem saber"
+      },
+      "approach": {
+        "intent": "o dia lembrado chega mais perto sem que nada tenha mudado",
+        "label": "A data se aproxima"
+      },
+      "cost": {
+        "intent": "o preço é pago em um ponto desprotegido",
+        "label": "O preço recai em outro lugar"
+      },
+      "intercept": {
+        "intent": "tudo é gasto para quebrar a sequência",
+        "label": "A interceptação"
+      }
+    },
+    "effects": [
+      "a sequência lembrada foi alterada em um ponto datado: a pessoa permanece viva além da data em que não deveria ter partido",
+      "uma perda imprevista foi sofrida em troca"
+    ],
+    "emotion_target": "luto",
+    "examples": [
+      "Ela o manteve longe da estrada do rio no dia nove, e funcionou; mas foi o menino que correu para avisá-lo que eles acabaram enterrando."
+    ],
+    "name": "A Data Que se Aproxima",
+    "preconditions": [
+      "uma morte específica e lembrada, com data e circunstâncias conhecidas"
+    ],
+    "roles": {
+      "cost": {
+        "constraints": [
+          "não foi defendido por não ter sido previsto"
+        ],
+        "label": "onde o preço recai em vez disso"
+      },
+      "doomed": {
+        "constraints": [
+          "está vivo e inconsciente"
+        ],
+        "label": "aquele que morreu antes"
+      },
+      "returner": {
+        "constraints": [
+          "conhece a data e a forma"
+        ],
+        "label": "aquele que intercepta"
+      }
+    },
+    "summary": "Alguém que foi enterrado está vivo novamente por força do seu retorno, sentado à mesa e reclamando do arroz, com a data de sua morte se aproximando no calendário e nada ainda tendo mudado. Tudo é empenhado para quebrar a sequência — o caminho evitado, o médico chamado antes do tempo, a carta interceptada — e o plano funciona, mas o preço é cobrado de um lugar que ninguém pensou em proteger, pois uma morte evitada não é uma morte cancelada."
+  },
+  "rebirth.second_chance_wake": {
+    "beats": {
+      "end": {
+        "intent": "a vida anterior se encerra em uma perda ou traição definida",
+        "label": "A vida termina"
+      },
+      "verify": {
+        "intent": "um fato verificável confirma exatamente o quanto o tempo retrocedeu",
+        "label": "Verificando a data"
+      },
+      "vow": {
+        "intent": "um desfecho futuro específico é escolhido como aquilo que não será permitido",
+        "label": "O juramento de mudar o destino"
+      },
+      "wake": {
+        "intent": "a consciência retorna antes da ruína, em um corpo ou mundo que deveria ser impossível",
+        "label": "Despertar antes"
+      }
+    },
+    "effects": [
+      "o protagonista retém uma sequência memorizada de eventos que ainda não aconteceram",
+      "o protagonista ocupa um corpo e uma identidade cujas obrigações preexistentes não lhe pertencem",
+      "um desfecho específico e datado torna-se agora o parâmetro pelo qual tudo é medido"
+    ],
+    "emotion_target": "descrença",
+    "examples": [
+      "O teto era o de antes do incêndio, o calendário na parede estava com três anos de erro, e as mãos eram de um menino."
+    ],
+    "name": "Despertar Antes da Ruína",
+    "preconditions": [
+      "uma vida marcada por uma catástrofe conhecida e datada"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "é verificável e inequívoco"
+        ],
+        "label": "o fato que comprova a data"
+      },
+      "outcome": {
+        "constraints": [
+          "é específico e datado"
+        ],
+        "label": "o desfecho a ser evitado"
+      },
+      "returner": {
+        "constraints": [
+          "carrega a memória completa do que veio depois"
+        ],
+        "label": "aquele que desperta antes"
+      }
+    },
+    "summary": "Uma vida termina — em um patíbulo, pelas mãos de um irmão de armas, em um leito de arrependimentos — e a consciência retorna em um corpo com mãos de menino, sob um teto de antes do incêndio, ao lado de um calendário com três anos de erro. A descrença dá lugar à verificação: a data, um rosto que ainda não envelheceu, uma cicatriz que ainda não aconteceu. Dessa verificação nasce o juramento de que, desta vez, o fim já vivenciado não será permitido que chegue."
+  },
+  "rebirth.slip_of_the_impossible": {
+    "beats": {
+      "choose": {
+        "intent": "o protagonista deve se comprometer com o segredo ou com uma pessoa",
+        "label": "Aprofundar a mentira ou confiar"
+      },
+      "notice": {
+        "intent": "um observador registra o fato e passa a observar silenciosamente",
+        "label": "Alguém percebe e não diz nada"
+      },
+      "slip": {
+        "intent": "uma familiaridade impossível se manifesta antes que possa ser mascarada",
+        "label": "Um reflexo o trai"
+      },
+      "thin": {
+        "intent": "cada novo momento cotidiano tensiona a explicação",
+        "label": "A fachada se esgarça"
+      }
+    },
+    "effects": [
+      "uma outra pessoa nutre uma suspeita que é, essencialmente, correta",
+      "o protagonista passa a ter um cúmplice ou um observador"
+    ],
+    "emotion_target": "ansiedade",
+    "examples": [
+      "Ela buscou o trinco à esquerda antes mesmo que alguém lhe mostrasse o quarto, e os olhos do velho criado não a deixaram durante o resto da noite."
+    ],
+    "name": "O Deslize Inexplicável",
+    "preconditions": [
+      "um protagonista que mantém uma versão falsa de quem realmente é"
+    ],
+    "roles": {
+      "cover": {
+        "constraints": [
+          "torna-se frágil a cada novo deslize"
+        ],
+        "label": "a história de fachada"
+      },
+      "observer": {
+        "constraints": [
+          "não diz nada e continua observando"
+        ],
+        "label": "quem percebeu"
+      },
+      "returner": {
+        "constraints": [
+          "reagiu antes de pensar"
+        ],
+        "label": "quem cometeu o deslize"
+      }
+    },
+    "summary": "Um reflexo o revela — o gesto de buscar uma tranca em um quarto jamais visitado, o sobressalto ao ouvir um nome que ainda não foi pronunciado ali, uma palavra de uma língua que esta província jamais ouviu — e uma pessoa percebe. Ela não acusa. Apenas começa a observar, e cada noite comum que se segue desgasta a história de fachada, até que a escolha recaia entre uma mentira que precisa continuar crescendo ou confiar em alguém cuja reação é imprevisível."
+  }
+}

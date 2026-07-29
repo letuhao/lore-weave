@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "korkulan an gerçekleşir",
+        "label": "Doruk Noktası"
+      },
+      "fear": {
+        "intent": "dehşeti panik seviyesine yükseltin",
+        "label": "Artan korku"
+      },
+      "release": {
+        "intent": "tehlike geçer; rahatlama hissi çöker",
+        "label": "Boşalma"
+      },
+      "unease": {
+        "intent": "hafif bir dehşet tohumu ekin",
+        "label": "Huzursuzluk"
+      }
+    },
+    "effects": [
+      "birim, boşalan bir gerilimle sonuçlanır"
+    ],
+    "emotion_target": "rahatlama",
+    "examples": [
+      "Korku, en kötü anına kadar katlanarak arttı — ve sonra, imkânsız bir şekilde, her şey bitti ve nefes alabildiler."
+    ],
+    "name": "Dehşetten Rahatlamaya",
+    "preconditions": [
+      "anlatı biriminin duygusal bir şekle ihtiyacı vardır"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Huzursuzluk artarak korkuya ve bir doruk noktasına ulaşır, ardından yerini rahatlamaya bırakır."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "yerleşik bir duygusal temel oluşturmak",
+        "label": "Konfor"
+      },
+      "loss": {
+        "intent": "karakteri çukurun içine düşürmek",
+        "label": "Kayıp"
+      },
+      "struggle": {
+        "intent": "yukarı tırmanışın başlaması",
+        "label": "Mücadele"
+      },
+      "triumph": {
+        "intent": "başlangıç noktasından daha yüksek bir noktada belirmek",
+        "label": "Zafer"
+      }
+    },
+    "effects": [
+      "birim, katarsis etkisiyle yükselen bir finalle sonuçlanır"
+    ],
+    "emotion_target": "katarsis",
+    "examples": [
+      "Önce huzur, sonra yıkım, ardından yukarı tırmanış — ve nihayet düşüşten önceki halinden daha yüksek bir zeminde duruş."
+    ],
+    "name": "Düşüş ve Yükseliş (Çukurdaki Adam)",
+    "preconditions": [
+      "bir anlatı biriminin duygusal bir şekle ihtiyacı vardır"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Konfor yerini kayıp ve mücadeleye, ardından da zorlu bir zaferle gelen arınmaya bırakır — çukurdaki adamın katarsis eğrisi."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "kaybın ağırlığıyla baş başa bırakmak",
+        "label": "Keder"
+      },
+      "hope": {
+        "intent": "kırılgan bir umut yeşertmek",
+        "label": "Umudun filizlenmesi"
+      },
+      "near": {
+        "intent": "hedefi erişilebilir kılmak",
+        "label": "Başarıya ramak kala"
+      },
+      "turn": {
+        "intent": "hedefi tam son anda elinden almak",
+        "label": "Acımasız dönemeç"
+      }
+    },
+    "effects": [
+      "birim, yıkım duygusuyla sonuçlanır"
+    ],
+    "emotion_target": "yıkım",
+    "examples": [
+      "Dokunacak kadar yakındı; sonra her şey bir anda yok oldu ve geriye sadece yas tutmak kaldı."
+    ],
+    "name": "Umuttan Yıkıma",
+    "preconditions": [
+      "anlatı biriminin duygusal bir şekle ihtiyacı vardır"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Başarıya bu kadar yaklaşılmışken filizlenen umut, acımasız bir dönemeçle yerini kederli bir yıkıma bırakır."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "başarıya doğru yükseliş",
+        "label": "Yükseliş"
+      },
+      "downfall": {
+        "intent": "yükseklikten düşüş",
+        "label": "Çöküş"
+      },
+      "flaw": {
+        "intent": "ölümcül kusurun kendini göstermesi",
+        "label": "Kusurun gün yüzüne çıkışı"
+      },
+      "peak": {
+        "intent": "en tepeye ulaşma",
+        "label": "Zirve"
+      }
+    },
+    "effects": [
+      "birim, trajik bir inişle sonuçlanır"
+    ],
+    "emotion_target": "trajedi",
+    "examples": [
+      "Tam da kendilerini yükselten şey, onları yere çakacak olan şeye dönüşene dek, gittikçe daha yükseğe."
+    ],
+    "name": "Yükseliş ve Çöküş (İkarus)",
+    "preconditions": [
+      "bir anlatı biriminin duygusal bir şekle ihtiyacı vardır"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Bir kusurun gün yüzüne çıkıp çöküşü tetiklediği zirveye doğru yükseliş — İkarus trajedisi eğrisi."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "dibe ulaş",
+        "label": "Çöküş"
+      },
+      "decline": {
+        "intent": "düşüş hızlanır",
+        "label": "Gerileme"
+      },
+      "erosion": {
+        "intent": "adım adım zemin kaybet",
+        "label": "Aşınmalar"
+      },
+      "start_high": {
+        "intent": "zirve noktasından başla",
+        "label": "Yüksekten başla"
+      }
+    },
+    "effects": [
+      "birim, kasvetli bir çöküşle sonuçlanır"
+    ],
+    "emotion_target": "umutsuzluk",
+    "examples": [
+      "Bir süre dayandı, sonra dayanamadı — tek bir kaybın açıklayamayacağı kadar yavaş, çözülerek giden bir süreç."
+    ],
+    "name": "Sürekli Düşüş",
+    "preconditions": [
+      "bir anlatı biriminin duygusal bir şekle ihtiyacı vardır"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Yüksek bir başlangıçtan aşınmalar yoluyla çöküşe — umutsuzluğa doğru bir iniş."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "hak edilen zirveye ulaşın",
+        "label": "Varış"
+      },
+      "climb": {
+        "intent": "ivme kazanın",
+        "label": "Süregelen yükseliş"
+      },
+      "start_low": {
+        "intent": "en dip noktadan başlayın",
+        "label": "Düşük başlangıç"
+      },
+      "wins": {
+        "intent": "kazanımları biriktirin",
+        "label": "Tekrarlanan zaferler"
+      }
+    },
+    "effects": [
+      "birim, hak edilmiş bir zaferle noktalanır"
+    ],
+    "emotion_target": "zafer",
+    "examples": [
+      "Hiç yoktu, sonra biraz, sonra daha fazlası — en dip nokta uzak bir anı haline gelene dek her adım hak edilerek atıldı."
+    ],
+    "name": "İstikrarlı Yükseliş (Sıfırdan Zirveye)",
+    "preconditions": [
+      "bir anlatı biriminin duygusal bir şekle ihtiyacı vardır"
+    ],
+    "roles": {
+      "pov": {
+        "label": "bakış açısı karakteri"
+      }
+    },
+    "summary": "Düşük bir başlangıçtan, tekrarlanan zaferler yoluyla bir varış noktasına — sıfırdan zirveye yükselişin zafer eğrisi."
+  }
+}
