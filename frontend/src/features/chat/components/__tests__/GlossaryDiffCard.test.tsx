@@ -7,9 +7,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const submitToolResult = vi.fn().mockResolvedValue('');
 const applyEntityEdit = vi.fn();
+// Mutable so a test can mount the card on a surface that knows its own book.
+const stream = vi.hoisted(() => ({ ambientBookId: null as string | null }));
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
-vi.mock('../../providers', () => ({ useChatStream: () => ({ submitToolResult }) }));
+vi.mock('../../providers', () => ({
+  useChatStream: () => ({ submitToolResult, ambientBookId: stream.ambientBookId }),
+}));
 vi.mock('@/features/glossary/api', () => ({
   glossaryApi: { applyEntityEdit: (...a: unknown[]) => applyEntityEdit(...a) },
 }));
@@ -25,6 +29,41 @@ describe('GlossaryDiffCard', () => {
   beforeEach(() => {
     submitToolResult.mockClear();
     applyEntityEdit.mockReset();
+    stream.ambientBookId = null;
+  });
+
+  it('writes to the book the AUTHOR is on, not the one the model named', async () => {
+    // REGRESSION LOCK. `book_id` arrives as a model-supplied tool argument, and a model that
+    // fills it wrong redirects the write. Observed live: an ENTITY id landed in the `book_id`
+    // slot, so Apply POSTed to `/books/<entity-id>/…` and 403'd. That was loud only by luck —
+    // the same slip naming a book the caller DOES own would write to the wrong book in silence.
+    stream.ambientBookId = 'the-open-book';
+    applyEntityEdit.mockResolvedValue({});
+    render(<GlossaryDiffCard record={record({
+      book_id: 'e1',            // the model put the entity id here
+      entity_id: 'e1', base_version: 'v0',
+      changes: [{ target: 'short_description', field_label: 'Description', old_value: 'o', new_value: 'n' }],
+    })} />);
+
+    fireEvent.click(screen.getByText('glossaryEdit.apply'));
+
+    await waitFor(() => expect(applyEntityEdit).toHaveBeenCalledTimes(1));
+    expect(applyEntityEdit.mock.calls[0][0]).toBe('the-open-book');
+  });
+
+  it('falls back to the argument on a surface with no book of its own', async () => {
+    // The global chat page carries no book context; the argument is all there is.
+    stream.ambientBookId = null;
+    applyEntityEdit.mockResolvedValue({});
+    render(<GlossaryDiffCard record={record({
+      book_id: 'b-from-args', entity_id: 'e1', base_version: 'v0',
+      changes: [{ target: 'short_description', field_label: 'Description', old_value: 'o', new_value: 'n' }],
+    })} />);
+
+    fireEvent.click(screen.getByText('glossaryEdit.apply'));
+
+    await waitFor(() => expect(applyEntityEdit).toHaveBeenCalledTimes(1));
+    expect(applyEntityEdit.mock.calls[0][0]).toBe('b-from-args');
   });
 
   it('applies MULTIPLE changes in one atomic call and resumes applied_saved', async () => {
