@@ -343,6 +343,7 @@ def _node(**kw) -> OutlineNode:
         id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=PROJECT, book_id=BOOK,
         kind=kw.get("kind", "scene"), rank="a0", title=kw.get("title", "S"),
         status=kw.get("status", "empty"), version=kw.get("version", 1),
+        chapter_id=kw.get("chapter_id"),
     )
 
 
@@ -1699,7 +1700,11 @@ async def test_generate_scene_mints_confirm_token():
     from loreweave_mcp import verify_confirm_token
     from app.config import settings
 
-    scene = _node(id=uuid.uuid4(), kind="scene")
+    # D-SCENE-PROSE-NOWHERE-TO-LAND — the scene must be MATERIALISED (a real chapter
+    # behind it) for this to be the happy path at all. A plan-only scene (chapter_id
+    # NULL) is now refused at propose, because its prose could never reach the author:
+    # see test_scene_prose_nowhere_to_land.py for that half.
+    scene = _node(id=uuid.uuid4(), kind="scene", chapter_id=uuid.uuid4())
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=scene)
     async with _patched(grant_level=2, OutlineRepo=outline):

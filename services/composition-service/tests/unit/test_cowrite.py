@@ -228,6 +228,34 @@ def test_build_messages_length_steer_fires_with_target_and_is_generic():
     assert "FULL scene of approximately" not in user  # the old scene-only wording is gone
 
 
+def test_draft_scene_states_its_boundary_and_the_chapter_path_keeps_none():
+    """SCENE-BOUNDARY (Mị Đế, 2026-07-30). The plan block shows the WHOLE chapter, so
+    "draft this scene" alone let the drafter run straight through its neighbours: scene
+    1's draft came back carrying scene 3's and scene 4's material. The boundary must be
+    stated in the SCENE operation — and must NOT leak into the chapter operation, where
+    covering every scene is the entire point."""
+    scene = cowrite.build_messages("ctx", NEUTRAL, "draft_scene", target_words=900)[1]["content"]
+    assert "ONLY this scene" in scene
+    assert "do NOT write them" in scene
+
+    chapter = cowrite.build_messages("ctx", NEUTRAL, "draft_chapter", target_words=2400)[1]["content"]
+    assert "ONLY this scene" not in chapter
+    assert "ENTIRE chapter" in chapter
+
+
+def test_length_steer_never_tells_the_model_to_widen_its_scope():
+    """The length directive is SHARED by the scene and chapter paths, so the boundary
+    cannot live in it — but it must not fight the boundary either. Its old tail ("keep
+    writing until the planned beats are fully played out", plural and unscoped) was the
+    more concrete instruction and so it won over the singular "this scene"."""
+    for op, target in (("draft_scene", 900), ("draft_chapter", 2400)):
+        user = cowrite.build_messages("ctx", NEUTRAL, op, target_words=target)[1]["content"]
+        assert "planned beats are fully played out" not in user
+        assert "never by extending past the material you were asked to write" in user
+        # Still generic: one wording that reads correctly for both paths.
+        assert "FULL passage" in user
+
+
 def test_build_messages_no_length_steer_without_target():
     # selection/revise/no-target callers stay unchanged (no LENGTH directive).
     user = cowrite.build_messages("ctx", NEUTRAL, "draft_scene")[1]["content"]

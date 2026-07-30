@@ -30,7 +30,13 @@ logger = logging.getLogger(__name__)
 
 _OPERATION_INSTRUCTIONS = {
     "continue": "Continue the scene from where the recent prose ends, in the same voice.",
-    "draft_scene": "Draft this scene from its beat, goal, POV, and synopsis.",
+    # SCENE-BOUNDARY (2026-07-30, Mị Đế): the plan block shows the whole chapter, so
+    # "draft this scene" alone let the drafter run straight through its neighbours —
+    # scene 1's draft arrived carrying scene 3's and scene 4's material. The boundary
+    # has to be stated, not implied by the singular "this".
+    "draft_scene": "Draft ONLY this scene, from its beat, goal, POV, and synopsis. Other "
+                   "scenes appear in the plan for context: do NOT write them. Stop when "
+                   "THIS scene's beat has played out, even if later beats are visible.",
     # W6 — the conformance judge read the WRITTEN scene and found it did not realize its planned
     # beat. This is a second attempt with that knowledge, so it must not be a bare re-roll: the
     # plan above is unchanged and the beat is already in it, what failed was landing it ON THE
@@ -153,11 +159,25 @@ def build_messages(
     # LENGTH directive — a max_output_tokens cap is a CEILING, not a target; without an explicit
     # word goal the model free-runs short (measured: 83 words). Only on the scene-draft path
     # (target_words passed); selection/revise ops pass None and stay unchanged.
+    # SCENE-BOUNDARY — the previous wording ended "keep writing until the planned beats are
+    # fully played out", plural and unscoped, while the plan block shows the WHOLE chapter.
+    # Length is the more concrete instruction, so it WON: the drafter ran through the
+    # neighbouring scenes' beats to reach the word count (measured — scene 1 came back
+    # carrying scenes 3 and 4).
+    #
+    # The repair stays GENERIC on purpose. This directive is shared with `draft_chapter`,
+    # where covering every scene is exactly right, so the boundary itself cannot live here
+    # — it belongs to the per-operation instruction (see `draft_scene` above). What this
+    # must do is stop TELLING the model to widen its scope: reach the length by deepening
+    # the passage it was asked for, never by annexing the next one.
     length_steer = (
         f"\n\nLENGTH: write a FULL passage of approximately {target_words} words. Dramatise it "
         "with concrete action, sensory detail, and dialogue where it fits — do NOT summarise, "
-        "compress, or stop early; a short sketch is a failure. Keep writing until the planned "
-        "beats are fully played out at roughly that length."
+        "compress, or stop early; a short sketch is a failure. Reach that length by playing "
+        "out the beats THIS passage covers more fully — deeper interiority, sharper sensory "
+        "detail, real dialogue — never by extending past the material you were asked to write. "
+        "If those beats are genuinely finished, stop: ending a little short is correct, "
+        "writing beyond your assigned scope is not."
     ) if target_words and target_words > 0 else ""
     user = packed_prompt + "\n\n" + instruction + promise_steer + length_steer + (
         f"\n\nAuthor guidance: {guide}" if guide else "")

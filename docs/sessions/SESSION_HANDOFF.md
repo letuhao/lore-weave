@@ -562,6 +562,43 @@ The studio navigator handles the split honestly, which is worth keeping: after t
 written it shows the planned `Chương 1: Nhân Từ Hay Phản Bội?` **and** the written `0001 Chương
 1` under a **"Not in the plan"** group.
 
+## 🩹 D-SCENE-PROSE-NOWHERE-TO-LAND — 783 billed words nobody could reach (2026-07-30)
+
+Rebuilt the FE, planned Chương 1 as five scenes with `target_words` 750–900, and ran the engine
+on scene 1 with local Gemma. It produced **783 words** of genuinely good Vietnamese xianxia prose
+— the 500–1000 band an author actually wants. Then: `written_scene_id` NULL, compose panel
+**"Chưa có cảnh"**, nothing in the Editor. The tokens were spent and the work did not exist.
+
+**Why, and why it is structural.** A SCENE generate does not persist (only the chapter target
+passes `persist=True`) — it returns candidates for the author to accept in the compose panel.
+That panel resolves a chapter's scenes by `chapter_id` (`useChapterScenes`:
+`n.kind === 'scene' && n.chapter_id === chapterId`). And **`chapter_id` is NULL on a planned
+node** — the normal state, not an error; the migration notes 7/7 in the live DB. Bootstrap stamps
+it when it materialises a planned chapter. So *planned scenes are exactly the ones the compose
+surface cannot display*, and generating into them is guaranteed waste.
+
+Four fixes, each verified against the live endpoint rather than reasoned about:
+
+| | |
+|---|---|
+| **Refuse before spending** | `composition_generate` rejects a plan-only scene at PROPOSE — before the confirm gate, before a token is billed — naming the repair (bootstrap propose→approve→apply). |
+| **Say what the node is not** | `op="create"` labels a chapter with no `chapter_id` `_status: "plan_only"`. The row was always correct; the SILENCE about what it could not do was the defect, and an agent reads the result, not the docstring. |
+| **A visible way in** | `scene-compose` — the panel that drafts a scene with the engine — was reachable ONLY via ⌘⇧P. `compose` in the writer's quick-links is the co-writer CHAT. Added to the writer + default highlights, with a regression lock. |
+| **Scene boundary** | scene 1's draft carried scenes 3 and 4. `draft_scene` said only *"Draft this scene"* while the plan block shows the whole chapter, and the shared LENGTH directive ended *"keep writing until **the planned beats** are fully played out"* — plural, unscoped, and more concrete, so it won. Boundary stated in the op; the length steer no longer tells the model to widen. |
+
+**Two of my own mistakes here, both about boundaries rather than logic:**
+
+1. I first put the scene boundary in the shared LENGTH directive — which `draft_chapter` also
+   uses, where covering every scene is the entire point. An existing test documenting that the
+   wording must stay generic caught it.
+2. The refusal reached the model as a bare `{"message": "scene_has_no_chapter"}`, every
+   actionable word stripped. `loreweave_mcp.failure_message` builds its body from **`error`** and
+   DROPS a `message` key; I had put the code in `error` and the guidance in `message`. The unit
+   test passed because it read my dict. **Only the live call showed what the model receives** —
+   so the test now asserts through `failure_message`, at the boundary, not the return value.
+
+3,018 composition tests · 7 WelcomePanel tests · tsc clean · deployed sha256 == host.
+
 ### ▶ Next: an agent-made chapter is invisible to the tool that reports book state
 
 The live retry then failed **honestly** and on new ground: *"ID Chương 1 không tồn tại …

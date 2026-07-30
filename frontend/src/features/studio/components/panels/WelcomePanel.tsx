@@ -15,15 +15,22 @@ import { useStudioOnboarding } from '../../onboarding/useStudioOnboarding';
 import { getStudioPanelDef } from '../../panels/catalog';
 import type { StudioRole } from '../../onboarding/types';
 
-/** Per-role highlight panels for the Welcome quick-links row (#19 spec role→highlight table). */
+/** Per-role highlight panels for the Welcome quick-links row (#19 spec role→highlight table).
+ *
+ *  `scene-compose` is here deliberately, and it is not cosmetic. `compose` is the CO-WRITER
+ *  CHAT; the panel that actually drafts a scene with the engine — the draft → K-candidates →
+ *  accept loop — is `scene-compose`, and it was reachable ONLY through the Command Palette.
+ *  A writer opening this studio therefore had no visible path to the one surface that turns
+ *  a planned scene into prose. Found by trying to write chapter 1 as a real author: the
+ *  engine generated 783 usable words and there was nowhere in the UI to go and accept them. */
 const ROLE_HIGHLIGHTS: Record<StudioRole, string[]> = {
-  writer: ['compose', 'editor', 'planner'],
+  writer: ['compose', 'scene-compose', 'editor', 'planner'],
   worldbuilder: ['glossary', 'wiki', 'knowledge'],
   translator: ['translation', 'enrichment-compose'],
   enricher: ['enrichment-gaps', 'enrichment-sources'],
   manager: ['sharing', 'book-settings'],
 };
-const DEFAULT_HIGHLIGHTS = ['compose', 'editor'];
+const DEFAULT_HIGHLIGHTS = ['compose', 'scene-compose', 'editor'];
 
 export function WelcomePanel(_props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');

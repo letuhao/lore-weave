@@ -1149,6 +1149,24 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
     out["_meta"] = {"undo_hint": _undo(
         "composition_outline_node_delete", project_id=args.project_id, node_id=str(node.id),
     )}
+    # D-SCENE-PROSE-NOWHERE-TO-LAND — say plainly that this node is PLAN-ONLY.
+    # A node created here has `chapter_id = NULL` unless the caller supplied one, and
+    # NULL is the normal state of a planned node. But the manuscript surfaces key off
+    # `chapter_id`: the compose panel lists a chapter's scenes by it, and prose is
+    # accepted into a real book chapter. So a caller that creates a chapter node, sees a
+    # full row come back, and starts generating into it produces work nobody can reach —
+    # which is exactly what happened on the Mị Đế book (783 generated words, compose
+    # panel: "Chưa có cảnh"). The row is correct; the SILENCE about what it is not was
+    # the defect. An agent reads the result, not the docstring, so it goes in the result.
+    if node.chapter_id is None:
+        out["_status"] = "plan_only"
+        out["_note"] = (
+            "Created in the PLAN tree only — there is no manuscript chapter behind it yet "
+            "(chapter_id is null), so prose cannot be written into it and the compose "
+            "panel will not list it. That is fine while outlining. Before drafting, "
+            "materialise the chapter (PlanForge bootstrap: propose → approve → apply), "
+            "which creates the book chapter and stamps chapter_id onto its scenes."
+        )
     return out
 
 
@@ -2648,6 +2666,39 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
         node = await outline.get_node(UUID(target_id))
         if node is None or node.project_id != pid:
             raise uniform_not_accessible()
+        # D-SCENE-PROSE-NOWHERE-TO-LAND — a scene generate does NOT persist (only the
+        # chapter target passes persist=True); it returns candidates for the author to
+        # accept in the compose panel. That panel resolves a chapter's scenes by
+        # `chapter_id` (`useChapterScenes`, and `outline.scenes_for_chapter` server-side),
+        # so a scene with a NULL `chapter_id` can never be shown — and NULL is the NORMAL
+        # state of a planned node (the migration notes 7/7 in the live DB). Bootstrap is
+        # what stamps it, when it materialises a planned chapter into a real one.
+        #
+        # Generating anyway spends REAL tokens on prose the author can never reach.
+        # Measured on the Mị Đế book: 783 words of good Vietnamese prose generated,
+        # job `completed`, and the compose panel said "Chưa có cảnh". Nothing failed
+        # loudly; the work simply did not exist. Refuse at PROPOSE — before the confirm
+        # gate, before a single token is billed — and name the step that fixes it.
+        if node.chapter_id is None:
+            # C4 refusal shape: `error` IS the message the model reads (loreweave_mcp's
+            # `failure_message` builds `{"message": str(payload["error"])}` and carries
+            # `code` alongside). A `message` key would be DROPPED — which is how the
+            # first cut of this guard surfaced as a bare "scene_has_no_chapter" with all
+            # of its guidance stripped, caught only by calling the live endpoint.
+            return {
+                "success": False,
+                "code": "scene_has_no_chapter",
+                "error": (
+                    f"'{node.title or target_id}' is a PLANNED scene with no manuscript "
+                    "chapter behind it (chapter_id is null), so generated prose would have "
+                    "nowhere to go — the compose panel lists a chapter's scenes by "
+                    "chapter_id and would not show it. NOT generating, so no tokens are "
+                    "spent. Materialise the chapter first (PlanForge bootstrap: propose → "
+                    "approve → apply, which creates the book chapter and stamps chapter_id "
+                    "onto its scenes), then generate. To draft a whole chapter that IS "
+                    "materialised, call this tool with chapter_id instead."
+                ),
+            }
 
     payload = {
         "project_id": args.project_id,

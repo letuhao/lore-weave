@@ -54,6 +54,24 @@ describe('WelcomePanel', () => {
     expect(hostMocks.openPanel).toHaveBeenCalledWith('glossary', expect.objectContaining({ title: expect.any(String) }));
   });
 
+  it('gives a writer a visible way to reach the scene-drafting panel', () => {
+    // REGRESSION LOCK. `compose` is the co-writer CHAT; `scene-compose` is the panel that
+    // actually drafts a scene with the engine (draft → K-candidates → accept). It used to
+    // be reachable ONLY via the Command Palette, so a writer opening this studio had no
+    // visible path to the one surface that turns a planned scene into prose — found by
+    // writing chapter 1 as a real author: the engine produced 783 usable words and there
+    // was nowhere in the UI to go and accept them.
+    onboardingMocks.isLoading = false;
+    onboardingMocks.role = 'writer';
+    render(<WelcomePanel {...fakeProps()} />);
+
+    expect(screen.getByTestId('welcome-highlight-scene-compose')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('welcome-highlight-scene-compose'));
+    expect(hostMocks.openPanel).toHaveBeenCalledWith(
+      'scene-compose', expect.objectContaining({ title: expect.any(String) }),
+    );
+  });
+
   it('falls back to the default highlights when role is unset (never crashes, never empty)', () => {
     onboardingMocks.isLoading = false;
     onboardingMocks.role = null;
