@@ -665,11 +665,38 @@ this — *"do NOT reuse a distinctive image, metaphor, or sentence-opening you h
 in this work"* — and the rule is **inert**, because a per-scene draft cannot see what its
 siblings wrote. A rule with no data to bite on is not a rule.
 
-Fix direction: cross-scene state re-injection — feed each draft a digest of the preceding
-scenes' prose (closing images, distinctive metaphors, opening constructions) so the
-anti-repetition instruction has something to check against. Chapter-mode drafting
-(`draft_chapter`, one continuous pass) does not have this failure and is the cheap comparison
-to run first.
+**The mechanism already existed and was switched off by a missing field.**
+`D-COMP-LONGFORM-STATE-REINJECTION` (S1) does exactly this job: `gather_recent` falls back to
+`prior_scene_drafts`, keyed `story_order < current`. Our five scenes all had
+**`story_order = NULL`**, so it matched nothing and returned empty.
+
+Why NULL: `outline_node` has TWO order axes — `rank` (fractional string, the UI tree) and
+`story_order` (integer, the narrative). `create_node` has always auto-computed `rank` when
+omitted and **never** `story_order`. PlanForge sets it; `composition_outline_node_edit` has no
+such argument. So an outline built outside a plan run gets a correct place on screen and **no
+place in the story at all**.
+
+This is not the author picking a bad combination — *the logic did not wire itself*. A writer
+should never have to know the column exists.
+
+**Fixed (`D-SCENE-STORY-ORDER-UNWIRED`):** `_next_story_order` beside `_next_rank`, same append
+semantics, same `IS NOT DISTINCT FROM` NULL-grouping, `NOT is_archived`, 1-based (a 0 first
+scene would match its own `story_order < 1` query). Scenes only — a chapter's order is the book
+spine's. An explicit value still wins, so PlanForge's numbering is untouched.
+
+**Measured on the live book** (backfilled 1–5, re-drafted scenes 2 and 3):
+the far-leak is GONE — neither closes on scene 5's counting-shadow image any more; each ends on
+its own beat, and scene 3 correctly picks up Lâm Trạch.
+
+**Two residuals, both new information:**
+1. Scene 3 now echoes scene 2's *closing line* almost verbatim
+   (*"…món quà chàng dùng máu của người khác để tặng cho kẻ thù"*). The reinjection block reads
+   as prose to CONTINUE from (the system prompt says "CONTINUE the story forward"), while the
+   anti-repetition rule is a separate generic sentence — so the model bridges off the injected
+   text instead of avoiding it. Feeding prior prose is necessary but not sufficient; it needs
+   to arrive labelled as *"already written — do not reuse"*, not as *"recent prose"*.
+2. Lengths regressed: 468 and 465 words against targets of 850 and 800 (they were 660 and 507
+   before). Added context appears to crowd the output budget.
 
 ### ▶ Next: an agent-made chapter is invisible to the tool that reports book state
 

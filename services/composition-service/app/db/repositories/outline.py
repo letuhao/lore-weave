@@ -124,6 +124,42 @@ class OutlineRepo:
         )
         return rank_after(last)
 
+    async def _next_story_order(
+        self, conn: asyncpg.Connection, project_id: UUID,
+        parent_id: UUID | None,
+    ) -> int:
+        """D-SCENE-STORY-ORDER-UNWIRED — the append position on the STORY axis.
+
+        `outline_node` carries two order axes and they are not interchangeable: `rank`
+        is a fractional string for the UI tree, `story_order` is the integer position in
+        the NARRATIVE. `rank` has always been auto-computed when omitted; `story_order`
+        was not — so a scene created outside PlanForge got a correct place on screen and
+        **no place in the story at all**.
+
+        That silence is not cosmetic. `story_order` is the key the cross-scene
+        state-reinjection reads (`prior_scene_drafts`: `story_order < $3`, the
+        D-COMP-LONGFORM-STATE-REINJECTION fallback that shows a draft what its earlier
+        siblings already wrote). NULL matches nothing, so the reinjection returns empty
+        and every scene drafts blind — and the system prompt's "do NOT reuse a
+        distinctive image you have already used" becomes an instruction with no data to
+        check against. Measured on the Mị Đế book: five scenes, five different beats,
+        and all five closed on the SAME image.
+
+        So the fix belongs HERE, beside `_next_rank`, not in a caller: a writer should
+        never have to know this column exists. Same append semantics, same
+        `IS NOT DISTINCT FROM` NULL-grouping, 1-based so the first scene is 1 and a
+        `story_order < 1` query is correctly empty rather than accidentally matching 0.
+        """
+        last = await conn.fetchval(
+            """
+            SELECT max(story_order) FROM outline_node
+            WHERE project_id = $1
+              AND parent_id IS NOT DISTINCT FROM $2 AND NOT is_archived
+            """,
+            project_id, parent_id,
+        )
+        return int(last) + 1 if last is not None else 1
+
     async def _validate_parent(
         self, conn: asyncpg.Connection, project_id: UUID,
         parent_id: UUID,
@@ -272,6 +308,14 @@ class OutlineRepo:
             node_rank = rank if rank is not None else await self._next_rank(
                 c, project_id, parent_id
             )
+            # D-SCENE-STORY-ORDER-UNWIRED — derive the STORY position the same way the
+            # UI position is derived. Scenes only: a chapter's order comes from the book
+            # spine (its `sort_order`), not from this column, and PlanForge sets the
+            # chapter axis itself. An explicit value always wins, so the planner's own
+            # numbering is untouched.
+            node_story_order = story_order
+            if node_story_order is None and kind == "scene":
+                node_story_order = await self._next_story_order(c, project_id, parent_id)
             row = await c.fetchrow(
                 f"""
                 INSERT INTO outline_node
@@ -293,7 +337,7 @@ class OutlineRepo:
                 """,
                 created_by, project_id, parent_id, kind, node_rank, title,
                 pov_entity_id, present_entity_ids or [], goal, beat_role, status,
-                chapter_id, tension, story_order, synopsis,
+                chapter_id, tension, node_story_order, synopsis,
                 location_entity_id, story_time, conflict, outcome, value_shift,
                 stakes, target_words,
                 json.dumps(exit_state) if exit_state is not None else None,
