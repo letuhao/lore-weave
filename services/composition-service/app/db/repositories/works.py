@@ -21,6 +21,7 @@ first, then the row here.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, NamedTuple
 from uuid import UUID
 
@@ -28,6 +29,8 @@ import asyncpg
 
 from app.db.models import CompositionWork
 from app.db.repositories import VersionMismatchError
+
+logger = logging.getLogger(__name__)
 
 _SELECT_COLS = """
   project_id, created_by, book_id, id, pending_project_backfill,
@@ -272,14 +275,44 @@ class WorksRepo:
         WITHOUT consulting row ownership (F2 inversion) and without leaking row
         content: it returns ids or None, so a non-grantee still gets the uniform
         H13/404 at the access layer (no oracle — mirrors knowledge's
-        `project_meta`, projects.py:454-466)."""
+        `project_meta`, projects.py:454-466).
+
+        D-COMPOSITION-ID-TRAP — accepts a **work_id** in this slot too, and resolves
+        it to the same Work. One book carries THREE uuids (`book_id`, `project_id`,
+        and the Work's surrogate `id`), and a caller that read a Work sees `id` and
+        `project_id` side by side with nothing to tell it which one the next tool
+        wants. Measured live on the Mị Đế book: the agent read `composition_get_work`,
+        passed the returned `id` as `project_id`, and every scoped read answered
+        `not found or not accessible` — for a row that existed. It then correctly
+        concluded the chapter did not exist and stopped.
+
+        Resolving both is safe rather than lax: the two columns are UUIDs in the SAME
+        table and neither is user-supplied content, so a match on either identifies
+        exactly one Work — and **the E0 grant still gates on that row's `book_id`
+        afterwards, unchanged**. Nothing widens; a caller who could not reach the Work
+        by one id still cannot reach it by the other. The un-resolvable case returns
+        None exactly as before, so the anti-oracle property is untouched.
+        """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                "SELECT book_id, id, project_id FROM composition_work WHERE project_id = $1",
+                """
+                SELECT book_id, id, project_id FROM composition_work
+                WHERE project_id = $1 OR id = $1
+                -- A project_id match wins if both could somehow apply: it is the
+                -- documented key, and the work_id branch is a repair path.
+                ORDER BY (project_id = $1) DESC
+                LIMIT 1
+                """,
                 project_id,
             )
         if row is None:
             return None
+        if row["project_id"] != project_id:
+            logger.info(
+                "D-COMPOSITION-ID-TRAP: resolved a work_id passed as project_id "
+                "(%s → project %s, book %s)",
+                project_id, row["project_id"], row["book_id"],
+            )
         return WorkScopeMeta(
             book_id=row["book_id"], work_id=row["id"], project_id=row["project_id"]
         )

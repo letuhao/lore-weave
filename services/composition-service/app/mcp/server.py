@@ -380,6 +380,34 @@ def _grant_resolver() -> GrantResolver:
     return resolve
 
 
+def _named_ids(work: dict) -> dict:
+    """D-COMPOSITION-ID-TRAP — give the Work's surrogate key an EXPLICIT name on the
+    wire, and say which id the other tools want.
+
+    A Work carries three uuids and used to serialize them as `id`, `project_id` and
+    `book_id`. To a model, `id` reads as *"the id of the thing I just fetched"* — so it
+    passes it to the next tool's `project_id`, and every scoped read answers "not found"
+    for a row that exists. Measured live on the Mị Đế book; the agent then reported,
+    correctly and uselessly, that Chapter 1 did not exist.
+
+    A bare `id` is a name that means nothing on its own — the exact
+    one-name-for-one-concept failure the frontend-tool contract bans. Rename it to
+    `work_id`, and hand the caller a one-line map of which id each argument slot wants,
+    so the answer is IN the payload rather than in a description it may not re-read.
+    (The repo-level resolve accepts a work_id in the project_id slot as well; this is
+    the half that stops the mistake being made, that one is the half that survives it.)
+    """
+    out = dict(work)
+    if "id" in out:
+        out["work_id"] = out.pop("id")
+    out["_ids"] = (
+        "work_id = this Work's own key. project_id = what every other composition_* "
+        "tool's `project_id` argument wants. book_id = the book. They are DIFFERENT "
+        "uuids — do not pass work_id as project_id."
+    )
+    return out
+
+
 async def _book_or_deny(works: WorksRepo, tc: ToolContext, project_id: UUID, level: GrantLevel):
     """PM-8 (BPS-8): resolve the Work's ids-only scope (book_id/work_id/
     project_id — `scope_meta`, an un-user-scoped anti-oracle read) and gate the
@@ -601,11 +629,11 @@ async def composition_get_work(
         if len(marked) > 1:
             # The book's marked Works (the grant already passed) — return them so
             # the model can pick (e.g. canonical vs a derivative).
-            return {"candidates": [w.model_dump(mode="json") for w in marked]}
+            return {"candidates": [_named_ids(w.model_dump(mode="json")) for w in marked]}
         work = marked[0]
     else:
         raise ValueError("pass project_id or book_id")
-    return work.model_dump(mode="json")
+    return _named_ids(work.model_dump(mode="json"))
 
 
 # L1/L2 reference-first projection for outline nodes (Context Budget Law §6b). At

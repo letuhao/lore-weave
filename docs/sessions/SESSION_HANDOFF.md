@@ -351,9 +351,39 @@ and taken the returned `id` as the project id.
 
 One book carries **three** UUIDs — `book_id`, `project_id`, `work_id` — and the read tools return
 `id` alongside `project_id` with nothing to disambiguate them. The same confusion explains an
-older log line where the model put the *project* id in `book_id`. `_inject_context_ids` already
-does "replace-malformed" for these args; correcting a `project_id` that is really a `work_id`
-belongs in the same place.
+older log line where the model put the *project* id in `book_id`.
+
+**Fixed, both halves** (either alone leaves the failure reachable — naming does not help a model
+that already guessed, and resolving does not stop the guess spreading to args with no repair path):
+
+- **stop it being made** — `_named_ids` renames the Work's bare `id` to **`work_id`** on the MCP
+  wire and ships a one-line map of which id each argument slot wants. A bare `id` reads to a model
+  as *"the id of the thing I just fetched"*; that is the one-name-for-one-concept failure the
+  frontend-tool contract already bans, applied to an output instead of an input.
+- **survive it anyway** — `WorksRepo.scope_meta` accepts a **work_id in the `project_id` slot** and
+  resolves it to the same Work. Placed there deliberately: it is behind `_book_or_deny`, the single
+  gate **37** project-scoped composition tools share, so all of them are repaired at once. Not a
+  widening — both columns are UUIDs of the same table, the E0 grant still gates on the resolved
+  row's `book_id`, and an id matching neither still returns `None` (the anti-oracle property is
+  the subject of its own test).
+
+3,008 composition tests pass · deployed sha256 == host.
+
+### ▶ Next: an agent-made chapter is invisible to the tool that reports book state
+
+The live retry then failed **honestly** and on new ground: *"ID Chương 1 không tồn tại …
+`composition_package_tree` cho thấy `chapter_count: 0`"* — with the node sitting in
+`outline_node`, alive, `kind='chapter'`, correct `book_id`.
+
+`structure.py`'s count is `LEFT JOIN outline_node o ON o.structure_node_id = t.node AND o.kind =
+'chapter'`. Our chapter has **`structure_node_id = NULL`**, because `composition_outline_node_edit
+op="create"` does not attach one — so a chapter created through the *agent* path is orphaned from
+the structure tree and `package_tree` cannot see it. The agent is reasoning correctly over a state
+report that is wrong, which is the worst possible input: every downstream refusal is defensible.
+
+Fix direction: either `op="create"` attaches the chapter to the book's root structure node, or
+`package_tree` counts unattached chapters too and says they are unplaced. The first is probably
+right — an unattached chapter is not a state a book should be able to reach.
 
 ### Deferred (new)
 
