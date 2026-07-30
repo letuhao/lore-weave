@@ -46,9 +46,26 @@ clean; rebuilt + redeployed and verified by a whole-file property (the new strin
 shipped binary). Live regression: `assistant-endofday` passes (15.1s) and its jobs still land
 `completed / stop`.
 
-**NOT reproduced live:** the empty response itself was a cold-model-load race I could not force
-deterministically, so the failing path is proven by the predicate test against the real
-captured payload plus review of the 4-line call site — not by a live red-to-green.
+### ✅ The "not reproduced live" gap is CLOSED
+I first shipped this saying the failing path rested on a unit test plus reading the call site,
+because the empty response was a cold-load race. That was the wrong place to stop — a tested
+predicate proves nothing if nothing calls it, which is the exact bug class this session fixed
+twice (a dead BFF allowlist; `toBeVisible()` passing on a blank row).
+
+Forced it deterministically instead: a stub `lm_studio` endpoint behind a temporary BYOK
+credential (`endpoint_base_url` → a local stub), so the provider's response is whatever I say.
+**Both sides proven live, on an identical empty `content`:**
+
+| stub response | job row |
+|---|---|
+| clean but empty (`data: [DONE]`, nothing before it) | **failed** · `LLM_UPSTREAM_ERROR` · 0 tokens · finish_reason NULL |
+| reasoning-only (`reasoning_content` + usage 11/42) | **completed** · finish_reason `stop` |
+
+The failed row's `result` is **byte-identical** to the historical row that was recorded
+`completed` — so that is a true before/after on the same payload, not an analogy. The second
+row proves the change does not false-positive on the adjacent case.
+
+Probe credential + user_model deleted, both stubs stopped.
 
 
 ## 🗂️ "End my day" ran the diary distiller on the CHAT model — the `distill` setting was dead (2026-07-30)
