@@ -147,8 +147,45 @@ must never live inside the thing under test; the answer key is now a sidecar
 bite-proven** (罡元 re-added → `R6 is DEFEATED`; a `fixture role` comment → metadata-leak red; an Arabic
 digit on the progression page → `PGN-A5` red; the naming pattern stated twice → `R2` red).
 
-**▶ NEXT:** `S-1` — `ProgressionKindDecl` + `ProgressionTable` + the validator in Rust (schema 4 → 5;
-the four `Q2 B1` guards bite again). The fixture is done and waiting for it.
+**✅ `S-1a` BUILT — the validator doc 39 v1 claimed already existed.** `crates/ruleset-core/src/progression/`
+(`mod.rs` types · `table.rs` collection+codec+digest · `validate.rs`), 24 tests. `PROG_001` §5.5's
+`CapRule` × `CurveDecl` matrix is now **a real refusal surface** rather than a markdown table
+containing a sentence about one.
+
+**The three shapes this table does NOT have, each for a stated reason:**
+* **Not inline in `Ruleset`.** `size_of::<Ruleset>()` is exactly 2312 with **zero headroom**, and
+  `TierDecl` transitively owns `String`/`Vec`/`HashMap` so it can never be `Copy`, `const`-constructed,
+  or seen by `size_of` at all — the `QTY-A6 ⊥ QTY-A12` trap. It carries **its own digest** and the bytes
+  go to a content-addressed store (`PGN-R1`); `Ruleset` will hold `progression_digest: [u8;32]` in
+  `S-1b`.
+* **No strings, anywhere.** `display_name`, `description` and every `TierDecl.name` live in the
+  unhashed label artifact (`PGN-A18`), inheriting the call `quantity.rs` already made — *"the hashed
+  name is a MACHINE key; its human-readable label lives elsewhere"*. A tier name in these bytes would
+  make a Vietnamese translation fix strand a running reality.
+* **No `AtMaxPlus`, no `TrainingRuleDecl`.** Every field of both is a cross-element reference (item,
+  place, actor class, fiction time). `PGN-A20`: the refusal is produced by the **pipeline**, where it
+  can name the owning module; the enum simply leaves discriminant `2..` free. Reserving the fields now
+  would put dead bytes in every digest that `QTY-A10(c)` then forbids removing — the mistake
+  `QTY-A4`'s unbuilt `deps`/`tags` avoided.
+
+**Why the matrix has to live in the validator and not in the question set:** `PGN-A2` derives
+questions **field by field**, but `curve` and `cap_rule` are separate fields answered in separate
+rows. An author can truthfully say *"the ladder has stages"* and *"power has an absolute ceiling"* —
+both cited, both approved — and the **pair** is illegal. So it is a refusal naming both halves, never
+a repair, because either repair deletes a human-approved statement (`PGN-A17`).
+
+`Canon` gained `u64`/`u64()` — additive, writes no bytes for any existing artifact, moves no existing
+digest. Routing `tier_max` through `i64` would have been one cast and a wrap no test would reach.
+
+**BITE-TESTS (NV-6):** making the §5.5 matrix permissive reds
+`a_staged_ladder_with_an_absolute_cap_is_refused` + `validate_reports_every_finding_not_just_the_first`;
+dropping `tier_max` from the hash reds `a_single_tier_edit_moves_the_digest` + the round-trip. Both
+restored, 24/24 green.
+
+**▶ NEXT:** `S-1b` — `progression_digest: [u8;32]` on `Ruleset`, schema 4 → 5. **This is where the
+four `Q2 B1` guards bite**: `classify!` totality · `s1b_subjects` · the `size_of` assertion (2312 →
+2344, and it WILL trip — headroom is zero) · the golden digest. Two repin-log entries. Then the store
+(`PGN-R2`) and the loader's authoring form.
 `Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot
 (365) · file-ceiling · deferral · gate-wiring.
 

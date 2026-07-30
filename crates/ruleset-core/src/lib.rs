@@ -43,6 +43,7 @@ mod combat;
 mod provenance;
 mod never_reuse;
 mod quantity;
+mod progression;
 mod resource;
 mod ruleset;
 mod slots;
@@ -59,6 +60,11 @@ pub use combat::CombatRules;
 pub use never_reuse::OrdinalReuse;
 pub use quantity::{
     QuantityError, QuantityName, QuantityTable, MAX_DECLARED_QUANTITIES, MAX_QUANTITY_NAME_LEN,
+};
+pub use progression::{
+    validate as validate_progression, BodyOrSoul, BreakthroughCondition, CapRule, CurveKind,
+    Derivation, ProgressionInvalid, ProgressionKindDecl, ProgressionTable, ProgressionType,
+    TierDecl, WithinTierCurve, MAX_DECLARED_PROGRESSION_KINDS, MAX_TIERS_PER_KIND,
 };
 pub use provenance::{Provenance, RulesetEpoch};
 // Q2 — QTY-A4 declared pools. A resource IS a declared quantity (one identity,

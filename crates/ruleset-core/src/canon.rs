@@ -62,6 +62,18 @@ impl Canon {
         self.buf.extend_from_slice(&v.to_be_bytes());
     }
 
+    /// Unsigned 64-bit, big-endian.
+    ///
+    /// Added for `PROG_001`'s `tier_max` / `initial_value`, which are `u64`
+    /// counts. Routing them through [`Canon::i64`] would have been one cast and
+    /// a wrap at `i64::MAX` that no test would ever reach — the same class of
+    /// silent-equivalence bug [`Canon::i32`]'s own comment describes for `-1`
+    /// and `u32::MAX`. **Additive: this writes no bytes for any existing
+    /// artifact, so it moves no existing digest.**
+    pub fn u64(&mut self, v: u64) {
+        self.buf.extend_from_slice(&v.to_be_bytes());
+    }
+
     /// Length-prefixed. Required for anything variable-length, so that
     /// concatenation is unambiguous.
     pub fn bytes(&mut self, v: &[u8]) {
@@ -199,6 +211,10 @@ impl<'a> CanonReader<'a> {
 
     pub fn i64(&mut self) -> Result<i64, CanonError> {
         Ok(i64::from_be_bytes(self.take(8)?.try_into().unwrap()))
+    }
+
+    pub fn u64(&mut self) -> Result<u64, CanonError> {
+        Ok(u64::from_be_bytes(self.take(8)?.try_into().unwrap()))
     }
 
     pub fn bytes(&mut self) -> Result<&'a [u8], CanonError> {
