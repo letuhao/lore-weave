@@ -1,45 +1,75 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## 🔬 ATOM-EDIT F2 — the empty column has a harness now, and it says 2/11 (2026-07-30)
+## 🔬 ATOM-EDIT F2 — 4/11, 0 failed, and the flagged discrepancy turned out to be a real bug (2026-07-30)
 
-F2's real column is *real-run proven?* and it had been empty for all 11 composition
-`*_edit` families. `scripts/atom-edit-roundtrip.py` is that column as a **re-runnable
-script** rather than a transcript: per family CREATE → read back → PATCH → read back and
-assert the field CHANGED → DELETE → read back and assert GONE. DELETE-first on purpose —
-it is the op that failed silently on four of six PlanForge kinds (B6).
+`scripts/atom-edit-roundtrip.py` is F2's *real-run proven?* column as a **re-runnable
+script**: per family CREATE → read back → PATCH → read back and assert the field CHANGED →
+DELETE → read back and assert GONE. DELETE-first on purpose — it is the op that failed
+silently on four of six PlanForge kinds (B6). **It counts out loud** and names the 7 families
+still waiting on a Work/outline fixture, so the gap is a line of output, never an absence.
 
-**It counts out loud: `F2 real-run proven: 2/11 (7 pending a fixture, 2 failed)`.** A
-harness that walks a few families and prints OK is the silent-cap failure this board
-punishes elsewhere (`cold-path-smoke` once reported 10/10 while never running the `world`
-pass). The 7 needing a Work/outline fixture are printed as PENDING **with the fixture they
-want**, so the gap is a line of output, never an absence.
+**`F2 real-run proven: 4/11 families (7 pending a fixture, 0 failed)`** — was 2/11 with 2
+failed. Both reds were MINE, and the second one was hiding a product bug.
 
-### PROVEN (2): `motif`, `arc_template`
-Full create → patch → verify-changed → archive → verify-archived, live, through the gateway.
+### PROVEN (4): `motif`, `motif_link`, `arc_template`, `structure_template`
+`structure_template` additionally proves the archive is **soft** in both directions: gone
+from the active list AND still present under `include_archived=true`. Asserting only the
+first would pass identically against a hard delete, which is a different contract.
 
-### The first run found nothing about the product and FOUR things about my harness
-Worth recording, because "the harness is wrong" is the outcome a proof harness should
-produce most often, and reading its red as a product bug is how a fake finding gets filed:
-1. optimistic concurrency on these routes is an **`If-Match` header**, not
-   `?expected_version=` — the 412 was mine;
-2. `GET /motifs/{id}/links` wraps rows in `{motif_id, links, count}`;
-3. structure templates live at **`/templates`**, and there is **no single-GET route** (405)
-   — the read-back has to be the LIST;
-4. probe rows must be uniquely named or the second run 409s on the first run's leftovers.
+### Six harness bugs found, across two runs, and ZERO product bugs from the harness itself
+That ratio is what a proof harness should produce, and reading its red as a product bug is
+how a fake finding gets filed. Run 1: `If-Match` is a **header** not `?expected_version=`;
+`GET /motifs/{id}/links` wraps rows in `{motif_id, links, count}`; templates live at
+`/templates` with **no single-GET** (405) so every read-back is the LIST; probe rows need
+unique names or run 2 409s on run 1's leftovers. Run 2, the two that had been left open:
 
-### STILL FAILING (2) — harness gaps, not confirmed product bugs
-- `motif_link` — the edge does not come back on the read *inside the harness*, while the
-  identical sequence by hand through curl DOES return it. Unresolved; the difference has
-  not been isolated, so it is NOT filed as a product defect.
-- `structure_template` — `PATCH /templates/{id}` answers 404 for an id the LIST just
-  returned. Also unresolved.
+- **`structure_template` — I patched `/structure-templates/{id}`, a route that does not
+  exist.** FastAPI's `404 {"detail": "Not Found"}` means *no such route*; I read it as *no
+  such row*. Two different 404s and only one is a product bug. The real route is
+  `PATCH /templates/{id}` + `If-Match`.
+- **`motif_link` — I asserted a FLAT `neighbor_id`** that the server never sends, then read
+  my own miss as "the edge does not come back". ⤵
 
-### ⚠ A real contract discrepancy found on the way, flagged not confirmed
-The wire returns a **nested** neighbour: `{id, kind, ord, direction, neighbor:{id,code,name}}`.
-`frontend/src/features/composition/motif/api.ts` declares `MotifLinkRow` **FLAT** —
-`neighbor_id` / `neighbor_code` / `neighbor_name`, fields the server does not send. If the
-FE link list reads those, it renders undefined. Needs one browser check before it is a
-finding; recorded here so it cannot be lost.
+### ⚠→✅ The flagged discrepancy was REAL, user-visible, and shipped
+The handoff said it needed one browser check. It needed less: `motif_repo.list_links`
+nests the neighbour (`neighbor: {id, code, name}`), `MotifGraphSection.tsx` read
+`l.neighbor_name` / `l.neighbor_code`, and that panel is **live-mounted** in
+`MotifDetailDrawer`. So every edge in a motif's Graph section rendered an arrow and **two
+blank labels**, for a release.
+
+**Nothing caught it, and each layer failed for its own reason** — this is the interesting part:
+- the **FE unit tests** passed: their fixtures were written from the FE *type*, so both
+  sides of the test agreed on a shape the server never sent;
+- **tsc** passed: a type is only wrong *relative to something*, and it had nothing to be
+  wrong relative to;
+- the **contract** passed: `links` items were `{ type: object }` — freeform. **That was the
+  root cause**, not the FE typo. Neither side had a spec to conform to.
+
+Fixed: the contract now pins `MotifLinkRow` / `MotifLinkNeighbor` / `MotifLinkEdge`, and the
+loop is closed by **two** links that were each proven red-able:
+
+| link | mechanism | proven red by |
+|---|---|---|
+| mirror ↔ type | `satisfies Record<keyof MotifLinkRow, true>` in `api.ts` | drifting the mirror → `TS2353` |
+| mirror ↔ contract | `motifLinkContract.test.ts` parses the YAML | flattening the contract → 2 tests red |
+
+Either link alone is vacuous: without the first the mirror tracks a type free to be wrong;
+without the second the mirror drifts from the type it claims to mirror.
+
+Also fixed on the way: `createLink` was typed as returning `MotifLinkRow`, but the POST 201
+carries from/to ids and **no** neighbour — a second, quieter shape lie (`MotifLinkEdge` now).
+
+### What is NOT proven
+The render is proven in **jsdom** — the fixture is pinned to the contract, which is pinned to
+the live server shape — but **not in Chrome**. One browser pass on the Graph section would
+close it. The guard compares field **names** only, not types/nullability/`required`; name
+drift is what shipped, but a `string`-vs-`number` slip would still get through.
+
+### Next on F2
+The 7 fixture-dependent families (`canon_rule`, `outline_node`, `scene_link`, `motif_bind`,
+`entity_override`, `derivative`, `authoring_run`) need a Work + structure + outline fixture.
+Probe rows all share the `smoke.f2_` prefix; they archive soft and no route hard-deletes
+them, so leftovers are one greppable predicate.
 
 
 ## 🌏 language-bias-gate is GREEN — and a red gate proved its own point (2026-07-30)

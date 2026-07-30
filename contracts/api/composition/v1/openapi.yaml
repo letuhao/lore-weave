@@ -419,7 +419,7 @@ paths:
         - { name: kinds, in: query, required: false, schema: { type: array, items: { type: string, enum: [composed_of, precedes, variant_of] } } }
         - { name: book_id, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: Edge list, content: { application/json: { schema: { type: object, properties: { motif_id: { type: string, format: uuid }, count: { type: integer }, links: { type: array, items: { type: object } } } } } } }
+        '200': { description: Edge list, content: { application/json: { schema: { type: object, properties: { motif_id: { type: string, format: uuid }, count: { type: integer }, links: { type: array, items: { $ref: '#/components/schemas/MotifLinkRow' } } } } } } }
         '422': { description: bad direction }
     post:
       tags: [motif]
@@ -445,7 +445,7 @@ paths:
                 ord: { type: integer, nullable: true }
                 book_id: { type: string, format: uuid, nullable: true }
       responses:
-        '201': { description: Edge, content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, from_motif_id: { type: string, format: uuid }, to_motif_id: { type: string, format: uuid }, kind: { type: string, enum: [composed_of, precedes, variant_of] }, ord: { type: integer, nullable: true }, created_at: { type: string, format: date-time, nullable: true } } } } } }
+        '201': { description: Edge, content: { application/json: { schema: { $ref: '#/components/schemas/MotifLinkEdge' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: duplicate / self-link / cycle / cross-tier edge }
 
@@ -477,6 +477,46 @@ components:
     VersionConflict: { description: 412 — version mismatch; body carries the current row }
     Upstream: { description: 502 — an upstream service (book) was unreachable }
   schemas:
+    # ── the motif graph wire shapes (BE-M3) ────────────────────────────────────
+    # These two were `items: { type: object }` — freeform, so neither side had a spec to
+    # conform to, and the frontend spent a release declaring the neighbour FLAT
+    # (`neighbor_name`) while the server sent it NESTED. Every edge rendered blank; the
+    # FE unit tests passed because their fixtures were written from the FE type instead
+    # of from the producer. Pinned here, and `motifLinkContract.test.ts` reds if the
+    # frontend's field list drifts from this block again.
+    MotifLinkNeighbor:
+      type: object
+      description: The stub of the motif at the OTHER end of the edge, joined server-side
+        so a list needs no second fetch.
+      required: [id, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+    MotifLinkRow:
+      type: object
+      description: One edge as GET /motifs/{motif_id}/links returns it — the edge itself
+        plus the NESTED neighbour stub. Note this is NOT the POST 201 shape (MotifLinkEdge),
+        which carries from/to ids and no neighbour.
+      required: [id, kind, ord, direction, neighbor]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [composed_of, precedes, variant_of] }
+        ord: { type: integer, nullable: true }
+        direction: { type: string, enum: [out, in], description: out = this→neighbour }
+        neighbor: { $ref: '#/components/schemas/MotifLinkNeighbor' }
+    MotifLinkEdge:
+      type: object
+      description: One edge as POST /motifs/{motif_id}/links returns it — the raw row, with
+        from/to ids and NO neighbour join.
+      required: [id, from_motif_id, to_motif_id, kind]
+      properties:
+        id: { type: string, format: uuid }
+        from_motif_id: { type: string, format: uuid }
+        to_motif_id: { type: string, format: uuid }
+        kind: { type: string, enum: [composed_of, precedes, variant_of] }
+        ord: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
     WorkResolution:
       type: object
       properties:

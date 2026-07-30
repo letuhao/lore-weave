@@ -22,17 +22,44 @@ const BASE = '/v1/composition';
 // ── the motif graph (BE-M3) edge shapes ──────────────────────────────────────
 export type MotifLinkKind = 'composed_of' | 'precedes' | 'variant_of';
 export type MotifLinkDirection = 'out' | 'in' | 'both';
+/** The motif at the other end of an edge, joined server-side (no second fetch). */
+export type MotifLinkNeighbor = { id: string; code: string; name: string };
 /** One relationship edge as GET /motifs/{id}/links returns it — the edge id/kind/ord/
- *  direction plus the NEIGHBOR stub (id/code/name), so a list needs no second fetch. */
+ *  direction plus the NEIGHBOR stub, NESTED under `neighbor`.
+ *
+ *  This was declared FLAT (`neighbor_name`, `neighbor_code`) for a release. The server has
+ *  always nested it (`motif_repo.list_links`), so both labels on every edge in the graph
+ *  panel rendered as `undefined` — blank. The unit tests passed throughout because their
+ *  fixtures were written from THIS type instead of from the producer, so both sides of the
+ *  test agreed on a shape the server never sent. `motifLinkContract.test.ts` now compares
+ *  the field list below against the OpenAPI contract so it cannot drift again. */
 export type MotifLinkRow = {
   id: string;
   kind: MotifLinkKind;
   ord: number | null;
   direction: 'out' | 'in';
-  neighbor_id: string;
-  neighbor_code: string;
-  neighbor_name: string;
+  neighbor: MotifLinkNeighbor;
 };
+/** POST /motifs/{id}/links returns the RAW row — from/to ids, no neighbour join. A
+ *  different shape from `MotifLinkRow`, and it was previously typed as if it were the same. */
+export type MotifLinkEdge = {
+  id: string;
+  from_motif_id: string;
+  to_motif_id: string;
+  kind: MotifLinkKind;
+  ord: number | null;
+  created_at?: string | null;
+};
+/** Runtime mirrors of the two types above, so a test can compare them to the contract —
+ *  TypeScript types are erased at runtime. `satisfies Record<keyof T, true>` makes tsc
+ *  reject a missing OR an extra key, which closes the loop: tsc pins mirror↔type, and
+ *  `motifLinkContract.test.ts` pins mirror↔OpenAPI. Neither link alone is enough. */
+export const MOTIF_LINK_ROW_FIELDS = {
+  id: true, kind: true, ord: true, direction: true, neighbor: true,
+} satisfies Record<keyof MotifLinkRow, true>;
+export const MOTIF_LINK_NEIGHBOR_FIELDS = {
+  id: true, code: true, name: true,
+} satisfies Record<keyof MotifLinkNeighbor, true>;
 
 // ── the book-wide motif graph canvas (Wave-4) ──────────────────────────────────
 export type MotifGraphNode = { id: string; code: string; name: string; kind: string; mine: boolean; book_shared: boolean };
@@ -150,8 +177,8 @@ export const motifApi = {
         opts?: { direction?: MotifLinkDirection; bookId?: string | null }): Promise<{ motif_id: string; links: MotifLinkRow[]; count: number }> {
     return apiJson(`${BASE}/motifs/${motifId}/links${_qs({ direction: opts?.direction, book_id: opts?.bookId ?? undefined })}`, { token });
   },
-  createLink(motifId: string, args: { to_motif_id: string; kind: MotifLinkKind; ord?: number | null; book_id?: string | null }, token: string): Promise<MotifLinkRow> {
-    return apiJson<MotifLinkRow>(`${BASE}/motifs/${motifId}/links`, {
+  createLink(motifId: string, args: { to_motif_id: string; kind: MotifLinkKind; ord?: number | null; book_id?: string | null }, token: string): Promise<MotifLinkEdge> {
+    return apiJson<MotifLinkEdge>(`${BASE}/motifs/${motifId}/links`, {
       method: 'POST', body: JSON.stringify(args), token,
     });
   },

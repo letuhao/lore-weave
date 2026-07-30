@@ -31,7 +31,10 @@ beforeEach(() => {
 describe('MotifGraphSection', () => {
   it('renders edges grouped by kind after expanding', async () => {
     (motifApi.links as ReturnType<typeof vi.fn>).mockResolvedValue({ motif_id: MID, count: 1, links: [
-      { id: 'e1', kind: 'precedes', ord: null, direction: 'out', neighbor_id: 'n2', neighbor_code: 'rev.slap', neighbor_name: 'Face-slap' },
+      // NESTED `neighbor` — this is the wire shape (motif_repo.list_links). These fixtures
+      // used to be flat, matching the FE type rather than the producer, which is exactly why
+      // they stayed green while the panel rendered blank labels for a whole release.
+      { id: 'e1', kind: 'precedes', ord: null, direction: 'out', neighbor: { id: 'n2', code: 'rev.slap', name: 'Face-slap' } },
     ] });
     wrap(<MotifGraphSection motifId={MID} token="t" />);
     fireEvent.click(screen.getByTestId('motif-graph-toggle'));
@@ -67,7 +70,7 @@ describe('MotifGraphSection', () => {
 
   it('hides write affordances when readOnly (system/foreign motif)', async () => {
     (motifApi.links as ReturnType<typeof vi.fn>).mockResolvedValue({ motif_id: MID, count: 1, links: [
-      { id: 'e1', kind: 'variant_of', ord: null, direction: 'out', neighbor_id: 'n2', neighbor_code: 'x', neighbor_name: 'X' },
+      { id: 'e1', kind: 'variant_of', ord: null, direction: 'out', neighbor: { id: 'n2', code: 'x', name: 'X' } },
     ] });
     wrap(<MotifGraphSection motifId={MID} token="t" readOnly />);
     fireEvent.click(screen.getByTestId('motif-graph-toggle'));
@@ -78,7 +81,7 @@ describe('MotifGraphSection', () => {
 
   it('deletes an edge', async () => {
     (motifApi.links as ReturnType<typeof vi.fn>).mockResolvedValue({ motif_id: MID, count: 1, links: [
-      { id: 'e1', kind: 'composed_of', ord: null, direction: 'out', neighbor_id: 'n2', neighbor_code: 'x', neighbor_name: 'X' },
+      { id: 'e1', kind: 'composed_of', ord: null, direction: 'out', neighbor: { id: 'n2', code: 'x', name: 'X' } },
     ] });
     (motifApi.deleteLink as ReturnType<typeof vi.fn>).mockResolvedValue({ deleted: true, link_id: 'e1' });
     wrap(<MotifGraphSection motifId={MID} token="t" />);
