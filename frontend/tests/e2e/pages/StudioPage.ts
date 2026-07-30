@@ -44,8 +44,22 @@ export class StudioPage {
   async openPanel(panelId: string, searchTerm: string): Promise<void> {
     await this.page.keyboard.press('ControlOrMeta+Shift+P');
     await this.commandPaletteModal.waitFor({ state: 'visible' });
-    await this.paletteInput.fill(searchTerm);
     const entry = this.page.getByTestId(`palette-entry-studio.openPanel.${panelId}`);
+    await this.paletteInput.fill(searchTerm);
+    // `filterCommands` matches the LOCALIZED label only (`c.label.includes(q)` — not the id,
+    // not the description), so an English `searchTerm` matches nothing the moment the
+    // account's UI language is not English. That is not theoretical: the test account runs in
+    // Vietnamese, and `studio-motif-graph.spec.ts` had been failing on exactly this — the
+    // palette answered "Không có lệnh phù hợp" to "motif graph" — so the whole canvas spec
+    // was red before it asserted anything about the canvas.
+    //
+    // An empty query lists EVERY command, so fall back to picking the entry out of the full
+    // list. Still a real user path (open the palette, find the command, click it), and it
+    // does not depend on what language the user happens to be reading in.
+    if (!(await entry.isVisible().catch(() => false))) {
+      await this.paletteInput.fill('');
+      await entry.scrollIntoViewIfNeeded();
+    }
     await entry.waitFor({ state: 'visible' });
     await entry.click();
     await expect(this.commandPaletteModal).toHaveCount(0);

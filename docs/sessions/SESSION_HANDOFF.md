@@ -1,5 +1,56 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🌐 The presence-not-content sweep — and the e2e suite was red in Vietnamese (2026-07-30)
+
+`D-E2E-PRESENCE-NOT-CONTENT` is **closed, not deferred**. And the sweep found something
+bigger than the class it was chasing.
+
+### The class was much smaller than "318" — my deferred row overstated it
+318 was a raw grep. **119** are in test bodies; **4** assert a row-ish locator; and on
+inspection **3 of those 4 were false positives** — `getByText(...)`, `getByRole({name})`
+and a `hasText:` filter are all content-matched *by construction*; my regex just did not
+count those forms. Honest count: **3 genuine**, all strengthened:
+
+| spec | was | now |
+|---|---|---|
+| `studio-motif-graph` (canvas node) | `toBeVisible()` | `toContainText(GraphA ${stamp})` |
+| `studio-kg-authoring-journey` (relmap node) | `toBeVisible()` | node filtered by the authored HERO |
+| `assistant-endofday` (diary entry) | `toBeVisible()` | body `toHaveText(/\S/)` |
+
+The endofday one is deliberately only "has non-whitespace text": the words are the model's,
+and inventing a length floor I cannot validate trades a blind spot for a flake.
+
+### 🔴 The real find: three specs were silently RED, and the cause was the UI language
+`studio-motif-graph.spec.ts` never reached its canvas assertions — it died at
+`openPanel('motif-graph', 'motif graph')`. The screenshot says it plainly: the palette is
+open, the query is `motif graph`, and the answer is **"Không có lệnh phù hợp."**
+
+`filterCommands` matches `c.label` — the **localized** label — and nothing else (not the id,
+not the description). The test account's UI language is **Vietnamese**, so every spec that
+types an English UI string finds nothing. Proven pre-existing by stashing my edits and
+re-running: identical failures.
+
+**Fixed at the source of the class, not per-spec:** `StudioPage.openPanel` now falls back to
+locating the entry by its stable command id in the unfiltered list (an empty query lists
+every command — still a real user path). That covers the **21 specs** that use it. Then
+`studio-palette`'s two failures, which type command names directly: one now clicks by id;
+the other asserted the English group headers `Editor & Chapters` / `Story Bible` /
+`Knowledge Graph`, which tested the *translation* rather than the *grouping* — rewritten
+structurally (≥3 distinct groups) against a new `data-testid="palette-group"`.
+
+**Result: 10/10 green across the three spec files, three of which were previously red.**
+
+### What I did NOT do
+- **Did not change the account's language preference** to make tests pass. It is a
+  server-side user preference the human owns; mutating it would fix the symptom by editing
+  the human's settings.
+- **Did not run `assistant-endofday`** — `@slow`, real LLM, real spend. That call is yours.
+- **Did not file the `studio-kg-authoring-journey` failure as a product bug.** It fails at
+  an EARLIER line than my edit (STEP 6, "archive must surface an Undo"), and the captured
+  screenshot shows a polluted entity list (`Han Li 韩立`, not the spec's `李慕白`). Cause not
+  isolated ⇒ recorded, not claimed. **This is the next thread to pull.**
+
+
 ## 🖥️ The Chrome pass — and the e2e that watched the bug happen (2026-07-30)
 
 The motif-graph render was the one hop left unproven by effect. It is closed: **real Chrome
