@@ -415,6 +415,33 @@ that already guessed, and resolving does not stop the guess spreading to args wi
 
 3,008 composition tests pass · deployed sha256 == host.
 
+**The first cut of this fix was half a fix, and only a LIVE call found it.** `scope_meta`
+resolved, the grant passed — and `composition_get_outline_node` still answered *"not found or
+not accessible"* for the node it had just been granted, because the query after the gate kept
+comparing the **raw** argument (`node.project_id != pid`). A gate that canonicalizes while its
+callers keep the un-canonical value is worth nothing. **34 call sites** re-bound to
+`meta.project_id`, plus an **AST gate** (`test_book_or_deny_canonicalizes.py`) so the 35th
+cannot forget — proven red by injecting a bare `await _book_or_deny(...)` and restoring from
+memory. Verified against the live MCP endpoint: the identical call now returns the node, with
+exactly one resolve logged.
+
+### ✅ A real user CAN write a chapter from the frontend
+
+Checked directly, because "so many bugs" deserved a straight answer rather than another
+co-writer round: studio → Editor panel → **＋ Bắt đầu chương đầu tiên** → type → **Lưu**.
+Result in `loreweave_book.chapters`: `word_count = 25`, `draft_revision_count = 2`. The direct
+authoring path works end to end. **What is broken is the co-writer path, not the app.**
+
+And the earlier "package_tree is wrong" finding was **my** error, not the tool's:
+`chapter_count` comes from book-service `list_chapters` — the manuscript spine — and the book
+genuinely had zero manuscript chapters at that moment. `0` was correct. The outline node is a
+*plan* entry, not a chapter. The model asked the wrong tool the right question; the tool it
+needed (`composition_get_outline_node`) was the one the id trap was blocking.
+
+The studio navigator handles the split honestly, which is worth keeping: after the chapter was
+written it shows the planned `Chương 1: Nhân Từ Hay Phản Bội?` **and** the written `0001 Chương
+1` under a **"Not in the plan"** group.
+
 ### ▶ Next: an agent-made chapter is invisible to the tool that reports book state
 
 The live retry then failed **honestly** and on new ground: *"ID Chương 1 không tồn tại …

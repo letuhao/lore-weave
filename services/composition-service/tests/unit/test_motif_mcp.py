@@ -21,7 +21,9 @@ are each a test here.
 
 from __future__ import annotations
 
+import types as _types
 import uuid
+import uuid as _uuidmod
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -188,6 +190,14 @@ async def _patched(*, grant_level=2, works_get=None, **repo_overrides):
             return _work(user_id) if user_id == TEST_USER else None
 
     works = AsyncMock()
+    # D-COMPOSITION-ID-TRAP — scope_meta is the gate's CANONICALIZATION point: every
+    # tool re-binds its `pid` from `meta.project_id`. A bare AsyncMock returns an
+    # AsyncMock attribute here, so the project-scope check downstream compares a UUID
+    # against a mock and the tool 404s on a node it was just granted. Echo the id, as
+    # the real repo does for a project_id input.
+    works.scope_meta = AsyncMock(
+        side_effect=lambda p: _types.SimpleNamespace(book_id=BOOK, work_id=_uuidmod.uuid4(), project_id=p)
+    )
     works.get = AsyncMock(side_effect=works_get)
 
     async def _resolve(book_id, user_id):
@@ -1289,6 +1299,14 @@ def client():
         from app import deps
 
         works = AsyncMock()
+        # D-COMPOSITION-ID-TRAP — scope_meta is the gate's CANONICALIZATION point: every
+        # tool re-binds its `pid` from `meta.project_id`. A bare AsyncMock returns an
+        # AsyncMock attribute here, so the project-scope check downstream compares a UUID
+        # against a mock and the tool 404s on a node it was just granted. Echo the id, as
+        # the real repo does for a project_id input.
+        works.scope_meta = AsyncMock(
+            side_effect=lambda p: _types.SimpleNamespace(book_id=BOOK, work_id=_uuidmod.uuid4(), project_id=p)
+        )
         works.get = AsyncMock(side_effect=lambda u, p: _work() if u == TEST_USER else None)
         outline = AsyncMock()
         book = AsyncMock()

@@ -416,7 +416,18 @@ async def _book_or_deny(works: WorksRepo, tc: ToolContext, project_id: UUID, lev
     is first-class; row ownership is never consulted for ACCESS. A missing
     project raises the SAME H13 uniform error as a denied grant — no
     enumeration oracle. Returns the ids-only meta (use `meta.book_id`; fetch
-    the full Work separately when a tool needs more than ids)."""
+    the full Work separately when a tool needs more than ids).
+
+    D-COMPOSITION-ID-TRAP — this is also the CANONICALIZATION point. `scope_meta`
+    accepts a `work_id` in the `project_id` slot (a book has three uuids and the
+    model mixes them up), so the id the caller handed in may not be the project's.
+    **Every caller must therefore re-bind its own `pid` from `meta.project_id`
+    before using it again** — a gate that resolves while the subsequent query keeps
+    comparing the RAW argument passes the grant and then fails the scope check, which
+    is exactly what shipped in the first cut of this fix: `composition_get_outline_node`
+    gated fine and still answered "not found or not accessible" for the node it had
+    just been granted. Verified against the live MCP endpoint, not by reasoning.
+    """
     meta = await works.scope_meta(project_id)
     if meta is None:
         raise uniform_not_accessible()
@@ -611,7 +622,7 @@ async def composition_get_work(
                 book_id = str(bscope.id)
     if project_id:
         pid = UUID(project_id)
-        await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+        pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
         work = await works.get(pid)
         if work is None:
             raise uniform_not_accessible()
@@ -684,7 +695,7 @@ async def composition_list_outline(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     outline = OutlineRepo(get_pool())
     scene_links = SceneLinksRepo(get_pool())
     nodes = await outline.list_tree(pid, include_archived=include_archived)
@@ -723,7 +734,7 @@ async def composition_get_outline_node(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     outline = OutlineRepo(get_pool())
     node = await outline.get_node(UUID(node_id))
     # get_node fetches by id only — project-scope the target so a node_id from
@@ -824,7 +835,7 @@ async def composition_list_canon_rules(
     works = WorksRepo(get_pool())
     if project_id:
         pid: UUID | None = UUID(project_id)
-        await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+        pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     elif book_id:
         bid = UUID(book_id)
         await _gate(tc, bid, GrantLevel.VIEW)  # tenancy: grant-checked on the book itself
@@ -864,7 +875,7 @@ async def composition_get_generation_job(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     jobs = GenerationJobsRepo(get_pool())
     job = await jobs.get(UUID(job_id))
     # The repo fetches by id only — confirm the job belongs to THIS project so a
@@ -1101,7 +1112,7 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = _resolve_pid(tc, args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     # K13 (2026-07-23) — idempotency guard against an agent double-fire. LIVE-PROBED: two
     # byte-identical calls made TWO outline nodes; `outline_node`'s uniques only cover the
@@ -1184,7 +1195,7 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     node_id = UUID(args.node_id)
     # Capture prior values for a precise Undo hint (only the fields we changed).
@@ -1272,7 +1283,7 @@ async def composition_outline_node_delete(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     # Project-scope BEFORE mutating: archive_node targets by id only, so confirm
     # the node is in the gated Work's project (else a node from another Work
@@ -1311,7 +1322,7 @@ async def composition_outline_node_restore(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     # Project-scope BEFORE mutating: restore_node targets by id only. get_node
     # returns archived rows too, so it confirms the (archived) target is in the
@@ -1356,7 +1367,7 @@ async def composition_scene_link_create(ctx: MCPContext, args: _SceneLinkCreateA
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     scene_links = SceneLinksRepo(get_pool())
     try:
         link = await scene_links.create(
@@ -1393,7 +1404,7 @@ async def composition_scene_link_delete(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     scene_links = SceneLinksRepo(get_pool())
     # Project-scope the delete: constrain the repo WHERE clause by the gated
     # Work's project so an edge from another Work (gated on a different book)
@@ -1431,7 +1442,7 @@ async def composition_scene_link_restore(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     scene_links = SceneLinksRepo(get_pool())
     if not await scene_links.restore(pid, UUID(link_id)):
         return {"success": False, "error": (
@@ -1521,7 +1532,7 @@ async def composition_get_derivative_context(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     work = await works.get(pid)
     if work is None:
         raise uniform_not_accessible()
@@ -1565,7 +1576,7 @@ async def composition_archive_derivative(ctx: MCPContext, args: _DerivativeArchi
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     work = await works.get(pid)
     if work is None:
         raise uniform_not_accessible()
@@ -1629,6 +1640,7 @@ async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> d
     pid = UUID(args.project_id)
     # Gate EDIT on the source's book — the SAME gate the REST route + the confirm re-check use.
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     source = await works.get(pid)
     if source is None:
         raise uniform_not_accessible()
@@ -1697,7 +1709,7 @@ class _DivergenceSpecUpdateArgs(ForbidExtra):
 async def _require_derivative(works: WorksRepo, tc, project_id: UUID):
     """Gate EDIT + resolve the derivative Work (source_work_id set). Returns the Work,
     or a sentinel dict via raise for the not-accessible / not-a-derivative cases."""
-    await _book_or_deny(works, tc, project_id, GrantLevel.EDIT)
+    project_id = (await _book_or_deny(works, tc, project_id, GrantLevel.EDIT)).project_id
     work = await works.get(project_id)
     if work is None:
         raise uniform_not_accessible()
@@ -1941,7 +1953,7 @@ async def composition_reference_update(ctx: MCPContext, args: _ReferenceUpdateAr
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     refs = ReferencesRepo(get_pool())
     rid = UUID(args.reference_id)
     prior = await refs.get(pid, rid)  # 404 + prior for the Undo
@@ -2034,7 +2046,7 @@ async def composition_canon_rule_create(ctx: MCPContext, args: _CanonRuleCreateA
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     if args.from_order is not None and args.until_order is not None and args.from_order > args.until_order:
         return {"success": False, "error": "from_order must not exceed until_order"}
     canon = CanonRulesRepo(get_pool())
@@ -2094,7 +2106,7 @@ async def composition_canon_rule_update(ctx: MCPContext, args: _CanonRuleUpdateA
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     canon = CanonRulesRepo(get_pool())
     rule_id = UUID(args.rule_id)
     prior = await canon.get(pid, rule_id)
@@ -2145,7 +2157,7 @@ async def composition_canon_rule_delete(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     canon = CanonRulesRepo(get_pool())
     # Project-scope BEFORE mutating: canon.archive targets by id only, so
     # confirm the rule is in the gated Work's project first (else a rule from
@@ -2190,7 +2202,7 @@ async def composition_canon_rule_restore(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     canon = CanonRulesRepo(get_pool())
     # restore() is natively project-scoped (WHERE project_id = $1 AND id = $2 AND
     # is_archived), so it can never un-archive a rule under a different book's gate,
@@ -2402,6 +2414,7 @@ async def composition_write_prose(ctx: MCPContext, args: _WriteProseArgs) -> dic
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     book: BookClient = get_book_client()
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
     chap = UUID(args.chapter_id)
@@ -2478,6 +2491,7 @@ async def composition_publish(
     pid = UUID(project_id)
     # Publishing is an authoring (write) action → EDIT.
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     # Surface the publish-gate up front so the LLM/user sees WHY if it isn't
     # publishable (the confirm route re-checks it at execute time).
     outline = OutlineRepo(get_pool())
@@ -2621,6 +2635,7 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     pid = UUID(args.project_id)
     # Generation is a write/spend → EDIT (mirrors the engine's E0-4c pack tier).
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
 
     target_kind = "scene" if has_scene else "chapter"
     target_id = args.outline_node_id if has_scene else args.chapter_id
@@ -3656,6 +3671,7 @@ async def composition_motif_suggest_for_chapter(
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    pid = meta.project_id
     outline = OutlineRepo(get_pool())
     node = await outline.get_node(UUID(node_id))
     # Per-tool IDOR: the node must be in the gated Work's project (a node from
@@ -3729,6 +3745,7 @@ async def composition_arc_suggest(
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+    pid = meta.project_id
     retriever = MotifRetriever(get_pool())
     # Arc retrieval (D-ARC-RETRIEVE) ranks the caller-visible arc_template set under the
     # read predicate (book gate only; arc_template is a deps/ registry table, so tc.user_id
@@ -4247,6 +4264,7 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     outline = OutlineRepo(get_pool())
     node_id = UUID(args.node_id)
     # IDOR #1: the chapter node is in the gated Work's project.
@@ -4334,6 +4352,7 @@ async def composition_motif_unbind(
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     outline = OutlineRepo(get_pool())
     nid = UUID(node_id)
     node = await outline.get_node(nid)
@@ -4944,6 +4963,7 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     if args.scope == "chapter":
         if not args.chapter_id:
             return {"success": False, "error": "chapter_id is required when scope='chapter'"}
@@ -6656,6 +6676,7 @@ async def composition_arc_apply(ctx: MCPContext, args: _ArcApplyArgs) -> dict:
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = meta.project_id
     # IDOR: the source template must be visible to the caller (H13 on foreign/missing).
     arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
     if arc_tmpl is None:
@@ -7104,7 +7125,7 @@ async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveA
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     node_id = UUID(args.node_id)
     # Project-scope the target BEFORE mutating (the gate above checked the resolved
@@ -7431,7 +7452,7 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
     if args.op == "list":
         if not args.chapter_id:
             raise ValueError("op=list requires chapter_id")
-        await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
+        pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
         items, open_count = await blocks.list_for_chapter(
             pid, UUID(args.chapter_id), status=args.status,
             limit=max(1, min(args.limit or 50, 200)),
@@ -7456,7 +7477,7 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
     # resolve / dismiss / reopen
     if not args.block_id:
         raise ValueError(f"op={args.op} requires block_id")
-    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     bid = UUID(args.block_id)
     prior = await blocks.get(pid, bid)
     # Project-scope the target: `get` is already project-keyed, but check explicitly so a block
@@ -7622,7 +7643,7 @@ async def composition_derivative_edit(ctx: MCPContext, args: _DerivativeEditArgs
         tc = _ctx(ctx)
         works = WorksRepo(get_pool())
         pid = UUID(args.project_id)
-        await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+        pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
         work = await works.get(pid)
         if work is None:
             raise uniform_not_accessible()

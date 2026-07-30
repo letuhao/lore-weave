@@ -228,7 +228,8 @@ async def test_derivative_edit_restore_unarchives_with_undo_and_derivative_guard
     with patch.object(srv, "_ctx", side_effect=lambda c: c), \
          patch.object(srv, "get_pool", return_value=object()), \
          patch.object(srv, "WorksRepo", return_value=works), \
-         patch.object(srv, "_book_or_deny", AsyncMock(return_value=None)):
+         patch.object(srv, "_book_or_deny", AsyncMock(return_value=SimpleNamespace(
+             book_id=_uuid.uuid4(), work_id=_uuid.uuid4(), project_id=_uuid.UUID(PROJ)))):
         res = await srv.composition_derivative_edit(
             _Ctx(), srv._DerivativeEditArgs(op="restore", project_id=PROJ))
     # set status active via the same repo the archive uses
@@ -247,7 +248,8 @@ async def test_derivative_edit_restore_rejects_canonical_work():
     with patch.object(srv, "_ctx", side_effect=lambda c: c), \
          patch.object(srv, "get_pool", return_value=object()), \
          patch.object(srv, "WorksRepo", return_value=works), \
-         patch.object(srv, "_book_or_deny", AsyncMock(return_value=None)):
+         patch.object(srv, "_book_or_deny", AsyncMock(return_value=SimpleNamespace(
+             book_id=_uuid.uuid4(), work_id=_uuid.uuid4(), project_id=_uuid.UUID(PROJ)))):
         res = await srv.composition_derivative_edit(
             _Ctx(), srv._DerivativeEditArgs(op="restore", project_id=PROJ))
     assert res["success"] is False and "NOT_A_DERIVATIVE" in res["error"]
