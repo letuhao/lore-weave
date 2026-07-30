@@ -32,19 +32,21 @@ mod binding;
 mod epoch;
 mod layer;
 mod patch;
+mod patch_resource;
 mod store;
 mod validate;
 
 pub use binding::{binding_store, BindingError, BindingStore, FileBindingStore, RealityBinding};
 pub use epoch::{activate_reality_epoch, prior_quantity_tables, EpochSwitchError};
 pub use layer::Layer;
-pub use patch::{CombatPatch, RulesetPatch, StatPatch};
+pub use patch::{CombatPatch, PatchError, RulesetPatch, StatPatch};
+pub use patch_resource::ResourcePatch;
 pub use store::{RulesetStore, StoreError};
 pub use validate::{ValidationError, validate};
 
 use std::path::Path;
 
-use ruleset_core::{Floor, QuantityError, Ruleset};
+use ruleset_core::{Floor, QuantityError, ResourceError, Ruleset};
 
 /// The shipped `engine_default` artifact (RLS-D2 — *"an artifact, not prose"*).
 ///
@@ -82,6 +84,9 @@ pub enum LoadError {
     /// Q1 — a declared quantity is malformed, repeated within one layer, or
     /// pushes the set past this engine's ordinal capacity (QTY-A5/A6).
     Quantity { layer: Layer, source: QuantityError },
+    /// Q2 — a declared POOL is malformed: it names a quantity no layer
+    /// declared, repeats one, or gives bounds no actor could satisfy (QTY-A4).
+    Resource { layer: Layer, source: ResourceError },
     /// **S1b — the layer-floor arm (RLS-A16), and its FIRST real subject.**
     ///
     /// 16a gives every Ruleset field a *lowest permissible layer*. Until `Q1`
@@ -111,6 +116,9 @@ impl core::fmt::Display for LoadError {
                 write!(f, "layer `{}` declares `{field}`: {reason}", layer.name())
             }
             Self::Quantity { layer, source } => {
+                write!(f, "layer `{}`: {source}", layer.name())
+            }
+            Self::Resource { layer, source } => {
                 write!(f, "layer `{}`: {source}", layer.name())
             }
             Self::BelowFloor { layer, field, floor } => write!(
@@ -239,9 +247,21 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
                 floor: Floor::Preset,
             });
         }
-        l.patch
-            .apply(&mut out)
-            .map_err(|source| LoadError::Quantity { layer: l.layer, source })?;
+        // Q2 — the same floor, for the same reason. `resources` sits on the
+        // preset floor because a pool is L2 CONTENT: the engine default must not
+        // ship one, or every reality in existence would carry a pool it never
+        // declared and could not remove (QTY-A10(c) forbids removal).
+        if !l.patch.resources.is_empty() && l.layer.priority() < Layer::Preset.priority() {
+            return Err(LoadError::BelowFloor {
+                layer: l.layer,
+                field: "resources",
+                floor: Floor::Preset,
+            });
+        }
+        l.patch.apply(&mut out).map_err(|e| match e {
+            patch::PatchError::Quantity(source) => LoadError::Quantity { layer: l.layer, source },
+            patch::PatchError::Resource(source) => LoadError::Resource { layer: l.layer, source },
+        })?;
     }
 
     validate(&out).map_err(LoadError::Invalid)?;

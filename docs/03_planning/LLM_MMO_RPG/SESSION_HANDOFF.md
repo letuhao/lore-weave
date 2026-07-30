@@ -44,6 +44,7 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-GAME-WS-EDGE-CONTROLS` | 1 | PRR-20's second public entry point must inherit the gateway's auth/rate-limit/audit controls. | **prose-only.** ⚠ First claimed as "guarded across the three `ws/` implementations" — the id appears there only in **JSDoc headers**, which is provenance, not a check: nothing reds if parity breaks. Trigger: a parity test, which needs both transports up. |
 | `D-META-ALLOWLIST-NO-DRIFT-GATE` | 2 | Rust and Go meta allowlists are hand-mirrored and **already drifted once** — the Rust side silently dropped `xreality_topic` because serde ignores unknown fields while Go reads it. | **prose-only** — declared in `deferral-gate.py`. Trigger: the next meta table added. |
 | `D-S04-1` | 3 | The S04 provisioner slice. | **prose-only** — the subject is an unbuilt service, so there is no file for a check to hold. |
+| `D-WORLD-PAYLOAD-DERIVABLE` | — | **67.6 % of the generated world payload is derivable and is being stored anyway** (`WDS-A8`/`WDS-D3`). `vertex_polygon` 50.1 % · `center` 7.9 % · `neighbors` + `is_coast` the rest. The whole mesh is `fibonacci(n) · R(seed)` — `mesh.rs`'s own test asserts the rotation is *"the **only** source of seed dependence here"* — and adjacency is Quickhull over the centres. Packed irreducible ≈ **20 B/cell** → ~320 KB at `Megaplanet` vs ~15 MB stored (**46×**). PO chose store-everything for simplicity; legitimate at this scale. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **there is no measured threshold to assert against**, and a check with no possible violation is the NV-2 shape. Stripping is not free either: it needs Quickhull on the **read** path, where `WDS-A7`'s `f32` cross-platform problem is worse than on the write path. **Trigger: the first commit in which world-payload size or wire bandwidth is measured as a constraint.** The row exists so the measurement is re-read, not re-discovered. |
 | `D-LEDGER-BEFORE-BALANCE` | 3 | **The ledger** (`WSA-R14`) — conservation assertion + declared sources/sinks. **The only row here carrying a DEADLINE rather than a priority, and it is one-way.** `WSA-R14`: the ledger becomes *impossible* to retrofit once content is balanced against a leaky economy, **because at that point the leaks ARE the balance** — removing them later breaks every number an author tuned. Today [`EXC-F2`](30_exchange_model_and_dataflow.md) holds: the engine has the **transaction**, not the **ledger**, so a source-less 10 coins is silently legal. | **prose-only** — declared in `deferral-gate.py`. **TRIGGER: the first commit that balances content against the economy** (a price table, a drop table, a production rate, a reward curve). No mechanism today because the subject does not exist: with no ledger to assert against, a check would have no possible violation (`NV-2`). The ledger itself is what makes it mechanisable — `WSA-R14`'s own bite test is *a source-less 10 coins goes red*. |
 | `D-DEFERRAL-GATE-PLATFORM-SCOPE` | 1 | This gate governs the game tier only; ~360 ids in `docs/sessions/` + `docs/deferred/` are ungoverned and printed as a hole on every run. | **prose-only** — widening is a triage of which of those are still open, which cannot be mechanised in advance. |
 
@@ -51,6 +52,53 @@ its subject arrived. **Intent is not a mechanism.**
 
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
+
+### ✅ Q2 B1 — a pool is a declared ROW (2026-07-30)
+
+`QTY-A4`'s claim was *"adding a pool is a declared row, not a `SLOT_COUNT`
+change"*. It is now a fact: a reality declares `qi` in TOML, gets a working pool
+with a ceiling bound to a stat slot, and **no engine vocabulary moved**.
+Schema version **3 → 4**; digest repinned with its log entry.
+
+**The PO overruled the first design, and was right.** The proposal was
+`MAX_DECLARED_RESOURCES = 4` on byte grounds. Two checks killed it: `Actor`
+derives no `Serialize` (the island checkpoint is an in-memory `Clone`), so the
+width is pinned by **nothing** — not the digest, not a wire format — and 128 B ×
+1000 actors is 128 KB. The constraint the recommendation rested on did not bind.
+
+Correcting the number exposed a worse error. The narrow array needed a **second
+ordinal** — quantity ordinal for identity, resource ordinal for the array slot —
+and that is a concept `QTY-A4` does not have. A resource **is** a declared
+quantity; `qi` is one identity. Two numbering schemes for one identity, both in
+the hashed bytes, is precisely what `QTY-A5` exists to prevent. **One ordinal
+space**: `MAX_DECLARED_RESOURCES = MAX_DECLARED_QUANTITIES`, an alias rather than
+a second constant, because two constants that must stay equal can stop being
+equal. Bigger *and* simpler — the tension was manufactured by the design, not
+inherent.
+
+**What was deliberately NOT built.** `QTY-A4` also lists `deps` and `tags`.
+Neither has a consumer. **A field in the hashed ruleset is effectively
+permanent** — it enters every digest and `QTY-A10(c)` forbids removing it — so
+adding two empty lists would move every digest in existence to carry bytes
+nothing reads, then forbid taking them back out.
+
+**There is no `ZeroBehaviour::Defeat`, and the absence is load-bearing.** `Q2`'s
+exit criterion is *"the defeat law is **unchanged**"*. A declared pool that could
+end an encounter changes which value kills you — a behavioural change to a law
+(`QTY-A10(b)`). The loader refuses `zero_behaviour = "defeat"` **by name**, since
+that is the first value an author reaches for and "unknown value" would not tell
+them why.
+
+Four guards bit during the build, each demanding real work rather than a bump:
+the `classify!` totality macro (a new `Ruleset` field must be classified), the
+S1b subject test (a non-`Tunable` field owes floor + mutability enforcement in
+the loader), `size_of::<Ruleset>()` 1280 → 2312, and the golden digest.
+Three file ceilings were paid with **splits**: `resource.rs` → `resource/{mod,table}.rs`,
+`patch.rs` → `patch_resource.rs`, and the decoder tests out of `digest.rs` into
+`versioning.rs` (where Q1 had already put the versioning half).
+
+**Still open in Q2:** B2 the actor `pools[i32; 32]`, B3 the `Vital → qi` binding,
+B4 the `QTY-A8` caps arm.
 
 ### ✅ Q0b B3b + B3c — the epoch path is closed, end to end (2026-07-30)
 

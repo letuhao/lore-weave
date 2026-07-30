@@ -195,6 +195,12 @@ classify!(Ruleset {
     combat         => Floor::Preset, Mutability::Tunable, Strategy::Replace, "(group)";
     stats          => Floor::Preset, Mutability::Tunable, Strategy::Replace, "(group)";
     quantities     => Floor::Preset, Mutability::AdditiveOnly, Strategy::Union, "(L2 declared)";
+    // Q2 — the same class as `quantities`, and for the same reason: a higher
+    // layer may DECLARE a pool the layer below did not, and may never take one
+    // away. `Union` rather than `Replace` is what makes a reality layer additive
+    // over the engine default instead of a wholesale override that could drop a
+    // pool an actor's stored `pools[ordinal]` already holds a value in.
+    resources      => Floor::Preset, Mutability::AdditiveOnly, Strategy::Union, "(L2 declared)";
 });
 
 /// Top-level keys **no layer may declare**, with the reason an author gets told.
@@ -249,7 +255,7 @@ mod tests {
 
         assert_eq!(CombatRules::CLASSES.len(), 15);
         assert_eq!(StatRules::CLASSES.len(), 5);
-        assert_eq!(Ruleset::CLASSES.len(), 5);
+        assert_eq!(Ruleset::CLASSES.len(), 6);
     }
 
     /// **THE S1b TRIGGER FIRED, 2026-07-29, on `Q1`. This is what it became.**
@@ -298,7 +304,14 @@ mod tests {
             .collect();
         assert_eq!(
             subjects,
-            vec!["quantities"],
+            // Q2 added `resources`, and it owes the same two enforcements:
+            //   * floor  — `resolve` refuses a below-preset layer that declares
+            //              one (`a_pool_below_the_preset_floor_is_refused`)
+            //   * class  — AdditiveOnly, enforced BY CONSTRUCTION for the same
+            //              reason `quantities` is: the fold appends, and
+            //              `ResourceTable` has no verb for removal, so a lower
+            //              layer's pool cannot be taken away by a higher one.
+            vec!["quantities", "resources"],
             "the set of fields needing S1b enforcement changed. Every entry here must have a              floor rule and a mutability rule in `ruleset-loader::validate`, or it is a class              the table CLAIMS to govern and nothing enforces"
         );
     }

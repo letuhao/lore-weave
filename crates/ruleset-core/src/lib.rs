@@ -43,6 +43,7 @@ mod combat;
 mod provenance;
 mod never_reuse;
 mod quantity;
+mod resource;
 mod ruleset;
 mod slots;
 mod stats;
@@ -60,6 +61,12 @@ pub use quantity::{
     QuantityError, QuantityName, QuantityTable, MAX_DECLARED_QUANTITIES, MAX_QUANTITY_NAME_LEN,
 };
 pub use provenance::{Provenance, RulesetEpoch};
+// Q2 — QTY-A4 declared pools. A resource IS a declared quantity (one identity,
+// one ordinal); this is the row that says it is a POOL and how it behaves.
+pub use resource::{
+    CeilingBinding, RegenType, ResourceDecl, ResourceError, ResourceTable, ZeroBehaviour,
+    MAX_DECLARED_RESOURCES,
+};
 pub use ruleset::{
     LAW_VERSION, LAW_VERSION_UNVERSIONED, RULESET_SCHEMA_VERSION, ResolvedRuleset, Ruleset,
     SCHEMA_VERSION_OLDEST,

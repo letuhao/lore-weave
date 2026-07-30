@@ -22,7 +22,9 @@
 //! minutes of confusion into one line of diagnostic. Same reasoning as RLS-A5's
 //! rule that a tombstone against a missing ID is a load error and not a no-op.
 
-use ruleset_core::{CombatRules, QuantityError, Ruleset, SLOT_COUNT, StatRules};
+use ruleset_core::{CombatRules, QuantityError, ResourceError, Ruleset, SLOT_COUNT, StatRules};
+
+use crate::patch_resource::ResourcePatch;
 use serde::Deserialize;
 
 /// One layer's contribution to the combat rules.
@@ -206,6 +208,36 @@ pub struct RulesetPatch {
     /// "this layer adds no quantities", which is a complete statement.
     #[serde(default)]
     pub quantities: Vec<String>,
+
+    /// `Q2` — which of those identities are POOLS.
+    ///
+    /// A separate list rather than a field on the quantity entry, because
+    /// `quantities` is a flat `Vec<String>` an author writes as
+    /// `quantities = ["qi", "mana"]` — the shortest possible form for the
+    /// common case. Turning every entry into a table so that a minority can
+    /// carry pool policy would tax the majority for the minority's benefit.
+    #[serde(default)]
+    pub resources: Vec<ResourcePatch>,
+}
+
+/// Why a patch could not be folded. Two sources, kept apart so the loader can
+/// name the right one in its error rather than flattening both into "invalid".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PatchError {
+    Quantity(QuantityError),
+    Resource(ResourceError),
+}
+
+impl From<QuantityError> for PatchError {
+    fn from(e: QuantityError) -> Self {
+        Self::Quantity(e)
+    }
+}
+
+impl From<ResourceError> for PatchError {
+    fn from(e: ResourceError) -> Self {
+        Self::Resource(e)
+    }
 }
 
 impl RulesetPatch {
@@ -214,7 +246,7 @@ impl RulesetPatch {
     /// Fallible only because of `quantities`: a scalar override cannot fail, but
     /// an identity can be malformed, duplicated within one layer, or push the
     /// set past the engine's ordinal capacity.
-    pub fn apply(&self, base: &mut Ruleset) -> Result<(), QuantityError> {
+    pub fn apply(&self, base: &mut Ruleset) -> Result<(), PatchError> {
         self.combat.apply(&mut base.combat);
         self.stats.apply(&mut base.stats);
 
@@ -229,10 +261,28 @@ impl RulesetPatch {
                 // ACROSS layers it is a legitimate no-op: one file listing `qi`
                 // twice is a mistake nobody meant, and silently collapsing it
                 // is how an author never learns their edit did nothing.
-                return Err(QuantityError::Duplicate { name: name.clone() });
+                return Err(PatchError::Quantity(QuantityError::Duplicate { name: name.clone() }));
             }
             seen_here.push(name);
-            base.quantities.push(name)?;
+            base.quantities.push(name).map_err(PatchError::Quantity)?;
+        }
+
+        // Q2 — pools, AFTER the quantities of this layer are in. That order is
+        // load-bearing: a layer may declare `qi` and its pool in one file, and
+        // resolving the name to an ordinal before the name exists would refuse
+        // the most natural thing an author writes.
+        for r in &self.resources {
+            let ordinal = base.quantities.ordinal_of(&r.quantity).ok_or_else(|| {
+                // Reported as UnknownQuantity with the CURRENT count, so the
+                // message tells the author how many identities are actually
+                // visible at this point in the fold rather than just "no".
+                PatchError::Resource(ResourceError::UnknownQuantity {
+                    ordinal: u16::MAX,
+                    declared: base.quantities.len(),
+                })
+            })?;
+            let decl = r.to_decl(ordinal).map_err(PatchError::Resource)?;
+            base.resources.declare(decl, base.quantities.len()).map_err(PatchError::Resource)?;
         }
         Ok(())
     }

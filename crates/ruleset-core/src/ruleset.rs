@@ -6,13 +6,14 @@ use crate::canon::{Canon, CanonEncode, CanonError, CanonReader};
 use crate::combat::CombatRules;
 use crate::provenance::{Provenance, RulesetEpoch};
 use crate::quantity::QuantityTable;
+use crate::resource::ResourceTable;
 use crate::stats::StatRules;
 
 /// Bumped when the canonical ENCODING or the field set changes in a way that
 /// is not itself a rules change. Written first into every canonical stream, so
 /// an encoding change can never be mistaken for a rules change: both move the
 /// digest, but only one of them moves it for every reality at once.
-pub const RULESET_SCHEMA_VERSION: u32 = 3;
+pub const RULESET_SCHEMA_VERSION: u32 = 4;
 
 /// The oldest schema version this engine can still DECODE.
 ///
@@ -86,6 +87,15 @@ pub struct Ruleset {
     /// (QTY-A5). That is what makes the ordinal stable across edits instead of
     /// a function of file order.
     pub quantities: QuantityTable,
+    /// **Q2 — QTY-A4: which of those declared identities are POOLS.**
+    ///
+    /// Separate from `quantities` rather than a field on each entry, because
+    /// most declared quantities are not pools: a stat contribution key, a tag,
+    /// a progression axis. Folding an `Option<ResourceDecl>` into every
+    /// `QuantityName` would put ~24 dead bytes beside every identity and encode
+    /// a discriminant for each — for a table whose whole design note is that
+    /// only `0..n` is encoded.
+    pub resources: ResourceTable,
 }
 
 // QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in
@@ -120,7 +130,25 @@ pub struct Ruleset {
 //   `size_of` 16 bytes for every `n`, so this assertion would compile, always
 //   pass, and never be able to fire again — for every future slice, not just
 //   this one.
-const _: () = assert!(core::mem::size_of::<Ruleset>() <= 1280);
+//
+// * 1280 -> 2312, 2026-07-30 (`Q2`), for `resources: ResourceTable` — 32 rows
+//   of a 32-byte `ResourceDecl`, plus its length. Measured, not estimated.
+//
+//   `ResourceDecl` is 32 B rather than the ~20 its fields sum to, because
+//   `CeilingBinding::Slot(StatSlot)` inherits `StatSlot`'s `#[repr(usize)]`
+//   8-byte alignment. Storing the slot as a bare `u8` would recover ~256 B
+//   across the table and was NOT done: it would put an untyped ordinal in the
+//   hashed bytes with nothing checking it against the enum, which is precisely
+//   the drift `slots.rs` exists to prevent — and 256 B on a struct interned
+//   ONCE PER REALITY is not worth buying with an untyped index.
+//
+//   **The paragraph above about `digest()` and "~200 bytes" is now stale, and
+//   the distinction it glosses matters more than the number.** The STRUCT is
+//   2.3 KB; the ENCODED bytes are not, because only `0..n` is written. A
+//   reality declaring no pools encodes one extra length prefix over Q1 — four
+//   bytes — and BLAKE3 hashes what is encoded, not what is resident. Watch the
+//   encoded size, which is what `digest()` actually pays for.
+const _: () = assert!(core::mem::size_of::<Ruleset>() <= 2312);
 
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
@@ -135,6 +163,11 @@ impl Ruleset {
             // Q1 resolves to exactly this, so their digests move (a field
             // entered the bytes) but their BEHAVIOUR does not.
             quantities: QuantityTable::EMPTY,
+            // The engine declares no pools either. `hp` and `stamina` are not
+            // pools in this sense: they are ENGINE vitals backed by StatSlot
+            // ceilings and read by the laws directly, and QTY-A10(c) is why
+            // they stay exactly where they are.
+            resources: ResourceTable::EMPTY,
         }
     }
 
@@ -226,14 +259,24 @@ impl Ruleset {
         // nothing, and `EMPTY` states that rather than guessing it.
         let quantities =
             if schema_version >= 3 { QuantityTable::decode(&mut r)? } else { QuantityTable::EMPTY };
+        // v1..v3 predate declared pools. An artifact from before Q2 declared
+        // none, and `EMPTY` states that rather than guessing it.
+        let resources =
+            if schema_version >= 4 { ResourceTable::decode(&mut r)? } else { ResourceTable::EMPTY };
         r.finish()?;
 
         // Upcast: the value handed back is always the current shape. Note it
         // does NOT adopt the current `LAW_VERSION` — an old artifact ran under
         // whatever laws it ran under, and overwriting that would erase the one
         // fact this field exists to record.
-        let upcast =
-            Self { schema_version: RULESET_SCHEMA_VERSION, law_version, combat, stats, quantities };
+        let upcast = Self {
+            schema_version: RULESET_SCHEMA_VERSION,
+            law_version,
+            combat,
+            stats,
+            quantities,
+            resources,
+        };
         Ok((upcast, schema_version))
     }
 
@@ -256,7 +299,7 @@ impl Ruleset {
         // EXHAUSTIVE destructuring, same discipline as `canon` — a new field
         // must be considered here too, if only to decide it is not written at
         // an older version.
-        let Self { schema_version: _, law_version, combat, stats, quantities } = self;
+        let Self { schema_version: _, law_version, combat, stats, quantities, resources } = self;
         c.u32(version);
         if version >= 2 {
             c.u32(*law_version);
@@ -265,6 +308,9 @@ impl Ruleset {
         stats.canon(&mut c);
         if version >= 3 {
             quantities.canon(&mut c);
+        }
+        if version >= 4 {
+            resources.canon(&mut c);
         }
         Some(c.finish())
     }
@@ -291,12 +337,13 @@ impl CanonEncode for Ruleset {
         // `law_version` broke this line until it was named here, which is the
         // mechanism doing its job: a new field cannot silently stay out of the
         // digest.
-        let Self { schema_version, law_version, combat, stats, quantities } = self;
+        let Self { schema_version, law_version, combat, stats, quantities, resources } = self;
         c.u32(*schema_version);
         c.u32(*law_version);
         combat.canon(c);
         stats.canon(c);
         quantities.canon(c);
+        resources.canon(c);
     }
 }
 

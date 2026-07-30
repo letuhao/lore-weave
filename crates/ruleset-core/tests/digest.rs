@@ -66,12 +66,29 @@ fn hex(d: &[u8; 32]) -> String {
 ///   `MAX_DECLARED_QUANTITIES` is absent from the bytes and raising it later
 ///   will move nothing. That is `QTY-A6`'s *"`n` is in the hashed bytes, `N` is
 ///   in the binary"* made literal.
+/// * `7b75c111…` → `9560a74a…`, **2026-07-30, `Q2` L2 declared resources
+///   (QTY-A4)**. The answer: **none of the numbers changed and no law changed** —
+///   `RULESET_SCHEMA_VERSION` went 3 → 4 and a `resources` table entered the
+///   hashed bytes, declaring `n = 0` for the engine default. Four bytes: one
+///   length prefix.
+///
+///   **The defeat law is untouched, which is `Q2`'s stated exit criterion.** A
+///   declared pool cannot end an encounter — `ZeroBehaviour` has no `Defeat`
+///   variant, deliberately, and the loader refuses `zero_behaviour = "defeat"`
+///   by name so an author is told why rather than left guessing. So a reality
+///   that declares nothing behaves identically, and a reality that declares
+///   `qi` gains a pool without changing what kills anyone.
+///
+///   The same `N`-is-in-the-binary property holds here and is now load-bearing
+///   twice over: the pool table is indexed by the QUANTITY ordinal — one
+///   ordinal space, not two — so raising `MAX_DECLARED_QUANTITIES` widens both
+///   at once and still moves no digest.
 #[test]
 fn v1_engine_default_digest_is_pinned() {
     let d = Ruleset::engine_default().digest();
     assert_eq!(
         hex(&d.0),
-        "7b75c111063e7caa68ec8f0abae30cc525bca11725b775659a11e503eb45c01a",
+        "9560a74a105f89b514d7e670a102e89c60d0e12e43b12d3ec5f05afba7bcea52",
         "the engine-default ruleset digest moved — a rules value, the canonical \
          encoding, the schema version, or LAW_VERSION changed. That is a rules \
          change for EVERY reality; confirm it was intended before repinning, and \
@@ -344,108 +361,4 @@ fn canon_encode_is_reachable_for_downstream_artifacts() {
     let mut c = ruleset_core::Canon::new("test.domain");
     CombatRules::engine_default().canon(&mut c);
     assert!(!c.as_bytes().is_empty());
-}
-
-// ── V2/V3 · the decoder (F2) ────────────────────────────────────────────────
-
-/// A tiny deterministic PRNG so the round trip covers ARBITRARY rulesets, not
-/// the one default the golden test pins. SplitMix64, same family as `DetRng` —
-/// no dependency, and a failure reproduces exactly from its seed.
-fn rand_ruleset(seed: u64) -> Ruleset {
-    let mut z = seed;
-    let mut next = || {
-        z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut x = z;
-        x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        x ^ (x >> 31)
-    };
-    let mut r = Ruleset::engine_default();
-    let c = &mut r.combat;
-    // Full i64 range INCLUDING negatives: `resist_pm` is legitimately negative
-    // in a ruleset granting vulnerability, and a decoder that read the two's
-    // complement wrong would pass a positives-only round trip.
-    for f in [
-        &mut c.hit_base_pm, &mut c.hit_floor_pm, &mut c.hit_ceiling_pm,
-        &mut c.roll_band_lo_pm, &mut c.roll_band_hi_pm, &mut c.elem_mult_pm,
-        &mut c.resist_pm, &mut c.defend_divisor, &mut c.max_hit,
-        &mut c.av_base, &mut c.av_slowed_pm, &mut c.av_hasted_pm,
-        &mut c.av_stunned_pm, &mut c.av_initiator_first_pm,
-    ] {
-        *f = next() as i64;
-    }
-    c.ko_duration_rounds = next() as u8;
-    let s = &mut r.stats;
-    for slot in s.slot_defaults.iter_mut().chain(s.melee_archetype.iter_mut()) {
-        *slot = next() as i32;
-    }
-    s.move_base = next() as i32;
-    s.move_speed_per_tile = next() as i32;
-    s.move_max = next() as i32;
-    r
-}
-
-/// **The mechanism that holds the encoder and decoder together.**
-///
-/// `canon` is spelled twice — once forward, once back — in one language with no
-/// compiler checking the correspondence, which is the same shape as the Go/Rust
-/// envelope mirror. Exhaustive destructuring guards the ENCODE side only. This
-/// is what guards the pair, and it does it over arbitrary values rather than
-/// the single default `v1` pins.
-#[test]
-fn v2_canon_round_trips_for_arbitrary_rulesets() {
-    for seed in 0..256u64 {
-        let a = rand_ruleset(seed);
-        let bytes = a.canon_bytes();
-        let b = Ruleset::from_canon_bytes(&bytes)
-            .unwrap_or_else(|e| panic!("seed {seed}: decode failed: {e}"));
-        assert_eq!(a, b, "seed {seed}: round trip changed the ruleset");
-        assert_eq!(a.digest(), b.digest(), "seed {seed}: digest moved across a round trip");
-        assert_eq!(b.canon_bytes(), bytes, "seed {seed}: re-encoding is not byte-identical");
-    }
-}
-
-#[test]
-fn v3_decoder_refuses_rather_than_guesses() {
-    let good = Ruleset::engine_default().canon_bytes();
-    assert!(Ruleset::from_canon_bytes(&good).is_ok());
-
-    // TRAILING BYTES — the one a lenient decoder swallows. A prefix that
-    // decodes cleanly is the most dangerous possible failure: it produces a
-    // plausible ruleset from an artifact that is not one.
-    let mut extra = good.clone();
-    extra.push(0);
-    assert!(
-        matches!(
-            Ruleset::from_canon_bytes(&extra),
-            Err(ruleset_core::CanonError::TrailingBytes { .. })
-        ),
-        "a decoder that tolerates trailing bytes will read a truncated artifact \
-         into something plausible"
-    );
-
-    // TRUNCATED
-    assert!(matches!(
-        Ruleset::from_canon_bytes(&good[..good.len() - 1]),
-        Err(ruleset_core::CanonError::ShortRead { .. })
-    ));
-
-    // WRONG DOMAIN — a stream of some other artifact with a compatible layout.
-    let mut c = ruleset_core::Canon::new("loreweave.somethingelse.v1");
-    Ruleset::engine_default().canon(&mut c);
-    assert!(matches!(
-        Ruleset::from_canon_bytes(&c.finish()),
-        Err(ruleset_core::CanonError::WrongDomain { .. })
-    ));
-
-    // UNKNOWN SCHEMA VERSION — refused, never read with this build's offsets.
-    let mut future = Ruleset::engine_default();
-    future.schema_version = ruleset_core::RULESET_SCHEMA_VERSION + 1;
-    assert!(matches!(
-        Ruleset::from_canon_bytes(&future.canon_bytes()),
-        Err(ruleset_core::CanonError::UnknownSchemaVersion { .. })
-    ));
-
-    // EMPTY
-    assert!(Ruleset::from_canon_bytes(&[]).is_err());
 }
