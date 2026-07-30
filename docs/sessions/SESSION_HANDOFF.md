@@ -679,10 +679,22 @@ place in the story at all**.
 This is not the author picking a bad combination — *the logic did not wire itself*. A writer
 should never have to know the column exists.
 
-**Fixed (`D-SCENE-STORY-ORDER-UNWIRED`):** `_next_story_order` beside `_next_rank`, same append
-semantics, same `IS NOT DISTINCT FROM` NULL-grouping, `NOT is_archived`, 1-based (a 0 first
-scene would match its own `story_order < 1` query). Scenes only — a chapter's order is the book
-spine's. An explicit value still wins, so PlanForge's numbering is untouched.
+**Fixed (`D-SCENE-STORY-ORDER-UNWIRED`)** — create now delegates to the existing
+`_renumber_scene_story_order`, the same helper the move path calls. Scenes only, and only when
+no explicit value was passed, so PlanForge's and the decompiler's own numbering are untouched.
+
+**The first cut of this fix was wrong, and reviewing it against PlanForge's spec is what
+caught it.** I wrote a local `max(story_order) + 1` per parent — which unit tests on its own
+arithmetic would have happily confirmed. But this column is **chapter-major / scene-minor on
+ONE strided global axis**: `chapter.story_order + i`, zero-based, chapters at `n * 1000`, shared
+with `plan.py`'s commit, `chapter_gen`, the packer's strictly-prior lenses and the canon-rule
+windows. A per-parent 1..N sequence would have been a **third** convention on a column whose own
+docstring records that two conventions already shipped once and destroyed the global reading
+order the first time anyone dragged a scene. `plan_link_service` carries the same warning at its
+scene upsert: *"Two conventions on one column is a bug this repo has already shipped once."*
+
+One axis, one implementation. Live: chapter at `0` → scenes `0,1,2,3,4`, a newly created one
+lands at `5` — and the canonical renumber repaired the earlier bad `1..5` backfill in place.
 
 **Measured on the live book** (backfilled 1–5, re-drafted scenes 2 and 3):
 the far-leak is GONE — neither closes on scene 5's counting-shadow image any more; each ends on

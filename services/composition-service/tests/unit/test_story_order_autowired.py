@@ -9,18 +9,26 @@ reads (`prior_scene_drafts`: `story_order < $3`, the D-COMP-LONGFORM-STATE-REINJ
 fallback that shows a draft what its earlier siblings already wrote). NULL matches nothing,
 so the reinjection returned empty and every scene drafted blind — which turned the system
 prompt's *"do NOT reuse a distinctive image you have already used in this work"* into an
-instruction with no data to check against.
+instruction with no data to check against. Measured on the Mị Đế book: five scenes, five
+different beats, and **all five closed on the same image**.
 
-Measured on the Mị Đế book: five scenes, five different beats, and **all five closed on the
-same image** (the Thanh Tâm Ấn seed and a watching figure who is *counting*).
+**Why this file mostly tests which CODE PATH runs, not arithmetic.** The first cut computed
+a local `max(story_order) + 1` per parent. That was wrong in a way unit tests on its own
+numbers would have happily confirmed: this column is chapter-major / scene-minor on ONE
+strided global axis (`chapter.story_order + i`, zero-based, chapters at `n * 1000`), shared
+with plan.py's commit, `chapter_gen`, the packer's strictly-prior lenses and the canon-rule
+windows. A per-parent 1..N sequence is a THIRD convention on a column whose own docstring
+records that two conventions already shipped once and destroyed the global reading order the
+first time anyone dragged a scene.
 
-The deeper point, and why the fix is in the repository rather than a caller: this was never
-a bad choice by the author. **The logic simply did not wire itself.** A writer should not
-have to know this column exists.
+So the thing worth pinning is that create DELEGATES to `_renumber_scene_story_order` — the
+one surviving implementation, the same one the move path calls — instead of growing a
+private notion of "next".
 """
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -28,54 +36,90 @@ from app.db.repositories.outline import OutlineRepo
 
 PROJECT = uuid.uuid4()
 CHAPTER_NODE = uuid.uuid4()
+NEW_NODE = uuid.uuid4()
 
 
 class _Conn:
-    """Records the story_order the repo computes, without a database."""
+    """Enough asyncpg surface for create_node, recording what it delegated to."""
 
-    def __init__(self, existing_max: int | None):
-        self._max = existing_max
-        self.asked: list[str] = []
+    def __init__(self):
+        self.executed: list[str] = []
+        self.renumbered = False
+
+    async def fetchrow(self, sql, *args):
+        if sql.strip().startswith("INSERT INTO outline_node"):
+            return {"id": NEW_NODE}
+        return {"id": NEW_NODE}
 
     async def fetchval(self, sql, *args):
-        self.asked.append(sql)
-        return self._max if "max(story_order)" in sql else None
+        return None
+
+    async def execute(self, sql, *args):
+        self.executed.append(sql)
+        # The canonical renumber is recognisable by its shape, not its name.
+        if "row_number() OVER (ORDER BY rank" in sql and "story_order" in sql:
+            self.renumbered = True
+
+
+def _repo_with(conn) -> OutlineRepo:
+    repo = OutlineRepo(object())
+    # _row_to_node is not under test; the delegation is.
+    return repo
+
+
+async def _create(kind: str, story_order=None):
+    conn = _Conn()
+    repo = _repo_with(conn)
+    repo._validate_parent = AsyncMock(return_value=None)
+    repo._next_rank = AsyncMock(return_value="a0")
+    import app.db.repositories.outline as mod
+    real_row_to_node = mod._row_to_node
+    mod._row_to_node = lambda row: row
+    try:
+        await repo.create_node(
+            PROJECT, kind=kind, parent_id=CHAPTER_NODE, created_by=uuid.uuid4(),
+            story_order=story_order, conn=conn,
+        )
+    finally:
+        mod._row_to_node = real_row_to_node
+    return conn
 
 
 @pytest.mark.asyncio
-async def test_the_first_scene_in_a_chapter_is_1_not_0():
-    """1-based on purpose: with a 0 first scene, `story_order < 1` would match it and the
-    opening scene would be handed itself as 'prior context'."""
-    repo = OutlineRepo(object())
-    conn = _Conn(existing_max=None)
-    assert await repo._next_story_order(conn, PROJECT, CHAPTER_NODE) == 1
+async def test_a_new_scene_is_placed_on_the_reading_axis():
+    """THE FIX. Before it, a scene created outside PlanForge kept story_order NULL and the
+    cross-scene reinjection silently matched nothing."""
+    conn = await _create("scene")
+    assert conn.renumbered, "create must place the scene on the reading axis"
 
 
 @pytest.mark.asyncio
-async def test_the_next_scene_appends_after_the_last_sibling():
-    repo = OutlineRepo(object())
-    conn = _Conn(existing_max=4)
-    assert await repo._next_story_order(conn, PROJECT, CHAPTER_NODE) == 5
+async def test_it_delegates_to_the_ONE_renumber_rather_than_inventing_a_next():
+    """The delegation IS the point. `chapter.story_order + i` (zero-based, chapters
+    strided at n*1000) is shared with plan.py, chapter_gen, the packer's strictly-prior
+    lenses and the canon windows; a private `max + 1` here would be a third convention on
+    a column that has already shipped a two-convention bug."""
+    conn = await _create("scene")
+    renumbers = [s for s in conn.executed if "row_number() OVER (ORDER BY rank" in s]
+    assert len(renumbers) == 1
+    sql = renumbers[0]
+    # chapter-major: the scene's slot is its CHAPTER's slot plus its index…
+    assert "SELECT story_order AS b FROM outline_node" in sql
+    # …zero-based, so the first scene sits exactly on its chapter's own slot.
+    assert "- 1) AS idx" in sql
 
 
 @pytest.mark.asyncio
-async def test_siblings_are_grouped_by_parent_with_null_comparing_equal():
-    """`parent_id IS NOT DISTINCT FROM $2` — a plain `=` never matches NULL, so top-level
-    nodes would each restart at 1. Mirrors `_next_rank`'s grouping exactly."""
-    repo = OutlineRepo(object())
-    conn = _Conn(existing_max=2)
-    await repo._next_story_order(conn, PROJECT, None)
-    sql = conn.asked[-1]
-    assert "IS NOT DISTINCT FROM" in sql
-    # Archived siblings must not hold a number: deleting a scene then adding one would
-    # otherwise leave a permanent gap that the strictly-prior query reads across.
-    assert "NOT is_archived" in sql
+async def test_an_explicit_story_order_is_left_alone():
+    """PlanForge passes its own numbering (and the decompiler passes imported positions).
+    Create must not renumber over an authored axis."""
+    conn = await _create("scene", story_order=4000)
+    assert not conn.renumbered
 
 
 @pytest.mark.asyncio
-async def test_it_is_scoped_to_the_project():
-    """Two books' chapters must not share a numbering sequence."""
-    repo = OutlineRepo(object())
-    conn = _Conn(existing_max=1)
-    await repo._next_story_order(conn, PROJECT, CHAPTER_NODE)
-    assert "project_id = $1" in conn.asked[-1]
+async def test_a_chapter_is_never_renumbered_by_this_path():
+    """A chapter's slot comes from the book spine (`n * 1000`), not from its siblings —
+    renumbering chapters here would fight the axis it is trying to join."""
+    conn = await _create("chapter")
+    assert not conn.renumbered
