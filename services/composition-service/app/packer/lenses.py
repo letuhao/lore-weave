@@ -480,6 +480,26 @@ async def gather_motif(
     return "\n".join(lines)
 
 
+#: D-RECENT-STUB-SUPPRESSES-FALLBACK — what makes an accepted draft the story-so-far
+#: rather than a stub. Both bars are low on purpose: this is not judging quality, only
+#: separating "the author has written into this chapter" from "there is a line in here".
+#: A real drafted scene clears them by an order of magnitude; a title, a note, or a
+#: single pasted sentence does not.
+_SUBSTANTIAL_DRAFT_MIN_WORDS = 80
+_SUBSTANTIAL_DRAFT_MIN_PARAGRAPHS = 2
+
+
+def _is_substantial_draft(paragraphs: list[str]) -> bool:
+    """Whether an accepted chapter draft is enough to REPLACE the prior-scene reinjection.
+
+    The old test was `if paras:` — any non-blank line at all — so one stray sentence in a
+    chapter draft silently switched the whole S1 mechanism off. See `gather_recent`.
+    """
+    if len(paragraphs) >= _SUBSTANTIAL_DRAFT_MIN_PARAGRAPHS:
+        return True
+    return sum(len(p.split()) for p in paragraphs) >= _SUBSTANTIAL_DRAFT_MIN_WORDS
+
+
 async def gather_recent(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *,
     k: int = _RECENT_PARAGRAPHS,
@@ -497,24 +517,47 @@ async def gather_recent(
     scene winners, **STRICTLY position-bounded** (`story_order < current`;
     spoiler-safe, /review-impl H1). Returns ALL prior prose as paragraphs — the
     budget ladder protects the immediate-preceding one (PRIO_RECENT_IMMEDIATE) and
-    trims older ones (PRIO_RECENT_OLDER), so it never evicts canon/spoiler-safety."""
+    trims older ones (PRIO_RECENT_OLDER), so it never evicts canon/spoiler-safety.
+
+    **D-RECENT-STUB-SUPPRESSES-FALLBACK** — "is there an accepted draft?" used to be
+    `if paras:`, i.e. ANY non-blank line at all. A chapter whose draft holds one stray
+    sentence — a title the author typed, a note, a single line pasted to check that Save
+    works — therefore beat the fallback, and the whole S1 mechanism went dark while
+    looking healthy. Measured on the Mị Đế book: five drafted scenes, and every prompt's
+    `<recent>` block held the same 25-word test sentence instead of the preceding scenes'
+    prose. The reinjection had never once run.
+
+    So the question is not "is there text" but "is there enough text to BE the story so
+    far". Below the floor the two sources are UNIONED rather than exchanged: a genuine
+    stub is usually a heading or an opening line the author does want honoured, so
+    dropping it would trade one silent loss for another."""
     try:
         draft = await book.get_draft(book_id, chapter_id, bearer)
         text = draft.get("text_content") or ""
     except BookClientError:
         text = ""
     paras = [p.strip() for p in text.split("\n") if p.strip()]
-    if paras:
+    if _is_substantial_draft(paras):
         return paras[-k:]  # primary: the accepted draft tail
-    # Fallback: no accepted draft → prior generated scene winners (strictly prior).
+    # Fallback: no SUBSTANTIAL accepted draft → prior generated scene winners (strictly
+    # prior). Whatever stub the draft did hold is kept and placed FIRST, so an opening
+    # line or heading the author wrote still leads the "story so far" and the generated
+    # scenes follow it in reading order.
     if jobs_repo is not None and project_id is not None and story_order is not None:
         try:
             prior = await jobs_repo.prior_scene_drafts(project_id, chapter_id, story_order)
         except Exception:  # noqa: BLE001
             logger.warning("gather_recent prior-scene fallback failed", exc_info=True)
-            return []
-        return [p.strip() for t in prior for p in t.split("\n") if p.strip()]
-    return []
+            return paras[-k:]
+        recovered = [p.strip() for t in prior for p in t.split("\n") if p.strip()]
+        if recovered:
+            logger.info(
+                "gather_recent: S1 reinjection supplied %d paragraph(s) from %d prior "
+                "scene(s) (chapter draft held %d stub line(s), below the substantial floor)",
+                len(recovered), len(prior), len(paras),
+            )
+        return paras + recovered
+    return paras[-k:]
 
 
 async def gather_source_scene(

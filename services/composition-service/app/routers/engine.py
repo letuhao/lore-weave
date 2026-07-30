@@ -103,7 +103,12 @@ class GenerateBody(BaseModel):
     operation: str = "draft_scene"
     mode: Literal["cowrite", "auto"] = "cowrite"
     guide: str = ""
-    max_output_tokens: int = Field(default=_MAX_OUTPUT_DEFAULT, ge=1, le=8192)
+    # D-SCENE-OUTPUT-BUDGET-FLAT — None means "size it for me", and it is the default
+    # because a caller almost never knows the right ceiling: it depends on the scene's
+    # `target_words` AND the book's language (900 Vietnamese words is ~2300 tokens, 900
+    # English words ~1300). The old flat `_MAX_OUTPUT_DEFAULT` default silently truncated
+    # every long scene — see `scene_output_budget`. An explicit value still wins.
+    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
     # Author reasoning preference. "auto" → the capability-aware resolver decides
     # (adaptive model → pass through; effort model → rule-based scorer; non-
     # reasoning → no-op). off/low/medium/high are explicit overrides. The
@@ -488,10 +493,17 @@ async def generate(
     # Length target for the scene draft: the scene's own target_words if the planner set one, else
     # the default (a max_output_tokens cap alone is a ceiling, not a target → the model runs short,
     # measured 83 words). Scene path only; the chapter path assembles per-scene.
-    from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS
+    from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS, scene_output_budget
     _scene_target = getattr(node, "target_words", None) or DEFAULT_SCENE_TARGET_WORDS
     messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide,
                               target_words=_scene_target)
+    # D-SCENE-OUTPUT-BUDGET-FLAT — the ceiling must be able to CONTAIN the length the
+    # directive just asked for. These two numbers used to be set independently and sat
+    # adjacent in `job.input` disagreeing (`target_words: 900` next to `max_out: 1024`),
+    # so every long scene was truncated and it read as the model writing short. An
+    # explicit caller value still wins; None means "size it for me".
+    _max_out = body.max_output_tokens or scene_output_budget(
+        _scene_target, pc.profile.source_language)
     counter = B.default_counter()
     prompt_estimate = estimate_prompt_tokens(messages, counter)
     # Budget pre-check (local advisory): refuse if the prompt alone blows the cap.
@@ -545,7 +557,7 @@ async def generate(
             "outline_node_id": str(node.id), "guide": body.guide,
             # Length target for the worker's diverge draft (else it free-runs SHORT — 83 words).
             "target_words": node.target_words or DEFAULT_SCENE_TARGET_WORDS,
-            "max_out": body.max_output_tokens,
+            "max_out": _max_out,
             "reasoning_passthrough": reasoning.passthrough,
             "grounding_available": pc.grounding_available,
             "reinjected_promise_count": pc.reinjected_promise_count,
@@ -623,7 +635,7 @@ async def generate(
                              k_ceiling=settings.compose_diverge_k,
                              high_threshold=settings.plan_high_tension_threshold),
                 prompt_est=prompt_estimate,
-                max_tokens=body.max_output_tokens, temperature=settings.compose_diverge_temperature,
+                max_tokens=_max_out, temperature=settings.compose_diverge_temperature,
                 reasoning=reasoning,
             )
         except Exception as exc:  # diverge produced nothing / transport — fail the job, 502
@@ -653,7 +665,7 @@ async def generate(
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),
                 judge_source=str(c_src) if distinct else None,
                 judge_ref=str(c_ref) if distinct else None,
-                prompt_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
+                prompt_estimate=prompt_estimate, max_output_tokens=_max_out,
                 # /review-impl #2 — clamp the per-work setting to a sane ceiling so
                 # a typo'd/abusive reflect_max_iters can't fan out N revise LLM
                 # calls per generate (the §10.1 backtrack budget bound).
@@ -726,8 +738,8 @@ async def generate(
         async for ev in stream_draft(
             llm.sdk, user_id=str(user_id), model_source=body.model_source,
             model_ref=str(body.model_ref), messages=messages,
-            prompt_token_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
-            hard_cap_output=body.max_output_tokens * 2,
+            prompt_token_estimate=prompt_estimate, max_output_tokens=_max_out,
+            hard_cap_output=_max_out * 2,
             # The whole directive, not a collapsed effort — passthrough/suppress/omit are
             # decided once by the resolver and rendered once by `wire_fields`.
             reasoning=reasoning,

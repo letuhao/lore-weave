@@ -784,6 +784,66 @@ where it belongs. Four of five endings are distinct and on their own beat.
    remark, though its own cast is Lâm Uyên alone. Adjacent bleed survived; only the far bleed
    was cured.
 
+## 🩺 Three more, all "a real mechanism with one link missing" (2026-07-30)
+
+Asked to check effort/token limits, on the hypothesis that an incorrect implementation was
+sinking the output. It was — and reading `job.input` found two more behind it.
+
+**`D-SCENE-OUTPUT-BUDGET-FLAT`.** The scene path used `_MAX_OUTPUT_DEFAULT = 1024`, a flat
+constant with no relationship to the length it was asking for. In `job.input` the two sat
+**adjacent and disagreeing**:
+
+```json
+"target_words": 900,     // what the LENGTH directive asks the model for
+"max_out": 1024,         // what the wire actually allows
+```
+
+900 Vietnamese words is ~2300 tokens, so every long scene was cut off at roughly a third of
+the ask — and it read as the model writing short. The chapter path already sizes its budget
+from the plan (`len(scenes) * chapter_gen_per_scene_tokens`); the scene path simply never got
+it. Now `scene_output_budget(target_words, language)`, with a per-script tokens-per-word table
+(vi 2.6, zh/ja 3.2, latin 1.7) and headroom, clamped to the schema's `le=8192`. **Live: 1024 →
+3159** for a 900-word Vietnamese scene.
+
+**`D-RECENT-STUB-SUPPRESSES-FALLBACK`.** "Is there an accepted draft?" was `if paras:` — any
+non-blank line. The 25-word sentence typed to test the Save button therefore beat the S1
+prior-scene reinjection, and **the whole mechanism had never once run**; every prompt's
+`<recent>` block held that one test sentence. Now a substantiality floor (≥2 paragraphs or ≥80
+words), and below it the two sources are **unioned rather than exchanged** — a stub is usually
+a heading the author does want honoured. It now logs when it fires, so "is it on?" is one
+grep instead of an inference.
+
+**`D-ARCHIVED-SCENE-PROSE-LEAK` — the worst of the three.** `generation_jobs.py` had **no
+`is_archived` filter anywhere**, in any of its three scene-prose readers. A soft-deleted scene
+kept contributing its text. The reinjection log told on it immediately: *"74 paragraph(s) from
+8 prior scene(s)"* — for a **five**-scene chapter. Archived scenes from earlier runs were
+being fed back, which is exactly how a discarded ending reappeared in a freshly written scene.
+The symptom points at the model; the cause was a missing WHERE clause.
+
+And `chapter_scene_drafts` is the **stitch** input, so the same hole meant an author who
+deleted a scene and published the chapter would find the deleted prose in the published text.
+Fixed in all three, with a gate that also fails if a fourth reader is added without the filter
+(proven red by deleting the predicate and restoring from memory).
+
+**Measured across the three re-drafts of Chương 1:**
+
+| | target | flat 1024 | + budget | + archived filter |
+|---|---|---|---|---|
+| Hiện trường đẫm máu | 900 | 445 | 547 | **584** |
+| Ánh mắt rạn nứt | 850 | 414 | 709 | **573** |
+| Ánh nhìn thầm lặng | 800 | 532 | 479 | **510** |
+| Sự dao động của linh năng | 750 | 618 | 603 | **573** |
+| Mầm mống trả thù | 800 | 736 | 595 | **590** |
+
+**All five endings are now distinct and on their own beat** — the Thanh Tâm Ấn seed appears
+only in scene 5, and no deleted-scene prose survives anywhere.
+
+**What is left is no longer plumbing.** With a 3159-token ceiling the model stops at ~580
+words against a 750–900 target, so this is prompt adherence, not truncation — a different
+problem needing a different tool (a length-check + continue pass, or a stronger model). Scenes
+3 and 4 also still trade material between themselves; the far leak is cured, the adjacent one
+is not.
+
 ### Two residuals from the story_order fix, both still open:
 1. Scene 3 now echoes scene 2's *closing line* almost verbatim
    (*"…món quà chàng dùng máu của người khác để tặng cho kẻ thù"*). The reinjection block reads

@@ -99,6 +99,52 @@ def estimate_prompt_tokens(messages: list[dict[str, Any]], counter: Callable[[st
 #: chapter). Tunable; the scene's own `target_words` (when the planner sets it) always wins.
 DEFAULT_SCENE_TARGET_WORDS = 1000
 
+#: D-SCENE-OUTPUT-BUDGET-FLAT — tokens per WORD, by script family.
+#:
+#: A word is not a token, and the ratio is not close to 1 outside English. Latin-script
+#: prose runs ~1.4 tokens/word; Vietnamese carries a diacritic on a large share of its
+#: syllables and each one costs extra BPE pieces, so it runs closer to 2.6; CJK has no
+#: spaces at all, so "words" split on whitespace under-counts badly.
+#:
+#: These are deliberately GENEROUS. Over-provisioning the ceiling costs nothing — a model
+#: stops when the passage is done, and `max_tokens` is a ceiling, not a target (the LENGTH
+#: directive is what asks for a length). Under-provisioning silently truncates mid-sentence,
+#: which is the bug this table exists to end.
+_TOKENS_PER_WORD: dict[str, float] = {"vi": 2.6, "th": 2.6, "zh": 3.2, "ja": 3.2, "ko": 3.0}
+_TOKENS_PER_WORD_DEFAULT = 1.7
+
+#: Headroom over the computed need: a scene that lands slightly long must not be cut off
+#: one sentence from its ending. The `le=8192` request bound still clamps the result.
+_OUTPUT_BUDGET_HEADROOM = 1.35
+
+
+def scene_output_budget(
+    target_words: int | None, source_language: str | None, *, ceiling: int = 8192,
+) -> int:
+    """The output-token ceiling a scene draft needs to actually REACH `target_words`.
+
+    D-SCENE-OUTPUT-BUDGET-FLAT. The scene path used a flat `_MAX_OUTPUT_DEFAULT = 1024`
+    that had no relationship to the length it was asking for. In `job.input` the two sat
+    ADJACENT and disagreed:
+
+        "target_words": 900,     # what the LENGTH directive asks the model for
+        "max_out": 1024,         # what the wire actually allows
+
+    900 Vietnamese words is ~2300 tokens, so the model was cut off at roughly a third of
+    the ask — and it looked like the model writing short. Measured on the Mị Đế book:
+    targets of 900/850/800/750/800 produced 445/414/532/618/736 words.
+
+    The chapter path already sizes its budget from the plan
+    (`len(scenes) * chapter_gen_per_scene_tokens`, clamped). This is the same idea for the
+    scene path, which simply never got it: **guidance and capability must move as one
+    signal.** A prompt that asks for 900 words while the wire allows 1024 tokens is not a
+    length instruction, it is a truncation.
+    """
+    words = target_words or DEFAULT_SCENE_TARGET_WORDS
+    lang = (source_language or "").split("-")[0].lower()
+    per_word = _TOKENS_PER_WORD.get(lang, _TOKENS_PER_WORD_DEFAULT)
+    return max(1, min(ceiling, int(words * per_word * _OUTPUT_BUDGET_HEADROOM)))
+
 
 def build_messages(
     packed_prompt: str, profile: BookProfile, operation: str, guide: str = "",
