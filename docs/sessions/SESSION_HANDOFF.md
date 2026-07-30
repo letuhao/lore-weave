@@ -1,5 +1,55 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🗂️ "End my day" ran the diary distiller on the CHAT model — the `distill` setting was dead (2026-07-30)
+
+Asked to run `assistant-endofday` on gemma-4 26B QAT. The run exposed a real defect, and the
+answer to "why not just use one model" is: **you can't, and the code was forcing exactly that.**
+
+### The defect
+`useEndOfDay` read the model off the assistant CHAT session and sent it as the distill model:
+
+```ts
+// (Q8 server-side model resolution is a follow-up; for now the session carries it).
+model_ref: assistant.model_ref,   // ← always the CHAT model
+```
+
+chat-service already resolves this properly (`distill` default → `chat` default, WS-3.0/D-B1) —
+but only `if not model_ref`. Since the FE always sent one, **the user's `distill` capability
+default was stored and never read.** The BFF made it unfixable from the client: `end-day`
+**400'd** unless `model_source`+`model_ref` were present, and substituted a hardcoded
+`entry_zone: 'UTC'`, overriding the timezone chat-service resolves from auth.
+
+### Why one model cannot serve both (measured against lm_studio)
+| model | `content` | `reasoning_content` |
+|---|---|---|
+| gemma-4-26b-a4b-qat **with** `thinking:false` | **0 chars** | 1305 |
+| gemma-4-26b-a4b-qat, no kwargs | **0 chars** | 1260 |
+| qwen2.5-7b-instruct (the account's `distill` default) | **56–143 chars** ✓ | 0 |
+
+Gemma-4 QAT puts everything in `reasoning_content` and leaves `content` empty — and
+`chat_template_kwargs {thinking:false, enable_thinking:false}`, which the distiller already
+sends, does **not** suppress it. So the diary distill produced
+`BLANK completion → model_no_output → no entry`, every day, silently. That is precisely why the
+account had a separate non-reasoning `distill` default — and the FE defeated it.
+
+### Fixed
+- **FE**: `endDay` sends no model; the server resolves it (the "Q8 follow-up" the comment promised).
+- **BFF**: `model_source`/`model_ref`/`entry_zone` optional and **forwarded by omission** — an
+  omitted field is what triggers server-side resolution; a placeholder is indistinguishable
+  from a real choice. New spec asserts the absence is forwarded, **proven red-able**.
+- **Proof**: a run wrote a real entry in **12.7s** (`status=written`, facts=3) — text:
+  *"Today, I successfully shipped the Q3 billing migration..."* — and `llm_jobs` shows the
+  distiller's map prompt running on **`019eb620` (qwen)**, which was impossible before.
+
+### ⚠ Newly surfaced, NOT fixed — a silent seam in provider-registry
+Later runs went blank again, and the job row explains it: the qwen job is
+`status=completed`, **`input_tokens: 0, output_tokens: 0`, `content: ""`, no `error_code`, no
+`finish_reason`** — a call that produced nothing recorded as a **success**. Downstream can
+only see "blank completion" and guesses *"a reasoning model?"*, which mis-attributes the
+cause (here it looks like a cold JIT-load race in lm_studio). **A completed job with zero
+tokens and empty content should not be `completed`.** Next thread to pull.
+
+
 ## 🧭 studio-kg-authoring-journey: the test could not read Vietnamese (2026-07-30)
 
 **Answer: there was no product bug.** The spec failed at STEP 6 asserting

@@ -245,11 +245,35 @@ describe('AssistantController — end-day (A1 public distill trigger)', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it('400 when book_id / model_ref are missing — never touches chat', async () => {
+  it('400 when book_id is missing — never touches chat', async () => {
     const f = jest.fn();
     (global as any).fetch = f;
-    await expectStatus(controller.endDay({ book_id: 'diary-1' }, bearer('u1')), 400);
+    await expectStatus(controller.endDay({} as any, bearer('u1')), 400);
     expect(f).not.toHaveBeenCalled();
+  });
+
+  it('OMITS model_source/model_ref when the caller sends none, so chat resolves the distill default', async () => {
+    // The load-bearing assertion. chat-service resolves the user's `distill` default (then
+    // `chat`) ONLY when the field is absent, so this handler must forward the ABSENCE — not a
+    // placeholder. It used to 400 here instead, which made the user's `distill` setting
+    // unreachable from the UI: the FE always sent the chat session's model and that won every
+    // time. On an account whose chat model returns its answer as `reasoning_content` with an
+    // empty `content`, that produced a blank completion and no diary entry at all.
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(202, { enqueued: true, entry_date: '2026-07-30', message_id: '1-0' }));
+    (global as any).fetch = f;
+
+    await controller.endDay({ book_id: 'diary-1' }, bearer('u1'));
+
+    expect(f).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse((f.mock.calls[0][1] as any).body);
+    expect(sent).not.toHaveProperty('model_source');
+    expect(sent).not.toHaveProperty('model_ref');
+    // entry_zone likewise: a hardcoded 'UTC' would override the user's real timezone, which
+    // chat-service resolves from auth when the field is absent.
+    expect(sent).not.toHaveProperty('entry_zone');
+    expect(sent.book_id).toBe('diary-1');
   });
 
   it('forwards to chat internal distill with the SERVER-DERIVED user_id + internal token, NO entry_date', async () => {
