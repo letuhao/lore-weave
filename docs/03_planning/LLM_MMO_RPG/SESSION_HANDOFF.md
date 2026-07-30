@@ -57,6 +57,88 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ The content pipeline (38) + the progression module (39) — and a red team that found five checks which could not fail (2026-07-30)
+
+**Two new design docs, `CPL-*` and `PGN-*`.** Doc 38 is the tier between a LoreWeave **book** and a
+loadable reality; doc 39 is the **first element module** under `CPL-A3` and the pipeline POC. Both
+were written this session; doc 39 was then **rewritten (v2) after a four-lens red team**, and §0.1
+keeps the damage in place rather than laundering it.
+
+**The PO's three corrections that shaped doc 38**, each quoted inline in the doc where the draft was
+wrong: LLM is a *creative function*, procedural is the spine (the Diablo-2 shape); *"no you wrong"* —
+an artifact falling from the sky is a **runtime** LLM event stored to the ledger, and the first draft
+of `CPL-A10` would have deleted that whole tier; and effect generation is a **separate generator**
+from item generation, rare, because it can break balance. That last one produced `CPL-A16`'s finding
+that the **gate polarity flips**: an artifact can be vetoed *after* because retracting an object
+removes an object, but an effect cannot — by then it is rolled onto items and its outcomes are
+resolved in the ledger, so retracting it **invalidates history**.
+
+**What the red team found in doc 39 v1 — the headline is not a bug, it is a class.** Five mechanisms
+that **cannot fail**, in a document whose own §11 preamble states the rule and whose `PGN-A8` cites
+`NV-1` by name:
+
+1. §7 claimed the `CapRule`×`CurveDecl` refusal surface *"exists today"*. **`ProgressionSchemaValidator`,
+   `ProgressionKindDecl`, `TierDecl`, `CapRule` — ZERO hits across `crates/`, `services/`,
+   `contracts/`.** `PROG_001` §5.5 is a markdown table containing a *sentence about* a validator. The
+   claim was read from a catalog row and never checked against code, in the section whose preamble
+   says *"evaluated against code, not from the docs."*
+2. `PGN-A6`'s bite-test asserted **an input equals itself** (S5 fetches S3 *by digest*, so
+   `structure_hash` is supplied by the test) — `NV-2`.
+3. `PGN-A2`'s `schema_fingerprint` is green for a brief with **zero questions** — deleting a question
+   row moves neither operand, which is exactly the failure it claimed to detect — `NV-2`.
+4. T6's count identity is well-defined only at S5→S6, the one boundary with nothing at risk;
+   **`PGN-A9`'s own worked example passes it**.
+5. §8.3 marked i18n exclusion *"already enforced"* citing `QuantityError::BadName` — which is a
+   **`Display` format string**, and whose real validator (`QuantityName::new`) has a scope that never
+   reaches `TierDecl.name` — `NV-3`.
+
+Also: an **all-`not_stated` run passed all eight trust properties** and shipped a manifest authored
+100% by the policy file; **23 schema positions had no producer at all**; and S3 was an **ungated LLM
+pass**, so the merge `PGN-A3` forbids was happening *inside inference* where no column constraint
+reaches.
+
+**Measured, not asserted** (bite-test run and reverted): `size_of::<Ruleset>()` is **exactly 2312 —
+zero headroom**. `<= 2311` fails to compile. v1's byte arithmetic was wrong three ways and its
+headline did not follow from its own numbers; the **correct** argument is stronger and type-level:
+`TierDecl` transitively owns `String`/`Vec`/`HashMap`, so it can never be `Copy`, `const`-constructed,
+or **seen by `size_of` at all** — the `QTY-A6 ⊥ QTY-A12` trap, non-vacuity register row 6.
+
+**The placement decision SURVIVED all four lenses**: `progression_digest: [u8; 32]` inside `Ruleset`,
+bytes in a content-addressed store. Digest coverage is **compiler-enforced** — `CanonEncode for
+Ruleset` destructures exhaustively with no `..`, so a new field is a compile error until it is hashed.
+
+**The blocker nobody found, including the red team, because none of them read doc 35's layer model.**
+Doc 35 §3 prices L2 vs L3: an L2 declaration costs *a ruleset edit, no engine release*; an L3 source
+(a progression system's contribution trait) costs *an engine release*. And it states the schedule
+fact plainly — *"L2 is the layer that does not exist today. **L3 exists only as an unfilled label**"*,
+with `Q1`'s own row noting `QTY-A13`'s validator has **no subject until `Q4`**. So a generated ladder
+before `Q4` is **inert**: correctly named, correctly capped, admitted, pinned, contributing nothing to
+any stat. This is the same shape as the foundation gap the PO caught earlier in the session
+(*"we build a system that don't have foundation"*), one tier over.
+
+Hence **`PGN-A19`** (the pipeline generates DECLARATIONS against a FIXED vocabulary of compiled-in
+mechanics — `CPL-A17` one tier up) and the **split exit criterion**: **POC-1** (the pipeline proof —
+needs `S-1` + the fixture) vs **POC-2** (gameplay — needs `Q2 B4` + `Q4`, which is *engine* work).
+
+**PO decision, `PGN-Q9` closed:** `TrainingRuleDecl` *"crosses the world generation pipeline, cannot
+complete now."* Correct — `LocationMatch`→`PlaceTypeRef`, `InstrumentMatch`→item,
+`TargetMatch`→both. It also exposed a **wrong dependency edge in doc 38's own element roster**, where
+progression's dependency column read *"rules"* alone (`PGN-R7`, applied). The cut is `PGN-A20`: an
+out-of-scope element is a **refusal that names its owner**, never a narrowed schema — so the fixture's
+own headline sentence (陳玄一在寒潭閉關三年) becomes `PGN-A9`'s first real bite-test: 閉關三年 generates a
+`TrainingSource::Time` rule, 寒潭 **refuses by name**.
+
+**One red-team claim thrown out on verification:** `book_grounding.py:128`'s `license="licensed"` was
+reported as a fail-closed licensing bypass. It is not — that path grounds the user's *own* uploaded
+book, scoped by `user_id`/`project_id`/`book_id`. What survives is different and is ours: the same
+call passes `kind="other"`, so a **book chunk and a wiki chunk are indistinguishable in a citation**,
+which `PGN-A14`'s corpus seal must fix with `is_authored_source`.
+
+**▶ NEXT:** `S-1` — `ProgressionKindDecl` + `ProgressionTable` + the validator in Rust (schema 4 → 5;
+the four `Q2 B1` guards bite again). The 武俠 corpus fixture is independent and authorable in parallel.
+`Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot
+(365) · file-ceiling · deferral · gate-wiring.
+
 ### ✅ World tier: scale pinned, storage decided, and a row marked APPLIED that never was (2026-07-30)
 
 **PO objection that started it:** *"you cannot make first data build from event sourcing / event sourcing
