@@ -64,8 +64,8 @@ from app.engine.canon_reflect import run_canon_reflect
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import (
-    DEFAULT_SCENE_TARGET_WORDS, SELECTION_MAX_CHARS, build_messages,
-    build_selection_messages, estimate_prompt_tokens, stream_draft,
+    DEFAULT_SCENE_TARGET_WORDS, SCENE_OUTPUT_CEILING, SELECTION_MAX_CHARS, build_messages,
+    build_selection_messages, estimate_prompt_tokens, scene_output_budget, stream_draft,
 )
 from app.engine.critic import judge_prose
 from app.engine.critic_override import (
@@ -108,7 +108,7 @@ class GenerateBody(BaseModel):
     # `target_words` AND the book's language (900 Vietnamese words is ~2300 tokens, 900
     # English words ~1300). The old flat `_MAX_OUTPUT_DEFAULT` default silently truncated
     # every long scene — see `scene_output_budget`. An explicit value still wins.
-    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=SCENE_OUTPUT_CEILING)
     # Author reasoning preference. "auto" → the capability-aware resolver decides
     # (adaptive model → pass through; effort model → rule-based scorer; non-
     # reasoning → no-op). off/low/medium/high are explicit overrides. The
@@ -137,7 +137,7 @@ class SelectionEditBody(BaseModel):
     model_source: Literal["user_model", "platform_model"]
     model_ref: UUID
     guide: str = ""
-    max_output_tokens: int = Field(default=_MAX_OUTPUT_DEFAULT, ge=1, le=8192)
+    max_output_tokens: int = Field(default=_MAX_OUTPUT_DEFAULT, ge=1, le=SCENE_OUTPUT_CEILING)
     reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
     model_kind: str | None = None
     model_name: str | None = None
@@ -152,7 +152,7 @@ class GenerateChapterBody(BaseModel):
     guide: str = ""
     # None → settings.chapter_gen_max_tokens (a whole chapter is one long pass,
     # larger than the per-scene default). An explicit value still caps at 8192.
-    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=SCENE_OUTPUT_CEILING)
     reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
     model_kind: str | None = None
     model_name: str | None = None
@@ -167,7 +167,7 @@ class StitchBody(BaseModel):
     # per_scene+stitch step). Mirrors GenerateChapterBody.
     model_source: Literal["user_model", "platform_model"]
     model_ref: UUID
-    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=SCENE_OUTPUT_CEILING)
     reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
     model_kind: str | None = None
     model_name: str | None = None
@@ -493,17 +493,9 @@ async def generate(
     # Length target for the scene draft: the scene's own target_words if the planner set one, else
     # the default (a max_output_tokens cap alone is a ceiling, not a target → the model runs short,
     # measured 83 words). Scene path only; the chapter path assembles per-scene.
-    from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS, scene_output_budget
     _scene_target = getattr(node, "target_words", None) or DEFAULT_SCENE_TARGET_WORDS
     messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide,
                               target_words=_scene_target)
-    # D-SCENE-OUTPUT-BUDGET-FLAT — the ceiling must be able to CONTAIN the length the
-    # directive just asked for. These two numbers used to be set independently and sat
-    # adjacent in `job.input` disagreeing (`target_words: 900` next to `max_out: 1024`),
-    # so every long scene was truncated and it read as the model writing short. An
-    # explicit caller value still wins; None means "size it for me".
-    _max_out = body.max_output_tokens or scene_output_budget(
-        _scene_target, pc.profile.source_language)
     counter = B.default_counter()
     prompt_estimate = estimate_prompt_tokens(messages, counter)
     # Budget pre-check (local advisory): refuse if the prompt alone blows the cap.
@@ -533,6 +525,18 @@ async def generate(
         auto_effort=score_effort(signals),
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")),
     )
+    # D-SCENE-OUTPUT-BUDGET-FLAT — sized HERE, after the reasoning directive is known,
+    # because thinking tokens are spent BEFORE the prose and come out of the same
+    # allowance. Budgeting earlier would silently halve the room for the passage the
+    # moment thinking is on — the "empty ghost" this repo has already shipped once.
+    #
+    # The ceiling is a runaway guard, not a budget. What should govern length is the
+    # LENGTH directive in the prompt, which the model can weigh against the scene it is
+    # writing; `max_tokens` cannot shorten prose, it can only STOP it mid-sentence with
+    # the tokens already paid for. So this is deliberately generous, and an explicit
+    # caller value still wins.
+    _max_out = body.max_output_tokens or scene_output_budget(
+        _scene_target, pc.profile.source_language, reasoning=reasoning)
 
     # M4 — the worker decouples ONLY the AUTO compute (diverge→converge→reflect);
     # the cowrite STREAM path stays inline (a worker can't stream to the client).

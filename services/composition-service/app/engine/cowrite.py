@@ -114,12 +114,36 @@ _TOKENS_PER_WORD: dict[str, float] = {"vi": 2.6, "th": 2.6, "zh": 3.2, "ja": 3.2
 _TOKENS_PER_WORD_DEFAULT = 1.7
 
 #: Headroom over the computed need: a scene that lands slightly long must not be cut off
-#: one sentence from its ending. The `le=8192` request bound still clamps the result.
-_OUTPUT_BUDGET_HEADROOM = 1.35
+#: one sentence from its ending.
+#:
+#: Deliberately loose, because this is a CREATION tool. A tight ceiling on a drafting call
+#: is a bad LLM usage pattern: `max_tokens` does not make prose shorter, it makes it STOP —
+#: mid-sentence, with the tokens already paid for. The thing that should govern length is
+#: the LENGTH directive in the prompt, which the model can weigh against the scene it is
+#: actually writing. The ceiling's only job is to be too big to matter.
+_OUTPUT_BUDGET_HEADROOM = 2.0
+
+#: Reasoning tokens are spent BEFORE the visible prose and come out of the SAME budget.
+#: Left unaccounted, turning thinking on silently halves the room for the passage — the
+#: "empty ghost" failure this repo has already shipped once (a reasoning model spending its
+#: whole allowance on hidden reasoning and returning text="", billed as a success). Scale by
+#: effort rather than adding a flat number, because that is how the cost actually grows.
+_REASONING_ALLOWANCE: dict[str, float] = {
+    "none": 0.0, "off": 0.0, "low": 0.6, "medium": 1.2, "high": 2.0,
+}
+_REASONING_ALLOWANCE_UNKNOWN = 1.2
+
+#: The hard ceiling. Not a budget — a runaway guard. Sized so no legitimate scene or
+#: chapter can reach it, so that hitting it is a bug report rather than a quiet truncation.
+SCENE_OUTPUT_CEILING = 32768
 
 
 def scene_output_budget(
-    target_words: int | None, source_language: str | None, *, ceiling: int = 8192,
+    target_words: int | None,
+    source_language: str | None,
+    *,
+    reasoning: ReasoningDirective | None = None,
+    ceiling: int = SCENE_OUTPUT_CEILING,
 ) -> int:
     """The output-token ceiling a scene draft needs to actually REACH `target_words`.
 
@@ -139,11 +163,26 @@ def scene_output_budget(
     scene path, which simply never got it: **guidance and capability must move as one
     signal.** A prompt that asks for 900 words while the wire allows 1024 tokens is not a
     length instruction, it is a truncation.
+
+    `reasoning` adds room for thinking tokens, which are spent BEFORE the prose and drawn
+    from the same allowance — without it, enabling reasoning silently halves the space left
+    for the passage. It takes the resolved `ReasoningDirective`, not a bare effort string:
+    the reasoning-SSOT gate bans threading a loose effort through the engine, and it is
+    right to — that is precisely how the sixteen drifting copies this session consolidated
+    came about. The caller already holds the directive.
+
+    The result is deliberately generous. A ceiling on a creative draft is a runaway guard,
+    not a budget: over-provisioning costs nothing (a model stops when the passage is done
+    and you are billed for what it emitted), while under-provisioning truncates mid-sentence
+    and you are billed for that too.
     """
     words = target_words or DEFAULT_SCENE_TARGET_WORDS
     lang = (source_language or "").split("-")[0].lower()
     per_word = _TOKENS_PER_WORD.get(lang, _TOKENS_PER_WORD_DEFAULT)
-    return max(1, min(ceiling, int(words * per_word * _OUTPUT_BUDGET_HEADROOM)))
+    prose = words * per_word * _OUTPUT_BUDGET_HEADROOM
+    effort = (getattr(reasoning, "effort", None) or "none").lower()
+    thinking = prose * _REASONING_ALLOWANCE.get(effort, _REASONING_ALLOWANCE_UNKNOWN)
+    return max(1, min(ceiling, int(prose + thinking)))
 
 
 def build_messages(

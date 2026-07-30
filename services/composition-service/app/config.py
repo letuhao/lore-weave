@@ -123,11 +123,18 @@ class Settings(BaseSettings):
     # co-write parity; autonomous long-form sets 'chapter' on the Work.
     composition_assembly_mode_default: str = "per_scene"
     # Output CEILINGS for the two chapter-level paths (cap the proportional
-    # plan-sizing below — a long chapter is one pass and needs room, but never
-    # beyond the request field's le=8192). chapter-gen/stitch size their max_tokens
-    # from the plan's scene count × chapter_gen_per_scene_tokens, clamped here.
-    chapter_gen_max_tokens: int = 8192
-    stitch_max_tokens: int = 8192
+    # plan-sizing below). chapter-gen/stitch size their max_tokens from the plan's
+    # scene count × chapter_gen_per_scene_tokens, clamped here.
+    #
+    # Raised 8192 → 32768 (2026-07-30). A ceiling on a DRAFTING call is a runaway
+    # guard, not a budget: `max_tokens` cannot make prose shorter, it can only stop it
+    # mid-sentence with the tokens already paid for. What should govern length is the
+    # LENGTH directive in the prompt, which the model weighs against the scene it is
+    # actually writing. 8192 was reachable by a real book — a 5-scene Vietnamese chapter
+    # at ~900 words each needs ~12k tokens before any thinking — so it was shaping
+    # output rather than guarding against runaways.
+    chapter_gen_max_tokens: int = 32768
+    stitch_max_tokens: int = 32768
     # Per-scene output budget for the proportional chapter/stitch sizing (so a
     # multi-scene chapter gets room instead of a flat cap that silently truncates).
     # Raised 700→1200 (2026-07-26): the logs showed a chapter cut off mid-scene
@@ -135,8 +142,16 @@ class Settings(BaseSettings):
     # words / ~3 scenes) was already sitting at the old 3×700 ceiling, so any chapter
     # that ran a little longer got chopped (a broken ending). 1200/scene gives a
     # 3-scene chapter ~2700 words of headroom to finish naturally; chapter_gen_max_
-    # tokens (8192) still bounds a runaway.
-    chapter_gen_per_scene_tokens: int = 1200
+    # tokens still bounds a runaway.
+    #
+    # Raised 1200 → 3000 (2026-07-30): 1200 is an ENGLISH-shaped number. A word is not a
+    # token, and the ratio is not close to 1 outside Latin script — a 900-word Vietnamese
+    # scene is ~2300 tokens before any thinking, so 1200/scene truncated every non-English
+    # chapter by more than half. The per-SCENE path now derives its ceiling from
+    # `target_words` × a per-script ratio (`cowrite.scene_output_budget`); this flat
+    # per-scene figure is the chapter path's coarser equivalent and must at least clear
+    # the same case.
+    chapter_gen_per_scene_tokens: int = 3000
     # FD-1 / narrative_thread S2 — cap on NEW promise threads a single generated
     # passage may open, so a verbose detector can't flood the ledger. The pass
     # itself is per-Work opt-in via `work.settings["narrative_thread_enabled"]`.

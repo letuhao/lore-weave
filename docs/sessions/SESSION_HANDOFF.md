@@ -838,6 +838,47 @@ Fixed in all three, with a gate that also fails if a fourth reader is added with
 **All five endings are now distinct and on their own beat** — the Thanh Tâm Ấn seed appears
 only in scene 5, and no deleted-scene prose survives anywhere.
 
+### 🧪 Then the ceilings were raised properly, and the answer came back NO
+
+The author's objection was right as a principle: *"a flat limit is a bad LLM usage pattern —
+our tool is a creation tool, not a strict-logic tool"*. `max_tokens` cannot make prose
+shorter; it can only STOP it mid-sentence with the tokens already paid for. What should
+govern length is the LENGTH directive in the prompt, which the model can weigh against the
+scene it is actually writing. The ceiling's only job is to be too big to matter.
+
+So it was raised everywhere, not tuned:
+- request bounds `le=8192` → `SCENE_OUTPUT_CEILING = 32768` (4 fields);
+- `chapter_gen_max_tokens` / `stitch_max_tokens` 8192 → 32768 — 8192 was **reachable by a
+  real book** (a 5-scene Vietnamese chapter at ~900 words each needs ~12k before thinking),
+  so it was shaping output rather than guarding against runaways;
+- `chapter_gen_per_scene_tokens` 1200 → 3000 — 1200 is an ENGLISH-shaped number, and a
+  900-word Vietnamese scene is ~2300 tokens, so it truncated every non-English chapter by
+  more than half;
+- and a **reasoning allowance**, because thinking tokens are spent BEFORE the prose out of
+  the same budget. Unaccounted, enabling reasoning silently halves the room for the passage
+  — the "empty ghost" this repo already shipped once.
+
+*(The reasoning-SSOT AST gate from earlier in this session caught the first cut of that
+allowance taking a bare effort string — the exact shape it bans. It was right; the budget now
+takes the resolved `ReasoningDirective`, which the caller already holds.)*
+
+**Then the test the author asked for: `max_output_tokens = 10240`, `reasoning = medium`,
+confirmed present in all five `job.input` rows.**
+
+| | target | auto ~3159, no reasoning | **10240 + medium** |
+|---|---|---|---|
+| Hiện trường đẫm máu | 900 | 584 | **563** |
+| Ánh mắt rạn nứt | 850 | 573 | **512** |
+| Ánh nhìn thầm lặng | 800 | 510 | **387** |
+| Sự dao động của linh năng | 750 | 573 | **405** |
+| Mầm mống trả thù | 800 | 590 | **730** |
+| **total** | | **2,830** | **2,597** |
+
+**More room produced FEWER words.** That is the decisive result: the ceiling was a real
+architectural defect and fixing it was right, but it is provably no longer the limiter — the
+model stops when it stops. Raising it further buys nothing, and turning reasoning on cost
+~230 words.
+
 **What is left is no longer plumbing.** With a 3159-token ceiling the model stops at ~580
 words against a 750–900 target, so this is prompt adherence, not truncation — a different
 problem needing a different tool (a length-check + continue pass, or a stronger model). Scenes

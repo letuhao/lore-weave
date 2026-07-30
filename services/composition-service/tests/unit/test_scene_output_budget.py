@@ -25,8 +25,17 @@ from __future__ import annotations
 
 import pytest
 
+from loreweave_llm import ReasoningDirective
+
 from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS, scene_output_budget
 from app.packer.lenses import _is_substantial_draft
+
+
+def _directive(effort: str) -> ReasoningDirective:
+    """The budget takes the RESOLVED directive, not a bare effort string — the
+    reasoning-SSOT gate bans threading a loose effort through the engine, and it is right
+    to: that is exactly how the sixteen drifting copies consolidated earlier came about."""
+    return ReasoningDirective(effort=effort, passthrough=False, source="test")
 
 
 class TestSceneOutputBudget:
@@ -58,12 +67,42 @@ class TestSceneOutputBudget:
             DEFAULT_SCENE_TARGET_WORDS, "vi")
 
     def test_it_never_exceeds_the_request_bound(self):
-        """`max_output_tokens` is `le=8192` at the schema — a computed value above it would
-        be a 422 on a request the author never made."""
-        assert scene_output_budget(100_000, "zh") <= 8192
+        """The computed value must stay inside the schema's own bound, or it would 422 a
+        request the author never made."""
+        from app.engine.cowrite import SCENE_OUTPUT_CEILING
+        assert scene_output_budget(100_000, "zh") <= SCENE_OUTPUT_CEILING
 
     def test_it_is_always_at_least_one(self):
         assert scene_output_budget(1, "en") >= 1
+
+    def test_reasoning_gets_its_own_room_on_top(self):
+        """Thinking tokens are spent BEFORE the prose and drawn from the SAME allowance.
+        Unaccounted, enabling reasoning silently halves the space left for the passage —
+        the 'empty ghost' this repo has already shipped once (a reasoning model spending
+        its whole budget on hidden reasoning and returning text='', billed as success)."""
+        plain = scene_output_budget(900, "vi", reasoning=_directive("none"))
+        low = scene_output_budget(900, "vi", reasoning=_directive("low"))
+        high = scene_output_budget(900, "vi", reasoning=_directive("high"))
+        assert plain < low < high
+        # The prose allowance must SURVIVE the thinking, not be shared with it.
+        assert high - plain >= plain, "high-effort thinking needs room comparable to the prose"
+
+    def test_an_unknown_effort_is_provisioned_not_ignored(self):
+        """A new effort label must not silently fall back to 'no thinking room' — that is
+        the failure mode this allowance exists to prevent."""
+        assert scene_output_budget(
+            900, "vi", reasoning=_directive("xhigh"),
+        ) > scene_output_budget(900, "vi", reasoning=_directive("none"))
+
+    def test_the_ceiling_is_a_runaway_guard_not_a_budget(self):
+        """A real 5-scene Vietnamese chapter at ~900 words each needs ~12k tokens before
+        any thinking. A ceiling a real book can REACH is shaping output, not guarding."""
+        from app.engine.cowrite import SCENE_OUTPUT_CEILING
+        five_scene_chapter = 5 * scene_output_budget(
+            900, "vi", reasoning=_directive("medium"))
+        assert SCENE_OUTPUT_CEILING > five_scene_chapter / 2, (
+            "the guard is close enough to real usage to start truncating"
+        )
 
 
 class TestSubstantialDraft:
