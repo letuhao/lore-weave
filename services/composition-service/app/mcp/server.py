@@ -1090,6 +1090,15 @@ class _NodeCreateArgs(ForbidExtra):
     stakes: str = ""
     target_words: int | None = Field(default=None, gt=0)
     exit_state: SceneExitState | None = None
+    # D-SCENE-CREATE-PARITY — the last two fields PlanForge's scene upsert writes and
+    # this path could not. Both feed the packer, so their absence is a QUIET grounding
+    # loss rather than an error: `present_entity_ids` is the scene's cast, and it is what
+    # the packer loads character lore/voices from — without it a scene is drafted with no
+    # idea who is in it. `tension` is the beat's charge, read by the pacing lens and the
+    # arc-conformance judge. PlanForge fills both; an outline authored through this tool
+    # left them empty and every downstream lens silently had less to work with.
+    tension: int | None = Field(default=None, ge=0, le=100)
+    present_entity_ids: list[str] | None = None
 
 
 @mcp_server.tool(
@@ -1141,6 +1150,10 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
             story_time=args.story_time, conflict=args.conflict, outcome=args.outcome,
             value_shift=args.value_shift, stakes=args.stakes, target_words=args.target_words,
             exit_state=args.exit_state.model_dump(mode="json") if args.exit_state is not None else None,
+            # D-SCENE-CREATE-PARITY — the scene's cast + beat charge, the two fields
+            # PlanForge writes and this path could not (see the args).
+            tension=args.tension,
+            present_entity_ids=[UUID(e) for e in (args.present_entity_ids or [])] or None,
             created_by=tc.user_id,
         )
     except ReferenceViolationError as exc:
@@ -1199,6 +1212,11 @@ class _NodeUpdateArgs(ForbidExtra):
     # a plan run could never be drafted into, ever. The repo has always listed chapter_id
     # as updatable (`_UPDATABLE_COLUMNS`); only the tool withheld it.
     chapter_id: str | None = None
+    # D-SCENE-CREATE-PARITY — editable for the same reason they are creatable: a cast list
+    # is the field an author most often gets wrong on the first pass (a character joins the
+    # scene late), and it is what the packer loads lore from.
+    tension: int | None = Field(default=None, ge=0, le=100)
+    present_entity_ids: list[str] | None = None
 
 
 @mcp_server.tool(
@@ -1251,6 +1269,14 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
     # D-SCENE-PROSE-NOWHERE-TO-LAND — bind the node to a manuscript chapter (see the arg).
     if args.chapter_id is not None:
         patch["chapter_id"] = UUID(args.chapter_id)
+    # D-SCENE-CREATE-PARITY — cast + beat charge. `tension` rides the sparse-patch dict
+    # above's convention (None = leave unchanged); `present_entity_ids` needs the UUID
+    # coercion, and an explicit [] is a MEANINGFUL clear ("nobody is in this scene yet"),
+    # so it is tested for None rather than falsiness.
+    if args.tension is not None:
+        patch["tension"] = args.tension
+    if args.present_entity_ids is not None:
+        patch["present_entity_ids"] = [UUID(e) for e in args.present_entity_ids]
     try:
         if patch.get("status") == "done":
             node = await outline.update_node_commit_aware(
@@ -7337,6 +7363,9 @@ class _OutlineNodeEditArgs(ForbidExtra):
     synopsis: str | None = None          # create, update
     status: Literal["empty", "outline", "drafting", "done"] | None = None  # create, update
     chapter_id: str | None = None        # create, update (bind a plan node to a chapter)
+    # D-SCENE-CREATE-PARITY — the scene's cast + beat charge (PlanForge writes both).
+    tension: int | None = None           # create, update
+    present_entity_ids: list[str] | None = None  # create, update
     location_entity_id: str | None = None  # create, update
     story_time: str | None = None        # create, update
     conflict: str | None = None          # create, update
@@ -7375,7 +7404,9 @@ async def composition_outline_node_edit(ctx: MCPContext, args: _OutlineNodeEditA
                        chapter_id=args.chapter_id, location_entity_id=args.location_entity_id,
                        story_time=args.story_time, conflict=args.conflict, outcome=args.outcome,
                        value_shift=args.value_shift, stakes=args.stakes,
-                       target_words=args.target_words, exit_state=args.exit_state)))
+                       target_words=args.target_words, exit_state=args.exit_state,
+                       # D-SCENE-CREATE-PARITY — cast + beat charge.
+                       tension=args.tension, present_entity_ids=args.present_entity_ids)))
     if args.op == "update":
         if not args.project_id or not args.node_id or args.expected_version is None:
             raise ValueError("op=update requires project_id, node_id, and expected_version")
@@ -7388,7 +7419,9 @@ async def composition_outline_node_edit(ctx: MCPContext, args: _OutlineNodeEditA
                        # D-SCENE-PROSE-NOWHERE-TO-LAND — bind a plan node to a manuscript
                        # chapter. The unified tool already accepted `chapter_id` on create;
                        # forwarding it on update is what makes a plan-only node recoverable.
-                       chapter_id=args.chapter_id)))
+                       chapter_id=args.chapter_id,
+                       # D-SCENE-CREATE-PARITY — cast + beat charge.
+                       tension=args.tension, present_entity_ids=args.present_entity_ids)))
     if args.op == "delete":
         if not args.project_id or not args.node_id:
             raise ValueError("op=delete requires project_id and node_id")

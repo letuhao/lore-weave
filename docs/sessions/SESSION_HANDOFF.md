@@ -739,7 +739,52 @@ lands at `5` — and the canonical renumber repaired the earlier bad `1..5` back
 the far-leak is GONE — neither closes on scene 5's counting-shadow image any more; each ends on
 its own beat, and scene 3 correctly picks up Lâm Trạch.
 
-**Two residuals, both new information:**
+### 🔗 D-SCENE-CREATE-PARITY — the rest of what PlanForge writes and we could not
+
+Reviewing our create path against `plan_link_service._UPSERT_SCENE` field-by-field found two
+more, both of which degrade **quietly** rather than failing:
+
+- **`present_entity_ids`** — the scene's CAST, and what the packer loads character lore and
+  voices from. Without it a scene is drafted with no idea who is in it.
+- **`tension`** — the beat's charge, read by the pacing lens and the arc-conformance judge.
+
+Both are now on create AND update (a cast list is what an author most often gets wrong on the
+first pass — a character joins the scene late — so create-only would be the same dead end
+`chapter_id` was).
+
+**And a gate, so the next one does not need a human to read two files side by side.**
+`test_scene_create_parity.py` parses the real `_UPSERT_SCENE` column list and fails when it
+names a scene column the create path cannot reach. Exemptions live in one dict, each with the
+reason it is not a gap, and a test keeps that dict honest against columns PlanForge stops
+writing. Proven red by removing `present_entity_ids` and restoring from memory.
+
+### 📉 Re-drafted with the full field set — consistency up, LENGTH down
+
+Five scenes, all carrying `story_order` 0–4, cast, tension, target and chapter binding for the
+first time. Scene 1 was created **through the FE co-writer** (cast landed, `story_order`
+auto-derived); the rest through the tool.
+
+| | target | before | now |
+|---|---|---|---|
+| Hiện trường đẫm máu | 900 | 682 | **445** |
+| Ánh mắt rạn nứt | 850 | 660 | **414** |
+| Ánh nhìn thầm lặng | 800 | 507 | **532** |
+| Sự dao động của linh năng | 750 | 641 | **618** |
+| Mầm mống trả thù | 800 | 563 | **736** |
+
+**The consistency bug is largely fixed** — the Thanh Tâm Ấn seed now appears ONLY in scene 5,
+where it belongs. Four of five endings are distinct and on their own beat.
+
+**But two things got worse or stayed broken, and both are worth the next look:**
+1. **Length regressed hard at the start of the chapter** — 445 against a 900 target. Note the
+   shape: word count RISES with `story_order` (445 → 414 → 532 → 618 → 736). More injected
+   prior context correlates with longer output, which suggests the early scenes are starving
+   rather than the late ones bloating.
+2. **Scene 4 still borrows scene 3's material** — it closes on Lâm Trạch hearing the weather
+   remark, though its own cast is Lâm Uyên alone. Adjacent bleed survived; only the far bleed
+   was cured.
+
+### Two residuals from the story_order fix, both still open:
 1. Scene 3 now echoes scene 2's *closing line* almost verbatim
    (*"…món quà chàng dùng máu của người khác để tặng cho kẻ thù"*). The reinjection block reads
    as prose to CONTINUE from (the system prompt says "CONTINUE the story forward"), while the
