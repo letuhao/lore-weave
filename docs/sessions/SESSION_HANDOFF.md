@@ -1,5 +1,48 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🖥️ The Chrome pass — and the e2e that watched the bug happen (2026-07-30)
+
+The motif-graph render was the one hop left unproven by effect. It is closed: **real Chrome
+(playwright chromium 149) against `vite dev :5199` serving the fixed source — 5/5
+`studio-motif-library` specs pass**, including the drawer's Graph section.
+
+### The finding: a live browser test was already driving this, and it saw nothing
+`studio-motif-library.spec.ts` has had a test called *"graph — add a precedes edge (A→B),
+**it renders**, then delete it"* the whole time. Its assertion was:
+
+```ts
+await expect(edge).toBeVisible();   // "the edge renders"
+```
+
+The row *was* visible. With `neighbor_name` undefined it rendered an arrow, two empty spans
+and a delete button — **present, visible, and blank**. Proven by reintroducing the flat
+render and re-running: the new assertion fails with
+
+```
+Received string:    "→ ×"
+```
+
+That is the entire row content the user saw for a release, and `toBeVisible()` passed
+against it. **"It renders" was asserted as element presence, not as content.** Fixed with
+two `toContainText` assertions on the neighbour's name and code — the row's only content.
+
+(`studio-motif-graph.spec.ts` does exist but covers the reactflow **canvas**, a different
+surface. The gap was assertion strength, not missing coverage.)
+
+### Deferred — the same anti-pattern, swept
+**D-E2E-PRESENCE-NOT-CONTENT** · origin: this cycle · gate #2 (large/structural — needs its
+own pass). There are **318** `toBeVisible()` calls across the e2e specs. Many are correct
+(a dialog/panel *is* about presence). The suspect class is narrower: **a DATA row asserted
+visible without asserting the data**. Needs a pass that identifies row-rendering assertions
+and strengthens them. Target: whenever e2e coverage is next reviewed.
+
+### Note on tooling
+The Playwright **MCP** browser profile was locked by the concurrent session, so this ran on
+the repo's own Playwright (independent browser, no contention) — which is the better artifact
+anyway: a committed re-runnable spec instead of a one-off browser session.
+`playwright install chromium` was needed once on this machine.
+
+
 ## 🔬 ATOM-EDIT F2 — 13/14, and the denominator was wrong all along (2026-07-30)
 
 `scripts/atom-edit-roundtrip.py` went **4/11 → 13/14, 0 failed**, twice consecutively, live
