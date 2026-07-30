@@ -147,6 +147,62 @@ actually succeeded this turn"* (so it cannot rescue a model that **cannot start*
 after approval, **4 kinds in the DB** (`character`, `item`, `terminology`, `unknown`). First time
 this session the co-writer changed the book's state through conversation. **1,928 tests pass.**
 
+
+## 🔁 CO-WRITER, second loop: the platform corrupted the model's call, then blamed it (2026-07-30)
+
+The cast step looped too — 10,882 characters, author hit Stop again. **Different trigger, same
+architectural hole**, and this time the model was *right*.
+
+Pulled from the transcript (`019faf5b` seq 16): four tool calls, all `iteration: 0`, all failed.
+Two were `glossary_propose_batch`, rejected with
+`enum: create_kinds"},{params:{description: does not equal any of [...]`. That value is not
+something the model wrote — **the model's second, CORRECT call is inside it**:
+
+```
+"type": "create_kinds\"}]}<tool_call|><|channel>thought\n<channel|><|tool_call>call:glossary_propose_entities{items:[{description:"
+```
+
+Gemma emitted two calls back-to-back with its native control tokens between them.
+`_degemmify_tool_args` is anchored (`^` / `$`), so it strips one leading and one trailing
+wrapper and the **interior** markers survive; `repair_json` then absorbs them into the nearest
+string value and returns JSON that **parses**. Reproduced locally: repair actually recovers
+*both* calls as a list, and `_parse_tool_args` throws it away because it demands a `dict`. The
+information needed to do the right thing was present and discarded.
+
+**Parseable-but-wrong is worse than a hard failure** — every caller downstream treats it as
+clean, and the model gets told it sent a bad enum it cannot find in its own output. There is no
+self-correction from there, so the turn became prose.
+
+**Shipped (`D-TOOLCALL-GEMMA-INTERIOR-LEAK`, +`D-RAIL-INFLIGHT-ON-ATTEMPT`):**
+- `_split_interior_leaked_tool_calls` — un-concatenates the calls at reassembly (one site, not
+  the 25 `_parse_tool_args` call sites, because it changes the *number* of calls). A truncated
+  trailing call still recovers; a marker-only shell with a real call behind it is **dropped**,
+  one with nothing behind it **keeps its marker on purpose** so the dispatch guard owns it.
+  (My first cut stripped the marker and left silently-empty args that dispatched — the same
+  silent no-op class, re-introduced by the fix for it. Caught by its own end-to-end test.)
+- a **post-condition** in `_parse_tool_args`: a candidate still carrying a control token has not
+  been repaired, it has been *disguised* — refuse it.
+- an **honest error** placed BEFORE the frontend/backend fork, because the incident hit both
+  (`glossary_propose_entity_edit` is a frontend tool, `glossary_propose_batch` a backend one) and
+  a backend-only guard would have fixed half the bug invisibly. It names the decoder, tells the
+  model to **keep its tool choice**, and counts toward `BLANK_TOOL_ARGS_CAP` so a decoder that
+  leaks every pass still terminates the turn.
+- **`_rail_is_in_flight`** — a rail step tool *attempted and failed* now counts as in flight.
+  Gating on success alone is `D-CHAT-CONTROL-PLANE` §1 verbatim (*"it cannot rescue a model that
+  cannot start"*) and it has now cost **two** incidents with unrelated triggers. Intent is what
+  makes a rail live: the model reached for the step; the platform is what stopped it.
+
+**Verified:** 1,943 tests · deployed image sha256 == host file · **live smoke** on the real book
+created the remaining cast through `glossary_propose_entities` `ok=True` — **2 → 5 entities**,
+`book_kind` = `character`/`terminology`, no loop. ⚠️ **The leak itself did not recur in that
+turn**, so the live run proves the flow works, not that the fix caused it; the fix is proven by
+the end-to-end tests that drive the real loop with the captured payload.
+
+**Three loops, three different layers** — gates contradicting (control plane) · create-vs-edit
+tool surface · wire-level arg corruption. They looked identical only because the system has one
+way to fail outward: repeated prose. That is worth remembering before reading "another loop" as
+"the same bug".
+
 ### Deferred (new)
 
 | ID | What | Gate | Target |

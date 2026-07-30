@@ -778,6 +778,22 @@ _GEMMA_TOOLCALL_TAIL_RE = re.compile(r"\s*<tool_call\|>\s*$", re.IGNORECASE)
 _GEMMA_QUOTE_TOKEN_RE = re.compile(r"<\|[\"']\|>")
 _UNQUOTED_KEY_RE = re.compile(r'(?<=[{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:')
 
+# D-TOOLCALL-GEMMA-INTERIOR-LEAK — ANY of this model family's native control tokens.
+# The wrapper strippers above are anchored (`^` / `$`), so they only ever remove ONE
+# leading and ONE trailing marker. A marker in the MIDDLE of an args string survives —
+# which is the whole bug: see `_split_interior_leaked_tool_calls`.
+_LEAK_MARKER_ANY_RE = re.compile(
+    r"<\|tool_call>|<tool_call\|>|<\|channel>|<channel\|>", re.IGNORECASE,
+)
+# A leaked call HEAD inside an args string: `<|tool_call>call:NAME` followed by its `{…}` body.
+_LEAK_CALL_HEAD_RE = re.compile(
+    r"<\|tool_call>\s*call\s*:\s*([\w.-]+)\s*(?=\{)", re.IGNORECASE,
+)
+
+
+def _has_leak_marker(text: str) -> bool:
+    return bool(_LEAK_MARKER_ANY_RE.search(text))
+
 
 def _degemmify_tool_args(raw: str) -> str:
     """Strip Gemma 4's native tool-call wrapper/quote tokens, and quote bare
@@ -786,6 +802,85 @@ def _degemmify_tool_args(raw: str) -> str:
     text = _GEMMA_TOOLCALL_TAIL_RE.sub("", _GEMMA_TOOLCALL_WRAP_RE.sub("", raw))
     text = _GEMMA_QUOTE_TOKEN_RE.sub('"', text)
     return _UNQUOTED_KEY_RE.sub(r' "\1":', text)
+
+
+def _split_interior_leaked_tool_calls(calls: list[dict]) -> list[dict]:
+    """D-TOOLCALL-GEMMA-INTERIOR-LEAK — recover the calls this model concatenated
+    INTO one args string, instead of letting the repair layer swallow them.
+
+    Third manifestation in the same defective-decoding family (after
+    D-TOOLCALL-GEMMA-TOKEN-LEAK and D-TOOLCALL-DUP-EMPTY-CALL): the model emits
+    several tool calls back-to-back in ONE `arguments` payload, separated by its
+    own native control tokens, e.g.
+
+        {ops:[…]}<tool_call|><|channel>thought<channel|><|tool_call>call:glossary_propose_entities{items:[…]}
+
+    Because `_degemmify_tool_args` is anchored, the INTERIOR markers survive, and
+    `repair_json` then produces **parseable but wrong** JSON — it glues the marker
+    text into whatever value it landed next to. Pulled from a live transcript
+    (session 019faf5b, seq 16), the model's second, CORRECT call ended up as an
+    enum value:
+
+        "type": "create_kinds\\"}]}<tool_call|>…<|tool_call>call:glossary_propose_entities{items:[{description:"
+
+    which the tool rejected as `enum: … does not equal any of [create_kinds …]`.
+    So the model was told it sent a bad enum it never wrote, while the call it
+    actually wanted was destroyed. It cannot act on that feedback: the turn
+    degraded into 10,882 characters of repeated prose until the author hit Stop.
+
+    This splits instead of swallowing: everything before the first interior marker
+    stays with the original call, and each `<|tool_call>call:NAME{…}` after it
+    becomes its own call. A body runs to the next marker, or to end-of-string when
+    the model's output was cut off mid-call (the live case) — a truncated tail
+    still parses far enough for the schema to give an HONEST error about the real
+    tool. No markers → returns `calls` unchanged, so a well-behaved provider is
+    untouched."""
+    out: list[dict] = []
+    split_from: list[str] = []
+    dropped: list[str] = []
+    for c in calls:
+        raw = c.get("arguments") or ""
+        m = _LEAK_MARKER_ANY_RE.search(raw)
+        if not m:
+            out.append(c)
+            continue
+        head, tail = raw[:m.start()], raw[m.start():]
+        recovered: list[dict] = []
+        for hm in _LEAK_CALL_HEAD_RE.finditer(tail):
+            nxt = _LEAK_MARKER_ANY_RE.search(tail, hm.end())
+            body = tail[hm.end():nxt.start() if nxt else len(tail)]
+            recovered.append({
+                "id": f"interior-{uuid4()}", "name": hm.group(1), "arguments": body,
+            })
+            split_from.append(f"{c['name']}→{hm.group(1)}")
+        # A BLANK head means the marker was the very first thing the model emitted, so
+        # this entry never had arguments of its own. Two different situations, and
+        # conflating them re-introduces the silent no-op this whole fix is about:
+        #   • we recovered real calls from the tail → the model's intent is fully carried
+        #     by those; DROP the empty shell (same contract as the sibling dedupe helpers:
+        #     a dropped call never reaches `working`, so the provider is never left
+        #     waiting on a result for it);
+        #   • we recovered nothing → there is no intent to act on. Keep the args EXACTLY
+        #     as they arrived, marker included, so the dispatch guard reports an honest
+        #     "your args were corrupted" instead of quietly dispatching `{}` and letting
+        #     the tool answer with a misleading "missing required field".
+        if not head.strip():
+            if recovered:
+                dropped.append(c["name"])
+            else:
+                out.append(c)  # marker intact on purpose — the dispatch guard owns it
+        else:
+            c["arguments"] = head
+            out.append(c)
+        out.extend(recovered)
+    if split_from or dropped:
+        logger.warning(
+            "D-TOOLCALL-GEMMA-INTERIOR-LEAK: recovered %d tool call(s) concatenated into "
+            "another call's arguments (would otherwise have been swallowed into a value by "
+            "json repair): %s%s", len(split_from), split_from,
+            f"; dropped {dropped} (marker-only, no args of their own)" if dropped else "",
+        )
+    return out
 
 
 _LEAK_MARKER_START = "<|tool_call>"
@@ -825,6 +920,36 @@ def _extract_leaked_tool_calls(text: str) -> list[tuple[str, str]]:
     return [(m.group(1), m.group(2)) for m in _GEMMA_LEAKED_CALL_RE.finditer(text)]
 
 
+def _rail_is_in_flight(
+    *,
+    resumed_mid_rail: bool,
+    step_tools_succeeded: list[str],
+    step_tools_attempted: list[str],
+) -> bool:
+    """D-RAIL-INFLIGHT-ON-ATTEMPT — is a pinned rail live enough for the P-1 step-runner
+    to re-steer the model this turn?
+
+    Live when ANY of:
+      • `resumed_mid_rail` — this pass is a resume that suspended mid-rail. The confirm
+        executes off the backend chokepoint, so it never lands in `turn_succeeded`, but
+        the rail is unambiguously in flight.
+      • a rail step tool SUCCEEDED this turn — the model chose to start the recipe.
+      • a rail step tool was ATTEMPTED and FAILED this turn.
+
+    That last clause is the fix. Gating "in flight" on success alone is the hole named in
+    `D-CHAT-CONTROL-PLANE` §1 — *"it cannot rescue a model that cannot start"* — and it has
+    now cost TWO live incidents with unrelated triggers: a step tool hidden from the turn
+    catalog by the capability floor, and a step tool whose arguments the decoder corrupted
+    (D-TOOLCALL-GEMMA-INTERIOR-LEAK). In both, every tool call in the iteration failed, so
+    `turn_succeeded` stayed empty, the step-runner stayed silent, and the model degraded
+    into repeated prose (40,597 and 10,882 characters) until the author hit Stop.
+
+    **Intent is what makes a rail live: the model reached for the step.** Whether the
+    platform let the call through is precisely the situation the directive exists to
+    re-steer — so a failed attempt must not read as "no rail here"."""
+    return bool(resumed_mid_rail or step_tools_succeeded or step_tools_attempted)
+
+
 def _braces_balanced(text: str) -> bool:
     """A cheap structural-completeness gate, NOT a JSON validator: same count
     of `{`/`}`. Distinguishes a genuinely truncated stream (e.g. `{"q": "Ka`,
@@ -855,11 +980,20 @@ def _parse_tool_args(raw: str) -> dict:
         return {}
     try:
         parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else {}
+        if isinstance(parsed, dict) and not _has_leak_marker(raw):
+            return parsed
     except (ValueError, TypeError):
         pass
     for candidate in (_degemmify_tool_args(raw), raw):
-        if not _braces_balanced(candidate):
+        # D-TOOLCALL-GEMMA-INTERIOR-LEAK post-condition. `repair_json` will happily
+        # absorb a surviving control token into the nearest string value and hand back
+        # JSON that PARSES — the worst possible outcome, because every caller then
+        # treats a corrupted payload as a clean one and the tool blames the model for
+        # a value it never wrote. A candidate that still carries a marker has not been
+        # repaired, it has been disguised; refuse it. `_split_interior_leaked_tool_calls`
+        # upstream normally removes the marker first, so reaching here means the shape
+        # was one that splitting could not resolve.
+        if _has_leak_marker(candidate) or not _braces_balanced(candidate):
             continue
         try:
             parsed = json.loads(repair_json(candidate))
@@ -868,7 +1002,9 @@ def _parse_tool_args(raw: str) -> dict:
         if isinstance(parsed, dict) and parsed:
             return parsed
     logger.warning(
-        "tool-call arguments unparseable after repair attempts, degrading to {}: %r",
+        "tool-call arguments unparseable after repair attempts, degrading to {}%s: %r",
+        " (native control tokens present — decoder leak, not a model mistake)"
+        if _has_leak_marker(raw) else "",
         raw[:300],
     )
     return {}
@@ -2269,10 +2405,7 @@ async def _stream_with_tools(
                 # the branch it explains. (Duplicating the condition to log it is how two copies
                 # of one decision drift apart.)
                 _step_tools_hit = sorted(set(turn_succeeded) & _rail_all_step_tools)
-                # In flight = a rail tool succeeded THIS turn (the model chose to start it),
-                # OR this is a resume that suspended mid-rail (the confirm executes off the
-                # backend chokepoint, so it never lands in turn_succeeded — but the rail is
-                # unambiguously in flight, so the driver must be allowed to continue it).
+                _step_tools_tried = sorted(set(fail_by_tool_error) & _rail_all_step_tools)
                 _rail_guards = {
                     "driver_on": bool(settings.rail_driver_enabled),
                     "have_specs": bool(rail_specs),
@@ -2286,7 +2419,11 @@ async def _stream_with_tools(
                     # hold this turn — governance serves the author, it never imprisons them.
                     "not_abandoned": not rail_user_abandoned,
                     "passes_left": write_passes < max_iterations - 1,
-                    "in_flight": bool(rail_in_flight or _step_tools_hit),
+                    "in_flight": _rail_is_in_flight(
+                        resumed_mid_rail=bool(rail_in_flight),
+                        step_tools_succeeded=_step_tools_hit,
+                        step_tools_attempted=_step_tools_tried,
+                    ),
                 }
                 if all(_rail_guards.values()):
                     # ACP A2 (RW-3): the drive+enforcement DECISION lives in the SDK harness
@@ -2317,9 +2454,10 @@ async def _stream_with_tools(
                     # the wrong tool three times and no nudge was ever injected. Name the guard that
                     # held, so the next occurrence is one grep instead of a code read.
                     logger.info(
-                        "rail step-runner SKIPPED — held by: %s (step tools succeeded this turn: %s)",
+                        "rail step-runner SKIPPED — held by: %s (step tools this turn: "
+                        "succeeded=%s tried-and-failed=%s)",
                         ", ".join(k for k, v in _rail_guards.items() if not v) or "none",
-                        _step_tools_hit or "—",
+                        _step_tools_hit or "—", _step_tools_tried or "—",
                     )
                 if _verdict is not None and _verdict.should_drive:
                     _step = _verdict.step
@@ -2359,6 +2497,11 @@ async def _stream_with_tools(
             # native tokens above) — record the assistant turn, execute each
             # call, append the results, and loop.
             calls = _reassemble_tool_calls(tool_frags)
+            # D-TOOLCALL-GEMMA-INTERIOR-LEAK — FIRST, before any helper inspects the
+            # args: un-concatenate calls the model packed into one args payload. Runs
+            # here (one site) rather than inside `_parse_tool_args` (25 call sites)
+            # because it changes the NUMBER of calls, not one call's parse.
+            calls = _split_interior_leaked_tool_calls(calls)
             # D-TOOLCALL-GEMMA-TOKEN-LEAK — this pass's ENTIRE call set came from
             # the leak scan (tool_frags was empty), typically because this WAS
             # the D7 forced tool-free final pass (offered_tools False this
@@ -3108,6 +3251,62 @@ async def _stream_with_tools(
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": _parse_tool_args(c["arguments"]), "ok": False,
                         "result": None, "error": _deny_err,
+                    }}
+                    continue
+
+                # D-TOOLCALL-GEMMA-INTERIOR-LEAK — the args STILL carry this model family's
+                # native control tokens, so `_split_interior_leaked_tool_calls` could not
+                # resolve the shape and `_parse_tool_args` refused the payload. Refuse the
+                # call, and do NOT report it as a schema / missing-args mistake: the payload
+                # is a DECODER artifact, not what the model wrote. Misattributing it is what
+                # made the live incident unrecoverable — the model was told it sent a bad
+                # enum value that json repair had synthesized out of a swallowed control
+                # token, so no amount of self-correction could reach it and the turn collapsed
+                # into 10,882 characters of repeated prose. Name the real fault and ask for
+                # ONE call — the shape this decoder gets right.
+                #
+                # Placed BEFORE the frontend/backend fork on purpose: both sides validate
+                # against a schema and would otherwise blame the model. The live incident hit
+                # BOTH (`glossary_propose_entity_edit` is a frontend tool,
+                # `glossary_propose_batch` a backend one), so a backend-only guard would have
+                # fixed half the bug and left the other half looking identical.
+                if _has_leak_marker(c.get("arguments") or ""):
+                    # Counts toward the existing per-turn cap: the model is blameless, but a
+                    # decoder that leaks every pass must still terminate the turn rather than
+                    # trade honest errors until MAX_TOOL_ITERATIONS runs out.
+                    blank_tool_args_streak += 1
+                    _leak_msg = (
+                        f"The arguments for '{c['name']}' arrived corrupted — your output "
+                        "carried tool-call control tokens inside the JSON, so the payload "
+                        "could not be trusted and the call was NOT run. This is a decoding "
+                        "fault, not an error in your reasoning: do not change which tool you "
+                        "chose, and do not apologise for a wrong argument value. "
+                        + (
+                            "You have hit the retry limit for this — tell the author plainly "
+                            "that the call could not be sent, and stop."
+                            if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP else
+                            "Emit exactly ONE tool call, with plain JSON arguments and "
+                            "nothing after the closing brace."
+                        )
+                    )
+                    logger.warning(
+                        "D-TOOLCALL-GEMMA-INTERIOR-LEAK: refused to dispatch %r with "
+                        "marker-bearing args (session=%s, streak=%d): %r",
+                        c["name"], session_id, blank_tool_args_streak,
+                        (c.get("arguments") or "")[:200],
+                    )
+                    if trace is not None:
+                        trace.add("compile", "T6", "tools",
+                                  f"args_corrupted:{c['name']}", is_error=True)
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "tool_args_corrupted_by_decoder", "message": _leak_msg}
+                        ),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": {}, "ok": False, "result": None, "error": _leak_msg,
                     }}
                     continue
 

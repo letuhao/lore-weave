@@ -43,7 +43,9 @@ from app.services.stream_service import (
     _drop_duplicate_empty_tool_calls,
     _extract_leaked_tool_calls,
     _parse_tool_args,
+    _rail_is_in_flight,
     _reassemble_tool_calls,
+    _split_interior_leaked_tool_calls,
     _split_safe_emit,
     _stream_via_gateway,
     _stream_with_tools,
@@ -277,6 +279,154 @@ class TestParseToolArgs:
         # Not Gemma-specific — json_repair's general net catches a plain
         # trailing-comma slip from any provider.
         assert _parse_tool_args('{"q": "Kai", "limit": 3,}') == {"q": "Kai", "limit": 3}
+
+    def test_surviving_control_token_is_refused_not_disguised(self):
+        # D-TOOLCALL-GEMMA-INTERIOR-LEAK post-condition. `repair_json` will absorb a
+        # surviving control token into the nearest string value and hand back JSON that
+        # PARSES — which is worse than failing, because every caller downstream then
+        # treats a corrupted payload as clean. Live shape (session 019faf5b seq 16): the
+        # model's SECOND call was swallowed into the first call's `type` value, and the
+        # tool reported `enum: create_kinds"},{params:{description: does not equal any
+        # of [...]` — an enum the model never wrote. Must degrade to {}, not to a lie.
+        raw = (
+            '{ops:[{type:<|"|>create_kinds<|"|>}]}<tool_call|><|channel>thought'
+            '<channel|><|tool_call>call:glossary_propose_entities{items:[]}'
+        )
+        assert _parse_tool_args(raw) == {}
+
+    def test_clean_args_after_the_split_still_parse(self):
+        # The head segment `_split_interior_leaked_tool_calls` hands back carries no
+        # marker, so the post-condition above must not fire on it.
+        assert _parse_tool_args('{ops:[{type:<|"|>create_kinds<|"|>}]}') == {
+            "ops": [{"type": "create_kinds"}]
+        }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# _split_interior_leaked_tool_calls — D-TOOLCALL-GEMMA-INTERIOR-LEAK
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestSplitInteriorLeakedToolCalls:
+    """The model packs several tool calls into ONE args payload, separated by its own
+    native control tokens. Recover them as separate calls instead of letting json
+    repair swallow them into a value (live: session 019faf5b seq 16 → 10,882 chars of
+    repeated prose, author hit Stop)."""
+
+    def test_a_wellformed_provider_is_untouched(self):
+        calls = [{"id": "a", "name": "book_read", "arguments": '{"book_id": "b1"}'}]
+        assert _split_interior_leaked_tool_calls(list(calls)) == calls
+
+    def test_the_swallowed_second_call_is_recovered(self):
+        # The live payload: propose_batch's args carry a whole second call to
+        # glossary_propose_entities — the tool the model was CORRECTLY told to use.
+        raw = (
+            '{ops:[{type:<|"|>create_kinds<|"|>}]}<tool_call|><|channel>thought'
+            '<channel|><|tool_call>call:glossary_propose_entities{items:[{name:<|"|>Lâm Uyên<|"|>}]}'
+        )
+        out = _split_interior_leaked_tool_calls(
+            [{"id": "c1", "name": "glossary_propose_batch", "arguments": raw}]
+        )
+        assert [c["name"] for c in out] == [
+            "glossary_propose_batch", "glossary_propose_entities",
+        ]
+        # Head keeps only its own args, with the marker gone — so it parses honestly.
+        assert _parse_tool_args(out[0]["arguments"]) == {"ops": [{"type": "create_kinds"}]}
+        # …and the recovered call carries the model's real intent.
+        assert _parse_tool_args(out[1]["arguments"]) == {"items": [{"name": "Lâm Uyên"}]}
+
+    def test_a_truncated_trailing_call_is_still_recovered(self):
+        # The live capture was cut off mid-call (no closing `<tool_call|>`); the body
+        # must run to end-of-string rather than being dropped.
+        raw = '{a:1}<|tool_call>call:glossary_propose_entities{items:[{name:<|"|>Kai<|"|>}]}'
+        out = _split_interior_leaked_tool_calls(
+            [{"id": "c1", "name": "x", "arguments": raw}]
+        )
+        assert len(out) == 2
+        assert out[1]["name"] == "glossary_propose_entities"
+        assert _parse_tool_args(out[1]["arguments"]) == {"items": [{"name": "Kai"}]}
+
+    def test_marker_with_no_call_behind_it_leaves_a_clean_head(self):
+        # Reasoning-channel tokens with no second call: nothing to recover, but the
+        # head must still be stripped so the surviving call parses.
+        out = _split_interior_leaked_tool_calls(
+            [{"id": "c1", "name": "x", "arguments": '{a:1}<|channel>thought<channel|>'}]
+        )
+        assert len(out) == 1
+        assert _parse_tool_args(out[0]["arguments"]) == {"a": 1}
+
+    def test_a_leading_marker_with_a_real_call_behind_it_drops_the_empty_shell(self):
+        # Marker at position 0 → the entry never had args of its own. A real call WAS
+        # recovered, so the model's intent is fully carried by it; the shell is dropped
+        # rather than dispatched as `{}` (same contract as the sibling dedupe helpers —
+        # a dropped call never reaches `working`, so no result is owed for it).
+        out = _split_interior_leaked_tool_calls(
+            [{"id": "c1", "name": "x",
+              "arguments": '<|tool_call>call:book_read{book_id:<|"|>b1<|"|>}'}]
+        )
+        assert [c["name"] for c in out] == ["book_read"]
+        assert _parse_tool_args(out[0]["arguments"]) == {"book_id": "b1"}
+
+    def test_a_marker_only_payload_keeps_its_marker_for_the_dispatch_guard(self):
+        # Nothing recoverable and no head → there is no intent to act on. The args must
+        # be left EXACTLY as they arrived so the dispatch guard can report an honest
+        # "your args were corrupted", instead of the marker being stripped into blank
+        # args that dispatch and draw a misleading "missing required field".
+        out = _split_interior_leaked_tool_calls(
+            [{"id": "c1", "name": "x", "arguments": '<|channel>thought<channel|>'}]
+        )
+        assert len(out) == 1
+        assert out[0]["arguments"] == '<|channel>thought<channel|>'
+
+    def test_ids_are_unique_so_the_provider_never_sees_a_collision(self):
+        raw = '{a:1}<|tool_call>call:t1{x:1}<tool_call|><|tool_call>call:t2{y:2}'
+        out = _split_interior_leaked_tool_calls(
+            [{"id": "c1", "name": "head", "arguments": raw}]
+        )
+        assert [c["name"] for c in out] == ["head", "t1", "t2"]
+        assert len({c["id"] for c in out}) == 3
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# _rail_is_in_flight — D-RAIL-INFLIGHT-ON-ATTEMPT
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestRailIsInFlight:
+    def test_a_succeeded_step_tool_is_in_flight(self):
+        assert _rail_is_in_flight(
+            resumed_mid_rail=False,
+            step_tools_succeeded=["glossary_adopt_standards"],
+            step_tools_attempted=[],
+        )
+
+    def test_a_resume_mid_rail_is_in_flight(self):
+        # The confirm executes off the backend chokepoint, so it never reaches
+        # turn_succeeded — but the rail is unambiguously live.
+        assert _rail_is_in_flight(
+            resumed_mid_rail=True, step_tools_succeeded=[], step_tools_attempted=[],
+        )
+
+    def test_an_ATTEMPTED_but_FAILED_step_tool_is_in_flight(self):
+        # THE FIX. Two live incidents, unrelated triggers, identical shape: every tool
+        # call in the iteration failed (capability floor withheld the tool / the decoder
+        # corrupted its args), so turn_succeeded stayed empty, the step-runner read the
+        # rail as "not started", injected nothing, and the model fell into repeated prose
+        # (40,597 and 10,882 chars) until the author hit Stop. Intent is what makes a rail
+        # live — the model reached for the step; the platform is what stopped it.
+        assert _rail_is_in_flight(
+            resumed_mid_rail=False,
+            step_tools_succeeded=[],
+            step_tools_attempted=["glossary_propose_entities"],
+        )
+
+    def test_a_turn_that_never_touched_the_rail_is_not_in_flight(self):
+        # The rail must NOT be driven on a turn where the author asked something
+        # unrelated and the model never reached for a step tool — that is the
+        # "governance serves the author" boundary, not something to widen.
+        assert not _rail_is_in_flight(
+            resumed_mid_rail=False, step_tools_succeeded=[], step_tools_attempted=[],
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -668,6 +818,78 @@ class TestStreamWithToolsOneToolCall:
 
         tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
         assert [t["tool"] for t in tool_chunks] == ["memory_search", "memory_get_entity"]
+
+
+class TestInteriorLeakThroughTheLoop:
+    """D-TOOLCALL-GEMMA-INTERIOR-LEAK end-to-end through `_stream_with_tools`.
+
+    The pure-function tests above prove the split; these prove the LOOP acts on it.
+    Reconstructed from the live incident (session 019faf5b seq 16): the model packed a
+    second, CORRECT call into the first call's arguments, json repair swallowed it into an
+    enum value, the tool blamed the model for a value it never wrote, and the turn ended
+    in 10,882 characters of repeated prose."""
+
+    @pytest.mark.asyncio
+    async def test_the_swallowed_call_actually_executes(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        # ONE provider tool-call fragment carrying TWO calls.
+        leaked = (
+            '{query:<|"|>a<|"|>}<tool_call|><|channel>thought<channel|>'
+            '<|tool_call>call:memory_get_entity{name:<|"|>b<|"|>}'
+        )
+        scripts = [
+            [
+                tool_frag(index=0, id="c0", name="memory_search"),
+                tool_frag(index=0, arguments_delta=leaked),
+                done("tool_calls"),
+            ],
+            [tok("answer"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # BOTH calls dispatch, with their own un-corrupted args — before the fix the
+        # second one existed only as text glued inside the first one's `query`.
+        assert kc.mcp_execute_tool.await_count == 2
+        assert [c.kwargs["tool_name"] for c in kc.mcp_execute_tool.await_args_list] == [
+            "memory_search", "memory_get_entity",
+        ]
+        assert [c.kwargs["tool_args"] for c in kc.mcp_execute_tool.await_args_list] == [
+            {"query": "a"}, {"name": "b"},
+        ]
+        # …and nothing marker-shaped survives into what the UI records.
+        for t in (c["tool_call"] for c in chunks if "tool_call" in c):
+            assert "<|" not in json.dumps(t["args"], ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_an_unsplittable_leak_is_refused_with_an_honest_error(self):
+        """A marker the split cannot resolve into a real call must NOT dispatch, and the
+        model must be told the DECODER corrupted its args — not that it sent a bad value.
+        Misattributing this is what made the incident unrecoverable."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = [
+            [
+                tool_frag(index=0, id="c0", name="memory_search"),
+                # A bare control token with no `call:NAME{…}` behind it, and the marker
+                # first — so the head is empty and there is nothing to recover.
+                tool_frag(index=0, arguments_delta='<|channel>{query:<|"|>a<|"|>}'),
+                done("tool_calls"),
+            ],
+            [tok("answer"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        kc.mcp_execute_tool.assert_not_awaited()
+        errs = [c["tool_call"]["error"] for c in chunks if "tool_call" in c]
+        assert len(errs) == 1
+        assert "arrived corrupted" in errs[0]
+        # The blame must land on the decoder, and the model must be told to KEEP its
+        # tool choice — the opposite of the schema-error message it used to get.
+        assert "decoding fault" in errs[0]
+        assert "do not change which tool you chose" in errs[0]
 
 
 class TestSplitSafeEmit:

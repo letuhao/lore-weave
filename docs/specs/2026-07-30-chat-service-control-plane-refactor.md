@@ -133,3 +133,34 @@ every hour spent chasing "why did the agent do nothing" is paid out of this debt
 **Interim (shipped 2026-07-30, not a substitute):** the rail's step tools are exempt from the
 capability floor; an off-surface-but-real tool auto-loads; a withheld tool and an invented tool
 get *different*, honest messages; the rail re-arms its step tools when it advances mid-turn.
+
+## 5. Second confirmation, unrelated trigger (same day)
+
+§1 said the step-runner *"cannot rescue a model that cannot start"*. That sentence described a
+capability-floor collision. Hours later the identical hole fired on a **wire-level** fault with
+nothing to do with the control plane: Gemma concatenated two tool calls into one `arguments`
+payload, `repair_json` absorbed the control tokens into a string value and returned
+**parseable-but-wrong** JSON, the tool rejected an enum value the model never wrote, every call
+in the iteration failed — so `turn_succeeded` stayed empty, the driver stayed silent, and the
+turn became 10,882 characters of prose.
+
+Fixed at the wire (`D-TOOLCALL-GEMMA-INTERIOR-LEAK`: split instead of swallow, a post-condition
+that refuses a disguised repair, an honest decoder-fault error before the frontend/backend fork)
+and at the seam (`D-RAIL-INFLIGHT-ON-ATTEMPT`: an *attempted* step tool counts as in flight,
+extracted into a named `_rail_is_in_flight` policy rather than an inline expression — a small
+down-payment on §C).
+
+Two things this sharpens for whoever does the refactor:
+
+1. **`in_flight` was the single highest-leverage predicate in the loop.** Two incidents, two
+   layers, one wrong definition. Under §B it becomes a `TurnState` field with one owner instead
+   of an expression re-derived at one call site.
+2. **A repair layer needs a post-condition, not just a best effort.** §A/§C are about *gates*
+   that remove things; this is a *transform* that can silently produce a wrong result. The
+   anti-rot rule in §E should cover both: **a mechanism that transforms a payload must be able
+   to say it failed** — "repaired into something that parses" is not success.
+
+The three incidents were in three different layers (gate contradiction · tool surface · wire
+corruption) and presented identically, because the turn loop has exactly one way to fail
+outward: the model talks in circles. Until §A/§B/§D exist, *every* defect anywhere upstream
+arrives wearing that costume, and each one costs a live debugging session to un-mask.
