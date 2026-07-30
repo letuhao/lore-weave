@@ -51,6 +51,40 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ `eventgen-validate` was blind to the files it exists to protect (2026-07-30)
+
+`B3a` (`d0a5eecf4`) committed the four **barrels** that name `ruleset_epoch_activated_v1` —
+`rust/mod.rs`, `python/__init__.py`, `ts/index.ts`, `registry_generated.go` — and left the three
+per-event modules they import **untracked**. `eventgen-validate.sh` ran on that commit and printed
+**PASS**.
+
+It asked `git diff`, and **`git diff` compares the working tree to the index for TRACKED files
+only.** A file git has never heard of is not a difference. The check's subject was *"files git
+already knows about"* — the one set that cannot contain this bug. `NV-3`.
+
+Nothing consumes the Rust/TS/Python bindings yet, so nothing was red. That is not mitigation, it is
+the mechanism of the debt: it would have surfaced on whoever wired the first consumer in, on a
+machine where the file had never been generated, a long way from the commit that caused it.
+
+**This is [row 26](../../standards/non-vacuity.md)'s untracked-blindness, recorded the previous day,
+in a third gate.** Second time the fix failed to travel. Register [row 27](../../standards/non-vacuity.md).
+
+The gate now generates into a **temp dir** instead of in place — the old version could only report
+drift it had just finished erasing, and it mutated the working tree on every CI run — and checks four
+things, each bite-tested: content drift · orphans · missing-on-disk (one `diff -r`) · **not
+committed** (on-disk minus `git ls-files`). That last one is written in the *positive* direction on
+purpose: the obvious `--others --exclude-standard` form goes vacuous the moment someone gitignores
+the generated tree (`NV-4`).
+
+Arm 4 was red **on the real defect** before the fix, which is the bite-proof that matters:
+
+```
+[eventgen-validate] FAIL — generated files exist on disk but are NOT COMMITTED:
+    python/ruleset_epoch_activated_v1.py
+    rust/ruleset_epoch_activated_v1.rs
+    ts/ruleset-epoch-activated-v1.ts
+```
+
 ### ✅ Q0b B1b — the epoch switch is real, and the refusal costs nothing (2026-07-29)
 
 `B1a` gave `QTY-A5`'s never-reuse arm a subject; `B1b` wires it to storage. `BindingStore` grows

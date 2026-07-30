@@ -12,7 +12,7 @@
 > returned **zero hits**.
 >
 > That is the repo's own `rule + SoT + gate + test` meta-pattern **with the SoT missing**. The
-> consequence is measurable: the same defect shipped **twenty-six times** (§4), each fixed locally in the
+> consequence is measurable: the same defect shipped **twenty-seven times** (§4), each fixed locally in the
 > place it happened, because the next person had no page to read. This is that page.
 
 ---
@@ -124,9 +124,9 @@ recorded nowhere has to be re-done by the next reader, which means it will not b
 
 ---
 
-## 4. The register — twenty-six occurrences, one caught by a test
+## 4. The register — twenty-seven occurrences, one caught by a test
 
-Kept because the count is the argument. **Twenty-five of the twenty-six were found by a human or an agent
+Kept because the count is the argument. **Twenty-six of the twenty-seven were found by a human or an agent
 reading carefully.** The other was caught by clippy — not by the test suite, which was green
 throughout, but by a linter that happened to constant-fold the expression. That is the exception NV-1
 predicts the shape of: a vacuous check is invisible to *testing* by construction, and only something
@@ -159,6 +159,7 @@ that inspects the check itself can see it.
 | 24 | **the two-segment id predicate could not see `D-START`.** Requiring `D-<WORD>-<WORD>` is what keeps `READ-ONLY`/`LOAD-BEARING` out (the naive version reported `D-ONLY` 54 times), but single-segment ids exist on the platform track and would have been **silently skipped inside a governed block** | NV-3 | comparing strict vs loose predicates on the real file | fixed 2026-07-29 — the shape is now ENFORCED: an unparseable backticked `D-…` inside a block FAILS with a rename instruction, so the hole is loud instead of confessed |
 | 25 | **`RLS-I1` monotonicity was computed against a default.** `load_reality` returned `(Ruleset, RulesetDigest)` — reading the binding and **throwing its EPOCH away** — and `Island::new` then hardcoded `RulesetEpoch(1)`. A reality durably bound at epoch 5 ran on an island claiming epoch 1, so a redelivered switch to epoch **3** was `3 > 1` and **accepted**, moving the island onto rules the reality had already moved past. The guard written to prevent exactly that, defeated by the constructor | NV-4 | auditing `B2` against `B1b` immediately after both shipped — *"what connects the two epoch counters?"*, answer: **nothing** | fixed 2026-07-29 — the epoch travels WITH the rules (`load_reality` returns the binding) and `Island::new` takes it as a REQUIRED parameter, so the hole is a compile error at all 20 call sites |
 | 26 | **`epoch-emit-trigger-gate` was VACUOUS while its self-test passed.** Its tree walk used a bare `git ls-files`, which cannot see a file that has not been `git add`ed — so a Go producer dropped into `admin-cli` and a string-only one into `game-server` were **both reported GREEN**. The self-test was green throughout because it only exercises the regexes in memory. **The identical defect had been fixed in `deferral-gate` hours earlier and was not carried across** — a sibling gate copied the shape without the fix | NV-3 | the tree-level bite, which is why `NV-6` demands it *as well as* the fixture — nothing else could have shown it | fixed 2026-07-30 — `--cached --others --exclude-standard`, plus a self-test arm that writes a real untracked probe file and fails if the walk cannot see it, so a third copy cannot repeat it |
+| 27 | **`eventgen-validate` said PASS over a generated tree that is not in the repository.** `d0a5eecf4` committed the four BARRELS that name `ruleset_epoch_activated_v1` — `rust/mod.rs`, `python/__init__.py`, `ts/index.ts`, `registry_generated.go` — and left the three per-event modules they import **untracked**. The gate asked `git diff`, which compares the working tree to the index **for tracked files only**: a file git has never heard of is not a difference. Its subject was "files git already knows about", the one set that cannot contain the bug. Nothing consumes the Rust/TS/Python bindings yet, so nothing was red — which is why it would have stayed broken until the first consumer was wired in, on a machine where the file had never been generated. **This is row 26's untracked-blindness, recorded the previous day, in a third gate** | NV-3 | re-reading `git status` at a session boundary and asking why three generated files were still `??` after the commit that generated them | fixed 2026-07-30 — generation now goes to a temp dir and `diff -r` covers content + orphans + missing, plus an on-disk-minus-`git ls-files` check written in the POSITIVE direction (the `--others --exclude-standard` form would go vacuous the moment the tree were gitignored — NV-4). All four arms bite-tested; arm 4 red on the real defect before the fix |
 | 18 | migration 033's append-only trigger was an ORIGIN trigger, so `session_replication_role = replica` (`pg_restore --disable-triggers`, logical-replication apply) skipped it — the UPDATE rewrote a bound digest and the DELETE removed the epoch | NV-3 | probing the guard in the one mode that turns triggers off, before writing the test that asserts it | fixed 2026-07-29 (`Q1 B2a`) — `ENABLE ALWAYS` |
 
 **Three of the fifteen (1, 2, 3) are the same defect in three sibling files.** That is the strongest
