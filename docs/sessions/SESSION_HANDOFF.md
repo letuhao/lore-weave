@@ -143,7 +143,11 @@ This is now the **third** surface of one root cause (palette · openPanel · toa
 that matches a UI string is coupled to a **server-side user preference**, so the suite can go
 red with no code change. Match by id/role; assert structure, not translation.
 
-## 🔎 assistant-endofday: ran it — and gemma was never the blocker (2026-07-30)
+## 🔎 assistant-endofday — SUPERSEDED, cause found (2026-07-30)
+
+> **Resolved.** The cause was isolated and fixed — see *"End my day" ran the diary
+> distiller on the CHAT model* above. Kept only for the investigation trail; the
+> "NOT isolated" list below is no longer open.
 
 Run against real `google/gemma-4-26b-a4b-qat` (loaded in lm_studio, $0). **It fails ~23s in,
 before any LLM call**, so nothing about the distiller is proven or disproven.
@@ -244,12 +248,10 @@ two `toContainText` assertions on the neighbour's name and code — the row's on
 (`studio-motif-graph.spec.ts` does exist but covers the reactflow **canvas**, a different
 surface. The gap was assertion strength, not missing coverage.)
 
-### Deferred — the same anti-pattern, swept
-**D-E2E-PRESENCE-NOT-CONTENT** · origin: this cycle · gate #2 (large/structural — needs its
-own pass). There are **318** `toBeVisible()` calls across the e2e specs. Many are correct
-(a dialog/panel *is* about presence). The suspect class is narrower: **a DATA row asserted
-visible without asserting the data**. Needs a pass that identifies row-rendering assertions
-and strengthens them. Target: whenever e2e coverage is next reviewed.
+### ~~Deferred~~ → CLEARED the same day
+**D-E2E-PRESENCE-NOT-CONTENT** was deferred here and **closed** a few hours later — see the
+sweep section above. The "318" in this row was also wrong (a raw grep): 119 are in test
+bodies, 4 assert a data row, and 3 of those 4 were false positives. **3 genuine, all fixed.**
 
 ### Note on tooling
 The Playwright **MCP** browser profile was locked by the concurrent session, so this ran on
