@@ -134,8 +134,21 @@ book, scoped by `user_id`/`project_id`/`book_id`. What survives is different and
 call passes `kind="other"`, so a **book chunk and a wiki chunk are indistinguishable in a citation**,
 which `PGN-A14`'s corpus seal must fix with `is_authored_source`.
 
+**✅ The 武俠 corpus fixture is AUTHORED** — 《寒潭劍錄》, a 42-chapter wuxia novel and its reader-built
+wiki, at `services/lore-enrichment-service/tests/fixtures/wuxia/` (4 authored + 5 wiki files, Chinese
+source, English stable IDs). Nine deliberate gaps `R1..R9`, each mapped to the pipeline stage it exists
+to defeat. **The fixture shipped a defect and the check found it:** the role notes were first written as
+`<!-- fixture role: ... -->` headers inside each corpus file, which **defeated `R6`** — the comment in
+`neigong.md` named 罡元, and 罡元's whole job is to be a realm no page places in sequence, so the answer
+was sitting inside the one page it had to be absent from. Every file also leaked
+`is_authored_source`, handing the model the provenance `PGN-A14` exists to test. Metadata about a test
+must never live inside the thing under test; the answer key is now a sidecar
+(`fixture_teeth.json`) and `tests/test_wuxia_fixture_teeth.py` is the mechanism — **39 tests, 4
+bite-proven** (罡元 re-added → `R6 is DEFEATED`; a `fixture role` comment → metadata-leak red; an Arabic
+digit on the progression page → `PGN-A5` red; the naming pattern stated twice → `R2` red).
+
 **▶ NEXT:** `S-1` — `ProgressionKindDecl` + `ProgressionTable` + the validator in Rust (schema 4 → 5;
-the four `Q2 B1` guards bite again). The 武俠 corpus fixture is independent and authorable in parallel.
+the four `Q2 B1` guards bite again). The fixture is done and waiting for it.
 `Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot
 (365) · file-ceiling · deferral · gate-wiring.
 
