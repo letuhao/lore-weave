@@ -611,9 +611,19 @@ observation. A claim that a check passed, without its output, does **not** tick 
       (`add|update|delete`), `scene_link` (`create|delete`), `derivative`
       (`deriveWork`/`patchDivergenceSpec`/`getDerivativeContext`), plus `authoring_run`
       manage/review (`authoringRuns/api.ts`).
+      🔢 **The "11" was wrong, and the harness found it (2026-07-30).** The
+      machine-checked SSOT for what a family IS — `test_atom_delete_contract.py`'s
+      `CONTRACT` — holds **14**, while the prose above names **12** and the count says 11.
+      `error_block` and `authoring_run_review` were never counted at all, so every "N/11"
+      this track reported was measured against a denominator that did not match the SSOT.
+      `scripts/atom-edit-roundtrip.py` now PARSES its denominator from that contract, so
+      the total cannot drift from the definition again.
       ⚠️ **Presence is NOT proof.** All 6 PlanForge atoms also "had both sides" and 8 of them were
       broken (F10: four editors with no door; B6: four kinds where DELETE silently no-op'd). The
-      matrix's real column — *real-run proven?* — is still **empty for all 11**. → F3.
+      matrix's real column — *real-run proven?* — is **13 of 14 as of 2026-07-30**
+      (`scripts/atom-edit-roundtrip.py`, re-runnable, live through the gateway). Only
+      `authoring_run_review` is open, and for an EXTERNAL reason: accept/reject act on
+      DRAFTED units, so proving them means gating a run — real generation, real spend.
       **The gates below are NOT that column.** They prove shape, reachability and preservation;
       the commitment demands a live edit reaching the artifact. Closing F2 on gates alone was a
       bar-lowering caught by the human, not by me — recorded because it is the exact drift this

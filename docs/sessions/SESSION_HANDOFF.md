@@ -1,75 +1,71 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## 🔬 ATOM-EDIT F2 — 4/11, 0 failed, and the flagged discrepancy turned out to be a real bug (2026-07-30)
+## 🔬 ATOM-EDIT F2 — 13/14, and the denominator was wrong all along (2026-07-30)
 
-`scripts/atom-edit-roundtrip.py` is F2's *real-run proven?* column as a **re-runnable
-script**: per family CREATE → read back → PATCH → read back and assert the field CHANGED →
-DELETE → read back and assert GONE. DELETE-first on purpose — it is the op that failed
-silently on four of six PlanForge kinds (B6). **It counts out loud** and names the 7 families
-still waiting on a Work/outline fixture, so the gap is a line of output, never an absence.
+`scripts/atom-edit-roundtrip.py` went **4/11 → 13/14, 0 failed**, twice consecutively, live
+through the gateway. Every family: CREATE → read back → PATCH → read back and assert the
+field CHANGED → DELETE → read back and assert GONE → **and then assert the REVERSE its row
+declares** in `test_atom_delete_contract` (soft+restore · pair · revision). Absence alone
+passes identically against a hard delete, which is a different contract.
 
-**`F2 real-run proven: 4/11 families (7 pending a fixture, 0 failed)`** — was 2/11 with 2
-failed. Both reds were MINE, and the second one was hiding a product bug.
+### 🔢 The count itself was the first bug
+The harness now **parses its denominator** from `test_atom_delete_contract.py` — the
+machine-checked SSOT for what a family IS — instead of counting its own dict. That
+immediately exposed the number this track had been reporting: the checklist says **11**,
+its own prose names **12**, and the contract holds **14**. `error_block` and
+`authoring_run_review` were never counted at all. **Every "N/11" ever printed here was
+measured against a denominator that did not match the definition.** CHECKLIST.md corrected.
 
-### PROVEN (4): `motif`, `motif_link`, `arc_template`, `structure_template`
-`structure_template` additionally proves the archive is **soft** in both directions: gone
-from the active list AND still present under `include_archived=true`. Asserting only the
-first would pass identically against a hard delete, which is a different contract.
+Deriving the total from the implemented dict would have read **13/13 — done**. Parsing the
+SSOT means a family nobody has written yet appears as PENDING *with a stated reason*, and
+an unparseable SSOT **raises** rather than returning an empty (vacuously green) total —
+both proven.
 
-### Six harness bugs found, across two runs, and ZERO product bugs from the harness itself
-That ratio is what a proof harness should produce, and reading its red as a product bug is
-how a fake finding gets filed. Run 1: `If-Match` is a **header** not `?expected_version=`;
-`GET /motifs/{id}/links` wraps rows in `{motif_id, links, count}`; templates live at
-`/templates` with **no single-GET** (405) so every read-back is the LIST; probe rows need
-unique names or run 2 409s on run 1's leftovers. Run 2, the two that had been left open:
+### The fixture was never missing; it was a stale doc
+`POST /books/{id}/work` has been implemented all along (`works.py:154`, idempotent). The
+contract described it as **"PLANNED — not yet implemented (D-COMP-POST-WORK-CREATE)"**, and
+that note is what made these families look blocked. Verified against code, corrected in the
+contract. This is the third time on this project a "missing route" turned out to exist —
+the CLAUDE.md rule about it earned its place again.
 
-- **`structure_template` — I patched `/structure-templates/{id}`, a route that does not
-  exist.** FastAPI's `404 {"detail": "Not Found"}` means *no such route*; I read it as *no
-  such row*. Two different 404s and only one is a product bug. The real route is
-  `PATCH /templates/{id}` + `If-Match`.
-- **`motif_link` — I asserted a FLAT `neighbor_id`** that the server never sends, then read
-  my own miss as "the edge does not come back". ⤵
+The whole chain is ordinary POSTs: book → Work → book chapter → outline chapter node
+(carrying `chapter_id`) → scenes → rules-mode plan run → derivative. Built **lazily**, once,
+inside a **throwaway book deleted in a `finally`** — verified by effect (0 leftovers across
+54 books), and a failed cleanup is printed, not assumed away.
 
-### ⚠→✅ The flagged discrepancy was REAL, user-visible, and shipped
-The handoff said it needed one browser check. It needed less: `motif_repo.list_links`
-nests the neighbour (`neighbor: {id, code, name}`), `MotifGraphSection.tsx` read
-`l.neighbor_name` / `l.neighbor_code`, and that panel is **live-mounted** in
-`MotifDetailDrawer`. So every edge in a motif's Graph section rendered an arrow and **two
-blank labels**, for a release.
+### Channels are not interchangeable
+`motif_bind` has **no REST write route**, and the BFF's FE bridge allowlist deliberately
+excludes every `composition_*` bind/unbind ("NOTHING here writes or deletes"). The browser
+is not its door *by design* — its caller is an agent. So it is proven over **MCP federated
+through ai-gateway**, not by poking composition-service's own `/mcp`, because skipping the
+federation is exactly how a dead FE affordance passed a green smoke earlier in this track.
 
-**Nothing caught it, and each layer failed for its own reason** — this is the interesting part:
-- the **FE unit tests** passed: their fixtures were written from the FE *type*, so both
-  sides of the test agreed on a shape the server never sent;
-- **tsc** passed: a type is only wrong *relative to something*, and it had nothing to be
-  wrong relative to;
-- the **contract** passed: `links` items were `{ type: object }` — freeform. **That was the
-  root cause**, not the FE typo. Neither side had a spec to conform to.
+### `authoring_run_manage` costs $0 — "it spends money" was true of one op, not the family
+The prior note deferred it as money-spending. Reading the routes instead: `POST
+/authoring-runs` only writes the run row (generation starts at `/gate`, never called), and
+its plan run is `rules` mode — a deterministic parse, no model call. Proven by flipping the
+pause policy and re-reading it, **plus an assertion that `spent_usd` is still 0**.
 
-Fixed: the contract now pins `MotifLinkRow` / `MotifLinkNeighbor` / `MotifLinkEdge`, and the
-loop is closed by **two** links that were each proven red-able:
+### Four more harness bugs, zero product bugs
+Same ratio as before, and worth recording because reading a harness's red as a product bug
+is how a fake finding gets filed:
+1. `?chapter_id=` on the motif-bindings read is the **book** chapter id, not the outline
+   chapter NODE id — passing the node returns `{}` **and a 200**, which reads exactly like
+   "the bind did nothing". The bind had worked every time.
+2. That read is per-**scene**, not per-chapter (binding instantiates beats as scene nodes).
+3. `entity_override`'s list takes no `include_archived`, so an archived row is invisible
+   there; softness has to be proven via the declared `/restore` reverse. I nearly filed
+   "archive HARD-deleted it".
+4. The authoring-run row names its key `run_id`, not `id`.
 
-| link | mechanism | proven red by |
-|---|---|---|
-| mirror ↔ type | `satisfies Record<keyof MotifLinkRow, true>` in `api.ts` | drifting the mirror → `TS2353` |
-| mirror ↔ contract | `motifLinkContract.test.ts` parses the YAML | flattening the contract → 2 tests red |
+### The one genuinely open family
+`authoring_run_review` — accept/reject act on **drafted** units, so proving them means
+gating a run: real generation, real spend. External constraint, printed by the harness, not
+quietly dropped. It is the only row where "blocked" is honest.
 
-Either link alone is vacuous: without the first the mirror tracks a type free to be wrong;
-without the second the mirror drifts from the type it claims to mirror.
-
-Also fixed on the way: `createLink` was typed as returning `MotifLinkRow`, but the POST 201
-carries from/to ids and **no** neighbour — a second, quieter shape lie (`MotifLinkEdge` now).
-
-### What is NOT proven
-The render is proven in **jsdom** — the fixture is pinned to the contract, which is pinned to
-the live server shape — but **not in Chrome**. One browser pass on the Graph section would
-close it. The guard compares field **names** only, not types/nullability/`required`; name
-drift is what shipped, but a `string`-vs-`number` slip would still get through.
-
-### Next on F2
-The 7 fixture-dependent families (`canon_rule`, `outline_node`, `scene_link`, `motif_bind`,
-`entity_override`, `derivative`, `authoring_run`) need a Work + structure + outline fixture.
-Probe rows all share the `smoke.f2_` prefix; they archive soft and no route hard-deletes
-them, so leftovers are one greppable predicate.
+### Also fixed here
+A hardcoded `dev_internal_token` in the committed script → `os.environ` with the compose
+dev value as fallback.
 
 
 ## 🌏 language-bias-gate is GREEN — and a red gate proved its own point (2026-07-30)

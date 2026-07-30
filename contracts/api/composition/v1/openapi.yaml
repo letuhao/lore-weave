@@ -38,8 +38,15 @@ paths:
       tags: [work]
       summary: Confirm-create a Work (ensure knowledge project + composition_work)
       description: >
-        PLANNED — not yet implemented (D-COMP-POST-WORK-CREATE). Needs a
-        knowledge ProjectCreate client; the M8 FE create-Work flow consumes it.
+        IMPLEMENTED and idempotent (`works.py::create_work_for_book`). Ensures a
+        book-typed knowledge project exists (resolve, else ProjectCreate), then
+        get-or-creates the composition_work row. A knowledge-service outage on a
+        greenfield Work degrades to a lazy null `project_id` + backfill marker
+        rather than a 502; a derivative (`source_work_id`) never takes that path.
+
+        This description read "PLANNED — not yet implemented
+        (D-COMP-POST-WORK-CREATE)" long after the route shipped, and that stale note
+        was read as a blocker by the F2 fixture work. Corrected 2026-07-30.
       parameters: [{ $ref: '#/components/parameters/BookId' }]
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Work' } } } }
