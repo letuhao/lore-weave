@@ -64,13 +64,16 @@ DEFAULT_CORPUS = os.path.join(REPO_ROOT, "docs", "03_planning", "LLM_MMO_RPG")
 CATALOG_REL = os.path.join("00_foundation", "06_id_catalog.md")
 MATRIX_REL = os.path.join("_boundaries", "01_feature_ownership_matrix.md")
 DEFAULT_ALLOWLIST = os.path.join(SCRIPT_DIR, "design-lint.allow.json")
-ALL_CHECKS = ("symbol", "link", "registration", "count")
+ALL_CHECKS = ("symbol", "link", "registration", "count", "scale-band")
 KIND_OF_CHECK = {
     "symbol": "unregistered-prefix",
     "link": "broken-link",
     "registration": "phantom-registration",
     "count": "count-drift",
+    "scale-band": "scale-band-drift",
 }
+GEO_REL = os.path.join("features", "00_geography", "GEO_001_world_geometry.md")
+WORLD_SCALE_RS = os.path.join(REPO_ROOT, "crates", "world-gen", "src", "creative_seed.rs")
 
 # ── patterns ──────────────────────────────────────────────────────────────
 # Stable-ID reference. Letter slot is any single capital or "Ch" — a superset
@@ -321,6 +324,188 @@ def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings
                                          f"`{where}` has {actual if len(actual) > 1 else actual[0]}"))
 
 
+# ── scale-band: GEO_001's declared production scales vs the real generator ──
+#
+# THE BUG THIS EXISTS TO PREVENT, measured 2026-07-30. GEO_001 declared
+# `WorldScale` as "closed 5 V1" with cell counts 1024 / 2048 / 8192 / 12288 /
+# 16384. The shipped `crates/world-gen` had SIX variants and the real counts
+# 1024 / 2025 / 8281 / 12321 / 16384 / 501264 — three numbers wrong and one
+# variant missing. The sixth, `Gigaplanet` (501 264), VIOLATES the same doc's own
+# `cell_count_out_of_bounds` band of [1024, 16384], and said so in its own Rust
+# comment: "Gigaplanet deliberately exceeds it". Spec and generator disagreed for
+# ~10 weeks and nothing looked.
+#
+# WHY THE `count` CHECK DID NOT CATCH IT. `count` needs the adjacency
+# "`X` (N variants)"; the phrasing "closed 5 V1" walks past COUNT_FORMS. That is
+# a deliberate precision trade there — so the guard for THIS class must not
+# depend on phrasing at all.
+#
+# WHY IT IS NOT A UNIT TEST IN THE CRATE. `GEO_GENERATOR_PLAN` §1 makes the
+# crate's independence explicit: "Decoupled from the LLM MMO RPG engine: no
+# DP-kernel, no event sourcing, no aggregates, no foundation tier." A GEO_001
+# band constant inside `world-gen` would break that — and would be near-vacuous
+# besides, comparing a constant to a copy of itself. The defect is TWO DOCUMENTS
+# DRIFTING APART, so the check must read both sides and cannot be satisfied by
+# editing one.
+SCALE_BLOCK = re.compile(
+    r"<!--\s*geo-scale-band:begin.*?-->(?P<body>.*?)(?:<!--\s*geo-scale-band:end|\Z)",
+    re.S)
+BAND_RE = re.compile(r"^\s*cell_count_band:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]", re.M)
+GRID_ARM = re.compile(r"WorldScale::(\w+)\s*=>\s*(\d+)")
+# Trailing comma is OPTIONAL on purpose. Requiring it made the check FAIL OPEN:
+# Rust permits a comma-less final match arm, so `WorldScale::Terraplanet => 900`
+# would be absent from `counts` AND therefore absent from `unlisted` — invisible
+# to the one check whose whole point is "a new variant is production-or-not by
+# DECISION, never by default". Found by /review-impl, bite-tested below.
+
+
+def world_scale_cell_counts(path: str = WORLD_SCALE_RS) -> dict[str, int]:
+    """{variant: cell_count} from the generator's own `grid_side` arms.
+
+    Count is `(g-2)^2 + 4*(g-1)`, the formula `cell_count()` implements. Parsing
+    `grid_side` rather than `cell_count` on purpose: the arms are literals, while
+    `cell_count` is arithmetic that a regex would have to re-implement badly.
+    The formula is asserted against the crate's own doc-comment values by the
+    crate's own unit tests (`WorldScale::Megaplanet.cell_count() == 16384`), so
+    this side is pinned twice.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+    except OSError:
+        return {}
+    # `grid_side` is the first fn with WorldScale arms mapping to a bare integer;
+    # `tag()` also has such arms, so scope to the grid_side body.
+    start = src.find("fn grid_side")
+    if start < 0:
+        return {}
+    end = src.find("\n    }", start)
+    if end < 0:
+        # Bail rather than widen. Without this the fallback made `body` the REST OF
+        # THE FILE, so `tag()`'s `WorldScale::X => 0..5` arms overwrote the real grid
+        # sides — yielding nonsense counts and a finding that blames the band instead
+        # of the parse. Returning {} makes `check_scale_band` emit its explicit
+        # "could not parse the code side" finding, which names the real cause.
+        return {}
+    body = src[start:end]
+    out: dict[str, int] = {}
+    for name, g in GRID_ARM.findall(body):
+        g = int(g)
+        out[name] = (g - 2) * (g - 2) + 4 * (g - 1)
+    return out
+
+
+def parse_scale_decl(text: str):
+    """(band, production, non_production) from the machine-read block, or None."""
+    m = SCALE_BLOCK.search(text)
+    if not m:
+        return None
+    body = m.group("body")
+    bm = BAND_RE.search(body)
+    if not bm:
+        return None
+    band = (int(bm.group(1)), int(bm.group(2)))
+    lists: dict[str, list[str]] = {"production": [], "non_production": []}
+    current = None
+    for raw in body.splitlines():
+        line = raw.rstrip()
+        key = re.match(r"^\s*(production|non_production):\s*$", line)
+        if key:
+            current = key.group(1)
+            continue
+        if current:
+            item = re.match(r"^\s*-\s*(\w+)\s*:\s*(\d+)", line)
+            if item:
+                lists[current].append((item.group(1), int(item.group(2))))
+                continue
+            bare = re.match(r"^\s*-\s*(\w+)\s*$", line)
+            if bare:
+                # A name with no count is a HALF-declaration. Accept it so the
+                # caller can report it, rather than dropping it silently.
+                lists[current].append((bare.group(1), None))
+                continue
+            if line.strip() and not line.lstrip().startswith("#"):
+                current = None
+    return band, lists["production"], lists["non_production"]
+
+
+def check_scale_band(corpus: str, findings: list) -> dict:
+    """Join GEO_001's declaration to the generator's real cell counts."""
+    stats = {"declared": 0, "verified": 0}
+    geo = os.path.join(corpus, GEO_REL)
+    if not os.path.isfile(geo):
+        return stats
+    rel = GEO_REL.replace(os.sep, "/")
+    decl = parse_scale_decl(read_text(geo))
+    if decl is None:
+        findings.append((rel, 0, "scale-band-drift",
+                         "no parseable `geo-scale-band` block — the production-scale "
+                         "declaration (GEO-D14/D15) is the check's doc-side input; "
+                         "without it this guard is silently uncovered"))
+        return stats
+    band, production, non_production = decl
+    counts = world_scale_cell_counts()
+    if not counts:
+        findings.append((rel, 0, "scale-band-drift",
+                         f"could not parse WorldScale::grid_side arms from "
+                         f"{os.path.relpath(WORLD_SCALE_RS, REPO_ROOT)} — the code-side "
+                         f"input is missing, so the check cannot be satisfied by the doc alone"))
+        return stats
+    lo, hi = band
+    stats["declared"] = len(production) + len(non_production)
+
+    def _declared_count_ok(name, declared, where):
+        """The doc's own number vs the generator's. Added after a probe showed an
+        in-band grid_side change (Region 45->46, 2025->2116 cells) passed clean
+        while GEO_001 still said "2025 cells" — the numbers were unguarded prose."""
+        if declared is None:
+            findings.append((rel, 0, "scale-band-drift",
+                             f"`{name}` is listed under `{where}` with NO cell count. "
+                             f"Write `- {name}: {counts.get(name, '<n>')}` — a name-only "
+                             f"row leaves the number unchecked, which is how the six "
+                             f"counts in this block drifted as prose until 2026-07-30"))
+            return
+        if declared != counts[name]:
+            findings.append((rel, 0, "scale-band-drift",
+                             f"`{name}` is declared as {declared} cells but the generator "
+                             f"computes {counts[name]} from its own `grid_side` arm "
+                             f"((g-2)^2 + 4*(g-1)). One of the two moved without the other"))
+
+    for name, declared in production:
+        if name not in counts:
+            findings.append((rel, 0, "scale-band-drift",
+                             f"declares `{name}` a PRODUCTION scale, but no such "
+                             f"`WorldScale` variant exists in the generator "
+                             f"(have: {', '.join(sorted(counts))})"))
+            continue
+        stats["verified"] += 1
+        _declared_count_ok(name, declared, "production")
+        n = counts[name]
+        if not (lo <= n <= hi):
+            findings.append((rel, 0, "scale-band-drift",
+                             f"`{name}` is declared PRODUCTION but its real cell count "
+                             f"{n} is outside the declared band [{lo}, {hi}] — either the "
+                             f"band moves (and `cell_count_out_of_bounds` with it) or the "
+                             f"scale is not production"))
+    for name, declared in non_production:
+        if name not in counts:
+            findings.append((rel, 0, "scale-band-drift",
+                             f"declares `{name}` non-production, but no such `WorldScale` "
+                             f"variant exists — a stale exclusion hides a real one"))
+            continue
+        stats["verified"] += 1
+        _declared_count_ok(name, declared, "non_production")
+    declared_names = {n for n, _ in production} | {n for n, _ in non_production}
+    unlisted = sorted(set(counts) - declared_names)
+    if unlisted:
+        findings.append((rel, 0, "scale-band-drift",
+                         f"generator has scale(s) the declaration does not classify: "
+                         f"{', '.join(unlisted)}. A new variant is production-or-not by "
+                         f"DECISION, never by default — that default is how `Gigaplanet` "
+                         f"came to violate the band unnoticed"))
+    return stats
+
+
 # ── main ──────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -389,6 +574,8 @@ def main() -> int:
         scan_file(path, rel, lines, checks, registered, allow, matrix_text,
                   findings, counters, enum_arities)
 
+    scale_stats = check_scale_band(corpus, findings) if "scale-band" in checks else {}
+
     # ── report ────────────────────────────────────────────────────────────
     scope = "STAGED" if args.staged else "all"
     print(f"design-lint: scanned {n_files} {scope} .md files under {corpus}")
@@ -421,6 +608,11 @@ def main() -> int:
         print(f"count-drift: {by_kind.get('count-drift', 0)} finding(s) "
               f"({counters['count_checked']} claim(s) verified against a real Rust enum; "
               f"{counters['count_assertions']} count-style phrases seen overall)")
+
+    if "scale-band" in checks:
+        print(f"scale-band-drift: {by_kind.get('scale-band-drift', 0)} finding(s) "
+              f"({scale_stats.get('verified', 0)} of {scale_stats.get('declared', 0)} "
+              f"declared scale(s) joined to a real WorldScale variant)")
 
     hard = [f for f in findings if f[2] not in warn_kinds]
     soft = [f for f in findings if f[2] in warn_kinds]

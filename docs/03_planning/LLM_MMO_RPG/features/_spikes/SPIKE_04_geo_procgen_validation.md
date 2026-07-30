@@ -588,7 +588,7 @@ T8: BFF receives unavailable signal. V1 BEHAVIOR (per AC-AUTHOR-10):
 | **SPIKE-04-Q2** | Should §6 fork scenario validate cross-continent ordering (3-continent reality)? | Single-continent scenario sufficient V1 (SPIKE_01 + GEO §14.3 also single-continent). V2+ multi-continent test when GEO-D11 activates. |
 | **SPIKE-04-Q3** | Should §5 cost-cap scenario walk per-iteration cost prediction (V1+30d per GEO-AUTHOR-D4)? | Defer to GEO-AUTHOR-D4 design when V1+30d cost prediction lands. |
 | **SPIKE-04-Q4** | What's the equivalent test for `KnowledgeServiceExtracted` producer ONCE knowledge-service ships? | Defer to GEO-AUTHOR-D1 activation when knowledge-service V1+ ships; reopen this spike OR create SPIKE_NN. |
-| **SPIKE-04-Q5** | What if cohort sentence "ChannelTier::Continent" doesn't exist in MAP-2 enum? Was it actually added? | Verify — read MAP_001 §3 and confirm ChannelTier::Continent is locked V1. If not, file as MED-level fix to MAP_001. (Pre-checked: it IS — MAP_001 §3 ChannelTier enum has 5 V1 variants Continent / Country / District / Town / Cell per cat_00_MAP_map_foundation.md.) |
+| **SPIKE-04-Q5** | What if cohort sentence "`MapKind::World`" (`SPG-R1`+`SPG-R3`; was the retired "ChannelTier::Continent") doesn't exist in MAP-2 enum? Was it actually added? | Verify — read MAP_001 §3 and confirm ChannelTier::Continent is locked V1. If not, file as MED-level fix to MAP_001. (Pre-checked 2026-05: it WAS — MAP_001 §3 `ChannelTier` enum had 5 V1 variants Continent / Country / District / Town / Cell per cat_00_MAP_map_foundation.md.) |
 
 ---
 

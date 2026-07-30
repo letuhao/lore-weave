@@ -486,11 +486,65 @@ stated per row.
 | **SPG-R10** | `EF_001` | `SPG-A1` `holder` field joins entity ↔ interior; lands **with** `WSA-R19` (the `Place`/`Locus` variant), not separately | **verify** |
 | **SPG-R11** | `03_multiverse` + `GEO_001` | unify the two override cascades into the single strength order required by `SPG-A15` | **verify** |
 | **SPG-R12** | `TVL_002` / `TVL_004` | composite travel and travel encounters gain `Passage` as their spatial substrate (SPG-A13) | **verify** |
+| **SPG-R13** | `TMP_001` + `_boundaries/02_extension_contracts.md` §2.X | **NEW 2026-07-30, discovered while retyping the machine contract.** `tilemap_templates` / `grid_size_per_kind` / `default_template_per_kind` / `skip_kind` were keyed by the retired `ChannelTier`; the **type** is fixed (`MapKind`), but the **semantics** now nearly collapse. That contract assumed **four** tilemap-bearing tiers at decreasing zoom (the `256/192/128/64` default — four values for four tiers, **correct as written**; an earlier note in this session calling it underspecified was wrong). Under `SPG-R9` the tilemap sits on **`Locale` alone**: `World`/`Region` are served by `GEO_001`'s Voronoi mesh, which **did not exist as a render target** when TMP_001 was drafted, and `Domain` carries `CSC_001`'s interior composition. So a per-kind map now has one meaningful key. **Routed to TMP_001, not decided here** — collapsing another feature's DRAFT schema while holding the `_boundaries` lock for a rename is the scope creep the mutex exists to prevent. | **verify** — type applied, semantics OPEN |
 
 **Inherited and still unapplied:** [`WSA-R19..R24`](32_locus_as_actor.md) — doc 32 sealed with its
 own amendment rows explicitly *"PROPOSED, not applied: no feature spec was edited by this arc."*
 `SPG-R10` depends on `WSA-R19`. The two sets should be applied in one pass, because `WSA-R19`
 (`EntityId::Place`) and `SPG-A1` (`holder`) are the same seam approached from two directions.
+
+### SPG-A17 — Absolute position is defined only up to the nearest coordinate root
+
+`SPG-A5` said no node stores an absolute position and that absolute position is the **accumulation** of
+transforms up the tree. That rule was **total** — it had no stopping condition — and `SPG-Q3` is what
+happens when you ask it to cross `Universe → Domain`.
+
+`Transform` was referenced at §4 and **never defined**. Here it is, with the field the first draft
+wanted and review removed:
+
+```rust
+/// Parent-relative placement of a node's frame inside its parent (SPG-A5).
+/// f64, not f32: precision must survive accumulation across DP-Ch1's <=16 levels.
+pub struct Transform {
+    /// Origin of this node's frame, in the PARENT's units.
+    pub position: [f64; 3],
+    /// Orientation of this node's frame relative to the parent's.
+    pub rotation: [f64; 4],           // quaternion
+}
+
+/// Where accumulation STOPS.
+pub enum FrameKind {
+    /// Coordinates compose with the parent's. The common case.
+    Inherited,
+    /// This node ESTABLISHES a coordinate space. Absolute position is defined
+    /// only up to here; nothing above contributes a metric.
+    Root,
+}
+```
+
+**What was rejected, and why it matters.** The first draft added
+`parent_units_per_local_unit: f64` and composed it down the chain — the obvious reading of "make a
+scale-skipping edge meaningful". It fails on contact with real numbers: a light-year→metre edge is
+`9.46e15`, which alone eats an `f64`'s ~15–16 significant digits, and two such edges make the
+accumulated absolute position noise. Budgeting precision for a quantity nobody needs is the wrong trade.
+
+**The answer is that the quantity is not needed.** There is no use for "this chair's position in
+universe coordinates". What the engine needs is position *within a frame* — and every frame that matters
+(a world's surface, a ship's hold, a palace's floor) is a root or sits under one. So a scale-skipping
+edge carries **no shared metric**, and asking for one was the error. `Universe` knows *where a Domain's
+entrance is*; it does not know how many metres wide the Domain is, and never needs to.
+
+**Consequences, stated so they are not rediscovered:**
+
+* A `Root` node's parent edge is a **placement**, not a measurement — `position` locates the entrance,
+  and nothing crosses it dimensionally.
+* Two nodes under **different** roots have **no defined distance**. Travel between them is `SPG-A13`'s
+  `Passage`, which is exactly the right shape: a `Passage` has a duration and a cost, not a length in
+  shared units.
+* `SPG-A5`'s accumulation is now well-founded: it terminates at the first `Root`, so it is a finite
+  walk over at most 16 levels rather than an unbounded product.
+* On the wire (`SPG-N2`) nothing changes — the frame's transform and the occupant's position already
+  replicate as separate streams, and a root boundary is simply where the chain ends.
 
 ---
 
@@ -498,9 +552,9 @@ own amendment rows explicitly *"PROPOSED, not applied: no feature spec was edite
 
 | # | Question |
 |---|---|
-| **SPG-Q1** | The containment matrix is data or code? Ruleset-authored (consistent with SPG-A2) is the likely answer, but a matrix that content can widen is a tenancy and validation surface. |
-| **SPG-Q2** | `Universe → Universe` recursion: what bounds it? `DP-Ch1`'s depth ≤16 is a containment bound, not a semantic one. |
-| **SPG-Q3** | What is the coordinate/scale contract across an edge that skips scales (`Universe → Domain`)? SPG-A5 makes it *representable*; it does not make it *meaningful*. |
+| ~~**SPG-Q1**~~ | **✅ RESOLVED 2026-07-30 — RULESET DATA, engine-validated on write.** The suspected answer held, and closing it turned out to be the *same work* as an unrelated rot fix, which is why it is settled here rather than deferred. **`map_layout.kind` is AUTHORITATIVE on the row, never derived** — and that is the load-bearing half. The old `map.tier_field_mismatch` validator derived the tier *from the DP channel tree*; under `MapKind` that is **unobtainable**, because [`DP-A13`](06_data_plane/02_invariants.md) keeps DP *"agnostic to `level_name` semantics"*. Replaced by **`map.containment_violation`**: the write path validates the **edge** — `allowed(parent.kind, child.kind)` — not the label. The matrix is ruleset data per `SPG-A2`, so it is per-reality **without DP knowing anything**, which is what makes `Domain → World` (内天地) expressible in one reality and forbidden in another. **On the tenancy concern, which was the real content of this question:** the matrix is a **ruleset** artefact, so it inherits the ruleset's tenancy — content-addressed, digest-pinned, admin/author-authored, never user-writable at runtime. A reality **narrows or widens its own** matrix; no user edits a shared one. See [MAP_001 §3.1](features/00_map/MAP_001_map_foundation.md). |
+| ~~**SPG-Q2**~~ | **✅ RESOLVED 2026-07-30 — two bounds already exist and NO third is added.** (1) **Structural:** `DP-Ch1`'s `depth ≤ 16` is not prose — it is a **DB `CHECK` constraint** ([`12_channel_primitives.md:82`](06_data_plane/12_channel_primitives.md): `depth SMALLINT NOT NULL CHECK (depth >= 0 AND depth <= 16)`) plus a stated validation rule at `:66` (*"feature-level books declaring deeper trees fail validation"*). It is already mechanical, at the strongest layer available. (2) **Semantic:** the **containment matrix itself**, per reality — a reality that finds `Universe → Universe` absurd simply omits that cell, and `map.containment_violation` enforces it. The question assumed a semantic bound was *missing*; it was in fact the mechanism introduced two axioms earlier. **Nothing is added, deliberately.** A third bound would be a rule with no mechanism of its own — the exact debt this corpus has been paying down, and `WDS-D3`/`D-WORLD-PAYLOAD-DERIVABLE` records the same reasoning for a different subject: a check with no possible violation is worse than none. |
+| ~~**SPG-Q3**~~ | **✅ RESOLVED 2026-07-30 — there is NO single absolute coordinate space, and there does not need to be.** See `SPG-A17` below, added with this resolution. The question was sharper than it looked: `Transform` was **referenced at §4 and never defined**, so the contract did not merely lack an answer — it lacked a *type*. **First design, rejected at review:** give each node a `parent_units_per_local_unit: f64` and accumulate. It does not survive real ratios — one light-year→metre edge is `9.46e15`, which alone consumes an `f64`'s ~15–16 significant digits, and `DP-Ch1` permits 16 levels. **Adopted instead:** absolute position is defined only up to the nearest enclosing **coordinate root**, and a scale-skipping edge **is** a root boundary — you **re-base** across it, never accumulate through it. This dissolves the precision problem rather than budgeting for it, removes a field, and gives `SPG-A5`'s accumulation rule the **stopping condition it never had**. Star Citizen is the same device (64-bit coords *within* a system; separate systems share no space); OpenUSD's `metersPerUnit` is per-layer interchange metadata, not a factor composed down a deep chain. |
 | **SPG-Q4** | Two actors under one controller in one fight — turn order and action budget. (`SPG-A10` × `COMB_002`.) |
 | **SPG-Q5** | Does `Vessel` need `Kinematic` motion authored, simulated, or player-steered? Steering is possession (`SPG-A10`), but the trajectory source is unstated. |
 | **SPG-Q6** | Cost of loci acting has **never been measured** — carried unchanged from [`WSA-F5(c)`](32_locus_as_actor.md), and doc 21 §7 forbids inferring headroom. |

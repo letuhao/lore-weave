@@ -407,12 +407,12 @@ Examine uses the **ExamineTarget enum** (PL_005 §2 — extends TargetRef with `
 | `ExamineTarget::Actor(ActorId)` | ✅ exactly 1 | examining a person |
 | `ExamineTarget::Item(GlossaryEntityId)` | ✅ exactly 1 | examining an object (glossary-id ref V1; runtime Item aggregate V1+) |
 | `ExamineTarget::Place(PlaceId)` | ✅ exactly 1 | examining a location/scene at cell tier (per PF_001 §3.1; resolves PF-Q4) — see PL_005 §14.1 sequence |
-| `ExamineTarget::MapNode(ChannelId, ChannelTier)` | ✅ exactly 1 V1+ | examining non-cell map node ("examine the country") — V1 schema accepts; V1+ author-content-gated runtime activation per INT-D11 (resolves MAP-Q3) — see PL_005 §14.2 sequence |
+| `ExamineTarget::MapNode(ChannelId, MapKind)` (`SPG-R1` 2026-07-30: was `ChannelTier`) | ✅ exactly 1 V1+ | examining non-cell map node ("examine the country") — V1 schema accepts; V1+ author-content-gated runtime activation per INT-D11 (resolves MAP-Q3) — see PL_005 §14.2 sequence |
 | (multi-target) | ❌ V1 | one-thing-at-a-time |
 
 `indirect_targets`: V2+ when bystander-observer feature ships (see §11 INT-D4).
 
-**ExamineTarget::MapNode V1 semantics:** schema accepts the variant + Stage 3.5.c map_layout validates ChannelTier matches map_layout aggregate; world-rule (Stage 7) rejects with `interaction.intent_unsupported` until first author reality registers MapNode-examine flow.
+**ExamineTarget::MapNode V1 semantics:** schema accepts the variant + Stage 3.5.c map_layout validates the `MapKind` matches the map_layout aggregate (`SPG-R1`); world-rule (Stage 7) rejects with `interaction.intent_unsupported` until first author reality registers MapNode-examine flow.
 
 ### 5.4 Allowed agent
 
@@ -628,7 +628,7 @@ Stage 9  causal-ref       → EVT-A6 typed causal-refs (REQUIRED for NPCTurn / o
 | **Speak** | ✅ for each Actor target — affordance_listening / lifecycle Existing | ✅ same-cell agent+target | ❌ skipped (not Travel) | ❌ skipped (no cell write) |
 | **Strike** | ✅ for direct_target — affordance_strikable / lifecycle Existing (target_dead → `entity.lifecycle_dead`) | ✅ same-cell | ❌ skipped (V1 no cross-cell) | ✅ target on walkable tile (V1+ refinement) |
 | **Give** | ✅ for recipient — affordance_acceptable / lifecycle Existing | ✅ same-cell | ❌ skipped | ❌ skipped (no cell write) |
-| **Examine** | ✅ for Actor/Item targets — affordance_examinable / Existing; SKIPPED for Place + MapNode targets | ✅ same-cell for Actor/Item; **REQUIRED for ExamineTarget::Place** (StructuralState ≠ Destroyed) | **REQUIRED for ExamineTarget::MapNode** (ChannelId + ChannelTier present in map_layout) | ❌ skipped (Examine non-mutating) |
+| **Examine** | ✅ for Actor/Item targets — affordance_examinable / Existing; SKIPPED for Place + MapNode targets | ✅ same-cell for Actor/Item; **REQUIRED for ExamineTarget::Place** (StructuralState ≠ Destroyed) | **REQUIRED for ExamineTarget::MapNode** (ChannelId + `MapKind` present in map_layout, `SPG-R1`) | ❌ skipped (Examine non-mutating) |
 | **Use** | ✅ for direct_target — affordance_usable; ✅ for tool — agent holds | ✅ same-cell | ❌ skipped (V1) | ✅ target on placeable/walkable tile when applicable (V1 minimal) |
 
 ### §8.2 Per-kind Stage 4 (lex_check) severity

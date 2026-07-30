@@ -18,7 +18,7 @@ A `TilemapTemplate` aggregate is **author intent for a procedurally-generated ti
 - Inheritance shortcuts (`inherit_*_from` fields) so symmetric templates don't bloat
 - Biome selection rules (per template; engine defaults override-able by author)
 
-One reality can have multiple templates (e.g., a different template per `ChannelTier`, or genre-specific templates like "wuxia continent" vs "steampunk country"). RealityManifest specifies which template applies to which tier.
+One reality can have multiple templates (e.g., a different template per `MapKind`, or genre-specific templates like "wuxia world" vs "steampunk locale"). RealityManifest specifies which template applies to which kind. **`SPG-R1` 2026-07-30** — was `ChannelTier`, retired. ⚠ **`SPG-R13`**: under `SPG-R9` the tilemap belongs to **`Locale`** alone (`World`/`Region` are served by `GEO_001`'s Voronoi mesh, `Domain` by `CSC_001`), so "a template per kind" is near-degenerate and the §6 four-entry default below is the clearest evidence of it. Routed to TMP_001; not collapsed here.
 
 The template pattern is genre-standard. Most procedural map generators in the prior art (HoMM3, Caves of Qud, Wesnoth, Dwarf Fortress, Civ V/VI) accept some form of author template declaring zones + constraints + density tuning. See §10 Prior Art for specific references.
 
@@ -36,7 +36,7 @@ pub struct TilemapTemplate {
     pub name: String,                                     // e.g. "Wuxia Continent V1"
     pub description: String,                              // freeform author notes
     pub author_canon_ref: Option<BookCanonRef>,           // optional book-canon hint
-    pub applicable_tiers: BTreeSet<ChannelTier>,          // which tiers this template applies to
+    pub applicable_kinds: BTreeSet<MapKind>,              // which kinds this template applies to (SPG-R1)
     pub default_grid_size: GridSize,                      // when applied to a channel
     pub min_zones: u32,                                   // hard lower bound
     pub max_zones: u32,                                   // hard upper bound
@@ -304,17 +304,19 @@ Breaking changes require new `template_kind`. V1+30d ships `TilemapTemplateV1`; 
 
 ## §6 Engine defaults (`tilemap_defaults`)
 
-When RealityManifest doesn't specify a `tilemap_template` for a tier, engine uses defaults. Pseudo-config:
+When RealityManifest doesn't specify a `tilemap_template` for a kind, engine uses defaults. Pseudo-config.
+
+> ⚠ **`SPG-R13` — read the `Default` impl below as the evidence, not as the design.** The four entries (256/192/128/64) were **correct** for the retired ladder's four non-cell tiers; `Cell` never bore a tilemap. They are retyped to `MapKind` here so no dead type survives in a schema, but three of the four kinds they now name (`World`, `Region`) do not bear a tilemap under `SPG-R9`. The collapse is TMP_001's call.
 
 ```rust
 pub struct TilemapDefaults {
-    pub grid_size_per_tier: HashMap<ChannelTier, GridSize>,
-    pub default_template_per_tier: HashMap<ChannelTier, TilemapTemplateRef>,
+    pub grid_size_per_kind: HashMap<MapKind, GridSize>,   // SPG-R1; ⚠ SPG-R13
+    pub default_template_per_kind: HashMap<MapKind, TilemapTemplateRef>,
     pub default_water_content: WaterContent,
     pub default_monster_strength: MonsterStrength,
     pub llm_enabled: bool,
     pub single_thread: bool,
-    pub skip_tier: BTreeSet<ChannelTier>,
+    pub skip_kind: BTreeSet<MapKind>,
     pub generation_timeout_seconds: u32,                  // default 30
     pub force_directed_max_iterations: u32,               // default 1000
     pub force_directed_max_wall_clock_seconds: u32,       // default 5
@@ -322,20 +324,23 @@ pub struct TilemapDefaults {
 
 impl Default for TilemapDefaults {
     fn default() -> Self {
-        let mut grid_size_per_tier = HashMap::new();
-        grid_size_per_tier.insert(ChannelTier::Continent, GridSize { width: 256, height: 256 });
-        grid_size_per_tier.insert(ChannelTier::Country,   GridSize { width: 192, height: 192 });
-        grid_size_per_tier.insert(ChannelTier::District,  GridSize { width: 128, height: 128 });
-        grid_size_per_tier.insert(ChannelTier::Town,      GridSize { width: 64,  height: 64  });
+        let mut grid_size_per_kind = HashMap::new();
+        // ⚠ SPG-R13: retyped from ChannelTier::{Continent,Country,District,Town} (SPG-R1).
+        // Only `Locale` bears a tilemap under SPG-R9 — these four entries are the
+        // ladder's zoom hierarchy preserved verbatim pending TMP_001's collapse.
+        grid_size_per_kind.insert(MapKind::World,  GridSize { width: 256, height: 256 });
+        grid_size_per_kind.insert(MapKind::Region, GridSize { width: 192, height: 192 });
+        grid_size_per_kind.insert(MapKind::Locale, GridSize { width: 128, height: 128 });
+        grid_size_per_kind.insert(MapKind::Arena,  GridSize { width: 64,  height: 64  });
 
         Self {
-            grid_size_per_tier,
-            default_template_per_tier: HashMap::new(),     // empty = use engine canonical defaults per tier
+            grid_size_per_kind,
+            default_template_per_kind: HashMap::new(),     // empty = use engine canonical defaults per kind
             default_water_content: WaterContent::None,
             default_monster_strength: MonsterStrength::Normal,
             llm_enabled: false,                            // V1+30d default OFF; V2 ON
             single_thread: false,                          // V1+30d default parallel
-            skip_tier: BTreeSet::new(),
+            skip_kind: BTreeSet::new(),
             generation_timeout_seconds: 30,
             force_directed_max_iterations: 1000,
             force_directed_max_wall_clock_seconds: 5,
@@ -355,7 +360,7 @@ Engine ships with canonical default templates (1 per tier) bundled in code. Auth
   "template_id": "wuxia_continent_v1",
   "name": "Wuxia Continent (V1)",
   "description": "Standard wuxia continent: 1 central hub + 4 neighboring kingdoms + 4 wilderness zones + 1 sealed forbidden land + 1 water lake",
-  "applicable_tiers": ["continent"],
+  "applicable_kinds": ["world"],                      // SPG-R1 + SPG-R3 (was "applicable_tiers": ["continent"])
   "default_grid_size": { "width": 256, "height": 256 },
   "min_zones": 8,
   "max_zones": 8,
@@ -486,7 +491,7 @@ V3 RMG wizard (TMP-D1) builds on top: parameter capture ("wuxia kingdom, 4 sects
 | Schema version drift (post-edit) | `tilemap.template_schema_version_mismatch` |
 | Grid size out of bounds | `tilemap.grid_size_out_of_bounds` |
 | TreasureTierSpec invalid (max < min, density = 0) | `tilemap.treasure_tier_invalid` |
-| `applicable_tiers` empty | `tilemap.applicable_tiers_empty` |
+| `applicable_kinds` empty | `tilemap.applicable_kinds_empty` | ⚠ rule_id renamed with the field (`SPG-R1`) |
 
 Validations run at `Forge:EditTemplate` commit time AND at template finalization (just before generation). Both gates fail-loud; UI shows specific reject_reason.
 

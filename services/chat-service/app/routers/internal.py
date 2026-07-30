@@ -73,7 +73,15 @@ async def internal_create_session(
     # the system prompt + title so no field carries a disclosure past the gate (shape-agnostic).
     from loreweave_safety import screen
     _source = " ".join(str(x) for x in [
-        body.system_prompt, body.title, json.dumps(body.working_memory_seed or {}),
+        # ensure_ascii=False is LOAD-BEARING here, not hygiene (ML-5 + Security).
+        # `screen()` NFKC-folds its input specifically so "unicode look-alikes and
+        # width variants don't slip" (loreweave_safety/floor.py:120). Default
+        # ensure_ascii=True escapes those characters to \uXXXX BEFORE screen() runs,
+        # so the fold never happens and a full-width payload hidden in
+        # working_memory_seed bypasses the safety floor entirely. The upstream
+        # serializer was defeating the downstream defense.
+        body.system_prompt, body.title,
+        json.dumps(body.working_memory_seed or {}, ensure_ascii=False),
     ] if x)
     _verdict = screen(_source)
     if _verdict.tripped:

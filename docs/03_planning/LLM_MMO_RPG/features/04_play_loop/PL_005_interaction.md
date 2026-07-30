@@ -50,7 +50,7 @@ After this lock: world-service can implement Interaction validation + commit + s
 | **4-role pattern** | `agent` (indirect interactor — `ActorId` per [EF_001 §5.1](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types)) + `tools` (direct interactors — Vec\<InstrumentRef\>) + `direct_targets` (direct receivers — Vec\<TargetRef\>) + `indirect_targets` (indirect receivers — bystanders Vec\<TargetRef\>) | Locked schema — every InteractionKind payload extends this base. `agent: Option<ActorId>` per Q2 (None ⇒ shifts to EVT-T5 Generated). ActorId source-of-truth: EF_001 §5.1 (sibling of EntityId; closed-set Pc/Npc/Synthetic). |
 | **InstrumentRef** | Typed enum: `Item(GlossaryEntityId)` \| `BodyPart(BodyPartKind)` \| `Verbal(VerbalKind)` \| `Ability(AbilityRef)` | V1 supports Item refs (no runtime Item aggregate per B2; refs by glossary-entity-id only — even when conceptually an EnvObject like a door-lock or wine-bottle, V1 references via glossary-id since EnvObject runtime state aggregate doesn't exist V1) + BodyPart + Verbal. Ability deferred to V1+ when Lex axioms more concrete. |
 | **TargetRef** | Typed enum: `Actor(ActorId)` \| `Item(GlossaryEntityId)` \| `Place(PlaceId)` | V1 closed set. `Place(PlaceId)` uses [PF_001 §3.1](../00_place/PF_001_place_foundation.md#31-place-t2--channel-cell-scope--primary) `PlaceId(ChannelId)` newtype (cell-tier per V1). V2+ adds: `Concept` (idea / belief), `Faction`, `Relationship` (the social bond between two actors). |
-| **ExamineTarget** (V1 — resolves PF-Q4 + MAP-Q3) | Typed enum: `Actor(ActorId)` \| `Item(GlossaryEntityId)` \| `Place(PlaceId)` \| `MapNode(ChannelId, ChannelTier)` | Examine-only target discriminator extending TargetRef. V1: Place via `PlaceId` (cell-tier "examine the inn") + MapNode via raw ChannelId + ChannelTier (non-cell "examine the country") per [MAP_001 §3.1](../00_map/MAP_001_map_foundation.md#31-map_layout-t2--channel-scope--primary). MapNode rejected for non-Examine kinds at Stage 3.5.c map_layout. V1+ may collapse into 5th `EntityId::Place` variant if Place becomes target of Strike/Use/Give. |
+| **ExamineTarget** (V1 — resolves PF-Q4 + MAP-Q3) | Typed enum: `Actor(ActorId)` \| `Item(GlossaryEntityId)` \| `Place(PlaceId)` \| `MapNode(ChannelId, MapKind)`  ⟵ `SPG-R1` | Examine-only target discriminator extending TargetRef. V1: Place via `PlaceId` (cell-tier "examine the inn") + MapNode via raw ChannelId + ChannelTier (non-cell "examine the country") per [MAP_001 §3.1](../00_map/MAP_001_map_foundation.md#31-map_layout-t2--channel-scope--primary). MapNode rejected for non-Examine kinds at Stage 3.5.c map_layout. V1+ may collapse into 5th `EntityId::Place` variant if Place becomes target of Strike/Use/Give. |
 | **ProposedOutputs** | What the agent / orchestrator INTENDS as outputs at emit time | `Vec<OutputDecl>` in payload. Player intent ≠ actual outcome. |
 | **ActualOutputs** | What the world-rule (WA_001 Lex + physics validator) DERIVES as actual outputs at validator stage | Computed pre-commit by validator; populated in committed event payload. Replay-deterministic. |
 | **OutputDecl** | `OutputDecl { target: TargetRef, aggregate_type: String, delta: serde_json::Value }` | Each output declares which aggregate it touches + the delta. Side-effect EVT-T3 Derived events emitted post-commit per [EVT-V6](../../07_event_model/05_validator_pipeline.md#evt-v6--post-commit-side-effects). |
@@ -467,12 +467,12 @@ world-service:
 
 ```
 PC `/examine sword_sect_country` (free narrative "nghĩ về quốc gia kiếm tông")
-(roleplay-service classifies → Interaction:Examine; target = ExamineTarget::MapNode(country_id, ChannelTier::Country))
+(roleplay-service classifies → Interaction:Examine; target = ExamineTarget::MapNode(node_id, MapKind::Region)) — `SPG-R1`
 
 world-service:
   a. Stage 3.5.a entity_affordance: skipped (target is MapNode)
      Stage 3.5.b place_structural: skipped (non-cell-tier; PF_001 only owns cell-tier)
-     Stage 3.5.c map_layout: target ChannelTier=Country present in map_layout aggregate ✓
+     Stage 3.5.c map_layout: target `MapKind` present in map_layout aggregate (`SPG-R1` 2026-07-30: was `ChannelTier`) ✓
                               (rejects with `map.missing_layout_decl` if author content missing)
      Lex no-op
      world-rule: ActualOutputs:
@@ -565,7 +565,7 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 **Foundation tier (load-bearing for Stage 3.5 group + ActorId source):**
 - [`EF_001 Entity Foundation`](../00_entity/EF_001_entity_foundation.md) — ActorId/EntityId source-of-truth (§5.1) + entity_affordance Stage 3.5.a validator + entity_binding aggregate references
 - [`PF_001 Place Foundation`](../00_place/PF_001_place_foundation.md) — PlaceId(ChannelId) newtype (§3.1) + place_structural Stage 3.5.b validator + StructuralState 4-state machine (Pristine/Damaged/Restored/Destroyed)
-- [`MAP_001 Map Foundation`](../00_map/MAP_001_map_foundation.md) — map_layout Stage 3.5.c validator + ChannelTier 5-variant enum (Country/Region/Province/District/Cell) + ExamineTarget::MapNode tier validation
+- [`MAP_001 Map Foundation`](../00_map/MAP_001_map_foundation.md) — map_layout Stage 3.5.c validator + the `MapKind` 7-variant closed set (`SPG-R1`). ⚠ **This line recorded a FIFTH ladder** — `Country/Region/Province/District/Cell`, which matches neither `MAP_001`'s designed `Continent/Country/District/Town/Cell` nor the three other variants `SPG-F2` catalogued. Five mutually-inconsistent ladders across the corpus is the strongest evidence that the enum was never load-bearing, which is exactly `SPG-F2`'s finding + ExamineTarget::MapNode tier validation
 - [`CSC_001 Cell Scene Composition`](../00_cell_scene/CSC_001_cell_scene_composition.md) — cell_scene Stage 3.5.d validator + Layer 4 LLM narration consumes Speak narrator_text
 
 **Play-loop substrate:**

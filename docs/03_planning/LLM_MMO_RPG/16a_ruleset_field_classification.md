@@ -144,7 +144,7 @@ Not classification questions; genuine pre-existing bugs the sweep surfaced.
 | `cell_untracked_density` | AIT_001 | `Union` | pre | keyed `PlaceTypeRef` |
 | `tier_roster_caps` | AIT_001 | `Replace` | pre | prompt-budget caps |
 | `minor_behavior_scripts` | AIT_001 | `Union` | pre | keyed `actor_class` |
-| `tilemap_templates` | TMP_001 | `Union` | pre | keyed `ChannelTier` |
+| `tilemap_templates` | TMP_001 | `Union` | pre | keyed `MapKind` (`SPG-R1`; ⚠ `SPG-R13` — under `SPG-R9` only `Locale` bears a tilemap, so this key is near-degenerate; routed to TMP_001) |
 | `tilemap_defaults`ᐟ | TMP_001 | `Replace` | pre | ⚠ **splits** — 4 ops fields leave per RLS-D13 |
 | `combat_disparity_cap` | COMB_001 | `Clamp{Min}` | pre | anti-grief: a preset floor a reality must not raise |
 | `combat_mortality_config` | COMB_001 | `Replace` | pre | |

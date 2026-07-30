@@ -265,6 +265,52 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-WORLD-BASELINE-RETENTION": (
+        "TRIGGER: the first commit adding a PRUNER or retention job to the world "
+        "baseline store or the generator-version store. WDS-A5 says the baseline blob "
+        "is never pruned while referenced; WDS-A6 says a generator version may not be "
+        "deleted while a reality pins it. Both are load-bearing — deleting either "
+        "silently makes a live reality unreproducible, and WDS-A7 already establishes "
+        "that the bytes are the SSOT because f32 regeneration is unproven "
+        "cross-platform. No mechanism today for the NV-2 reason: THE SUBJECT DOES NOT "
+        "EXIST. There is no WorldBaselineStore, no pruner and no generator_version "
+        "column, so a retention check would have no possible violation and would "
+        "report coverage it does not have. The bite test is stated in advance so it "
+        "is not designed after the fact: prune a digest a live reality still pins, "
+        "and the job must REFUSE. RulesetStore is the precedent to copy — its put "
+        "refuses to overwrite and its get refuses on digest mismatch, and retention "
+        "is the one property it does not enforce either"),
+    "D-RETIRED-IDENT-CODE-SCOPE": (
+        "TRIGGER: the first commit that lands `MapKind` in Rust. amendment-rot-gate "
+        "check D reads *.md under the design track only, so a retired identifier "
+        "reappearing in crates/ or services/ is uncovered. Named by /review-impl "
+        "immediately after the SAME check was found to be silently excluding "
+        "_boundaries/ - one scope hole further out, and the second instance of NV-3 "
+        "in one check. No mechanism today because the SUBJECT CANNOT OCCUR: MapKind "
+        "is unimplemented, so no Rust file can reference ChannelTier and a code-side "
+        "check would have no possible violation (the NV-2 shape). Widening also needs "
+        "a language-aware notion of citing a retirement in code (a // comment naming "
+        "the amendment row), which is a bigger change than the docs case. This row "
+        "exists so the boundary is re-read when MapKind lands, not re-discovered"),
+    "D-WORLD-PAYLOAD-DERIVABLE": (
+        "TRIGGER: the first commit in which world-payload SIZE or wire BANDWIDTH is "
+        "measured as a constraint. Measured 2026-07-30 (WDS-A8): 67.6% of the "
+        "generated world payload is derivable and need not be stored — 50.1% is "
+        "`vertex_polygon`, 7.9% `center`, the rest `neighbors` + `is_coast`. mesh.rs "
+        "says why: the lattice is `fibonacci(n)` and its own test asserts the "
+        "seed-driven rotation is 'the ONLY source of seed dependence here', so the "
+        "whole mesh reconstructs from one integer and a quaternion; adjacency is "
+        "Quickhull over the centres. Packed, the irreducible part is ~20 B/cell — "
+        "~320 KB at Megaplanet against ~15 MB stored, a 46x difference. PO chose "
+        "STORE-EVERYTHING (WDS-D3) for simplicity, which is a legitimate call at "
+        "this scale: 15 MB per world constrains nothing today. No mechanism because "
+        "there is no threshold to assert against — a check would have no possible "
+        "violation (the NV-2 shape), and inventing a budget nobody has measured is "
+        "how a gate becomes noise. Stripping is also NOT free: it needs Quickhull on "
+        "the read path, where WDS-A7's f32 cross-platform problem is WORSE than on "
+        "the write path. This row's job is to keep the 67.6% measurement findable "
+        "the day someone profiles the payload, so it is re-derived from a number "
+        "rather than re-discovered from scratch"),
     "D-LEDGER-BEFORE-BALANCE": (
         "TRIGGER: the first commit that BALANCES content against the economy — a "
         "price table, a drop table, a production/consumption rate, a reward curve. "

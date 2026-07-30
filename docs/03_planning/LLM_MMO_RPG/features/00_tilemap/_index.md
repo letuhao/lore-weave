@@ -36,7 +36,7 @@
 - `07_event_model/03_event_taxonomy.md` — EVT-T4 System sub-types `TilemapBorn` + `ZonesPlaced` (TMP_001-owned); EVT-T3 Derived `aggregate_type=tilemap_view` + `aggregate_type=tilemap_template`; EVT-T8 Administrative `Forge:RegenTilemap` + `Forge:EditTemplate` + `Forge:OverridePlacement`; EVT-T5 Generated for L3 zone-classifier outputs (V2); EVT-T6 Proposal for LLM payloads (V2)
 - `_boundaries/01_feature_ownership_matrix.md` — `tilemap_view` + `tilemap_template` owned by TMP_001 (added 2026-05-13)
 - `_boundaries/02_extension_contracts.md` §1.5 — `tilemap.*` RejectReason namespace prefix added 2026-05-13
-- `_boundaries/02_extension_contracts.md` §2 — RealityManifest extension `tilemap_templates: HashMap<ChannelTier, TilemapTemplateRef>` + `tilemap_defaults: TilemapDefaults` added 2026-05-13 (both OPTIONAL V1+30d — engine-defaulted; absence triggers `tilemap_defaults` engine fallback)
+- `_boundaries/02_extension_contracts.md` §2 — RealityManifest extension `tilemap_templates: HashMap<MapKind, TilemapTemplateRef>` + `tilemap_defaults: TilemapDefaults` added 2026-05-13 (both OPTIONAL V1+30d — engine-defaulted; absence triggers `tilemap_defaults` engine fallback)
 - `00_map/MAP_001_map_foundation.md` §5 — TMP_001 derives tile coordinates from MAP_001 author-positioned (x, y) per TMP-A6 (MAP_001 is source of truth; TMP is rendered layer)
 - `00_cell_scene/CSC_001_cell_scene_composition.md` — cells appear as TilemapObjects on parent-tier tilemap; click cell → drill into CSC_001 16×16 interior. Cell tier has NO `tilemap_view`.
 - `00_place/PF_001_place_foundation.md` — non-cell-tier channels also have `place` rows V1+ (currently PF_001 V1 restricts to cell only); TMP_001 V1+30d coexists without reopening PF_001
@@ -68,7 +68,7 @@ TMP_001 is **derived** from MAP_001 — author-edited positions on MAP_001 propa
 - Forge author edits TMP_001 template → engine regenerates `tilemap_view` with new procedural output (EVT-T8 `Forge:EditTemplate` → cascade to TMP-A8 generation pipeline)
 - Forge author edits `tilemap_view` directly (e.g., `Forge:OverridePlacement`) → V1+30d schema-additive; opens manual paint UX V3 TMP_010
 
-V1+30d default: every non-cell channel auto-generates a `tilemap_view` at RealityManifest bootstrap. Author can opt-out via `tilemap_defaults.skip_tier: [ChannelTier::District]` for performance-sensitive realities; UI falls back to MAP_001 graph view for skipped tiers.
+V1+30d default: every non-cell channel auto-generates a `tilemap_view` at RealityManifest bootstrap. ⚠ **`SPG-R13`** — "every non-cell channel" names the retired 4-tier ladder; under `MapKind`+`SPG-R9` the tilemap-bearing kind is `Locale` alone. Left verbatim pending TMP_001's decision. Author can opt-out via `tilemap_defaults.skip_tier: [ChannelTier::District]` for performance-sensitive realities; UI falls back to MAP_001 graph view for skipped tiers.
 
 LLM Layer 3 + 4 (TMP_008) is **V2**, not V1+30d. V1+30d ships with `L3 = CanonicalDefault` (engine algorithm placement) + `L4 = None` (no narration). V2 lights up LLM layers behind `tilemap_defaults.llm_enabled: bool` opt-in.
 

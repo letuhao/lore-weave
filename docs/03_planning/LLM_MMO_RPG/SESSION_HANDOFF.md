@@ -1,6 +1,8 @@
 # Session Handoff — LLM MMO RPG Design Track
 
 <!-- design-lint: ok prefix RNG — this file NARRATES the RNG-A9 finding (a dangling ref corrected in cat_16 on 2026-07-27); the mentions are history, not live references. -->
+<!-- design-lint: ok prefix ML — `ML-1..ML-7` are the Multilingual / Anti-Language-Bias rules, owned by docs/standards/multilingual.md on the PLATFORM track. They are cited here (2026-07-30) because a /review-impl pass found an ML-4 violation in this track's own amendment-rot-gate. Registering `ML` in this track's id catalog would claim ownership of another track's namespace, which is the opposite of what the catalog is for. -->
+
 
 > **Scope:** This handoff is scoped to the `LLM_MMO_RPG` exploratory design track ONLY.
 > **Does NOT conflict with** `docs/sessions/SESSION_PATCH.md` (main project session). This folder is a self-contained design exploration that can resume independently.
@@ -44,6 +46,8 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-GAME-WS-EDGE-CONTROLS` | 1 | PRR-20's second public entry point must inherit the gateway's auth/rate-limit/audit controls. | **prose-only.** ⚠ First claimed as "guarded across the three `ws/` implementations" — the id appears there only in **JSDoc headers**, which is provenance, not a check: nothing reds if parity breaks. Trigger: a parity test, which needs both transports up. |
 | `D-META-ALLOWLIST-NO-DRIFT-GATE` | 2 | Rust and Go meta allowlists are hand-mirrored and **already drifted once** — the Rust side silently dropped `xreality_topic` because serde ignores unknown fields while Go reads it. | **prose-only** — declared in `deferral-gate.py`. Trigger: the next meta table added. |
 | `D-S04-1` | 3 | The S04 provisioner slice. | **prose-only** — the subject is an unbuilt service, so there is no file for a check to hold. |
+| `D-WORLD-BASELINE-RETENTION` | — | **`WDS-A5`/`WDS-A6` state retention rules with no check.** *"Never pruned while referenced"* (the baseline blob) and *"a generator version may not be deleted while a reality pins it"*. Both are load-bearing: deleting either silently makes a live reality unreproducible. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **the subject does not exist** (no `WorldBaselineStore`, no pruner, no `generator_version` column), so a check would have no possible violation — the NV-2 shape. **Trigger: the first commit adding a pruner or retention job to either store.** Bite test stated in advance: prune a digest a live reality still pins, and the job must REFUSE. |
+| `D-RETIRED-IDENT-CODE-SCOPE` | — | **`amendment-rot-gate` check D reads `*.md` under the track only.** A retired identifier reappearing in `crates/`/`services/` is not covered. Named by `/review-impl` after the same check was found to be excluding `_boundaries/` — one scope hole out. | **prose-only** — declared in `deferral-gate.py`. **Today it is a BOUNDARY, not a hole:** `MapKind` is unimplemented, so `ChannelTier` cannot occur in code and a check would have no possible violation (the NV-2 shape). **Trigger: the first commit that lands `MapKind` in Rust** — at which point the docs-only scope becomes a real gap and the check needs a language-aware notion of "citing a retirement" (a `//` comment naming the amendment row). |
 | `D-WORLD-PAYLOAD-DERIVABLE` | — | **67.6 % of the generated world payload is derivable and is being stored anyway** (`WDS-A8`/`WDS-D3`). `vertex_polygon` 50.1 % · `center` 7.9 % · `neighbors` + `is_coast` the rest. The whole mesh is `fibonacci(n) · R(seed)` — `mesh.rs`'s own test asserts the rotation is *"the **only** source of seed dependence here"* — and adjacency is Quickhull over the centres. Packed irreducible ≈ **20 B/cell** → ~320 KB at `Megaplanet` vs ~15 MB stored (**46×**). PO chose store-everything for simplicity; legitimate at this scale. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **there is no measured threshold to assert against**, and a check with no possible violation is the NV-2 shape. Stripping is not free either: it needs Quickhull on the **read** path, where `WDS-A7`'s `f32` cross-platform problem is worse than on the write path. **Trigger: the first commit in which world-payload size or wire bandwidth is measured as a constraint.** The row exists so the measurement is re-read, not re-discovered. |
 | `D-LEDGER-BEFORE-BALANCE` | 3 | **The ledger** (`WSA-R14`) — conservation assertion + declared sources/sinks. **The only row here carrying a DEADLINE rather than a priority, and it is one-way.** `WSA-R14`: the ledger becomes *impossible* to retrofit once content is balanced against a leaky economy, **because at that point the leaks ARE the balance** — removing them later breaks every number an author tuned. Today [`EXC-F2`](30_exchange_model_and_dataflow.md) holds: the engine has the **transaction**, not the **ledger**, so a source-less 10 coins is silently legal. | **prose-only** — declared in `deferral-gate.py`. **TRIGGER: the first commit that balances content against the economy** (a price table, a drop table, a production rate, a reward curve). No mechanism today because the subject does not exist: with no ledger to assert against, a check would have no possible violation (`NV-2`). The ledger itself is what makes it mechanisable — `WSA-R14`'s own bite test is *a source-less 10 coins goes red*. |
 | `D-DEFERRAL-GATE-PLATFORM-SCOPE` | 1 | This gate governs the game tier only; ~360 ids in `docs/sessions/` + `docs/deferred/` are ungoverned and printed as a hole on every run. | **prose-only** — widening is a triage of which of those are still open, which cannot be mechanised in advance. |
@@ -52,6 +56,165 @@ its subject arrived. **Intent is not a mechanism.**
 
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
+
+### ✅ World tier: scale pinned, storage decided, and a row marked APPLIED that never was (2026-07-30)
+
+**PO objection that started it:** *"you cannot make first data build from event sourcing / event sourcing
+only accumulate data"* — correct, and checking it against the corpus produced most of the below. Then:
+*"the world cell is use for test, i don't think we should use it in the real game."* Also correct, and the
+spec already agreed.
+
+**Measured first, decided second** (`crates/world-gen` at `--release`, seed 7, every scale):
+
+| Scale | Cells | Payload | Provinces | Settlements |
+|---|---:|---:|---:|---:|
+| Pocket | 1 024 | 0.95 MB | 20 | 8 |
+| **Megaplanet ← production (GEO-D14)** | **16 384** | **14.9 MB** | 36 | 17 |
+| ~~Gigaplanet~~ (stress fixture, GEO-D15) | 501 264 | **459 MB** / 9.4 s | 121 | 162 |
+
+**16× the cells buys 1.8× the provinces**, and Continent (8 281) yields *fewer* provinces than Region
+(2 025) — not even monotonic. Resolution buys **boundary smoothness, not content**, so the scale choice is
+aesthetic, not a capacity trade. `Gigaplanet` **already violated GEO_001's own** `cell_count_out_of_bounds`
+band `[1024, 16384]`; `creative_seed.rs:361` says *"deliberately exceeds it"*. The spec forbade it before
+the decision existed. **Megaplanet sits at the band CEILING — recorded explicitly, because a bigger world
+later means amending the validator, not adding a variant.**
+
+**Storage — `WDS-*`, new [`37_world_data_storage.md`](37_world_data_storage.md).** `GDA-D4` ("seeding emits
+events, never direct writes") **is right for authored content and wrong for generated bulk, and the spec
+never distinguished the two** (`WDS-F1`). Its *reason* survives: a **pinned content digest is a causal
+record, and a stronger one** — 33 k hand-maintained `*Born` events can drift from the generator, a
+`content_hash` cannot. Genesis becomes **O(1)**: one `WorldBaselinePinned` replaces ~33 k events, which
+**dissolves `RBS-Q1`** (it classified itself *"product + measurement"* when it was a category error, and
+scoped to the wrong scale). The store is **not a new design** — `crates/ruleset-loader/src/store.rs`
+already ships it: content-addressed, `put` never overwrites, `get` refuses on digest mismatch, and its own
+comment says *"moving it behind an object store later changes this file and nothing else"*. My earlier
+"MinIO" claim was withdrawn at design review. **`WDS-A7` is the limit that shapes the design:** `f32` noise
+makes cross-platform regeneration unproven, so **the bytes are the SSOT and regeneration is the audit path
+only**. `GEO_WORLD_TIER_REDESIGN` §9 **Q3 closed** — its own trigger had arrived.
+
+**The rot — [REC-97](19_reconciliation_register.md).** The ownership matrix claimed *"Applied so far:
+`SPG-R1` · `SPG-R3` · `SPG-R5`"* and **all three were false**: two never touched (their targets said so
+correctly), one **half-applied at 2 of ~72 sites**. A half-rename is worse than none — both vocabularies
+live in one file while the matrix reports coverage. `ChannelTier` survived at **~91 sites / 22 files**,
+including **four `RealityManifest` machine-contract fields**, two ✅-delivered catalogue rows, and
+**AC-MAP-3, which asserted `match` exhaustiveness over an enum that no longer existed** — it could not
+fail. Swept; `SPG-R1` and `SPG-R3` now genuinely applied.
+
+**The defect under the rot:** `map.tier_field_mismatch` derived the tier *from the DP channel tree*, which
+`DP-A13` forbids DP from knowing. Two correct decisions jointly broke a third — the **adjacent-decision**
+shape. **Retired**, replaced by `map.containment_violation` (`allowed(parent.kind, child.kind)`), which is
+also the **`SPG-Q1`** answer: `map_layout.kind` is **authoritative, never derived**. Note the symmetry —
+`SPG-R2` was retired for pushing `MapKind` *into* DP, and that pass never looked for a consumer
+*depending on* DP knowing it.
+
+**Also closed:** **`SPG-Q2`** — two bounds already exist (`DP-Ch1`'s `depth ≤ 16` is a **DB CHECK
+constraint**, and the containment matrix is the per-reality semantic bound); **no third is added**, since a
+rule with no mechanism is the debt being paid down. **`SPG-Q3`** → new **`SPG-A17`**: `Transform` was
+*referenced and never defined*. There is **no single absolute coordinate space** — position is defined up
+to the nearest **coordinate root**, and a scale-skipping edge *is* a root boundary (re-base, never
+accumulate). The first design (`parent_units_per_local_unit: f64`) was rejected at review: a
+light-year→metre edge is `9.46e15` and eats the mantissa. This also gives `SPG-A5` the **stopping condition
+it never had**, and makes "no defined distance across roots" explicit — travel between roots is a
+`Passage`, which has a duration, not a length.
+
+**Mechanisms shipped (both bite-tested):**
+
+- `design-lint` **`scale-band`** — cross-source: cell counts from the Rust, band + production set from the
+  doc. **Bite 5 is the one that matters** — changed the code, left the doc, caught it. A crate-internal
+  unit test structurally cannot do that, and would have broken `world-gen`'s stated decoupling.
+- `amendment-rot-gate` **check D** — a retired identifier may appear only on a line **citing** its
+  retirement. **Empty allowlist** (sweep completed first; an enumerated list is silent about tomorrow's
+  site). It found **21 live uses the manual sweep missed**, five in doc 36 itself. Its bite-test proves the
+  hatch **reaches its reason**: a line citing `SPG-R1` passes, a bare mention does not. `--selftest` now
+  covers all 4 checks.
+
+**⚠ NEXT — deliberately left, with reasons:**
+
+1. **`SPG-R10` + `WSA-R19`/`R21`/`R22`** (`EntityId::Place` / `ActorId::Locus` / `holder`) — a **separate
+   seam across three features** needing its own boundary review. `EF_001:67`/`:131` are currently
+   self-consistent and honest, so there is **no rot pressure**. Its own claim, its own commit.
+2. **`SPG-R13`** (new) — routed to **TMP_001**: under `SPG-R9` the tilemap belongs to **`Locale` alone**
+   (`World`/`Region` → GEO's Voronoi mesh, `Domain` → CSC), so the four-tier zoom hierarchy collapses. The
+   **type** is fixed; the **semantics** are TMP_001's call. *(Self-correction: I first called the
+   `256/192/128/64` default "4 values for a 5-variant enum" — wrong. Four values, four non-cell tiers;
+   `Cell` never bore a tilemap.)*
+3. **`SPG-R11`** (unify three override cascades) · **`SPG-R12`** (`Passage` for TVL) · **`SPG-R5`**
+   (CSC_001, still PROPOSED) · the HTML draft's Merge/Breach/Sever ops.
+
+**Two smaller finds worth keeping:** `GEO_001` called `WorldScale` *"closed 5 V1"* with cell counts
+`1024/2048/8192/12288/16384` against a shipped **6**-variant enum with `1024/2025/8281/12321/16384/501264`
+— `design-lint`'s `count` check exists for this and **did not fire**, because its `COUNT_FORMS` need the
+adjacency form and *"closed 5 V1"* walks past it (now covered, phrasing-independently, by `scale-band`).
+And `PL_005:568` recorded a **fifth** ladder — five mutually-inconsistent ones is the best evidence for
+`SPG-F2`'s "the enum was never load-bearing".
+
+**`/review-impl` (PO-requested) found a HIGH in my own gate, and a real safety bypass one hop out:**
+
+- **HIGH · [ML-4] the citation escape hatch was a Latin-only regex on a bilingual corpus.** Proven by
+  running it: *"the field was ChannelTier"* **allowed**, *"ChannelTier đã bị khai tử"* **BLOCKED**. So an
+  author documenting a retirement in Vietnamese could not cite it, and the gate degraded **closed** —
+  forcing English into design prose, which is exactly what ML-4 forbids. **Fixed structurally, not with a
+  longer word list:** the *canonical* hatch is now language-neutral (cite `SPG-R1`, or `~~`/`⛔`), which
+  also happens to be greppable where a word is not; vi/ja/zh terms are a convenience layer. The ML-4
+  assertion is itself bite-tested — disarming one Vietnamese term fails `--selftest`. **No gate could have
+  caught this:** `language-bias-gate` enforces ML-2/3/5, and ML-1/ML-4's enforcement row points at one
+  service's coverage test.
+- **HIGH (adjacent, one hop out) · a demonstrated safety-floor bypass.**
+  `chat-service/app/routers/internal.py:76` screened the persona payload via
+  `json.dumps(working_memory_seed)` → `loreweave_safety.screen()`. That screener NFKC-folds its input
+  **specifically so** *"unicode look-alikes and width variants don't slip"* (`floor.py:120`) — but
+  `json.dumps` defaults to `ensure_ascii=True`, escaping those characters **before** the fold runs.
+  Measured, both directions, with a real lexicon term:
+
+  ```
+  full-width payload 'ｏｖｅｒｄｏｓｅ' in working_memory_seed
+    ensure_ascii=True   -> MISSED    (safety floor bypassed)
+    ensure_ascii=False  -> TRIPPED
+  ```
+
+  The **serializer was defeating the screener** — the review-impl question *"does an upstream step make a
+  downstream defense moot?"* answering yes. Fixed + **two regression tests** (the property, and the call
+  site so the property cannot pass while the call site reverts); bite-tested by reverting the fix.
+- **MED ×3, all fixed and bite-tested:** the six cell counts I had just written into GEO_001 were
+  **unguarded** — an in-band `grid_side` change (Region 45→46) passed clean while the doc still said
+  "2025 cells"; the declaration now carries `name: count` and both are cross-checked. `GRID_ARM` required
+  a trailing comma, so a comma-less Rust arm **failed open** past the one check whose point is
+  *"production-or-not by DECISION, never by default"*. The `grid_side` end-marker fallback silently read
+  `tag()`'s arms instead, blaming the band for a parse failure.
+- **LOW ×3, fixed:** the check-D docstring named **fewer exemptions than the code had** (an *undocumented*
+  hole); `_HISTORY_DOCS` matched by **basename**, so any future `SESSION_HANDOFF.md` self-exempted (now
+  track-relative paths); and `multilingual.md:29` claimed `language-bias-gate` runs *"`--staged`
+  pre-commit"* — it is **CI-only**, a coverage claim at a place that has none.
+
+**What "resolve all problems" correctly did NOT do.** My review reported the `language-bias-gate` red as a
+discovery; that was **materially incomplete**. Those 13 offenders were **already tracked, classified into
+four classes, and mechanised** under `D-GATE-ROT-LANGUAGE-BIAS` with a `KNOWN_RED` row that *fails if the
+gate turns green without the row being deleted*. The existing analysis was better than mine, and it says
+**two of the four classes change bytes that are already persisted**. So: **class 1 (×3) cleared** — one of
+which was the security fix above — and the row updated 13 → 10. The remaining **9 stay red on purpose**:
+2 are digest inputs (flipping changes *every* hash — a cache/dedup invalidation decision), 5 are persisted
+identity keys (normalizing orphans rows already keyed the old way — needs a backfill), 2 are a CJK
+tokenizing **design** decision. Plus **1 documented false positive** (`tool_surface.py:103` lowercases an
+MCP tool name, ASCII by contract) — and my first attempt "exempted" it with an inline pragma the gate
+does not read, which would have been a claim that silences nothing; corrected to a comment that says so.
+**Red-with-a-row beats green-with-a-baseline**, because a baseline hides the debt.
+
+**Cross-service test evidence:** `chat-service` **1915 passed** · `composition-service` **2455 passed, 335
+skipped** — both full suites, `-n auto --dist loadgroup`.
+
+**Drift log (near-misses, recorded because a clean drift log is a dishonest one):**
+
+- **I ran `git checkout --` on a file with uncommitted work and destroyed my own GEO_001 edits.** Three
+  edits lost mid-bite-test; recovered from the conversation. The bite-test method was wrong — revert must
+  use a **file backup**, never `git checkout`, when the target has unstaged changes. All five bites re-run
+  after repair.
+- **Corrupted two TMP_001 lines** (`default_template_per_kinr`, `BTreeSet<MapKnelTier>`) by matching on
+  **truncated** strings in a scripted edit. Caught by reading the result instead of trusting the count.
+  Full-line matches only.
+- **`SPG-A16` collision** — I numbered the new axiom `A16`, which was already *"Combat always resolves on a
+  tactical grid"*. Renumbered `A17`; caught by grepping the heading, not by any gate. **No gate covers
+  axiom-id collisions** — a candidate for check E.
+- Declared `PROSE_ONLY` before adding its registry row; `deferral-gate`'s shrink rule reded correctly.
 
 ### ✅ Q2 B1 — a pool is a declared ROW (2026-07-30)
 

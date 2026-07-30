@@ -40,7 +40,10 @@ def _row(row: asyncpg.Record) -> WorkChapterDraft:
 def _dump(body: Any) -> str:
     # asyncpg has no default codec for a Python dict → JSONB; serialize ourselves
     # (the same reason DerivativesRepo json.dumps its override deltas).
-    return json.dumps(body)
+    # ensure_ascii=False (ML-5): keeps CJK/vi prose readable in the column and
+    # avoids the \uXXXX inflation tax. Safe for existing rows — both forms decode
+    # to the same object, so this changes what we WRITE, never how we READ.
+    return json.dumps(body, ensure_ascii=False)
 
 
 class WorkChapterDraftsRepo:

@@ -695,3 +695,92 @@ a dependency lint (does any V1 item depend on a V1+ item?), a symbol lint (does 
 and struct exist?), and a re-open rule (when doc X changes, what did X's dependents assume?). Filed
 here rather than in a feature doc because it is a **workflow** change, and it belongs with whoever
 owns `agentic-workflow/`.
+
+---
+
+### REC-97 — a row marked APPLIED that never was, and the same lesson pointed the other way
+
+**`_boundaries/01_feature_ownership_matrix.md` claimed *"Applied so far: `SPG-R1` · `SPG-R3` · `SPG-R5`"*.
+All three claims were false.** Found the way the previous two were found — by opening the targets instead
+of trusting the table:
+
+| Row | Matrix said | Target said | Truth |
+|---|---|---|---|
+| `SPG-R1` | applied | `MAP_001:20` — *"**PROPOSED, not applied**; no schema in this file was edited. Annotation only"* | **half-applied** — `:94` and `:488` **had** renamed the field; ~70 dependent sites had not |
+| `SPG-R3` | applied | `GEO_001:13` — *"**until** `SPG-R3` **is applied**"*, `:21` *"Annotation only"* | not applied (target correct) |
+| `SPG-R5` | applied | `CSC_001:25` — *"`SPG-R5` is **PROPOSED, not applied**"* | not applied (target correct) |
+
+Two were honest annotations **mislabelled by the matrix**. The third is the dangerous one.
+
+**A half-rename is worse than no rename.** `MAP_001` carried *both* vocabularies with nothing marking
+which sites were outstanding, while the matrix reported coverage — the same shape as a check that cannot
+fail. The retired `ChannelTier` survived at **~91 sites across 22 files**, including **four fields of the
+`RealityManifest` machine contract**, a ruleset field key, two catalogue rows marked ✅ delivered, and two
+acceptance criteria — one of which, **`AC-MAP-3`, asserted `match` exhaustiveness over an enum that no
+longer existed**, so it could not fail. `MAP_001:20` also disagreed with `MAP_001:94`: one file, two
+answers, neither matching the matrix's third.
+
+**The symmetry with REC-93 and REC-96 is the point.** Both of those retired a row marked *verified* that
+died on contact with its target. This is the same failure **pointed the other way** — a row marked
+*applied* that never was. Three instances, one root cause: **the amendment table is an INDEX, never
+EVIDENCE.**
+
+**And the miss it exposed in my own prior pass.** `SPG-R2` was retired for pushing `MapKind` *into* DP
+(`DP-A13`). That pass never looked for a consumer **depending on** DP knowing `MapKind` — and there was
+one: `map.tier_field_mismatch`, whose validator *"computes tier from DP channel-tree at write-time"*. Two
+individually-correct decisions (`SPG-R1`, `DP-A13`) jointly made a third rule unimplementable — the
+**adjacent-decision** shape from [`non-vacuity.md`](../../standards/non-vacuity.md), found only on the
+second visit to the same seam. Resolved by making `map_layout.kind` **authoritative rather than derived**
+and re-targeting the check to `map.containment_violation` (`allowed(parent.kind, child.kind)`), which is
+also the answer to `SPG-Q1`.
+
+**Mechanised, because intent is not a mechanism.** `amendment-rot-gate.py` **check D** — a retired
+identifier may appear only on a line citing its retirement — armed with an **empty allowlist**, because
+an enumerated exemption list is silent about the site added tomorrow. Seeding it with the ~70 sites as
+they stood would have been the *default-uncovered* anti-pattern. It found **21 live uses the manual sweep
+had missed**, including five in doc 36 itself, and its bite-test proves the escape hatch **reaches its
+reason**: a line citing `SPG-R1` passes, a bare mention does not.
+
+**Two smaller findings, recorded so they are not re-discovered.** (a) `GEO_001` declared `WorldScale` as
+*"closed 5 V1"* with cell counts `1024/2048/8192/12288/16384` — round powers of two — while the shipped
+generator had **six** variants and `1024/2025/8281/12321/16384/501264`. `design-lint`'s `count` check
+exists for exactly this and did not fire: its `COUNT_FORMS` require the adjacency `` `X` (N variants) ``
+and *"closed 5 V1"* walks past it. Now covered by the phrasing-independent `scale-band` check.
+(b) `PL_005:568` recorded a **fifth** ladder — `Country/Region/Province/District/Cell` — matching neither
+`MAP_001`'s designed set nor the three others `SPG-F2` catalogued. Five mutually-inconsistent ladders is
+the strongest available evidence for `SPG-F2`'s conclusion that the enum was never load-bearing.
+
+**⚠ POSTSCRIPT, added the same day — check D's FIRST version had the defect it was built to catch.**
+The PO asked *"did you clear those rots?"* instead of accepting a green gate, and the answer turned out
+to be **no**:
+
+1. **`check_retired_identifiers` reused `_track_docs()`, which EXCLUDES `_boundaries/`.** That exclusion
+   is *correct* for checks A/B/C — the matrix **is** the inventory, so scanning it for prefix
+   registration would be circular — and check D inherited it **silently**. `_boundaries/` is where the
+   **machine contracts** live. The gate reported OK while `02_extension_contracts.md` still carried
+   `invalid_channel_tier (per MAP-2 ChannelTier::Continent)` — both retired names — in its live rule_id registry. This is the
+   second shape in [`non-vacuity.md`](../../standards/non-vacuity.md) — **"the scope never reaches it"** —
+   occurring **inside the check written to prevent that class**. A green gate whose scope omits the
+   highest-value directory is worse than no gate: it certifies the one place a reader most wants checked.
+
+2. **Widening the scope exposed two rots the manual sweep had never touched**, both in the ownership
+   matrix itself:
+   - **`map_layout` row (line 44) — the FIRST rot reported in this arc and the LAST one fixed.** It still
+     read *"covers all tiers (continent through cell). Owns 5-variant retired-`ChannelTier` closed enum +
+     author-positioned **absolute u32 (0..=1000)** per-tier viewport"* — every clause retired. The arc
+     corrected line 229's *"Applied so far"* claim, swept fifteen feature docs, and left the row it
+     started from untouched. Nothing but a widened gate would have found that.
+   - **`world_geometry` row Tier×Scope** read *"continent per MAP-2 retired-`ChannelTier` per HIGH-2 fix"* — the
+     `SPG-R3` scope inversion, sitting in the inventory.
+
+3. **Two further precision defects in the check, both found by running it rather than reasoning about it.**
+   *(a)* Line-wide citation matching: the `geography.*` namespace row is **12 401 characters**, so one
+   unrelated `was` anywhere on it would have exempted every claim it contains. Fixed with a 160-character
+   proximity window. *(b)* `\bwas\b` was spelled lowercase-only, so `SPIKE_04`'s *"it **WAS** — MAP_001
+   §3 ChannelTier enum had 5 V1 variants"* passed. A citation vocabulary that depends on capitalisation
+   is a hole with a spellcheck.
+
+**All four are now bite-tested in `--selftest`, including the scope itself**: reverting
+`_retired_scan_docs()` to `_track_docs()` makes the selftest fail with the reason spelled out. That is the
+only durable form of this lesson — the first version's docstring already *claimed* an empty allowlist and
+full coverage, and **intent is not a mechanism** even when the intent is specifically about mechanisms.

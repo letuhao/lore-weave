@@ -68,9 +68,29 @@ C — GATED-QUEUE DISCHARGE. Items the reconciliation register routes to a
     there with an explicit blocked-reason. Parsed from the register, not
     hardcoded, so adding a queue item automatically extends the check.
 
+D — RETIRED-IDENTIFIER CONTAINMENT (added 2026-07-30, REC-97). An identifier a
+    sealed doc declares RETIRED may appear only on a line that CITES the
+    retirement. Added because the matrix claimed three amendments applied when
+    two had never been touched and the third — `SPG-R1`, retiring `ChannelTier`
+    — had reached 2 of ~72 sites, leaving a **half-rename**: both vocabularies
+    live in one file, and the matrix reporting coverage it did not have. Armed
+    with an EMPTY allowlist (the sweep was completed first) because an
+    enumerated exemption list is silent about the site added tomorrow. Two
+    structural exemptions only: the doc that DECLARES the retirement, and the
+    append-only histories (`SESSION_HANDOFF.md`, `_boundaries/99_changelog.md`) —
+    both listed in `_HISTORY_DOCS`, because a docstring that names fewer
+    exemptions than the code has is an UNdocumented hole, and this one said one.
+    SCOPE LIMIT, stated rather than implied: it reads `*.md` under the track only.
+    A retired identifier reappearing in `crates/`/`services/` is NOT covered. Today
+    that is a boundary and not a hole — `MapKind` is unimplemented, so the subject
+    cannot occur in code yet (NV-2). It becomes a hole the day `MapKind` lands:
+    tracked as `D-RETIRED-IDENT-CODE-SCOPE`.
+
 Each check is BITE-TESTED in `--selftest`: it constructs the exact defect it
 claims to catch and asserts the check goes red. A check that cannot fail is not
-a check (docs/standards/non-vacuity.md NV-1).
+a check (docs/standards/non-vacuity.md NV-1). Check D additionally bite-tests
+that its escape hatch REACHES ITS REASON (NV rule 4) — a citing line passes, a
+bare mention does not — because a hatch that works unconditionally is theatre.
 
 USAGE
 -----
@@ -273,13 +293,248 @@ def selftest() -> int:
     if check_gated_queue(reg, "matrix containing Foo:Bar and baz"):
         failures.append("C: gated-queue check reded when both were present (false positive)")
 
+    # D — a retired identifier used live, and the three ways it is legitimate.
+    with tempfile.TemporaryDirectory() as td:
+        live = Path(td) / "live.md"
+        live.write_text("    pub tier: ChannelTier,\n", encoding="utf-8")
+        if not check_retired_identifiers([live]):
+            failures.append("D: retired-identifier check did NOT red on a live `ChannelTier` use")
+        # The escape hatch must REACH ITS REASON (NV rule 4): citing the amendment
+        # row is what makes the mention legitimate. If this passed without the
+        # citation, the hatch would be unconditional and the check theatre.
+        cited = Path(td) / "cited.md"
+        cited.write_text("    pub kind: MapKind,   // SPG-R1: was ChannelTier\n", encoding="utf-8")
+        if check_retired_identifiers([cited]):
+            failures.append("D: reded on a line citing SPG-R1 — the escape hatch does not work")
+        # …and it must not be satisfied by an unrelated word. If a bare mention
+        # passed, every site would self-exempt and the sweep would have been
+        # pointless.
+        bare = Path(td) / "bare.md"
+        bare.write_text("the ChannelTier ladder is fine actually\n", encoding="utf-8")
+        if not check_retired_identifiers([bare]):
+            failures.append("D: did NOT red on a bare prose mention with no retirement citation")
+        # The DECLARING doc is exempt by structure, not by site list.
+        decl = Path(td) / "36_map_architecture.md"
+        decl.write_text("ChannelTier = Continent|Country|District|Town|Cell\n", encoding="utf-8")
+        if check_retired_identifiers([decl]):
+            failures.append("D: reded inside the declaring doc, which must be able to name what it retires")
+        # SCOPE. Check D's first version reused `_track_docs()`, which EXCLUDES
+        # `_boundaries/` — correct for A/B/C, silently wrong here, and it certified
+        # a machine contract that still carried the dead type. The scope must
+        # REACH the highest-value directory, so assert that rather than trusting it.
+        scope = _retired_scan_docs()
+        if not any("_boundaries" in p.parts for p in scope):
+            failures.append(
+                "D: scope does not reach `_boundaries/` — the machine contracts live there, "
+                "and a green gate that skips them certifies the one place a reader most wants checked"
+            )
+        # CITATION PROXIMITY. On a 12 401-character line (the `geography.*` row) a
+        # line-wide match let one unrelated `was` exempt every claim on it.
+        far = Path(td) / "far.md"
+        far.write_text("was " + ("filler " * 60) + "ChannelTier\n", encoding="utf-8")
+        if not check_retired_identifiers([far]):
+            failures.append("D: a citation ~420 chars away still excused the use — window not enforced")
+        # ML-4 (docs/standards/multilingual.md): the hatch must not be Latin-only.
+        # This corpus is BILINGUAL — GEO_001's reject messages are Vietnamese and the
+        # PO's decisions are quoted in Vietnamese throughout docs 36/37. The first
+        # version ALLOWED "the field was ChannelTier" and BLOCKED "ChannelTier đã bị
+        # khai tử": it degraded CLOSED against non-English prose, which forces English
+        # into design docs — exactly what ML-4 forbids. Found by /review-impl.
+        for label, text in (
+            ("vi-diacritics", "ChannelTier đã bị khai tử\n"),
+            ("vi-ascii", "truong nay truoc day la ChannelTier\n"),
+            ("ja", "ChannelTier は廃止\n"),
+        ):
+            f = Path(td) / f"{label}.md"
+            f.write_text(text, encoding="utf-8")
+            if check_retired_identifiers([f]):
+                failures.append(
+                    f"D: blocked a {label} retirement note — the citation hatch is "
+                    f"Latin-only, which is ML-4 (never ship a Latin-only regex as the check)"
+                )
+        # …and CASE. `\bwas\b` lowercase-only let "it WAS" through on SPIKE_04.
+        upper = Path(td) / "upper.md"
+        upper.write_text("it WAS a ChannelTier enum\n", encoding="utf-8")
+        if check_retired_identifiers([upper]):
+            failures.append("D: citation matching is case-sensitive — 'WAS' must count as much as 'was'")
+
     if failures:
         print("SELFTEST FAILED — a check that cannot fail is not a check (NV-1):")
         for f in failures:
             print(f"  ✗ {f}")
         return 1
-    print("amendment-rot-gate selftest: OK — all 3 checks red on their defect and green without it")
+    print("amendment-rot-gate selftest: OK — all 4 checks red on their defect and green without it")
     return 0
+
+
+# ── check D — retired-identifier containment ─────────────────────────────────
+#
+# THE BUG THIS EXISTS TO PREVENT, measured 2026-07-30 (REC-97).
+# `_boundaries/01_feature_ownership_matrix.md` claimed "Applied so far: SPG-R1 ·
+# SPG-R3 · SPG-R5". All three claims were false. Two rows had never been touched
+# (their targets said so correctly — GEO_001 "until SPG-R3 is applied", CSC_001
+# "PROPOSED, not applied"). The third, SPG-R1, was applied to **2 of ~72 sites**:
+# two struct fields were renamed and the `ChannelTier` enum struck through, while
+# ~70 dependent sites kept the retired type — including FOUR fields of the
+# `RealityManifest` MACHINE CONTRACT, a ruleset field key, and two acceptance
+# criteria (one of which, AC-MAP-3, asserted exhaustiveness over an enum that no
+# longer existed, so it could not fail).
+#
+# A HALF-RENAME IS WORSE THAN NO RENAME. The file then carries both vocabularies
+# with nothing marking which sites are outstanding, and the matrix reports
+# coverage it does not have — the same shape as a check that cannot fail.
+#
+# WHY THE ALLOWLIST IS EMPTY, AND STAYS EMPTY. Seeding it with the ~70 sites as
+# they stood would be the *default-uncovered* anti-pattern named in
+# docs/standards/non-vacuity.md: an enumerated list is silent about the site
+# somebody adds tomorrow. So the sweep was completed FIRST and the gate armed
+# against zero exemptions. If a retired identifier reappears anywhere, it reds.
+#
+# THE ESCAPE HATCH REACHES ITS REASON (NV rule 4). A retired name legitimately
+# appears in the note explaining its own retirement — "was `ChannelTier`",
+# "~~ChannelTier~~", "⛔ RETIRED". Those lines are allowed BECAUSE they cite the
+# retirement; a bare live use does not, and reds. The hatch cannot be used
+# without naming the reason it is being used.
+#
+# TWO EXEMPTIONS, BOTH STRUCTURAL — NEITHER IS A SITE LIST.
+#   (1) The DECLARING doc. The doc that retires an identifier must be able to name
+#       it: doc 36 §7 IS the retirement register, and its rationale quotes the dead
+#       enum's variants verbatim. Derived from the data (the value below), not from
+#       an enumeration of places.
+#   (2) SESSION_HANDOFF. An append-only history whose past entries must describe
+#       the vocabulary of their time; rewriting them would falsify the record. This
+#       is the same line `deferral-gate.py` already draws — "ids OUTSIDE this block
+#       are history, not obligations". The LIVE specs are what this check governs.
+# Everything else must cite the retirement to mention the name.
+RETIRED_IDENTS: dict[str, tuple[str, str]] = {
+    "ChannelTier": (
+        "retired by SPG-R1 (36_map_architecture.md §7) and replaced by the MapKind "
+        "closed set + containment matrix; applied across the corpus 2026-07-30",
+        "36_map_architecture.md",
+    ),
+}
+# Append-only histories, matched by TRACK-RELATIVE PATH rather than basename.
+# Basename matching would silently exempt any future `SESSION_HANDOFF.md` added
+# anywhere under the track — a default-uncovered set, which is the NV shape this
+# gate is otherwise built to refuse.
+_HISTORY_DOCS = {"SESSION_HANDOFF.md", "_boundaries/99_changelog.md"}
+# How near a retirement citation must be to the occurrence it excuses.
+# Line-wide matching was wrong: the geography.* namespace row is 12 401
+# characters, so one stray `was` would have exempted every claim on it.
+_CITE_WINDOW = 160
+# A line may mention a retired identifier only while citing the retirement.
+_RETIRE_CITATION = re.compile(
+    # ── LANGUAGE-NEUTRAL, and these are the CANONICAL hatch (ML-4) ──
+    r"[A-Z]{2,5}-R\d+"            # an amendment row id (SPG-R1, WSA-R19, …)
+    r"|~~"                        # struck-through
+    r"|⛔"
+    # ── per-language convenience terms; NOT the only way to cite ──
+    r"|retired|superseded|deprecated"
+    r"|\b(?:was|were|had)\b"      # "was `ChannelTier`", "had 5 V1 variants"
+    r"|khai tử|khai tu"           # vi: retired
+    r"|đã bỏ|da bo|đã thay|da thay|thay thế|thay the"   # vi: dropped / replaced
+    r"|trước đây|truoc day"       # vi: formerly
+    r"|廃止|已废弃|已棄用",         # ja / zh-Hans / zh-Hant: abolished / deprecated
+    # CASE-INSENSITIVE, and that is a fix not a convenience: the first version
+    # spelled `\bwas\b` lowercase-only, so `SPIKE_04`'s "it WAS — MAP_001 §3
+    # ChannelTier enum had 5 V1 variants" slipped straight through. A citation
+    # vocabulary that depends on capitalisation is a hole with a spellcheck.
+    re.I,
+)
+# ⚠ ML-4 (docs/standards/multilingual.md) — WHY THE LIST ABOVE IS SPLIT.
+# The first version's vocabulary was `retired|was|were|had` — Latin-only — on a
+# corpus that is BILINGUAL: GEO_001's own reject messages are Vietnamese ("Chỉ nút
+# thế giới mới có dữ liệu địa lý"), and the PO's decisions are quoted in Vietnamese
+# throughout docs 36/37 and the handoff. Proven by running it: "the field was
+# ChannelTier" passed while "ChannelTier đã bị khai tử" was BLOCKED. So an author
+# documenting a retirement in Vietnamese could not cite it, and the gate degraded
+# CLOSED — pushing English into design prose, which is precisely what ML-4 forbids
+# ("never ship a Latin-only regex as the check") and the opposite of ML-1's
+# required degrade-open behaviour for an English-only rule on a shared path.
+#
+# THE FIX IS STRUCTURAL, NOT A LONGER WORD LIST. A word list can never be
+# complete, so the CANONICAL hatch is the language-neutral one: cite the amendment
+# row id (`SPG-R1`), or mark the name `~~struck-through~~` / `⛔`. Those work in any
+# language and are what the corpus should prefer anyway, because an id is greppable
+# and a word is not. The per-language terms are a convenience for prose, and adding
+# a language means adding a row here — not changing the rule.
+#
+# NOT COVERED BY `scripts/language-bias-gate.py`: that gate enforces ML-2/ML-3/ML-5
+# (naive lower, ASCII tokenizing, ensure_ascii). ML-1/ML-4 has no repo-wide gate —
+# `multilingual.md`'s enforcement row points at ONE service's coverage test. So this
+# class had no mechanism that could have caught it, which is why it is written down
+# here at the site instead of trusted to a checklist.
+
+
+def _retired_scan_docs() -> list[Path]:
+    """Check D's scope — the WHOLE track, `_boundaries/` INCLUDED.
+
+    ⚠ THIS FUNCTION EXISTS BECAUSE OF A BUG IN CHECK D'S FIRST VERSION, found the
+    same day by the PO asking "did you clear those rots?" instead of taking the
+    green light. Check D originally reused `_track_docs()`, which EXCLUDES
+    `_boundaries/` — a correct exclusion for checks A/B/C, since the matrix *is*
+    the inventory and scanning it for prefix registration would be circular.
+    Check D inherited that exclusion SILENTLY, and `_boundaries/` is precisely
+    where the MACHINE CONTRACTS live. So the gate reported OK while
+    `02_extension_contracts.md` still carried `invalid_channel_tier (per MAP-2
+    ChannelTier::Continent)` in its live rule_id registry.
+
+    This is the second shape in docs/standards/non-vacuity.md — "the scope never
+    reaches it" — occurring inside the check written to prevent that very class.
+    A green gate whose scope omits the highest-value directory is worse than no
+    gate, because it certifies the one place a reader would most want checked.
+    Bite-tested below in `--selftest` by asserting the scope CONTAINS a
+    `_boundaries/` path.
+    """
+    return sorted(TRACK.rglob("*.md"))
+
+
+def check_retired_identifiers(docs: list[Path]) -> list[str]:
+    """A retired identifier may appear only on a line citing its retirement.
+
+    NOTE ON LINE GRANULARITY: the citation must appear within `_CITE_WINDOW`
+    characters of the occurrence, not merely somewhere on the same line. The
+    corpus has lines over 12 000 characters long (the `geography.*` namespace row
+    is 12 401), where "anywhere on the line" would let one unrelated `was` exempt
+    a hundred distinct claims.
+    """
+    out: list[str] = []
+    for p in docs:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            track_rel = p.relative_to(TRACK).as_posix()
+        except ValueError:
+            track_rel = p.name          # selftest fixtures live outside the track
+        if track_rel in _HISTORY_DOCS:
+            continue
+        for name, (why, declaring_doc) in RETIRED_IDENTS.items():
+            if name not in text or p.name == declaring_doc:
+                continue
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if name not in line:
+                    continue
+                # Every occurrence must be covered by a NEARBY citation, not by
+                # one that happens to share a 12 000-character line.
+                uncovered = False
+                for m in re.finditer(re.escape(name), line):
+                    lo = max(0, m.start() - _CITE_WINDOW)
+                    hi = min(len(line), m.end() + _CITE_WINDOW)
+                    if not _RETIRE_CITATION.search(line, lo, hi):
+                        uncovered = True
+                        break
+                if not uncovered:
+                    continue
+                line = line[max(0, m.start() - 90): m.end() + 90]
+                out.append(
+                    f"{_rel(p)}:{lineno}: live use of RETIRED identifier "
+                    f"`{name}` — {why}. The line neither cites an amendment row "
+                    f"nor marks the name as retired, so it reads as current "
+                    f"vocabulary:\n      {line.strip()[:150]}"
+                )
+    return out
 
 
 def main() -> int:
@@ -302,6 +557,7 @@ def main() -> int:
         check_bare_ids(docs)
         + check_prefix_registration(docs, matrix_text)
         + check_gated_queue(register_text, matrix_text)
+        + check_retired_identifiers(_retired_scan_docs())
     )
 
     if findings:

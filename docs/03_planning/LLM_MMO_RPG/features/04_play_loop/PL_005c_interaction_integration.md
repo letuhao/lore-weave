@@ -55,7 +55,7 @@ incoming Interaction:<Kind> candidate (from EVT-T6 Proposal validation OR direct
    │  └─► Examine: REQUIRED for ExamineTarget::Place (StructuralState ≠ Destroyed; reject `place.invalid_structural_transition`)
    │
    [stage 3.5.c] map_layout (MAP_001) — applicability: Travel-related events + ExamineTarget::MapNode
-   │  └─► Examine MapNode: assert ChannelId + ChannelTier present in map_layout aggregate
+   │  └─► Examine MapNode: assert ChannelId + `MapKind` present in map_layout aggregate
    │                        (reject `map.missing_layout_decl` if author content missing)
    │
    [stage 3.5.d] cell_scene (CSC_001) — applicability: write events modifying cell state

@@ -151,7 +151,7 @@ LLM output (JSON, validated):
 #[dp(type_name = "tilemap_view", tier = "T2", scope = "channel")]
 pub struct TileMapView {
     pub channel_id: ChannelId,                    // primary key (per-channel)
-    pub tier: ChannelTier,                        // mirror MAP_001
+    pub kind: MapKind,                            // mirror MAP_001 (SPG-R1: was `tier: ChannelTier`)
     pub grid_size: GridSize,                      // (width, height)
     pub skeleton_id: TileMapSkeletonId,           // L1 template
     pub procedural_seed: u64,                     // L2 input — blake3 deterministic
@@ -419,7 +419,7 @@ Project at [`poc/tilemap_world_view/`](../../../../../poc/tilemap_world_view/):
 
 | Module | LoC | Purpose |
 |---|---:|---|
-| `src/data/types.ts` | 145 | TileMapView aggregate types mirroring §4 (10 TerrainKind, 7 MapObjectKind, ChannelTier, TileMapView) |
+| `src/data/types.ts` | 145 | TileMapView aggregate types mirroring §4 (10 TerrainKind, 7 MapObjectKind, `MapKind` — `SPG-R1`, TileMapView) |
 | `src/data/skeleton.ts` | 165 | L1 hardcoded `kingdom_default` (7 zones, 7 cell anchors, 7 landmarks, 6 road connections) — wuxia/Vietnamese theme |
 | `src/generators/prng.ts` | 35 | Mulberry32 PRNG + hash2D pure function |
 | `src/generators/noise.ts` | 60 | Value-noise 2D + fBm |
