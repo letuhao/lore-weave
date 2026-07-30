@@ -628,6 +628,49 @@ Four fixes, each verified against the live endpoint rather than reasoned about:
 
 3,018 composition tests · 7 WelcomePanel tests · tsc clean · deployed sha256 == host.
 
+### ✅ Chương 1 drafted — 5 scenes, ~3,053 words, all inside the quality band
+
+`chapter_id` was **create-only**, which made a plan-only node a dead end: created NULL (the
+normal state), the compose panel keys off that column, and nothing an author or agent could
+reach could set it afterwards — PlanForge's bootstrap stamps it with its own SQL, so an outline
+built outside a plan run could never be drafted into, ever. The repo has always listed
+`chapter_id` in `_UPDATABLE_COLUMNS`; only the tool withheld it. Now bindable via `op="update"`.
+
+Bound all five scenes to the manuscript chapter and drafted them with local Gemma ($0):
+
+| scene | target | words |
+|---|---|---|
+| Hiện trường đẫm máu | 900 | **682** |
+| Ánh mắt rạn nứt | 850 | **660** |
+| Ánh nhìn thầm lặng | 800 | **507** |
+| Sự dao động của linh năng | 750 | **641** |
+| Mầm mống trả thù | 800 | **563** |
+
+Every scene inside the 500–1000 band. Consistently ~25% under target — worth a look, but a
+readable scene, not a sketch.
+
+### ⚠ NEXT, and it is a quality bug: all five scenes write the SAME ending
+
+The sequential bleed is gone (no scene now marches through its neighbours' beats). It was
+replaced by something subtler and worse: **every scene closes on scene 5's image** — the Thanh
+Tâm Ấn seed and the watching figure who is *counting*:
+
+> 1 · *"một dao động cực nhỏ… một bóng hình vô hình đang đứng từ xa, lặng lẽ **đếm**"*
+> 2 · *"…lặng lẽ **đếm** từng nhịp thở"* · 3 · *"Hắn đang **đếm**."*
+> 4 · *"một ánh nhìn vô hình đang dõi theo, bắt đầu **đếm**"*
+
+Each scene is drafted in a SEPARATE call carrying the SAME whole-chapter plan, so each one
+reaches for the plan's most striking image as its closer. The system prompt already forbids
+this — *"do NOT reuse a distinctive image, metaphor, or sentence-opening you have already used
+in this work"* — and the rule is **inert**, because a per-scene draft cannot see what its
+siblings wrote. A rule with no data to bite on is not a rule.
+
+Fix direction: cross-scene state re-injection — feed each draft a digest of the preceding
+scenes' prose (closing images, distinctive metaphors, opening constructions) so the
+anti-repetition instruction has something to check against. Chapter-mode drafting
+(`draft_chapter`, one continuous pass) does not have this failure and is the cheap comparison
+to run first.
+
 ### ▶ Next: an agent-made chapter is invisible to the tool that reports book state
 
 The live retry then failed **honestly** and on new ground: *"ID Chương 1 không tồn tại …

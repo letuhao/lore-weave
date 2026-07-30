@@ -1191,6 +1191,14 @@ class _NodeUpdateArgs(ForbidExtra):
     stakes: str | None = None
     target_words: int | None = Field(default=None, gt=0)
     exit_state: SceneExitState | None = None
+    # D-SCENE-PROSE-NOWHERE-TO-LAND — BIND a plan node to a manuscript chapter.
+    # `chapter_id` used to be create-only, which made a planned node a DEAD END: it is
+    # created NULL (the normal state), the compose panel keys off this column, and there
+    # was no way to set it afterwards. PlanForge's bootstrap could stamp it via its own
+    # SQL, but nothing an author or agent could reach could — so an outline built outside
+    # a plan run could never be drafted into, ever. The repo has always listed chapter_id
+    # as updatable (`_UPDATABLE_COLUMNS`); only the tool withheld it.
+    chapter_id: str | None = None
 
 
 @mcp_server.tool(
@@ -1240,6 +1248,9 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
         patch["location_entity_id"] = UUID(args.location_entity_id)
     if args.exit_state is not None:
         patch["exit_state"] = args.exit_state.model_dump(mode="json")
+    # D-SCENE-PROSE-NOWHERE-TO-LAND — bind the node to a manuscript chapter (see the arg).
+    if args.chapter_id is not None:
+        patch["chapter_id"] = UUID(args.chapter_id)
     try:
         if patch.get("status") == "done":
             node = await outline.update_node_commit_aware(
@@ -1262,9 +1273,10 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
     out = node.model_dump(mode="json")
     # The undo hint restores the changed fields to their PRIOR values via a reverse
     # composition_outline_node_update. That tool's patch is sparse — None means "leave
-    # unchanged" (there is no clear verb) — so a field whose PRIOR was None (only the
-    # nullable SC4 fields: value_shift, target_words, location_entity_id, story_time,
-    # exit_state) cannot be faithfully reversed: emitting `field: null` would silently
+    # unchanged" (there is no clear verb) — so a field whose PRIOR was None (the nullable
+    # SC4 fields: value_shift, target_words, location_entity_id, story_time, exit_state —
+    # and `chapter_id`, whose prior is None on every plan-only node, so BINDING one is
+    # correctly un-undoable) cannot be faithfully reversed: emitting `field: null` would silently
     # no-op while the strip claims the undo applied. When any changed field is in that
     # state there is no faithful single-op reverse, so emit NO undo_hint rather than a
     # lying one (no-silent-no-op). The pre-SC4 fields are all NOT NULL — their prior is
@@ -7324,7 +7336,7 @@ class _OutlineNodeEditArgs(ForbidExtra):
     goal: str | None = None              # create, update
     synopsis: str | None = None          # create, update
     status: Literal["empty", "outline", "drafting", "done"] | None = None  # create, update
-    chapter_id: str | None = None        # create
+    chapter_id: str | None = None        # create, update (bind a plan node to a chapter)
     location_entity_id: str | None = None  # create, update
     story_time: str | None = None        # create, update
     conflict: str | None = None          # create, update
@@ -7372,7 +7384,11 @@ async def composition_outline_node_edit(ctx: MCPContext, args: _OutlineNodeEditA
             **_present(title=args.title, goal=args.goal, synopsis=args.synopsis, status=args.status,
                        location_entity_id=args.location_entity_id, story_time=args.story_time,
                        conflict=args.conflict, outcome=args.outcome, value_shift=args.value_shift,
-                       stakes=args.stakes, target_words=args.target_words, exit_state=args.exit_state)))
+                       stakes=args.stakes, target_words=args.target_words, exit_state=args.exit_state,
+                       # D-SCENE-PROSE-NOWHERE-TO-LAND — bind a plan node to a manuscript
+                       # chapter. The unified tool already accepted `chapter_id` on create;
+                       # forwarding it on update is what makes a plan-only node recoverable.
+                       chapter_id=args.chapter_id)))
     if args.op == "delete":
         if not args.project_id or not args.node_id:
             raise ValueError("op=delete requires project_id and node_id")

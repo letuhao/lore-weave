@@ -198,3 +198,78 @@ class TestPlanOnlyLabelOnCreate:
         out = await self._create(CHAPTER)
         assert "_status" not in out
         assert "_note" not in out
+
+
+class TestBindingAPlanNodeToAChapter:
+    """`chapter_id` used to be CREATE-ONLY, which made a plan-only node a dead end: it is
+    created NULL (the normal state), the compose panel keys off that column, and nothing
+    an author or agent could reach could set it afterwards. PlanForge's bootstrap stamps
+    it with its own SQL, so an outline built OUTSIDE a plan run could never be drafted
+    into — ever. The repo has always listed `chapter_id` in `_UPDATABLE_COLUMNS`; only the
+    tool withheld it."""
+
+    @staticmethod
+    async def _update(**over):
+        # The undo-hint builder reads `getattr(prior, f)` for every patched field, so the
+        # prior must carry them. `chapter_id=None` is the REAL shape of a plan-only node,
+        # and it is why binding one emits no undo_hint: there is no clear verb, so a
+        # reverse patch of `chapter_id: null` would silently no-op while claiming success.
+        prior = SimpleNamespace(
+            id=NODE, project_id=PROJECT, version=1, chapter_id=None, title="Cảnh 1",
+        )
+        updated = SimpleNamespace(
+            id=NODE, chapter_id=CHAPTER, version=2,
+            model_dump=lambda mode="json": {"id": str(NODE), "chapter_id": str(CHAPTER)},
+        )
+        outline = AsyncMock()
+        outline.get_node = AsyncMock(return_value=prior)
+        outline.update_node = AsyncMock(return_value=updated)
+        gate = AsyncMock(return_value=SimpleNamespace(
+            book_id=BOOK, work_id=uuid.uuid4(), project_id=PROJECT))
+        with patch.object(srv, "_ctx", side_effect=lambda c: c), \
+             patch.object(srv, "get_pool", return_value=object()), \
+             patch.object(srv, "WorksRepo", return_value=AsyncMock()), \
+             patch.object(srv, "OutlineRepo", return_value=outline), \
+             patch.object(srv, "_book_or_deny", gate):
+            await srv.composition_outline_node_update(_Ctx(), srv._NodeUpdateArgs(
+                project_id=str(PROJECT), node_id=str(NODE), expected_version=1, **over))
+        return outline.update_node.await_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_chapter_id_reaches_the_patch(self):
+        patch_sent = await self._update(chapter_id=str(CHAPTER))
+        assert patch_sent["chapter_id"] == CHAPTER, "must be a UUID, not the raw string"
+
+    @pytest.mark.asyncio
+    async def test_an_unrelated_update_never_touches_chapter_id(self):
+        """Sparse-patch convention: absent means leave unchanged. A title edit must not
+        silently unbind a scene from its chapter."""
+        patch_sent = await self._update(title="Cảnh 1 — bản sửa")
+        assert "chapter_id" not in patch_sent
+
+    @pytest.mark.asyncio
+    async def test_binding_emits_no_undo_hint_rather_than_a_lying_one(self):
+        """A plan-only node's prior `chapter_id` is None, and the reverse patch has no
+        clear verb — `chapter_id: null` would be read as "leave unchanged" and silently
+        no-op while the UI claimed the undo applied. The existing reversibility rule is
+        generic (`any(v is None …)`), so binding is correctly un-undoable; this pins that
+        it stays that way rather than growing a hard-coded field list that forgets it."""
+        prior = SimpleNamespace(id=NODE, project_id=PROJECT, version=1, chapter_id=None)
+        updated = SimpleNamespace(
+            id=NODE, chapter_id=CHAPTER, version=2,
+            model_dump=lambda mode="json": {"id": str(NODE)},
+        )
+        outline = AsyncMock()
+        outline.get_node = AsyncMock(return_value=prior)
+        outline.update_node = AsyncMock(return_value=updated)
+        gate = AsyncMock(return_value=SimpleNamespace(
+            book_id=BOOK, work_id=uuid.uuid4(), project_id=PROJECT))
+        with patch.object(srv, "_ctx", side_effect=lambda c: c), \
+             patch.object(srv, "get_pool", return_value=object()), \
+             patch.object(srv, "WorksRepo", return_value=AsyncMock()), \
+             patch.object(srv, "OutlineRepo", return_value=outline), \
+             patch.object(srv, "_book_or_deny", gate):
+            out = await srv.composition_outline_node_update(_Ctx(), srv._NodeUpdateArgs(
+                project_id=str(PROJECT), node_id=str(NODE), expected_version=1,
+                chapter_id=str(CHAPTER)))
+        assert out["_meta"]["undo_hint"] is None
