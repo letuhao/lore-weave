@@ -52,6 +52,28 @@
 mod table;
 mod validate;
 
+/// The content address of a [`ProgressionTable`]'s canonical bytes.
+///
+/// A newtype rather than a bare `[u8; 32]` or a reused `RulesetDigest`, for the
+/// reason `zero-digest-gate` exists: an anonymous 32-byte array *"looks like a
+/// value"*, and nothing in the type system then distinguishes a real pin from a
+/// placeholder. Sharing `RulesetDigest` would be worse still — the two address
+/// different artifacts, and a function that accepted either would compile while
+/// pinning the wrong one.
+///
+/// **There is no zero constant and no `Default`.** "This reality declares no
+/// progression" is spelled `Option::None` on the `Ruleset` field, which the type
+/// system can see; a zero digest is the exact anonymous-placeholder shape that
+/// gate was written to kill after it shipped in 15 places.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProgressionDigest(pub [u8; 32]);
+
+impl ProgressionDigest {
+    pub fn to_hex(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
 pub use table::ProgressionTable;
 pub use validate::{validate, ProgressionInvalid};
 

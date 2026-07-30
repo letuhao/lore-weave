@@ -46,6 +46,7 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-GAME-WS-EDGE-CONTROLS` | 1 | PRR-20's second public entry point must inherit the gateway's auth/rate-limit/audit controls. | **prose-only.** ⚠ First claimed as "guarded across the three `ws/` implementations" — the id appears there only in **JSDoc headers**, which is provenance, not a check: nothing reds if parity breaks. Trigger: a parity test, which needs both transports up. |
 | `D-META-ALLOWLIST-NO-DRIFT-GATE` | 2 | Rust and Go meta allowlists are hand-mirrored and **already drifted once** — the Rust side silently dropped `xreality_topic` because serde ignores unknown fields while Go reads it. | **prose-only** — declared in `deferral-gate.py`. Trigger: the next meta table added. |
 | `D-S04-1` | 3 | The S04 provisioner slice. | **prose-only** — the subject is an unbuilt service, so there is no file for a check to hold. |
+| `D-SPEC-CODE-ENUM-PARITY` | — | **`design-lint`'s corpus-enum source is PER-FILE**, so it cannot compare a spec enum against (a) the same enum declared in another doc, or (b) a real Rust enum of the same name. Both are genuine drift surfaces. | **prose-only** — declared in `deferral-gate.py`. **Cut at design review with evidence, not skipped:** three docs declare `pub enum ActorId` and two are legitimately different types — the data plane's `{Player, Npc}` vs the feature layer's `{Pc, Npc, Synthetic, Admin, Locus}`. A naive cross-doc check false-positives on its FIRST run, and this check's own history is that crying wolf got it switched off. **Trigger: a layer-aware notion of enum identity** (qualify by owning layer, so DP's `ActorId` and the feature layer's are different symbols) — at which point both (a) and (b) become checkable together. |
 | `D-WORLD-BASELINE-RETENTION` | — | **`WDS-A5`/`WDS-A6` state retention rules with no check.** *"Never pruned while referenced"* (the baseline blob) and *"a generator version may not be deleted while a reality pins it"*. Both are load-bearing: deleting either silently makes a live reality unreproducible. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **the subject does not exist** (no `WorldBaselineStore`, no pruner, no `generator_version` column), so a check would have no possible violation — the NV-2 shape. **Trigger: the first commit adding a pruner or retention job to either store.** Bite test stated in advance: prune a digest a live reality still pins, and the job must REFUSE. |
 | `D-RETIRED-IDENT-CODE-SCOPE` | — | **`amendment-rot-gate` check D reads `*.md` under the track only.** A retired identifier reappearing in `crates/`/`services/` is not covered. Named by `/review-impl` after the same check was found to be excluding `_boundaries/` — one scope hole out. | **prose-only** — declared in `deferral-gate.py`. **Today it is a BOUNDARY, not a hole:** `MapKind` is unimplemented, so `ChannelTier` cannot occur in code and a check would have no possible violation (the NV-2 shape). **Trigger: the first commit that lands `MapKind` in Rust** — at which point the docs-only scope becomes a real gap and the check needs a language-aware notion of "citing a retirement" (a `//` comment naming the amendment row). |
 | `D-WORLD-PAYLOAD-DERIVABLE` | — | **67.6 % of the generated world payload is derivable and is being stored anyway** (`WDS-A8`/`WDS-D3`). `vertex_polygon` 50.1 % · `center` 7.9 % · `neighbors` + `is_coast` the rest. The whole mesh is `fibonacci(n) · R(seed)` — `mesh.rs`'s own test asserts the rotation is *"the **only** source of seed dependence here"* — and adjacency is Quickhull over the centres. Packed irreducible ≈ **20 B/cell** → ~320 KB at `Megaplanet` vs ~15 MB stored (**46×**). PO chose store-everything for simplicity; legitimate at this scale. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **there is no measured threshold to assert against**, and a check with no possible violation is the NV-2 shape. Stripping is not free either: it needs Quickhull on the **read** path, where `WDS-A7`'s `f32` cross-platform problem is worse than on the write path. **Trigger: the first commit in which world-payload size or wire bandwidth is measured as a constraint.** The row exists so the measurement is re-read, not re-discovered. |
@@ -182,12 +183,128 @@ digest. Routing `tier_max` through `i64` would have been one cast and a wrap no 
 dropping `tier_max` from the hash reds `a_single_tier_edit_moves_the_digest` + the round-trip. Both
 restored, 24/24 green.
 
-**▶ NEXT:** `S-1b` — `progression_digest: [u8;32]` on `Ruleset`, schema 4 → 5. **This is where the
-four `Q2 B1` guards bite**: `classify!` totality · `s1b_subjects` · the `size_of` assertion (2312 →
-2344, and it WILL trip — headroom is zero) · the golden digest. Two repin-log entries. Then the store
-(`PGN-R2`) and the loader's authoring form.
+**✅ `S-1b` BUILT — the pin is in the hashed bytes, schema 4 → 5.** `Ruleset` gains
+`progression: Option<ProgressionDigest>`. **All four guards bit, none was bumped without an answer:**
+`classify!` totality (a new field cannot stay unclassified) · `every_shipped_field_is_classified`
+count 6 → 7 · the `size_of` assertion **2312 → 2344, measured by probe** (`Option<[u8;32]>` is 33 B,
+`Ruleset` aligns to 8) · the golden digest `9560a74a…` → `4cbff832…`. Two repin-log entries, and doc
+39 §8.3's predicted 2344 was exactly right.
+
+**`Option`, not a zero sentinel — and the gate that enforces it now covers the new type.**
+`zero-digest-gate` exists because `RulesetDigest([0u8; 32])` shipped in **15 places** and *"looks like
+a value"*. Adding a SECOND 32-byte digest newtype that the gate did not know about would have been
+`NV-3` on the day it landed — the check exists, the defect is identical, the **scope** simply never
+reaches it. So `ProgressionDigest` joined its type list, and the gate **immediately caught a real
+line** (a test's `assert_ne!` proving an empty table's address is not the zero) which now carries a
+reasoned pragma. Bite-proven: a fresh `ProgressionDigest([0u8; 32])` reds it.
+
+**Classified `Forbidden`, not `AdditiveOnly`** — and that choice mattered. A pin is **computed**, so a
+layer writing one would be naming bytes it did not produce; `schema_version` is `Forbidden` for the
+identical reason. `AdditiveOnly`/`Union` would have added a **third `S1b` subject owing floor and
+mutability enforcement in a loader with no progression form at all** — a class the table CLAIMS to
+govern and nothing enforces, which is exactly what `s1b_subjects_...`'s own message warns against.
+`FORBIDDEN_KEYS` 2 → 3, and the loader's `a_forbidden_key_is_refused_at_every_layer_with_its_reason`
+**caught the new row twice**: once because the loader had to actually refuse it, once because the
+reason text has to contain *why*.
+
+**⚠ `D-PROGRESSION-EMPTY-PIN`** — `None` and `Some(digest_of_an_empty_table)` are the same
+behavioural state under two pins: one set of rules, two digests, which `RLS-A13` forbids. Unreachable
+today (`progression` is `Forbidden`, so no layer can author one), and the refusal belongs on the path
+that WRITES the pin. `an_empty_table_must_never_be_pinned_and_nothing_enforces_it_yet` demonstrates
+the hazard and is the trigger — when `PGN-R2` lands a pin-writing path, it must refuse `Some(empty)`
+and that assertion inverts.
+
+**BITE-TESTS (NV-6), both restored:** dropping the pin from `canon()` reds the golden digest;
+writing it at v4 reds `a_v4_artifact_decodes_to_none_and_re_encodes_unchanged` (the purely-additive
+upcast property `digest_at` rests on).
+
+**▶ NEXT:** `PGN-R2` — the progression store (generalise `RulesetStore` over content or add a
+sibling; **the nested resolve-and-verify is separately written**, and a tolerant nested decoder would
+re-create non-vacuity register row 7 one level down) + the loader's TOML authoring form, which is
+where `D-PROGRESSION-EMPTY-PIN`'s refusal and the `progression` classification row both land.
 `Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot
 (365) · file-ceiling · deferral · gate-wiring.
+
+### ✅ The third half-application gets a check instead of a fourth sweep (2026-07-30)
+
+Continuing from `63d122b36`, which deferred `SPG-R10` + `WSA-R19` *"to its own claim, on purpose"*.
+The reasoning held. **The premise did not** — opening the targets showed the registers wrong again:
+
+| Row | doc 32:14 said | The target said | Truth |
+|---|---|---|---|
+| `WSA-R19` | *"still PROPOSED"* | `EF_001` §5: `EntityId { …, Place(PlaceId) }` | **half-applied** |
+| `WSA-R21` | *"still PROPOSED"* | `NPC_001_cast:67`: *"`Locus` **ADDED** 2026-07-30"* | **APPLIED** |
+| `WSA-R22` | *"still PROPOSED"* | `ACT_001:205`: *"— **NARROWED** 2026-07-30"* | **APPLIED** |
+
+**My own release note in `63d122b36` repeated the false claim**, citing `EF_001:67`/`:131` as
+*"self-consistent and honest"*. Those two lines were stale; `:352` was current. **I read the table
+instead of the code — one layer down from the error that same commit was written up to fix.**
+`_LOCK.md` now carries that correction; [REC-98](19_reconciliation_register.md) has the full account.
+
+**A blanket status over a RANGE is the shape that rots silently**, because nothing has to be true of all
+six rows for the sentence to keep reading plausibly. `SPG-R1`'s *"Applied so far"* (REC-97) was the same
+construction pointed the other way.
+
+`EF_001` contradicted its own §5 in **five** places, including **`AC-EF-1` — an acceptance criterion
+describing a `match` over 4 variants that would not compile against the 5-variant enum**. Same vacuous
+shape `AC-MAP-3` had. All five fixed; **`SPG-R10` APPLIED** (`holder: Some(Place(p))` is an interior
+belonging to a locus — the one `PlaceId` addressed as a thing by `EntityId` and as an agent by
+`ActorId`, which is `SPG-A1` and `WSA-A7` meeting).
+
+## Three occurrences is where a sweep stops being the answer
+
+`design-lint`'s `count` check documented its own hole: *"KNOWN LIMIT: it can only check enums that EXIST
+in code."* `EntityId` is spec-only, so *"4 variants V1"* sat beside a five-variant declaration **in the
+same file** with nothing able to look. It now parses enums from the corpus's own ` ```rust ` blocks,
+**per file**.
+
+**Four things the build learned by RUNNING it, not by reasoning about it:**
+
+1. **Cross-document comparison was cut at design review.** Three docs declare `pub enum ActorId`; two are
+   legitimately different types (DP's `{Player, Npc}` vs the feature layer's five). A cross-doc check
+   false-positives on its **first** run. Per-file has no homonym problem — two files never meet.
+   Deferred as `D-SPEC-CODE-ENUM-PARITY` with that evidence.
+2. **The first working version did not catch the defect it was built for.** `COUNT_FORMS` needs the
+   number adjacent to the symbol; `EF_001:67` is `| **EntityId** | … | 4 variants V1`, a table cell away.
+   A **loose** form was added, safe only because file-scoped: the symbol must name an enum *this file
+   declares*, and **exactly one** may appear on the line. *"(the §11 variant"* names no enum; the
+   mis-attribution case needs two candidates.
+3. **Running it over the corpus found 2 more false-positive classes and 1 more real defect.**
+   Version-partitioned enums (`MemoryQuery` — *"V1 4 variants; V2+ adds…"* vs a 6-variant block) have **no
+   single arity**, excluded — detected on the RAW body *before* comment stripping, since the markers live
+   in the comments the stripper removes. A historical claim (`TVL_003`) took the sanctioned pragma. And
+   **`GEO_001b` claimed 14 variants against a 16-variant declaration** — a genuine drift in a file this
+   arc never touched.
+4. **Teaching the matcher past tense was rejected on ML-4 grounds** — a tense rule is language-biased by
+   construction and fails on this corpus's Vietnamese prose. The pragma is right *because* it is neutral.
+
+**Net: 4 count claims corrected across 3 files, 2 of them defects nobody had reported.**
+
+## The bite tests bit the bite tests
+
+`design-lint` gained a **`--selftest`** (7 cases: 2 must red, 5 must stay silent). Then a **meta-bite**
+disarmed each guard in turn and demanded the selftest fail:
+
+```
+disarm elision guard                -> selftest FAILS (good)
+disarm comment stripper             -> selftest still passes (VACUOUS)   <-- caught
+disarm version-partition guard      -> selftest FAILS (good)
+disarm loose-form ambiguity guard   -> selftest FAILS (good)
+disarm the loose form itself        -> selftest FAILS (good)
+```
+
+**My comment-stripper case proved nothing.** A commented-*out* enum is skipped by the parser anyway, so
+the test passed for the wrong reason. The stripper's real failure mode is a trailing comment that *looks
+like variants* — `A,   // B, C, D` parses as **3** without stripping and **1** with. Case replaced;
+all five guards now load-bearing. **A guard proven only by the absence of complaints is not proven** —
+and the only way I found this was by bite-testing the bite test.
+
+**⚠ Blocked at commit, not by my work:** `file-ceiling-gate` runs **repo-wide** in `.githooks/pre-commit`
+and is red on the peer's in-flight `crates/ruleset-core/{ruleset.rs 469, tests/progression.rs 475}`
+(ceiling 400). Third time this session the shared working tree has blocked a commit on someone else's
+edits. I did **not** `--no-verify` and did **not** allowlist another session's files — silencing a
+finding to unblock myself is the exact anti-pattern this repo keeps paying for. `git worktree` isolation
+remains the standing recommendation.
 
 ### ✅ World tier: scale pinned, storage decided, and a row marked APPLIED that never was (2026-07-30)
 

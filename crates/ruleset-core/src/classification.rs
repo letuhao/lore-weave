@@ -201,6 +201,17 @@ classify!(Ruleset {
     // over the engine default instead of a wholesale override that could drop a
     // pool an actor's stored `pools[ordinal]` already holds a value in.
     resources      => Floor::Preset, Mutability::AdditiveOnly, Strategy::Union, "(L2 declared)";
+    // S-1b — Forbidden, and for the SAME reason as `schema_version`: it is
+    // COMPUTED, never authored. A progression pin is the content address of a
+    // table, so a layer that wrote one would be naming bytes it did not
+    // produce. `AdditiveOnly`/`Union` would have been the wrong call and an
+    // actively harmful one: it would add a THIRD S1b subject owing floor and
+    // mutability enforcement in a loader that has no authoring form for
+    // progression at all - a class the table CLAIMS to govern and nothing
+    // enforces, which is exactly what `s1b_subjects_...`'s message warns
+    // against. When `PGN-R2` gives the loader a form, this row changes and that
+    // test reds.
+    progression    => Floor::EngineDefault, Mutability::Frozen, Strategy::Forbidden, "progression_digest";
 });
 
 /// Top-level keys **no layer may declare**, with the reason an author gets told.
@@ -224,6 +235,10 @@ classify!(Ruleset {
 /// it. `NV-4` is precisely a guard defeated by an adjacent decision, so this one
 /// is made explicit and tested.
 pub const FORBIDDEN_KEYS: &[(&str, &str)] = &[
+    (
+        "progression",
+        "progression is pinned by DIGEST, and the digest is COMPUTED from the table's bytes rather than authored; a layer writing one would be naming bytes it did not produce (RLS-A4 Forbidden). The authoring form lands with the loader, PGN-R2",
+    ),
     (
         "schema_version",
         "schema_version identifies the ENCODING (which codec reads these bytes), not the rules; \
@@ -255,7 +270,11 @@ mod tests {
 
         assert_eq!(CombatRules::CLASSES.len(), 15);
         assert_eq!(StatRules::CLASSES.len(), 5);
-        assert_eq!(Ruleset::CLASSES.len(), 6);
+        // S-1b added `progression`. The count is pinned rather than derived so a
+        // field added WITHOUT a classify! row reds here even though the macro's
+        // exhaustive pattern would have caught it first - two independent proofs
+        // of the same property, which is the point.
+        assert_eq!(Ruleset::CLASSES.len(), 7);
     }
 
     /// **THE S1b TRIGGER FIRED, 2026-07-29, on `Q1`. This is what it became.**
@@ -329,7 +348,7 @@ mod tests {
         // deleting a row is a red rather than a silently shorter loop below.
         assert_eq!(
             FORBIDDEN_KEYS.len(),
-            2,
+            3,
             "a refusal key was added or removed — if that was deliberate, update this \
              count and `forbidden_classes_and_refusal_keys_agree` will check the pairing"
         );

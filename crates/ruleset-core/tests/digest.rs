@@ -83,12 +83,38 @@ fn hex(d: &[u8; 32]) -> String {
 ///   twice over: the pool table is indexed by the QUANTITY ordinal — one
 ///   ordinal space, not two — so raising `MAX_DECLARED_QUANTITIES` widens both
 ///   at once and still moves no digest.
+/// * `9560a74a…` → `4cbff832…`, **2026-07-30, `S-1b` the progression pin
+///   (`PGN-R1`)**. The answer: **none of the numbers changed and no law
+///   changed** — `RULESET_SCHEMA_VERSION` went 4 → 5 and a `progression` field
+///   entered the hashed bytes as `None`. **One byte:** a presence flag.
+///
+///   This one differs in kind from the three above and the difference is the
+///   point. `quantities` and `resources` put a TABLE in the bytes; this puts a
+///   POINTER — the content address of a table that lives in a store. So the
+///   engine default pays one byte while a reality that declares a 24-tier
+///   ladder pays 33, and the ladder itself is hashed exactly once no matter how
+///   many realities share the preset.
+///
+///   **Why the pointer moves the digest at all, and why that is the whole
+///   design:** because it is INSIDE these bytes, editing a tier ladder changes
+///   the progression digest, which changes the ruleset digest, which means
+///   `Q0b B3`'s epoch switch already covers a progression change — no second
+///   hash on the binding, no second version axis, no new column. That is what
+///   `CanonEncode`'s exhaustive destructure bought here: the field could not
+///   silently stay out.
+///
+///   ⚠ `None` is the only spelling of "no progression". A `Some(d)` where `d`
+///   is the digest of an EMPTY table is the same behavioural state under a
+///   different pin — one set of rules, two digests, which `RLS-A13` forbids.
+///   Refusing it belongs on the path that writes the pin, and that path does
+///   not exist yet: see
+///   `an_empty_table_must_never_be_pinned_and_nothing_enforces_it_yet`.
 #[test]
 fn v1_engine_default_digest_is_pinned() {
     let d = Ruleset::engine_default().digest();
     assert_eq!(
         hex(&d.0),
-        "9560a74a105f89b514d7e670a102e89c60d0e12e43b12d3ec5f05afba7bcea52",
+        "4cbff832d13382c89cb6f2470f15c96568e2fbb250d2e4e215073ef419beab2f",
         "the engine-default ruleset digest moved — a rules value, the canonical \
          encoding, the schema version, or LAW_VERSION changed. That is a rules \
          change for EVERY reality; confirm it was intended before repinning, and \

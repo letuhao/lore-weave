@@ -14,11 +14,11 @@
 //! no second version axis and no new binding column.
 
 use crate::canon::{Canon, CanonError, CanonReader};
-use sim_core::RulesetDigest;
 
 use super::{
     BodyOrSoul, BreakthroughCondition, CapRule, CurveKind, Derivation, ProgressionKindDecl,
-    ProgressionType, TierDecl, WithinTierCurve, MAX_DECLARED_PROGRESSION_KINDS, MAX_TIERS_PER_KIND,
+    ProgressionDigest, ProgressionType, TierDecl, WithinTierCurve,
+    MAX_DECLARED_PROGRESSION_KINDS, MAX_TIERS_PER_KIND,
 };
 
 const DOMAIN: &str = "lw.ruleset.progression.v1";
@@ -118,8 +118,8 @@ impl ProgressionTable {
     }
 
     /// The content address of these bytes.
-    pub fn digest(&self) -> RulesetDigest {
-        RulesetDigest(*blake3::hash(&self.canon_bytes()).as_bytes())
+    pub fn digest(&self) -> ProgressionDigest {
+        ProgressionDigest(*blake3::hash(&self.canon_bytes()).as_bytes())
     }
 
     pub fn canon_bytes(&self) -> Vec<u8> {

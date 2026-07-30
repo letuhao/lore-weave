@@ -46,6 +46,7 @@ mod quantity;
 mod progression;
 mod resource;
 mod ruleset;
+mod ruleset_codec;
 mod slots;
 mod stats;
 
@@ -63,7 +64,8 @@ pub use quantity::{
 };
 pub use progression::{
     validate as validate_progression, BodyOrSoul, BreakthroughCondition, CapRule, CurveKind,
-    Derivation, ProgressionInvalid, ProgressionKindDecl, ProgressionTable, ProgressionType,
+    Derivation, ProgressionDigest, ProgressionInvalid, ProgressionKindDecl, ProgressionTable,
+    ProgressionType,
     TierDecl, WithinTierCurve, MAX_DECLARED_PROGRESSION_KINDS, MAX_TIERS_PER_KIND,
 };
 pub use provenance::{Provenance, RulesetEpoch};

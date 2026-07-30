@@ -79,8 +79,21 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ROOTS = ["crates", "services", "frontend/src"]
 SKIP_DIRS = {"target", "node_modules", ".git", "__pycache__", ".claude"}
 
-# `RulesetDigest([0u8; 32])`, `RulesetDigest([0; 32])`, `RulesetDigest([0u8;32])`…
-ANON_ZERO = re.compile(r"RulesetDigest\s*\(\s*\[\s*0(?:u8)?\s*;\s*32\s*\]\s*\)")
+# Every 32-byte content-address newtype in the tree. `S-1b` added the second
+# one (`ProgressionDigest`, the pin on `Ruleset`), and a gate that knew only
+# about the first would have been NV-3 the moment it landed — the check exists,
+# the defect is identical, and the SCOPE simply never reaches it. The right
+# reading of "a check must be able to fail" is that it must be able to fail on
+# the thing that can actually break, so the type list grows with the types.
+#
+# ⚠ Adding a digest newtype WITHOUT adding it here is the silent way to opt out.
+# `test_every_digest_newtype_is_covered` in the selftest pins the list against
+# the tree so a new one reds instead of slipping through.
+DIGEST_TYPES = ("RulesetDigest", "ProgressionDigest")
+_TYPES_ALT = "|".join(DIGEST_TYPES)
+
+# `RulesetDigest([0u8; 32])`, `ProgressionDigest([0; 32])`, `…([0u8;32])`…
+ANON_ZERO = re.compile(rf"(?:{_TYPES_ALT})\s*\(\s*\[\s*0(?:u8)?\s*;\s*32\s*\]\s*\)")
 UNPINNED = re.compile(r"RulesetDigest::UNPINNED")
 PRAGMA = re.compile(r"zero-digest-gate:\s*ok\b")
 
@@ -141,7 +154,7 @@ def pragma_near(lines: list[str], line_no: int) -> bool:
 
 
 def check_source(rel: str, src: str) -> list[tuple[str, int, str]]:
-    if "RulesetDigest" not in src:
+    if not any(t in src for t in DIGEST_TYPES):
         return []
     clean = strip_comments(src, keep_strings=False)
     lines = src.split("\n")
@@ -153,7 +166,8 @@ def check_source(rel: str, src: str) -> list[tuple[str, int, str]]:
             continue
         findings.append((
             rel, line_no,
-            "anonymous-zero: `RulesetDigest([0u8; 32])` written inline. An "
+            "anonymous-zero: a 32-byte digest newtype written as an inline zero "
+            "(RulesetDigest/ProgressionDigest([0u8; 32])). An "
             "all-zero digest makes RLS-A13's pin INERT — two realities with "
             "different rules stamp indistinguishable events. Pass a computed "
             "`Ruleset::digest()`, or `RulesetDigest::UNPINNED` if this domain "
