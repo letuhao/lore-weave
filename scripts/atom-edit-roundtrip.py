@@ -226,12 +226,22 @@ class Fixture:
         return self._chapter
 
     def scene(self, i: int) -> str:
-        """Scene nodes under the fixture chapter. `scene_link` needs two."""
+        """Scene nodes under the fixture chapter. `scene_link` needs two; an authoring run
+        needs them to be the chapter's SCENE PLAN.
+
+        `chapter_id` is load-bearing and was missing here at first. A scene parented to the
+        chapter node but with a NULL `chapter_id` is invisible to every per-chapter read
+        (`scenes_for_chapter` is `WHERE project_id = $1 AND chapter_id = $2`), so the engine
+        answered `NO_CHAPTER_PLAN — chapter has no scene plan; decompose it first`. Parenting
+        is not the same relation as chapter membership.
+        """
         while len(self._scenes) <= i:
             n_ = len(self._scenes)
             st, n = call("POST", f"{C}/works/{self.project_id}/outline/nodes", {
                 "kind": "scene", "parent_id": self.chapter_node,
+                "chapter_id": self.book_chapter_id,
                 "title": f"F2 Fixture Scene {n_ + 1}",
+                "synopsis": "The lantern-keeper counts the census at dusk and finds one lamp unlit.",
             }, self.t)
             self._scenes.append(ok(f"fixture.scene{n_}", st, n, 201)["id"])
         return self._scenes[i]
@@ -726,11 +736,17 @@ def f_authoring_run_review(t: str, fx: Fixture) -> str:
     two that need nothing but a run_id:
 
       · `close`       — legal from `draft` (service: draft|gated|paused|failed|report_ready)
-      · `pause`       — needs status=running, i.e. a GATED run: real generation, real spend
-      · accept/reject — act on DRAFTED units, so likewise only exist after a gated run
+      · `pause`       — needs status=running, i.e. a GATED run
+      · accept/reject — act on a DRAFTED unit, so likewise only after a gated run drafts one
 
-    So the family's wiring is provable for $0 while its unit-review half is not. Proving the
-    reachable half and printing the rest is the honest option; claiming the family on a `close`
+    "Real spend" was the wrong reason to stop here, and it is worth naming: these models are
+    LOCAL (lm_studio), so a gated run costs minutes, not money. Walking it end to end works —
+    create → gate → the Tier-W confirm token → start → a driver that snapshots
+    `pre_revision_id` and opens unit 0. What it needs is an undisturbed composition-service:
+    the driver is claimed in-process and does not survive a restart of that service, and the
+    orphan is only reclaimed by the 40-minute stale sweep (`authoring_heartbeat_stale_secs`).
+
+    So the honest half is proven and the rest is printed. Claiming the family on a `close`
     would be the "presence is not proof" mistake this whole track exists to stop.
     """
     st, r = call("POST", "/v1/composition/authoring-runs", {
@@ -811,9 +827,10 @@ PENDING_REASON = {
 #: A family whose runner exercises only PART of its surface, and what is still unproven.
 #: Printed, and deliberately NOT counted as proven.
 PARTIAL = {
-    "authoring_run_review": "only `close` proven ($0, from draft); pause needs a RUNNING "
-                            "run and accept/reject need DRAFTED units — both require "
-                            "gating, i.e. real generation and real spend",
+    "authoring_run_review": "only `close` proven (from draft). pause needs a RUNNING run and "
+                            "accept/reject need a DRAFTED unit, i.e. a gated run that "
+                            "finishes one — minutes of LOCAL generation ($0), and the "
+                            "driver does not survive a composition-service restart",
 }
 ALL_FAMILIES = _all_families()
 TOTAL = len(ALL_FAMILIES)

@@ -1,5 +1,44 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ◐ `authoring_run_review`: "needs real spend" was MY wrong framing (2026-07-30)
+
+I had parked this family's last two ops behind "requires real spend, the human's call". That
+was wrong and it deserves naming: **the models are LOCAL** (lm_studio). A gated run costs
+*minutes*, not money. There was never a spending decision to wait on.
+
+### Walked it end to end — the whole path works
+`create → gate → Tier-W confirm token → confirm → start → driver` all succeed, and the driver
+opens **unit 0 with a `pre_revision_id` snapshotted**. Every stop along the way was a real
+precondition the gate teaches you one at a time:
+
+1. `budget_usd must be > 0` — a **ceiling**, not a charge.
+2. `tool_allowlist must be a non-empty list` — an autonomous run declares its side-effecting
+   tools up front (closed set: `ALLOWLISTABLE_TOOLS`).
+3. `params.model_ref` — the run's model, passed explicitly.
+4. `no unambiguous knowledge-backed composition Work` — **my** bug: the harness fixture is
+   lazy and that walk never touched `fx.project_id`, so no Work existed.
+5. `NO_CHAPTER_PLAN — chapter has no scene plan` — **a real fixture defect, now fixed**: the
+   fixture's scene nodes were parented to the chapter node but had a NULL `chapter_id`, and
+   every per-chapter read is `WHERE project_id = $1 AND chapter_id = $2`. **Parenting is not
+   chapter membership.** They now carry `chapter_id` + a synopsis.
+
+### Why it still isn't proven
+The run reached `status=running` with unit 0 `pending` — then **composition-service restarted**
+("Application startup complete", 10:27:59) because the concurrent session is actively editing
+that service. The driver is claimed in-process and **does not survive a restart**; the orphan
+is only reclaimed by the 40-minute stale sweep (`authoring_heartbeat_stale_secs = 2400`), so
+at 15 minutes nothing was wrong — the sweeper simply had not had its turn. **No defect found.**
+
+⇒ What this needs is an **undisturbed composition-service**, not money. Retry when the other
+session isn't reloading it. The PARTIAL label now says that instead of "real spend".
+
+### Also worth knowing
+`GET /authoring-runs/{id}/report` **409s** while the run isn't in a reportable state, so a poll
+loop that reads `units` from it sees an empty list and learns nothing. Read
+`authoring_run_units` (or wait for `report_ready`). Five leaked fixture books from the walk
+were deleted.
+
+
 ## ◐ F2: every family has a runner — and the count now distinguishes PARTIAL (2026-07-30)
 
 `authoring_run_review` had no runner because its headline ops (`accept_unit`/`reject_unit`) act
