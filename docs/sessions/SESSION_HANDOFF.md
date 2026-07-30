@@ -1,5 +1,51 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧭 studio-kg-authoring-journey: the test could not read Vietnamese (2026-07-30)
+
+**Answer: there was no product bug.** The spec failed at STEP 6 asserting
+*"archive must surface an Undo (restore), not be a one-way trap"* — accusing the product of a
+one-way trap. The Undo was there and working. The page object matched it by English text:
+
+```ts
+locator('[data-sonner-toast] [data-button]').filter({ hasText: 'Undo' })
+```
+
+and the label is `t('entities.archive.undo')` — `'Undo'` in English, **`'Hoàn tác'` in
+Vietnamese**, which is the test account's language. Matched by role instead (sonner's action
+is `[data-button]`; its close affordance is a separate `[data-close-button]`, so there is
+nothing to disambiguate against). **Spec passes**, including the strengthened node-label
+assertion.
+
+**Correction to the previous handoff:** I described that run's entity list as "polluted"
+because it showed `Han Li 韩立` rather than the spec's `李慕白`. That was wrong — `Han Li` is
+the second entity the spec creates for the relation step, and `李慕白` was correctly archived.
+The list was exactly right.
+
+This is now the **third** surface of one root cause (palette · openPanel · toast). Any e2e
+that matches a UI string is coupled to a **server-side user preference**, so the suite can go
+red with no code change. Match by id/role; assert structure, not translation.
+
+## 🔎 assistant-endofday: ran it — and gemma was never the blocker (2026-07-30)
+
+Run against real `google/gemma-4-26b-a4b-qat` (loaded in lm_studio, $0). **It fails ~23s in,
+before any LLM call**, so nothing about the distiller is proven or disproven.
+
+`/assistant` shows **"No chat selected — start a new one"** instead of the ready diary chat
+that F-QC-1 delivered (`useAssistantAutoSession` mints a `session_kind='assistant'` session).
+
+**What is ruled OUT:** the documented failure branch is "no default model → the manual dialog
+is the correct fallback". That is not it — `GET /v1/model-registry/default-models` returns
+`{chat: 019ebb72-…, distill: 019eb620-…}`. The hook is still imported and mounted
+(`Chat.tsx:109`). So the precondition it guards on is satisfied and it still did not mint.
+
+**NOT isolated** — candidates not yet eliminated: the hook's `enabled` / `needsNewSession` /
+`hasActiveSession` gating on the route the PoM navigates to; a `createSession` call that
+failed silently; or a session minted but not selected. A first-run **"Confirm your time
+zone"** card was also unconfirmed on screen and has not been ruled out as a gate.
+**Next step: instrument `useAssistantAutoSession` (or watch the network) to see whether
+`createSession` is called at all.** Filed as an observation, not a diagnosis.
+
+
 ## 🌐 The presence-not-content sweep — and the e2e suite was red in Vietnamese (2026-07-30)
 
 `D-E2E-PRESENCE-NOT-CONTENT` is **closed, not deferred**. And the sweep found something

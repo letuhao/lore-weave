@@ -147,8 +147,16 @@ export class KgAuthoringPage {
     return this.page.getByTestId('relmap-node');
   }
 
-  /** The sonner Undo action button (archive → Undo → restore round-trip). */
+  /** The sonner Undo action button (archive → Undo → restore round-trip).
+   *
+   *  Matched by ROLE, not by the word "Undo": the label is `t('entities.archive.undo')`,
+   *  which is 'Undo' in English and 'Hoàn tác' in Vietnamese. Filtering on the English text
+   *  made this fail on the (Vietnamese) test account and report it as
+   *  "archive must surface an Undo … not be a one-way trap" — i.e. it accused the product of
+   *  a one-way trap when the affordance was there and working, and only the assertion could
+   *  not read it. `[data-button]` is sonner's action button; its close affordance is a
+   *  separate `[data-close-button]`, so there is nothing else to disambiguate against. */
   toastUndo(): Locator {
-    return this.page.locator('[data-sonner-toast] [data-button]').filter({ hasText: 'Undo' });
+    return this.page.locator('[data-sonner-toast] [data-button]');
   }
 }
