@@ -1,5 +1,56 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔇 provider-registry recorded a call that produced NOTHING as `completed` (2026-07-30)
+
+The silent seam behind the diary-distill investigation. `worker.go` ended every successful
+stream with an unconditional:
+
+```go
+result, _, _ := agg.Finalize()   // ← both token counts DISCARDED
+w.finalizeAndNotify(..., "completed", result, "", "", finishReason)
+```
+
+So a stream that closed cleanly while the provider sent an **empty body** was written as
+`status=completed`, `error_code` NULL, `finish_reason` NULL, `input_tokens 0`,
+`output_tokens 0`, `content ""`. Captured live.
+
+**Why that is the worst of the three outcomes:** downstream cannot tell *"the model declined
+to say anything"* from *"the request never really ran"*, so it guesses. The diary distiller
+guessed wrong — it reported `model_no_output` and advised *"a reasoning model? use a
+non-reasoning distill model"* for a job whose actual problem was an empty upstream response.
+A failure you can act on; a silent success nobody can.
+
+### The fix, and the distinction it protects
+`emptyCompletion(result, outTok)` → finalize **failed** instead. It is deliberately narrow,
+because the two cases it separates are exactly what the old code conflated:
+
+- **reasoning model** — `output_tokens > 0`, non-empty `reasoning_content`, empty `content`.
+  A real, billable answer and a model-fit problem for the caller → stays **completed**.
+- **empty upstream response** — no text, no reasoning, no `finish_reason`, **zero** output
+  tokens. Nothing happened → **failed**.
+
+Non-chat shapes (embeddings/reranks use a `listField` aggregator, no `messages`) are never
+judged, a non-string payload counts as output, and a tool-call reply carries
+`finish_reason: "tool_calls"` so it exits early.
+
+**Reused `LLM_UPSTREAM_ERROR`** rather than minting `LLM_EMPTY_COMPLETION`: it is already in
+the llm-gateway contract, already in the Python SDK's code→class table, and already on its
+**transient-retry whitelist** — the right classification, since a cold model that answered
+with an empty body answers properly on the next attempt. A new code would be an orphan needing
+the 5-place registration sync; the specificity lives in the message.
+
+### Evidence
+9 sub-tests, including the **verbatim captured row**, and the distinction is proven guarded:
+deleting the `outTok > 0` early-return reds the "the model ran" case. Full Go suite + `go vet`
+clean; rebuilt + redeployed and verified by a whole-file property (the new string is in the
+shipped binary). Live regression: `assistant-endofday` passes (15.1s) and its jobs still land
+`completed / stop`.
+
+**NOT reproduced live:** the empty response itself was a cold-model-load race I could not force
+deterministically, so the failing path is proven by the predicate test against the real
+captured payload plus review of the 4-line call site — not by a live red-to-green.
+
+
 ## 🗂️ "End my day" ran the diary distiller on the CHAT model — the `distill` setting was dead (2026-07-30)
 
 Asked to run `assistant-endofday` on gemma-4 26B QAT. The run exposed a real defect, and the
