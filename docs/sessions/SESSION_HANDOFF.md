@@ -242,6 +242,68 @@ tool surface · wire-level arg corruption. They looked identical only because th
 way to fail outward: repeated prose. That is worth remembering before reading "another loop" as
 "the same bug".
 
+
+## 🎭 CO-WRITER, third mask: it stopped looping and started LYING (2026-07-30)
+
+Driven through the **real FE** this time (studio → co-writer tab), which matters: an API driver
+has no rail, no approval cards, and nowhere to click Apply, so every conclusion drawn from one is
+worthless in both directions. Chapter 1's outline node only reached the database after a human
+actually pressed a button.
+
+The loops are gone — turns end cleanly on `stop`/`awaiting_input`. What replaced them is worse
+for an author:
+
+| turn | what it SAID | `tool_calls` | database |
+|---|---|---|---|
+| 26 | "đã tạo Chương 1 + 5 cảnh" | 4 calls, **all reads** | 0 nodes, 0 chapters |
+| 28 | "đã tạo Chương 1, ID `019fb1c3…`" | 1 write, approved | ✅ 1 node — **true** |
+| 32 | "5 cảnh đang ở trạng thái Draft, **bạn mở tab Outline để kiểm tra**" | 6 calls, all reads | still 1 node |
+
+Being told to go and look at work that was never done is a worse failure than a loop.
+
+**Root cause (D-TOOLLOAD-LOST-ON-SUSPEND).** `tool_load` writes the session hot set so a tool
+survives into the next turn, and `resolve_session_tool_pins` reads it back at turn start. The
+flush lived on the normal-completion path **only** — and the suspend path `return`s before
+reaching it. A write tool is tier A/W ⇒ it suspends for approval ⇒ **the one turn that ever loads
+a write tool is the turn whose activation is discarded.** Confirmed live: `activated_tools` was
+empty in the DB after two successful `tool_load`s.
+
+**Shipped:**
+- `_flush_activated_tools` extracted and called on the **suspend** exit too (the resume path
+  already delegates to `_emit_chat_turn`, so it inherits the fix).
+- **`D-NARRATED-WRITE`** — a mechanical detector for "claimed a write it never made": a token in
+  the turn's prose that is a **real catalog tool**, whose tier is a **write** (A/W/S), that the
+  turn **never attempted**. No NLP, no tense-parsing. On a hit it **arms** the tool (off-surface
+  is the usual reason it narrated instead of calling) and injects one directive: call it for
+  real, or tell the author plainly you did not. Capped at one nudge per turn.
+
+**Two of my own bugs, both caught by tests rather than by me** — and both were wiring, not logic:
+1. The first cut scanned `text_parts`, which is **re-created every pass**, so it saw only the
+   final pass. The real shape has the claim and the silence in *different* passes. Now a
+   turn-level buffer, locked by `test_a_claim_made_in_an_EARLIER_pass_still_nudges`.
+2. I read `turn_succeeded` as "tools attempted". It is not — it is the **rail driver's ledger**
+   and counts only tools the pinned rail names, so a perfectly good non-rail write is absent
+   from it. That would have accused a model right after it did the work. Now a dedicated
+   `turn_attempted` set, locked by `test_a_write_actually_called_never_nudges`.
+
+**Verified:** 1,958 tests · deployed image sha256 == host · **live**: the guard fired on the real
+book, caught `composition_outline_node_edit` named-but-never-called, nudged once, then correctly
+declined a second. The model's next answer was **honest**: *"Tôi không thể tạo cảnh vì…"* instead
+of a fabricated success.
+
+### ▶ Next: three ids for one book (`D-COMPOSITION-ID-TRAP`)
+
+That honest failure exposed the next bug. `composition_get_outline_node` returned
+`not found or not accessible` for a node that **exists**, because the model passed
+`project_id=019faf5a-2a25-…` — which is the **`work_id`**. It had read `composition_get_work`
+and taken the returned `id` as the project id.
+
+One book carries **three** UUIDs — `book_id`, `project_id`, `work_id` — and the read tools return
+`id` alongside `project_id` with nothing to disambiguate them. The same confusion explains an
+older log line where the model put the *project* id in `book_id`. `_inject_context_ids` already
+does "replace-malformed" for these args; correcting a `project_id` that is really a `work_id`
+belongs in the same place.
+
 ### Deferred (new)
 
 | ID | What | Gate | Target |

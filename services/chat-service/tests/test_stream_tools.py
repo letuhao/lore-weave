@@ -42,6 +42,8 @@ from app.services.stream_service import (
     _collapse_identical_tool_calls,
     _drop_duplicate_empty_tool_calls,
     _extract_leaked_tool_calls,
+    _flush_activated_tools,
+    _narrated_uncalled_writes,
     _parse_tool_args,
     _rail_is_in_flight,
     _reassemble_tool_calls,
@@ -203,9 +205,11 @@ def _run(
     project_id: str | None = "proj-1",
     planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
+    discovery_catalog: list[dict] | None = None,
 ):
     """Build a `_stream_with_tools` async generator with sane defaults."""
     return _stream_with_tools(
+        discovery_catalog=discovery_catalog,
         model_source="user_model",
         model_ref=TEST_MODEL_REF,
         user_id=TEST_USER_ID,
@@ -385,6 +389,123 @@ class TestSplitInteriorLeakedToolCalls:
         )
         assert [c["name"] for c in out] == ["head", "t1", "t2"]
         assert len({c["id"] for c in out}) == 3
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# _narrated_uncalled_writes — D-NARRATED-WRITE
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _tool(name: str, tier: str) -> dict:
+    return {"type": "function", "function": {"name": name, "_meta": {"tier": tier}}}
+
+
+CATALOG = {
+    "composition_outline_node_edit": _tool("composition_outline_node_edit", "A"),
+    "composition_outline_node_create": _tool("composition_outline_node_create", "A"),
+    "composition_get_outline_node": _tool("composition_get_outline_node", "R"),
+    "glossary_propose_entities": _tool("glossary_propose_entities", "W"),
+}
+
+
+class TestNarratedUncalledWrites:
+    """The 'claimed a write it never made' detector. For an author this is the worst
+    failure the turn loop has — they are told the work is done and sent to go look at
+    it. Live (Mị Đế 019faf5b seq 32): the model wrote *'5 cảnh hiện đang ở trạng thái
+    Draft trong Outline, bạn hãy mở tab Outline để kiểm tra'* after six tool calls, all
+    of them reads, with zero outline nodes in the database."""
+
+    def test_names_a_write_it_never_called(self):
+        text = ("`composition_outline_node_create`: Tôi đã tạo một Chương 1. "
+                "`composition_outline_node_edit`: Tôi đã tạo và điền chi tiết 5 cảnh.")
+        assert _narrated_uncalled_writes(
+            text, catalog_index=CATALOG, attempted={"composition_get_outline_node"},
+        ) == ["composition_outline_node_create", "composition_outline_node_edit"]
+
+    def test_a_write_it_actually_called_is_not_flagged(self):
+        # The whole point: only a NARRATED-but-uncalled write counts.
+        assert _narrated_uncalled_writes(
+            "Tôi đã gọi composition_outline_node_edit và nó trả về node id.",
+            catalog_index=CATALOG, attempted={"composition_outline_node_edit"},
+        ) == []
+
+    def test_a_write_it_TRIED_and_failed_is_not_flagged(self):
+        # A failed attempt already gives the model honest feedback to report; nudging
+        # there would be noise on top of a real error.
+        assert _narrated_uncalled_writes(
+            "composition_outline_node_edit báo lỗi.",
+            catalog_index=CATALOG, attempted={"composition_outline_node_edit"},
+        ) == []
+
+    def test_a_named_READ_tool_is_never_flagged(self):
+        # Nothing was claimed to have changed, so there is nothing for the author to go
+        # and not find. Flagging reads would fire on ordinary explanation.
+        assert _narrated_uncalled_writes(
+            "Mình dùng composition_get_outline_node để xem dàn ý.",
+            catalog_index=CATALOG, attempted=set(),
+        ) == []
+
+    def test_an_invented_name_is_not_flagged_here(self):
+        # An invented tool is a DIFFERENT bug with its own honest message at the dispatch
+        # chokepoint ("you invented it"). Conflating the two would tell a model that
+        # hallucinated a name to go and call it.
+        assert _narrated_uncalled_writes(
+            "Tôi sẽ dùng glossary_propose_elements để tạo.",
+            catalog_index=CATALOG, attempted=set(),
+        ) == []
+
+    def test_ordinary_prose_with_snake_case_words_is_ignored(self):
+        # The loose identifier regex is filtered by the CATALOG, so prose that merely
+        # contains underscores never trips it.
+        assert _narrated_uncalled_writes(
+            "value_shift của cảnh này đi từ chaos sang tension, xem mục story_seed.",
+            catalog_index=CATALOG, attempted=set(),
+        ) == []
+
+    def test_empty_text_is_safe(self):
+        assert _narrated_uncalled_writes("", catalog_index=CATALOG, attempted=set()) == []
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# _flush_activated_tools — D-TOOLLOAD-LOST-ON-SUSPEND
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestFlushActivatedTools:
+    """`tool_load` only survives into the next turn if EVERY way a turn can end writes
+    the hot set back. The flush used to live on the normal-completion path alone, and
+    the suspend path returns before reaching it — so the one turn that loads a WRITE
+    tool (tier A/W ⇒ it suspends for approval) was the one that discarded it."""
+
+    @pytest.mark.asyncio
+    async def test_a_dirty_state_is_written_and_marked_clean(self):
+        pool = AsyncMock()
+        state = {"activated_tools": ["a", "b"], "dirty": True}
+        await _flush_activated_tools(pool, "s1", state)
+        assert pool.execute.await_count == 1
+        assert pool.execute.await_args.args[1:] == ("s1", ["a", "b"])
+        # Marked clean so a later exit on the same turn cannot write it twice.
+        assert state["dirty"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_clean_state_writes_nothing(self):
+        pool = AsyncMock()
+        await _flush_activated_tools(pool, "s1", {"activated_tools": ["a"], "dirty": False})
+        pool.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_state_at_all_is_safe(self):
+        pool = AsyncMock()
+        await _flush_activated_tools(pool, "s1", None)
+        pool.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_db_failure_never_takes_down_the_turn(self):
+        # Best-effort by design: losing this costs one re-load next turn, and must not
+        # fail a turn that otherwise succeeded.
+        pool = AsyncMock()
+        pool.execute.side_effect = RuntimeError("db down")
+        await _flush_activated_tools(pool, "s1", {"activated_tools": ["a"], "dirty": True})
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -890,6 +1011,116 @@ class TestInteriorLeakThroughTheLoop:
         # tool choice — the opposite of the schema-error message it used to get.
         assert "decoding fault" in errs[0]
         assert "do not change which tool you chose" in errs[0]
+
+
+class TestNarratedWriteThroughTheLoop:
+    """D-NARRATED-WRITE end-to-end. The pure-function tests prove the DETECTOR; this
+    proves the LOOP wires it to the whole turn's prose.
+
+    That wiring is the part that was wrong first time and shipped a guard which never
+    fired: `text_parts` is re-created every pass, so scanning it caught only the final
+    pass. The real shape has the claim and the silence in DIFFERENT passes — the model
+    announces "I will now create the scenes", reads a couple of tools, then closes with
+    prose that no longer repeats the tool name."""
+
+    @pytest.mark.asyncio
+    async def test_a_claim_made_in_an_EARLIER_pass_still_nudges(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        catalog = [
+            _tool("composition_outline_node_edit", "A"),
+            _tool("composition_get_outline_node", "R"),
+        ]
+        scripts = [
+            # pass 1: names the WRITE tool, then calls only a READ
+            [
+                tok("Tôi sẽ dùng composition_outline_node_edit để tạo 5 cảnh."),
+                tool_frag(index=0, id="c0", name="composition_get_outline_node"),
+                tool_frag(index=0, arguments_delta='{"node_id":"n1"}'),
+                done("tool_calls"),
+            ],
+            # pass 2: closes the turn, prose no longer mentions the tool
+            [tok("Xong rồi, bạn mở tab Outline để kiểm tra nhé."), done("stop")],
+            # pass 3: exists only if the guard nudged
+            [tok("Xin lỗi, tôi chưa thực sự tạo cảnh nào."), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, discovery_catalog=catalog))
+
+        client = _FakeClient.instances[0]
+        assert len(client.requests) == 3, "the guard must force one more pass"
+        # The directive is injected as a synthetic user message on the final request.
+        sent = client.requests[-1].messages
+        directive = [m for m in sent if str(m.get("content", "")).startswith("[SYSTEM DIRECTIVE]")]
+        assert len(directive) == 1
+        assert "composition_outline_node_edit" in directive[0]["content"]
+        assert "you did not call" in directive[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_the_named_write_tool_is_ARMED_so_the_directive_is_actionable(self):
+        """A directive to "call it now" is empty if the tool is not on the wire — and
+        off-surface is the usual reason the model narrated instead of calling. Measured
+        live: told to `tool_load` first, the model kept reading and re-claiming instead.
+        So the guard arms the tool itself, and says so."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        catalog = [_tool("composition_outline_node_edit", "A"), _tool("book_read", "R")]
+        scripts = [
+            # The write tool is in the CATALOG but never seeded onto this turn's surface.
+            [tok("Tôi sẽ dùng composition_outline_node_edit."), done("stop")],
+            [tok("Rồi, tôi gọi thật đây."), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, discovery_catalog=catalog))
+
+        client = _FakeClient.instances[0]
+        assert len(client.requests) == 2
+        # The tool is now actually offered on the nudged pass — not merely talked about.
+        offered = {
+            t["function"]["name"] for t in (client.requests[-1].tools or [])
+            if isinstance(t, dict) and isinstance(t.get("function"), dict)
+        }
+        assert "composition_outline_node_edit" in offered
+        directive = next(
+            m for m in client.requests[-1].messages
+            if str(m.get("content", "")).startswith("[SYSTEM DIRECTIVE]")
+        )
+        assert "no tool_load needed" in directive["content"]
+
+    @pytest.mark.asyncio
+    async def test_it_nudges_at_most_once_per_turn(self):
+        """The cap is load-bearing: a guard against a model talking instead of acting
+        must never itself become the loop it prevents."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        catalog = [_tool("composition_outline_node_edit", "A")]
+        keeps_claiming = [tok("Tôi dùng composition_outline_node_edit rồi."), done("stop")]
+        scripts = [list(keeps_claiming) for _ in range(6)]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, discovery_catalog=catalog))
+
+        client = _FakeClient.instances[0]
+        assert len(client.requests) == 2, "one nudge, then the turn ends"
+
+    @pytest.mark.asyncio
+    async def test_a_write_actually_called_never_nudges(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        catalog = [_tool("composition_outline_node_edit", "A")]
+        scripts = [
+            [
+                tok("Tôi gọi composition_outline_node_edit đây."),
+                tool_frag(index=0, id="c0", name="composition_outline_node_edit"),
+                tool_frag(index=0, arguments_delta='{"op":"create"}'),
+                done("tool_calls"),
+            ],
+            [tok("Đã tạo xong."), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, discovery_catalog=catalog))
+
+        client = _FakeClient.instances[0]
+        assert len(client.requests) == 2, "no extra pass — the write really happened"
 
 
 class TestSplitSafeEmit:

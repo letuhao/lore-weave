@@ -920,6 +920,81 @@ def _extract_leaked_tool_calls(text: str) -> list[tuple[str, str]]:
     return [(m.group(1), m.group(2)) for m in _GEMMA_LEAKED_CALL_RE.finditer(text)]
 
 
+# D-NARRATED-WRITE — one nudge per turn. This guard exists to stop a model talking
+# itself out of acting; a cap above 1 would let it become the very loop it prevents.
+NARRATED_WRITE_NUDGE_CAP = 1
+
+# A snake_case identifier in prose. Deliberately loose — the CATALOG does the real
+# filtering (only a token that IS a registered tool name survives), so this never needs a
+# hand-maintained prefix list that would silently rot as domains are added.
+_SNAKE_IDENT_RE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+
+
+def _narrated_uncalled_writes(
+    text: str, *, catalog_index: dict, attempted: set[str],
+) -> list[str]:
+    """Write tools NAMED in the model's prose that this turn never ATTEMPTED.
+
+    The signal for the "claimed a write it never made" failure — see the call site for
+    the live transcript. Three conditions, all mechanical:
+
+    * the token is a REAL tool in this turn's catalog (not a plausible-looking invention —
+      an invented name is a different bug with its own honest message at the dispatch
+      chokepoint, and must not be confused with this one);
+    * its tier is a WRITE (A/W/S). A read named-but-not-called is harmless: nothing was
+      claimed to have changed, so there is nothing for the author to go and not find;
+    * it is absent from `attempted` — successes AND failures both count as attempted,
+      because a model that TRIED and got a real error already has honest feedback to
+      report, and nudging it there would just be noise.
+    """
+    named = set(_SNAKE_IDENT_RE.findall(text or ""))
+    return sorted(
+        nm for nm in named & set(catalog_index)
+        if nm not in attempted and tool_tier(catalog_index[nm]) in ("A", "W", "S")
+    )
+
+
+async def _flush_activated_tools(pool, session_id, activation_state: dict | None) -> None:
+    """D-TOOLLOAD-LOST-ON-SUSPEND — persist the tools this turn activated.
+
+    `tool_load` adds to the session's hot set so the tool survives into the NEXT turn;
+    `resolve_session_tool_pins` reads `chat_sessions.activated_tools` back at turn start.
+    That contract only holds if every way a turn can END writes the set back.
+
+    It didn't. The flush lived on the normal-completion path only, and the suspend path
+    `return`s before reaching it — so a turn that stopped for a human approval discarded
+    everything it had loaded. That is precisely the turn that matters: a WRITE tool is
+    tier A/W, so it suspends for approval, which means **the only turn that ever loads a
+    write tool is the turn whose activation is thrown away.**
+
+    Observed live (Mị Đế, session 019faf5b): the model `tool_load`ed
+    `composition_outline_node_edit`, called it, suspended on the approval card — and by
+    the next turn the tool was off the surface again (29 advertised, outline tools all
+    read-only). Unable to call it, the model narrated the call in prose and then reported
+    the write as DONE. Zero outline nodes existed. A hallucinated success is worse for an
+    author than a loop: they are told to go and look at work that was never made.
+
+    Best-effort by design — a failure here costs one re-load next turn, and must never
+    take down a turn that otherwise succeeded."""
+    if not (activation_state and activation_state.get("dirty")):
+        return
+    try:
+        await pool.execute(
+            """
+            UPDATE chat_sessions
+            SET activated_tools = $2::text[], updated_at = now()
+            WHERE session_id = $1
+            """,
+            session_id,
+            activation_state["activated_tools"],
+        )
+        activation_state["dirty"] = False
+    except Exception:
+        logger.warning(
+            "failed to persist activated_tools for session %s", session_id, exc_info=True,
+        )
+
+
 def _rail_is_in_flight(
     *,
     resumed_mid_rail: bool,
@@ -1856,6 +1931,14 @@ async def _stream_with_tools(
         # overrides an artifact verdict (that is compute_rail_progress's job).
         turn_succeeded: Counter = Counter()
         rail_redrive_count = 0           # per-turn cap on how many times the server re-drives
+        narrated_write_nudges = 0        # D-NARRATED-WRITE — per-turn cap (see the guard)
+        # D-NARRATED-WRITE — every pass's prose, accumulated for the WHOLE turn.
+        # `text_parts` is re-created per pass, so scanning it alone misses the common
+        # case: the model announces the write in one pass ("I will now create the 5
+        # scenes"), reads a few tools, then closes in a later pass whose text no longer
+        # repeats the tool name. The claim and the silence are in different passes.
+        turn_text_parts: list[str] = []
+        turn_attempted: set[str] = set()  # D-NARRATED-WRITE — see the update site
         rail_nudge_counts: Counter = Counter()   # per-step: how many times we've nudged it
         rail_twice_nudged: set[str] = set()      # a step the model ignored twice → give up on it
         # Set when the step-runner injected at least one synthetic '[SYSTEM DIRECTIVE]' nudge
@@ -2391,6 +2474,11 @@ async def _stream_with_tools(
                     yield {"content": content_hold, "reasoning_content": reasoning_hold,
                            "finish_reason": None, "usage": None}
 
+            # D-NARRATED-WRITE — fold this pass's prose into the turn-level buffer (see
+            # its declaration: a claim made in an early pass must still be visible to the
+            # guard that runs on the last one).
+            turn_text_parts.extend(text_parts)
+
             if not tool_frags and not leaked_calls:
                 # ── P-1 step-runner: the model stopped without a tool call. If a pinned rail
                 # is IN FLIGHT (a rail step tool actually succeeded this turn — the model chose
@@ -2478,6 +2566,99 @@ async def _stream_with_tools(
                         trace.add("compiler", "T6", "rail",
                                   f"{'giveup' if _verdict.giving_up else 'redrive'}:{_step.tool}")
                     continue  # loop top re-offers the tools; the model calls the next step
+
+                # D-NARRATED-WRITE — the model is about to END the turn having NAMED a
+                # write tool in its prose that it never actually CALLED. For an author
+                # this is the most damaging failure the loop has: they are told the work
+                # is done and sent to go look at it, and it is not there.
+                #
+                # Live (Mị Đế 019faf5b seq 26 + 32): *"composition_outline_node_create:
+                # Tôi đã tạo một Chương 1 … composition_outline_node_edit: Tôi đã tạo và
+                # điền chi tiết 5 cảnh"* and *"5 cảnh hiện đang ở trạng thái Draft trong
+                # Outline, bạn hãy mở tab Outline để kiểm tra"* — with, respectively, 4
+                # and 6 tool calls, every one of them a READ, and zero outline nodes in
+                # the database.
+                #
+                # Detected MECHANICALLY, not by reading intent out of prose: a token that
+                # matches a real catalog tool name, whose tier is a write (A/W/S), that
+                # this TURN never attempted. No NLP, no claim-parsing, no guessing at
+                # tense — and a model that was merely *explaining* a tool loses nothing,
+                # because the directive explicitly offers "say plainly you did not run it"
+                # as a valid answer. Capped at one nudge per turn so this can never become
+                # the loop it exists to prevent.
+                _narrated = _narrated_uncalled_writes(
+                    "".join(turn_text_parts),
+                    catalog_index=cat_index,
+                    attempted=turn_attempted,
+                )
+                if _narrated:
+                    _nw_guards = {
+                        "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_nw_guards.values()):
+                        # A guard that silently declines is indistinguishable from a guard
+                        # that saw nothing — and that ambiguity already cost one live
+                        # debugging pass here. Name what held.
+                        logger.warning(
+                            "D-NARRATED-WRITE (session=%s): %s named but never called — "
+                            "NOT nudging, held by: %s",
+                            session_id, _narrated,
+                            ", ".join(k for k, v in _nw_guards.items() if not v),
+                        )
+                    else:
+                        narrated_write_nudges += 1
+                        # A directive to "call it now" is empty if the tool is not on the
+                        # wire — and OFF-SURFACE is the usual reason the model narrated
+                        # instead of calling in the first place. Telling it to `tool_load`
+                        # first is ceremony a mid-tier model skips (measured: it kept
+                        # reading and re-claiming instead). So ARM the tool here, exactly
+                        # as the dispatch chokepoint already does for an off-surface tool
+                        # the model *did* call — same decision, one step earlier.
+                        _armed = [
+                            nm for nm in _narrated
+                            if discovery and nm in cat_index and nm not in active_tool_names
+                        ]
+                        if _armed:
+                            from app.services.tool_surface import merge_activated_tools
+                            active_tool_names.update(_armed)
+                            if activation_state is not None:
+                                activation_state["activated_tools"] = merge_activated_tools(
+                                    activation_state["activated_tools"], _armed,
+                                    catalog=discovery_catalog, context_length=context_length,
+                                )
+                                activation_state["dirty"] = True
+                        logger.warning(
+                            "D-NARRATED-WRITE (session=%s): the turn is ending with write "
+                            "tool(s) named in prose but never called: %s — nudging once "
+                            "(armed off-surface: %s)",
+                            session_id, _narrated, _armed or "—",
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"narrated_write:{','.join(_narrated)}", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        working.append({"role": "user", "content": (
+                            "[SYSTEM DIRECTIVE] You just described using "
+                            f"{', '.join(_narrated)}, but you did not call "
+                            + ("it" if len(_narrated) == 1 else "them")
+                            + " — nothing was written and the author will find nothing.\n"
+                            + (
+                                f"{', '.join(_armed)} "
+                                + ("is" if len(_armed) == 1 else "are")
+                                + " now available to you on this turn — no tool_load needed.\n"
+                                if _armed else ""
+                            )
+                            + "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool now, for real, with complete arguments; or\n"
+                            "(b) if you genuinely cannot, tell the author plainly that you "
+                            "did NOT make the change, and why.\n"
+                            "Do not re-read anything — you have already read enough. Never "
+                            "report a change as done, and never tell the author to go and "
+                            "check for it, unless a tool call actually returned a result."
+                        )})
+                        continue
 
                 # No tool calls — this pass IS the final text response.
                 yield {"content": "", "reasoning_content": "",
@@ -2585,6 +2766,14 @@ async def _stream_with_tools(
             # and on the first frontend tool, suspend with the partial state.
             suspended_call: dict | None = None
             pass_did_write = False  # H9 — only a Tier-A/W write decrements budget
+            # D-NARRATED-WRITE — every tool the model actually EMITTED this turn, recorded
+            # before any gate can drop it. Deliberately NOT `turn_succeeded`: that counter is
+            # the rail driver's ledger and only counts a tool the pinned rail names (see the
+            # backend chokepoint), so a perfectly good non-rail write is absent from it — and
+            # reading it as "tools attempted" would flag a model that DID the work. Caught by
+            # `test_a_write_actually_called_never_nudges`; a false accusation right after real
+            # work is worse than the silence this guard exists to break.
+            turn_attempted.update(c["name"] for c in calls)
             for c in calls:
                 # Wrap-repair for CONSUMER-LOCAL meta tools (find_tools/tool_load/workflow_load/
                 # run_subagent/*_list). The federated dispatch below unwraps {"args":{…}} with each
@@ -6496,6 +6685,10 @@ async def _emit_chat_turn(
                       "usage": {"promptTokens": suspend_state["input_tokens"],
                                 "completionTokens": suspend_state["output_tokens"]},
                       "timing": {}}
+            # D-TOOLLOAD-LOST-ON-SUSPEND — the suspend is a real end-of-turn, so it owes
+            # the same activation flush as a normal finish. Without it, the tools this
+            # turn loaded to REACH the approval are gone by the time the author approves.
+            await _flush_activated_tools(pool, session_id, activation_state)
             for line in emitter.finish(
                 finish, status="suspended",
                 pending={"runId": run_id, "toolCallId": pending["id"],
@@ -6809,23 +7002,7 @@ async def _emit_chat_turn(
         for line in emitter.persisted_data(data_payload):
             yield line
 
-        if activation_state and activation_state.get("dirty"):
-            try:
-                await pool.execute(
-                    """
-                    UPDATE chat_sessions
-                    SET activated_tools = $2::text[], updated_at = now()
-                    WHERE session_id = $1
-                    """,
-                    session_id,
-                    activation_state["activated_tools"],
-                )
-            except Exception:
-                logger.warning(
-                    "failed to persist activated_tools for session %s",
-                    session_id,
-                    exc_info=True,
-                )
+        await _flush_activated_tools(pool, session_id, activation_state)
 
         if surface_tracker is not None:
             payload = surface_tracker.idle()
