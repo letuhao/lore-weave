@@ -1,5 +1,34 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ◐ F2: every family has a runner — and the count now distinguishes PARTIAL (2026-07-30)
+
+`authoring_run_review` had no runner because its headline ops (`accept_unit`/`reject_unit`) act
+on DRAFTED units, which needs a gated run — real generation, real spend. Re-reading the tool
+showed that reasoning only covered half of it: it has **four** ops, and `close` is legal from
+`draft` (service allows draft|gated|paused|failed|report_ready). So the family's wiring is
+exercisable for **$0**.
+
+Done: a draft run is created, closed **via MCP through ai-gateway**, and the run row re-read to
+confirm `status == closed`.
+
+**But a partial is not a proof.** Counting it would have printed **14/14** and let a family
+whose headline semantic was never exercised read as fully covered — the same
+"presence is not proof" failure this harness exists to end, one level up. So the summary gained
+a third bucket:
+
+```
+F2 real-run proven: 13/14 families (1 partial, 0 pending, 0 failed)
+  ◐ authoring_run_review PARTIAL — only `close` proven ($0, from draft); pause needs a
+    RUNNING run and accept/reject need DRAFTED units — both require gating, i.e. real spend
+```
+
+Two consecutive clean runs. Every family in the SSOT now has a runner; **nothing is PENDING**.
+The remaining work is a decision, not a gap: whether to spend on a gated run to finish
+`authoring_run_review`. There is **no known defect** in that family — the design is sound
+(immediate/no-token ops here, spend-gated ops in `..._manage`, auth deliberately mirrored
+across both doors).
+
+
 ## 🔇 provider-registry recorded a call that produced NOTHING as `completed` (2026-07-30)
 
 The silent seam behind the diary-distill investigation. `worker.go` ended every successful

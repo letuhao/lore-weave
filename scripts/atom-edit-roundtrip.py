@@ -719,12 +719,45 @@ def f_authoring_run_manage(t: str, fx: Fixture) -> str:
     return "created a run + flipped its pause policy ($0 — never gated)"
 
 
+def f_authoring_run_review(t: str, fx: Fixture) -> str:
+    """The IMMEDIATE (no-confirm-token) run controls, over the AGENT channel.
+
+    PARTIAL, and it says so in its own result line. The tool has four ops and this proves the
+    two that need nothing but a run_id:
+
+      · `close`       — legal from `draft` (service: draft|gated|paused|failed|report_ready)
+      · `pause`       — needs status=running, i.e. a GATED run: real generation, real spend
+      · accept/reject — act on DRAFTED units, so likewise only exist after a gated run
+
+    So the family's wiring is provable for $0 while its unit-review half is not. Proving the
+    reachable half and printing the rest is the honest option; claiming the family on a `close`
+    would be the "presence is not proof" mistake this whole track exists to stop.
+    """
+    st, r = call("POST", "/v1/composition/authoring-runs", {
+        "book_id": fx.book_id, "plan_run_id": fx.plan_run_id, "level": 3,
+        "scope": [fx.book_chapter_id], "budget_usd": 0,
+    }, t)
+    rid = ok("arun_review.create", st, r, 201)["run_id"]
+
+    def _status() -> str:
+        st_, got = call("GET", f"/v1/composition/authoring-runs/{rid}", None, t)
+        return str(ok("arun_review.read", st_, got, 200).get("status"))
+    assert _status() == "draft", f"expected a draft run, got {_status()}"
+
+    mcp_call("composition_authoring_run_review",
+             {"op": "close", "book_id": fx.book_id, "run_id": rid}, fx.user_id)
+    after = _status()
+    assert after == "closed", f"close returned OK and the run is still {after}"
+    return "closed a run via MCP ($0) — accept/reject NOT proven (needs a gated run)"
+
+
 FAMILIES = {
     "motif": f_motif,
     "arc": f_arc,
     "motif_bind": f_motif_bind,
     "error_block": f_error_block,
     "authoring_run_manage": f_authoring_run_manage,
+    "authoring_run_review": f_authoring_run_review,
     "motif_link": f_motif_link,
     "arc_template": f_arc_template,
     "structure_template": f_structure_template,
@@ -774,8 +807,13 @@ PENDING_REASON = {
     # generation against a real model. Everything up to that point is already proven by
     # `authoring_run_manage`; what is missing cannot be faked without also faking the thing
     # under test. Left PENDING deliberately rather than asserted around.
-    "authoring_run_review": "accept/reject act on DRAFTED units, which requires gating the "
-                            "run — i.e. real generation and real spend",
+}
+#: A family whose runner exercises only PART of its surface, and what is still unproven.
+#: Printed, and deliberately NOT counted as proven.
+PARTIAL = {
+    "authoring_run_review": "only `close` proven ($0, from draft); pause needs a RUNNING "
+                            "run and accept/reject need DRAFTED units — both require "
+                            "gating, i.e. real generation and real spend",
 }
 ALL_FAMILIES = _all_families()
 TOTAL = len(ALL_FAMILIES)
@@ -810,9 +848,17 @@ def main() -> int:
         if name in FAMILIES:
             continue
         print(f"  · {name:20} PENDING — {PENDING_REASON.get(name, 'no reason recorded')}")
+    for name in sorted(PARTIAL):
+        if name in proven:
+            print(f"  ◐ {name:20} PARTIAL — {PARTIAL[name]}")
     pending = [n for n in ALL_FAMILIES if n not in FAMILIES]
-    print(f"\nF2 real-run proven: {len(proven)}/{TOTAL} families "
-          f"({len(pending)} pending, {len(failed)} failed)")
+    # A PARTIAL is not a proof. Counting it in the numerator would let a family whose headline
+    # semantic was never exercised read as covered — the exact "presence is not proof" failure
+    # this harness exists to end, one level up.
+    full = [n for n in proven if n not in PARTIAL]
+    part = [n for n in proven if n in PARTIAL]
+    print(f"\nF2 real-run proven: {len(full)}/{TOTAL} families "
+          f"({len(part)} partial, {len(pending)} pending, {len(failed)} failed)")
     return 1 if failed else 0
 
 
