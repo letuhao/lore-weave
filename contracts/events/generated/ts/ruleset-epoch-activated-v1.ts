@@ -3,4 +3,11 @@
 // A reality's ruleset epoch switched; one per affected channel, appended by that channel's own lease-holding writer (RLS-A14).
 
 export interface RulesetEpochActivatedV1 {
+  reality_id: string;
+  channel_id: number;
+  from_epoch: number;
+  to_epoch: number;
+  digest: string;
+  authorised_by: string;
+  activated_at: string;
 }

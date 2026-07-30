@@ -24,6 +24,9 @@ use std::time::Duration;
 use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verdict};
 use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
+use commit_service::hostclock::now_rfc3339;
+use commit_service::wire::discard_reason_wire;
+use commit_service::{epoch_commit, epoch_signal};
 use commit_service::{Actor, CombatDomain, CombatState, Vocabulary, COMBAT_V1_JSON};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
@@ -104,45 +107,6 @@ fn parse_args() -> anyhow::Result<Args> {
     })
 }
 
-/// Map the kernel's `DiscardReason` onto the game-wire closed set
-/// (`turn.schema.json#/$defs/DiscardDetail`). Exhaustive by construction: a
-/// 6th kernel variant fails to compile here rather than reaching a client as
-/// an unknown string.
-fn discard_reason_wire(r: &sim_core::DiscardReason) -> &'static str {
-    use sim_core::DiscardReason as D;
-    match r {
-        D::Duplicate => "duplicate",
-        D::PreconditionFailed(_) => "precondition_failed",
-        D::Superseded => "superseded",
-        D::Expired => "expired",
-        D::Quarantined => "quarantined",
-    }
-}
-
-fn now_rfc3339() -> String {
-    // Host-side wall clock (the kernel never sees it) — commit timestamps
-    // are commit-service's job. Seconds precision suffices for the spine.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock after epoch")
-        .as_secs();
-    let days = secs / 86_400;
-    let (mut y, mut rem_days) = (1970i64, days as i64);
-    loop {
-        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-        let len = if leap { 366 } else { 365 };
-        if rem_days < len { break; }
-        rem_days -= len;
-        y += 1;
-    }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let months = [31, if leap {29} else {28}, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut m = 0;
-    while rem_days >= months[m] { rem_days -= months[m]; m += 1; }
-    let (h, mi, s) = ((secs / 3600) % 24, (secs / 60) % 60, secs % 60);
-    format!("{y:04}-{:02}-{:02}T{h:02}:{mi:02}:{s:02}Z", m + 1, rem_days + 1)
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = parse_args()?;
@@ -163,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     // reality that is already running, so replay-safety is STRUCTURAL rather
     // than procedural. The two columns live in `ruleset_boot` — see its module
     // doc for why creation and load must not be one function.
-    let (ruleset, reality_epoch) = commit_service::ruleset_boot::boot_reality(
+    let (boot, ruleset, reality_epoch) = commit_service::ruleset_boot::boot_reality(
         args.ruleset_state.as_deref().unwrap_or(".loreweave/rulesets"),
         args.meta_url.as_deref(),
         &args.meta_allowlist,
@@ -244,6 +208,15 @@ async fn main() -> anyhow::Result<()> {
         println!("producer identity: ENFORCED (default-DENY)");
     }
 
+    // ── Q0b B3b: the binding-signal rail, on its OWN consumer group ──
+    // A group is a work-SPLITTING primitive, so two channels sharing one would
+    // each get a different subset of the binding events and the one that missed
+    // the entry would never switch. See `epoch_signal`'s module doc.
+    let mut signals =
+        epoch_signal::connect_signal_bus(&args.redis_url, &args.reality.to_string(), args.channel)
+            .await?;
+    println!("epoch signals: {} as {}", epoch_signal::META_STREAM, signals.cfg.group);
+
     let (mut consumed, mut admitted, mut rejected, mut committed) = (0u64, 0u64, 0u64, 0u64);
     // Continues the channel's existing version line rather than colliding at 1.
     let mut aggregate_version: u64 = recovered.aggregate_version;
@@ -254,6 +227,18 @@ async fn main() -> anyhow::Result<()> {
     let mut turn_number: u64 = 0;
 
     loop {
+        // BEFORE the proposals, every iteration including the first. Ahead of
+        // them because an epoch switch changes the rules the batch about to be
+        // stepped will be validated against, and running the reconcile on the
+        // FIRST iteration is what closes the boot race — the consumer group was
+        // created at `$`, so an activation between the boot read and the group's
+        // creation reaches this node only through the table.
+        epoch_commit::drain_and_reconcile(
+            &mut signals, &boot, args.reality, args.channel, &mut isle, &writer,
+            &mut aggregate_version, turn_number,
+        )
+        .await?;
+
         // Reclaim stale PEL entries first (dead prior consumers), then fresh.
         let reclaimed = bus.reclaim().await?;
         let mut work: Vec<(commit_service::bus::BusMessage, usize)> =
@@ -331,7 +316,23 @@ async fn main() -> anyhow::Result<()> {
                     admitted += 1;
                     let input_id = input.input().input_id;
                     isle.submit(Lane::Live, *input);
-                    while isle.step() != StepStatus::Idle {}
+                    // `Poisoned` is not `Idle`, so the original `!= Idle` spun
+                    // forever at 100% CPU the moment an `apply` panicked
+                    // (SC-A8 poison-not-resume — `step` returns `Poisoned` from
+                    // then on, every time). Pre-existing; found by
+                    // `/review-impl` on the epoch path, which had copied the
+                    // same loop, and fixed in both places rather than only in
+                    // the new one — the same defect in two siblings is how the
+                    // non-vacuity register's first three rows happened.
+                    while !matches!(isle.step(), StepStatus::Idle | StepStatus::Poisoned) {}
+                    if isle.is_poisoned() {
+                        anyhow::bail!(
+                            "island {} POISONED (SC-A8: poison-not-resume) — the host must \
+                             rebuild it. Stopping rather than looping: this writer can no \
+                             longer resolve anything, and its lease must go to a node that can",
+                            args.channel
+                        );
+                    }
                     isle.tick(1);
 
                     // Commit the resolution — one event per outcome, fenced.

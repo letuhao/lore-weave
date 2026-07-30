@@ -92,7 +92,27 @@ export function toU64String(v: string | number | undefined, field: string): stri
  * that are not turn outcomes (the stream carries every committed event; a
  * room projects the subset its clients render).
  */
+const TURN_OUTCOME_TYPES = new Set(['turn.resolved', 'turn.discarded', 'proposal.rejected']);
+
 export function projectTurnOutcome(ev: CommittedEvent): TurnOutcome | null {
+  // THE NOT-OURS CHECK COMES FIRST, and it did not always.
+  //
+  // The parsing below throws on a missing/!u64 field — deliberately, because a
+  // turn outcome without a turn number is a producer bug. But it used to run
+  // BEFORE this dispatch, on EVERY committed event, while the channel stream
+  // carries every event the writer appends. And `drainOnce`'s try/catch wraps
+  // only `parseEnvelope`, not this call — so one administrative event without
+  // `turn_number` threw straight out of the replay and killed the channel's
+  // whole projection, for every client, permanently: replay meets the same
+  // event again on the next attempt.
+  //
+  // `ruleset.epoch_activated` (Q0b B3c) was the first such event and was caught
+  // by `/review-impl` before it shipped; it now stamps the unadvanced counter
+  // like `proposal.rejected` does. This guard is the other half — the writer
+  // should not be the only thing standing between a new event type and a dead
+  // room.
+  if (!TURN_OUTCOME_TYPES.has(ev.event_type)) return null;
+
   const meta = ev.metadata ?? {};
   const payload = ev.payload ?? {};
   const channel_event_id = toU64String(

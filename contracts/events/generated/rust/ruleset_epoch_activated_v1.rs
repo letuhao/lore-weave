@@ -7,4 +7,11 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RulesetEpochActivatedV1 {
+    pub reality_id: Uuid,
+    pub channel_id: i64,
+    pub from_epoch: u32,
+    pub to_epoch: u32,
+    pub digest: String,
+    pub authorised_by: String,
+    pub activated_at: chrono::DateTime<chrono::Utc>,
 }

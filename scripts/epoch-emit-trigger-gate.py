@@ -76,8 +76,39 @@ NAMESPACE = re.compile(r"^\s*-\s+name:\s*(ruleset\.[a-z0-9_.]+)\s*$", re.M)
 # of it. Design docs describe `RLS-A14` at length and must keep being able to;
 # this gate is about code. `scripts/` is excluded for the same reason — this
 # file's own docstring names the event twice.
+def _is_test(rel: str) -> bool:
+    """A TEST file, which may name this event freely.
+
+    Not a convenience exemption — a correctness one. The gate's subject is *who
+    may APPEND to a channel*, and appending requires the writer lease, a
+    Postgres pool and a `channel_writer_state` row. A test that feeds a fixture
+    event to a CONSUMER holds none of those; it is exercising the reader.
+
+    This arm was added on 2026-07-30 because the gate reddened on
+    `game-server/src/wire/turnOutcome.test.ts`, which builds a
+    `{event_type: 'ruleset.epoch_activated'}` object to prove the room SKIPS
+    administrative events rather than dying on them. Forbidding that would
+    forbid testing the consumer — the gate would be demanding that a real bug
+    stay untested in order to stay green.
+
+    A PREDICATE, not a list: any file whose name or path marks it as a test is
+    covered, including ones written tomorrow. It is deliberately narrow — a
+    non-test file with identical content still reds, which the self-test bites.
+    """
+    name = rel.rsplit("/", 1)[-1]
+    return (
+        ".test." in name
+        or ".spec." in name
+        or name.endswith(("_test.go", "_test.py"))
+        or name.startswith("test_")
+        or "/tests/" in f"/{rel}"
+    )
+
+
 def _is_source(rel: str) -> bool:
     if rel.startswith(("docs/", "scripts/")) or rel.endswith(".md"):
+        return False
+    if _is_test(rel):
         return False
     return rel.endswith((".rs", ".go", ".ts", ".py", ".sql", ".yaml", ".yml", ".json"))
 
@@ -117,7 +148,15 @@ def registry_entries(text: str | None = None) -> list[str]:
 # Where the type may be CONSTRUCTED. `contracts/events` declares it; the
 # channel writer lives in `commit-service`. Everything else may name it (a
 # consumer has to match on it) but may not build one — see the module doc.
-AUTHORISED_PREFIXES = ("contracts/events/", "services/commit-service/")
+#
+# `tools/eventgen` is the CODE GENERATOR, added 2026-07-30 when it reddened the
+# gate for real: its per-event field map names every event by its dotted string,
+# because naming them all is its entire job. It emits TYPES, never events, and it
+# reaches neither Redis nor Postgres — so it can no more append to a channel than
+# a header file can. This is the one widening that is a category, not an
+# exception, and the self-test still fails a fourth entry: an authority check
+# whose allowlist keeps growing is green by construction.
+AUTHORISED_PREFIXES = ("contracts/events/", "services/commit-service/", "tools/eventgen/")
 
 # What "constructing" looks like in each language the repo emits from. Not a
 # mere mention: `RulesetEpochActivatedV1{` in Go, `RulesetEpochActivated {` or
@@ -191,6 +230,30 @@ def producers_in_commit_service() -> bool:
     return False
 
 
+HANDOFF = REPO / "docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md"
+DEFERRAL_ID = "D-Q0B-EMIT-PATH"
+BEGIN, END = "<!-- deferral-registry:begin", "<!-- deferral-registry:end"
+
+
+def deferral_row_still_open() -> bool | None:
+    """Is `D-Q0B-EMIT-PATH` still inside the machine-read deferral registry?
+
+    `None` means the question could not be asked — the file or its markers are
+    gone. That is returned rather than `False` on purpose: a shrink rule that
+    answers *"no, the row is not there"* because it could not find the registry
+    is a rule that reports success from a broken scope, which is the whole
+    `NV-3` shape. The caller reds on `None`.
+    """
+    try:
+        text = HANDOFF.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    i, j = text.find(BEGIN), text.find(END)
+    if i < 0 or j < 0 or j < i:
+        return None
+    return DEFERRAL_ID in text[i:j]
+
+
 WHY = """
   ChannelWriter::append CASes on channel_writer_state.current_epoch, so only the
   process holding that channel's WRITER LEASE can append to it. A producer
@@ -247,10 +310,38 @@ def main() -> int:
                   "construct it either: B3b (spine consumes the binding signal) and "
                   "B3c (the writer appends) are unbuilt. Tracked: D-Q0B-EMIT-PATH.")
         else:
+            # THE SHRINK RULE, and it FAILS rather than suggests. A printed
+            # "you may now delete this" is advice, and advice is what left
+            # D-PUBLISHER-DROPS-RULESET-PIN cited as an open blocker in four
+            # places after it was fixed. A row that outlives its debt is not
+            # untidy, it is FALSE — the next planner reads it and re-scopes work
+            # that already shipped.
+            open_row = deferral_row_still_open()
+            if open_row is None:
+                print(f"epoch-emit-trigger-gate: RED — cannot read the deferral "
+                      f"registry in {HANDOFF.relative_to(REPO)} (missing file, or the "
+                      f"`deferral-registry:begin/end` markers are gone).\n\n"
+                      "  The shrink rule below needs to ask whether "
+                      f"{DEFERRAL_ID} is still listed. It will not answer 'no' "
+                      "just because it could not look — a check reporting success "
+                      "from a broken scope is worse than no check.")
+                return 1
+            if open_row:
+                print(f"epoch-emit-trigger-gate: RED — {DEFERRAL_ID} is STILL LISTED "
+                      "as an open deferral, but the work is done: commit-service "
+                      "constructs `ruleset.epoch_activated`, which is exactly what "
+                      "that row said was missing.\n\n"
+                      f"  Delete the {DEFERRAL_ID} row from the deferral registry in\n"
+                      f"  {HANDOFF.relative_to(REPO)}.\n\n"
+                      "  A satisfied deferral left on the board is not untidy, it is\n"
+                      "  FALSE: the next planner reads it and re-scopes work that has\n"
+                      "  already shipped. This project did exactly that four times in\n"
+                      "  one day, which is why this is a failure and not a reminder.")
+                return 1
             print("epoch-emit-trigger-gate: OK — `ruleset.epoch_activated` is "
                   "registered and constructed ONLY by commit-service, which is where "
-                  "the channel writer lease is held. B3 is complete: DELETE the "
-                  "D-Q0B-EMIT-PATH row, it has been paid.")
+                  "the channel writer lease is held. B3 (a/b/c) is complete and its "
+                  "deferral row is gone.")
         return 0
 
     print("epoch-emit-trigger-gate: RED — RulesetEpochActivated is constructed "
@@ -348,6 +439,32 @@ def self_test() -> int:
                          "makes every green meaningless (NV-3)")
     finally:
         probe.unlink(missing_ok=True)
+
+    # BITE 5 — THE TEST EXEMPTION MUST NOT LEAK INTO PRODUCTION CODE. `_is_test`
+    # lets a fixture name the event; the danger is that the predicate is loose
+    # enough to swallow a real producer. Both directions are bitten: a genuine
+    # test path must be exempt, and a production path that merely SITS NEAR one
+    # must not be.
+    exempt_must = [
+        "services/game-server/src/wire/turnOutcome.test.ts",
+        "services/commit-service/tests/epoch_signal.rs",
+        "services/meta-outbox-relay/pkg/drain/drain_test.go",
+        "services/x/tests/helpers/mod.rs",
+    ]
+    for rel in exempt_must:
+        if not _is_test(rel):
+            fails.append(f"_is_test({rel!r}) is False — a test that names the event "
+                         "would red the gate, which would forbid TESTING the consumer")
+    scoped_must = [
+        "services/game-server/src/wire/turnOutcome.ts",
+        "services/admin-cli/main.go",
+        "services/game-server/src/rooms/ChannelRoom.ts",
+        "services/latest/src/protest.rs",   # contains "test" and is NOT one
+    ]
+    for rel in scoped_must:
+        if _is_test(rel):
+            fails.append(f"_is_test({rel!r}) is True — the exemption has widened to "
+                         "production code, so a real producer could hide behind it")
 
     # The RED message must carry the WHY. A bare "not allowed here" gets reverted.
     for token in ("channel_writer_state", "WRITER LEASE", "reality_ruleset_binding", "RLS-D17"):

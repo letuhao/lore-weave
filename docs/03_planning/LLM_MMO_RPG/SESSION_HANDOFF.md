@@ -32,12 +32,13 @@ its subject arrived. **Intent is not a mechanism.**
 
 | ID | Gate # | What is owed | Mechanism — what changes colour |
 |---|---|---|---|
-| `D-Q0B-EMIT-PATH` | 3 | **B3a DONE** — `ruleset.epoch_activated` is registered in the events SoT with `RulesetEpochActivatedV1` (per-channel, carrying `AuthorisedBy` so an auditor can join the committed event back to the `reality_ruleset_binding` row). **B3b/B3c remain**: the spine consuming the binding signal off `lw.meta.events`, and the writer appending. All three original "blockers" were answered or wrong — see the gate's docstring. | `scripts/epoch-emit-trigger-gate.py`, **re-pointed**: it no longer asserts "nothing produces this" (that trigger fired and did its job) but **who may APPEND** — only `contracts/events` + `commit-service`, where the channel writer lease is held. It also prints the outstanding B3b/B3c work on every run and says to delete this row the day commit-service constructs the event. |
 | `D-GATE-ROT-LANGUAGE-BIAS` | 2 | 13 offenders in chat + composition; classified into 4 classes, **2 of which change bytes that are already persisted** (a digest input, and `casefold()` used as a persisted identity key) — so it is a migration decision, not an edit. | `KNOWN_RED` row in `gate-wiring-gate.py`; `--run-all` names it every run **and fails if it turns green** without the row being deleted. |
 | `D-GATE-SLOW-META-WRITE-DISCIPLINE` | 4 | `meta-write-discipline-lint.sh` is quadratic (re-greps the tree once per meta table, 33 of them): 74s alone, >900s shared. Wants its own CI leg or a single-walk rewrite. | `TOO_SLOW` row in `gate-wiring-gate.py` — printed as a SKIP with its reason on every run, never silent. |
 | `D-GATE-ROT-ENV-AT-IMPORT` | 4 | Three gates import service code that reads `JWT_SECRET` at module level, so they need an environment rather than a checkout. | `NEEDS_STACK` rows in `gate-wiring-gate.py`, printed on every run. |
 | `D-META-LIVE-SMOKE-NOT-IN-CI` | 4 | `meta-rs-pg-live-smoke.sh` proves the polyglot write path against real Postgres and runs only by hand. | **prose-only.** ⚠ First claimed as "named in `gates.yml`" — it is, in a `#` comment; and in `gate-wiring-gate.py`'s **docstring**, where it is stated as a scope *limit*. Documenting a hole is not covering it. Trigger: `is_gate()` widening to `-smoke`, which needs a stack-up CI job. |
 | `D-PUBLISHER-SMOKE-NOT-IN-CI` | 4 | Same shape for the publisher live smoke. | **prose-only** — same, same trigger. |
+| `D-EPOCH-SIGNAL-FANOUT` | 2 | Each channel writer takes its **own** consumer group on `lw.meta.events` — it must, since a shared group SPLITS entries and the channel that missed one would never switch — so every meta write in the deployment is delivered N times for N channels. The signal bus also never `reclaim()`s, so a crash between fetch and ack leaves that group's entries pending forever. | **prose-only** — declared in `deferral-gate.py`. **Neither is a correctness problem**: the reconcile reads the binding table, so a lost or unacked signal changes nothing. That is exactly why it needs a row — it will never announce itself as a bug, only as load. Trigger: a node hosting more than a handful of channels, or a measured PEL depth. |
+| `D-EPOCH-SMOKE-NOT-IN-CI` | 4 | `scripts/epoch-activation-live-smoke.sh` proves the whole `Q0b B3` path against real Postgres — binding moves → island switches → event lands on the channel, joinable back to the row that authorised it — and runs only by hand. It needs **two** throwaway DBs plus the full per-reality migration sequence. | **prose-only** — declared in `deferral-gate.py`, same trigger as the two rows above (`is_gate()` widening to `-smoke`, which needs the stack-up CI job). Its own row rather than a footnote: a reader asking *"is MY smoke in CI"* must find the answer under its own name. |
 | `D-EMPTY-PORTABLE-SIDE` | 2 | `Actor`'s portable side can be empty; the shape needs a decision, not a patch. | **prose-only.** ⚠ This row first claimed *"guarded in `actor.rs`"* — the gate refused it, and it was right: the only mention there is a `///` doc comment. An empty portable side is currently **legal**, so a check would have no possible violation (`NV-2`). Trigger: F2 giving the portable side a required field. |
 | `D-WIRE-DIGEST-ZERO` | 2 | The wire digest ships zero until the reality binding reaches the transport. | **prose-only.** ⚠ Also first claimed as guarded. The `// zero-digest-gate: ok — D-WIRE-DIGEST-ZERO` pragma in `ChannelRoom.ts` is an **exemption, not a mechanism** — it *silences* a finding and would keep silencing it after the digest became real. `zero-digest-gate` has no shrink rule (verified). Trigger: that shrink rule, or the binding reaching the transport. |
 | `D-GAME-WS-EDGE-CONTROLS` | 1 | PRR-20's second public entry point must inherit the gateway's auth/rate-limit/audit controls. | **prose-only.** ⚠ First claimed as "guarded across the three `ws/` implementations" — the id appears there only in **JSDoc headers**, which is provenance, not a check: nothing reds if parity breaks. Trigger: a parity test, which needs both transports up. |
@@ -50,6 +51,106 @@ its subject arrived. **Intent is not a mechanism.**
 
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
+
+### ✅ Q0b B3b + B3c — the epoch path is closed, end to end (2026-07-30)
+
+`D-Q0B-EMIT-PATH` is **deleted**. The chain runs:
+
+```text
+admin-cli / Forge → activate_reality_epoch → reality_ruleset_binding INSERT
+                                           └→ meta_outbox {reality.ruleset.bound}
+        meta-outbox-relay → XADD lw.meta.events
+  spine (holds the lease) → drain_and_reconcile → RE-READS THE BINDING
+                          → island.submit_epoch_switch  (RLS-A14, ordered)
+                          → ChannelWriter::append RulesetEpochActivated
+```
+
+**The one decision worth re-reading before touching this: the stream is a NUDGE,
+the table is the TRUTH.** Nothing acted upon comes out of the Redis payload. The
+obvious implementation reads `epoch` and `ruleset_digest` from the event and
+switches to them; this one throws both away and re-reads
+`reality_ruleset_binding`. Three things follow, and the third is the one that
+sold it:
+
+1. **Redeliveries are free.** At-least-once means a `bound` event for epoch 4
+   can arrive after 5 applied. Payload-trusting, that is an attempt to move a
+   live island *backwards* — safe, because `RLS-I1` refuses it, but safe *by
+   rejection*, and every duplicate would emit a refusal an operator must learn
+   to ignore. Reading the table collapses N deliveries into one correct answer.
+2. **A copy cannot outrank its source.** The Redis entry is derived and can be
+   `MAXLEN`-trimmed, replayed by hand, or emitted twice; the binding row is
+   append-only and audited. An engine that believes the copy runs rules nobody
+   authorised.
+3. **A missed signal is survivable.** The consumer group is created at `$`, so
+   an activation landing between this node's boot read and its group creation is
+   never delivered to it — a real race. Because the reconcile runs on every
+   iteration including the first, the table simply says epoch 5 while the island
+   says 4, and the switch happens with no event ever received. **The live test
+   asserts exactly this: no Redis entry is delivered and the island still
+   switches.**
+
+**Each channel gets its OWN consumer group.** A group SPLITS work between its
+members, so two channels of one reality sharing one would each receive a
+different subset of the binding events, and the channel that missed the entry
+would never switch — half the reality on stale rules, no error anywhere. The
+group is the fan-out mechanism here, not the load-balancer.
+`every_channel_gets_its_own_group` is the test; it reds when the channel is
+dropped from the name.
+
+**The append happens only on `Outcome::Applied`.** The switch goes in as an
+ordinary ingress item and can legitimately lose — a redelivery behind a newer
+switch pops `Discarded { Superseded }`. Committing an "activated" event for a
+switch the island rejected is the one outcome that makes the channel log *lie*,
+and it is exactly what a naive `submit(); append();` produces. Bite-tested:
+removing the guard turns *"five reconciles over one switch append ONE event"*
+into **5**.
+
+`authorised_by` is composed by `meta_rs::pk_as_string`, not by a `format!` —
+the composite spelling (`epoch=4|reality_id=…`, sorted by column) belongs to the
+meta layer, and a second hand-written copy of it would fail as a *missing* audit
+join, which reads like "no such authorisation" rather than like a bug. The bite
+caught both the field order and the s/z spelling.
+
+**`/review-impl` found one HIGH, and it was mine.** The payload OMITTED
+`metadata.turn_number`, on the reasoning that "absent" is the honest encoding of
+*"a switch is not a turn"*. It is not.
+`game-server/src/wire/turnOutcome.ts` called
+`toU64String(meta.turn_number, 'turn_number')` **unconditionally, before it
+dispatched on `event_type`**, and that call sits OUTSIDE `drainOnce`'s
+try/catch — which catches only `parseEnvelope`. One committed event without the
+field throws `turn_number: missing` straight out of the replay and kills the
+channel's whole projection, **for every client, permanently**, because replay
+meets the same event on every retry. The repo's encoding of "unchanged" is *the
+same number again*, which is what `proposal.rejected` has always stamped.
+
+Fixed on **both** sides, because either alone leaves the trap set:
+
+* the writer stamps the unadvanced counter as a CWC-A2 decimal string;
+* `projectTurnOutcome` now returns `null` for a type it does not project
+  **before** parsing anything — the writer should not be the only thing standing
+  between a new event type and a dead room. A `turn.resolved` with no
+  `turn_number` still throws (asserted), so the guard did not go soft.
+
+Three more from the same pass, all fixed: a **poisoned island** made
+`while isle.step() != Idle {}` spin at 100% CPU forever (`Poisoned` is not
+`Idle`) — pre-existing in the proposal path, which had been copied into the
+epoch path, and fixed in **both**; a **meta-DB blip killed the writer**, because
+the epoch path made the meta database a per-iteration dependency of a loop that
+had never touched it (now `EpochOutcome::Unavailable` — not being able to check
+for a newer epoch is degraded, not incorrect); and the **`RLS-A14` ordering
+decision was unguarded** — `activate_epoch` and `submit_epoch_switch` leave the
+island identical except for the generation bump, so swapping them was invisible
+to the entire suite. `island_gen_bumps` is now asserted; the swap reds all four
+live tests.
+
+Also fixed on the way in: **the generated bindings for this event were EMPTY.**
+`tools/eventgen`'s field map is hand-maintained, `B3a` added the registry entry
+without a row, and all three languages emitted `struct X {}`. `field_map.go`'s
+own comment claimed the emitters wrote a `// TODO: field map missing` marker so
+"the gap is visible" — no emitter has ever written that string. There is now a
+closed `noFieldMapAllowed` list (the 8 pre-existing gaps, each with its reason)
+checked **before** any emitter runs, failing in both directions: an unmapped new
+event, and an exemption whose gap has closed.
 
 ### ✅ `eventgen-validate` was blind to the files it exists to protect (2026-07-30)
 

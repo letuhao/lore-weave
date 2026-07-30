@@ -320,6 +320,25 @@ PROSE_ONLY: dict[str, str] = {
         "distinction — `.github/workflows/gates.yml` names it in a `#` comment "
         "explaining why the smoke is absent, which is honesty about a gap rather "
         "than a mechanism that closes it"),
+    "D-EPOCH-SIGNAL-FANOUT": (
+        "TRIGGER: the first node hosting more than a handful of channels, or a "
+        "measured PEL depth on `lw.meta.events`. Each channel writer takes its OWN "
+        "consumer group on that deployment-wide stream (it must — a shared group "
+        "SPLITS entries and a channel that missed one would never switch), so every "
+        "meta write in the deployment is delivered N times for N channels. The "
+        "signal bus also never calls `reclaim()`: a crash between fetch and ack "
+        "leaves entries pending for that group forever. Neither is a CORRECTNESS "
+        "problem — the reconcile reads the binding table, so a lost or unacked "
+        "signal changes nothing — which is exactly why it needs a row: it will "
+        "never announce itself as a bug, only as load"),
+    "D-EPOCH-SMOKE-NOT-IN-CI": (
+        "TRIGGER: the same stack-up CI job as the two rows above. "
+        "`scripts/epoch-activation-live-smoke.sh` proves the Q0b B3 path against a "
+        "real Postgres (binding -> island switch -> committed event) and runs only "
+        "by hand, because `is_gate()` excludes `-smoke` and this one needs two "
+        "throwaway databases plus the per-reality migration sequence. A third row "
+        "rather than a footnote on an existing one: a reader asking 'is MY smoke in "
+        "CI' must find the answer under its own name"),
     "D-S04-1": (
         "TRIGGER: the S04 provisioner track resuming. Nothing in this repo can "
         "red on it — the subject is an unbuilt service, so there is no file for a "

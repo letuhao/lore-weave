@@ -173,3 +173,43 @@ test('an envelope with no event_type is rejected, not silently projected', async
   const { parseEnvelope } = await import('../rooms/ChannelRoom.js');
   assert.throws(() => parseEnvelope(['reality_id', 'x']), /no event_type/);
 });
+
+// ── the administrative-event guard (Q0b B3c / review-impl) ──────────────────
+//
+// `ruleset.epoch_activated` is committed to the SAME channel log the room
+// replays, and it is not a turn outcome. Before the dispatch was moved ahead of
+// the parsing, an event like this threw `turn_number: missing` out of
+// `drainOnce` — which does not catch it — and the channel's whole projection
+// died for every client, permanently, because replay meets the same event on
+// every retry.
+
+test('an administrative event is skipped, not thrown on', () => {
+  const ev = {
+    event_type: 'ruleset.epoch_activated',
+    channel_event_id: '9',
+    payload: { from_epoch: 1, to_epoch: 2 },
+    // No turn_number AT ALL — the exact shape that killed the room.
+    metadata: { event_category: 'T8' },
+  } as unknown as CommittedEvent;
+  assert.equal(
+    projectTurnOutcome(ev),
+    null,
+    'a non-turn event must project to null, never throw: one such event in the ' +
+      'log would otherwise take down the channel for every client',
+  );
+});
+
+test('a TURN event with no turn_number still throws — the guard did not go soft', () => {
+  const ev = {
+    event_type: 'turn.resolved',
+    channel_event_id: '9',
+    payload: { events: [] },
+    metadata: {},
+  } as unknown as CommittedEvent;
+  assert.throws(
+    () => projectTurnOutcome(ev),
+    /turn_number: missing/,
+    'skipping unknown types must not weaken the check on the types we DO ' +
+      'project — a turn outcome without a turn number is a producer bug',
+  );
+});

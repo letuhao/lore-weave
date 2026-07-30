@@ -138,6 +138,13 @@ impl RulesetBoot {
 /// the value the whole `RLS-I1` chain hangs on — a caller that has to remember
 /// to read `binding.epoch` is a caller that can forget, which is precisely the
 /// bug this returns it to prevent.
+/// Returns the [`RulesetBoot`] itself as well as the loaded rules, and that is
+/// `Q0b B3b`'s doing. Boot used to drop it: the binding was read once, at
+/// startup, and the handle that could read it *again* went out of scope with
+/// the function. An epoch switch has to re-read the binding while the node is
+/// running, so a node that had thrown the store away could only have obtained
+/// the new rules by trusting a Redis payload — which is the design
+/// `epoch_signal` exists to refuse.
 pub async fn boot_reality(
     state_root: &str,
     meta_url: Option<&str>,
@@ -145,7 +152,7 @@ pub async fn boot_reality(
     reality_id: &str,
     create: bool,
     ruleset_path: Option<&str>,
-) -> anyhow::Result<(std::sync::Arc<Ruleset>, sim_core::RulesetEpoch)> {
+) -> anyhow::Result<(RulesetBoot, std::sync::Arc<Ruleset>, sim_core::RulesetEpoch)> {
     let boot = RulesetBoot::open(state_root, meta_url, allowlist).await?;
     println!("BINDINGS <- {}", boot.provenance);
     if create {
@@ -156,5 +163,5 @@ pub async fn boot_reality(
         "RULESET {} <- store (NOT re-resolved), reality epoch {}",
         binding.digest, binding.epoch
     );
-    Ok((std::sync::Arc::new(r), sim_core::RulesetEpoch(binding.epoch)))
+    Ok((boot, std::sync::Arc::new(r), sim_core::RulesetEpoch(binding.epoch)))
 }

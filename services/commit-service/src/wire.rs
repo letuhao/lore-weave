@@ -187,3 +187,23 @@ mod tests {
         }
     }
 }
+
+/// Map the kernel's `DiscardReason` onto the game-wire closed set
+/// (`turn.schema.json#/$defs/DiscardDetail`). Exhaustive by construction: a
+/// 6th kernel variant fails to compile here rather than reaching a client as
+/// an unknown string.
+///
+/// Moved here from `bin/spine.rs` in `Q0b B3c`, when the poison guard pushed
+/// that binary past its `IMP-D3` ceiling. Not a line-count dodge: this file IS
+/// the wire module, and a kernel-enum-to-wire-string mapping had no business
+/// living in the binary that happens to call it.
+pub fn discard_reason_wire(r: &sim_core::DiscardReason) -> &'static str {
+    use sim_core::DiscardReason as D;
+    match r {
+        D::Duplicate => "duplicate",
+        D::PreconditionFailed(_) => "precondition_failed",
+        D::Superseded => "superseded",
+        D::Expired => "expired",
+        D::Quarantined => "quarantined",
+    }
+}

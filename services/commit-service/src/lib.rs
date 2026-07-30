@@ -17,6 +17,15 @@
 pub mod admission;
 pub mod bus;
 pub mod domain;
+/// Q0b B3c — the lease-holding writer transcribing an epoch switch into its own
+/// channel. The ONLY place `ruleset.epoch_activated` is constructed.
+pub mod epoch_commit;
+/// Q0b B3b — the binding signal on `lw.meta.events`, and the rule that the
+/// stream is a nudge while `reality_ruleset_binding` is the truth.
+pub mod epoch_signal;
+/// The host's wall clock. The kernel never sees it — a deterministic island
+/// that read a clock would not replay.
+pub mod hostclock;
 pub mod llm_driver;
 pub mod manager;
 /// Q1 B2b — `RLS-A3` bindings in the meta DB. Here rather than in

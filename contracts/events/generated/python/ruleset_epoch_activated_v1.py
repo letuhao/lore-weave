@@ -2,8 +2,17 @@
 # Event: ruleset.epoch_activated v1
 # A reality's ruleset epoch switched; one per affected channel, appended by that channel's own lease-holding writer (RLS-A14).
 
+from datetime import datetime
+
 from typing import TypedDict
 
 
 class RulesetEpochActivatedV1(TypedDict):
     """A reality's ruleset epoch switched; one per affected channel, appended by that channel's own lease-holding writer (RLS-A14)."""
+    reality_id: str
+    channel_id: int
+    from_epoch: int
+    to_epoch: int
+    digest: str
+    authorised_by: str
+    activated_at: datetime
