@@ -32,6 +32,11 @@ on:
       - "services/meta-outbox-relay/**"
       - "sdks/go/piikms/**"
       - "sdks/go/metaoutbox/**"
+      - "sdks/go/metapg/**"
+      - "services/auth-service/**"
+      - "services/provider-registry-service/**"
+      - "services/usage-billing-service/**"
+      - "services/scheduler-service/**"
       - "migrations/meta/**"
       - ".github/workflows/domain-db-smoke.yml"
   pull_request:
@@ -45,6 +50,11 @@ on:
       - "services/meta-outbox-relay/**"
       - "sdks/go/piikms/**"
       - "sdks/go/metaoutbox/**"
+      - "sdks/go/metapg/**"
+      - "services/auth-service/**"
+      - "services/provider-registry-service/**"
+      - "services/usage-billing-service/**"
+      - "services/scheduler-service/**"
       - "migrations/meta/**"
       - ".github/workflows/domain-db-smoke.yml"
 
@@ -160,6 +170,89 @@ jobs:
             echo "::group::$dir"
             if ! go -C "$dir" test ./... -count=1; then
               echo "::error::meta db-smoke failed: $dir"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail
+
+  # ── ROT-1: the eight DSN vars the first sweep missed (added 2026-07-31) ─────
+  # ROT-0 wired `meta-db-smoke` after finding 41 never-executed tests — and reported "41"
+  # because it swept only the two variables it happened to be looking at. Sweeping EVERY
+  # `*_TEST_*` DSN in Go tests against EVERY workflow afterwards found eight more that no
+  # workflow set, covering **159 further test functions that had never run anywhere**:
+  # provider-registry 54 (BYOK credentials, catalog, pricing), usage-billing 37, auth 36,
+  # incident-bot 12, scheduler 8, admin-cli 6, metapg 3, piikms-KMS 3.
+  #
+  # First execution found three reds, and — unlike ROT-0's — all three were STALE TESTS,
+  # not product bugs. That distinction only exists because they were triaged instead of
+  # assumed:
+  #   · admin-cli: the hand-listed migration set omitted 032, the migration that adds
+  #     'started' to the result_kind CHECK and whose own comment says it exists for this
+  #     test. The test could never have passed.
+  #   · scheduler: `recordSuccess` gained an `AND locked_by = $4` lease guard after the
+  #     test was written; the test never claimed the row, so the UPDATE matched zero rows
+  #     and the guard WORKING correctly read as the re-arm being broken.
+  #   · usage-billing: the free-tier assertion asked for $8 against an owner DAILY cap of
+  #     $10 with $3 already spent, so it 402'd on a limit unrelated to the free tier.
+  #
+  # Each service gets its OWN throwaway database: unlike the piikms family these suites do
+  # not share a harness, and isolating them keeps a failure attributable.
+  rot1-db-smoke:
+    name: Auth · provider-registry · billing · scheduler DB round-trips
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: loreweave
+          POSTGRES_PASSWORD: loreweave_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loreweave -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25"
+      - name: create throwaway databases
+        env:
+          PGPASSWORD: loreweave_dev
+        run: |
+          set -euo pipefail
+          for db in loreweave_auth_test loreweave_provreg_test loreweave_usagebilling_test                     loreweave_scheduler_rot1_test loreweave_admincli_test loreweave_metapg_test; do
+            psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
+          done
+      - name: ROT-1 DB round-trips
+        env:
+          AUTH_TEST_PG_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_auth_test?sslmode=disable
+          TEST_PROVIDER_REGISTRY_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_provreg_test?sslmode=disable
+          USAGE_BILLING_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_usagebilling_test?sslmode=disable
+          SCHEDULER_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_scheduler_rot1_test?sslmode=disable
+          ADMINCLI_TEST_PG_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_admincli_test?sslmode=disable
+          METAPG_TEST_PG_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_metapg_test?sslmode=disable
+          INCIDENT_TEST_REDIS_URL: redis://localhost:6379/9
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in services/auth-service services/provider-registry-service                      services/usage-billing-service services/scheduler-service                      services/admin-cli services/breach-notifier sdks/go/metapg; do
+            echo "::group::$dir"
+            if ! go -C "$dir" test ./... -count=1; then
+              echo "::error::rot1 db-smoke failed: $dir"
               fail=1
             fi
             echo "::endgroup::"

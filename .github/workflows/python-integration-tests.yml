@@ -183,6 +183,37 @@ jobs:
           python -m pytest ${{ matrix.test_path }} -q -p no:cacheprovider
 
   # ── knowledge: Postgres + Neo4j ──────────────────────────────────────────────
+  # ── the SDK's Redis-gated scheduler suite (added 2026-07-31, ROT-1 sweep) ────
+  # Found by `scripts/test-dsn-coverage-gate.py` on its FIRST run — the manual ROT-1 sweep
+  # had missed it, because that sweep grepped Go test files only. Nine tests whose own
+  # docstring says the correctness lives in Lua scripts (atomic round-robin, per-owner cap,
+  # lease-TTL crash backstop, release re-arm) — "invariants a mock/fake Redis cannot
+  # prove". Gated on P5_TEST_REDIS_URL, which no workflow set.
+  sdk-scheduler-redis:
+    name: loreweave_jobs scheduler (integration, Redis)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: install the shared Python SDK (with the [test] extra)
+        run: python -m pip install -e "sdks/python[test]"
+      - name: pytest (scheduler — real Redis)
+        env:
+          P5_TEST_REDIS_URL: redis://localhost:6379
+        run: python -m pytest sdks/python/tests/test_jobs_scheduler.py -q -p no:cacheprovider
+
   knowledge-integration:
     name: knowledge-service (integration, PG + Neo4j)
     runs-on: ubuntu-latest

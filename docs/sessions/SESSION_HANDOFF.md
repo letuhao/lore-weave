@@ -96,29 +96,41 @@ nothing calls the crate), once because a doc comment and a workspace membership 
 crate name, and once because **the gate itself names the contracts in its docstring**. A gate that
 has never been observed to fail is not a gate.
 
-### 🔴 ROT-1 — 159 MORE never-run tests. ROT-0 reported 41 because it stopped at two variables.
+### ✅ ROT-1 CLOSED — 209 never-run tests in total, and a gate so there is no ROT-2
 
-Sweeping **every** `*_TEST_*` DSN in Go tests against **every** workflow:
+ROT-0 reported **41** because it swept only the two DSN variables it happened to be holding. Sweeping
+every `*_TEST_*` variable found **eight more**, covering **159 further test functions** — provider-registry
+54, usage-billing 37, auth 36, incident-bot 12, scheduler 8, admin-cli 6, metapg 3, piikms-KMS 3.
 
-| env var | test funcs | service |
-|---|---:|---|
-| `TEST_PROVIDER_REGISTRY_DB_URL` | 54 | provider-registry — BYOK credentials, catalog, pricing |
-| `USAGE_BILLING_TEST_DB_URL` | 37 | usage-billing |
-| `AUTH_TEST_PG_URL` | 36 | auth-service |
-| `INCIDENT_TEST_REDIS_URL` | 12 | incident-bot |
-| `SCHEDULER_TEST_DB_URL` | 8 | scheduler-service |
-| `ADMINCLI_TEST_PG_URL` | 6 | admin-cli |
-| `METAPG_TEST_PG_URL` | 3 | meta pg |
-| `PIIKMS_TEST_KMS_ENDPOINT` | 3 | piikms KMS |
+All 159 now execute. auth and provider-registry were clean on first run. **Three reds, and unlike
+ROT-0's all three were STALE TESTS, not product bugs** — a distinction that exists only because they
+were triaged rather than assumed:
 
-**200 never-run tests total; 41 was reported.** This is the §1.4 failure repeated one day later by
-the same author: count inside what you are looking at, then state it for the whole. It surfaced only
-because the human asked whether the un-cleared items had reached the spec. **A count is a claim, and
-its denominator must come from the SSOT, not from what you happened to touch.**
+- **admin-cli** — the hand-listed migration set omitted `032`, the migration that adds `'started'` to
+  the `result_kind` CHECK, whose own comment says it applies to the test DB. It was written FOR this
+  test, and the test did not apply it. It could never have passed.
+- **scheduler** — `recordSuccess` gained an `AND locked_by = $4` lease guard after the test was
+  written; the test never claimed the row, so the UPDATE matched zero rows. **The guard working
+  correctly read as the re-arm being broken.**
+- **usage-billing** — the free-tier assertion reserved `$8` against an owner daily cap of `$10` with
+  `$3` already spent, so it 402'd on a limit unrelated to the free tier.
+
+**`scripts/test-dsn-coverage-gate.py` is the generalisable fix**: it compares the set of `*_TEST_*`
+variables that gate a test against the set any workflow arms — the comparison whose absence made
+both sweeps possible. On its **first run it found a tenth gap the manual ROT-1 sweep had missed**
+(that sweep grepped Go only): nine Redis-gated scheduler tests whose docstring says their correctness
+lives in Lua scripts, *"invariants a mock/fake Redis cannot prove"*. Now armed.
+`PIIKMS_TEST_KMS_ENDPOINT` is **declared** unarmed with its reason (needs LocalStack-KMS) rather than
+silently missing — the test it gates proves an ErasePII audit row satisfies its CHECK constraints,
+and a violation would otherwise surface only after the KEK is irreversibly shredded.
+
+**Four repo gates now run in `foundation-ci`:** `ai-provider-gate` (widened + finally in CI rather
+than pre-commit-only) · `enforcement-claims-gate` (S12) · `test-dsn-coverage-gate` · plus the
+pre-existing lints.
 
 ### ▶ NEXT
-1. **ROT-1** — wire the 8 unswept DSN vars, run the 159, triage whatever reds. Shape proven twice.
-2. **The LLM-budget SSOT axis** (author-directed): SDK kinds+formula (**done** —
+1. **The LLM-budget SSOT axis** — see below. ROT-1 is closed.
+2. Detail for the axis above: SDK kinds+formula (**done** —
    `sdks/python/loreweave_llm/budget.py`) · **one call-profile registry per service** (the
    per-operation knowledge belongs to the service; `_OPERATION_INSTRUCTIONS`/`PASS_REGISTRY` are the
    precedent) · an **AST gate catching all three forms**: a call-site literal (~9), an **int default

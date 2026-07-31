@@ -168,8 +168,30 @@ sets**, covering **159 further test functions that have never run anywhere**:
 
 **200 never-run tests total, and 41 was reported.** This is the same failure the red team caught in
 §1.4 — count inside what you are looking at, then state it for the whole — committed again, one day
-later, by the person who wrote that sentence. The fix shape is known and cheap (ROT-0 did it twice);
-what was missing was the sweep. Owner: **ROT-1, before Phase 1.**
+later, by the person who wrote that sentence.
+
+**ROT-1 CLOSED 2026-07-31.** All 159 executed; auth (36) and provider-registry (54) were clean on
+first run. Three reds, and — unlike ROT-0's — **all three were stale tests, not product bugs**, a
+distinction that only exists because they were triaged instead of assumed:
+
+- **admin-cli** — the hand-listed migration set omitted `032`, the migration that adds `'started'`
+  to the `result_kind` CHECK and whose own comment says *"Applies to the test/meta DB only"*, i.e.
+  it exists **for this test**. The test could never have passed.
+- **scheduler** — `recordSuccess` gained an `AND locked_by = $4` lease guard after the test was
+  written. The test never claimed the row, so the UPDATE matched zero rows and `next_fire_at` kept
+  the value the test had just written. **The guard working correctly read as the re-arm being
+  broken.**
+- **usage-billing** — the free-tier assertion reserved `$8` against an owner DAILY cap of `$10` with
+  `$3` already spent, so it 402'd on `daily_available: 7`, a limit with nothing to do with the free
+  tier.
+
+**And the generalisable fix: `scripts/test-dsn-coverage-gate.py`.** It compares the set of
+`*_TEST_*` variables that gate a test against the set any workflow arms — the comparison whose
+absence made both ROT-0 and ROT-1 possible. On its **first run it found a tenth gap the manual ROT-1
+sweep had missed**, because that sweep grepped Go files only: nine Redis-gated scheduler tests whose
+docstring says their correctness lives in Lua scripts, *"invariants a mock/fake Redis cannot prove"*.
+Now armed. One variable is **declared** unarmed with its reason (`PIIKMS_TEST_KMS_ENDPOINT` needs
+LocalStack-KMS) rather than silently missing. There is no ROT-2.
 
 **Carry-forward by origin.** None of these are blockers; all are un-closed.
 
@@ -397,7 +419,7 @@ this from becoming a fourth un-synced enum.
 
 ```
 PHASE 0   B5 · B2 · B1 · B6 · B7 · B4 · B3   ← DONE (B8 closed as not-a-bug)
-ROT-1     the 159 never-run tests the ROT-0 sweep missed  ← before Phase 1
+ROT-1     DONE — 159 executed, 3 stale tests fixed, + a coverage gate so there is no ROT-2
 PHASE 1   S10 (build the instrument)  →  S1  →  S2  →  S8  →  S12
 PHASE 2   S7  →  S6 (+ its UI slice)  →  S11  →  S3  →  S4
 PHASE 3   [translation + knowledge adopt in place]  →  S9  →  S5

@@ -41,8 +41,12 @@ reading the prose.
 | B8 | **CLOSED — NOT A BUG.** The harness is a CLI that prints the fallback count; `src/http/` does not use it |
 
 **Residue is tracked in spec §3.1** — 13 carry-forward rows, each assigned to an owning slice.
-**ROT-1 is the big one: 159 MORE never-run tests** (auth 36, usage-billing 37, provider-registry 54,
-+5 more services) behind 8 DSN vars no workflow sets. Scheduled before Phase 1.
+**ROT-1 CLOSED** — all 159 executed. auth (36) and provider-registry (54) clean; three reds, **all
+stale tests, not product bugs** (a migration list missing the migration written for it; a test
+predating a lease guard; a free-tier assertion colliding with an unrelated daily cap). Sealed with
+`scripts/test-dsn-coverage-gate.py`, which compares gating variables against what CI arms — and on
+its first run found a **tenth** gap the manual sweep missed (9 Redis-gated scheduler tests; the
+sweep had grepped Go only). **There is no ROT-2.**
 
 ## ROT-0 — the skip audit (2026-07-31, author-requested: *"coi chừng degraded bugs"*)
 
@@ -98,7 +102,7 @@ all wrong in ways the red team named.
 | self-grading call sites | ~~5 / 2 services~~ | **17+ / 8 services** |
 | finding/verdict types | ~~6, no shared base~~ | **≥9**; `CanonViolation` already extends a shared base |
 | token/count conventions | ~~2~~ | **4** (+2 billing, which must stay separate) |
-| never-run DB-gated tests | ~~41~~ | **200** — ROT-0 cleared 41, **ROT-1 owns the other 159** |
+| never-run DB-gated tests | ~~41~~ | **209** — ROT-0 cleared 41, ROT-1 the other 159, the gate found 9 more |
 
 **Token measurements (real Vietnamese prose from the dogfood book).** At a 6000-token pack budget,
 characters of grounding that survive: English **29,756** · Vietnamese under cl100k **11,777** (40%)

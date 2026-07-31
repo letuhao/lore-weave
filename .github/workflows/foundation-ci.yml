@@ -125,6 +125,9 @@ jobs:
       - run: bash scripts/alert-rule-validator.sh
       # A registered contract that nothing reads is a claim, not a contract (S12).
       - run: python scripts/enforcement-claims-gate.py
+      # A gated test that no workflow arms has never run — 200 of them were found this
+      # way, in two sweeps, the second only because the first under-counted by 4x.
+      - run: python scripts/test-dsn-coverage-gate.py
       - run: bash scripts/dependency-registry-lint.sh
       - run: bash scripts/admin-command-registry-lint.sh
       - run: bash scripts/logging-discipline-lint.sh
