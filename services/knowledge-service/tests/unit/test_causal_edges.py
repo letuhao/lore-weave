@@ -76,7 +76,8 @@ async def test_infer_noops_under_two_events():
 
 def test_causal_routes_are_registered():
     from app.main import app
-    paths = {r.path for r in app.routes}
+    from loreweave_obs.routes import route_paths  # FastAPI 0.139: app.routes is not flat
+    paths = route_paths(app)
     assert "/internal/extraction/causal-edges" in paths
     assert "/internal/extraction/causal-motif-pairs" in paths
 

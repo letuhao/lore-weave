@@ -73,7 +73,7 @@ _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_u
 # 25 M5.2: threads→tracks, arc_roster→roster — alias back to the field names (as
 # arc_template_repo._SELECT_COLS does) so retrieve_arcs keeps working post-rename.
 _ARC_RETRIEVE_COLS = """
-  id, owner_user_id, code, language, visibility, name, summary, genre_tags,
+  id, owner_user_id, code, original_language, visibility, name, summary, genre_tags,
   chapter_span, tracks AS threads, layout, pacing, roster AS arc_roster, source, imported_derived,
   source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at, embedded_summary_hash, embedding

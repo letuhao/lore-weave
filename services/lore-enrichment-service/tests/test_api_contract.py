@@ -122,14 +122,17 @@ def _spec_to_concrete(spec_path: str) -> str:
 
 
 def _mounted_paths() -> set[str]:
-    import app.main as main_mod
+    """Every `/v1/lore-enrichment` path the app serves.
 
-    paths = set()
-    for route in main_mod.app.routes:
-        path = getattr(route, "path", None)
-        if path and path.startswith("/v1/lore-enrichment"):
-            paths.add(path)
-    return paths
+    FastAPI 0.139 stopped flattening `include_router` into `app.routes`. The `getattr(route,
+    "path", None)` this used to do returns None for the new wrapper — so instead of raising it
+    would have gone QUIETLY empty, and a parity assertion over an empty set is a test that
+    cannot fail. `route_paths` walks the wrappers and re-applies their prefixes.
+    """
+    import app.main as main_mod
+    from loreweave_obs.routes import route_paths
+
+    return {p for p in route_paths(main_mod.app) if p.startswith("/v1/lore-enrichment")}
 
 
 def test_spec_loads_and_is_openapi_31():

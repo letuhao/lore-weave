@@ -74,7 +74,7 @@ async def _insert_motif(
         return await c.fetchval(
             """
             INSERT INTO motif
-              (owner_user_id, code, language, visibility, name, summary, genre_tags,
+              (owner_user_id, code, original_language, visibility, name, summary, genre_tags,
                tension_target, embedding, embedding_model, embedded_summary_hash, status)
             VALUES ($1,$2,$3,$4,$5,'a summary',$6,$7,$8,'platform-embed-v1','h',$9)
             RETURNING id
@@ -117,7 +117,7 @@ async def test_prefilter_bounds_the_load(stack, monkeypatch):
     retr = MotifRetriever(pool)
     out = await retr.retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     codes = {c.motif.code for c in out}
     # STATUS + VISIBILITY still exclude, and that is the part that matters for safety.
@@ -147,7 +147,7 @@ async def test_tier_predicate_matches_get_visible(stack, monkeypatch):
     repo = MotifRepo(pool)
     out = await retr.retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     retrieved_ids = {c.motif.id for c in out}
     # every retrieved id is get_visible to the same caller:
@@ -168,7 +168,7 @@ async def test_no_embedding_projected(stack, monkeypatch):
     _patch_query_embed(monkeypatch)
     out = await MotifRetriever(pool).retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     assert out
     assert "embedding" not in out[0].motif.model_dump()
@@ -188,7 +188,7 @@ async def test_genreless_call_still_retrieves(stack, monkeypatch):
     _patch_query_embed(monkeypatch)
     out = await MotifRetriever(pool).retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=[], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=[], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     codes = {c.motif.code for c in out}
     assert "en.hit" in codes        # retrieved despite no genre constraint
@@ -206,7 +206,7 @@ async def test_null_embedding_row_skipped_and_queued(stack, monkeypatch):
     retr = MotifRetriever(pool)
     out = await retr.retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     codes = {c.motif.code for c in out}
     assert "ready" in codes
@@ -232,7 +232,7 @@ async def test_an_UNTAGGED_motif_is_reachable_at_all(stack, monkeypatch):
     _patch_query_embed(monkeypatch)
     out = await MotifRetriever(pool).retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["fantasy"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["fantasy"], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     assert "untagged.one" in {c.motif.code for c in out}
 
@@ -249,7 +249,7 @@ async def test_a_book_in_an_UNREPRESENTED_genre_still_gets_candidates(stack, mon
     _patch_query_embed(monkeypatch)
     out = await MotifRetriever(pool).retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["fantasy"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["fantasy"], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     assert "structural.hook" in {c.motif.code for c in out}
 
@@ -270,7 +270,7 @@ async def test_in_genre_and_in_language_still_win_the_CEILING(stack, monkeypatch
     _patch_query_embed(monkeypatch)
     out = await MotifRetriever(pool).retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, limit=50,
     )
     assert {c.motif.code for c in out} == {"on.target"}
 
@@ -287,7 +287,7 @@ async def test_a_DRAFT_and_a_FOREIGN_PRIVATE_row_are_still_excluded(stack, monke
     _patch_query_embed(monkeypatch)
     codes = {c.motif.code for c in await MotifRetriever(pool).retrieve(
         u1, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["fantasy"], language="en", beat_role="hook", tension=50, limit=50,
+        genre_tags=["fantasy"], display_language="en", beat_role="hook", tension=50, limit=50,
     )}
     assert "ok.x" in codes
     assert "draft.x" not in codes and "foreign.x" not in codes

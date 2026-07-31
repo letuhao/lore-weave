@@ -65,7 +65,7 @@ async def _system_source(pool, *, code="src", language="en") -> uuid.UUID:
     """A public source motif any user can adopt."""
     async with pool.acquire() as c:
         return await c.fetchval(
-            "INSERT INTO motif (owner_user_id, code, language, visibility, source, name) "
+            "INSERT INTO motif (owner_user_id, code, original_language, visibility, source, name) "
             "VALUES (NULL,$1,$2,'public','authored',$3) RETURNING id",
             code, language, f"src-{code}",
         )

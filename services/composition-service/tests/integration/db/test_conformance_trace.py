@@ -101,7 +101,7 @@ async def _job(c, *, created_by, project_id, book_id, node_id, status="completed
 
 async def _seed_motif(c) -> uuid.UUID:
     return await c.fetchval(
-        "INSERT INTO motif (owner_user_id, code, language, visibility, name) "
+        "INSERT INTO motif (owner_user_id, code, original_language, visibility, name) "
         "VALUES ($1,'m','en','private','M') RETURNING id",
         uuid.uuid4(),
     )

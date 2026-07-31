@@ -10,26 +10,51 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 **After any compaction, re-read it before anything else.** Spec:
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
-**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → **`[CI-RED sweep]`** → `S1 → S2 → S8 →
-S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → **`S1`** → `S2 →
+S8 → S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
 Phase 0 is **CLOSED 8/8**. ROT-0 and ROT-1 are **SEALED** (209 never-run DB-gated tests, all
 executed; `scripts/test-dsn-coverage-gate.py` now compares gating variables against what CI arms).
 
-## 🔴 DO THIS FIRST — CI is RED and has been
+## ✅ CI-RED sweep — three roots, and one of them was a production bug
 
-Measured 2026-08-01 (`gh run list --branch feat/frontend-tools-mcp-migration`):
-`python-integration-tests` · `python-unit-tests` · `domain-db-smoke` all **failure**.
+CI was red on `python-integration-tests` · `python-unit-tests` · `domain-db-smoke`
+(measured 2026-08-01 via `gh run list`). My first diagnosis — *"33 failures, one root, a
+mechanical rename"* — was **wrong on both counts**; the corrected account is in the RUN-STATE.
 
-Composition's share is **33 integration failures with ONE root**: the motif model/DDL renamed
-`language` → `original_language` and six test files were never updated. Symptoms:
-`MotifCreateArgs(language=…)` → 422 · `MotifRetriever.retrieve(language=…)` → TypeError ·
-`column "language" does not exist`. Files: `test_motif_repo.py`, `test_motif_retrieve_db.py`,
-`test_motif_swap.py`, `test_seed_motifs.py`, `test_motif_migrate.py`, `test_rnode_p1_dataplane.py`.
+1. **`app.routes` stopped being flat (fastapi 0.139 / starlette 1.3).** Measured inside the
+   shipped image: `{'Route': 4, '_IncludedRouter': 35, 'Mount': 1}` — 202 real paths, 5 visible
+   to the old `{r.path for r in app.routes}` idiom. Six tests raised `AttributeError`; the
+   contract-parity test called **31 real, served endpoints "fictional"**; two sites using
+   `getattr(route, "path", "")` would have gone **quietly empty** instead, which is worse.
+   Fixed by `loreweave_obs.routes` (`iter_routes` / `route_paths` / `route_ops`).
+   ⚠ **A local green here is not a CI green** — the dev box runs fastapi 0.136 where the old
+   idiom still works. Verify anything route-shaped inside the container.
+2. **`-e ../../sdks/python` resolved outside the checkout.** pip resolves a relative editable
+   against the **CWD**, and both workflows installed from the repo root — so lore-enrichment's
+   install step aborted and its whole suite never ran. The install step now has a
+   `working-directory`.
+3. **`language` → `original_language` (MOTIF-I18N / ARC-I18N)**, 8 test files. Mechanical for
+   most of them; two asserted "same code + different language = 2 rows", which is exactly the
+   behaviour the i18n migration deleted (*one motif = one row*), so those were rewritten to the
+   rule as written in `migrate.py` + spec `2026-07-29-motif-i18n.md`.
+   **This turned up a production defect:** `_ARC_RETRIEVE_COLS` still selected `language` from
+   `arc_template`, so `retrieve_arcs` **500s on the shipped schema**. Caught by a guard-by-EFFECT
+   integration test written for exactly that class — the guard worked, nobody had run it.
 
-This is a mechanical rename sweep, not a design question. **The HEAD baseline is measured**, so
-the fix has a number to hit: composition integration goes `33 failed / 347 passed` → `0 / 380`.
-The other two workflows' failures are NOT yet diagnosed — that is the first thing to look at.
+**Measured, fresh throwaway PG:** `33 failed / 347 passed` → **`8 failed / 378 passed`**.
+
+### ⛔ The remaining 8 — root found, deliberately not fixed
+
+All in `tests/integration/db/test_motif_retrieve_db.py`. NOT a rename: `retrieve()` was
+re-designed 2026-07-17 into **two embedding spaces** (private motifs rank in the caller's BYOK
+U-space, everything shared in the platform P-space), and a row whose vector is in the wrong space
+is queued-and-skipped — so with `motif_embed_model_ref` unset every seeded row is skipped and
+retrieve returns ∅, which is what all 8 assertions see. Setting the env is **not** the fix: it
+turns the config error into a live provider call and the run hangs (measured, killed at 600 s).
+Fixing it means seeding vectors in the space the new design expects — read that design first.
+
+**`domain-db-smoke` was never diagnosed.** It is still red and nobody has looked at it.
 
 ## ✅ D-GENERATED-FACT-HAS-NO-HOME — closed 2026-08-01
 

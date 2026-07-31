@@ -97,7 +97,7 @@ async def test_rnode_p1_dataplane_all_workstreams_compose(pool):
     retr = MotifRetriever(pool)
     cands = await retr.retrieve(
         user, book_id=book, project_id=project, genre_tags=[genre],
-        language="en", beat_role="hook", tension=4, limit=6,
+        display_language="en", beat_role="hook", tension=4, limit=6,
     )
     assert cands, "W3 retrieve returned no candidates"
     # the unset platform model => R4 degrade (genre+tension), never a 500.

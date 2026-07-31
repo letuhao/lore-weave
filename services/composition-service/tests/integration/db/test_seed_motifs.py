@@ -165,17 +165,17 @@ async def test_boot_seed_ships_an_edit_when_source_version_rises(pool):
     code = "cultivation.face_slap"
     async with pool.acquire() as c:
         pack_summary = await c.fetchval(
-            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND language='en'",
+            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND original_language='en'",
             code)
         # Stand in for an environment seeded BEFORE the edit: old text, older version.
         await c.execute(
             "UPDATE motif SET summary='OLD TEXT', source_version=0 "
-            "WHERE owner_user_id IS NULL AND code=$1 AND language='en'", code)
+            "WHERE owner_user_id IS NULL AND code=$1 AND original_language='en'", code)
 
         await seed_motif_packs(c)                       # the EXACT boot-path call (reseed=False)
 
         after = await c.fetchval(
-            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND language='en'",
+            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND original_language='en'",
             code)
     assert after == pack_summary, (
         "the boot seed did not apply the pack edit — pack content is undeployable again")
@@ -191,10 +191,10 @@ async def test_boot_seed_leaves_a_row_alone_when_the_version_did_not_rise(pool):
     async with pool.acquire() as c:
         await c.execute(
             "UPDATE motif SET summary='ADMIN EDIT' WHERE owner_user_id IS NULL "
-            "AND code=$1 AND language='en'", code)      # source_version left as the pack's
+            "AND code=$1 AND original_language='en'", code)      # source_version left as the pack's
         await seed_motif_packs(c)
         after = await c.fetchval(
-            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND language='en'",
+            "SELECT summary FROM motif WHERE owner_user_id IS NULL AND code=$1 AND original_language='en'",
             code)
     assert after == "ADMIN EDIT", "boot rewrote a row whose source_version had not risen"
 
@@ -217,7 +217,7 @@ async def test_boot_seed_can_never_touch_a_user_owned_motif(pool):
     async with pool.acquire() as c:
         await c.execute(
             """
-            INSERT INTO motif (id, owner_user_id, code, language, visibility, kind, name,
+            INSERT INTO motif (id, owner_user_id, code, original_language, visibility, kind, name,
                                summary, source, source_version)
             VALUES (gen_random_uuid(), $1, 'cultivation.face_slap', 'en', 'private',
                     'situation', 'My Copy', 'MY OWN WORDS', 'adopted', 0)
@@ -246,13 +246,13 @@ async def test_boot_seed_will_not_clobber_a_row_that_is_no_longer_authored(pool)
     async with pool.acquire() as c:
         await c.execute(
             "UPDATE motif SET summary='RE-PROVENANCED', source='imported', source_version=0 "
-            "WHERE owner_user_id IS NULL AND code=$1 AND language='en'", code)
+            "WHERE owner_user_id IS NULL AND code=$1 AND original_language='en'", code)
 
         await seed_motif_packs(c)                       # boot path, version WOULD allow it
 
         row = await c.fetchrow(
             "SELECT summary, source FROM motif WHERE owner_user_id IS NULL AND code=$1 "
-            "AND language='en'", code)
+            "AND original_language='en'", code)
     assert row["summary"] == "RE-PROVENANCED", (
         "the seeder rewrote a row it no longer owns (source is not 'authored')")
     assert row["source"] == "imported", "the seeder reset a row's provenance"

@@ -177,9 +177,113 @@ AUDIT D-GENERATED-FACT-HAS-NO-HOME
 
 | finding | disposition |
 |---|---|
-| **CI is RED** (measured 2026-08-01 via `gh run list`): `python-integration-tests`, `python-unit-tests`, `domain-db-smoke` all `failure` on this branch | own commit, immediately after this slice |
-| composition's 33 integration failures = ONE root: `language` → `original_language` on the motif model/DDL, with 6 test files never updated. `MotifCreateArgs(language=…)` 422s, `MotifRetriever.retrieve(language=…)` TypeErrors, `column "language" does not exist` | mechanical rename sweep; same commit as the CI fix |
+| **CI is RED** (measured 2026-08-01 via `gh run list`): `python-integration-tests`, `python-unit-tests`, `domain-db-smoke` all `failure` on this branch | → the CI-RED sweep, next |
 | the INLINE generate branch (`COMPOSITION_WORKER_ENABLED=false`) runs no cross-scene check | → S1/S2 (envelope consolidation) |
+
+## ✅ CI-RED sweep — 2026-08-01
+
+Three roots, not one. The first diagnosis ("33 failures, one rename") was **wrong on both counts**
+— it was the shape I could see from one error message, and I wrote it into the handoff before
+reading the other two workflows.
+
+**1 · `app.routes` stopped being flat (fastapi 0.139 / starlette 1.3).** Measured inside the
+shipped image: `{'Route': 4, '_IncludedRouter': 35, 'Mount': 1}` — 202 real paths, 5 visible to
+the old idiom. Six tests across knowledge- and composition-service raised
+`AttributeError: '_IncludedRouter' object has no attribute 'path'`; the contract-parity test
+reported **31 real, served endpoints as "declared but not served"**. Two call sites used
+`getattr(route, "path", "")` and would have gone **quietly empty** instead — a parity assertion
+over an empty set is a test that cannot fail. Fixed with `loreweave_obs.routes`
+(`iter_routes`/`route_paths`/`route_ops`), duck-typed on `include_context` rather than importing
+the private class name, with a depth cap so a malformed graph is a failure and not a hang.
+
+⚠ **My local suite could not have caught this.** The dev box runs fastapi 0.136 where the old
+idiom still works — 3303 green locally while CI was red on the same commit. The SDK test is
+therefore written to pass on BOTH versions and asserts `naive < full` **strictly** on the new
+one; it was executed on fastapi 0.139.2 inside the container (`6 passed, 0 failed`).
+
+**2 · `-e ../../sdks/python` resolved outside the checkout.** pip resolves a relative editable
+against the **CWD**, not the requirements file's directory, and both workflows ran the install
+from the repo root. lore-enrichment's whole install step aborted, so its entire suite never ran
+— a red job whose cause was two directory levels. Fixed by giving the install step a
+`working-directory`.
+
+**3 · `language` → `original_language` (MOTIF-I18N / ARC-I18N).** The identity key changed —
+*one motif = one row*, other languages live in `motif_translation` — and **8** test files still
+asserted the removed behaviour. Both the mechanical part (SQL columns on `motif` +
+`arc_template`, `MotifCreateArgs` kwargs, `retrieve(language=)` → `display_language=`) and the
+SEMANTIC part (two tests asserted "same code + different language = 2 rows", which is exactly
+what the i18n migration deleted) are fixed against the rule as written in `migrate.py` + spec
+`2026-07-29-motif-i18n.md` — **not** against whatever the code currently does.
+
+**…and it turned up a PRODUCTION bug.** `_ARC_RETRIEVE_COLS` in
+`app/db/repositories/motif_retrieve.py` still selected `language` from `arc_template`, so
+`retrieve_arcs` — the arc-suggestion read — **500s on the shipped schema**. Its sibling
+`_RETRIEVE_COLS` (motif) had been renamed; the arc one was missed. It was caught by
+`test_retrieve_arcs_projects_renamed_columns_via_alias`, a guard-by-EFFECT test written for
+exactly this class, whose docstring says the unit test *"mocks the pool with rows already shaped
+… so it CANNOT catch an unaliased column"*. The guard worked; nobody had run it.
+A schema-scoped sweep of `app/` found no other stale reference (the remaining hits are inside
+the i18n migration files themselves, which must name the pre-rename column).
+
+### ⛔ Still failing, root FOUND, deliberately not fixed here
+
+`tests/integration/db/test_motif_retrieve_db.py` — **8 tests**. Not a rename: `retrieve()` was
+re-designed on 2026-07-17 into **two embedding spaces** (a caller's private motifs rank in their
+own BYOK U-space, everything shared in the platform P-space). A row whose vector is in the wrong
+space is *queued and skipped in the cosine path*, so with `motif_embed_model_ref` unset every
+seeded row is skipped and retrieve returns **∅** — which is what all 8 assertions see.
+
+Setting the env is **not** the fix: it turns the config error into a live provider call and the
+run hangs (measured — killed at 600 s). Fixing it properly means seeding vectors in the space the
+new design expects, which needs that design read. Deferred under gate #1 (different track) and
+#2 (needs the design, and writing assertions to match current behaviour is the self-witness
+anti-pattern this repo has paid for five times).
+
+```
+AUDIT CI-RED sweep
+  BUILT      — `loreweave_obs.routes` (a route enumeration that survives fastapi 0.139), both
+               python workflows install from the service directory, 8 motif/arc test files
+               moved onto the post-i18n schema and identity rule, and ONE production SQL fix:
+               `_ARC_RETRIEVE_COLS` was selecting a column the ARC-I18N migration dropped.
+
+  PROVEN     — composition integration on a FRESH throwaway PG:
+                 before  `33 failed, 347 passed, 8 skipped`
+                 after   `8 failed, 378 passed, 8 skipped`
+               composition unit `3303 passed, 58 warnings in 28.30s`.
+               knowledge-service, the 5 edited files: `67 passed in 2.53s`.
+               lore-enrichment `test_api_contract.py`: `7 passed in 1.56s`.
+               SDK `test_routes.py`: `6 passed` on the dev box (fastapi 0.136) AND
+               `fastapi 0.139.2: 6 passed, 0 failed | paths 202 | ops 246` executed INSIDE the
+               shipped image — the version where the old idiom breaks, which is the only run
+               that proves anything. Both workflow YAMLs re-parsed clean with the new
+               `working-directory` on the install step.
+               gates: `ai-provider-gate (full): OK` · `db-safety-gate: PASS (exit 0)` ·
+               `[language-rule] PASS`.
+
+  NOT PROVEN — that CI is now GREEN. I fixed what the last run's log named plus what a fresh-DB
+               run reproduces; the next push is the only thing that can confirm it, and
+               `domain-db-smoke` (also red) was never diagnosed at all — I read two of the three
+               failing workflows. The `-e` fix is reasoned from pip's resolution rule and a
+               YAML re-parse, NOT from a CI run. `route_ops` includes `HEAD`, which is fine for
+               the forward-parity check that consumes it and untested for anything else. And
+               no browser/live smoke ran for the `retrieve_arcs` fix — the integration test
+               issues the real SELECT against the real renamed schema, which is the right proof
+               for a SQL typo, but it is not the same as the endpoint being exercised.
+
+  DRIFT      — I wrote "33 failures, ONE root, a mechanical sweep" into the session handoff
+               after reading ONE traceback. It was three roots; the rename half needed a
+               semantic rewrite because the identity key had changed too; and my file list came
+               from a terminal that had truncated 13 of the 33 rows — the missing rows held two
+               more files and the production bug. I also nearly shipped a `_sub()` fallback
+               that would have emitted every sub-route at the WRONG path (no prefix) the moment
+               FastAPI renamed `include_context` — losing routes is caught downstream,
+               inventing plausible wrong ones is not.
+
+  NEXT       — S1 (GuardStatus unification). Nothing here changes its shape; the one carry-over
+               is that this sweep proves the repo has stale-test rot in tracks the SSOT run
+               does not touch, so a red integration suite is no longer a safe proxy for "my
+               change broke something" — measure the baseline before believing a delta.
+```
 
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
@@ -262,6 +366,9 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-01 | **Built the fix list from a TRUNCATED terminal, then called it complete.** The failure list printed 20 of 33 rows; I swept the 6 files I could see and reported "one root, six files". The other 13 rows held two more files with the same root — and one of them was a PRODUCTION bug (`retrieve_arcs` selecting a dropped column, 500 on the shipped schema). Same shape as the ROT-1 miss: a denominator taken from what I happened to see rather than from the full set. |
 
 
 - **2026-07-31 · caught in review of my own proposal.** My first S1–S5 proposal was scoped to

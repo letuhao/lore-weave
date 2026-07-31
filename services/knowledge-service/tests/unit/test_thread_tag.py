@@ -114,7 +114,8 @@ async def test_classify_noops_without_threads_or_events():
 
 def test_tag_threads_route_is_registered():
     from app.main import app
-    assert "/internal/extraction/tag-threads" in {r.path for r in app.routes}
+    from loreweave_obs.routes import route_paths  # FastAPI 0.139: app.routes is not flat
+    assert "/internal/extraction/tag-threads" in route_paths(app)
 
 
 def test_tag_threads_requires_internal_token():
