@@ -319,12 +319,50 @@ first import pass inserted **inside a parenthesised multi-line import**; the rep
 exactly the inserted line and re-inserted at each statement's AST `end_lineno`, never
 `git checkout` (which would have discarded the signature edits in the same files).
 
+## ✅ LLM-BUDGET M3 — the polyglot contract, and glossary's mis-blamed truncation (2026-07-31)
+
+**`contracts/llm-budget.contract.json`** is the SoT for the cross-language facts: the
+`max_tokens=0` omit sentinel, the truncated `finish_reason`, and the output-kind →
+`truncation_is_fatal` map. The omit rule had **four independent implementations** — Python
+`to_request_body` pops a 0, Go `,omitempty`, Rust `normalize()` coerces `Some(0)→None`,
+provider-registry's adapters honour it — each documented in a comment, **zero checks between
+them**. Drift tests now exist in all three SDKs, each executing the behaviour rather than
+grepping for it (a `,omitempty` deleted is a one-word edit).
+
+**The glossary finding was real but not what the note said.** "glossary has zero
+`FinishReason` checks service-wide" was true, and its 9 `MaxTokens` are all in
+`select_for_context_handler.go` — a **context-packing** budget, the Go twin of the Python one
+the gate deliberately excludes. The actual defect is at its two LLM call sites
+(`runDocExtractor`, `runPlanner`): both set `ReasoningEffort: ReasoningNone` with the comment
+*"don't burn the output budget on hidden thinking"* — and then set **no output budget**, and
+discard `res.FinishReason`, which the Go SDK populates.
+
+**Why that combination is worse than either half.** Both parse JSON, and on a parse failure
+both run ONE repair round re-prompting with *"Your previous output was invalid"*. If the cause
+was truncation that sentence is a lie the model cannot recover from: it is told it produced
+malformed syntax when it produced correct syntax that got **cut off**, so it "fixes" grammar
+it never got wrong, against the same absent budget. The cheapest way to satisfy both is to
+emit a **shorter list** — which parses cleanly, reports success, and silently drops entities.
+`internal/llmbudget` now caps both calls (STRUCTURED, 4096) and names a clip as a clip.
+
+**Two more rot findings surfaced on the way, both in things I built earlier this session:**
+- **973 SDK unit tests ran nowhere.** `python-integration-tests.yml` names `sdks/python/**`
+  as a path *trigger* then runs exactly one file from it. My new Python drift test would have
+  been dead on arrival. Now wired into foundation-ci's `python` job (964 pass, 9 skip).
+- **`enforcement-claims-gate.py` skipped 4 of 12 registered contracts** — its row parser only
+  matched a backticked path, never the markdown-link form, so it silently missed **both
+  LOCKED contracts** (`language-rule.yaml`, `frontend-tools.contract.json`) while printing "8
+  registered" as if that were the set. Fixed, plus glob rows, plus a real false pass: a
+  contract enforced by a gate/drift-test rather than a runtime reader was passing on a **doc
+  comment** that merely names the path — the comment-is-not-linkage bug this gate exists to
+  kill, in the gate. Enforcement cells naming a gate/test are now verified as such (proven
+  red-able by injection).
+
 ### ▶ NEXT
-1. **LLM-budget M3** — **Go/Rust get a contract file + drift test**. glossary-service has
-   *zero* `FinishReason` checks service-wide; `llm_verifier` and tilemap are bare too. Then
-   the 29-row backlog. Billing estimators stay OUT — they over-estimate on purpose.
-   Also open: the gate does not parse the raw `POST /internal/llm/stream` shape (chat,
-   lore-enrichment, video-gen) — named in its PASS line so it cannot pass for coverage.
+1. **LLM-budget backlog** — 29 rows: 12 composition, 10 knowledge, 4 translation, 3 misc.
+   Billing estimators stay OUT — they over-estimate on purpose.
+2. Still unscanned by the gate, and named in its PASS line so it cannot pass for coverage:
+   the raw `POST /internal/llm/stream` shape (chat, lore-enrichment, video-gen).
 2. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
    slice — read it before planning any slice.
 

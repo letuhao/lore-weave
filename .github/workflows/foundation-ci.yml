@@ -262,6 +262,21 @@ jobs:
           done
           exit $fail
 
+      # D-SDK-UNIT-SUITE-UNWIRED (2026-07-31) — 973 tests in sdks/python/tests ran NOWHERE.
+      # `python-integration-tests.yml` names `sdks/python/**` as a path TRIGGER and then runs
+      # exactly one file from it (test_jobs_scheduler.py, on the Redis job); a trigger is not
+      # an execution. Found while wiring the LLM-budget drift lock, whose Python half would
+      # otherwise have been dead on arrival — a drift test that never runs is drift with
+      # extra steps.
+      #
+      # Unit-only: this is the pure-Python SDK suite (no DB, no Redis, no network). The
+      # integration files that DO need infra keep running in python-integration-tests.
+      - name: install the shared Python SDK (with the [test] extra)
+        run: python -m pip install -q "./sdks/python[test]"
+      - name: pytest — shared Python SDK unit suite
+        run: python -m pytest sdks/python/tests -q -p no:cacheprovider
+          --deselect sdks/python/tests/test_jobs_scheduler.py
+
   db-smoke:
     name: DB live-smoke (PgEventStore + publisher integration)
     runs-on: ubuntu-latest

@@ -63,7 +63,43 @@ EXCLUDE_DIRS = {
 UNWIRED = re.compile(r"NOT\s+WIRED", re.IGNORECASE)
 
 #: Table rows naming a contract path in the first cell.
-ROW = re.compile(r"^\|\s*`?([a-z0-9_./-]+\.(?:ya?ml|json))`?\s*\|(.*)\|(.*)\|\s*$", re.IGNORECASE)
+#:
+#: The index writes that cell TWO ways — a backticked path (`contracts/cache/keys.yaml`) and
+#: a markdown link ([contracts/language-rule.yaml](../../contracts/language-rule.yaml)) — and
+#: this pattern only ever matched the first. It therefore skipped four rows, including BOTH
+#: LOCKED contracts (`language-rule.yaml`, `frontend-tools.contract.json`), while reporting
+#: "8 registered contract(s)" as though that were the set. A gate that silently narrows its
+#: own input is the failure it exists to catch, so the link form is matched explicitly rather
+#: than by loosening the path class (which would start swallowing prose).
+ROW = re.compile(
+    r"^\|\s*(?:`(?P<tick>[a-z0-9_./*-]+\.(?:ya?ml|json))`"
+    r"|\[(?P<link>[a-z0-9_./-]+\.(?:ya?ml|json))\]\([^)]*\)"
+    r"|(?P<bare>[a-z0-9_./*-]+\.(?:ya?ml|json)))\s*\|(.*)\|(.*)\|\s*$",
+    re.IGNORECASE,
+)
+
+
+def row_path(m: "re.Match[str]") -> str:
+    return m.group("tick") or m.group("link") or m.group("bare")
+
+
+#: Concrete gate/test files an enforcement cell may name. Only repo-relative paths with a
+#: real extension count — "planned perf-nightly p95 assertion" is prose, not an artifact,
+#: and must not be mistaken for one.
+_ARTIFACT = re.compile(
+    r"(?<![\w/])((?:scripts|tests|sdks|services|frontend|contracts)/[\w./-]+"
+    r"\.(?:py|sh|go|rs|ts|tsx|ya?ml|json))"
+)
+
+
+def enforcement_artifacts(cell: str) -> list[str]:
+    """Gate scripts / drift tests the enforcement cell names, de-duplicated in order."""
+    out: list[str] = []
+    for m in _ARTIFACT.finditer(cell):
+        p = m.group(1)
+        if p not in out:
+            out.append(p)
+    return out
 
 
 def is_test_path(rel: str) -> bool:
@@ -187,7 +223,7 @@ def main() -> int:
         m = ROW.match(line.strip())
         if not m:
             continue
-        path, _purpose, enforcement = m.group(1), m.group(2), m.group(3)
+        path, _purpose, enforcement = row_path(m), m.group(4), m.group(5)
         rows.append((path, enforcement))
 
     if not rows:
@@ -201,12 +237,52 @@ def main() -> int:
     declared_unwired: list[str] = []
 
     for path, enforcement in rows:
+        # A row may register a FAMILY (`contracts/admin/registry/*.yaml`) rather than one
+        # file. Resolve the glob and require ≥1 match: a registered family that matches
+        # nothing is exactly as empty as a missing file, and reporting it as "does not exist"
+        # would be true but unactionable.
+        if "*" in path:
+            import glob as _glob
+            hits = _glob.glob(os.path.join(REPO_ROOT, path.replace("/", os.sep)))
+            if not hits:
+                missing.append(f"{path} (glob matched no files)")
+                continue
+            if UNWIRED.search(enforcement):
+                declared_unwired.append(path)
+                continue
+            # A family is read if ANY member is.
+            rel_hits = [os.path.relpath(h, REPO_ROOT).replace(os.sep, "/") for h in hits]
+            if not any(
+                any(is_reachable(r, sources) for r in readers_of(h, sources))
+                for h in rel_hits
+            ):
+                unread.append((path, f"none of its {len(rel_hits)} file(s) has a live reader"))
+            continue
         full = os.path.join(REPO_ROOT, path.replace("/", os.sep))
         if not os.path.isfile(full):
             missing.append(path)
             continue
         if UNWIRED.search(enforcement):
             declared_unwired.append(path)
+            continue
+        # A contract can be enforced by a GATE or a DRIFT TEST rather than by a runtime
+        # reader, and for some that is the stronger form — `language-rule.yaml` is enforced
+        # by `scripts/language-rule-lint.sh`, and `llm-budget.contract.json` by three
+        # per-language drift tests; neither is loaded at runtime by design.
+        #
+        # Both were passing this gate for the WRONG reason: the reader search is a text
+        # match, so `language-rule.yaml` "passed" on a perf harness that happens to name it,
+        # and `llm-budget.contract.json` on a DOC COMMENT in llmbudget.go. That is the same
+        # comment-is-not-linkage false pass this gate was written to kill, reappearing in the
+        # gate itself. So an enforcement cell that names a gate/test is verified AS one: the
+        # named file must exist.
+        named = enforcement_artifacts(enforcement)
+        if named:
+            absent = [n for n in named
+                      if not os.path.isfile(os.path.join(REPO_ROOT, n.replace("/", os.sep)))]
+            if absent:
+                unread.append((path, "its enforcement cell names "
+                                     f"{', '.join(absent)}, which does not exist"))
             continue
         readers = readers_of(path, sources)
         live = [r for r in readers if is_reachable(r, sources)]
@@ -223,7 +299,8 @@ def main() -> int:
             print(f"    · {p}")
 
     if not missing and not unread:
-        print("OK — every claimed-enforced contract has a non-test reader")
+        print("OK — every claimed-enforced contract is backed by a live non-test reader, or by "
+              "a gate/drift-test its enforcement cell names and that exists")
         return 0
 
     print()

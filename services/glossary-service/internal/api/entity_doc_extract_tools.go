@@ -28,6 +28,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
 
+	"github.com/loreweave/glossary-service/internal/llmbudget"
+
 	llm "github.com/loreweave/loreweave_llm"
 	lwmcp "github.com/loreweave/loreweave_mcp"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -223,6 +225,11 @@ func (s *Server) runDocExtractor(ctx context.Context, client *llm.Client, userID
 		Messages:        []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: user}},
 		Temperature:     0,
 		ReasoningEffort: llm.ReasoningNone, // don't burn the output budget on hidden thinking
+		// ...and then declare the output budget that comment is protecting. This request had
+		// none: MaxTokens was left 0, which is the platform's "omit — let the model decide"
+		// sentinel. That is right for a translation, whose length is set by its source; it is
+		// wrong here, because this call parses JSON and a clipped object is UNPARSEABLE.
+		MaxTokens: llmbudget.MaxTokensFor("doc_extract"),
 	}
 	cctx, cancel := context.WithTimeout(ctx, docExtractTimeout)
 	defer cancel()
@@ -230,12 +237,23 @@ func (s *Server) runDocExtractor(ctx context.Context, client *llm.Client, userID
 	if err != nil {
 		return extractEntitiesFromDocOut{}, fmt.Errorf("extraction model error: %w", err)
 	}
+	// A clip must be named as a clip, and must NOT reach the repair round below. That round
+	// re-prompts with "Your previous output was invalid" — a lie when the output was cut off
+	// rather than malformed, and one the model cannot recover from: it is told to fix syntax
+	// it never got wrong, against the same limit. The likeliest way to satisfy both is to
+	// emit a SHORTER list, which parses cleanly and silently drops entities.
+	if llmbudget.Truncated(res.FinishReason) {
+		return extractEntitiesFromDocOut{}, llmbudget.TruncationError("doc_extract", res.Usage.OutputTokens)
+	}
 	out, perr := parseDocExtraction(res.Text, validKinds, attrCodesByKind, maxCandidates)
 	if perr == nil {
 		return out, nil
 	}
 	// One repair round: show the model its prior output + the precise parse error.
+	// `repair := req` inherits the budget, which is what we want — the repair re-emits the
+	// SAME object, so a smaller allowance would guarantee the clip we just ruled out.
 	repair := req
+	repair.MaxTokens = llmbudget.MaxTokensFor("doc_extract_repair")
 	repair.Messages = []llm.Message{
 		{Role: "system", Content: sys},
 		{Role: "user", Content: user},

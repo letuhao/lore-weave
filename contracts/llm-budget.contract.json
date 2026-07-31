@@ -1,0 +1,51 @@
+{
+  "$comment": [
+    "D-LLM-BUDGET-SSOT — the cross-language facts about an LLM call's OUTPUT budget.",
+    "",
+    "Three SDKs already implement the same omit rule, each documented only in prose:",
+    "  Python  sdks/python/loreweave_llm/models.py  — `if data.get('max_tokens') == 0: data.pop(...)`",
+    "  Go      sdks/go/loreweave_llm/models.go      — `MaxTokens int `json:\"max_tokens,omitempty\"``",
+    "  Rust    sdks/rust/loreweave_llm/src/models.rs — `normalize(): Some(0) -> None`",
+    "and provider-registry's adapters honour it on the wire (`max_tokens=0 means omit`).",
+    "Four implementations of one rule, zero machine checks. This file is the SoT and each",
+    "language has a drift test that reads it — the repo's rule + SoT + gate + test shape.",
+    "",
+    "It is NOT a config file: nothing reads it at runtime. It exists so a future edit to any",
+    "one language reds that language's test instead of drifting quietly."
+  ],
+
+  "omit_sentinel": {
+    "value": 0,
+    "meaning": "no cap — the model's natural stop is the bound; drop the field from the wire",
+    "rationale": "Sending max_tokens=0 to most providers caps output at 0 tokens, which is never intended. Anthropic instead REJECTS a missing cap with a 400, so provider-registry substitutes 8192 for it — the one provider where 'unbounded' is not actually unbounded.",
+    "anthropic_substitute": 8192
+  },
+
+  "truncated_finish_reason": "length",
+
+  "$comment_kinds": [
+    "An output kind determines the SIZING MODEL and, more importantly, whether truncation",
+    "DESTROYS the result or merely shortens it. A caller branches on `truncation_is_fatal`;",
+    "one flat integer could never express the difference between a clipped reason string and",
+    "an unparseable JSON array."
+  ],
+  "output_kinds": {
+    "prose":      { "truncation_is_fatal": false, "note": "stops mid-sentence; paid for, recoverable" },
+    "structured": { "truncation_is_fatal": true,  "note": "a grammar cannot stop early in a valid place — a clipped object is unrecoverable, not short" },
+    "verdict":    { "truncation_is_fatal": false, "note": "a clipped reason string" },
+    "edit":       { "truncation_is_fatal": false, "note": "the edit is lost, but the source is intact" },
+    "mirror":     { "truncation_is_fatal": false, "note": "length is dictated by the input (translation, transcription); the natural stop IS the intended end" }
+  },
+
+  "$comment_rule": [
+    "A call whose kind is truncation-fatal MUST inspect finish_reason. Otherwise a clipped",
+    "response is indistinguishable from a complete one — and worse, a repair round that",
+    "re-prompts with 'your previous output was invalid' misattributes a CAPACITY failure as a",
+    "SYNTAX one. The model then 'fixes' grammar it never got wrong, and the likeliest way for",
+    "it to satisfy both the error and the same absent budget is to emit a SHORTER list.",
+    "That parses cleanly and silently drops rows. glossary-service shipped exactly this at",
+    "runDocExtractor and runPlanner: no cap, no finish_reason check, and a repair round",
+    "blaming the model."
+  ],
+  "fatal_kinds_must_check_finish_reason": true
+}

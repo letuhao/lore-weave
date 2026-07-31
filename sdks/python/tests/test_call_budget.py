@@ -203,3 +203,50 @@ def test_floor_is_ignored_for_mirror_because_zero_means_unbounded():
     """The numeric `0 < floor` comparison is the trap: MIRROR's 0 is the omit sentinel, which
     already exceeds any minimum. Pinned so a future edit does not "fix" it into a cap."""
     assert call_budget(OutputKind.MIRROR, floor=8000).max_output_tokens == 0
+
+
+# ── polyglot contract drift (contracts/llm-budget.contract.json) ──────────────────────────
+
+def _contract() -> dict:
+    import json
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[3] / "contracts" / "llm-budget.contract.json"
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def test_the_kind_vocabulary_matches_the_contract():
+    """Four implementations of the omit rule (Python/Go/Rust SDK + provider-registry) existed
+    with zero machine checks between them. This is Python's half of the drift lock."""
+    declared = set(_contract()["output_kinds"])
+    assert {k.value for k in OutputKind} == declared
+
+
+def test_truncation_fatality_matches_the_contract():
+    """`truncation_is_fatal` is what a caller BRANCHES on, so a silent flip here changes
+    whether a clipped response is treated as an error or as a short answer."""
+    kinds = _contract()["output_kinds"]
+    for kind in OutputKind:
+        assert call_budget(kind).truncation_is_fatal is kinds[kind.value]["truncation_is_fatal"], kind
+
+
+def test_the_omit_sentinel_matches_the_contract():
+    sentinel = _contract()["omit_sentinel"]["value"]
+    assert call_budget(OutputKind.MIRROR).max_output_tokens == sentinel
+
+
+def test_the_python_sdk_really_drops_the_sentinel_from_the_wire():
+    """The contract's claim, EXECUTED rather than read. Grepping the source for the drop
+    would pass on a commented-out line; this builds a real request and inspects the body."""
+    from uuid import uuid4
+
+    from loreweave_llm.models import StreamRequest
+
+    sentinel = _contract()["omit_sentinel"]["value"]
+    req = StreamRequest(model_source="user_model", model_ref=uuid4(), messages=[],
+                        max_tokens=sentinel)
+    assert "max_tokens" not in req.to_request_body(), \
+        f"the sentinel {sentinel} reached the wire — most providers read it as 'cap at 0 tokens'"
+
+    kept = StreamRequest(model_source="user_model", model_ref=uuid4(), messages=[],
+                         max_tokens=1200)
+    assert kept.to_request_body()["max_tokens"] == 1200, "a real budget must survive"
