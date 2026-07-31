@@ -37,10 +37,36 @@ machine is in the code, the model never decides the step.
 
 What it can and cannot link — and why it SAYS so
 -------------------------------------------------
-Linking is the hard part. A second narrow prompt was tried ("which row in A is the same person
-as which row in B?") and it matched `Elara↔Elara` but NOT `the anchor↔the Scribe` — the
-coreference that would have caught the measured bug. So that leap is not recoverable with this
-model, and pretending otherwise would rebuild the theatre one layer up.
+Linking is the hard part, and the reason is worse than "the model is weak".
+
+Three attempts, in order. (1) Two stripped JSON lists, "which row in A is the same person as
+which row in B?" — matched `Elara↔Elara`, missed `the anchor↔the Scribe`. (2) The same question
+with the PASSAGES instead of lists, which is a reading question rather than a matching one —
+and it worked: `{"present_in_b": true, "referred_to_in_b_as": "The Scribe", "pronoun_in_a":
+"he", "pronoun_in_b": "she"}`. Exactly right. (3) The same probe re-run with the controls
+attached — and the seeded case flipped to `{"present_in_b": false}`. Not reproducible.
+
+Run against all three variants the pattern is clear and it is structural:
+
+    B says "he"  (consistent) → present_in_b TRUE,  pronoun he     ✓
+    B says "she" (the defect) → present_in_b FALSE                 ✗
+    B omits them (absent)     → present_in_b FALSE                 ✓
+
+**The model resolves coreference BY gender agreement.** A disagreeing pronoun does not read to
+it as "this person changed", it reads as "this is a different person" — so the one signal that
+would expose the defect is the same signal it uses to rule the link out. No prompt fixes that;
+the question is self-defeating for the case it exists to catch.
+
+Therefore this check does not chase coreference at all. It compares people linked by NAME,
+which is deterministic, and reports `unlinked_earlier`/`unlinked_later` so a caller can tell
+"no contradiction found" from "the people who might contradict could not be matched". The
+measured anchor→Scribe case lands in the second bucket and says so.
+
+The route that would close it is not a better judge — it is removing the need to infer
+identity: have a scene WRITE BACK who was in it (`exit_state`, today authored-only and never
+updated from what was generated), so the next scene compares by a stable key instead of by
+inference. That is D-GENERATED-FACT-HAS-NO-HOME, and it is the same gap that let scene 2 invent
+a gender no spec contained.
 
 Therefore: compare only people linked by NAME, which is deterministic; and report
 `unlinked_earlier`/`unlinked_later` so a caller can tell "no contradiction found" from "the
