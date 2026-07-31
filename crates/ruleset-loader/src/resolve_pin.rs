@@ -8,6 +8,7 @@
 use ruleset_core::{validate_progression, Floor, ProgressionTable, Ruleset};
 
 use crate::patch_progression::{ProgressionKindPatch, ProgressionPatchError};
+use crate::labels::{LabelStore, ProgressionLabels};
 use crate::progression_store::ProgressionStore;
 use crate::{resolve, Layer, LayerSource, LoadError};
 
@@ -35,6 +36,7 @@ use crate::{resolve, Layer, LayerSource, LoadError};
 pub fn resolve_and_pin(
     layers: &[LayerSource],
     store: &ProgressionStore,
+    labels: &LabelStore,
 ) -> Result<Ruleset, LoadError> {
     let mut ordered: Vec<&LayerSource> = layers.iter().collect();
     ordered.sort_by_key(|l| l.layer.priority());
@@ -95,6 +97,32 @@ pub fn resolve_and_pin(
     // CPL-A2 / PGN-A7 — admitted by the ENGINE'S validator before it is stored,
     // so a table that could never load never gets a content address.
     validate_progression(&table, &out.quantities).map_err(LoadError::ProgressionInvalid)?;
-    out.progression = Some(store.put(&table).map_err(LoadError::ProgressionStore)?);
+    let digest = store.put(&table).map_err(LoadError::ProgressionStore)?;
+
+    // PGN-A18 — the names the author wrote, routed OUT of the hashed bytes and
+    // into the sidecar. This is where the split actually happens: one TOML row
+    // becomes a mechanical declaration that is hashed and a name that is not, so
+    // correcting a translation later moves no digest and strands no world.
+    let label_rows = kinds
+        .iter()
+        .filter_map(|(name, _, row)| {
+            let q = out.quantities.ordinal_of(name)?;
+            Some((
+                q,
+                row.name.clone(),
+                row.description.clone(),
+                row.tiers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| (i as u8, t.name.clone()))
+                    .collect(),
+            ))
+        })
+        .collect();
+    let built = ProgressionLabels::from_rows(label_rows);
+    built.covers(&table).map_err(LoadError::Labels)?;
+    labels.put(&digest, &built).map_err(LoadError::Labels)?;
+
+    out.progression = Some(digest);
     Ok(out)
 }

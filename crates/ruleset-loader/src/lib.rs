@@ -32,6 +32,7 @@ mod binding;
 mod epoch;
 mod layer;
 mod patch;
+mod labels;
 mod patch_progression;
 mod resolve_pin;
 mod patch_resource;
@@ -43,6 +44,7 @@ pub use binding::{binding_store, BindingError, BindingStore, FileBindingStore, R
 pub use epoch::{activate_reality_epoch, prior_quantity_tables, EpochSwitchError};
 pub use layer::Layer;
 pub use patch::{CombatPatch, PatchError, RulesetPatch, StatPatch};
+pub use labels::{Label, LabelError, LabelStore, ProgressionLabels};
 pub use patch_progression::{ProgressionKindPatch, ProgressionPatchError, TierPatch};
 pub use resolve_pin::resolve_and_pin;
 pub use patch_resource::ResourcePatch;
@@ -230,6 +232,12 @@ pub enum RealityError {
     /// so is the whole point — the alternative is a world that boots with every
     /// progression system silently missing.
     Progression(ProgressionStoreError),
+    /// The progression table resolves and its NAMES do not (`PGN-A18`).
+    ///
+    /// A separate variant because the diagnosis and the fix differ: the rules
+    /// and the ladder are both intact, and the content that makes the ladder
+    /// legible to a player is missing. Fixing it moves no digest.
+    Labels(LabelError),
 }
 
 impl core::fmt::Display for RealityError {
@@ -239,6 +247,7 @@ impl core::fmt::Display for RealityError {
             Self::Binding(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "{e}"),
             Self::Progression(e) => write!(f, "{e}"),
+            Self::Labels(e) => write!(f, "{e}"),
             Self::RulesetMissing { reality_id, digest } => write!(
                 f,
                 "reality {reality_id} is UNLOADABLE: it is bound to ruleset {digest}, \
@@ -360,8 +369,17 @@ pub(crate) fn admit_progression(
     store: &RulesetStore,
 ) -> Result<(), RealityError> {
     let progression = ProgressionStore::beside(store);
-    resolve_progression(ruleset, &progression)
+    let Some(table) = resolve_progression(ruleset, &progression).map_err(RealityError::Progression)?
+    else {
+        return Ok(()); // declares no progression; there is nothing to name
+    };
+    // PGN-A18 / T10. Doc 39 shipped this as NOT ENFORCED and it stayed that way
+    // through three slices: a reality could load a 24-tier ladder with no names
+    // and show a player `tier_9`. Labels are NOT hashed, so this refusal costs
+    // no digest and a fix disturbs no running world.
+    LabelStore::beside(store)
+        .admit(&ruleset.progression.expect("a resolved table implies a pin"), &table)
         .map(|_| ())
-        .map_err(RealityError::Progression)
+        .map_err(RealityError::Labels)
 }
 

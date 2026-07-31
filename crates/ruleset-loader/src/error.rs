@@ -74,6 +74,8 @@ pub enum LoadError {
     ProgressionInvalid(Vec<ProgressionInvalid>),
     /// The progression table could not be stored or resolved.
     ProgressionStore(ProgressionStoreError),
+    /// A progression kind or tier has no name (`PGN-A18`).
+    Labels(crate::labels::LabelError),
 }
 
 impl core::fmt::Display for LoadError {
@@ -133,6 +135,7 @@ impl core::fmt::Display for LoadError {
                 Ok(())
             }
             Self::ProgressionStore(e) => write!(f, "{e}"),
+            Self::Labels(e) => write!(f, "{e}"),
         }
     }
 }

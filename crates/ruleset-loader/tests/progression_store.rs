@@ -284,11 +284,12 @@ fn an_epoch_switch_onto_a_dangling_progression_pin_is_refused() {
 
     let layer = parse_layer(
         Layer::Reality,
-        "quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\n\
-         curve = \"linear\"\ncap = \"unbounded\"\n",
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nname = \"內功\"\nquantity = \"qi\"\n\
+         type = \"skill\"\ncurve = \"linear\"\ncap = \"unbounded\"\n",
     )
     .unwrap();
-    let pinned = resolve_and_pin(&[layer], &prog).unwrap();
+    let labels = ruleset_loader::LabelStore::new(root.join("rules"));
+    let pinned = resolve_and_pin(&[layer], &prog, &labels).unwrap();
     let d1 = rules.put(&pinned).unwrap();
 
     // The ladder is deleted. The RULESET bytes are untouched and still verify.
@@ -327,11 +328,12 @@ fn loading_a_reality_with_a_dangling_progression_pin_is_refused() {
 
     let layer = parse_layer(
         Layer::Reality,
-        "quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\n\
-         curve = \"linear\"\ncap = \"unbounded\"\n",
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nname = \"內功\"\nquantity = \"qi\"\n\
+         type = \"skill\"\ncurve = \"linear\"\ncap = \"unbounded\"\n",
     )
     .unwrap();
-    let pinned = resolve_and_pin(&[layer], &prog).unwrap();
+    let labels = ruleset_loader::LabelStore::new(root.join("rules"));
+    let pinned = resolve_and_pin(&[layer], &prog, &labels).unwrap();
     let d = rules.put(&pinned).unwrap();
     bindings.create("r2", &d).unwrap();
 

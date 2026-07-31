@@ -337,6 +337,39 @@ emoji surrogate. `git checkout HEAD --` restored it because the previous entry w
 same discipline `RulesetStore::put` already uses for exactly this reason: *"a reader must never
 observe a half-written ruleset."*
 
+**`PGN-A18` BUILT — `T10` was NOT ENFORCED and now is.** A reality could load a 24-tier ladder with
+no names and show a player `tier_9`. `crates/ruleset-loader/src/labels.rs` + 4 tests.
+
+**Labels live in the LOADER, not `ruleset-core`, and that placement IS the axiom.** `ruleset-core` is
+the rules; a tier's name changes nothing about what happens to an actor, so the crate that defines the
+hashed bytes never sees one. If labels lived next to `ProgressionKindDecl`, someone would eventually
+hash them — and then **fixing a Vietnamese translation would move every affected reality's digest and
+strand a running world.**
+
+**A SIDECAR, not a content-addressed artifact, and the asymmetry is deliberate.** The table is
+immutable and its name is its hash; `put` never overwrites. Labels are filed under *the digest of the
+table they name* — `<digest>.labels.toml` — and writing them **overwrites**. Recorded in the module
+doc because a reader who assumes *store = content-addressed* would read that `put` as a bug. The
+headline test is `correcting_a_translation_moves_no_digest`.
+
+**The authoring form gained `name` (required) on kinds and tiers, and the loader ROUTES it out of the
+hashed bytes.** One TOML row becomes a mechanical declaration that is hashed and a name that is not —
+which is where the `[[progression_kinds]]` / `progression` naming split finally does visible work.
+Required rather than optional because an optional field is one every author forgets exactly once.
+
+**BITE-TESTS (NV-6), both restored:** dropping the label admission reds
+`a_reality_whose_labels_are_missing_does_not_load`; letting `covers()` accept whitespace reds
+`an_empty_name_is_refused_more_loudly_than_a_missing_one`. An empty name is refused *more* loudly than
+a missing one, because every coverage check reads it as present.
+
+**One ceiling paid with a split:** `progression_authoring.rs` 432 → `progression_labels.rs`. The seam
+is the artifact — one file tests what becomes the HASHED table, the other what deliberately does not.
+
+**A REAL TEST BUG FOUND WHILE DOING IT:** the `reality()` helper keyed its temp directory on
+`toml.len()`, so two fixtures of equal length shared a store and raced under parallel test execution.
+Keyed on a content sum now. It had not bitten yet; it would have, intermittently, and been blamed on
+anything else.
+
 **▶ NEXT:** `PGN-R2` is complete and the hole found evaluating it is closed. The POC-1 chain now runs
 TOML → table → validator → store → pin → ruleset digest → epoch switch, **with every admission point
 verifying the pin resolves.** What remains for POC-1 is the **pipeline** half (doc 39's S0–S5 in

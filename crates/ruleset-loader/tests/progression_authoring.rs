@@ -5,25 +5,29 @@
 //! way an author would write them, ending as a digest on a `Ruleset`.
 
 use ruleset_core::{BodyOrSoul, CapRule, CurveKind, ProgressionType};
-use ruleset_loader::{parse_layer, resolve, resolve_and_pin, Layer, LoadError, ProgressionStore};
+use ruleset_loader::{
+    parse_layer, resolve, resolve_and_pin, LabelStore, Layer, LoadError, ProgressionStore,
+};
 
-fn store(name: &str) -> ProgressionStore {
+fn store(name: &str) -> (ProgressionStore, LabelStore) {
     let d = std::env::temp_dir().join(format!("lw-prog-auth-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    ProgressionStore::new(d)
+    (ProgressionStore::new(&d), LabelStore::new(&d))
 }
 
-fn reality(toml: &str) -> Result<(ruleset_core::Ruleset, ProgressionStore), LoadError> {
-    let s = store(&format!("{:x}", toml.len()));
+fn reality(
+    toml: &str,
+) -> Result<(ruleset_core::Ruleset, ProgressionStore, LabelStore), LoadError> {
+    let (s, l) = store(&format!("{:x}", toml.bytes().map(u64::from).sum::<u64>()));
     let layer = parse_layer(Layer::Reality, toml)?;
-    let r = resolve_and_pin(&[layer], &s)?;
-    Ok((r, s))
+    let r = resolve_and_pin(&[layer], &s, &l)?;
+    Ok((r, s, l))
 }
 
 fn err(toml: &str) -> LoadError {
-    let s = store("err");
+    let (s, l) = store("err");
     let layer = parse_layer(Layer::Reality, toml).expect("parses");
-    resolve_and_pin(&[layer], &s).expect_err("must refuse")
+    resolve_and_pin(&[layer], &s, &l).expect_err("must refuse")
 }
 
 // ── the headline ────────────────────────────────────────────────────────────
@@ -34,23 +38,27 @@ fn err(toml: &str) -> LoadError {
 /// in the store.
 #[test]
 fn the_wuxia_book_three_systems_survive_toml_to_pin() {
-    let (r, s) = reality(
+    let (r, s, _l) = reality(
         r#"
         quantities = ["internal_energy", "swordsmanship", "comprehension"]
 
         [[progression_kinds]]
+        name = "內功"
         quantity = "internal_energy"
         type = "stage"
         curve = "stage"
         cap = "tier_based"
         initial_tier = 0
         [[progression_kinds.tiers]]
+        name = "練氣一層"
         tier_max = 100
         [[progression_kinds.tiers]]
+        name = "練氣二層"
         tier_max = 300
         breakthrough = "author_only"
 
         [[progression_kinds]]
+        name = "悟性"
         quantity = "comprehension"
         type = "attribute"
         body_or_soul = "soul"
@@ -61,6 +69,7 @@ fn the_wuxia_book_three_systems_survive_toml_to_pin() {
         initial_value = 10
 
         [[progression_kinds]]
+        name = "劍術"
         quantity = "swordsmanship"
         type = "skill"
         curve = "log"
@@ -106,6 +115,7 @@ fn resolve_without_a_store_refuses_rather_than_dropping_the_rows() {
         r#"
         quantities = ["qi"]
         [[progression_kinds]]
+        name = "氣"
         quantity = "qi"
         type = "attribute"
         curve = "linear"
@@ -123,7 +133,9 @@ fn resolve_without_a_store_refuses_rather_than_dropping_the_rows() {
 // ── closed sets, every one refused BY NAME ──────────────────────────────────
 
 fn base(extra: &str) -> String {
-    format!("quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\n{extra}\n")
+    format!(
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nname = \"氣\"\nquantity = \"qi\"\n{extra}\n"
+    )
 }
 
 #[test]
@@ -179,7 +191,7 @@ fn a_cap_value_on_a_rule_that_cannot_use_one_is_refused_not_ignored() {
 fn at_max_plus_is_refused_with_the_reason_it_does_not_exist() {
     let e = err(&base(
         "type = \"stage\"\ncurve = \"stage\"\ncap = \"tier_based\"\ninitial_tier = 0\n\
-         [[progression_kinds.tiers]]\ntier_max = 10\nbreakthrough = \"at_max_plus\"",
+         [[progression_kinds.tiers]]\nname = \"一層\"\ntier_max = 10\nbreakthrough = \"at_max_plus\"",
     ));
     let msg = format!("{e}");
     assert!(msg.contains("cross-element reference"), "{msg}");
@@ -199,7 +211,10 @@ fn a_non_finite_rate_is_refused() {
 
 #[test]
 fn a_kind_for_an_undeclared_quantity_is_refused() {
-    let e = err("quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"mana\"\ntype = \"skill\"\ncurve = \"linear\"\ncap = \"unbounded\"\n");
+    let e = err(
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nname = \"法力\"\nquantity = \"mana\"\n\
+         type = \"skill\"\ncurve = \"linear\"\ncap = \"unbounded\"\n",
+    );
     assert!(format!("{e}").contains("does not declare"), "{e}");
 }
 
@@ -215,16 +230,16 @@ fn deriving_from_an_undeclared_quantity_is_refused_not_dropped() {
 /// so a table that could never load never gets a content address.
 #[test]
 fn an_inadmissible_table_never_reaches_the_store() {
-    let s = store("novalidate");
+    let (s, l) = store("novalidate");
     let layer = parse_layer(
         Layer::Reality,
         // Stage curve with an absolute cap — PROG_001 §5.5 forbids the pair.
-        "quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\ntype = \"stage\"\n\
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nname = \"氣\"\nquantity = \"qi\"\ntype = \"stage\"\n\
          curve = \"stage\"\ncap = \"hard_cap\"\ncap_value = 10\ninitial_tier = 0\n\
-         [[progression_kinds.tiers]]\ntier_max = 10\n",
+         [[progression_kinds.tiers]]\nname = \"一層\"\ntier_max = 10\n",
     )
     .expect("parses");
-    let e = resolve_and_pin(&[layer], &s).expect_err("the matrix must refuse this");
+    let e = resolve_and_pin(&[layer], &s, &l).expect_err("the matrix must refuse this");
     assert!(matches!(e, LoadError::ProgressionInvalid(_)), "{e}");
     assert!(format!("{e}").contains("cap_curve_invalid"), "{e}");
     // The store must be EMPTY. The first draft of this assertion checked that
@@ -246,14 +261,14 @@ fn an_inadmissible_table_never_reaches_the_store() {
 /// never remove it.
 #[test]
 fn a_kind_below_the_preset_floor_is_refused() {
-    let s = store("floor");
+    let (s, l) = store("floor");
     let layer = parse_layer(
         Layer::EngineDefault,
-        "quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\n\
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nname = \"氣\"\nquantity = \"qi\"\ntype = \"skill\"\n\
          curve = \"linear\"\ncap = \"unbounded\"\n",
     )
     .expect("parses");
-    let e = resolve_and_pin(&[layer], &s).expect_err("engine_default may not declare content");
+    let e = resolve_and_pin(&[layer], &s, &l).expect_err("engine_default may not declare content");
     assert!(matches!(e, LoadError::BelowFloor { field: "progression_kinds", .. }), "{e}");
 }
 
@@ -263,24 +278,24 @@ fn a_kind_below_the_preset_floor_is_refused() {
 /// for the same quantity REPLACES the lower one's.
 #[test]
 fn a_higher_layer_replaces_a_lower_layers_row_and_one_table_is_stored() {
-    let s = store("fold");
+    let (s, l) = store("fold");
     let preset = parse_layer(
         Layer::Preset,
         "quantities = [\"qi\", \"sword\"]\n\
-         [[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\ncurve = \"linear\"\n\
+         [[progression_kinds]]\nname = \"氣\"\nquantity = \"qi\"\ntype = \"skill\"\ncurve = \"linear\"\n\
          cap = \"soft_cap\"\ncap_value = 10\n",
     )
     .unwrap();
     let world = parse_layer(
         Layer::Reality,
-        "[[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\ncurve = \"linear\"\n\
+        "[[progression_kinds]]\nname = \"氣\"\nquantity = \"qi\"\ntype = \"skill\"\ncurve = \"linear\"\n\
          cap = \"soft_cap\"\ncap_value = 999\n\
-         [[progression_kinds]]\nquantity = \"sword\"\ntype = \"skill\"\ncurve = \"linear\"\n\
+         [[progression_kinds]]\nname = \"氣\"\nquantity = \"sword\"\ntype = \"skill\"\ncurve = \"linear\"\n\
          cap = \"unbounded\"\n",
     )
     .unwrap();
 
-    let r = resolve_and_pin(&[world, preset], &s).expect("folds");
+    let r = resolve_and_pin(&[world, preset], &s, &l).expect("folds");
     let t = s.get(&r.progression.unwrap()).unwrap().unwrap();
     assert_eq!(t.len(), 2, "two kinds, not three - the qi rows folded into one");
     let qi = t.for_quantity(r.quantities.ordinal_of("qi").unwrap()).unwrap();
@@ -293,9 +308,9 @@ fn a_higher_layer_replaces_a_lower_layers_row_and_one_table_is_stored() {
 
 #[test]
 fn declaring_no_progression_leaves_the_pin_none() {
-    let s = store("nokinds");
+    let (s, l) = store("nokinds");
     let layer = parse_layer(Layer::Reality, "quantities = [\"qi\"]\n").unwrap();
-    let r = resolve_and_pin(&[layer], &s).unwrap();
+    let r = resolve_and_pin(&[layer], &s, &l).unwrap();
     assert_eq!(r.progression, None, "`None` is the spelling, never an empty table's digest");
 }
 

@@ -50,6 +50,13 @@ impl std::error::Error for ProgressionPatchError {}
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TierPatch {
+    /// The tier's display name — 練氣一層, "Foundation Building".
+    ///
+    /// **Required, and it never reaches the hashed bytes** (`PGN-A18`). The
+    /// loader routes it to the label sidecar. Required rather than optional
+    /// because a nameless tier renders as `tier_9` to a player, and an optional
+    /// field is one every author forgets exactly once.
+    pub name: String,
     pub tier_max: u64,
     /// `linear` | `log`.
     #[serde(default = "default_curve_name")]
@@ -81,6 +88,12 @@ fn default_breakthrough() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgressionKindPatch {
+    /// The kind's display name — 內功, "Internal Energy". Routed to the label
+    /// sidecar, never hashed (`PGN-A18`).
+    pub name: String,
+    /// Optional prose. Also a label, also unhashed.
+    #[serde(default)]
+    pub description: Option<String>,
     /// The declared quantity this kind IS, by NAME. Must appear in
     /// `quantities` — in this layer or a lower one, since the fold is a union.
     pub quantity: String,
