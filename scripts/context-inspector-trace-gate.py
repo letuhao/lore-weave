@@ -12,6 +12,17 @@ Run (stack up, env like the sweep driver):
     JWT_SECRET=… python scripts/context-inspector-trace-gate.py
 Env: SW_BASE (default http://localhost:8090), SW_USER, SW_MODEL_REF, SW_PROJECT_ID (bind a book
 to exercise the T5 gate + grounding). Mirrors scripts/eval/run_budget_sweep.py exactly.
+
+    python scripts/context-inspector-trace-gate.py --selfcheck
+
+`--selfcheck` is the half that runs WITHOUT a stack, and it is what CI runs. It proves the gate
+itself still works — imports resolve, the contract parses and declares both field lists, the
+turn set is non-empty — because a live gate nobody can execute rots exactly like an unwired
+lint, and rots invisibly: the failure looks like "no stack today", every day.
+
+Exit codes are distinct on purpose: 0 pass · 1 the gate FAILED (a real defect) · 2 the gate
+could not RUN (missing JWT_SECRET, no stack). Conflating 2 into 1 makes a red build ambiguous;
+conflating it into 0 is the skip-reads-as-pass bug this repo has now shipped twice.
 """
 from __future__ import annotations
 
@@ -24,20 +35,46 @@ from pathlib import Path
 import httpx
 import jwt
 
+CANNOT_RUN = 2
+
 BASE = os.environ.get("SW_BASE", "http://localhost:8090")
-SECRET = os.environ["JWT_SECRET"]
+# NOT os.environ["JWT_SECRET"] — that raised KeyError at IMPORT time, so the script could not
+# reach its own --help, and any caller without the secret got a traceback instead of a reason.
+SECRET = os.environ.get("JWT_SECRET")
 USER = os.environ.get("SW_USER", "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c")
 MODEL_REF = os.environ.get("SW_MODEL_REF", "019eeb08-8be3-78fb-86c0-3b1eda7e0457")
 PROJECT_ID = os.environ.get("SW_PROJECT_ID") or None
-CONTRACT = json.loads(
-    (Path(__file__).resolve().parents[1] / "contracts" / "context-trace.contract.json")
-    .read_text(encoding="utf-8")
+CONTRACT_PATH = (
+    Path(__file__).resolve().parents[1] / "contracts" / "context-trace.contract.json"
 )
+CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
 
 def _bearer() -> str:
     now = int(time.time())
     return jwt.encode({"sub": USER, "iat": now, "exp": now + 3600}, SECRET, algorithm="HS256")
+
+
+def selfcheck() -> int:
+    """Everything the live gate depends on, minus the stack. Runs in CI."""
+    problems: list[str] = []
+    for key in ("frame_fields", "trace_span_fields"):
+        val = CONTRACT.get(key)
+        if not isinstance(val, list) or not val:
+            problems.append(f"contract key {key!r} missing or empty")
+    if not TURNS:
+        problems.append("TURNS is empty — the gate would drive no turns and pass vacuously")
+    if problems:
+        for p in problems:
+            print(f"FAIL: {p}")
+        return 1
+    print(
+        f"SELFCHECK PASS — contract parses ({len(CONTRACT['frame_fields'])} frame fields, "
+        f"{len(CONTRACT['trace_span_fields'])} span fields), {len(TURNS)} turns declared."
+    )
+    print(f"  Live half NOT run here: needs a stack at {BASE} + JWT_SECRET "
+          f"({'set' if SECRET else 'NOT set'}).")
+    return 0
 
 
 def _hdr(stream: bool = False) -> dict:
@@ -77,14 +114,32 @@ TURNS = [
 
 
 def main() -> int:
-    with httpx.Client() as c:
-        sid = _create_session(c)
-        for t in TURNS:
-            _send(c, sid, t)
-        r = c.get(f"{BASE}/v1/chat/sessions/{sid}/context-trace", headers=_hdr(), timeout=30)
-        r.raise_for_status()
-        items = r.json()["items"]
+    if "--selfcheck" in sys.argv:
+        return selfcheck()
+    if not SECRET:
+        print("CANNOT RUN: JWT_SECRET is not set — this gate drives REAL turns through the "
+              "running chat-service and cannot mint a bearer without it.")
+        print("  Live:  JWT_SECRET=… python scripts/context-inspector-trace-gate.py")
+        print("  Static: python scripts/context-inspector-trace-gate.py --selfcheck")
+        return CANNOT_RUN
+    try:
+        with httpx.Client() as c:
+            sid = _create_session(c)
+            for t in TURNS:
+                _send(c, sid, t)
+            r = c.get(f"{BASE}/v1/chat/sessions/{sid}/context-trace",
+                      headers=_hdr(), timeout=30)
+            r.raise_for_status()
+            items = r.json()["items"]
+    except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+        # An unreachable stack is NOT a failing contract. Reporting it as one trains everyone
+        # to ignore this gate's red, which is how a real field regression would slip past.
+        print(f"CANNOT RUN: no stack reachable at {BASE} ({type(exc).__name__}: {exc}).")
+        return CANNOT_RUN
+    return _assert_contract(items)
 
+
+def _assert_contract(items: list[dict]) -> int:
     if not items:
         print("FAIL: context-trace returned no turns")
         return 1

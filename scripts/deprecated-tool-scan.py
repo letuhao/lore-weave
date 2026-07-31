@@ -48,6 +48,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OK_MARKER = "deprecated-tool-scan: ok"
 
+#: Retired→retired references held as tracked debt (see main()). Ratcheted: any change reds
+#: the gate, so this cannot drift up silently and progress cannot go unrecorded.
+#: 2026-07-31 — 9, the residue of the 2026-07-22 catalog unification.
+DEAD_TO_DEAD_BASELINE = 9
+
 # Tools that are real and always advertised but declared outside a normal MCP server
 # (consumer-local meta-tools + the frontend/human-gated set).
 _CORE_EXTRA = {
@@ -177,6 +182,60 @@ _LOGGING = re.compile(r"\b(?:slog|logger|logging|log)\.\w+\(|logger\.(?:warning|
 #: An earlier version of this file argued the opposite — that an undo hint naming a retired tool
 #: was the bug. It is not: it is the mechanism working as designed.
 _INTERNAL_DISPATCH = re.compile(r"_dispatch\(|undoResult\(|_undo\(")
+
+
+def _paren_delta(line: str) -> int:
+    """Net paren balance of `line`, ignoring parens INSIDE string literals (a description
+    like "(arcs are the durable spec layer)" must not move the depth counter)."""
+    bare = _STRINGS.sub('""', line)
+    return bare.count("(") - bare.count(")")
+
+
+def _internal_dispatch_lines(body: str) -> set[int]:
+    """1-based line numbers sitting inside a `_dispatch(` / `undoResult(` / `_undo(` call,
+    INCLUDING its continuation lines.
+
+    The exclusion above was applied per-line, so it only ever fired when the call and its
+    tool-name argument shared a line. Real code wraps:
+
+        return await _dispatch(
+            ctx, "kg_world_query",          # ← the name lands on the CONTINUATION line
+
+    and the continuation was then read as agent-facing prose. That single blind spot produced
+    19 of this scanner's 43 findings — every one of them a dispatch key or an undo hint, i.e.
+    exactly the two things the rule above exists to exempt. The rule was right; it just could
+    not see past the line the `(` was on."""
+    out: set[int] = set()
+    depth = 0
+    for i, line in enumerate(body.splitlines(), 1):
+        if depth > 0:
+            out.add(i)
+            depth = max(0, depth + _paren_delta(line))
+            continue
+        m = _INTERNAL_DISPATCH.search(line)
+        if m:
+            out.add(i)
+            depth = max(0, _paren_delta(line[m.end() - 1:]))
+    return out
+
+
+def _block_bounds(body: str) -> list[tuple[int, int]]:
+    """(start, end) 1-based line spans, one per tool registration — a tool's own description
+    block. Used to scope the "names its own replacement" exemption, which was also written
+    per-line and so missed a `NOTE: superseded by X` sitting one line below the reference."""
+    starts = [i for i, ln in enumerate(body.splitlines(), 1) if _OWNER.search(ln)]
+    if not starts:
+        return []
+    n = len(body.splitlines())
+    return [(s, (starts[k + 1] - 1) if k + 1 < len(starts) else n)
+            for k, s in enumerate(starts)]
+
+
+def _block_text_at(body_lines: list[str], bounds: list[tuple[int, int]], lineno: int) -> str:
+    for s, e in bounds:
+        if s <= lineno <= e:
+            return "\n".join(body_lines[s - 1:e])
+    return ""
 #: Only text INSIDE a string literal can reach the model. A bare identifier is code — and the
 #: unified `*_edit` tools legitimately CALL their retired predecessors' handler functions
 #: (`composition_outline_node_edit` dispatches into `composition_outline_node_create`), which is
@@ -222,29 +281,41 @@ def scan(legacy: dict[str, str | None], advertised: set[str]) -> list[dict]:
             body = _strip_comments(raw[first:] if first > 0 else raw, lang)
         else:
             body, offset = _strip_comments(raw, lang), 0
-        for i, line in enumerate(body.splitlines(), 1):
+        body_lines = body.splitlines()
+        dispatch_lines = _internal_dispatch_lines(body)
+        bounds = _block_bounds(body)
+        for i, line in enumerate(body_lines, 1):
             lineno = i + offset
             if 0 < lineno <= len(raw_lines) and OK_MARKER in raw_lines[lineno - 1]:
                 continue
             # Log lines never reach the model. Everything else in these files that mentions a
             # tool by name does: a description, or an error string the agent reads and acts on
             # ("use X to edit it") — an error that points at a retired tool is the same trap.
-            if _LOGGING.search(line) or _INTERNAL_DISPATCH.search(line):
+            if _LOGGING.search(line) or i in dispatch_lines:
                 continue
             # A registration line NAMES the tool it defines — not a reference to it.
             defined = set(reg.findall(line))
             # A skill prompt is already pure prose; everything else must be quoted to count.
             haystack = line if kind == "skill" else _string_text(line)
+            owner = _owner_at(raw, lineno) if kind == "tool-desc" else None
+            block = _block_text_at(body_lines, bounds, i) if kind == "tool-desc" else ""
             for tok in set(TOKEN.findall(haystack)):
                 if tok in advertised or tok in defined:
                     continue
+                # A tool naming ITSELF is describing its own reverse, not pointing anywhere:
+                # `book_chapter_set_part` → "Reverse: book_chapter_set_part with the prior
+                # part_id". There is no dangling pointer in a self-reference.
+                if kind == "tool-desc" and tok == owner:
+                    continue
                 # A tool DESCRIPTION may name its own replacement/deprecation inline; that is
-                # the documented migration pointer, not an instruction to call it.
+                # the documented migration pointer, not an instruction to call it. Scoped to the
+                # DESCRIPTION, not the line — glossary_user_patch carries its "NOTE: superseded
+                # by glossary_ontology_upsert" one line BELOW the reference it excuses, so the
+                # line-scoped form never matched the case it was written for.
                 if kind == "tool-desc" and tok in legacy and (
-                        "DEPRECATED" in line or "superseded" in line.lower()):
+                        "DEPRECATED" in block or "superseded" in block.lower()):
                     continue
                 if tok in legacy:
-                    owner = _owner_at(raw, lineno) if kind == "tool-desc" else None
                     findings.append({
                         "kind": kind, "file": str(path.relative_to(ROOT)).replace("\\", "/"),
                         "line": lineno, "tool": tok, "problem": "retired",
@@ -254,7 +325,27 @@ def scan(legacy: dict[str, str | None], advertised: set[str]) -> list[dict]:
                         # reaches anyone — real staleness, but not the loop bug. Sorting by this
                         # is what turns a flat list into a migration order.
                         "owner": owner,
-                        "reaches_model": owner is None or owner in advertised,
+                        # Whether the MODEL can be handed this text.
+                        #
+                        # This used to read `owner is None or owner in advertised`, on the premise
+                        # that "a retired tool's description referencing another retired tool never
+                        # reaches anyone". Checked against ai-gateway 2026-07-31: FALSE, and false in
+                        # the direction that hides the bug. `toolLoadResult` (find-tools.ts) applies
+                        # NO legacy filter — it resolves any tool BY NAME and returns
+                        # `description: toolDescription(t)`, stamping `deprecated:true` +
+                        # `superseded_by` rather than withholding it. `visibleTools` does the same.
+                        # That is deliberate (find-tools.ts:164): legacy tools are LABELLED instead
+                        # of dropped precisely so `tool_list` can "show + redirect" and an agent can
+                        # migrate itself. So an agent steered toward a deprecated tool then calls
+                        # `tool_load` on it and reads its description — which makes a stale pointer
+                        # inside a legacy description MORE likely to be read, not less.
+                        #
+                        # Reachable therefore means "in the catalog at all". The field stays because
+                        # the hot-set distinction is still real and still orders the migration —
+                        # `tool_list` defaults `includeDeprecated=false`, so an advertised owner is
+                        # reached without the agent asking for it.
+                        "reaches_model": True,
+                        "in_default_hotset": owner is None or owner in advertised,
                     })
     return findings
 
@@ -277,24 +368,59 @@ def main() -> int:
         print(json.dumps(findings, indent=2))
         return 1 if findings else 0
 
-    if not findings:
-        print(f"deprecated-tool-scan: clean "
-              f"({len(advertised)} advertised · {len(legacy)} retired tools known)")
-        return 0
+    # Two populations, and only one of them is a live bug.
+    #
+    # BLOCKING — a tool the agent sees WITHOUT asking (advertised: `tool_list` defaults
+    # `includeDeprecated=false`) whose text names a retired tool. That is the discovery loop:
+    # the model is steered out of the live catalog by a description it did not go looking for.
+    #
+    # DEBT — a retired tool's description naming a retired sibling. Reachable (an agent that
+    # `tool_load`s the legacy tool reads it), but internally COHERENT: the sibling it names is
+    # itself still callable, because retiring hides a tool without deleting it. Nothing loops.
+    # It breaks as a class the day the legacy generation is dropped — which is why it is
+    # ratcheted rather than ignored. Repointing these at the unified `*_edit` replacement is
+    # NOT the fix; see the `_INTERNAL_DISPATCH` note — the reverse-op and undo pointers must
+    # keep naming the tool whose SIGNATURE matches, or undo silently breaks.
+    blocking = [f for f in findings if f["in_default_hotset"]]
+    debt = [f for f in findings if not f["in_default_hotset"]]
 
-    by_file: dict[str, list[dict]] = {}
-    for f in findings:
-        by_file.setdefault(f"[{f['kind']}] {f['file']}", []).append(f)
-    print(f"deprecated-tool-scan: {len(findings)} reference(s) to retired tools in "
-          f"agent-facing instructions\n")
-    for fk, items in sorted(by_file.items()):
-        print(f"── {fk}")
-        for it in sorted(items, key=lambda x: x["line"]):
-            rep = it["replacement"] or "NO replacement declared — describe the capability instead"
-            print(f"   line {it['line']:>5}  {it['tool']}  ->  {rep}")
-    print("\nA named-but-undiscoverable tool sends the agent into a discovery loop.")
-    print("Point at the replacement, or describe the capability without naming a tool.")
-    return 1
+    def _dump(rows: list[dict]) -> None:
+        by_file: dict[str, list[dict]] = {}
+        for f in rows:
+            by_file.setdefault(f"[{f['kind']}] {f['file']}", []).append(f)
+        for fk, items in sorted(by_file.items()):
+            print(f"── {fk}")
+            for it in sorted(items, key=lambda x: x["line"]):
+                rep = it["replacement"] or "NO replacement declared — describe the capability instead"
+                print(f"   line {it['line']:>5}  {it['tool']}  ->  {rep}")
+
+    if blocking:
+        print(f"deprecated-tool-scan: {len(blocking)} reference(s) to retired tools from an "
+              f"ADVERTISED tool's instructions\n")
+        _dump(blocking)
+        print("\nA named-but-undiscoverable tool sends the agent into a discovery loop.")
+        print("Point at the replacement, or describe the capability without naming a tool.")
+        return 1
+
+    # Ratchet. A bare count would let this rot back in silently; asserting equality means a NEW
+    # dead-to-dead reference reds the gate, and clearing one reds it too (lower the constant).
+    if len(debt) != DEAD_TO_DEAD_BASELINE:
+        verb = "grew to" if len(debt) > DEAD_TO_DEAD_BASELINE else "dropped to"
+        print(f"deprecated-tool-scan: dead-to-dead references {verb} {len(debt)} "
+              f"(baseline {DEAD_TO_DEAD_BASELINE})\n")
+        _dump(debt)
+        if len(debt) > DEAD_TO_DEAD_BASELINE:
+            print("\nA NEW retired→retired reference was added. Point it at a live tool, or "
+                  "describe the capability without naming a tool.")
+        else:
+            print(f"\nProgress — lower DEAD_TO_DEAD_BASELINE to {len(debt)} in {__file__}.")
+        return 1
+
+    print(f"deprecated-tool-scan: clean on the live catalog "
+          f"({len(advertised)} advertised · {len(legacy)} retired tools known)")
+    print(f"  {len(debt)} retired→retired reference(s) held at baseline — tracked migration "
+          f"debt, not a live loop (each names a still-callable sibling).")
+    return 0
 
 
 if __name__ == "__main__":

@@ -173,6 +173,56 @@ jobs:
       - run: bash scripts/runbook-verification-lint.sh
       - run: bash scripts/template-fixture-validator.sh
 
+      # ── QC round 2 (2026-07-31) ──────────────────────────────────────────────
+      # The first inventory counted 63 "gate scripts" by filename. The real number is
+      # 328 scripts, 252 referenced by no workflow or hook. Most of that tail is honest
+      # dev tooling — seeds, POCs, one-off migrations, the RAID track's cycle runners.
+      # The ENFORCEMENT class is ~30, and these are the ones that pass on the current
+      # tree. Each was executed before wiring, and each has a reachable `exit 1`.
+      - run: bash scripts/capacity-budget-lint.sh
+      - run: bash scripts/dep-pinning-lint.sh
+      - run: bash scripts/emit-migration-0013-lint.sh
+      - run: bash scripts/meta-actor-uuid-lint.sh
+      - run: bash scripts/meta-sensitive-read-bypass-lint.sh
+      - run: bash scripts/meta-write-discipline-lint.sh
+      - run: bash scripts/migration-idempotency-validator.sh
+      - run: bash scripts/outbox-event-emit-lint.sh
+      - run: bash scripts/pii-classify-lint.sh
+      - run: bash scripts/prompt-assembly-discipline-lint.sh
+      - run: bash scripts/read-audit-query-type-drift-lint.sh
+      - run: bash scripts/role-grant-validator.sh
+      - run: bash scripts/service-acl-matrix-lint.sh
+      - run: bash scripts/shard-allocation-validation.sh
+      - run: bash scripts/transitions-validation-lint.sh
+      - run: python scripts/phantom-route-scan.py
+      - run: python scripts/deprecated-tool-scan.py
+      # The static half of a LIVE gate. The live half drives real turns through a running
+      # chat-service; `--selfcheck` proves the gate itself still works (imports, contract
+      # parses, turn set non-empty) so it cannot rot while every run reads "no stack today".
+      - run: python scripts/context-inspector-trace-gate.py --selfcheck
+
+      # A gate must be able to FAIL, and the proof of that is a test. These suites exist
+      # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
+      # own teeth were as unwired as the gates were.
+      - run: python -m pytest scripts/test_ai_provider_gate.py scripts/test_check_stack_freshness.py
+               scripts/test_slice_manifest_validate.py scripts/test_tier_tag_gate.py
+               scripts/test_warp_base_pin.py scripts/test_warp_worktrees.py
+               scripts/test_deprecated_tool_scan.py scripts/test_gate_teeth_gate.py
+               scripts/perf/test_slo_assert.py
+               scripts/eval/tests/test_persist_claim_detector.py -q
+      - run: python scripts/gate-teeth-gate.py
+
+      # NOT wired, with the reason, because "it exists" is not "it enforces":
+      #   fe-door-scan.py          — no exit path at all; a REPORT, not a gate
+      #   timeout-discipline-lint.sh — ends in an unconditional `exit 0` (advisory)
+      #   log-density-detector.sh  — reads /var/log/lw/last-5m.log (runtime, not CI)
+      #   projection-drift-check.sh — needs DATABASE_URL against a live projection
+      #   check_stack_freshness.py — probes a running stack
+      #   perf/slo_assert.py       — needs a k6 summary JSON from a load run
+      # The first two are the ones worth naming twice: a script that cannot return
+      # non-zero is indistinguishable from no script, and wiring it would have read as
+      # +2 gates in this file while enforcing nothing.
+
   python:
     name: Python services (byte-compile)
     runs-on: ubuntu-latest

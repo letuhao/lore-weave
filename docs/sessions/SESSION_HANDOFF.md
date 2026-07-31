@@ -180,9 +180,58 @@ finding-by-finding — baselining on sight would have reproduced the disease one
 
 Both baselines carry the verification, not just the fingerprint.
 
+## ✅ QC round 2 — *wired* is not *enforcing* (2026-07-31)
+
+The first sweep counted 63 gate scripts by filename. The real inventory is **328 scripts, 252
+referenced by no workflow or hook** — most of that tail honest dev tooling (seeds, POCs, the RAID
+track's cycle runners). The **enforcement class is ~30**, and running every one of them found three
+red and two that could never go red at all.
+
+**The three reds, each a different failure of the rule rather than of the code:**
+- **capacity-budget** — 3 services (`agent-registry-service`, `knowledge-gateway`,
+  `scheduler-service`) shipped a Dockerfile with no budget row. SR08 I17 held on paper for the 50
+  services that predate them and caught none of these. Rows added.
+- **dep-pinning** — its Python arm demanded `uv.lock`/`poetry.lock` and grandfathered exactly ONE
+  literal path. The repo has **three** pyprojects and **zero** lock files, so the rule only ever
+  fired on the two SDK sub-packages that ship their own descriptor — the exempted parent's
+  siblings. It named a path where it meant a class. Lockfiles are not this repo's convention;
+  the arm now guards the one that IS (every declared dep carries a version constraint — 178 dep
+  lines, green, and proven red-able with a scratch `requests` line).
+- **deprecated-tool-scan — 43 findings, 34 of them the scanner's own blind spot.** It reasons
+  per-line about constructs that span lines: `_dispatch(\n ctx, "kg_world_query",` loses the
+  dispatch context on the continuation, so the exemption written *precisely* for dispatch keys and
+  undo hints could not see the name it was meant to exempt. Same for a `NOTE: superseded by X`
+  sitting one line BELOW the reference it excuses, and for a tool naming *itself*
+  (`"Reverse: book_chapter_set_part with the prior part_id"`). Fixed at description scope → **9**.
+
+**The scan was also under-reporting its own severity.** It computed `reaches_model` as
+`owner in advertised` on the premise that a retired tool's description "never reaches anyone".
+Checked against ai-gateway: **false** — `toolLoadResult` applies no legacy filter, it resolves any
+tool by name and returns its description, and that is deliberate (legacy tools are *labelled*, not
+dropped, so `tool_list` can show + redirect). The remaining 9 are all retired→retired, which is
+coherent — each names a still-callable sibling, nothing loops — so they are **ratcheted**, not
+silenced. Repointing them at the unified `*_edit` would be the actual bug: retired tools stay
+callable so undo keeps working, and the replacement has a different signature.
+
+**QC-6 — the deeper one: nothing checked that a gate CAN fail.** `scripts/gate-teeth-gate.py` now
+does. Two tiers: **HARD** (every CI-invoked gate has a reachable non-zero exit — green, 54/54) and a
+**ratchet** on the 47 that carry no red-ability proof. It found `runbook-verification-lint.sh`
+"toothless" — a false positive worth keeping, since its check is an embedded Python heredoc whose
+`sys.exit(1)` aborts under `set -e` (measured: with `set -e` → rc=1, without → rc=0). And it
+**certified itself**, matching its own `return "built-in selftest"` literal — the third time this
+cycle a gate has satisfied its own check by talking about it.
+
+**The gates' own tests had never run either** — 148 tests across 8 files, all green, wired nowhere.
+Now 183 (+ new suites for the two gates written here). 18 more gates wired; the lint job is **50
+steps, every one executed in CI order, 0 failures**.
+
+Not wired, with the reason recorded — `fe-door-scan.py` (no exit path at all) and
+`timeout-discipline-lint.sh` (unconditional `exit 0`): a script that cannot return non-zero is
+indistinguishable from no script, and wiring them would have read as +2 gates while enforcing
+nothing.
+
 ### ▶ NEXT
-1. **QC-4/QC-5** — `context-inspector-trace-gate.py` crashes on a missing `JWT_SECRET`; ~26 unwired scripts still need classifying (real gate / dev tool / one-off) and wiring or retiring.
-2. **The LLM-budget SSOT axis** — see below. ROT-1 is closed.
+1. **The LLM-budget SSOT axis** — see below. ROT-1 and the QC axis are closed.
 2. Detail for the axis above: SDK kinds+formula (**done** —
    `sdks/python/loreweave_llm/budget.py`) · **one call-profile registry per service** (the
    per-operation knowledge belongs to the service; `_OPERATION_INSTRUCTIONS`/`PASS_REGISTRY` are the
