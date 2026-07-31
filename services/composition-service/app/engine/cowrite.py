@@ -128,6 +128,43 @@ DEFAULT_SCENE_TARGET_WORDS = 1000
 _TOKENS_PER_WORD: dict[str, float] = {"vi": 2.6, "th": 2.6, "zh": 3.2, "ja": 3.2, "ko": 3.0}
 _TOKENS_PER_WORD_DEFAULT = 1.7
 
+#: Scripts with no whitespace between words. Splitting these on spaces under-counts by an
+#: order of magnitude — the same fact `_TOKENS_PER_WORD` above already encodes.
+_SPACELESS = {"zh", "ja", "ko", "th"}
+
+#: Characters per "word" for a spaceless script. Chinese words average ~1.5 hanzi; Japanese
+#: and Korean land nearby once kana/particles are counted. Coarse ON PURPOSE — this exists to
+#: tell "roughly the length asked for" from "a third of it", not to be a linguistic measure.
+_CHARS_PER_WORD = 1.6
+
+
+def realised_words(text: str, language: str | None = None) -> tuple[int, str]:
+    """(count, method) — how long the draft ACTUALLY came out, measured the way its own
+    LENGTH directive asks.
+
+    The directive is `"write a FULL passage of approximately {target_words} words"`, and it is
+    sent in that wording regardless of output language. For a space-separated script that is
+    unambiguous and `split()` is exactly right. For a spaceless one it is NOT: neither the
+    model nor this function can know what the author meant by "word", so the count is an
+    ESTIMATE and says so in `method` rather than being passed off as a measurement.
+
+    Returning the method matters more than the number. A shortfall detector comparing a
+    `split()` count against a Chinese target would report every CJK scene as ~85% short — a
+    false finding manufactured by the metric, which is precisely the class the eval instrument
+    exists to avoid. A consumer that sees `method="cjk_chars_estimate"` can weigh it.
+    """
+    body = (text or "").strip()
+    if not body:
+        return 0, "empty"
+    lang = (language or "").lower().split("-")[0]
+    if lang in _SPACELESS:
+        # Count CJK/Thai script characters, ignoring punctuation and any embedded Latin runs.
+        chars = sum(1 for ch in body if not ch.isspace() and not ch.isascii())
+        if chars:
+            return max(1, round(chars / _CHARS_PER_WORD)), f"{lang}_chars_estimate"
+        # Declared spaceless but written in ASCII — trust the text over the declaration.
+    return len(body.split()), "whitespace"
+
 #: Headroom over the computed need: a scene that lands slightly long must not be cut off
 #: one sentence from its ending.
 #:

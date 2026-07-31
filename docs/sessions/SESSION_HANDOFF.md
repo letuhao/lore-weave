@@ -391,9 +391,26 @@ tests and ran NOWHERE** — its CI row was `tests/integration/db` (388). After t
 and the gates' own 148, the pattern is clear enough to name: **a path *trigger* reads like an
 execution.** Now wired (3148 pass serially in 8 min, as CI runs it).
 
+**S10-a follow-up — the length class is no longer blind.** `/review-impl` found 3 of the 5
+detectors read fields with ZERO occurrences in the service, so a blind class now scores ERROR
+(never MISSED) and the gate checks `reads` against the source both ways. `actual_words` was
+the cheapest gap: the generate response now carries `target_words` + `actual_words` +
+**`word_count_method`**, so **the Mị Đế bug — 900 words asked, 445 delivered — is the first
+thing this suite can measure**. 2 SCORABLE → **3**.
+
+⚠️ `realised_words` is script-aware on purpose. `.split()` on a Chinese paragraph returns
+**1**, so a shortfall detector fed that would report every CJK scene as ~99% short — a finding
+manufactured by the metric, in the instrument built to avoid exactly that. Spaceless scripts
+get a char-based ESTIMATE, the method rides in the response, and the length detector
+**declines to fire on an estimate**: the LENGTH directive says *"approximately N words"*
+regardless of language, and "words" has no clear referent in CJK. Better to score nothing than
+to score a fiction. (That the directive is ambiguous for CJK at all is a real S2 finding.)
+
 ### ▶ NEXT
-1. **S10-b** — the live driver: run the 5 classes against a real stack, on a throwaway book.
-   The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding mechanics".
+1. **S10-b** — the live driver: run the 3 scorable classes against a real stack, on a
+   throwaway book. The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding
+   mechanics". The 2 remaining blind classes need `scenes_covered` (S2 territory) and
+   `unresolved_refs`.
 2. **S1 → S2** per spec §6.
 3. **LLM-budget backlog** — 29 rows: 12 composition, 10 knowledge, 4 translation, 3 misc.
    Billing estimators stay OUT — they over-estimate on purpose.

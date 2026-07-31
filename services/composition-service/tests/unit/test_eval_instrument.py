@@ -209,3 +209,65 @@ def test_the_gate_reds_when_too_few_classes_are_scorable(monkeypatch, capsys):
     monkeypatch.setattr(gate, "DEFECTS", all_blind)
     assert gate.main() == 1
     assert "SCORABLE" in capsys.readouterr().out
+
+
+# ── realised_words: the metric must not manufacture a finding ─────────────────────────────
+
+def test_a_space_separated_draft_counts_by_whitespace():
+    from app.engine.cowrite import realised_words
+
+    phrase = "Nàng bước qua cổng đông lúc rạng đông"
+    n, method = realised_words(phrase, "vi")
+    assert n == len(phrase.split()) == 8 and method == "whitespace"
+
+
+def test_a_spaceless_draft_is_estimated_and_says_so():
+    """`.split()` on Chinese returns 1 for a whole paragraph. A shortfall detector fed that
+    would report every CJK scene as ~99% short — a finding invented by the metric."""
+    from app.engine.cowrite import realised_words
+
+    zh = "她在黎明時分穿過東門，向守軍下達命令。"
+    naive = len(zh.split())
+    n, method = realised_words(zh, "zh")
+    assert naive == 1, "the trap this guards against"
+    assert n > 5 and method == "zh_chars_estimate"
+
+
+def test_a_language_declared_spaceless_but_written_in_ascii_trusts_the_text():
+    """A book tagged `zh` whose draft came back in English must not be counted as 0 words."""
+    from app.engine.cowrite import realised_words
+
+    n, method = realised_words("she crossed the gate at dawn", "zh")
+    assert n == 6 and method == "whitespace"
+
+
+def test_an_empty_draft_is_zero_not_an_estimate():
+    from app.engine.cowrite import realised_words
+
+    assert realised_words("", "vi") == (0, "empty")
+    assert realised_words("   ", "zh") == (0, "empty")
+
+
+def test_the_length_detector_fires_on_the_measured_mi_de_shortfall():
+    """The bug this whole cycle started from: 900 asked, 445 delivered."""
+    cls = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+    short = Observation(fields={"target_words": 900, "actual_words": 445,
+                                "word_count_method": "whitespace"})
+    ok = Observation(fields={"target_words": 900, "actual_words": 880,
+                             "word_count_method": "whitespace"})
+    assert cls.detector(short) and not cls.detector(ok)
+    assert score_class(cls, seeded=short, control=ok).detected
+
+
+def test_the_length_detector_stays_quiet_on_an_estimated_count():
+    """Better to score nothing than to score a fiction — an estimate cannot support a 0.75
+    threshold against a target whose own referent is ambiguous."""
+    cls = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+    est = Observation(fields={"target_words": 900, "actual_words": 100,
+                              "word_count_method": "zh_chars_estimate"})
+    assert not cls.detector(est)
+
+
+def test_the_length_class_is_no_longer_blind():
+    cls = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+    assert not cls.blocked_on, "the generate response now emits actual_words"

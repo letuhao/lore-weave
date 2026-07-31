@@ -65,7 +65,8 @@ from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import (
     DEFAULT_SCENE_TARGET_WORDS, SCENE_OUTPUT_CEILING, SELECTION_MAX_CHARS, build_messages,
-    build_selection_messages, estimate_prompt_tokens, scene_output_budget, stream_draft,
+    build_selection_messages, estimate_prompt_tokens, realised_words, scene_output_budget,
+    stream_draft,
 )
 from app.engine.critic import judge_prose
 from app.engine.critic_override import (
@@ -706,9 +707,17 @@ async def generate(
                     "truncated": truncated, "finish_reason": w.metering.finish_reason,
                     "canon": canon},
         )
+        # D-SCENE-OUTPUT-BUDGET-FLAT / eval S10 — the LENGTH directive asked for
+        # `target_words`; report what actually came back so the shortfall is READABLE off a
+        # result instead of only being visible by counting a draft by hand. `word_count_method`
+        # rides along because a whitespace count against a CJK target would manufacture a
+        # ~85%-short reading for every Chinese scene (see cowrite.realised_words).
+        _actual_words, _wc_method = realised_words(final_text, _src_lang)
         return JSONResponse({
             "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
             "truncated": truncated, "finish_reason": w.metering.finish_reason,
+            "target_words": _scene_target, "actual_words": _actual_words,
+            "word_count_method": _wc_method,
             "winner_index": sel.winner_index, "k": len(sel.candidates),
             # The K candidate texts so the FE can show ALL options as cards (the
             # controlled-auto human gate, slice 3). They're already computed +

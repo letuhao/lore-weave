@@ -116,7 +116,15 @@ def _fired_length_shortfall(o: Observation) -> bool:
     Measured 2026-07-30 on the Mị Đế book: targets of 900/850/800/750/800 produced
     445/414/532/618/736 words, because `max_tokens` was 1024 while 900 Vietnamese words is
     ~2300 tokens. The prompt asked for one thing and the wire allowed another.
+
+    Deliberately does NOT fire on an ESTIMATED count. For a spaceless script the LENGTH
+    directive's "words" has no clear referent — `realised_words` says so via
+    `word_count_method` — and a 0.75 threshold applied to an estimate would report every CJK
+    scene as short. That is a finding manufactured by the metric, which is the exact class
+    this instrument exists to avoid; better to score nothing than to score a fiction.
     """
+    if str(o.fields.get("word_count_method", "")).endswith("_estimate"):
+        return False
     target = int(o.fields.get("target_words", 0) or 0)
     actual = int(o.fields.get("actual_words", 0) or 0)
     return bool(target) and actual < target * 0.75
@@ -176,10 +184,11 @@ DEFECTS: tuple[DefectClass, ...] = (
         seeded="target_words=900 on a Vietnamese scene (~2300 output tokens needed)",
         control="target_words=200 on the same scene (comfortably inside any budget)",
         detector=_fired_length_shortfall,
-        reads=("target_words", "actual_words"),
-        blocked_on="`target_words` is emitted; `actual_words` is not — the draft's realised "
-                   "word count is computable but never reported, so the shortfall cannot be "
-                   "read off a result. Cheapest of the three gaps to close.",
+        # UNBLOCKED 2026-07-31: the generate response now carries `actual_words` +
+        # `word_count_method` (routers/engine.py -> cowrite.realised_words). This was the
+        # cheapest of the three gaps and it makes the Mị Đế bug — 900 words asked, 445
+        # delivered — the first thing this suite can actually measure.
+        reads=("target_words", "actual_words", "word_count_method"),
         provenance="D-SCENE-OUTPUT-BUDGET-FLAT — measured 900/850/800/750/800 -> "
                    "445/414/532/618/736 words",
     ),
@@ -216,4 +225,4 @@ MIN_CLASSES = 5
 #: registry can look broad and measure almost nothing: the first version of this file declared
 #: five classes of which only two could ever produce a number. Ratcheted upward as the engine
 #: gains observability; it must never fall.
-MIN_SCORABLE = 2
+MIN_SCORABLE = 3
