@@ -118,6 +118,16 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # target -> os.environ.get(VAR, default) AND fail loudly when absent.
 "$PY" "$ROOT/scripts/no-absolute-host-paths.py"
 
+# Every persisted artifact this repo produces is written in ENGLISH (CLAUDE.md → Key
+# Rules, LOCKED 2026-07-31). The recurring defect is MIXING, not translation: an English
+# design doc with Vietnamese fragments pasted through it, most often a verbatim quote —
+# docs 40/41 shipped with eight and had to be swept. Chat with the user stays in whatever
+# language they wrote in; the artifact is not the conversation.
+# ADDED LINES ONLY on purpose: 468 of 1962 tracked docs already contain Vietnamese, so
+# judging file contents would make every touch of a legacy doc uncommittable and the gate
+# would be off within a day. `--all` reports that baseline and never blocks.
+"$PY" "$ROOT/scripts/doc-language-gate.py" --staged
+
 # I8 / I11 / S08 §12X.3 — the META-TABLE gates. Wired 2026-07-29 after Q1 B2b
 # added the first RUST writer of meta tables and shipped it with NO ACL matrix
 # entry: `service-acl-matrix-lint` was red for a whole commit and nothing said

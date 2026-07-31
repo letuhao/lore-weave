@@ -10,6 +10,60 @@
 
 ---
 
+## ▶ NEXT SESSION — the contract generator (`40_progression_planner/`)
+
+**Date:** 2026-07-31 · **New folder:** [`40_progression_planner/`](40_progression_planner/_index.md)
+— 12 docs, prefixes `PPL` `PPO` `PPB` `EPL` `GP` `ICT` `MOD` `ENR` `ASK` `MEM`, all registered in the
+id catalog.
+
+**What happened.** POC-1 (doc 39's progression pipeline) was run end-to-end against a real model four
+times and **FAILED** — zero manifests produced, and the blocking question turned out to be a design
+decision that had been routed to a model. That failure re-opened the architecture; this folder is the
+redesign, and doc 39's **back half survives intact** (S-1 validator, S4 policy, S5 candidate, S6 pin).
+
+**The shape now.** A **contract generator** produces *the lists* — closed sets and structures over
+them — into a shared **pool**. **Specific generators** (item, place, …) consume the frozen pool and
+produce their own content, each internally two-layered (LLM vocabulary + procedural spine). Two
+pipeline layers separated by a freeze; **no module ever reads another module's L2 output**.
+
+| doc | settles |
+|---|---|
+| 01–02 | what a progression system IS; what the planner must PRODUCE (competency questions) |
+| 03–04 | where the planner STOPS; the pool of closed sets; the two-layer pipeline |
+| 05 | 178 gameplay loops (cultivation + general-RPG delta), shallow, stable ids — the deep-dive worklist |
+| 06–07 | the item contract (5 slots, 4 SHARED); four planner KINDS; registration + storage |
+| 08–09 | retrieval vs enrichment (6-rung ladder, genre pack); how a planner asks and knows it is done |
+| 10–11 | **measured** — live probes against a local model, and the pool member schema |
+
+**Measured, not asserted.** Every claim in 10 and 11 has a probe behind it with its expectation
+written *before* the run. The findings include three places the architecture was wrong and one where
+the **measuring instrument** was wrong — a copied 0.85 fidelity threshold that could not fail on a
+1-of-7 criterion violation.
+
+**New fixture:** `services/lore-enrichment-service/tests/fixtures/fengshen/` — a treasure-dense
+Ming-novel corpus with **12 designed teeth** and its answer key outside the corpus, guarded by
+`tests/test_fengshen_fixture_teeth.py` (29 assertions, bite-tested in both directions).
+
+**New gate:** `scripts/doc-language-gate.py` — persisted artifacts are English (CLAUDE.md → Key
+Rules); judges **added lines only** because 468 of 1962 tracked docs carry legacy non-English text;
+three bite-tests recorded.
+
+### Do-now next
+
+1. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be
+   answerable to ship, and whether the two-layer pipeline (`PPB-A6` + `EPL-*`) is adopted
+   **pipeline-wide** — which requires first walking all seven of doc 38's element-roster entries.
+2. **`WA_001` must register a `lex_tag` slot** — the single real gap in the item contract
+   (`MEM-A4` §4.2), and it is not item's to fix.
+3. **Move decisions off the model, one at a time.** Ordinals and cardinality both belong to the
+   planner (`QTY-A5` already said so for ordinals). Each removal took that error class to zero.
+4. **Build the slot state machine in CODE, not in a prompt** — `ASK-A6`, measured: offered only edges
+   that terminate, the model invented one that did not.
+5. **POC-1's uncommitted Python is still valid** — anchors + sentence expansion, `census.py`, the
+   `run_interrogation` seam, and the corpus `to_prose` fix.
+
+---
+
 ## 0. OPEN DEFERRALS — the machine-read registry
 
 **This block is parsed by `scripts/deferral-gate.py`.** Everything else in this file is
