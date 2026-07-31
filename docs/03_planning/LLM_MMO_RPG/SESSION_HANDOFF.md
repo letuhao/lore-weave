@@ -58,6 +58,52 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S5b — the verdict has a row, and a CHECK that evaluated to NULL was passing (2026-07-31)
+
+`gamegen_candidate` + `app/gamegen/validator.py`. **1255 passed / 2 skipped.** The chain now runs
+**through the DB and into the engine's binary**: approved answers → fold → policy → generate →
+`progression-validate` → a recorded verdict → a human gate.
+
+**A refusal is RECORDED, not raised away.** An S5 refusal that only threw would leave the chain with
+no row saying the engine looked and said no, and the next run would look like the first. So a refused
+candidate is a row carrying the engine's own findings — and a `CHECK` makes it **unapprovable**, which
+is T3's last hop and the one v1 left open: without it, *"approve it anyway"* is one `UPDATE` away and
+every hop before it stays green.
+
+The asymmetry is deliberate: the two refusals that happen *before* the engine sees anything — an
+unresolvable cell and an inadmissible repair — propagate as exceptions instead, because a
+`verdict='refused'` row asserts **the engine ran**, and inventing one for a candidate the engine never
+saw is the same lie as stamping a version.
+
+**Two bugs, both found by running it:**
+
+1. **A `CHECK` that evaluates to NULL is SATISFIED in Postgres.** The digest regex over a NULL is NULL,
+   so an `admitted` row naming no digest — *a verdict about nothing addressable* — inserted cleanly.
+   `IS NOT NULL` before the regex is load-bearing, not defensive noise.
+2. **A wrong path depth does not fail, it disappears.** `validator_path()` used `parents[3]`, which
+   lands on `services/` — so eight engine tests **silently SKIPPED** and the run looked green. Fixed to
+   `parents[4]`.
+
+**The validator seam is deliberately thin.** It does not decide admitted/refused (the exit code and
+the JSON do), does not supply the engine versions (the binary compiled them in), does not summarise
+the findings. A verdict it could produce alone would be *a mirror nothing forces to agree* wearing the
+real engine's version number — worse than no verdict, because it looks like one. And it refuses when
+the binary is **missing**: treating *"no validator"* as *"nothing to validate"* would admit every
+candidate on a host where the build failed.
+
+**§7.2's number is in the payload.** `candidate()` returns `engine_defaulted_field_count` alongside the
+findings — *"you are approving N tiers of which M fields will be engine-defaulted"* — because *nobody
+reviews 24 integers*, and a count nobody can see is not a veto.
+
+**BITE-TESTS, three, restored:** the `verdict='admitted'` arm dropped from the review CHECK → an
+approved refusal inserted · `IS NOT NULL` removed → the digest-required test DID NOT RAISE · the
+env-var guard made to fall through → the missing-validator test failed.
+
+Trust table: **T3 → the S5 gate**, **T9 → built**.
+
+**▶ NEXT:** S6 — pin the admitted digest onto a reality and fire the epoch switch. **POC-1 still needs
+a corpus ingest and a real LLM interrogation: no model has run yet.**
+
 ### ✅ S5a — generation, and the engine refusing a ladder that could not be climbed (2026-07-31)
 
 `app/gamegen/generate.py`. **1242 passed / 1 skipped.** The structure supplies SHAPE; the policy

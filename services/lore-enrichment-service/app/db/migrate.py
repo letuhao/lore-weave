@@ -1281,6 +1281,95 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_gamegen_policy_book
 CREATE INDEX IF NOT EXISTS idx_gamegen_policy_scope
   ON gamegen_numeric_policy(owner_user_id, book_id) WHERE tier = 'book';
 
+-- ── gamegen_candidate (S5) — admission, and the human v1 had none of ────────
+-- Doc 39 §7.2: "v1's T3 named a gate at S5 and the schema had nowhere to record
+-- that anyone looked." That is the hole this table's review columns close.
+--
+-- Two verdict properties are structural rather than procedural:
+--
+--   1. a REFUSED candidate can never be approved. Without the CHECK, "approve
+--      it anyway" is one UPDATE away, and every hop before it stays green.
+--   2. an ADMITTED candidate must name the digest it admitted, and a refused one
+--      must NOT. A digest beside a refusal is something a later stage can pin.
+--
+-- `engine_schema_version` / `engine_law_version` are NOT NULL because a verdict
+-- that does not say which binary produced it is precisely the stale-verdict
+-- laundering PGN-A7 exists to stop: a candidate admitted under schema 4 has not
+-- been admitted under schema 5.
+CREATE TABLE IF NOT EXISTS gamegen_candidate (
+  candidate_id   UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id         UUID NOT NULL,
+  owner_user_id  UUID NOT NULL,
+  book_id        UUID,
+  element_kind   TEXT NOT NULL,
+
+  -- The three hashes T2 rests on: shape, numbers, and what they produced.
+  structure_hash TEXT NOT NULL,
+  policy_hash    TEXT NOT NULL,
+  artifact_hash  TEXT NOT NULL,
+  repair_round   INT  NOT NULL DEFAULT 0 CHECK (repair_round >= 0),
+
+  verdict        TEXT NOT NULL CHECK (verdict IN ('admitted','refused')),
+  -- The ENGINE's own findings, every one of them. Not a paraphrase: `validate`
+  -- returns them all so a reviewer does not fix one, re-run, and find another.
+  verdict_findings_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  progression_digest TEXT,
+
+  -- PGN-A9's second direction, recorded: the leaf pointers S5 actually consumed.
+  read_set_json  JSONB NOT NULL,
+  -- §7.2's number. Every field the engine will fill because nobody asked, NAMED
+  -- with its reason - "you are approving 24 tiers of which 132 fields will be
+  -- engine-defaulted" is what turns an invisible hole into something vetoable.
+  default_provenance_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  -- PGN-A17, TYPED. Stored even when empty so a repair that happened and a run
+  -- that never repaired are different rows rather than the same absence.
+  repair_ops_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+  engine_schema_version INT NOT NULL,
+  engine_law_version    INT NOT NULL,
+
+  -- The S5 human gate.
+  review_status  TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (review_status IN ('proposed','approved','rejected')),
+  approved_by    UUID,
+  approved_at    TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by     UUID NOT NULL,
+
+  CONSTRAINT gamegen_candidate_job_fk
+    FOREIGN KEY (job_id, owner_user_id)
+    REFERENCES enrichment_job(job_id, user_id) ON DELETE CASCADE,
+  CONSTRAINT gamegen_candidate_hashes_hex CHECK (
+    structure_hash ~ '^[0-9a-f]{64}$' AND policy_hash ~ '^[0-9a-f]{64}$'
+    AND artifact_hash ~ '^[0-9a-f]{64}$'
+  ),
+  -- A refused candidate names no digest; an admitted one must.
+  -- `IS NOT NULL` before the regex, and it is load-bearing: `NULL ~ '...'` is
+  -- NULL, and a CHECK that evaluates to NULL is SATISFIED in Postgres. The first
+  -- version omitted it and an `admitted` row with no digest inserted cleanly —
+  -- a verdict about nothing addressable, which is not a verdict S6 can pin.
+  CONSTRAINT gamegen_candidate_digest_matches_verdict CHECK (
+    (verdict = 'admitted'
+     AND progression_digest IS NOT NULL AND progression_digest ~ '^[0-9a-f]{64}$')
+    OR (verdict = 'refused' AND progression_digest IS NULL)
+  ),
+  -- A refusal is not approvable. T3's last hop, and the one v1 left open.
+  CONSTRAINT gamegen_candidate_review_coherent CHECK (
+       (review_status = 'proposed' AND approved_by IS NULL AND approved_at IS NULL)
+    OR (review_status = 'approved' AND approved_by IS NOT NULL
+        AND approved_at IS NOT NULL AND verdict = 'admitted')
+    OR (review_status = 'rejected' AND approved_by IS NULL AND approved_at IS NULL)
+  ),
+  -- Content-addressed: the same structure + policy + engine gives the same
+  -- candidate. Re-running admission is a no-op, not a second row that makes
+  -- "which candidate did S6 pin" a question with two answers.
+  CONSTRAINT uq_gamegen_candidate UNIQUE (
+    job_id, structure_hash, policy_hash, repair_round, engine_schema_version
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_gamegen_candidate_scope
+  ON gamegen_candidate(owner_user_id, book_id);
+
 -- ── batch_size honesty (T3) ─────────────────────────────────────────────────
 -- DEFERRABLE INITIALLY DEFERRED, because a batch is written one row at a time:
 -- an immediate check would fire on row 1 of 24 and see a count of 1. At COMMIT
@@ -1340,6 +1429,7 @@ CREATE CONSTRAINT TRIGGER trg_gamegen_decision_batch_honest
 DOWN_DDL = """
 DROP TRIGGER IF EXISTS trg_gamegen_answer_append_only ON gamegen_answer;
 DROP TRIGGER IF EXISTS trg_gamegen_decision_batch_honest ON gamegen_decision;
+DROP TABLE IF EXISTS gamegen_candidate;
 DROP TABLE IF EXISTS gamegen_numeric_policy;
 DROP TABLE IF EXISTS gamegen_creative_structure;
 DROP FUNCTION IF EXISTS gamegen_ledger_is_total(JSONB, JSONB);

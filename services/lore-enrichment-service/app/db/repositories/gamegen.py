@@ -35,7 +35,11 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
+import hashlib
+
 from app.gamegen.brief import load_brief, load_contract
+from app.gamegen.generate import AdmissionRefusal, generate
+from app.gamegen.validator import run_validator
 from app.gamegen.policy import (
     Band, Policy, PolicyError, assert_covers_magnitudes, body_json,
     containment_violations, from_body, narrow, policy_hash,
@@ -739,3 +743,147 @@ class GamegenS2Repo:
                 "evaluated once at write time - re-narrow against the current baseline."
             )
         return chosen
+
+    # ── S5: admission ───────────────────────────────────────────────────────
+
+    async def admit_candidate(
+        self,
+        *,
+        job_id: UUID,
+        owner_user_id: UUID,
+        book_id: UUID,
+        element_kind: str,
+        structure_id: UUID,
+        created_by: UUID,
+        repair_ops: list[dict] | None = None,
+        repair_round: int = 0,
+    ) -> UUID:
+        """Generate from a stored structure + the book's effective policy, hand the
+        result to the **engine's binary**, and record the verdict.
+
+        **A refusal is RECORDED, not raised away.** An S5 refusal that only threw
+        would leave the chain with no row saying the engine looked and said no —
+        and the next run would look like the first. So a refused candidate is a row
+        with ``verdict='refused'`` carrying the engine's own findings, and the
+        CHECK makes it unapprovable.
+
+        The two refusals that happen *before* the engine sees anything — an
+        unresolvable cell (`PGN-A4` / `PGN-A20`) and an inadmissible repair
+        (`PGN-A17`) — propagate as :class:`AdmissionRefusal` instead, because there
+        is no artifact to record a verdict about. That asymmetry is deliberate: a
+        ``verdict='refused'`` row asserts *the engine ran*, and inventing one for a
+        candidate the engine never saw is the same lie as stamping a version.
+        """
+        structure = await self._structure(structure_id, owner_user_id)
+        policy = await self.effective_policy(
+            element_kind=element_kind, book_id=book_id, owner_user_id=owner_user_id
+        )
+        if policy is None:
+            raise AdmissionRefusal(
+                f"no numeric policy for {element_kind!r}. `PGN-A15` ships a System "
+                f"baseline precisely so a book is never asked to author magnitudes from "
+                f"nothing; with no baseline at all every number would be an engine "
+                f"default wearing a generated artifact's name."
+            )
+
+        art = generate(body=structure["body"], policy=policy, repair_ops=repair_ops or [])
+        verdict = run_validator(art.toml)
+        artifact_hash = hashlib.blake2b(art.toml.encode("utf-8"), digest_size=32).hexdigest()
+
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO gamegen_candidate
+                  (job_id, owner_user_id, book_id, element_kind, structure_hash,
+                   policy_hash, artifact_hash, repair_round, verdict,
+                   verdict_findings_json, progression_digest, read_set_json,
+                   default_provenance_json, repair_ops_json,
+                   engine_schema_version, engine_law_version, created_by)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,
+                        $13::jsonb,$14::jsonb,$15,$16,$17)
+                ON CONFLICT (job_id, structure_hash, policy_hash, repair_round,
+                             engine_schema_version) DO UPDATE
+                  SET job_id = EXCLUDED.job_id  -- no-op; forces RETURNING
+                RETURNING candidate_id
+                """,
+                job_id, owner_user_id, book_id, element_kind, structure["content_hash"],
+                policy_hash(policy), artifact_hash, repair_round,
+                "admitted" if verdict.admitted else "refused",
+                json.dumps(verdict.findings, ensure_ascii=False),
+                verdict.progression_digest,
+                json.dumps(art.read_set, ensure_ascii=False),
+                json.dumps(art.default_provenance, ensure_ascii=False),
+                json.dumps(repair_ops or [], ensure_ascii=False),
+                verdict.engine_schema_version, verdict.engine_law_version, created_by,
+            )
+        return row["candidate_id"]
+
+    async def _structure(self, structure_id: UUID, owner_user_id: UUID) -> dict:
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                "SELECT content_hash, body_json FROM gamegen_creative_structure "
+                "WHERE structure_id=$1 AND owner_user_id=$2",
+                structure_id, owner_user_id,
+            )
+        if r is None:
+            raise AdmissionRefusal(
+                f"creative structure {structure_id} is not visible to {owner_user_id}"
+            )
+        return {"content_hash": r["content_hash"], "body": json.loads(r["body_json"])}
+
+    async def approve_candidate(
+        self, *, candidate_id: UUID, owner_user_id: UUID, approved_by: UUID
+    ) -> bool:
+        """**The S5 human gate.** v1 named a gate here and the schema had nowhere
+        to record that anyone looked.
+
+        The ``verdict='admitted'`` predicate is belt to the CHECK's braces: the DB
+        refuses an approved refusal and this refuses to try. Two layers because the
+        message differs — a caller deserves *"the engine refused this"*, not a
+        constraint violation.
+        """
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                """
+                UPDATE gamegen_candidate
+                   SET review_status='approved', approved_by=$3, approved_at=now()
+                 WHERE candidate_id=$1 AND owner_user_id=$2
+                   AND review_status='proposed' AND verdict='admitted'
+                RETURNING candidate_id
+                """,
+                candidate_id, owner_user_id, approved_by,
+            )
+        return r is not None
+
+    async def candidate(self, *, candidate_id: UUID, owner_user_id: UUID) -> dict | None:
+        """What §7.2 says a reviewer is shown, and it is **not a numeric diff**.
+
+        *"Nobody reviews 24 integers."* The two numbers that turn an invisible hole
+        into something vetoable are the engine's findings and
+        ``engine_defaulted_field_count`` — *"you are approving N tiers of which M
+        fields will be engine-defaulted."*
+        """
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                "SELECT verdict, verdict_findings_json, progression_digest, "
+                "read_set_json, default_provenance_json, repair_ops_json, "
+                "engine_schema_version, engine_law_version, review_status, approved_by "
+                "FROM gamegen_candidate WHERE candidate_id=$1 AND owner_user_id=$2",
+                candidate_id, owner_user_id,
+            )
+        if r is None:
+            return None
+        defaults = json.loads(r["default_provenance_json"])
+        return {
+            "verdict": r["verdict"],
+            "findings": json.loads(r["verdict_findings_json"]),
+            "progression_digest": r["progression_digest"],
+            "read_set": json.loads(r["read_set_json"]),
+            "default_provenance": defaults,
+            "engine_defaulted_field_count": len(defaults),
+            "repair_ops": json.loads(r["repair_ops_json"]),
+            "engine_schema_version": r["engine_schema_version"],
+            "engine_law_version": r["engine_law_version"],
+            "review_status": r["review_status"],
+            "approved_by": r["approved_by"],
+        }
