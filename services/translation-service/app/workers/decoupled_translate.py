@@ -24,6 +24,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from ..llm_budget import budget_for
 from ..llm_client import LLMClient
 from .chunk_splitter import estimate_tokens, split_chapter
 from .session_translator import (
@@ -264,7 +265,12 @@ async def _submit_next(
     submit = await llm_client.submit_job(
         user_id=msg["user_id"], operation="translation",
         model_source=model_source, model_ref=str(model_ref),
-        input={"messages": messages}, chunking=None, job_meta=job_meta,
+        # The two branches above are different calls; the profile follows the branch.
+        # MIRROR → 0 → stripped by the SDK, so the wire is unchanged. app/llm_budget.py.
+        input={"messages": messages,
+               "max_tokens": budget_for(
+                   "compact_memo" if action[0] == "compact" else "translate_chunk")},
+        chunking=None, job_meta=job_meta,
     )
     await _persist_inflight(ex, chapter_translation_id, submit.job_id, rs)
 

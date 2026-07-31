@@ -104,6 +104,20 @@ class OutputKind(str, Enum):
     STRUCTURED = "structured"
     VERDICT = "verdict"
     EDIT = "edit"
+    #: The output's length is dictated by the INPUT and the model's natural stop is the
+    #: correct bound — translation, transcription, OCR. Resolves to ``0``, which is this
+    #: platform's existing wire convention for "omit the cap, let the model decide"
+    #: (``provider/adapters.go``: *"Policy: max_tokens=0 means omit"*; Anthropic, which
+    #: rejects a missing cap with a 400, substitutes 8192).
+    #:
+    #: This kind exists because translation-service's four LLM call sites send
+    #: ``input={"messages": …}`` with no cap at all, and that is DELIBERATE — a translation
+    #: is a fidelity contract, so a cap that clips a chapter mid-sentence is worse than no
+    #: cap. The problem was never the behaviour; it was that "deliberately unbounded" and
+    #: "someone forgot" looked identical at the call site. Same shape as a skipped test
+    #: reading as a passing one. Declaring it makes the decision greppable and lets the
+    #: gate tell the two apart.
+    MIRROR = "mirror"
 
 
 #: Hard runaway guard, not a budget. Sized so no legitimate call can reach it, so hitting
@@ -129,6 +143,7 @@ _HEADROOM: dict[OutputKind, float] = {
     OutputKind.STRUCTURED: 2.5,
     OutputKind.VERDICT: 1.5,
     OutputKind.EDIT: 2.0,
+    OutputKind.MIRROR: 1.0,   # unused — MIRROR returns before the sizing model runs
 }
 
 #: Reasoning tokens come out of the same allowance, so scale by effort rather than adding a
@@ -145,6 +160,7 @@ _FLOOR: dict[OutputKind, int] = {
     OutputKind.STRUCTURED: 4096,   # >= cast_plan's 4000, the site truncation already bit
     OutputKind.VERDICT: 1536,      # >= critic's 1536
     OutputKind.EDIT: 2200,         # >= self_heal's 2200
+    OutputKind.MIRROR: 0,          # 0 == "omit the cap" on the wire; see OutputKind.MIRROR
 }
 
 #: Default per-item cost for a STRUCTURED call when the caller knows the item count. A
@@ -209,6 +225,19 @@ def call_budget(
         is applied and ``clamped_to_window`` stays ``None`` so the gap is visible.
     :param ceiling: hard runaway guard.
     """
+    # MIRROR short-circuits the whole sizing model: there is no target to size FROM, and
+    # every clamp below (floor, headroom, window share, ceiling) would turn a deliberate
+    # "no cap" into a cap. Returns 0 = the wire's omit sentinel, and never fatal — a model
+    # stopping naturally is the intended end of the call, not a truncation.
+    if kind is OutputKind.MIRROR:
+        return CallBudget(
+            max_output_tokens=0,
+            reasoning=reasoning,
+            truncation_is_fatal=False,
+            source="default",
+            clamped_to_window=None,
+        )
+
     lang = (language or "auto").lower()
     per_word = TOKENS_PER_WORD.get(lang, _TOKENS_PER_WORD_DEFAULT)
 

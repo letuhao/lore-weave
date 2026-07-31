@@ -230,17 +230,47 @@ Not wired, with the reason recorded — `fe-door-scan.py` (no exit path at all) 
 indistinguishable from no script, and wiring them would have read as +2 gates while enforcing
 nothing.
 
+## ✅ LLM-BUDGET SSOT — M1: the seam is now enforced (2026-07-31)
+
+**Tier 1 (SDK) + tier 3 (gate) done; tier 2 (per-service registry) proven on translation-service.**
+
+`scripts/llm-budget-ssot-gate.py` catches all three forms — call-site literal, **signature
+default** (the common one, and the one a call-site-only gate would have greened), and **absent
+entirely**. AST, not grep, because the estimates were wrong in both directions: measured **79 LLM
+call sites**, and the "~9 / ~31" guesses became **6 literal · 8 unattributed · 18 signature
+defaults**, plus **61 whose payload is built off-site** — reported as `opaque`, because claiming
+a payload this gate cannot see is fine would be the exact shape the cycle is about.
+
+**`max_tokens` is overloaded here and the gate must not sweep both.** `select_for_context(
+max_tokens=800)` and `build_glossary_context(max_tokens=1500)` are INPUT packing budgets — how
+much glossary to select — not output ceilings. A budget counts only when it reaches an LLM
+request payload, established structurally.
+
+**The 4 sites with no budget at all were all in translation-service — and were NOT a bug.**
+Checked against `provider/adapters.go`: omitting is deliberate policy (*"max_tokens=0 means omit,
+let the model decide"*), and Anthropic, which 400s on a missing cap, substitutes 8192. So the
+behaviour was right and the *expression* of it was the defect: **"deliberately unbounded" and
+"nobody decided" looked identical at the call site** — the same shape as a skipped test reading
+as a pass. New `OutputKind.MIRROR` → `0` (the platform's existing wire sentinel; the SDK strips
+it at `models.py:179`, so the wire is byte-identical) makes the decision greppable.
+`services/translation-service/app/llm_budget.py` is tier 2's first instance.
+
+**The gate punished its own architecture on first run.** After migrating the 4 sites the backlog
+went UP by 4 — `budget_for("translate_chunk")` is the registry indirection, and a gate that only
+recognises a literal `call_budget(...)` at the call site marks every correctly-migrated site
+unattributed, pushing the fix back to inlining. Registry attribution is now recognised and
+**earned, not name-exempted**: a module contributes names only if it genuinely calls
+`call_budget`. A file named `llm_budget.py` full of literals launders nothing (pinned by test).
+
+Both new baselines were **guesses that the ratchets rejected on their own first run** (41→32
+here, 43→47 for gate-teeth). That is what a ratchet is for; the constants now carry `MEASURED`.
+
 ### ▶ NEXT
-1. **The LLM-budget SSOT axis** — see below. ROT-1 and the QC axis are closed.
-2. Detail for the axis above: SDK kinds+formula (**done** —
-   `sdks/python/loreweave_llm/budget.py`) · **one call-profile registry per service** (the
-   per-operation knowledge belongs to the service; `_OPERATION_INSTRUCTIONS`/`PASS_REGISTRY` are the
-   precedent) · an **AST gate catching all three forms**: a call-site literal (~9), an **int default
-   in a signature (~31 — the common form, and the form v1's gate would have greened)**, and **absent
-   entirely** (`llm_verifier`, glossary's Go tools, tilemap — and glossary has *zero* `FinishReason`
-   checks service-wide). Go/Rust get a contract file + drift test. Billing stays OUT: it
-   over-estimates on purpose.
-3. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
+1. **LLM-budget M2** — composition-service's registry (22 of the 18+ signature defaults live
+   there) and the remaining literals; then **Go/Rust get a contract file + drift test**
+   (glossary has *zero* `FinishReason` checks service-wide; `llm_verifier`, tilemap also bare).
+   Billing estimators stay OUT — they over-estimate on purpose.
+2. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
    slice — read it before planning any slice.
 
 ## ◐ `authoring_run_review`: "needs real spend" was MY wrong framing (2026-07-30)

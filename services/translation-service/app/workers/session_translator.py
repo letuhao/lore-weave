@@ -33,6 +33,7 @@ from loreweave_llm.errors import (
 from loreweave_llm.models import Job
 
 from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
+from ..llm_budget import budget_for
 from ..llm_client import LLMClient
 from ..metrics import record_stage
 from .chunk_splitter import estimate_tokens, split_chapter
@@ -515,7 +516,8 @@ async def _translate_chunk(
             operation="translation",
             model_source=msg["model_source"],
             model_ref=str(msg["model_ref"]),
-            input={"messages": messages},
+            # MIRROR → 0 → stripped by the SDK; the wire is unchanged. app/llm_budget.py.
+            input={"messages": messages, "max_tokens": budget_for("translate_session_chunk")},
             chunking=None,  # caller already chunked via split_chapter
             job_meta={
                 "chapter_translation_id": str(chapter_translation_id),
@@ -636,6 +638,7 @@ async def _compact_history(
                     {"role": "system", "content": compact_system},
                     {"role": "user",   "content": compact_user_msg},
                 ],
+                "max_tokens": budget_for("compact_memo"),
             },
             chunking=None,
             job_meta={"extractor": "compact_memo"},

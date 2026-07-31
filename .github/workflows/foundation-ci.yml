@@ -200,6 +200,11 @@ jobs:
       # chat-service; `--selfcheck` proves the gate itself still works (imports, contract
       # parses, turn set non-empty) so it cannot rot while every run reads "no stack today".
       - run: python scripts/context-inspector-trace-gate.py --selfcheck
+      # D-LLM-BUDGET-SSOT. The reasoning axis already adapts per call; the budget axis was
+      # ~40 flat literals, and BOTH draw from the same token allowance. HARD: no LLM call
+      # site may leave its output budget undeclared — "deliberately unbounded" is sayable
+      # (OutputKind.MIRROR), so only a site that never decided reds.
+      - run: python scripts/llm-budget-ssot-gate.py
 
       # A gate must be able to FAIL, and the proof of that is a test. These suites exist
       # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
@@ -208,7 +213,7 @@ jobs:
                scripts/test_slice_manifest_validate.py scripts/test_tier_tag_gate.py
                scripts/test_warp_base_pin.py scripts/test_warp_worktrees.py
                scripts/test_deprecated_tool_scan.py scripts/test_gate_teeth_gate.py
-               scripts/perf/test_slo_assert.py
+               scripts/test_llm_budget_ssot_gate.py scripts/perf/test_slo_assert.py
                scripts/eval/tests/test_persist_claim_detector.py -q
       - run: python scripts/gate-teeth-gate.py
 

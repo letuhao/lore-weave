@@ -132,3 +132,45 @@ def test_the_source_is_never_blank():
     for kind in OutputKind:
         b: CallBudget = call_budget(kind, target=10)
         assert b.source, f"{kind} produced a budget with no recorded source"
+
+
+# ── MIRROR — "deliberately unbounded" must be sayable ─────────────────────────────────────
+
+def test_mirror_resolves_to_the_wire_omit_sentinel():
+    """0 is not "no budget", it is this platform's EXISTING convention for "omit the cap"
+    (`provider/adapters.go`: *"Policy: max_tokens=0 means omit (let the model decide)"*).
+    Reusing it rather than inventing a second spelling is the one-name-one-concept rule."""
+    b = call_budget(OutputKind.MIRROR)
+    assert b.max_output_tokens == 0
+    assert b.source == "default"
+
+
+def test_mirror_truncation_is_not_fatal():
+    """A model reaching its natural stop is the intended END of a translation, not a clip."""
+    assert call_budget(OutputKind.MIRROR).truncation_is_fatal is False
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"target": 5000},
+    {"language": "vi"},
+    {"context_length": 8192},
+    {"target": 100_000, "language": "zh", "context_length": 4096},
+])
+def test_no_clamp_can_turn_a_deliberate_no_cap_into_a_cap(kwargs):
+    """Every other kind runs floor → headroom → window share → ceiling. Any one of those
+    applied to MIRROR would silently re-introduce the truncation the omission avoids — the
+    window clamp especially, since a translation's input is LARGE by construction."""
+    b = call_budget(OutputKind.MIRROR, **kwargs)
+    assert b.max_output_tokens == 0, f"{kwargs} clamped a deliberate no-cap to {b.max_output_tokens}"
+    assert b.clamped_to_window is None
+
+
+def test_mirror_is_the_only_kind_that_may_resolve_to_zero():
+    """A zero from any other kind would be a bug that reads as a policy — the whole reason
+    "absent" and "deliberate" had to stop looking alike."""
+    for kind in OutputKind:
+        got = call_budget(kind, target=0).max_output_tokens
+        if kind is OutputKind.MIRROR:
+            assert got == 0
+        else:
+            assert got > 0, f"{kind} resolved to {got} on an unknown target"
