@@ -77,10 +77,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # D-COMPOSITION-UNIT-SUITE-UNWIRED (2026-07-31) — this row ran `tests/integration/db`
+          # only: 388 tests. `tests/unit` is 3,143 and ran NOWHERE, in the service that owns
+          # the generation engine. Third instance of the same shape found today (the shared
+          # Python SDK's 973, the gates' own 148), and the reason it keeps happening is that a
+          # path TRIGGER reads like an execution.
+          #
+          # The unit tests need no DB — they ride here because this job already installs the
+          # service's dependencies + the SDK, which the byte-compile job does not.
           - service: composition-service
             dsn_var: TEST_COMPOSITION_DB_URL
             db_name: loreweave_composition_test
-            test_path: tests/integration/db
+            test_path: tests/unit tests/integration/db
             needs_migrate: false
           - service: campaign-service
             dsn_var: TEST_CAMPAIGN_DB_URL

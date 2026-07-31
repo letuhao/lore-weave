@@ -358,11 +358,47 @@ emit a **shorter list** — which parses cleanly, reports success, and silently 
   kill, in the gate. Enforcement cells naming a gate/test are now verified as such (proven
   red-able by injection).
 
+## ✅ PHASE 1 · S10-a — the instrument, and why its predecessor could not measure (2026-07-31)
+
+**S12 was already delivered** (`enforcement-claims-gate.py`, hardened twice today), so Phase 1
+is `S10 → S1 → S2`. This is S10's first increment.
+
+**The premise, verified rather than inherited:** `services/composition-service/eval/` does not
+exist — but **2,279 lines of eval harness do**, across nine `scripts/eval_*.py` (cold-start
+coherence, decompose, motif select+bind, dropped promises, conformance calibration, …).
+**None of it runs in any workflow**, and **only one of the nine seeds a defect at all**
+(`eval_a2_canon.py`).
+
+**The defect in the instrument itself.** `eval_a2_canon.py` runs five scenarios — all the
+*same* class — and gates on `status=="checked" AND iterations>=1`, the detector FIRING.
+**There is no negative control in any of the nine scripts.** So it cannot separate: *the canon
+loop works* from *the canon loop fires on every scene regardless*. Both print "5/5 detected ·
+PASS". The second is a broken engine with a green eval — a guarantee with nothing behind it,
+wearing a number.
+
+`app/eval/` now carries a **seeded-defect registry** where every class declares a **control**
+(the same scenario with the defect removed), and counts as detected only when the detector
+fires on the seeded variant *and stays quiet on the control*. That is a 2×2 —
+`loreweave_eval.calibration.confusion` computes it — so **over-flagging is a number (`fp`)**
+rather than absent from the report. 5 classes, each with provenance from a failure this repo
+actually observed. `app/eval/gate.py` is the **static half**: CI, no stack, asserting the
+instrument *can measure* (enough classes, all controlled, no shared or constant detectors,
+and the scorer punishes a control-firing class). An outage scores `ERROR` and contributes no
+confusion pair — never a clean engine.
+
+**Third never-run suite found today, and the biggest: composition's `tests/unit` is 3,143
+tests and ran NOWHERE** — its CI row was `tests/integration/db` (388). After the SDK's 973
+and the gates' own 148, the pattern is clear enough to name: **a path *trigger* reads like an
+execution.** Now wired (3148 pass serially in 8 min, as CI runs it).
+
 ### ▶ NEXT
-1. **LLM-budget backlog** — 29 rows: 12 composition, 10 knowledge, 4 translation, 3 misc.
+1. **S10-b** — the live driver: run the 5 classes against a real stack, on a throwaway book.
+   The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding mechanics".
+2. **S1 → S2** per spec §6.
+3. **LLM-budget backlog** — 29 rows: 12 composition, 10 knowledge, 4 translation, 3 misc.
    Billing estimators stay OUT — they over-estimate on purpose.
-2. Still unscanned by the gate, and named in its PASS line so it cannot pass for coverage:
-   the raw `POST /internal/llm/stream` shape (chat, lore-enrichment, video-gen).
+4. Still unscanned by the budget gate, and named in its PASS line so it cannot pass for
+   coverage: the raw `POST /internal/llm/stream` shape (chat, lore-enrichment, video-gen).
 2. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
    slice — read it before planning any slice.
 
