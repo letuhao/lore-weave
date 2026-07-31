@@ -120,7 +120,6 @@ jobs:
       # the ENFORCED invariant was guarded only by the narrower superseded lint. That is
       # how two POC files calling Ollama over httpx sat in a service directory unnoticed.
       - run: python scripts/ai-provider-gate.py
-      - run: bash scripts/lint-no-direct-llm-imports.sh
       - run: bash scripts/dashboard-validator.sh
       - run: bash scripts/alert-rule-validator.sh
       # A registered contract that nothing reads is a claim, not a contract (S12).

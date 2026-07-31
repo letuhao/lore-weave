@@ -104,9 +104,18 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
     setState((prev) => ({ ...prev, interimTranscript: `Transcribing (${audioSizeKB.toFixed(0)}KB)...` }));
 
     try {
+      // D-STT-HARDCODED-WHISPER-FALLBACK — same defect as `audioUtils.transcribeAudio`:
+      // `|| 'whisper-1'` fabricated an OpenAI model for a user who had chosen none. This
+      // hook has no caller today (only its `MEDIA_RECORDER_SUPPORTED` export is imported),
+      // which is precisely how a hardcoded model survives to be used later. Refuse.
+      if (!optionsRef.current.model) {
+        throw new Error(
+          'No speech-to-text model is configured — choose one in Voice settings before dictating.',
+        );
+      }
       const formData = new FormData();
       formData.append('file', blob, 'speech.wav');
-      formData.append('model', optionsRef.current.model || 'whisper-1');
+      formData.append('model', optionsRef.current.model);
       if (optionsRef.current.lang) {
         formData.append('language', optionsRef.current.lang.split('-')[0]);
       }

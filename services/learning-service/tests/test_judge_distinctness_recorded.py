@@ -94,3 +94,45 @@ def test_the_request_model_can_carry_the_generator():
     assert art.generator_model == "writer-y"
     # And it stays optional, so no existing caller breaks.
     assert WikiJudgeArticle(article_id="a", article_text="t").generator_model is None
+
+
+# ── the translation judge carries the same contract ──────────────────────────
+
+async def _translation_detail(monkeypatch, **kw) -> dict:
+    from app.db.online_translation_judge import persist_translation_judge
+
+    captured: dict = {}
+
+    async def _fake_persist(pool, **kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        "app.db.online_translation_judge.persist_consumed_score", _fake_persist)
+
+    class _Fidelity:
+        score = 0.9
+        reason = "faithful"
+
+    await persist_translation_judge(
+        AsyncMock(),
+        ct_id="ct1", user_id=uuid4(), book_id=None,
+        verdict=_Fidelity(), origin_event_id="o1", **kw,
+    )
+    return json.loads(captured["comment"])
+
+
+@pytest.mark.asyncio
+async def test_the_translation_judge_records_distinctness_too(monkeypatch):
+    """One contract, not one implementation. The wiki judge was fixed first; a fix that
+    stops at the first call site leaves the same score-vs-score ambiguity everywhere
+    else, which is how "17+ self-grading sites across 8 services" happened."""
+    detail = await _translation_detail(monkeypatch, judge_model="j")
+    assert detail["judge_distinct"] is None
+
+    same = await _translation_detail(monkeypatch, judge_model="m", generator_model="m")
+    assert same["judge_distinct"] is False
+
+    diff = await _translation_detail(
+        monkeypatch, judge_model="j", generator_model="translator-x")
+    assert diff["judge_distinct"] is True

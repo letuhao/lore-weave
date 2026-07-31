@@ -44,7 +44,14 @@ describe('BooksPage create-book navigation (D-BOOKS-CREATE-TO-STUDIO)', () => {
     await waitFor(() => expect(screen.getByTestId('book-create-button')).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId('book-create-button'));
+    // D-BOOKS-CREATE-LANG-REQUIRED (2026-07-31): the create form gained a REQUIRED
+    // language field — `disabled={creating || !newTitle.trim() || !newLang}` — after this
+    // test was written. Filling only the title left the submit button disabled, so
+    // `createBook` was never called and the failure read as "navigation is broken". It is
+    // not: the navigation never got the chance to run. Both tests in this file had been
+    // RED on the branch since that field landed.
     fireEvent.change(screen.getByTestId('book-title-input'), { target: { value: 'New Book' } });
+    fireEvent.change(screen.getByTestId('book-language-input'), { target: { value: 'vi' } });
     fireEvent.click(screen.getByTestId('book-create-submit'));
 
     await waitFor(() => expect(screen.getByTestId('studio-landed')).toBeInTheDocument());
@@ -57,6 +64,7 @@ describe('BooksPage create-book navigation (D-BOOKS-CREATE-TO-STUDIO)', () => {
 
     fireEvent.click(screen.getByTestId('book-create-button'));
     fireEvent.change(screen.getByTestId('book-title-input'), { target: { value: 'Bad Book' } });
+    fireEvent.change(screen.getByTestId('book-language-input'), { target: { value: 'vi' } });
     fireEvent.click(screen.getByTestId('book-create-submit'));
 
     await waitFor(() => expect(createBookMock).toHaveBeenCalled());

@@ -128,6 +128,13 @@ MODEL_NAME = re.compile(
     r"|phi-?[0-9][\w.\-:]*"
     r"|bge-[\w.\-]+"
     r"|nomic-embed[\w.\-]*"
+    # Non-chat capabilities are served here too and were missed on the first pass: the
+    # test account's BYOK set includes Kokoro (TTS) and bge-reranker alongside the chat
+    # models, so a rule blind to them is blind to a third of what this platform runs.
+    r"|kokoro[\w.\-:]*"
+    r"|whisper-?[\w.\-]*"
+    r"|faster-whisper[\w.\-]*"
+    r"|piper[\w.\-]*"
     r"""|magistral[\w.\-:]*"""
     r""")['"`]"""
 )
@@ -201,10 +208,12 @@ def is_test_file(rel: str) -> bool:
     return (
         "/tests/" in rel
         or "/test/" in rel
-        # Dev/eval harnesses under a service's scripts/ dir. Same reasoning as tests:
-        # they are not shipped runtime, and PINNING a model is what makes an eval
-        # reproducible — an eval that silently switches models measures nothing.
-        or "/scripts/" in rel
+        # Dev/eval HARNESSES under a service's scripts/ dir — matched by name, not by
+        # directory. Same reasoning as tests: not shipped runtime, and pinning a model is
+        # what makes an eval reproducible (one that silently switches models measures
+        # nothing). Narrowed from a blanket `"/scripts/" in rel`, which would also have
+        # exempted a PRODUCTION job that happened to live under scripts/.
+        or ("/scripts/" in rel and base.startswith(("eval_", "diag_", "_smoke_", "bench_")))
         or "/.storybook/" in rel
         or "/fixtures/" in rel
         or "/__fixtures__/" in rel

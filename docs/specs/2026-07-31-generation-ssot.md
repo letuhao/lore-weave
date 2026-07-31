@@ -201,13 +201,13 @@ LocalStack-KMS) rather than silently missing. There is no ROT-2.
 | **B2** | the guide is still sent **twice** (protected `<guide>` segment + the wrapper's trailing line). Both sanitized now, so the hole is closed, but the model reads the same steer twice and pays for it twice. | **S4** |
 | **B2** | `build_revise_messages` interpolates `draft` (model output) and violation spans lifted from it; `build_selection_messages` interpolates `selection` — none through `neutralize()`. The 2nd-order echo class the red team named. | **S4** |
 | **B2** | `injection-coverage-lint.py`'s 15-row baseline still exempts **every** composition engine module. | **S4** |
-| **B4** | only the **wiki** judge records distinctness. `events/handlers.py:735` (translation judge, model off the Redis payload), `online_judge.py` and `online_translation_judge.py` record nothing. | **S6** |
 | **B4** | distinctness is **recorded, never enforced**, and no caller supplies `generator_model` — so every persisted value is `null` today. That is honest, and it is also the number S6 needs before a refusal can be switched on. | **S6** |
-| **B6** | the upstream swallow (`except: local = {}`, "a bad batch degrades to all-unjudged") is still **silent at the swallow site**; only the aggregate coverage records it. | **S1** |
 | **B6** | `partial_policy="keep"` stays the default — deliberate (dropping real candidates on an outage is worse), now recorded rather than assumed. | *decision, closed* |
-| **B7** | `lint-no-direct-llm-imports.sh` is superseded but still runs in CI — two gates for one rule, and the weaker one has no expiry. | **S12** |
-| **B7** | the new `/scripts/` exemption is broad: a *production* job living under a service's `scripts/` would be exempt from the model-name rule. | **S12** |
-| **B7** | `MODEL_NAME` still omits served non-chat families (kokoro/TTS, whisper/STT). | **S7** |
+| ~~**B7** `MODEL_NAME` omits served non-chat families~~ | **CLEARED** — kokoro/whisper/piper added. The widened rule immediately found a live violation: the frontend sent `sttModelName \|\| 'whisper-1'`, and `sttModelName` defaults to `''`, so a user who had chosen no STT model silently transcribed on OpenAI's whisper-1 against whatever credential resolved. Both sites now refuse with a fixable message. | — |
+| ~~**B7** the `/scripts/` exemption is too broad~~ | **CLEARED** — narrowed from a blanket directory match to `eval_*`/`diag_*`/`_smoke_*`/`bench_*` basenames, so a production job under `scripts/` is no longer exempt. | — |
+| ~~**B7** the superseded lint still runs in CI~~ | **CLEARED** — retired; `ai-provider-gate.py` (which strictly supersedes it) now runs there instead. | — |
+| ~~**B6** the upstream swallow is silent~~ | **CLEARED** — the unparseable-batch path now logs which batch and how many items go unjudged, not just the aggregate coverage. | — |
+| ~~**B4** only the wiki judge records distinctness~~ | **PARTLY CLEARED** — the translation judge now records the same tri-state and its caller passes the run's `model_ref`. `online_judge.py` (a float-precision score, not a verdict) still does not — it needs the `ScoreReport` shape, which is S9's. | **S9** |
 | **B3** | the guardrail stays unwired until an L3-event write path exists; `contracts/.spectral.yaml` stays unwired per DEFERRED 078. Both now declared, not claimed. | *tracked* |
 | **S12** | the gate checks **contract files only**. It does **not** cover the B5 class — a *comment* asserting a guarantee (`"the dispatch path re-verifies"`) — nor the `INV-*` code-invariant rows in the standards index. Those are the two shapes that produced two of this cycle's three worst findings. | **S12 (widen)** |
 

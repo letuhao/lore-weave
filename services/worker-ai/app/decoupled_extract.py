@@ -580,6 +580,14 @@ def fold_filter_terminal(rs: dict[str, Any], task_key: str, job) -> dict[str, An
     try:
         local = _parse_verdicts(parse_filter_job(job), meta["n_items"])
     except Exception:  # noqa: BLE001 — a bad batch degrades to all-unjudged
+        # Log HERE, not only in finalize_filter's aggregate coverage. The coverage number
+        # says "some items went unjudged"; only this line says WHICH batch, and why. A
+        # silent swallow is what made this whole class invisible in the first place.
+        logger.warning(
+            "pass2 filter batch %s unparseable — its %s item(s) stay UNJUDGED and will be "
+            "resolved by partial_policy, not by a judge", task_key, meta.get("n_items"),
+            exc_info=True,
+        )
         local = {}
     verdicts = {meta["batch_start"] + k: v for k, v in local.items()}
     return fold_filter_task(rs, task_key, meta["category"], verdicts)
