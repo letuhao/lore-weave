@@ -470,8 +470,19 @@ asserts an input equals itself and is green on any codebase, including one leaki
 
 > **`PGN-A7` — the validator is the engine's binary, and the verdict records which binary.**
 
-**It does not exist yet** (0.1 #1) — S-1 builds it. Until then this axiom stamps a version from
-nothing. `engine_schema_version` + `engine_law_version` on the verdict means a candidate admitted
+✅ **BUILT** — `crates/ruleset-loader/src/bin/progression_validate.rs`. `S-1` built
+`ProgressionSchemaValidator` as a **library**, which is a validator nothing outside the workspace can
+call, so S5 would have recorded `engine_schema_version: 5` beside a verdict produced by re-reading the
+rules in Python: the *mirror nothing forces to agree* one tier up from `CPL-A2`, and worse, because the
+mirror would carry the real engine's version number. The binary runs **the same `resolve_and_pin` path
+a reality load runs** — not the narrower `validate(table, quantities)`, which would miss the store
+round-trip, the dangling-pin check and `PGN-A18`'s label coverage, and so could pass a ruleset that
+cannot load — and prints a JSON verdict carrying the versions **compiled into it**. A caller cannot
+claim a version it did not run, because the only way to get a verdict is to run the binary. Its tests
+invoke the **built binary**, not the library, and deliberately do *not* assert that the emitted version
+equals the constant: the binary interpolates it, so that comparison is `NV-2`.
+
+`engine_schema_version` + `engine_law_version` on the verdict means a candidate admitted
 under schema 4 has *not* been admitted under schema 5; without it a stale verdict launders a candidate
 past a validator that would now refuse it. This property survived the red team and is worth keeping —
 it just needs a binary to be true of.
@@ -661,7 +672,7 @@ rows and did not notice. **NOT ENFORCED is now a legal value** — an honest gap
 | T4 | same inputs → same artifact | S3 is a fold; S5 is fixed-point saturating-integer (`PGN-A16`); artifact content-addressed | 🔨 **S3 half done** — the fold is pure and its output content-addressed (`uq_gamegen_structure`, re-folding is a no-op). S5 still at risk until `PGN-A16` is built — see `world-gen` |
 | T5 | a wrong rule is traceable **to a person** | 5 hops + `approved_by` on the decision. v1's chain contained **no human at all** | ✅ |
 | T6 | nothing is silently dropped | **consumption ledger, both directions** (`PGN-A9`) — not a count | ✅ enforced twice: `fold()` refuses an unconsumed approved answer, and `gamegen_ledger_is_total` re-checks it as a `CHECK` so a row not written by the fold cannot carry a ledger nobody verified |
-| T7 | a stale verdict cannot launder | version-stamped verdict | 🔨 needs S-1's binary |
+| T7 | a stale verdict cannot launder | version-stamped verdict | ✅ `progression-validate` — the verdict carries the schema + law versions **compiled into the binary that produced it**; a caller cannot claim a version it did not run |
 | T8 | the artifact cannot be swapped | `store.get` re-digests the decoded value | ✅ |
 | T9 | approved content survives repair | typed `repair_ops_json`; `Remove`/`Weaken` refuse (`PGN-A17`) | 🔨 unbuilt |
 | T10 | labels exist for every key | load-time coverage refusal (`PGN-A18`) | ✅ `ruleset-loader::labels` — `admit()` refuses a missing label file, an uncovered kind/tier, and an empty name, each named |

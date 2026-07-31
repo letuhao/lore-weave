@@ -20,3 +20,10 @@ publish.workspace = true
 ruleset-core = { path = "../ruleset-core" }
 serde = { workspace = true }
 toml = { workspace = true }
+
+# PGN-A7's binary. Doc 39 §7 says the axiom "stamps a version from nothing" until
+# something can actually RUN the engine's validator; S-1 built it as a library,
+# which is a validator nothing outside this workspace can call.
+[[bin]]
+name = "progression-validate"
+path = "src/bin/progression_validate.rs"
