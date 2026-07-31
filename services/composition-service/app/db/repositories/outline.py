@@ -39,7 +39,7 @@ _SELECT_COLS = """
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
   story_order, synopsis, structure_node_id,
   location_entity_id, story_time, conflict, outcome, value_shift, stakes,
-  target_words, exit_state, source, intent_slots,
+  target_words, beats, exit_state, source, intent_slots,
   -- SC11 Phase 1/3 — the written verdict. A MAINTAINED column (reconciled from
   -- book-service's scenes.source_scene_id), never authored. Selected here so the PH10
   -- summary projection can ship `written` without a second query.
@@ -57,7 +57,7 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # 22 SC4/B2 — authored scene intent (the eight fields). conflict/outcome/stakes
      # are NOT NULL DEFAULT '' (not clearable); the rest accept an explicit NULL.
      "location_entity_id", "story_time", "conflict", "outcome", "value_shift",
-     "stakes", "target_words", "exit_state"}
+     "stakes", "target_words", "beats", "exit_state"}
 )
 # Columns that accept an explicit NULL (clear). The others are NOT NULL, so a
 # None on them is skipped (treated as no-op for that field).
@@ -80,6 +80,11 @@ def _row_to_node(row: asyncpg.Record) -> OutlineNode:
     # the whole node read.
     st = data.get("intent_slots")
     data["intent_slots"] = json.loads(st) if isinstance(st, str) else (st or {})
+    # D-SCENE-BEATS — same TEXT-not-list story. `or []` covers a row written before the column
+    # existed: a NULL must read as "this is a legacy single-beat scene", which is the behaviour
+    # every existing scene relies on, never a crash on the whole node read.
+    bt = data.get("beats")
+    data["beats"] = json.loads(bt) if isinstance(bt, str) else (bt or [])
     return OutlineNode.model_validate(data)
 
 
@@ -242,6 +247,7 @@ class OutlineRepo:
         value_shift: int | None = None,
         stakes: str = "",
         target_words: int | None = None,
+        beats: list[dict[str, Any]] | None = None,
         exit_state: dict[str, Any] | None = None,
         # 26 IX-11 (D1) — provenance. Human authoring defaults 'authored'; the
         # decompiler passes source='decompiled' + decompile_key='<chapter>:<sort>'.
@@ -280,14 +286,14 @@ class OutlineRepo:
                    pov_entity_id, present_entity_ids, goal, beat_role, status,
                    chapter_id, tension, story_order, synopsis,
                    location_entity_id, story_time, conflict, outcome, value_shift,
-                   stakes, target_words, exit_state, source, decompile_key, intent_slots,
+                   stakes, target_words, beats, exit_state, source, decompile_key, intent_slots,
                    structure_node_id)
                 SELECT $1, $2, w.book_id, $3, $4, $5, $6,
                        $7, $8, $9, $10, $11,
                        $12, $13, $14, $15,
                        $16, $17, $18, $19, $20,
-                       $21, $22, $23::jsonb, $24, $25, $26::jsonb,
-                       $27
+                       $21, $22, $23::jsonb, $24::jsonb, $25, $26, $27::jsonb,
+                       $28
                 FROM composition_work w
                 WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 RETURNING {_SELECT_COLS}
@@ -297,6 +303,7 @@ class OutlineRepo:
                 chapter_id, tension, node_story_order, synopsis,
                 location_entity_id, story_time, conflict, outcome, value_shift,
                 stakes, target_words,
+                json.dumps(beats or []),
                 json.dumps(exit_state) if exit_state is not None else None,
                 source, decompile_key,
                 json.dumps(intent_slots or {}),
@@ -1323,7 +1330,11 @@ class OutlineRepo:
             # 22 SC12/B2 — exit_state is JSONB; asyncpg does not auto-encode a dict, so
             # serialize + cast (mirrors the ::jsonb inserts elsewhere in this repo). A
             # clear (None, allowed since it is nullable) passes through as SQL NULL.
-            if field == "exit_state" and value is not None:
+            # D-SCENE-BEATS — `beats` is JSONB for the same reason and needs the same
+            # treatment. Omitting it here would bind a Python list to a jsonb column and fail
+            # at write time, which is the kind of thing that only shows up on the ONE path a
+            # unit test does not take.
+            if field in ("exit_state", "beats") and value is not None:
                 params.append(json.dumps(value))
                 set_clauses.append(f"{field} = ${len(params)}::jsonb")
             else:

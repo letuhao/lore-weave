@@ -475,9 +475,38 @@ prompt. Candidates — scene granularity (the planner sets `target_words` far ab
 beat can carry, so the model is right to stop), or an explicit expand/continue pass. Note the
 instrument earned its keep here: it produced the number, and then told me my fix did not work.
 
+## 🔬 D-SCENE-BEATS — the ceiling is the MATERIAL, not the model (2026-07-31)
+
+**gpt-4o at target=1500 produced 461 words — FEWER than the local gemma's 559/698.** A
+frontier model with enormous output capacity wrote the shortest draft of the set,
+`finish_reason="stop"` throughout. So the ~500-word wall is neither a gemma limit nor
+disobedience: **one beat's material runs out around 500 words**, and both models do exactly
+what the prompt says — *"stop when THIS scene's beat has played out."*
+
+Corrected framing (I had it wrong first): **`target_words` is AUTHORED**, not planner-derived
+— written only via the MCP tools and the outline router. Stored values are 750/800/850/900,
+the Mị Đế numbers. So the author asks ~1.7× what one beat carries, every scene lands ~60%, and
+the gap compounds across a chapter.
+
+**Slice 1 shipped: `outline_node.beats jsonb NOT NULL DEFAULT '[]'`** + model + repo +
+REST create/patch, and `MEASURED_BEAT_YIELD_WORDS = 500` recording the number. Round-trip
+verified live end-to-end and confirmed in Postgres. An empty `beats` behaves exactly as today,
+which is every existing scene.
+
+⚠️ Three traps hit while landing it, all caught by running rather than reading:
+`--force-recreate` does **not** rebuild — I nearly diagnosed a migration bug that was a stale
+image (the running container had `beats JSONB` count 0). `NodePatch`/`NodeCreate` dropped
+`beats` silently via `extra='ignore'` — the repo accepting the column is NOT enough, and that
+model's own comment records the identical bug happening to the SC4 fields. And `beats` needed
+the `json.loads` decode + `::jsonb` bind that `exit_state` already documents, on both the read
+and the generic-update paths.
+
 ### ▶ NEXT
-1. **S2 attempt 2** — test the granularity hypothesis: does a scene whose beat genuinely
-   carries 1500 words reach 1500? Use n≥3 per point. `app/eval/driver.py` drives it.
+1. **D-SCENE-BEATS slice 2 — draft PER BEAT and stitch within the scene.** The `per_scene_stitch`
+   assembly pattern already exists at chapter level; this is the same thing one level down.
+   Scene target ÷ ~500 = beat count. Guard: the beats must not repeat or contradict each other.
+2. **S2 attempt 2** — with slice 2 in, re-measure: does a 2-beat 900-word scene reach 900?
+   Use n≥3 per point (within-target variance is ~26%).
 2. **`eval_a2_canon.py` reads `canon` off the 202** — the one pre-existing seeded harness is
    broken against the enqueue path. Same fix the driver already has.
 2. **S10-b remainder** — the live driver (`app/eval/driver.py`) needs the job-POLLING path

@@ -76,6 +76,8 @@ class NodeCreate(BaseModel):
     stakes: str = ""
     value_shift: int | None = None
     target_words: int | None = None
+    # D-SCENE-BEATS — same reason the block above gives for target_words.
+    beats: list[dict[str, Any]] | None = None
 
 
 class NodePatch(BaseModel):
@@ -102,6 +104,11 @@ class NodePatch(BaseModel):
     stakes: str | None = None
     value_shift: int | None = None
     target_words: int | None = None
+    # D-SCENE-BEATS — the units a scene is drafted in. Declared here for the reason the block
+    # above records: the repo's `_UPDATABLE_COLUMNS` accepting a field is NOT enough, because
+    # `extra='ignore'` drops anything this model does not name and the write silently no-ops.
+    # Verified live — a PATCH carrying `beats` round-tripped as `[]` until this line existed.
+    beats: list[dict[str, Any]] | None = None
 
 
 class NodeReorder(BaseModel):
@@ -577,6 +584,7 @@ async def create_node(
             location_entity_id=body.location_entity_id, story_time=body.story_time,
             conflict=body.conflict, outcome=body.outcome, stakes=body.stakes,
             value_shift=body.value_shift, target_words=body.target_words,
+            beats=body.beats,
             created_by=user_id,
         )
     except ReferenceViolationError as exc:

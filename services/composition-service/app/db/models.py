@@ -196,6 +196,13 @@ class OutlineNode(BaseModel):
     value_shift: int | None = None      # -100..100
     stakes: str = ""
     target_words: int | None = None     # > 0
+    #: D-SCENE-BEATS — the units this scene is DRAFTED in, in order. Empty = the legacy
+    #: single-beat scene (the eight intent fields above ARE the one beat), which is what every
+    #: existing scene is, so an empty list must keep behaving exactly as today.
+    #:
+    #: A scene reaches its `target_words` by having enough beats, not by asking one beat to
+    #: stretch: measured, one beat carries ~500 words in every model tried, gpt-4o included.
+    beats: list[dict[str, Any]] = Field(default_factory=list)
     exit_state: dict[str, Any] | None = None
     # Intent-collection FSM (spec 2026-07-28) — WHO settled each of the slots above:
     # `{"goal": "settled", "conflict": "absent"}`; a slot absent from the map is planner-owned.

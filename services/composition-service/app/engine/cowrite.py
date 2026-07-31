@@ -114,6 +114,23 @@ def estimate_prompt_tokens(messages: list[dict[str, Any]], counter: Callable[[st
 #: chapter). Tunable; the scene's own `target_words` (when the planner sets it) always wins.
 DEFAULT_SCENE_TARGET_WORDS = 1000
 
+#: D-SCENE-BEATS — what ONE beat actually yields in a single draft call.
+#:
+#: MEASURED 2026-07-31, 9 live runs on throwaway books, targets 200→1500:
+#:   gemma-26b  565 · 673 · 497 · 625 · 559 · 519 · 509 · 528 · 698
+#:   gpt-4o     461   ← for a 1500 target, FEWER than the local model
+#:
+#: A frontier model with enormous output capacity produced the SHORTEST draft of the set. So
+#: this is not a model ceiling and not disobedience: one beat's material genuinely runs out
+#: around here, and both models do exactly what the prompt says — "stop when THIS scene's beat
+#: has played out". `DEFAULT_SCENE_TARGET_WORDS` above (1000) and the 750-900 authors actually
+#: set are ~1.5-2x this, which is why every scene lands ~60% and the gap compounds per chapter.
+#:
+#: The consequence for design: a scene reaches its target by having ENOUGH BEATS, not by asking
+#: one beat to stretch. Nothing reads this constant yet — the per-beat drafting loop is the next
+#: slice — but it is the honest number the rest of the arithmetic is built on.
+MEASURED_BEAT_YIELD_WORDS = 500
+
 #: D-SCENE-OUTPUT-BUDGET-FLAT — tokens per WORD, by script family.
 #:
 #: A word is not a token, and the ratio is not close to 1 outside English. Latin-script

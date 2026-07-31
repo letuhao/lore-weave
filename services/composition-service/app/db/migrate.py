@@ -1946,6 +1946,24 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_at       TIMESTAMPTZ;
 -- Clearing by `written_chapter_id` — "the nodes this chapter's prose used to back, and no longer
 -- does" — is correct in both cases and needs no chapter_id at all.
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_chapter_id UUID;
+
+-- ── D-SCENE-BEATS (2026-07-31): a scene's beats, so a scene can be DRAFTED IN PIECES.
+--
+-- MEASURED across 9 live runs on throwaway books: a scene draft lands ~500 words whatever
+-- `target_words` asks (200→565, 400→673, 900→497/625, 1500→559/698), and **gpt-4o produced
+-- 461 for a 1500 target — FEWER than the local gemma**. So this is not a model ceiling and not
+-- prompt disobedience: one beat's material genuinely runs out around 500 words, and both
+-- models correctly do what the prompt says ("stop when THIS scene's beat has played out").
+--
+-- Authors set `target_words` to 750-900 (the Mị Đế values), i.e. ~1.7x what one beat carries,
+-- so every scene lands ~60% and the shortfall compounds across a chapter. The fix is material,
+-- not wording: a scene that should run 900 words needs TWO beats, drafted separately and
+-- stitched — the `per_scene_stitch` pattern one level down.
+--
+-- JSONB on the scene rather than a `kind='beat'` child node: the outline tree is fixed-depth
+-- (part→chapter→scene) and the FE's drag-reparent projection depends on that depth, so a
+-- fourth level would be a much wider change than the drafting one this exists to enable.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS beats JSONB NOT NULL DEFAULT '[]'::jsonb;
 -- Partial: only the written nodes. The Hub reads this per book, and a mostly-unwritten book keeps
 -- the index tiny.
 CREATE INDEX IF NOT EXISTS idx_outline_node_written
