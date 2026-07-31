@@ -1963,7 +1963,26 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_chapter_id UUID;
 -- JSONB on the scene rather than a `kind='beat'` child node: the outline tree is fixed-depth
 -- (part→chapter→scene) and the FE's drag-reparent projection depends on that depth, so a
 -- fourth level would be a much wider change than the drafting one this exists to enable.
-ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS beats JSONB NOT NULL DEFAULT '[]'::jsonb;
+-- NAMED `draft_beats`, not `beats`: this model ALREADY has `beat_role` (which structural
+-- beat this node IS, read by motif retrieval), and `structure_template.beats` is that same
+-- structural sense. A third meaning of "beat" — the units a scene is DRAFTED in — sharing the
+-- bare word on the very model that carries `beat_role` is the one-name-one-concept violation
+-- this repo's contract rules exist to prevent.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS draft_beats JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- The column shipped for one commit as `beats`; carry any dev/test DB across rather than
+-- leaving an orphan. Guarded both ways so it is a no-op on a fresh DB and on a re-run.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'outline_node' AND column_name = 'beats')
+     AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'outline_node' AND column_name = 'draft_beats') THEN
+    UPDATE outline_node SET draft_beats = beats
+     WHERE jsonb_array_length(COALESCE(beats, '[]'::jsonb)) > 0;
+    ALTER TABLE outline_node DROP COLUMN beats;
+  END IF;
+END $$;
 -- Partial: only the written nodes. The Hub reads this per book, and a mostly-unwritten book keeps
 -- the index tiny.
 CREATE INDEX IF NOT EXISTS idx_outline_node_written

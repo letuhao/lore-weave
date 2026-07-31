@@ -38,6 +38,16 @@ _NOT_SCENE_INTENT: dict[str, str] = {
     "status": "authoring workflow state, not story content",
     "target_words": "sizes the LENGTH directive + the output budget, not the beat block",
     "present_entity_ids": "rendered in <present> — the cast lens, not the beat line",
+    # D-SCENE-BEATS. Same family as `target_words` directly above: it STRUCTURES the drafting
+    # rather than being a story fact. `draft_beats` is how many calls the scene is written in
+    # and what each covers, so the lens must NOT flatten it into the beat block — that would
+    # hand the model every beat at once, which is precisely the whole-chapter-visible framing
+    # that made the drafter annex its neighbours (SCENE-BOUNDARY, 2026-07-30).
+    #
+    # Each beat's CONTENT does reach a prompt in slice 2 — as the brief for its OWN call, one
+    # at a time. This exemption covers the list, not the content.
+    "draft_beats": "the drafting control structure (one call per beat), not a story fact; "
+                   "each beat's content reaches its OWN call's prompt in slice 2",
 }
 
 

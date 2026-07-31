@@ -72,6 +72,7 @@ from app.clients.knowledge_client import (
 )
 from app.config import settings
 from app.db.models import (
+    MAX_DRAFT_BEATS,
     ArcTemplateCreateArgs,
     ArcTemplatePatchArgs,
     LinkKind,
@@ -1089,6 +1090,12 @@ class _NodeCreateArgs(ForbidExtra):
     value_shift: int | None = Field(default=None, ge=-100, le=100)
     stakes: str = ""
     target_words: int | None = Field(default=None, gt=0)
+    # D-SCENE-BEATS — the units this scene is DRAFTED in. Declared on the MCP surface as well
+    # as REST because the AGENT is the primary writer of a beat decomposition, and a field the
+    # repo accepts but one front door cannot send is the CF-9 "one repo method, two front
+    # doors" divergence this file's sibling comment already records — REST lagged MCP last
+    # time; this is the same gap mirrored.
+    draft_beats: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_DRAFT_BEATS)
     exit_state: SceneExitState | None = None
     # D-SCENE-CREATE-PARITY — the last two fields PlanForge's scene upsert writes and
     # this path could not. Both feed the packer, so their absence is a QUIET grounding
@@ -1149,6 +1156,7 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
             location_entity_id=UUID(args.location_entity_id) if args.location_entity_id else None,
             story_time=args.story_time, conflict=args.conflict, outcome=args.outcome,
             value_shift=args.value_shift, stakes=args.stakes, target_words=args.target_words,
+            draft_beats=args.draft_beats,
             exit_state=args.exit_state.model_dump(mode="json") if args.exit_state is not None else None,
             # D-SCENE-CREATE-PARITY — the scene's cast + beat charge, the two fields
             # PlanForge writes and this path could not (see the args).
@@ -1203,6 +1211,12 @@ class _NodeUpdateArgs(ForbidExtra):
     value_shift: int | None = Field(default=None, ge=-100, le=100)
     stakes: str | None = None
     target_words: int | None = Field(default=None, gt=0)
+    # D-SCENE-BEATS — the units this scene is DRAFTED in. Declared on the MCP surface as well
+    # as REST because the AGENT is the primary writer of a beat decomposition, and a field the
+    # repo accepts but one front door cannot send is the CF-9 "one repo method, two front
+    # doors" divergence this file's sibling comment already records — REST lagged MCP last
+    # time; this is the same gap mirrored.
+    draft_beats: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_DRAFT_BEATS)
     exit_state: SceneExitState | None = None
     # D-SCENE-PROSE-NOWHERE-TO-LAND — BIND a plan node to a manuscript chapter.
     # `chapter_id` used to be create-only, which made a planned node a DEAD END: it is
@@ -1258,6 +1272,7 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
             "story_time": args.story_time, "conflict": args.conflict,
             "outcome": args.outcome, "value_shift": args.value_shift,
             "stakes": args.stakes, "target_words": args.target_words,
+            "draft_beats": args.draft_beats,
         }.items() if v is not None
     }
     # location_entity_id is a UUID column (str arg → UUID); exit_state is the SC12

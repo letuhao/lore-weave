@@ -44,23 +44,23 @@ def _row(**over):
 def test_a_row_written_before_the_column_existed_reads_as_an_empty_list():
     """A NULL must mean "legacy single-beat scene", never crash the whole node read — the
     same `or {}` reasoning `intent_slots` already documents."""
-    assert _row_to_node(_row(beats=None)).beats == []
+    assert _row_to_node(_row(draft_beats=None)).draft_beats == []
 
 
 def test_a_jsonb_string_is_decoded_not_passed_through():
     """This pool sets no jsonb codec, so asyncpg hands back a STRING. Without the decode the
     model gets a str where a list is declared — the trap `exit_state` already carries."""
-    node = _row_to_node(_row(beats='[{"goal": "arrive"}]'))
-    assert node.beats == [{"goal": "arrive"}]
+    node = _row_to_node(_row(draft_beats='[{"goal": "arrive"}]'))
+    assert node.draft_beats == [{"goal": "arrive"}]
 
 
 def test_an_already_decoded_list_passes_through():
-    assert _row_to_node(_row(beats=[{"goal": "x"}])).beats == [{"goal": "x"}]
+    assert _row_to_node(_row(draft_beats=[{"goal": "x"}])).draft_beats == [{"goal": "x"}]
 
 
 def test_the_model_defaults_to_empty_so_every_existing_scene_is_unchanged():
     n = OutlineNode(**_row())
-    assert n.beats == []
+    assert n.draft_beats == []
 
 
 # ── the REST mirror must not silently drop it ─────────────────────────────────────────────
@@ -70,20 +70,20 @@ def test_the_create_body_declares_beats():
     NOT enough — the write no-ops. This model's own comment records the same bug happening to
     the SC4 fields, and it happened again here: verified live, a PATCH carrying `beats`
     round-tripped as [] until the field was declared."""
-    assert "beats" in NodeCreate.model_fields
-    body = NodeCreate(kind="scene", beats=[{"goal": "arrive"}])
-    assert body.model_dump(exclude_unset=True)["beats"] == [{"goal": "arrive"}]
+    assert "draft_beats" in NodeCreate.model_fields
+    body = NodeCreate(kind="scene", draft_beats=[{"goal": "arrive"}])
+    assert body.model_dump(exclude_unset=True)["draft_beats"] == [{"goal": "arrive"}]
 
 
 def test_the_patch_body_declares_beats_and_omits_it_when_unset():
-    assert "beats" in NodePatch.model_fields
-    assert "beats" not in NodePatch(title="x").model_dump(exclude_unset=True)
-    assert NodePatch(beats=[]).model_dump(exclude_unset=True)["beats"] == []
+    assert "draft_beats" in NodePatch.model_fields
+    assert "draft_beats" not in NodePatch(title="x").model_dump(exclude_unset=True)
+    assert NodePatch(draft_beats=[]).model_dump(exclude_unset=True)["draft_beats"] == []
 
 
 def test_the_repo_accepts_beats_as_an_updatable_column():
     from app.db.repositories.outline import _UPDATABLE_COLUMNS
-    assert "beats" in _UPDATABLE_COLUMNS
+    assert "draft_beats" in _UPDATABLE_COLUMNS
 
 
 # ── the measured constant ─────────────────────────────────────────────────────────────────
@@ -100,3 +100,53 @@ def test_a_scene_target_implies_more_than_one_beat_at_the_measured_yield():
     import math
     for target in (750, 800, 850, 900):
         assert math.ceil(target / MEASURED_BEAT_YIELD_WORDS) >= 2
+
+
+# ── the name must not collide with the OTHER two meanings of "beat" ───────────────────────
+
+def test_the_field_is_not_called_bare_beats():
+    """`OutlineNode.beat_role` is which STRUCTURAL beat this node is (motif retrieval reads
+    it), and `StructureTemplate.beats` is that same structural sense. A third meaning — the
+    units a scene is DRAFTED in — sharing the bare word on the very model carrying `beat_role`
+    is the one-name-one-concept violation the contract rules exist to prevent."""
+    assert "draft_beats" in OutlineNode.model_fields
+    assert "beats" not in OutlineNode.model_fields
+    assert "beat_role" in OutlineNode.model_fields, "the colliding neighbour still exists"
+
+
+# ── bounded, like every comparable list in this service ───────────────────────────────────
+
+def test_the_list_is_capped():
+    """It reaches a PROMPT. Every comparable list here is bounded (MaxPlanOps=50,
+    maxDocExtractCandidates=200); an unbounded one is a bloat and prompt-blowup vector."""
+    import pytest
+    from app.db.models import MAX_DRAFT_BEATS
+
+    ok = _row(draft_beats=[{"goal": f"b{i}"} for i in range(MAX_DRAFT_BEATS)])
+    assert len(OutlineNode(**ok).draft_beats) == MAX_DRAFT_BEATS
+    with pytest.raises(Exception):
+        OutlineNode(**_row(draft_beats=[{"goal": f"b{i}"} for i in range(MAX_DRAFT_BEATS + 1)]))
+
+
+def test_the_cap_is_generous_enough_for_any_real_scene():
+    """At the measured ~500 words/beat the cap is a 12,000-word scene — past anything an
+    author writes, so hitting it is a mistake or an attack, not a long scene."""
+    from app.db.models import MAX_DRAFT_BEATS
+    assert MAX_DRAFT_BEATS * MEASURED_BEAT_YIELD_WORDS >= 10_000
+
+
+# ── both front doors, not just one ────────────────────────────────────────────────────────
+
+def test_the_mcp_surface_can_write_it_too():
+    """CF-9 — a field the repo accepts but one front door cannot send is the "one repo method,
+    two front doors" divergence. REST lagged MCP for the SC4 fields; this is that gap
+    mirrored, and the AGENT is the primary writer of a beat decomposition."""
+    import inspect
+
+    import app.mcp.server as srv
+
+    src = inspect.getsource(srv)
+    assert src.count("draft_beats: list[dict[str, Any]] | None") == 2, \
+        "the MCP scene create AND edit arg models must both declare it"
+    assert "draft_beats=args.draft_beats" in src, "create does not forward it"
+    assert '"draft_beats": args.draft_beats' in src, "edit does not forward it"

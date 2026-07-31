@@ -128,6 +128,11 @@ class EntityOverride(BaseModel):
     created_at: datetime | None = None
 
 
+#: D-SCENE-BEATS — the most draft units one scene may carry. At the measured ~500 words per
+#: beat this is a 12,000-word scene; the point is to have a bound at all, not to be generous.
+MAX_DRAFT_BEATS = 24
+
+
 class StructureTemplate(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None  # NULL = global/built-in
@@ -202,7 +207,13 @@ class OutlineNode(BaseModel):
     #:
     #: A scene reaches its `target_words` by having enough beats, not by asking one beat to
     #: stretch: measured, one beat carries ~500 words in every model tried, gpt-4o included.
-    beats: list[dict[str, Any]] = Field(default_factory=list)
+    #: BOUNDED. Every comparable list in this repo carries a cap (`MaxPlanOps=50`,
+    #: `maxDocExtractCandidates=200`) because an unbounded array reaches a PROMPT: at the
+    #: measured ~500 words/beat, 24 beats is already a 12,000-word scene, far past anything an
+    #: author writes, so a larger value is a mistake or an attack, not a long scene.
+    draft_beats: Annotated[list[dict[str, Any]], Field(max_length=MAX_DRAFT_BEATS)] = Field(
+        default_factory=list
+    )
     exit_state: dict[str, Any] | None = None
     # Intent-collection FSM (spec 2026-07-28) — WHO settled each of the slots above:
     # `{"goal": "settled", "conflict": "absent"}`; a slot absent from the map is planner-owned.
