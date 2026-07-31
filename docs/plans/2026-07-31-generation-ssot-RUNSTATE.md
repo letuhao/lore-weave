@@ -27,18 +27,22 @@ reading the prose.
 6. S11 is additive-then-switch: no existing `loreweave_context` consumer changes behaviour until
    its own measurement says it may.
 
-## PHASE 0 — live bugs. Fix · live-smoke · seal. `done` is an evidence string.
+## PHASE 0 — live bugs. **CLOSED 2026-07-31: 8/8.**
 
-| id | bug | status | evidence |
-|---|---|---|---|
-| B5 | campaign-service ownership fail-open | **SEALED** | gate red = `201 Created` on an unverified project + `create_campaign` called; green = 503 `CAMPAIGN_OWNERSHIP_UNVERIFIABLE` + `created.assert_not_called()`. Suite **184 passed / 20 skipped**. |
-| B2 | `guide` sanitized in pack, re-appended RAW by the wrapper | **SEALED** | 2 bypass sites fixed (`build_messages`, `build_selection_messages`); gate red on 3 payloads; green 9/9. Composition suite **3076 passed / 384 skipped**. |
-| B1 | composition `cl100k` → VN books trimmed to ~56% | in progress | |
-| B4 | judge model caller-selected, no distinctness record | pending | *severity corrected: the endpoint is internal-token gated — NOT externally attacker-selectable. Real defect = a self-graded score persists indistinguishably from an independent one.* |
-| B3 | `YamlGuardrail` — 0 call sites, 2 docs claim it gates every write | pending | needs a decision: wire the crate, or correct both documents |
-| B6 | worker-ai unjudged⇒keep, coverage discarded | pending | |
-| B7 | `poc_v2_*` direct Ollama + hardcoded model, unallowlisted | pending | |
-| B8 | tilemap fallback narration returned as `Ok` | pending | |
+| id | outcome |
+|---|---|
+| B5 | FIXED — ownership 503; gate red = `201 Created` on an unverified project |
+| B2 | FIXED — 2 guide-bypass sites; gate red on 3 injection payloads |
+| B1 | FIXED — `cl100k` → `o200k` + fallback chain; VN 1.98 → 2.94 chars/budget-token |
+| B6 | FIXED — coverage + `filter_status` ride the result; **plus** a ZeroDivision in the extracted `compute_filter_kept` |
+| B7 | FIXED, wider than stated — POCs deleted; the GATE was the real bug (half a rule enforced, blind to every local model family, and running only as an opt-in hook) |
+| B4 | PARTIAL — `judge_distinct` tri-state on the wiki judge; severity walked back (internal-token gated, not attacker-selectable) |
+| B3 | CORRECTED IN DOCS + §S12 gate built (wiring was never an available option) |
+| B8 | **CLOSED — NOT A BUG.** The harness is a CLI that prints the fallback count; `src/http/` does not use it |
+
+**Residue is tracked in spec §3.1** — 13 carry-forward rows, each assigned to an owning slice.
+**ROT-1 is the big one: 159 MORE never-run tests** (auth 36, usage-billing 37, provider-registry 54,
++5 more services) behind 8 DSN vars no workflow sets. Scheduled before Phase 1.
 
 ## ROT-0 — the skip audit (2026-07-31, author-requested: *"coi chừng degraded bugs"*)
 
@@ -82,14 +86,32 @@ all wrong in ways the red team named.
 
 ## Measured facts (do not re-measure; cite these)
 
-- 43% disagreement between the repo's two token estimators on 2,275 chars of real Vietnamese prose
-  (`estimate_tokens` 665 · `tiktoken cl100k_base` 1,159), measured 2026-07-31.
-- ~30 `build_*_messages` in composition-service; 24 LLM-calling modules bypass the packer (17 build
-  a prompt); 6 finding types; 2 self-heal implementations; ~21 flat `max_tokens` literals;
-  5 self-grading call sites across 2 services.
-- Baseline prose: Mị Đế ch.1, 5 scenes, 3,124 words, one known defect invisible to the current stack.
-- **Clean, verified:** all 11 composition judges de-bias to `source_language`; the provider path is
-  genuinely single (`clients/llm_client.py`).
+> ⚠️ The v1 figures that used to sit here were the ones the red team falsified. They are struck
+> rather than deleted, because "the number I first believed" is the artefact worth keeping.
+
+| measure | ~~v1~~ | **verified** |
+|---|---|---|
+| services with LLM generate/grade paths | ~~4~~ | **13** + 6 shared SDKs + Go + Rust |
+| `build_*_messages` in composition | ~~~30~~ | **23–25**; **~41** counting `*_prompt` builders |
+| LLM callers bypassing the packer | ~~24, "all planning"~~ | **18**, and ≥10 are prose-side or neither |
+| flat `max_tokens` in composition | ~~~21~~ | **~40 / 19 values**, ~31 of them **default params**, not call-site literals |
+| self-grading call sites | ~~5 / 2 services~~ | **17+ / 8 services** |
+| finding/verdict types | ~~6, no shared base~~ | **≥9**; `CanonViolation` already extends a shared base |
+| token/count conventions | ~~2~~ | **4** (+2 billing, which must stay separate) |
+| never-run DB-gated tests | ~~41~~ | **200** — ROT-0 cleared 41, **ROT-1 owns the other 159** |
+
+**Token measurements (real Vietnamese prose from the dogfood book).** At a 6000-token pack budget,
+characters of grounding that survive: English **29,756** · Vietnamese under cl100k **11,777** (40%)
+· Vietnamese under o200k **17,636** (59%). cl100k over-counts Vietnamese by **1.50×**. The remaining
+gap is real — Vietnamese tokenizes denser — and is a product question, not a bug.
+
+**Baseline prose:** Mị Đế ch.1, 5 scenes, 3,124 words, one known defect invisible to the stack.
+
+**~~Clean, verified~~ — BOTH claims were falsified:**
+- ~~all 11 composition judges de-bias to `source_language`~~ → `plan_heal` takes the parameter and
+  never reads it; `motif_mine` has none; `arc_conformance`/`tension_conformance` call no LLM at all.
+- ~~the provider path is genuinely single~~ → two POC files called Ollama directly over httpx
+  (deleted), and the gate that was supposed to catch them enforced half its own rule.
 
 ## Parked
 
@@ -108,6 +130,20 @@ all wrong in ways the red team named.
   I wrote `scene_output_budget` and left 20 of its 21 sibling call sites as flat literals. The
   author's question *"đã đủ triệt để chưa?"* is what surfaced it — I had stopped auditing at the
   boundary of the file I had most recently edited.
+- **2026-07-31 · I repeated the exact mistake the red team had just caught me making, one day later.**
+  §1.4 was falsified because I counted inside the files I had read and stated it for the repo. Then
+  ROT-0 swept the two DSN variables I happened to be looking at, found 41 never-run tests, and I
+  reported "41" as the answer. Sweeping *every* `*_TEST_*` var afterwards found **159 more** — auth,
+  usage-billing and provider-registry among them. **200 total, 41 reported.** It surfaced only
+  because the author asked "did the un-cleared items get into the spec, or were they forgotten?"
+  They were being forgotten. The lesson is not "sweep harder" — it is that a count is a claim, and a
+  claim needs its denominator derived from the SSOT, not from what I happened to touch.
+- **2026-07-31 · the S12 gate went green on its own motivating example three times.**
+  Once because the crate reads the contract (and nothing calls the crate); once because a doc
+  comment and a workspace-membership list mention the crate name (membership is not linkage); and
+  once because the gate ITSELF names the contracts in its docstring, so it satisfied its own check
+  by discussing the problem. Each was caught only by re-injecting the original fiction and watching.
+  **A gate that has never been observed to fail is not a gate.**
 - **2026-07-31 · the red team falsified my own falsifiability section.** §1.4 existed to be
   disprovable and both its claims were wrong. Root cause, both times: I counted inside the file I
   had just read and stated the result for the repo. Scope was off ~3× (4 services → 13 + 6 SDKs +

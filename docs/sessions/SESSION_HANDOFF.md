@@ -74,17 +74,60 @@ So the module is deliberately **mechanism, not policy**, mirroring the SDK/servi
 
 97 tests, incl. 80 parametrised checks that it **never undercuts** `scene_output_budget`.
 
+### PHASE 0 CLOSED — 8/8, and the re-audit found the biggest miss
+
+6 fixed · 1 closed as **not a bug** (B8 — the tilemap harness is a CLI that prints its own fallback
+count; nothing can be misled) · 1 corrected-in-docs + gated (B3). **Three red-team findings had to be
+walked back after verification** — B4's severity (internal-token gated, not attacker-selectable),
+B5's framing (the fail-open was justified; the *justification* was fiction), and B8 entirely.
+Cold-start reviewers find the SHAPE of a defect reliably and judge its REACHABILITY badly.
+
+**B7 turned out to be about the gate, not the two POC files.** `ai-provider-gate.py` enforced *half*
+its own rule (SDK imports, never direct API calls), `MODEL_NAME` knew **no local model family** — no
+gemma, no qwen, no bge, i.e. none of the models actually served — and the superseding gate ran
+**only as a pre-commit hook**, which needs `git config core.hooksPath .githooks` per checkout, so CI
+had only the narrow legacy lint. All now wired into `foundation-ci`.
+
+**§S12 exists because B3, B5 and ROT-0 are one disease:** a guarantee asserted in prose with nothing
+in code behind it. `scripts/enforcement-claims-gate.py` checks that every contract registered in the
+standards index has a non-test reader *that something actually calls*. It went **green on its own
+motivating example three times** before it worked — once because the crate reads the contract (and
+nothing calls the crate), once because a doc comment and a workspace membership list mention the
+crate name, and once because **the gate itself names the contracts in its docstring**. A gate that
+has never been observed to fail is not a gate.
+
+### 🔴 ROT-1 — 159 MORE never-run tests. ROT-0 reported 41 because it stopped at two variables.
+
+Sweeping **every** `*_TEST_*` DSN in Go tests against **every** workflow:
+
+| env var | test funcs | service |
+|---|---:|---|
+| `TEST_PROVIDER_REGISTRY_DB_URL` | 54 | provider-registry — BYOK credentials, catalog, pricing |
+| `USAGE_BILLING_TEST_DB_URL` | 37 | usage-billing |
+| `AUTH_TEST_PG_URL` | 36 | auth-service |
+| `INCIDENT_TEST_REDIS_URL` | 12 | incident-bot |
+| `SCHEDULER_TEST_DB_URL` | 8 | scheduler-service |
+| `ADMINCLI_TEST_PG_URL` | 6 | admin-cli |
+| `METAPG_TEST_PG_URL` | 3 | meta pg |
+| `PIIKMS_TEST_KMS_ENDPOINT` | 3 | piikms KMS |
+
+**200 never-run tests total; 41 was reported.** This is the §1.4 failure repeated one day later by
+the same author: count inside what you are looking at, then state it for the whole. It surfaced only
+because the human asked whether the un-cleared items had reached the spec. **A count is a claim, and
+its denominator must come from the SSOT, not from what you happened to touch.**
+
 ### ▶ NEXT
-1. **Finish Phase 0** — B4 · B3 · B6 · B7 · B8, each fix + gate + live evidence.
-2. **Then the LLM-budget SSOT axis** (author-directed, promoted out of S7): three tiers —
-   SDK kinds+formula (done) · **one call-profile registry per service** (the per-operation
-   knowledge belongs to the service, not the SDK; `_OPERATION_INSTRUCTIONS` / `PASS_REGISTRY`
-   are the precedent) · **an AST gate catching all three forms**: a literal at a call site
-   (~9), an int default in a signature (**~31 — the common form, and the form v1's gate would
-   have greened**), and **absent entirely** (`llm_verifier`, glossary's Go tools, tilemap —
-   and glossary has *zero* `FinishReason` checks service-wide). Go/Rust get a contract file +
-   drift test, not an import. The billing estimator stays OUT: it over-estimates on purpose.
-3. Then Phase 1–3 per spec §6.
+1. **ROT-1** — wire the 8 unswept DSN vars, run the 159, triage whatever reds. Shape proven twice.
+2. **The LLM-budget SSOT axis** (author-directed): SDK kinds+formula (**done** —
+   `sdks/python/loreweave_llm/budget.py`) · **one call-profile registry per service** (the
+   per-operation knowledge belongs to the service; `_OPERATION_INSTRUCTIONS`/`PASS_REGISTRY` are the
+   precedent) · an **AST gate catching all three forms**: a call-site literal (~9), an **int default
+   in a signature (~31 — the common form, and the form v1's gate would have greened)**, and **absent
+   entirely** (`llm_verifier`, glossary's Go tools, tilemap — and glossary has *zero* `FinishReason`
+   checks service-wide). Go/Rust get a contract file + drift test. Billing stays OUT: it
+   over-estimates on purpose.
+3. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
+   slice — read it before planning any slice.
 
 ## ◐ `authoring_run_review`: "needs real spend" was MY wrong framing (2026-07-30)
 

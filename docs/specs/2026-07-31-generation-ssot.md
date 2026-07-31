@@ -117,16 +117,21 @@ carries a security hole forward has laundered it.
 **"Sealed" = the fix + a gate proven red-able by injecting the defect + a live run pasted into the
 record.** Not one of the three alone.
 
-| id | bug | severity | where |
+| id | bug | outcome | correction to the original diagnosis |
 |---|---|---|---|
-| **B4** | the **judge model is chosen by an untrusted Redis event payload / HTTP request body** — an attacker-selectable grader | 🔴 security | `learning-service/app/events/handlers.py:735-738` · `app/routers/wiki_judge.py:85,88` |
-| **B5** | `except DispatchError: owned = True` — **fails OPEN on an ownership check** | 🔴 tenancy | `campaign-service/app/routers/campaigns.py:181-182` |
-| **B2** | `guide` is sanitized into the pack, then **re-appended RAW and LAST** by the wrapper; `sanitize_guide` has one call site, the wrapper bypasses it twice | 🔴 security | `composition/app/engine/cowrite.py:282,333` vs `packer/assemble.py:226` |
-| **B1** | composition still counts tokens with `cl100k_base`, which knowledge-service **retired 2026-07-07** after a live gateway measurement; VN/CJK books are trimmed to **~56%** of a Latin book's real grounding budget | 🔴 quality — actively degrading the dogfood book | `composition/app/packer/budget.py:47-52` vs `knowledge-service/app/context/formatters/token_counter.py` |
-| **B3** | `YamlGuardrail` has **zero production call sites** while `contracts/canon/guardrail_rules.yaml:7-9` and `docs/standards/README.md:114` both assert it gates every L3 write; `roleplay-service/Cargo.toml` has no dependency on the crate | 🔴 integrity | `crates/contracts-prompt/src/canon_guardrail.rs:181` |
-| **B6** | decoupled extraction: an unjudged item **defaults to keep**, coverage is discarded, and `filter_status` is never written — the sync path sets `degraded`, the path that actually runs lost it | 🔴 data | `worker-ai/app/decoupled_extract.py:577-580,599` · `loreweave_extraction/pass2_filter.py:107,247-248` |
-| **B7** | direct Ollama over httpx + hardcoded model, unallowlisted — a provider-gateway violation shipping in a service directory | 🟡 invariant | `translation-service/poc_v2_real.py:158,208` · `poc_v2_glossary.py:130` |
-| **B8** | fallback narration returned as `Ok` — a 100%-outage run and a perfect run are **type-indistinguishable**; `fallback_count` gates nothing | 🟡 honesty | `tilemap-service/src/harness/l4_retry.rs:234` · `retry.rs:149` |
+| **B5** | `except DispatchError: owned = True` failed OPEN on an ownership check | **FIXED** — 503 `CAMPAIGN_OWNERSHIP_UNVERIFIABLE`; gate reds with `201 Created` on an unverified project | the fail-open was *justified in a comment* (`"the dispatch path re-verifies"`). `verify_project_owner` has ONE call site — the one making the claim. The bug was the fictional justification, not the degradation. |
+| **B2** | `guide` sanitized into the pack, then re-appended RAW and LAST | **FIXED** — 2 bypass sites; gate reds on 3 payloads | — |
+| **B1** | packer counted with `cl100k_base`, retired repo-wide 2026-07-07 | **FIXED** — `o200k_base` + the fallback chain composition lacked; VN 1.98 → 2.94 chars/budget-token | the "~56%" was measured against the *heuristic*. Against **o200k**: English 29,756 chars per 6000-token budget, Vietnamese **11,777 → 17,636** (40% → 59%). cl100k over-counts VN by **1.50×**. |
+| **B6** | decoupled filter: unjudged⇒keep, coverage discarded, `filter_status` never written | **FIXED** — both now ride the result; **plus** a ZeroDivisionError found in `compute_filter_kept` | the extracted helper is documented "identical to `_filter_one_category`'s tail" — and the `n_input == 0` guard lives in the HEAD. A chapter with no events is ordinary input. |
+| **B7** | direct Ollama + hardcoded model in two POC files | **FIXED, and far wider than stated** — POCs deleted; the *gate* was the real bug | the gate enforced **half** its own rule (SDK imports, not direct API calls) and `MODEL_NAME` **knew no local family** — no gemma, no qwen, no bge, i.e. none of the models actually served. And the superseding gate ran **only as a pre-commit hook**, so CI had only the narrow legacy lint. Both now in `foundation-ci`. |
+| **B4** | judge model chosen by the caller, distinctness never recorded | **PARTIALLY FIXED** — `judge_distinct` tri-state on the wiki judge only | **severity walked back**: `/internal/learning/wiki/judge` is internal-token gated (401). NOT attacker-selectable from outside. The real defect is that a self-graded score persists indistinguishably from an independent one. |
+| **B3** | `YamlGuardrail`: 0 call sites vs 2 documents claiming it gates every L3 write | **CORRECTED IN DOCS + gated by S12** | not a choice between two options: roleplay-service makes **no LLM calls at all**, so it cannot host a pre-prompt check, and the L3 write path does not exist. Correcting the claim was the only available move. |
+| **B8** | tilemap fallback narration returned as `Ok` | **CLOSED — NOT A BUG** | "type-indistinguishable" is true and irrelevant: the harness runs only as a CLI that prints `"N narration(s), M attempt(s), K canonical-default fallback(s)"`. `src/http/` does not use it. No consumer can be misled. |
+
+**Three red-team findings needed walking back after verification** (B4's severity, B5's framing, B8
+entirely). Cold-start reviewers are excellent at finding the SHAPE of a defect and unreliable about
+its REACHABILITY. Accepting them unverified would have produced two fixes for non-problems and
+mis-ranked the queue.
 
 **B1 carries a trap.** The estimator swap and the `pack_token_budget = 6000` / `prompt_ceiling`
 (413 `PROMPT_TOO_LARGE`) re-calibration are **one semantic change** — the constant is denominated in
@@ -136,8 +141,62 @@ this**: the missing gate is a **character-count** assertion on a real VN pack (c
 estimator-invariant), plus calibration against the `input_tokens` composition already stores on every
 completed job — a free, measured ground truth.
 
-**B3 needs a decision, not a patch:** wire the crate, or correct both documents. Doing one silently
-is how it got here.
+**B3 was decided** (see the table): the documents were corrected and §S12 built, because wiring was
+not an available option.
+
+### 3.1 · PHASE 0 RESIDUE — what the fixes surfaced and did NOT close
+
+Written 2026-07-31 in response to *"check whether the un-cleared items got into the spec, or were
+just forgotten."* They were being forgotten. Every row below is a real thing Phase 0 uncovered and
+left standing; each names the later slice that owns it, so none of it depends on anyone remembering.
+
+**🔴 ROT-1 — the skip audit stopped at the two variables it happened to be looking at.**
+ROT-0 found 41 never-executed DB-gated tests and wired two CI jobs. Sweeping *every* `*_TEST_*`
+DSN in Go tests against every workflow afterwards found **eight more variables that no workflow
+sets**, covering **159 further test functions that have never run anywhere**:
+
+| env var | test funcs | service |
+|---|---:|---|
+| `TEST_PROVIDER_REGISTRY_DB_URL` | 54 | provider-registry — BYOK credentials, model catalog, pricing |
+| `USAGE_BILLING_TEST_DB_URL` | 37 | usage-billing |
+| `AUTH_TEST_PG_URL` | 36 | auth-service |
+| `INCIDENT_TEST_REDIS_URL` | 12 | incident-bot |
+| `SCHEDULER_TEST_DB_URL` | 8 | scheduler-service |
+| `ADMINCLI_TEST_PG_URL` | 6 | admin-cli |
+| `METAPG_TEST_PG_URL` | 3 | meta pg |
+| `PIIKMS_TEST_KMS_ENDPOINT` | 3 | piikms KMS |
+
+**200 never-run tests total, and 41 was reported.** This is the same failure the red team caught in
+§1.4 — count inside what you are looking at, then state it for the whole — committed again, one day
+later, by the person who wrote that sentence. The fix shape is known and cheap (ROT-0 did it twice);
+what was missing was the sweep. Owner: **ROT-1, before Phase 1.**
+
+**Carry-forward by origin.** None of these are blockers; all are un-closed.
+
+| from | left standing | owner |
+|---|---|---|
+| **B1** | composition now counts with `o200k`, the kernel still uses the script-class heuristic — **still two estimators**, just closer ones. And `cowrite._TOKENS_PER_WORD` now duplicates `loreweave_llm.budget.TOKENS_PER_WORD`: a *third* home for language-density constants. | **S11** |
+| **B2** | the guide is still sent **twice** (protected `<guide>` segment + the wrapper's trailing line). Both sanitized now, so the hole is closed, but the model reads the same steer twice and pays for it twice. | **S4** |
+| **B2** | `build_revise_messages` interpolates `draft` (model output) and violation spans lifted from it; `build_selection_messages` interpolates `selection` — none through `neutralize()`. The 2nd-order echo class the red team named. | **S4** |
+| **B2** | `injection-coverage-lint.py`'s 15-row baseline still exempts **every** composition engine module. | **S4** |
+| **B4** | only the **wiki** judge records distinctness. `events/handlers.py:735` (translation judge, model off the Redis payload), `online_judge.py` and `online_translation_judge.py` record nothing. | **S6** |
+| **B4** | distinctness is **recorded, never enforced**, and no caller supplies `generator_model` — so every persisted value is `null` today. That is honest, and it is also the number S6 needs before a refusal can be switched on. | **S6** |
+| **B6** | the upstream swallow (`except: local = {}`, "a bad batch degrades to all-unjudged") is still **silent at the swallow site**; only the aggregate coverage records it. | **S1** |
+| **B6** | `partial_policy="keep"` stays the default — deliberate (dropping real candidates on an outage is worse), now recorded rather than assumed. | *decision, closed* |
+| **B7** | `lint-no-direct-llm-imports.sh` is superseded but still runs in CI — two gates for one rule, and the weaker one has no expiry. | **S12** |
+| **B7** | the new `/scripts/` exemption is broad: a *production* job living under a service's `scripts/` would be exempt from the model-name rule. | **S12** |
+| **B7** | `MODEL_NAME` still omits served non-chat families (kokoro/TTS, whisper/STT). | **S7** |
+| **B3** | the guardrail stays unwired until an L3-event write path exists; `contracts/.spectral.yaml` stays unwired per DEFERRED 078. Both now declared, not claimed. | *tracked* |
+| **S12** | the gate checks **contract files only**. It does **not** cover the B5 class — a *comment* asserting a guarantee (`"the dispatch path re-verifies"`) — nor the `INV-*` code-invariant rows in the standards index. Those are the two shapes that produced two of this cycle's three worst findings. | **S12 (widen)** |
+
+**A note on S12's own construction, because it is the lesson of the phase.** The gate went GREEN on
+its own motivating example three times running, each time for the disease it exists to catch:
+*"something reads it"* (the crate does — and nothing calls the crate); *"something references it"*
+(a doc comment, and a workspace membership list, which is not linkage); and finally *"something
+reads it"* again — **itself**, because its docstring names the contracts it discusses. It only ever
+went red because the original fiction was re-injected and watched. **A gate that has never been seen
+to fail is not a gate.**
+
 
 ---
 
@@ -337,11 +396,16 @@ this from becoming a fourth un-synced enum.
 ## 6 · Order
 
 ```
-PHASE 0   B4 · B5 · B2 · B1 · B3 · B6 · B7 · B8      ← fix · live · seal
+PHASE 0   B5 · B2 · B1 · B6 · B7 · B4 · B3   ← DONE (B8 closed as not-a-bug)
+ROT-1     the 159 never-run tests the ROT-0 sweep missed  ← before Phase 1
 PHASE 1   S10 (build the instrument)  →  S1  →  S2  →  S8  →  S12
 PHASE 2   S7  →  S6 (+ its UI slice)  →  S11  →  S3  →  S4
 PHASE 3   [translation + knowledge adopt in place]  →  S9  →  S5
 ```
+
+**ROT-1 comes before Phase 1** for the same reason S10 does: an instrument built on a repo whose
+auth, billing and credential-store tests have never executed is measuring an unknown baseline. It is
+also the cheapest item in the whole plan — the shape is already proven twice.
 
 **Risk boundaries (checkpoint + commit):** each Phase-0 bug · S10 · S1 · S2 · S7 · S11 · S4 · S9 · S5.
 

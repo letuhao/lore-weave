@@ -70,6 +70,12 @@ ALLOWLIST_PREFIXES = (
     "sdks/python/",                          # the loreweave_llm SDK transport
     "services/knowledge-service/app/pricing.py",  # tracked DEFERRED 065 (model→price)
     "services/knowledge-service/app/context/selectors/passages.py",  # DEFERRED 065 (model→embedding-dim)
+    # The DENYLIST that enforces this very rule in Go: `modelCapabilityMarkers` names the
+    # provider hosts/paths an MCP registration may NOT point at, because "registering one
+    # would smuggle a provider around the provider-registry BYOK invariant". Rule 1c
+    # cannot distinguish naming a host in order to REJECT it from naming it in order to
+    # CALL it, and this is the only place in the repo that does the former.
+    "services/agent-registry-service/internal/api/security.go",
 )
 
 # ── detection patterns ────────────────────────────────────────────────
@@ -95,8 +101,16 @@ GO_SDK = re.compile(
 # Rule 2 — hardcoded model-name literals (quoted). Tuned to LoreWeave's
 # providers; deliberately conservative to avoid false positives on this
 # codebase (verified 2026-06-10: only registry/pricing/tests matched).
+#
+# D-PROVIDER-GATE-BLIND-TO-LOCAL-MODELS (2026-07-31): the cloud families were listed and
+# the LOCAL ones were not — no gemma, no qwen, no deepseek, no bge. Those are the models
+# this project actually runs: the test account's BYOK set is gemma/qwen/bge-m3/
+# bge-reranker/Kokoro, and the dogfood book is drafted on gemma. A gate that exists to stop
+# hardcoded model names could not see a single name in production use, which is how
+# `MODEL = "gemma3:12b"` sat in a service directory and reported clean.
 MODEL_NAME = re.compile(
     r"""['"`]("""
+    # cloud families
     r"gpt-[0-9o][\w.\-]*"
     r"|o[13]-(?:mini|preview|pro)[\w.\-]*"
     r"|claude-[0-9][\w.\-]*"
@@ -105,7 +119,40 @@ MODEL_NAME = re.compile(
     r"|text-embedding-[\w.\-]+"
     r"|mistral-(?:large|small|medium|tiny)[\w.\-]*"
     r"|llama-?[0-9][\w.\-]*"
+    # local families actually served here (lm_studio / ollama). A version or size suffix
+    # is required so the bare word ("gemma", "qwen") stays legal in prose and comments.
+    r"|gemma-?[0-9][\w.\-:]*"
+    r"|qwen-?[0-9][\w.\-:]*"
+    r"|qwq[\w.\-:]*"
+    r"|deepseek(?:-[\w.]+)?-?r?[0-9][\w.\-:]*"
+    r"|phi-?[0-9][\w.\-:]*"
+    r"|bge-[\w.\-]+"
+    r"|nomic-embed[\w.\-]*"
+    r"""|magistral[\w.\-:]*"""
     r""")['"`]"""
+)
+
+# Rule 1c — a DIRECT HTTP call to a provider endpoint.
+#
+# The invariant is "no service imports a provider SDK **or calls a provider API
+# directly**". Rule 1 enforced only the first half, so the whole gate was bypassable with
+# `import httpx` + a POST — which is exactly what the deleted translation POCs did while
+# the gate reported clean. Matches the well-known hosts and the two local model-server
+# ports; a service reaching either one is talking to a model without going through
+# provider-registry.
+PROVIDER_ENDPOINT = re.compile(
+    r"""['"`][^'"`]*("""
+    r"api\.openai\.com"
+    r"|api\.anthropic\.com"
+    r"|generativelanguage\.googleapis\.com"
+    r"|api\.mistral\.ai"
+    r"|api\.cohere\.(?:ai|com)"
+    r"|api\.groq\.com"
+    r"|api\.together\.xyz"
+    r"|:11434"            # ollama default
+    r"|:1234/v1"          # lm_studio default
+    r"|/api/generate"     # ollama native generate
+    r""")"""
 )
 
 # Rule 1b — a model-backend wired as per-service platform config (env var)
@@ -154,6 +201,10 @@ def is_test_file(rel: str) -> bool:
     return (
         "/tests/" in rel
         or "/test/" in rel
+        # Dev/eval harnesses under a service's scripts/ dir. Same reasoning as tests:
+        # they are not shipped runtime, and PINNING a model is what makes an eval
+        # reproducible — an eval that silently switches models measures nothing.
+        or "/scripts/" in rel
         or "/.storybook/" in rel
         or "/fixtures/" in rel
         or "/__fixtures__/" in rel
@@ -182,6 +233,20 @@ def sdk_pattern_for(rel: str):
     return None
 
 
+#: `` `` `` wraps inline code in rst/markdown docstrings — a model name there is prose
+#: ("supplied by the caller, e.g. ``qwen-30b``"), not a call. Stripped before Rule 2 so
+#: documenting a model does not read as hardcoding one.
+_RST_CODE = re.compile(r"``[^`]*``")
+
+
+def _is_comment_line(line: str) -> bool:
+    """A pure comment line. A model name in a comment is documentation — the rule is
+    about runtime code that CALLS a model, and flagging the explanation of a past fix
+    (`# Pre-fix this held a logical name like "bge-m3"`) trains people to ignore the gate."""
+    t = line.lstrip()
+    return t.startswith("#") or t.startswith("//") or t.startswith("*")
+
+
 def scan_file(path: str, rel: str) -> list[tuple[str, int, str, str]]:
     """Return (kind, lineno, rel, line) violations for one file."""
     out: list[tuple[str, int, str, str]] = []
@@ -191,10 +256,12 @@ def scan_file(path: str, rel: str) -> list[tuple[str, int, str, str]]:
             for n, line in enumerate(fh, 1):
                 if sdk_re and sdk_re.search(line):
                     out.append(("provider-sdk", n, rel, line.rstrip()))
-                if MODEL_NAME.search(line):
+                if not _is_comment_line(line) and MODEL_NAME.search(_RST_CODE.sub("", line)):
                     out.append(("model-name", n, rel, line.rstrip()))
                 if model_backend_env_names(line):
                     out.append(("model-backend-env", n, rel, line.rstrip()))
+                if PROVIDER_ENDPOINT.search(line):
+                    out.append(("provider-endpoint", n, rel, line.rstrip()))
     except OSError:
         pass
     return out
@@ -253,6 +320,12 @@ def main() -> int:
     sdk_hits = [v for v in violations if v[0] == "provider-sdk"]
     model_hits = [v for v in violations if v[0] == "model-name"]
     backend_hits = [v for v in violations if v[0] == "model-backend-env"]
+    endpoint_hits = [v for v in violations if v[0] == "provider-endpoint"]
+    # Anything the per-kind blocks below do not know how to print. Without this a NEW
+    # rule kind fails the build with an EMPTY report — "it is broken, and I will not say
+    # where", which is the exact class of silent failure this gate exists to prevent.
+    known = {"provider-sdk", "model-name", "model-backend-env", "provider-endpoint"}
+    unreported = [v for v in violations if v[0] not in known]
 
     print("ai-provider-gate: FAIL\n")
     if sdk_hits:
@@ -275,6 +348,21 @@ def main() -> int:
         print("    per-service *_URL/*_MODEL/*_SERVICE_TOKEN env var (the D-RERANK-NOT-BYOK mistake).\n")
         for _, n, rel, line in backend_hits:
             print(f"  {rel}:{n}: {line.strip()}")
+        print()
+    if endpoint_hits:
+        print("[Provider gateway invariant] a DIRECT call to a provider endpoint is forbidden")
+        print("  → the rule is 'no provider SDK **or** direct provider API call'. Importing")
+        print("    httpx and POSTing to a model server bypasses provider-registry just as")
+        print("    surely as importing the SDK — resolve the model as a BYOK credential instead.\n")
+        for _, n, rel, line in endpoint_hits:
+            print(f"  {rel}:{n}: {line.strip()}")
+        print()
+    if unreported:
+        print("[gate defect] violations were found that this reporter cannot describe —")
+        print("  a rule kind was added to scan_file without a report block. Fix the reporter;")
+        print("  a build that fails without saying why teaches people to bypass it.\n")
+        for kind, n, rel, line in unreported:
+            print(f"  ({kind}) {rel}:{n}: {line.strip()}")
         print()
     print("If this is genuine legacy that needs a migration plan, add a row to")
     print("docs/deferred/DEFERRED.md and allowlist the exact path here — never leave it untracked.")

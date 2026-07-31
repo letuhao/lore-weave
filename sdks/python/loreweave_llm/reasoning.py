@@ -61,7 +61,35 @@ _GOOGLE_KINDS = {"google", "gemini", "google_vertex", "vertex"}
 # Providers/models controlled via reasoning_effort.
 _LOCAL_KINDS = {"lm_studio", "ollama", "llama_cpp", "vllm", "openai_compatible"}
 _EFFORT_OPENAI = re.compile(r"\b(o1|o3|o4|gpt-5)\b", re.IGNORECASE)
-_EFFORT_LOCAL = re.compile(r"(qwen3|qwen-3|deepseek[-_]?r1|magistral|reasoning|thinking|qwq)", re.IGNORECASE)
+#: D-REASONING-MODEL-PATTERNS-DUPLICATED (2026-07-31): worker-ai carried its OWN copy of
+#: this list (`_REASONING_MODEL_PATTERNS` in `runner.py`) with a different membership —
+#: it had `glm-z`, `minimax-m1` and `deepseek-reasoner` that this one lacked, and lacked
+#: the hyphenated `qwen-3` that this one has. Two answers to "does this name look like a
+#: reasoning model", drifting apart. Merged here, where the rest of the model-family
+#: knowledge lives, and exported as `looks_like_reasoning_model` for the second consumer.
+_EFFORT_LOCAL = re.compile(
+    r"(qwen3|qwen-3|deepseek[-_]?r1|deepseek[-_]?reasoner|magistral"
+    r"|reasoning|reasoner|thinking|qwq|glm-z|minimax-m1)",
+    re.IGNORECASE,
+)
+#: OpenAI o-series as a TOKEN (o1/o3/o4/o5), so `gpt-4o` does not match. Kept separate
+#: from `_EFFORT_OPENAI` because that one is provider-scoped; this is name-only.
+_REASONING_O_SERIES = re.compile(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", re.IGNORECASE)
+
+
+def looks_like_reasoning_model(name: str | None) -> bool:
+    """Best-effort: does this model NAME look like a reasoning/thinking model?
+
+    Name heuristics only — provider-registry has no reasoning capability flag, so this
+    WILL have false negatives on novel models. Every caller must treat it as ADVISORY
+    (a warning, a suppression default), never as a hard gate.
+
+    One home for the pattern set: a second copy in a consumer drifts, and the drift is
+    invisible because both copies keep working.
+    """
+    if not name:
+        return False
+    return bool(_REASONING_O_SERIES.search(name) or _EFFORT_LOCAL.search(name))
 _GEMINI_REASONING = re.compile(r"2\.5|gemini-[3-9]|3\.", re.IGNORECASE)
 
 

@@ -9,8 +9,10 @@ That only holds if two things are true, and both are testable today:
    caller knows (length, language, reasoning, window) is a renamed constant, and the
    future adaptive version would have nothing to adapt on.
 
-The prose arm is checked against `scene_output_budget`, the measured implementation it
-generalises, rather than against a hand-copied formula that could drift from it.
+The equivalence check against `scene_output_budget` — the measured implementation this
+generalises — lives in composition-service's suite instead, because an SDK test must not
+import a service package (and could not: `app` only resolves with that service as CWD,
+so it passed there and failed from the repo root).
 """
 from __future__ import annotations
 
@@ -53,25 +55,6 @@ def test_the_default_policy_is_at_least_as_generous_as_todays_literal(kind, lite
     assert got >= literal, (
         f"{kind.value} floor {got} < the {literal} used at {where}: adopting the seam "
         "there would truncate a call that fits today"
-    )
-
-
-@pytest.mark.parametrize("words", [200, 500, 900, 1500, 3000])
-@pytest.mark.parametrize("lang", ["vi", "en", "zh", "ja"])
-@pytest.mark.parametrize("effort", [None, "low", "medium", "high"])
-def test_prose_never_undercuts_the_implementation_it_generalises(words, lang, effort):
-    """`scene_output_budget` is the measured original (its docstring records the Mị Đế
-    numbers that produced it). The generalisation may be more generous — the floor makes
-    it so for small targets — but never less."""
-    from app.engine.cowrite import scene_output_budget  # composition-local original
-
-    reasoning = _directive(effort)
-    generalised = call_budget(
-        OutputKind.PROSE, target=words, language=lang, reasoning=reasoning,
-    ).max_output_tokens
-    original = scene_output_budget(words, lang, reasoning=reasoning)
-    assert generalised >= original, (
-        f"{words}w/{lang}/effort={effort}: seam {generalised} < original {original}"
     )
 
 
@@ -140,8 +123,12 @@ def test_the_ceiling_is_a_runaway_guard_not_a_budget():
 
 
 def test_the_source_is_never_blank():
-    """A budget whose origin is unknown is exactly what this seam removes. When an
-    adaptive policy lands this reads "adaptive:<name>" and the call sites do not change."""
+    """A budget whose origin is unknown is exactly what this seam removes. When a scored
+    policy lands this reads "scored:<name>" and the call sites do not change.
+
+    NOT "adaptive:<name>" — `ReasoningControl="adaptive"` already means *the model
+    self-orchestrates* (Anthropic, Gemini 2.5+), which is a different decision entirely.
+    One name for one concept."""
     for kind in OutputKind:
         b: CallBudget = call_budget(kind, target=10)
         assert b.source, f"{kind} produced a budget with no recorded source"

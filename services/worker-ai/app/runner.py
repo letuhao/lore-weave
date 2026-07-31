@@ -15,6 +15,8 @@ subset the worker needs.
 
 from __future__ import annotations
 
+from loreweave_llm.reasoning import looks_like_reasoning_model
+
 import asyncio
 import functools
 import json
@@ -357,28 +359,17 @@ _MAX_RETRIES_PER_ITEM = 3
 # signal; a full chapter (thousands of chars) producing nothing is.
 _MIN_INPUT_CHARS_FOR_ZERO_OUTPUT_WARN = 40
 
-# FD-27 — best-effort reasoning-model name patterns (substring match, lowercased).
-# provider-registry has NO reasoning capability flag, so this is name-based and
-# WILL have false negatives on novel models — it drives an advisory WARNING, never
-# a hard block. Extraction suppresses thinking via a PROMPT preamble (~95% obey),
-# not a hard API param, so a reasoning model still carries elevated empty-output
-# risk worth flagging.
-_REASONING_MODEL_PATTERNS = (
-    "deepseek-r1", "deepseek-reasoner", "qwq", "glm-z", "minimax-m1", "magistral",
-    "thinking", "reasoner", "reasoning", "qwen3",
-)
-
-
-def _is_likely_reasoning_model(name: str | None) -> bool:
-    """Best-effort: does this model NAME look like a reasoning/thinking model?
-    Name heuristics only (no capability flag exists) — advisory, not a gate."""
-    if not name:
-        return False
-    n = name.lower()
-    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. gpt-4o.
-    if re.search(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", n):
-        return True
-    return any(p in n for p in _REASONING_MODEL_PATTERNS)
+# FD-27 — "does this model look like a reasoning model?" drives an advisory WARNING about
+# elevated empty-output risk (extraction suppresses thinking with a PROMPT preamble, ~95%
+# obeyed, not a hard API param). provider-registry has no reasoning capability flag, so it
+# is name-based and WILL miss novel models — advisory, never a hard block.
+#
+# D-REASONING-MODEL-PATTERNS-DUPLICATED (2026-07-31): this held its own pattern tuple, and
+# `loreweave_llm.reasoning` held another one for the same question. They had already
+# drifted — this copy knew `glm-z`, `minimax-m1` and `deepseek-reasoner`; the SDK's knew the
+# hyphenated `qwen-3` this one missed. Both kept "working", which is why nobody noticed.
+# The union now lives in the SDK next to the rest of the model-family knowledge.
+_is_likely_reasoning_model = looks_like_reasoning_model
 
 # B2-B-b1 — sentinels distinguishing "caller omitted the arg" (use the module
 # global) from "caller passed None" (override DISABLES the pass). An `is not

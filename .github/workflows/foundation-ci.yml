@@ -112,10 +112,19 @@ jobs:
       # projection-drift-check → DATABASE_URL) are intentionally NOT wired —
       # see the Phase 0 report for the follow-up debt list.
       #
-      # I2 provider-gateway invariant (priority): no direct LLM SDK imports.
+      # I2 provider-gateway invariant (priority). `ai-provider-gate.py` SUPERSEDES
+      # `lint-no-direct-llm-imports.sh` (which only caught Python SDK imports) and adds
+      # the direct-endpoint rule, the local model families and the BYOK env-var rule.
+      # It ran ONLY as a pre-commit hook — and that hook needs `git config core.hooksPath
+      # .githooks` run once per checkout, so on any machine that skipped it, and in CI,
+      # the ENFORCED invariant was guarded only by the narrower superseded lint. That is
+      # how two POC files calling Ollama over httpx sat in a service directory unnoticed.
+      - run: python scripts/ai-provider-gate.py
       - run: bash scripts/lint-no-direct-llm-imports.sh
       - run: bash scripts/dashboard-validator.sh
       - run: bash scripts/alert-rule-validator.sh
+      # A registered contract that nothing reads is a claim, not a contract (S12).
+      - run: python scripts/enforcement-claims-gate.py
       - run: bash scripts/dependency-registry-lint.sh
       - run: bash scripts/admin-command-registry-lint.sh
       - run: bash scripts/logging-discipline-lint.sh

@@ -92,6 +92,7 @@ from .reasoning import (
     bucket_effort,
     directive_from_parts,
     infer_reasoning_control,
+    looks_like_reasoning_model,
     reasoning_fields,
     resolve_reasoning,
 )
@@ -121,6 +122,7 @@ __all__ = [
     "call_budget",
     "DEFAULT_CEILING",
     "infer_reasoning_control",
+    "looks_like_reasoning_model",
     "bucket_effort",
     "resolve_reasoning",
     "reasoning_fields",
