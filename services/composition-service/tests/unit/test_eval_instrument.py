@@ -13,9 +13,10 @@ import pytest
 
 from app.eval.defects import DEFECTS, MIN_CLASSES, DefectClass, Observation, Outcome
 from app.eval.gate import main as gate_main
-from app.eval.suite import observe, score_class, score_suite
+from app.eval.suite import missing_fields, observe, score_class, score_suite
 
-_CANON = DEFECTS[0]
+#: A SCORABLE class — a blind one would score ERROR and make every assertion below vacuous.
+_CANON = next(d for d in DEFECTS if not d.blocked_on)
 _FIRES = Observation(fields={"status": "checked", "iterations": 1})
 _QUIET = Observation(fields={"status": "checked", "iterations": 0})
 
@@ -138,3 +139,73 @@ def test_the_gate_reds_on_a_constant_detector(monkeypatch, capsys):
                         tuple([replace(DEFECTS[0], detector=lambda o: True)] + list(DEFECTS[1:])))
     assert gate.main() == 1
     assert "reads nothing that varies" in capsys.readouterr().out
+
+
+# ── blindness: an instrument that cannot see must not report an engine defect ──────────────
+
+def test_a_blind_class_is_never_scored_as_a_miss():
+    """The finding this section exists for. Three of the five classes read fields with ZERO
+    occurrences in the service, so their detectors are permanently quiet — and quiet on a
+    seeded defect scores MISSED, which reads as "the engine has this defect" when the truth
+    is "the instrument cannot see it". A false negative dressed as a finding."""
+    blind = next(d for d in DEFECTS if d.blocked_on)
+    r = score_class(blind, seeded=_FIRES, control=_QUIET)
+    assert not r.detected and not r.missed
+    assert "BLIND" in r.verdict() and blind.blocked_on in r.verdict()
+
+
+def test_a_blind_class_contributes_no_confusion_pair():
+    blind = next(d for d in DEFECTS if d.blocked_on)
+    assert score_suite([(blind, _FIRES, _QUIET)]).confusion.n == 0
+
+
+def test_the_summary_denominator_is_scorable_classes_and_names_the_blind_ones():
+    """Dividing by every registered class would let adding a blind class quietly lower the
+    score; hiding them entirely would let it quietly raise it. Both bury the blindness."""
+    runs = [(d, _FIRES, _QUIET) for d in DEFECTS]
+    s = score_suite(runs).summary()
+    scorable = len([d for d in DEFECTS if not d.blocked_on])
+    assert f"/{scorable} scorable" in s
+    assert "BLIND" in s
+
+
+def test_an_observation_missing_a_declared_read_is_an_error_not_a_quiet_detector():
+    """`Observation.fields` is a freeform dict, so a key typo would otherwise be a silent
+    QUIET — scoring as "the engine did not have this defect"."""
+    scorable = next(d for d in DEFECTS if not d.blocked_on)
+    assert observe(scorable, Observation(fields={})) is Outcome.ERROR
+    assert missing_fields(scorable, Observation(fields={})) == list(scorable.reads)
+
+
+# ── the gate must catch a NEW silently-blind class ────────────────────────────────────────
+
+def test_the_gate_reds_on_a_class_that_reads_a_field_the_engine_never_emits(monkeypatch, capsys):
+    import app.eval.gate as gate
+    from dataclasses import replace
+
+    ghost = replace(DEFECTS[0], code="ghost", reads=("no_such_field_anywhere",), blocked_on="")
+    monkeypatch.setattr(gate, "DEFECTS", tuple(list(DEFECTS) + [ghost]))
+    assert gate.main() == 1
+    assert "permanently quiet" in capsys.readouterr().out
+
+
+def test_the_gate_reds_on_a_stale_block(monkeypatch, capsys):
+    """When the engine starts emitting the field, the block must be lifted — otherwise a
+    scorable class stays excluded forever."""
+    import app.eval.gate as gate
+    from dataclasses import replace
+
+    stale = replace(DEFECTS[0], code="stale", blocked_on="claims the engine cannot emit this")
+    monkeypatch.setattr(gate, "DEFECTS", tuple(list(DEFECTS) + [stale]))
+    assert gate.main() == 1
+    assert "lift the block" in capsys.readouterr().out
+
+
+def test_the_gate_reds_when_too_few_classes_are_scorable(monkeypatch, capsys):
+    import app.eval.gate as gate
+    from dataclasses import replace
+
+    all_blind = tuple(replace(d, blocked_on=d.blocked_on or "blinded for the test") for d in DEFECTS)
+    monkeypatch.setattr(gate, "DEFECTS", all_blind)
+    assert gate.main() == 1
+    assert "SCORABLE" in capsys.readouterr().out

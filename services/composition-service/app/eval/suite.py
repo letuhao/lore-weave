@@ -24,10 +24,27 @@ def observe(cls: DefectClass, obs: Observation) -> Outcome:
     An ERROR is deliberately its own outcome. Folding a failed run into QUIET would score an
     outage as a detector that correctly stayed silent — and on the seeded variant that reads
     as a MISS, on the control as a PASS. Either way the number is fiction.
+
+    A BLIND class (`blocked_on`) and an observation MISSING a key the detector declares it
+    reads both resolve to ERROR for the same reason: `dict.get` returns None, the detector
+    goes quiet, and quiet-on-a-seeded-defect scores as MISSED — i.e. "the engine has this
+    defect" when the truth is "the instrument cannot see it". A false negative dressed as a
+    finding is the worst output this suite could produce, so the two are made loud instead.
     """
+    if cls.blocked_on:
+        return Outcome.ERROR
     if obs.failed:
         return Outcome.ERROR
+    absent = [k for k in cls.reads if k not in obs.fields]
+    if absent:
+        return Outcome.ERROR
     return Outcome.FIRED if cls.detector(obs) else Outcome.QUIET
+
+
+def missing_fields(cls: DefectClass, obs: Observation) -> list[str]:
+    """Declared reads the observation did not supply — the typo/drift hole a freeform
+    `dict[str, object]` leaves open."""
+    return [k for k in cls.reads if k not in obs.fields]
 
 
 @dataclass(frozen=True)
@@ -54,7 +71,14 @@ class ClassResult:
     def errored(self) -> bool:
         return Outcome.ERROR in (self.seeded, self.control)
 
+    #: Why this class scored nothing, when it scored nothing. Distinguishing "the instrument
+    #: is blind here" from "the run failed" from "the engine missed it" is the whole point —
+    #: all three previously looked like MISSED.
+    blocked_on: str = ""
+
     def verdict(self) -> str:
+        if self.blocked_on:
+            return f"BLIND — not scored; the engine emits nothing to read ({self.blocked_on})"
         if self.errored:
             return "ERROR — a run failed; this class scored nothing"
         if self.detected:
@@ -67,7 +91,12 @@ class ClassResult:
 
 
 def score_class(cls: DefectClass, seeded: Observation, control: Observation) -> ClassResult:
-    return ClassResult(code=cls.code, seeded=observe(cls, seeded), control=observe(cls, control))
+    return ClassResult(
+        code=cls.code,
+        seeded=observe(cls, seeded),
+        control=observe(cls, control),
+        blocked_on=cls.blocked_on,
+    )
 
 
 @dataclass(frozen=True)
@@ -81,15 +110,24 @@ class SuiteResult:
         return tuple(c.code for c in self.classes if c.detected)
 
     @property
+    def blind(self) -> tuple[str, ...]:
+        return tuple(c.code for c in self.classes if c.blocked_on)
+
+    @property
     def problems(self) -> tuple[tuple[str, str], ...]:
         return tuple((c.code, c.verdict()) for c in self.classes if not c.detected)
 
     def summary(self) -> str:
+        # The denominator is the SCORABLE classes, not every registered one. Dividing by all
+        # of them would let adding a blind class quietly lower the score, and dividing the
+        # other way would let it quietly raise it; both hide the blindness in an average.
         cm = self.confusion
+        scorable = [c for c in self.classes if not c.blocked_on]
+        blind = f" · {len(self.blind)} BLIND (not scored)" if self.blind else ""
         return (
-            f"{len(self.detected)}/{len(self.classes)} classes detected "
+            f"{len(self.detected)}/{len(scorable)} scorable classes detected "
             f"(fired-on-defect {cm.tp}, missed {cm.fn}, "
-            f"over-flagged {cm.fp}, correctly-quiet {cm.tn})"
+            f"over-flagged {cm.fp}, correctly-quiet {cm.tn}){blind}"
         )
 
 

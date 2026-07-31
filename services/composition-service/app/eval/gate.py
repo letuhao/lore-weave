@@ -14,7 +14,11 @@ from __future__ import annotations
 
 import sys
 
-from app.eval.defects import DEFECTS, MIN_CLASSES, DefectClass, Observation
+from pathlib import Path
+
+from app.eval.defects import (
+    DEFECTS, MIN_CLASSES, MIN_SCORABLE, DefectClass, Observation,
+)
 from app.eval.suite import score_suite
 
 
@@ -73,6 +77,57 @@ def _uncontrolled() -> list[str]:
     return bad
 
 
+_APP = Path(__file__).resolve().parents[1]
+
+
+def _engine_emits(key: str) -> bool:
+    """Does the service mention this observation key anywhere outside app/eval?
+
+    A crude check on purpose. It cannot prove the engine PRODUCES the field, but zero
+    occurrences across the whole service proves it does not — and that is the case that
+    matters, because a detector reading an absent key is permanently quiet, and quiet on a
+    seeded defect scores as MISSED. "The engine has this defect" and "the instrument cannot
+    see" would be the same output.
+    """
+    needle = f'"{key}"'
+    alt = f"'{key}'"
+    for p in _APP.rglob("*.py"):
+        s = p.as_posix()
+        if "/eval/" in s or "__pycache__" in s:
+            continue
+        try:
+            body = p.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if needle in body or alt in body:
+            return True
+    return False
+
+
+def _blindness() -> list[str]:
+    """Two directions, and the second is the one that keeps this honest over time.
+
+    · A class NOT declared blind whose detector reads a key the service never mentions is
+      silently blind — the state the whole registry shipped in.
+    · A class declared blind whose keys are ALL present now has a stale block, and leaving it
+      would permanently exclude a class the instrument could actually score.
+    """
+    bad: list[str] = []
+    for d in DEFECTS:
+        absent = [k for k in d.reads if not _engine_emits(k)]
+        if not d.reads:
+            bad.append(f"{d.code}: declares no `reads`, so nothing can check whether the "
+                       f"engine emits what its detector consumes")
+        elif d.blocked_on and not absent:
+            bad.append(f"{d.code}: declared blocked_on, but the service now mentions every "
+                       f"key it reads ({', '.join(d.reads)}) — lift the block or correct it")
+        elif not d.blocked_on and absent:
+            bad.append(f"{d.code}: reads {', '.join(absent)}, which the service never "
+                       f"mentions — the detector would be permanently quiet and every run "
+                       f"would score MISSED. Declare `blocked_on` or fix the key.")
+    return bad
+
+
 def _self_check() -> list[str]:
     """The scorer must actually punish the failure the controls exist to expose.
 
@@ -110,7 +165,15 @@ def main() -> int:
     codes = [d.code for d in DEFECTS]
     if len(set(codes)) != len(codes):
         problems.append(f"duplicate defect codes: {sorted({c for c in codes if codes.count(c) > 1})}")
-    problems += _uncontrolled() + _shared_detectors() + _degenerate_detectors() + _self_check()
+    scorable = [d for d in DEFECTS if not d.blocked_on]
+    if len(scorable) < MIN_SCORABLE:
+        problems.append(
+            f"only {len(scorable)} class(es) are SCORABLE (the rest are blind on fields the "
+            f"engine does not emit); MIN_SCORABLE is {MIN_SCORABLE}. A registry can look "
+            f"broad and measure almost nothing."
+        )
+    problems += (_uncontrolled() + _shared_detectors() + _degenerate_detectors()
+                 + _blindness() + _self_check())
 
     if problems:
         print("composition eval-gate: the INSTRUMENT is not fit to measure\n")
@@ -120,8 +183,13 @@ def main() -> int:
         print("detector from one that always fires — a degenerate suite reports a clean green.")
         return 1
 
+    blind = [d for d in DEFECTS if d.blocked_on]
     print(f"composition eval-gate: PASS — {len(DEFECTS)} seeded defect class(es), "
           f"each with a control and a distinct non-constant detector.")
+    print(f"  {len(DEFECTS) - len(blind)} SCORABLE · {len(blind)} blind on a field the engine "
+          f"does not emit yet:")
+    for d in blind:
+        print(f"    · {d.code} — reads {', '.join(d.reads)}")
     print("  Scored live by app/eval/suite.py; this half asserts only that the instrument "
           "can measure, not that the engine is good.")
     return 0

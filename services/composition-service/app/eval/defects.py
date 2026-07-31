@@ -76,6 +76,21 @@ class DefectClass:
     detector: Detector
     #: Where this failure was actually seen. A class with no provenance is a hypothetical.
     provenance: str
+    #: The observation keys this detector consumes. Declared, not inferred, because the gate
+    #: has to check them against what the engine ACTUALLY emits — and because a freeform
+    #: `dict[str, object]` otherwise turns a key typo into a silent QUIET, which scores as
+    #: "the engine did not have this defect".
+    reads: tuple[str, ...] = ()
+    #: Non-empty ⇒ this class is BLIND: the engine does not emit what its detector needs, and
+    #: what must be built is named here. A blind class is never scored — see `suite.observe`.
+    #:
+    #: This field exists because the first version of this registry declared five classes of
+    #: which three read fields with ZERO occurrences anywhere in the service
+    #: (`scenes_covered`, `unresolved_refs`, `actual_words`). Their detectors would have been
+    #: permanently quiet, every run would have scored MISSED, and MISSED reads as "the engine
+    #: has this defect" when the truth is "the instrument cannot see". False negatives dressed
+    #: as findings are worse than an absent class, so blindness is declared and excluded.
+    blocked_on: str = ""
 
 
 def _fired_canon(o: Observation) -> bool:
@@ -135,6 +150,7 @@ DEFECTS: tuple[DefectClass, ...] = (
         control="The troops spoke of Kai at the eastern gate that dawn, repeating the orders "
                 "he had shouted across the yard before the siege took him.",
         detector=_fired_canon,
+        reads=("status", "iterations"),
         provenance="eval_a2_canon.py (the one seeded class that already existed); the "
                    "Mị Đế book shipped the inverse — Tô Thanh Dao killed in scene 1 against "
                    "the synopsis",
@@ -147,6 +163,10 @@ DEFECTS: tuple[DefectClass, ...] = (
                "hard cut to the next morning.",
         control="Draft scene 2 only. The chapter plan lists scene 2 and nothing after it.",
         detector=_fired_scene_boundary,
+        reads=("scenes_covered",),
+        blocked_on="the engine reports no per-draft scene attribution — `scenes_covered` has "
+                   "ZERO occurrences in the service. Needs the drafter to emit which scene "
+                   "ids its output covers (S2 territory).",
         provenance="SCENE-BOUNDARY (2026-07-30, Mị Đế): scene 1's draft arrived carrying "
                    "scene 3's and scene 4's material",
     ),
@@ -156,6 +176,10 @@ DEFECTS: tuple[DefectClass, ...] = (
         seeded="target_words=900 on a Vietnamese scene (~2300 output tokens needed)",
         control="target_words=200 on the same scene (comfortably inside any budget)",
         detector=_fired_length_shortfall,
+        reads=("target_words", "actual_words"),
+        blocked_on="`target_words` is emitted; `actual_words` is not — the draft's realised "
+                   "word count is computable but never reported, so the shortfall cannot be "
+                   "read off a result. Cheapest of the three gaps to close.",
         provenance="D-SCENE-OUTPUT-BUDGET-FLAT — measured 900/850/800/750/800 -> "
                    "445/414/532/618/736 words",
     ),
@@ -166,6 +190,7 @@ DEFECTS: tuple[DefectClass, ...] = (
         seeded="a cast/plan request whose output exceeds the model's allowance",
         control="the same request with an allowance that clears its own bound",
         detector=_fired_truncation,
+        reads=("finish_reason",),
         provenance="glossary runDocExtractor/runPlanner repaired clipped JSON as if it were "
                    "malformed; composition cast_plan records the same class biting",
     ),
@@ -175,6 +200,9 @@ DEFECTS: tuple[DefectClass, ...] = (
         seeded="a decompose whose beats reference a character never introduced",
         control="the same decompose over a roster that contains every referenced character",
         detector=_fired_unresolved_reference,
+        reads=("unresolved_refs",),
+        blocked_on="`unresolved_refs` has ZERO occurrences in the service — the plan validator "
+                   "rejects unknown refs but reports no COUNT a detector can read.",
         provenance="PF-1 — 'anonymous characters were uses of undeclared identifiers'",
     ),
 )
@@ -183,3 +211,9 @@ DEFECTS: tuple[DefectClass, ...] = (
 #: re-confirming the one failure it was built around. Five classes is not a magic number — it
 #: is the count at which the registry stopped being "the canon check, plus scaffolding".
 MIN_CLASSES = 5
+
+#: How many classes must be SCORABLE — i.e. not blind on a field the engine never emits. A
+#: registry can look broad and measure almost nothing: the first version of this file declared
+#: five classes of which only two could ever produce a number. Ratcheted upward as the engine
+#: gains observability; it must never fall.
+MIN_SCORABLE = 2
