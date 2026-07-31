@@ -58,6 +58,64 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S6 — POC-1's chain is closed, and a bite-test that PASSED found the worse bug (2026-07-31)
+
+`progression-pin` + `app/gamegen/pinner.py` + the pin columns. **1262 passed / 2 skipped · 15 Rust
+test binaries green.** The chain now runs end to end:
+
+```
+approved answers → fold → policy → generate → the engine VALIDATES
+                 → a human APPROVES → the engine PINS → the ruleset digest moves
+```
+
+Live: progression digest `5c8b0583…` → ruleset digest `74e6da5a…`, with `.prog`, `.labels.toml` and
+`.canon` on disk.
+
+**Two binaries, not one with a flag.** `progression-validate` asks *"would this be admitted?"*
+against a **throwaway** store and leaves nothing; `progression-pin` says *"admit it"* against the
+**real** one. One binary with a `--pin` flag would make that distinction a runtime argument, and the
+wrong value of it is silent in both directions.
+
+**`--expect` is why the pin binary exists.** S5 recorded a digest beside a human's approval; between
+that moment and this one sit a re-generation, a file write and a process boundary, and **none of them
+would announce a change**. The pin would succeed, the store would hold a valid table, and the ruleset
+would carry a digest nobody ever saw. So the expected digest is required and compared after
+resolution — T8 at the one hop where the artifact leaves the database.
+
+**The artifact is REGENERATED, not stored and replayed.** S3 and S5 are deterministic, so
+regeneration must produce the same bytes — and `--expect` is what turns *must* into *checked*.
+Storing the TOML would remove the only place that claim ever meets reality.
+
+**A bug found by running it:** `resolve_and_pin` PERSISTS before it returns, so comparing `--expect`
+after a real-store resolution left `<digest>.prog` and `<digest>.labels.toml` behind on a mismatch —
+a table nobody approved, in the store a reality resolves from. Exactly the class the validator's
+throwaway store exists to prevent, let through on its sibling. Fixed: resolve into scratch, compare,
+then admit.
+
+**And then a bite-test PASSED, which was the more interesting result.** Pointing the scratch store at
+the real one should have reddened the untouched-store test. It did not — because the scratch cleanup
+then **deleted the entire real store**, and the test's *"is it empty?"* assertion was satisfied for
+the opposite reason. The separation had no test that could see it being conflated, and the failure it
+hides is far worse than the bug it was written for: *every pin would wipe the whole store*. Added
+`a_pin_does_not_DESTROY_what_is_already_in_the_store` — pin two different ladders, assert the first
+survives — and re-bit: red.
+
+**Second time this session a bite exposed a missing case rather than confirming one** (the first was
+`gamegen_ledger_is_total`'s membership arm). That is the bite-test earning its cost.
+
+**The chain's last link is a CHECK, not a call order:** `pinned ⇒ approved ⇒ admitted ⇒ the engine
+ran`, enforced by two constraints. And the seam refuses rather than pretending — no `$PROGRESSION_STORE_ROOT`
+is an error, never a temp-dir fallback, because *a pin that succeeds and vanishes* leaves every hop
+upstream green and a reality that cannot resolve its own table.
+
+Trust table: **T8 extended** to the pin hop.
+
+**▶ NEXT — what POC-1 still lacks, stated plainly:** the machinery is closed but **no book has been
+through it**. The 武俠 fixture is 10 markdown files that have never been ingested into
+`source_corpus_chunk`, and **no LLM has ever run** — every answer in every test was written by hand.
+The remaining work is an ingest (S0's real half) and the interrogation stage that turns a sealed
+corpus + the brief into proposed answers.
+
 ### ✅ S5b — the verdict has a row, and a CHECK that evaluated to NULL was passing (2026-07-31)
 
 `gamegen_candidate` + `app/gamegen/validator.py`. **1255 passed / 2 skipped.** The chain now runs

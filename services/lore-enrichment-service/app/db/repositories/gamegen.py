@@ -39,6 +39,7 @@ import hashlib
 
 from app.gamegen.brief import load_brief, load_contract
 from app.gamegen.generate import AdmissionRefusal, generate
+from app.gamegen.pinner import PinnerUnavailable, run_pinner
 from app.gamegen.validator import run_validator
 from app.gamegen.policy import (
     Band, Policy, PolicyError, assert_covers_magnitudes, body_json,
@@ -887,3 +888,77 @@ class GamegenS2Repo:
             "review_status": r["review_status"],
             "approved_by": r["approved_by"],
         }
+
+    # ── S6: the pin ─────────────────────────────────────────────────────────
+
+    async def pin_candidate(
+        self, *, candidate_id: UUID, owner_user_id: UUID, pinned_by: UUID
+    ) -> str:
+        """Pin an **approved** candidate and record the ruleset digest it produced.
+
+        The artifact is **re-generated**, not stored and replayed. That is the
+        deliberate choice: S3 and S5 are deterministic, so regeneration must
+        produce the same bytes — and ``--expect`` is what turns "must" into
+        "checked". Storing the TOML instead would remove the only place the
+        determinism claim is ever tested against reality.
+
+        :raises AdmissionRefusal: when the candidate is not this owner's, not
+            approved, or already pinned.
+        :raises PinnerUnavailable: when the engine could not be reached. Never
+            downgraded — a pin that cannot happen must not read as one that did.
+        """
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                "SELECT job_id, book_id, element_kind, structure_id_hint, "
+                "       progression_digest, review_status, pinned_at, repair_ops_json "
+                "FROM ("
+                "  SELECT c.*, s.structure_id AS structure_id_hint"
+                "    FROM gamegen_candidate c"
+                "    JOIN gamegen_creative_structure s"
+                "      ON s.content_hash = c.structure_hash AND s.job_id = c.job_id"
+                "   WHERE c.candidate_id=$1 AND c.owner_user_id=$2"
+                ") q",
+                candidate_id, owner_user_id,
+            )
+        if r is None:
+            raise AdmissionRefusal(
+                f"candidate {candidate_id} is not visible to {owner_user_id}"
+            )
+        if r["review_status"] != "approved":
+            raise AdmissionRefusal(
+                f"candidate {candidate_id} is {r['review_status']!r}. Only an APPROVED "
+                f"candidate may be pinned - the chain is pinned => approved => admitted "
+                f"=> the engine ran, and skipping the middle link is how content nobody "
+                f"signed for reaches a reality."
+            )
+        if r["pinned_at"] is not None:
+            raise AdmissionRefusal(
+                f"candidate {candidate_id} was already pinned at {r['pinned_at']}. "
+                f"Refused rather than re-pinned: the store is content-addressed so the "
+                f"write would be a no-op, but a second pin row would make 'when did this "
+                f"reach the world' a question with two answers."
+            )
+
+        # Re-generate. See the docstring: this is where determinism is tested.
+        structure = await self._structure(r["structure_id_hint"], owner_user_id)
+        policy = await self.effective_policy(
+            element_kind=r["element_kind"], book_id=r["book_id"],
+            owner_user_id=owner_user_id,
+        )
+        art = generate(
+            body=structure["body"], policy=policy,
+            repair_ops=json.loads(r["repair_ops_json"]),
+        )
+        result = run_pinner(art.toml, expect_digest=r["progression_digest"])
+        if not result.pinned:
+            raise AdmissionRefusal(
+                f"the engine refused to pin candidate {candidate_id}: {result.findings}"
+            )
+
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE gamegen_candidate SET pinned_at=now(), pinned_by=$2, "
+                "ruleset_digest=$3 WHERE candidate_id=$1",
+                candidate_id, pinned_by, result.ruleset_digest,
+            )
+        return result.ruleset_digest

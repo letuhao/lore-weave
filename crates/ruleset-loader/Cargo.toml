@@ -27,3 +27,9 @@ toml = { workspace = true }
 [[bin]]
 name = "progression-validate"
 path = "src/bin/progression_validate.rs"
+
+# S6. The sibling of progression-validate: the same resolve path against the REAL
+# store, with --expect making the pinned digest the one a human approved.
+[[bin]]
+name = "progression-pin"
+path = "src/bin/progression_pin.rs"

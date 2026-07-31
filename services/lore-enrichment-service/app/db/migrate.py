@@ -1370,6 +1370,37 @@ CREATE TABLE IF NOT EXISTS gamegen_candidate (
 CREATE INDEX IF NOT EXISTS idx_gamegen_candidate_scope
   ON gamegen_candidate(owner_user_id, book_id);
 
+-- ── S6: what landed ─────────────────────────────────────────────────────────
+-- Pinning is recorded ON the candidate rather than in a sibling table because a
+-- pin is not a thing in its own right - it is the last fact about one candidate,
+-- and a separate row would let "pinned" and "which candidate" drift apart.
+--
+-- `ruleset_digest` is POC-1's actual exit criterion. "A table appeared in a
+-- directory" is not it: the claim is that the RULESET digest MOVES, and the only
+-- way to say that is to record the one the engine produced.
+--
+-- The CHECK is the chain's last link: a candidate can only be pinned if a human
+-- APPROVED it, which the earlier CHECK already restricts to `verdict='admitted'`.
+-- So `pinned => approved => admitted => the engine ran`, enforced end to end by
+-- two constraints rather than by the order the code happens to call things in.
+ALTER TABLE gamegen_candidate ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+ALTER TABLE gamegen_candidate ADD COLUMN IF NOT EXISTS pinned_by UUID;
+ALTER TABLE gamegen_candidate ADD COLUMN IF NOT EXISTS ruleset_digest TEXT;
+DO $pin_chk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'gamegen_candidate_pin_coherent'
+  ) THEN
+    ALTER TABLE gamegen_candidate ADD CONSTRAINT gamegen_candidate_pin_coherent CHECK (
+         (pinned_at IS NULL AND pinned_by IS NULL AND ruleset_digest IS NULL)
+      OR (pinned_at IS NOT NULL AND pinned_by IS NOT NULL
+          AND ruleset_digest IS NOT NULL AND ruleset_digest ~ '^[0-9a-f]{64}$'
+          AND review_status = 'approved')
+    );
+  END IF;
+END
+$pin_chk$;
+
 -- ── batch_size honesty (T3) ─────────────────────────────────────────────────
 -- DEFERRABLE INITIALLY DEFERRED, because a batch is written one row at a time:
 -- an immediate check would fire on row 1 of 24 and see a count of 1. At COMMIT

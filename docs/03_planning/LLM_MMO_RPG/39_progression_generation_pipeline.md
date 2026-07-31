@@ -673,7 +673,7 @@ rows and did not notice. **NOT ENFORCED is now a legal value** — an honest gap
 | T5 | a wrong rule is traceable **to a person** | 5 hops + `approved_by` on the decision. v1's chain contained **no human at all** | ✅ |
 | T6 | nothing is silently dropped | **consumption ledger, both directions** (`PGN-A9`) — not a count | ✅ enforced twice: `fold()` refuses an unconsumed approved answer, and `gamegen_ledger_is_total` re-checks it as a `CHECK` so a row not written by the fold cannot carry a ledger nobody verified |
 | T7 | a stale verdict cannot launder | version-stamped verdict | ✅ `progression-validate` — the verdict carries the schema + law versions **compiled into the binary that produced it**; a caller cannot claim a version it did not run |
-| T8 | the artifact cannot be swapped | `store.get` re-digests the decoded value | ✅ |
+| T8 | the artifact cannot be swapped | `store.get` re-digests the decoded value | ✅ …and `progression-pin --expect` at the one hop where the artifact **leaves the database**: between S5's approval and S6 sit a re-generation, a file write and a process boundary, none of which would announce a change. A mismatch refuses and **does not touch the real store** |
 | T9 | approved content survives repair | typed `repair_ops_json`; `Remove`/`Weaken` refuse (`PGN-A17`) | ✅ `assert_repairs_are_admissible` — `adjust` passes; `remove`/`weaken`/`substitute` **and any untyped op** refuse, checked BEFORE anything is generated |
 | T10 | labels exist for every key | load-time coverage refusal (`PGN-A18`) | ✅ `ruleset-loader::labels` — `admit()` refuses a missing label file, an uncovered kind/tier, and an empty name, each named |
 
