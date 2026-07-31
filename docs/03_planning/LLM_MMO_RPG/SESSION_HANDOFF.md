@@ -10,57 +10,67 @@
 
 ---
 
-## ▶ NEXT SESSION — the contract generator (`40_progression_planner/`)
+## ▶ NEXT SESSION — the contract generator RUNS (`40_progression_planner/` + `app/pool/`)
 
-**Date:** 2026-07-31 · **New folder:** [`40_progression_planner/`](40_progression_planner/_index.md)
-— 12 docs, prefixes `PPL` `PPO` `PPB` `EPL` `GP` `ICT` `MOD` `ENR` `ASK` `MEM`, all registered in the
-id catalog.
+**Date:** 2026-08-01 · **Docs:** [`40_progression_planner/`](40_progression_planner/_index.md) — 12 docs,
+prefixes `PPL` `PPO` `PPB` `EPL` `GP` `ICT` `MOD` `ENR` `ASK` `MEM` `BLD`, all registered.
+**Code:** `contracts/pool/registry.json` + `services/lore-enrichment-service/app/pool/` — **41 tests**,
+service suite **1222 passed / 161 skipped**.
 
-**What happened.** POC-1 (doc 39's progression pipeline) was run end-to-end against a real model four
-times and **FAILED** — zero manifests produced, and the blocking question turned out to be a design
-decision that had been routed to a model. That failure re-opened the architecture; this folder is the
-redesign, and doc 39's **back half survives intact** (S-1 validator, S4 policy, S5 candidate, S6 pin).
+**Where this came from.** POC-1 (doc 39's progression pipeline) was run end-to-end against a real model
+four times and **FAILED** — zero manifests, and the blocking question turned out to be a design decision
+that had been routed to a model. That re-opened the architecture. Doc 39's **back half survives intact**
+(S-1 validator, S4 policy, S5 candidate, S6 pin).
 
-**The shape now.** A **contract generator** produces *the lists* — closed sets and structures over
-them — into a shared **pool**. **Specific generators** (item, place, …) consume the frozen pool and
-produce their own content, each internally two-layered (LLM vocabulary + procedural spine). Two
-pipeline layers separated by a freeze; **no module ever reads another module's L2 output**.
+**The shape.** A **contract generator** produces *the lists* — closed sets and structures over them —
+into a shared **pool**. **Specific generators** (item, place, …) consume the frozen pool and produce
+their own content, each internally two-layered (LLM vocabulary + procedural spine). Two pipeline layers
+separated by a freeze; **no module ever reads another module's L2 output**.
 
-| doc | settles |
-|---|---|
-| 01–02 | what a progression system IS; what the planner must PRODUCE (competency questions) |
-| 03–04 | where the planner STOPS; the pool of closed sets; the two-layer pipeline |
-| 05 | 178 gameplay loops (cultivation + general-RPG delta), shallow, stable ids — the deep-dive worklist |
-| 06–07 | the item contract (5 slots, 4 SHARED); four planner KINDS; registration + storage |
-| 08–09 | retrieval vs enrichment (6-rung ladder, genre pack); how a planner asks and knows it is done |
-| 10–11 | **measured** — live probes against a local model, and the pool member schema |
+### What is now BUILT and measured (doc 12 Part C)
 
-**Measured, not asserted.** Every claim in 10 and 11 has a probe behind it with its expectation
-written *before* the run. The findings include three places the architecture was wrong and one where
-the **measuring instrument** was wrong — a copied 0.85 fidelity threshold that could not fail on a
-1-of-7 criterion violation.
+Four slots, four planner kinds, **two owning modules**, one abductive register between steps, one freeze:
 
-**New fixture:** `services/lore-enrichment-service/tests/fixtures/fengshen/` — a treasure-dense
-Ming-novel corpus with **12 designed teeth** and its answer key outside the corpus, guarded by
-`tests/test_fengshen_fixture_teeth.py` (29 assertions, bite-tested in both directions).
+| slot | owner | operation | kind |
+|---|---|---|---|
+| `instrument_tag` | item | ABSTRACT | `Enumeration` |
+| `item_archetype` | item | CLASSIFY_LINK | `ClassifyLink` |
+| `progression_kind` | progression | CONFIRM | `Profile` |
+| `progression_stage` | progression | PARTITION | `Ladder` |
 
-**New gate:** `scripts/doc-language-gate.py` — persisted artifacts are English (CLAUDE.md → Key
-Rules); judges **added lines only** because 468 of 1962 tracked docs carry legacy non-English text;
-three bite-tests recorded.
+A full live run against a local model reaches `FROZEN 3091d0f8…` with per-group ordinals stamped by the
+**planner**, not the model. Three claims held that could each have failed: `BLD-A5` (a slot is a registry
+row, never a file — adding a module added zero per-slot code), `EPL-A8` (registering `progression_kind`
+**removed** its demand row; `equip_slot` is left unregistered so the channel keeps a subject), and the
+kinds generalising past their author's slot.
+
+**Five defects, all in this project's code, found by the live runs** — the register was compiling model
+text as **ASP source** (`Blade` parses, as a *variable*); rejected members were readable as approved
+(`ASK-A5` a second time, this one *laundering* the verdict rather than ignoring it); the envelope did not
+declare a field the operation required, and the first fix went into the **checker**; the heal round asked
+the model to repair an answer it could not see; and `refusals_name_an_owner` was a truthiness test, which
+the string `"null"` satisfies. **13 mechanisms bite-tested**, each broken and restored.
 
 ### Do-now next
 
-1. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be
-   answerable to ship, and whether the two-layer pipeline (`PPB-A6` + `EPL-*`) is adopted
-   **pipeline-wide** — which requires first walking all seven of doc 38's element-roster entries.
-2. **`WA_001` must register a `lex_tag` slot** — the single real gap in the item contract
-   (`MEM-A4` §4.2), and it is not item's to fix.
-3. **Move decisions off the model, one at a time.** Ordinals and cardinality both belong to the
-   planner (`QTY-A5` already said so for ordinals). Each removal took that error class to zero.
-4. **Build the slot state machine in CODE, not in a prompt** — `ASK-A6`, measured: offered only edges
-   that terminate, the model invented one that did not.
-5. **POC-1's uncommitted Python is still valid** — anchors + sentence expansion, `census.py`, the
+1. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be answerable
+   to ship, and whether the two-layer pipeline (`PPB-A6` + `EPL-*`) is adopted **pipeline-wide** — which
+   requires first walking all seven of doc 38's element-roster entries.
+2. **`WA_001` must register a `lex_tag` slot** and **item must register `equip_slot`** — the two live
+   `unregistered_target` rows. Neither is the other module's to fix, which is the point.
+3. **Wire `REOPENED`, or decide not to.** It is declared and unreachable, and its trigger was measured:
+   `item_archetype` needs `instrument_tag` codes that cover everything, and the model correctly omitted
+   the field rather than lie when they did not. The fix is **upstream in an already-settled slot** —
+   which is what `REOPENED` is for. Needs a termination bound.
+4. **The Rust half:** `declare_pool_slot!` + `export.rs` + the drift test, which flips
+   `registry.generated` to true and reds `test_the_registry_is_the_one_the_engine_would_read`.
+5. **Re-probe without `rule_sentence`, with a hard `m ≤ n/2`** (`BLD-A4`, still not run).
+6. **POC-1's uncommitted Python is still valid** — anchors + sentence expansion, `census.py`, the
    `run_interrogation` seam, and the corpus `to_prose` fix.
+
+**Fixture:** `services/lore-enrichment-service/tests/fixtures/fengshen/` — a treasure-dense Ming-novel
+corpus with **12 designed teeth**, answer key outside the corpus, guarded by 29 assertions.
+**Gate:** `scripts/doc-language-gate.py` — persisted artifacts are English; judges **added lines only**.
 
 ---
 
@@ -106,6 +116,11 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-WORLD-PAYLOAD-DERIVABLE` | — | **67.6 % of the generated world payload is derivable and is being stored anyway** (`WDS-A8`/`WDS-D3`). `vertex_polygon` 50.1 % · `center` 7.9 % · `neighbors` + `is_coast` the rest. The whole mesh is `fibonacci(n) · R(seed)` — `mesh.rs`'s own test asserts the rotation is *"the **only** source of seed dependence here"* — and adjacency is Quickhull over the centres. Packed irreducible ≈ **20 B/cell** → ~320 KB at `Megaplanet` vs ~15 MB stored (**46×**). PO chose store-everything for simplicity; legitimate at this scale. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **there is no measured threshold to assert against**, and a check with no possible violation is the NV-2 shape. Stripping is not free either: it needs Quickhull on the **read** path, where `WDS-A7`'s `f32` cross-platform problem is worse than on the write path. **Trigger: the first commit in which world-payload size or wire bandwidth is measured as a constraint.** The row exists so the measurement is re-read, not re-discovered. |
 | `D-LEDGER-BEFORE-BALANCE` | 3 | **The ledger** (`WSA-R14`) — conservation assertion + declared sources/sinks. **The only row here carrying a DEADLINE rather than a priority, and it is one-way.** `WSA-R14`: the ledger becomes *impossible* to retrofit once content is balanced against a leaky economy, **because at that point the leaks ARE the balance** — removing them later breaks every number an author tuned. Today [`EXC-F2`](30_exchange_model_and_dataflow.md) holds: the engine has the **transaction**, not the **ledger**, so a source-less 10 coins is silently legal. | **prose-only** — declared in `deferral-gate.py`. **TRIGGER: the first commit that balances content against the economy** (a price table, a drop table, a production rate, a reward curve). No mechanism today because the subject does not exist: with no ledger to assert against, a check would have no possible violation (`NV-2`). The ledger itself is what makes it mechanisable — `WSA-R14`'s own bite test is *a source-less 10 coins goes red*. |
 | `D-DEFERRAL-GATE-PLATFORM-SCOPE` | 1 | This gate governs the game tier only; ~360 ids in `docs/sessions/` + `docs/deferred/` are ungoverned and printed as a hole on every run. | **prose-only** — widening is a triage of which of those are still open, which cannot be mechanised in advance. |
+
+| `D-POOL-REOPEN-UNREACHABLE` | 2 | The cycle declares a `REOPENED` state and nothing enters it. The trigger is real and was measured: `item_archetype` requires `instrument_tag` codes covering every archetype, and the model correctly OMITTED the field rather than lie when they did not — a failure healing cannot fix, because the fix is upstream in a slot that has already SETTLED. Reopening on downstream under-coverage needs a termination bound, which is a design decision. | `test_reopened_is_declared_and_currently_unreachable_and_says_so` greps `loop.py` for `move(State.REOPENED)` and **re-reds the day one appears**, forcing whoever wires it to state the bound they chose. |
+| `D-POOL-REGISTRY-NOT-GENERATED` | 3 | `contracts/pool/registry.json` is hand-authored. Doc 40.12 §7 puts the declaration in Rust (`declare_pool_slot!`) with this file as its build output plus a drift test; until then the Python loop and the Rust engine agree only by hand. | `test_the_registry_is_the_one_the_engine_would_read` asserts `generated is False` — it reds the moment the export lands and flips the flag, and its message names the drift test that must replace it. |
+| `D-POOL-FREEZE-IS-PER-MODULE` | 2 | `PPB-A5` says a planner is done when INTERNALLY closed, and the cycle freezes on exactly that basis — it hashes its own settled slots while `equip_slot` is still unregistered elsewhere. A pool-WIDE freeze asks a different question (who decides the world is closed; what happens to a module that never finishes). | **prose-only** — declared in `deferral-gate.py`. No mechanism because there is no second freeze to disagree with the first, so a cross-module consistency check would have no possible violation (the `NV-2` shape). Trigger: a third module registering a slot, or the first consumer reading the frozen pool across a module boundary. |
+| `D-POOL-REFUSAL-CHANNEL-HAS-TWO-MEANINGS` | 2 | `BLD-A3` gave refusal its own channel with one shape `{what, why, owner}`; live runs showed `owner` carrying two unrelated meanings — *belongs to another module* for ABSTRACT/CLASSIFY_LINK, but *this axis has no ladder* for PARTITION, where nothing is routed and the model duly wrote the slot's own name. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **nothing consumes the channel yet**, so a check on the field's meaning would have no possible violation. Trigger: the first reader — a router that turns a refusal into work for the named module, or a report grouping refusals by owner. |
 
 <!-- deferral-registry:end -->
 

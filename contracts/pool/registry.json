@@ -15,7 +15,8 @@
   "_axes": {
     "shape": "what the output looks like — MOD-A1",
     "operation": "what the planner does to its evidence — BLD-A1. Yields the criteria.",
-    "visibility": "SHARED = other modules may reference its members; PRIVATE = owner only (EPL-A7)"
+    "visibility": "SHARED = other modules may reference its members; PRIVATE = owner only (EPL-A7)",
+    "default": "CONFIRM slots only, and REQUIRED for them: the declared set a reality keeps or overrides. A CONFIRM slot with no default has nothing to confirm, and the loader refuses to load one."
   },
 
   "slots": [
@@ -49,7 +50,41 @@
         "gates_on": { "ref": "slot:progression_kind", "list": true, "required": false }
       },
       "consumed_by": ["item.generator.tier2", "crafting.recipe", "loot.table"],
-      "_gates_on_note": "MEM-A4 open #2 — kept OPTIONAL on purpose. It is the first OUTBOUND reference from item into progression, so it is where EPL-A8 fires in that direction. progression_kind is NOT a registered slot yet, which is exactly the dangling case this cycle exists to exercise."
+      "_gates_on_note": "MEM-A4 open #2 — kept OPTIONAL on purpose. It is the first OUTBOUND reference from item into progression, so it is where EPL-A8 fires in that direction. progression_kind was unregistered for one cycle; PROG_001 has now registered it below, and the row it used to raise is gone. equip_slot still dangles, so the demand channel is still under load."
+    },
+    {
+      "id": "progression_kind",
+      "owner": "progression",
+      "shape": "unordered",
+      "operation": "CONFIRM",
+      "visibility": "SHARED",
+      "arity": [1, 8],
+      "suggest": [1, 4],
+      "member": {},
+      "default": ["cultivation_realm", "skill_mastery", "standing"],
+      "consumed_by": [
+        "item.archetype.gates_on",
+        "progression.stage.kind",
+        "progression.training_rule.kind"
+      ],
+      "_default_note": "This default is the CULTIVATION profile's, not a universal one — PPO-A4 says closure is profile-relative. A different profile ships a different default, and that is precisely what a CONFIRM slot is for: the platform declares, the reality keeps or overrides with evidence. `standing` is the social/reputation track; it is here because doc 05's general-RPG delta counts it as progression, and a wuxia reality that has no such track is expected to DROP it and say why."
+    },
+    {
+      "id": "progression_stage",
+      "owner": "progression",
+      "shape": "ordered",
+      "operation": "PARTITION",
+      "visibility": "SHARED",
+      "arity": [3, 48],
+      "suggest": [6, 24],
+      "member": {
+        "kind": { "ref": "slot:progression_kind", "required": true }
+      },
+      "consumed_by": [
+        "progression.training_rule.stage_gate",
+        "progression.breakthrough.from_stage"
+      ],
+      "_ordinal_note": "QTY-A5 — no member carries an ordinal out of the model. The model returns an ORDER (list position); the PLANNER stamps 1..N per kind, and only once the set has SETTLED, because you cannot number a ladder that is still changing. A member that arrives WITH an ordinal is a hard criterion failure, not a value to trust."
     }
   ],
 
@@ -59,8 +94,7 @@
   },
 
   "_not_registered_yet": {
-    "equip_slot": "item owns it; omitted from this cycle to keep the POC at two kinds",
-    "progression_kind": "PROG_001 must register it — referenced by item_archetype.gates_on",
+    "equip_slot": "item owns it; deliberately still unregistered so the EPL-A8 demand channel stays under load after progression_kind closed. If every dangling target were resolved at once, nothing would prove that resolving ONE removes exactly one row.",
     "lex_tag": "WA_001 must register it — the MEM-A4 gap"
   }
 }

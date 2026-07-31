@@ -63,8 +63,30 @@ class OpenRow:
         return f"OPEN [{self.reason}] {self.target}{b}"
 
 
+def _term(value: object) -> str:
+    """Quote a MODEL-SUPPLIED value as an ASP string term.
+
+    This is the boundary where model text would otherwise become program text, and
+    a live run found it the hard way. A member code of ``24_pearls`` is a syntax
+    error; the dangerous one is ``Blade``, which parses fine and becomes an ASP
+    VARIABLE — the register would then be solving a different question than the one
+    it was asked, with no error to show for it.
+
+    The criteria reject both shapes before a slot may settle. That is the healing
+    layer and it is not this layer: a validator the register DEPENDS ON for its own
+    parsing is one adjacent decision away from being defeated, which is exactly the
+    third shape in `NV`. Quoting removes the dependency instead of documenting it.
+    """
+    s = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return '"' + s.replace("\n", " ") + '"'
+
+
 def _facts(reg: Registry, pool: dict[str, list[dict]]) -> list[str]:
-    """Turn the registry + the filled pool into ASP facts. No rules here."""
+    """Turn the registry + the filled pool into ASP facts. No rules here.
+
+    Slot ids and field names go in BARE — they come from the registry, which the
+    loader validates as identifiers. Everything a model produced goes in QUOTED.
+    """
     out: list[str] = []
     for sid, slot in reg.slots.items():
         out.append(f"slot({sid}).")
@@ -77,13 +99,14 @@ def _facts(reg: Registry, pool: dict[str, list[dict]]) -> list[str]:
             code = m.get("code")
             if not code:
                 continue
-            out.append(f"member({sid},{code}).")
+            out.append(f"member({sid},{_term(code)}).")
             body = m.get("body") or {}
             slot = reg.slots.get(sid)
             for f in (slot.refs() if slot else ()):
                 val = body.get(f.name)
                 for target_member in (val if isinstance(val, list) else [val] if val else []):
-                    out.append(f"ref({sid},{code},{f.name},{f.target_slot},{target_member}).")
+                    out.append(f"ref({sid},{_term(code)},{f.name},{f.target_slot},"
+                               f"{_term(target_member)}).")
     return out
 
 

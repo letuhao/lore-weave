@@ -82,7 +82,24 @@ class PoolRun:
 
     @property
     def pool(self) -> dict[str, list[dict]]:
-        return {k: v.members for k, v in self.slots.items() if v.members}
+        """SETTLED members only — what has actually passed the gate.
+
+        It used to return any slot that had members at all, which meant a slot the
+        criteria had HARD-FAILED still counted as filled. Three things then read the
+        rejected material as if it were approved: the register stopped reporting the
+        slot as open, the next planner was offered its codes as available references,
+        and `references_resolve` accepted a pointer into it. A run in that state
+        printed `NOT FROZEN — 0 slot-level open row(s)`, which is the tell — the
+        freeze was blocked only by the separate all-states check, and the register
+        was quietly saying the opposite.
+
+        This is `ASK-A5` a second time in the same loop, and the shape is worth
+        naming: the first instance ignored the verdict, this one laundered it —
+        the rejection was recorded on the slot and then read from somewhere that
+        did not carry it.
+        """
+        return {k: v.members for k, v in self.slots.items()
+                if v.members and v.state is State.SETTLED}
 
     @property
     def frozen(self) -> bool:
@@ -130,16 +147,24 @@ def run_cycle(reg: Registry, evidence: str, complete: Complete,
         prompt = kind.ask(slot, reg, evidence, run.pool)
         for attempt in range(heal_rounds + 1):
             st.attempts += 1
-            members, refused = parse(complete(prompt))
+            raw = complete(prompt)
+            members, refused = parse(raw)
             st.move(State.PROPOSED)
             v = criteria.evaluate(slot, members, refused, evidence_n=evidence_n,
-                                  registry_enums=reg.engine_enums)
+                                  registry_enums=reg.engine_enums, pool=run.pool)
             st.members, st.refused, st.verdict = members, refused, str(v)
             run.log.append(f"{target}: attempt {attempt} -> {v}")
             if v.passed or attempt == heal_rounds:
                 break
+            # The heal round used to say "keep the rest" without showing what the rest
+            # WAS — the model was asked to repair an answer it could not see, and a
+            # live run watched it fail the same two criteria three times running,
+            # producing a different wrong answer each time. A heal that does not carry
+            # the previous attempt is a re-roll wearing a repair's name.
             prompt = (kind.ask(slot, reg, evidence, run.pool)
-                      + "\n\nYOUR PREVIOUS ANSWER FAILED. Fix ONLY these and keep the rest:\n"
+                      + "\n\nYOUR PREVIOUS ANSWER, WHICH FAILED:\n" + raw.strip()
+                      + "\n\nFix ONLY these, and return the whole object again with "
+                        "everything else unchanged:\n"
                       + "\n".join(f"  - {f.criterion}: {f.detail}" for f in v.findings))
 
         # A hard-failed slot is NOT offered to the gate. The first run of this loop
@@ -151,6 +176,12 @@ def run_cycle(reg: Registry, evidence: str, complete: Complete,
         if v.hard_broken:
             run.log.append(f"{target}: stays PROPOSED — {v}")
         elif approve(slot, st.members):
+            # The planner's last word, and it comes AFTER the gate on purpose: a
+            # Ladder stamps ordinals here, and you cannot number a ladder that is
+            # still changing. Running it earlier would also make the criterion that
+            # forbids a model-assigned ordinal read the planner's own field, so it
+            # could never fail (`NV-1`).
+            st.members = kind.finalize(slot, st.members)
             st.move(State.SETTLED)
             run.log.append(f"{target}: SETTLED with {len(st.members)} members, "
                            f"{len(st.refused)} refused")
@@ -164,5 +195,12 @@ def run_cycle(reg: Registry, evidence: str, complete: Complete,
         run.digest = _freeze(run.pool)
         run.log.append(f"FROZEN {run.digest[:16]}…")
     else:
-        run.log.append(f"NOT FROZEN — {len(blocking)} slot-level open row(s)")
+        # Name the slots, not just a count. `NOT FROZEN — 0 slot-level open row(s)`
+        # is what the laundering bug above printed, and a message that can say
+        # "nothing is open" while refusing to freeze is a message that hides its
+        # own contradiction.
+        unsettled = sorted(sid for sid, s in run.slots.items()
+                           if s.state not in (State.SETTLED, State.DECLINED))
+        run.log.append(f"NOT FROZEN — open rows {[str(r) for r in blocking]}, "
+                       f"unsettled {unsettled}")
     return run

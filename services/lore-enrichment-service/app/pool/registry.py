@@ -19,11 +19,20 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-__all__ = ["Operation", "Visibility", "FieldRef", "Slot", "Registry", "load_registry"]
+__all__ = ["Operation", "Visibility", "FieldRef", "Slot", "Registry", "load_registry",
+           "IDENT"]
+
+#: A registry identifier. Slot ids and field names are emitted BARE into the
+#: register's ASP program (`register._facts`), where a capital becomes a VARIABLE and
+#: a leading digit is a syntax error. It lives here rather than in :mod:`register`
+#: because this is the module that enforces it, and putting it there forced a
+#: function-level import to dodge the cycle.
+IDENT = re.compile(r"[a-z][a-z0-9_]*")
 
 #: contracts/pool/registry.json, from services/lore-enrichment-service/app/pool/
 _DEFAULT = pathlib.Path(__file__).resolve().parents[4] / "contracts" / "pool" / "registry.json"
@@ -72,6 +81,8 @@ class Slot:
     suggest: tuple[int, int]
     member: tuple[FieldRef, ...] = ()
     consumed_by: tuple[str, ...] = ()
+    #: CONFIRM slots only — the declared set a reality keeps or overrides (`ENR-A5`).
+    default: tuple[str, ...] = ()
 
     @property
     def ordered(self) -> bool:
@@ -132,7 +143,7 @@ def load_registry(path: pathlib.Path | None = None) -> Registry:
     raw = json.loads((path or _DEFAULT).read_text(encoding="utf-8"))
     slots: dict[str, Slot] = {}
     for s in raw["slots"]:
-        slots[s["id"]] = Slot(
+        slot = Slot(
             id=s["id"], owner=s["owner"], shape=s["shape"],
             operation=Operation(s["operation"]),
             visibility=Visibility(s["visibility"]),
@@ -140,7 +151,30 @@ def load_registry(path: pathlib.Path | None = None) -> Registry:
             suggest=(s["suggest"][0], s["suggest"][1]),
             member=tuple(_field(k, v) for k, v in (s.get("member") or {}).items()),
             consumed_by=tuple(s.get("consumed_by") or ()),
+            default=tuple(s.get("default") or ()),
         )
+        # Slot ids and field names are emitted BARE into the register's ASP program
+        # (`register._facts`), so a capital or a leading digit would be a syntax error
+        # or — worse — an ASP variable. The registry is hand-authored today, so this
+        # is the layer that has to refuse it.
+        for name in (slot.id, *(f.name for f in slot.member)):
+            if not IDENT.fullmatch(name):
+                raise ValueError(
+                    f"{name!r} in slot {slot.id!r} is not a registry identifier "
+                    f"([a-z][a-z0-9_]*). It is emitted bare into the register's solver "
+                    f"program, where a capital becomes a variable."
+                )
+        # A CONFIRM slot's whole operation is "keep this, or override it with
+        # evidence". With no declared default there is nothing to keep, and the
+        # planner would silently degrade into a free-form enumeration — the
+        # operation would still be named CONFIRM and would no longer be one.
+        # Refuse at load rather than let a malformed row produce a plausible run.
+        if slot.operation is Operation.CONFIRM and not slot.default:
+            raise ValueError(
+                f"slot {slot.id!r} declares operation CONFIRM but no `default`. A CONFIRM "
+                f"slot confirms a declared set; without one there is nothing to confirm."
+            )
+        slots[slot.id] = slot
     return Registry(
         slots=slots,
         engine_enums={k: tuple(v) for k, v in (raw.get("engine_enums") or {}).items()},

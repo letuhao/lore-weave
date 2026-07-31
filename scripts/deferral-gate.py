@@ -265,6 +265,44 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-POOL-FREEZE-IS-PER-MODULE": (
+        "TRIGGER: the first module other than item/progression registering a pool "
+        "slot, or the first consumer that reads the frozen pool across module "
+        "boundaries. PPB-A5 says a planner is DONE when it is internally closed, and "
+        "the cycle freezes on exactly that basis — it hashes its own settled slots "
+        "while equip_slot is still unregistered elsewhere, and a test asserts that "
+        "this is deliberate rather than an oversight. A pool-WIDE freeze is a "
+        "different gate with a different question (who decides the whole world is "
+        "closed, and what happens to a module that never finishes) and it is not "
+        "built. No mechanism today because there is no second freeze to disagree "
+        "with the first: with one module-level digest, a cross-module consistency "
+        "check would have no possible violation, which is the NV-2 shape"),
+    "D-POOL-REFUSAL-CHANNEL-HAS-TWO-MEANINGS": (
+        "TRIGGER: the first consumer that READS the refusal channel — a router that "
+        "turns a refusal into work for the named module, or a report that groups "
+        "refusals by owner. BLD-A3 gave refusal its own channel with a single shape "
+        "{what, why, owner}, and live runs showed the field carrying two unrelated "
+        "meanings: for ABSTRACT and CLASSIFY_LINK owner means THIS BELONGS TO "
+        "ANOTHER MODULE, but for PARTITION a refusal means THIS AXIS HAS NO LADDER "
+        "and nothing is being routed at all — the model duly put the slot's own name "
+        "in owner. Splitting it needs a decision about what a refusal IS, not an "
+        "edit. No mechanism today because nothing consumes the channel: with no "
+        "reader, a check on the field's meaning would have no possible violation"),
+    "D-SPEC-CODE-ENUM-PARITY": (
+        "TRIGGER: a layer-aware notion of enum identity, so DP ActorId and the "
+        "feature-layer ActorId are different symbols rather than a name clash. "
+        "design-lint count now checks spec-only enums against the declaration in "
+        "the SAME FILE, which closed REC-98. It deliberately does NOT compare "
+        "across documents, nor a corpus declaration against a real Rust enum. Both "
+        "are real drift surfaces and both were CUT AT DESIGN REVIEW WITH EVIDENCE: "
+        "three docs declare pub enum ActorId and two are legitimately different "
+        "types (the data planes {Player, Npc} vs the feature layers {Pc, Npc, "
+        "Synthetic, Admin, Locus}), so a cross-doc arity check would have "
+        "false-positived on its first run. This checks own recorded history is that "
+        "a lint which cries wolf gets switched off - it spent its first life "
+        "INFO-only for exactly that reason. Shipping it noisy would cost more than "
+        "the coverage buys. No mechanism today because the missing piece is a "
+        "DESIGN decision about symbol identity, not code"),
     "D-WORLD-BASELINE-RETENTION": (
         "TRIGGER: the first commit adding a PRUNER or retention job to the world "
         "baseline store or the generator-version store. WDS-A5 says the baseline blob "

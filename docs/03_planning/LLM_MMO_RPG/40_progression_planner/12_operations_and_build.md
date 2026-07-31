@@ -277,3 +277,118 @@ exactly one.
    re-run — re-read. A pass produced by a checker with a known scoping bug is weaker evidence than it
    looked at the time.
 4. **Nothing here is built.** Part B is a plan; the only running code is git-ignored probes.
+
+---
+
+# Part C — the four-kind cycle, measured
+
+Part B was a plan and said so ("nothing here is built"). It is built now: `contracts/pool/registry.json`
+plus `services/lore-enrichment-service/app/pool/{registry,criteria,register,kinds,loop}.py`, 41 tests,
+and repeated live runs against a local model through provider-registry.
+
+The cycle shipped in two steps. Step one was two slots and two kinds, both owned by `item`. Step two —
+this part — registered `PROG_001`'s two slots, which forced the two planner kinds that had until then
+existed only as a `NotImplementedError` naming them.
+
+## 13 — What the second step was actually testing
+
+Not "does it run". Three claims that could each have come back false:
+
+| Claim | Where it would have failed |
+|---|---|
+| `BLD-A5` — a slot is a registry row, never a file | a fifth planner file, or an `if slot.id ==` anywhere |
+| `EPL-A8` — demand is a register, not a list | registering `progression_kind` failing to REMOVE its row |
+| the kinds generalise past their author's slot | `Ladder`/`Profile` needing item-shaped assumptions |
+
+All three held. Adding two slots owned by a **different module** added two registry rows and two kind
+classes keyed by **operation**; no file names a slot, and `planner_for` still refuses a fifth operation
+by name. `progression_kind`'s `unregistered_target` row disappeared the moment it was registered, and
+`equip_slot` is deliberately left unregistered so the channel still has a subject — a demand list that
+only ever grows is not a register.
+
+> **`BLD-A7`.** The reuse claim survived its first real test: **two owning modules, four operations,
+> zero per-slot code.** The claim stays falsifiable and the falsifier is unchanged — *a fifth operation
+> is an architecture decision; a fifth planner FILE for an existing operation means `MOD-A1` is wrong.*
+
+## 14 — Five defects the live runs found, and the one shape they share
+
+Every one was in **this project's code**, not the model's. Ordered by how badly each hid.
+
+**1. The register was compiling model text as solver source.** Member codes went into the ASP program
+bare. `24_pearls` is a syntax error and crashed a run; the dangerous one is `Blade`, which **parses** —
+as an ASP *variable*. A capitalised code would have made the register answer a different question with
+nothing to show for it. Model-supplied values are now quoted terms; registry identifiers are validated
+at load, since those still go in bare.
+
+> **`BLD-A8`.** A validator the parser depends on for its own parsing is one adjacent decision from
+> being defeated. The criteria reject a bad code **and** the register cannot be broken by one — two
+> layers that hold independently, because a single layer here was an injection.
+
+**2. Rejected members were readable as approved.** `PoolRun.pool` returned any slot that had members,
+including slots the criteria had HARD-FAILED. Three things then read rejected material as approved: the
+register stopped calling the slot open, the next planner was offered its codes, and `references_resolve`
+accepted a pointer into it. The tell was a log line reading `NOT FROZEN — 0 slot-level open row(s)` —
+a refusal that reports nothing to refuse.
+
+> **`BLD-A9`.** This is `ASK-A5` a second time inside the same loop, and the second instance has a
+> distinct shape worth naming. The first **ignored** the verdict (`approve()` was called regardless).
+> This one **laundered** it: the rejection was recorded correctly on the slot and then read from a
+> place that did not carry it. A verdict is not enforced by being stored; it is enforced by every
+> reader being unable to bypass it.
+
+**3. The envelope did not declare a field the operation required.** `covers` is demanded by ABSTRACT
+and is not a slot body field, so a slot with `member: {}` gave the model nowhere legal to put it. It
+duly invented a different home each run — `body.covers` once, `body.instrument_match` the next, which
+failed the same two criteria three times in a row with a sound answer underneath. **The first fix went
+into the checker**, teaching it to read both positions.
+
+> **`BLD-A10`.** Treating the instrument again — the fifth time in this track. The prior four were
+> measurement bugs; this one shipped into product code as a *tolerance*, which is worse, because a
+> tolerance looks like robustness. It then collided with `no_undeclared_body_fields`: one rule
+> accepting exactly what another rejected. **A requirement belongs in the artifact that states the
+> contract, not in the checker that reads it.**
+
+**4. The heal round asked the model to repair an answer it could not see.** The prompt said *"fix only
+these and keep the rest"* without including the previous attempt, so each heal was a fresh roll wearing
+a repair's name. With the rejected answer and the findings both present, three slots that had failed
+three times each began converging on attempt 1 or 2.
+
+**5. A truthiness test on model text is not a test.** `refusals_name_an_owner` checked `r.get("owner")`,
+and a live run produced the **string** `"null"` — truthy, so the refusal passed while routing nowhere.
+The model can always supply a truthy nothing.
+
+## 15 — What the ordinal seam taught
+
+`QTY-A5` says the planner assigns ordinals. The obvious criterion — *ordinals are contiguous 1..N* —
+is **vacuous**: the planner assigns them 1..N by construction, so it cannot fail. What *can* fail is the
+seam: the model emitting a number of its own, which the probe rounds did. So the criterion runs on the
+**raw** model output and the planner stamps afterwards, at settle.
+
+> **`BLD-A11`.** Ordering is a two-part contract with a mandatory sequence: **validate what the model
+> returned, then stamp.** Stamping first makes the check read the planner's own field. And settle is
+> the right moment for the other half of the reason — you cannot number a ladder that is still
+> changing.
+
+## 16 — Open, and one of them is a dead state
+
+1. **`REOPENED` is declared and unreachable.** Nothing moves a slot into it. The trigger is real and
+   was measured: `item_archetype` requires a list of `instrument_tag` codes, and the model omitted the
+   field on every archetype no settled tag covered — refusing to lie, correctly. Healing cannot fix
+   that, because the fix is **upstream in a slot that has already settled**. Reopening on downstream
+   under-coverage is a feature with its own termination question and is not built. A test asserts the
+   state is currently unreachable and **re-reds when it becomes reachable**, so whoever wires it has to
+   state the bound they chose.
+2. **A refusal carries two different meanings and one field.** `owner` means *"this belongs to another
+   module"* for ABSTRACT and CLASSIFY_LINK, but for PARTITION a refusal means *"this axis has no
+   ladder"* — nothing is being routed. Live runs duly put the slot's own name in `owner`. The channel
+   needs either two shapes or an explicit reason kind.
+3. **A slot cannot bind another slot's refusal.** `instrument_tag` refused the two mounts to `beings`;
+   `item_archetype`, in the same run, classified both as archetypes. Whether a refusal in one slot
+   constrains another is a **boundary decision** (`PPB-A4` — a gate belongs to whoever refuses), not a
+   bug to patch, and it is unresolved.
+4. **`registry.json` is still hand-authored.** `"generated": false` says so, and a test asserts the
+   flag rather than letting a reader assume. The Rust `declare_pool_slot!` export and its drift test
+   are not built.
+5. **The freeze is per-module.** `PPB-A5` says a planner is done when it is internally closed, and the
+   cycle freezes on that basis while `equip_slot` is still open elsewhere. A pool-wide freeze across
+   modules is a different gate and does not exist.
