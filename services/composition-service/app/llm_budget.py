@@ -40,10 +40,19 @@ class CallProfile:
     kind: OutputKind
     #: The measured minimum for this call — never below `was`.
     floor: int
-    #: The literal this row replaced. Load-bearing: the registry test asserts
-    #: `budget_for(code) >= was` for every row, which is what makes "adoption is never a
-    #: downgrade" a machine check instead of a sentence.
+    #: The budget ACTUALLY IN USE before this row existed — which is not always the signature
+    #: default. `plan_forge_chat`'s default was 8000, but all five of its live callers
+    #: (`elaborate`, `propose_llm`, `propose_llm_async` ×2, `refine`) pass 12000 explicitly,
+    #: so the default was dead code and 12000 is the real number. Recording 8000 would have
+    #: made this field describe a budget the system does not use — and the no-downgrade test
+    #: reads it, so it would have validated against fiction.
+    #:
+    #: Load-bearing: the registry test asserts `budget_for(code) >= was` for every row, which
+    #: is what makes "adoption is never a downgrade" a machine check instead of a sentence.
     was: int
+    #: An upper bound for calls where the ceiling IS the length control. Rare and deliberate:
+    #: see `compress`. `None` ⇒ the SDK's runaway guard.
+    ceiling: int | None = None
     why: str = ""
 
 
@@ -52,42 +61,60 @@ class CallProfile:
 PROFILES: dict[str, CallProfile] = {
     # ── judges/critics: a bounded verdict + a short reason. Clipping costs a reason string.
     "judge_canon": CallProfile(OutputKind.VERDICT, 1536, 1024,
-                               "per-candidate verdicts + a one-line why"),
-    "judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, "the critic's scored findings"),
-    "pairwise_judge": CallProfile(OutputKind.VERDICT, 1536, 1024, "A/B verdict + rationale"),
+                               why="per-candidate verdicts + a one-line why"),
+    "judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, why="the critic's scored findings"),
+    "pairwise_judge": CallProfile(OutputKind.VERDICT, 1536, 1024, why="A/B verdict + rationale"),
     "judge_motif_conformance": CallProfile(OutputKind.VERDICT, 1536, 512,
-                                           "did the draft realize its motif"),
-    "select_score": CallProfile(OutputKind.VERDICT, 1536, 512, "retrieval scoring"),
+                                           why="did the draft realize its motif"),
+    "select_score": CallProfile(OutputKind.VERDICT, 1536, 512, why="retrieval scoring"),
     "self_heal_verify": CallProfile(OutputKind.VERDICT, 1536, 320,
-                                    "did the proposed edit actually fix the finding"),
+                                    why="did the proposed edit actually fix the finding"),
 
     # ── structured plans: a clipped array is UNPARSEABLE, not short. Headroom is deliberate.
     "propose_cast": CallProfile(OutputKind.STRUCTURED, 4096, 4000,
-                                "the full cast JSON — the site where truncation already bit"),
-    "propose_world": CallProfile(OutputKind.STRUCTURED, 4096, 4000, "world/setting JSON"),
-    "plan_character_arcs": CallProfile(OutputKind.STRUCTURED, 4096, 2000, "per-character arcs"),
+                                why="the full cast JSON — the site where truncation already bit"),
+    "propose_world": CallProfile(OutputKind.STRUCTURED, 4096, 4000, why="world/setting JSON"),
+    "plan_character_arcs": CallProfile(OutputKind.STRUCTURED, 4096, 2000, why="per-character arcs"),
     "select_arc_motifs": CallProfile(OutputKind.STRUCTURED, 4096, 1200,
-                                     "chosen motif codes + rationale"),
+                                     why="chosen motif codes + rationale"),
     "detect_and_update_threads": CallProfile(OutputKind.STRUCTURED, 4096, 1024,
-                                             "narrative threads opened/advanced/closed"),
-    "audit_promises": CallProfile(OutputKind.STRUCTURED, 4096, 1500, "promise audit rows"),
+                                             why="narrative threads opened/advanced/closed"),
+    "audit_promises": CallProfile(OutputKind.STRUCTURED, 4096, 1500, why="promise audit rows"),
     "extract_tracked_promises": CallProfile(OutputKind.STRUCTURED, 4096, 800,
-                                            "promises stated in the prose"),
+                                            why="promises stated in the prose"),
     "score_promise_coverage": CallProfile(OutputKind.STRUCTURED, 4096, 1500,
-                                          "per-promise coverage scores"),
-    # 8000, not the kind's 4096: plan-forge emits a WHOLE planning package in one response.
+                                          why="per-promise coverage scores"),
+    # 12000, not the kind's 4096: plan-forge emits a WHOLE planning package in one response.
     # This is the row that proves the `floor` override was necessary — the straight adoption
-    # would have halved it, and a halved plan JSON does not come back short, it comes back
-    # unparseable.
-    "plan_forge_chat": CallProfile(OutputKind.STRUCTURED, 8000, 8000,
-                                   "a whole planning package in one response"),
+    # would have cut it to 4096, and a clipped plan JSON does not come back short, it comes
+    # back unparseable.
+    #
+    # 12000 and not the 8000 signature default, because the default was DEAD: every one of the
+    # five live callers passed 12000 explicitly. A row saying 8000 would have described a
+    # budget nothing uses, and the no-downgrade test would have proved it against fiction.
+    "plan_forge_chat": CallProfile(OutputKind.STRUCTURED, 12000, 12000,
+                                   why="a whole planning package in one response"),
 
     # ── edits: proportional to the span being rewritten; the edit is lost on truncation.
-    "propose_edits_direct": CallProfile(OutputKind.EDIT, 3000, 3000, "direct span edits"),
-    "propose_self_heal": CallProfile(OutputKind.EDIT, 3000, 3000, "self-heal edit proposals"),
+    "propose_edits_direct": CallProfile(OutputKind.EDIT, 3000, 3000, why="direct span edits"),
+    "propose_self_heal": CallProfile(OutputKind.EDIT, 3000, 3000, why="self-heal edit proposals"),
 
     # ── prose-shaped: compression output. Stops mid-sentence; recoverable.
-    "compress": CallProfile(OutputKind.PROSE, 1024, 512, "compressed running context"),
+    #
+    # `ceiling=512` is the point of this row, not an afterthought. `compress` produces a
+    # summary the packer injects IN PLACE OF raw prose, specifically so a long chapter does
+    # not blow the prompt budget — and its prompt carries NO length directive, so
+    # `max_tokens` was the de-facto size control. Adopting the PROSE floor (1024) would have
+    # let the summary grow to twice the size of the thing whose size it exists to reduce.
+    #
+    # That is the `scene_output_budget` lesson running backwards: there, the guidance asked
+    # for 900 words while the wire allowed 1024 tokens, so capability lagged guidance. Here
+    # there is no guidance at all, so raising capability silently raises the output. Guidance
+    # and capability must move as ONE signal — and when only one of them exists, the budget
+    # is not free to move.
+    "compress": CallProfile(OutputKind.PROSE, 512, 512, ceiling=512,
+                            why="compressed running context — re-injected, so its SIZE is "
+                                "the feature; the prompt states no length, so this bounds it"),
 }
 
 
@@ -111,9 +138,10 @@ def budget_for(code: str, *, target: int | None = None, language: str | None = N
     on exactly these; a call site that passes none gets a constant with extra steps.
     """
     p = profile_for(code)
+    kw = {} if p.ceiling is None else {"ceiling": p.ceiling}
     return call_budget(
         p.kind, target=target, language=language, reasoning=reasoning,
-        context_length=context_length, floor=p.floor,
+        context_length=context_length, floor=p.floor, **kw,
     )
 
 

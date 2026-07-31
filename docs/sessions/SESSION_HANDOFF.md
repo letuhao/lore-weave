@@ -294,6 +294,24 @@ still backlog (pinned by test).
 Backlog **59 → 29**. Remaining: 12 composition sites whose budget comes from elsewhere,
 10 knowledge, 4 translation, 3 misc.
 
+**`/review-impl` round 2 found two more HIGHs, both in the registry I had just written:**
+- **`was` measured the wrong thing.** I recorded `plan_forge_chat`'s *signature default*
+  (8000) — but all **five** live callers pass `max_tokens=12000` explicitly, so the default
+  was dead code. `was` feeds the no-downgrade test, so the guarantee was being proved against
+  a number nothing used. Row is now 12000 and the five caller literals route through it.
+- **`compress` had no length directive, so `max_tokens` WAS its length control** — and the
+  PROSE floor doubled it 512 → 1024. `compress` output is injected *in place of* raw prose to
+  shrink the prompt; letting it grow 2× inflates the budget it exists to protect. This is the
+  `scene_output_budget` lesson running backwards (there capability lagged guidance; here
+  guidance does not exist, so raising capability raises the output). `CallProfile` gained a
+  `ceiling`, and `compress` is pinned at 512.
+- Also found: **13 budget literals sit one helper-hop from submit** (`chat(max_tokens=…)`,
+  `_llm_json(…)`, `StreamRequest(…)`) — invisible to the gate, which reads submit/stream
+  payloads only. 5 cleared; the remaining 3 in composition are ratcheted by a registry test.
+- And the 18 migrated defaults evaluate at **import time**, so a future scored policy cannot
+  reach them without callers passing `target`/`language`. Attributed ≠ adaptive — recorded,
+  not fixed.
+
 ⚠️ Two migration near-misses worth keeping: the line-window search for
 `max_tokens: int = N` jumped up to 12 lines on 4 files — verified every hunk landed in the
 intended function by reading `git diff`'s hunk headers, not by trusting the offsets. And the

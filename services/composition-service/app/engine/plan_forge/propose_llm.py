@@ -23,6 +23,7 @@ from app.engine.plan_forge.prompts import (
     materialize_user_prompt,
     repair_user_prompt,
 )
+from app.llm_budget import max_tokens_for
 
 
 def _checksum(text: str) -> str:
@@ -119,7 +120,7 @@ def _parse_with_repair(client: LMStudioClient, step: str, system: str, user: str
             step=repair_step,
             system="Output only valid JSON. No markdown.",
             user=repair_user_prompt(str(e), content),
-            max_tokens=12000,
+            max_tokens=max_tokens_for("plan_forge_chat"),
         )
         return extract_json_object(repair_content)
 

@@ -39,8 +39,8 @@ def test_no_row_resolves_below_the_literal_it_replaced(code):
 def test_the_three_sites_that_would_have_been_downgraded_are_covered():
     """Named explicitly, because a parametrized sweep passes just as loudly when a future
     edit drops the rows entirely."""
-    for code, was in (("plan_forge_chat", 8000),
-                      ("propose_edits_direct", 3000),
+    for code, was in (("plan_forge_chat", 12000),   # the callers' number, not the dead default
+("propose_edits_direct", 3000),
                       ("propose_self_heal", 3000)):
         assert PROFILES[code].was == was
         assert max_tokens_for(code) >= was
@@ -83,8 +83,12 @@ def test_the_budget_moves_with_the_facts_the_caller_knows():
     large = max_tokens_for("propose_cast", target=200)
     assert large > small, "item count does not move a STRUCTURED budget"
 
-    en = max_tokens_for("compress", target=2000, language="en")
-    zh = max_tokens_for("compress", target=2000, language="zh")
+    # Language signal is a PROSE property, and `compress` — the only PROSE row — is
+    # deliberately ceiling-bounded because its SIZE is the feature. So the mechanism is
+    # asserted directly rather than through a row that is supposed to ignore it.
+    from loreweave_llm.budget import call_budget
+    en = call_budget(OutputKind.PROSE, target=2000, language="en").max_output_tokens
+    zh = call_budget(OutputKind.PROSE, target=2000, language="zh").max_output_tokens
     assert zh > en, "CJK tokenizes ~2x denser per word; the budget must reflect it"
 
 
@@ -123,3 +127,64 @@ def _literal_codes(node: ast.AST) -> set[str]:
 def test_every_call_site_code_exists_in_the_registry():
     missing = sorted(_used_codes() - set(PROFILES))
     assert missing == [], f"call sites pass codes with no PROFILES row: {missing}"
+
+
+# ── `was` must be the budget IN USE, not the signature default ────────────────────────────
+
+def test_plan_forge_records_the_budget_its_callers_actually_used():
+    """The signature default was 8000 and every one of the five live callers overrode it with
+    12000, so 8000 was dead code. `was` reads into the no-downgrade test, so recording the
+    default would have proved the guarantee against a number nothing used."""
+    p = PROFILES["plan_forge_chat"]
+    assert p.was == 12000 and max_tokens_for("plan_forge_chat") >= 12000
+
+
+def test_no_caller_re_introduces_a_budget_literal_the_registry_owns():
+    """A caller-supplied value silently defeats the row — the whole reason `was` was wrong.
+    Scans for a budget kwarg with an INT literal anywhere in app/, at any call depth, which
+    is the class the SSOT gate cannot see (it only reads submit/stream payloads)."""
+    offenders = []
+    for f in _APP.rglob("*.py"):
+        if "__pycache__" in f.as_posix() or f.name == "llm_budget.py":
+            continue
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8", errors="ignore"))
+        except SyntaxError:
+            continue
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Call):
+                continue
+            for kw in n.keywords:
+                if kw.arg in ("max_tokens", "max_output_tokens") \
+                        and isinstance(kw.value, ast.Constant) \
+                        and isinstance(kw.value.value, int) and kw.value.value > 0:
+                    offenders.append(f"{f.relative_to(_APP).as_posix()}:{n.lineno} ={kw.value.value}")
+    assert sorted(offenders) == sorted(_KNOWN_HELPER_LITERALS), (
+        f"budget literals changed.\n  now: {offenders}\n  known: {_KNOWN_HELPER_LITERALS}"
+    )
+
+
+#: The remaining helper-hop literals, held as a ratchet. Each is a budget passed to a helper
+#: that forwards to submit, so it never reaches the SSOT gate's payload scan — the same
+#: unscanned-surface class the gate names in its PASS line. Shrink this list, never grow it.
+_KNOWN_HELPER_LITERALS = [
+    "engine/planning_pipeline.py:98 =2048",
+    "engine/plan_forge/material_search.py:169 =1500",
+    "engine/self_heal.py:629 =400",
+]
+
+
+# ── a ceiling row bounds a call whose SIZE is the feature ─────────────────────────────────
+
+def test_compress_is_bounded_because_its_prompt_states_no_length():
+    """`compress` output is injected IN PLACE OF raw prose to shrink the prompt, and its
+    prompt carries no length directive — so `max_tokens` IS the size control. The PROSE floor
+    would have doubled 512 -> 1024, letting the summary grow past the thing it replaces."""
+    assert max_tokens_for("compress") == 512
+    for kw in ({"target": 5000}, {"language": "zh"}, {"target": 9999, "language": "zh"}):
+        assert max_tokens_for("compress", **kw) == 512, f"{kw} escaped the ceiling"
+
+
+def test_only_rows_that_declare_a_ceiling_are_bounded_by_one():
+    bounded = {c for c, p in PROFILES.items() if p.ceiling is not None}
+    assert bounded == {"compress"}, f"unexpected ceiling rows: {bounded - {'compress'}}"

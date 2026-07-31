@@ -18,6 +18,7 @@ from app.engine.plan_forge.prompts import (
 from app.engine.plan_forge.propose_llm import normalize_spec
 from app.engine.plan_forge.spec_index import spec_slice_for_paths
 from app.engine.plan_forge.validate import run_rules
+from app.llm_budget import max_tokens_for
 
 
 def artifact_json_for_refine(spec: dict[str, Any], revision: dict[str, Any]) -> str:
@@ -105,7 +106,7 @@ def _parse_with_repair(
             step=repair_step,
             system="Output only valid JSON. No markdown.",
             user=repair_user_prompt(str(e), content),
-            max_tokens=12000,
+            max_tokens=max_tokens_for("plan_forge_chat"),
             temperature=temperature,
         )
         return extract_json_object(repair_content)

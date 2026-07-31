@@ -26,6 +26,7 @@ from app.engine.plan_forge.prompts import (
 )
 from app.engine.plan_forge.refine import accept_refine, artifact_json_for_refine, merge_refine_output
 from app.engine.plan_forge.schemas import ANALYZE_SCHEMA, SPEC_SCHEMA
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ async def _parse_with_repair(
         step=repair_step,
         system="Output only valid JSON. No markdown.",
         user=repair_user_prompt(str(last_exc), content),
-        max_tokens=12000,
+        max_tokens=max_tokens_for("plan_forge_chat"),
         temperature=0.1,
     )
     return extract_json_object(repair_content)
@@ -169,7 +170,7 @@ async def materialize_from_analyze_async(
         MATERIALIZE_SYSTEM,
         materialize_user_prompt(analyze_json, source_checksum, block),
         "materialize_repair",
-        max_tokens=12000,
+        max_tokens=max_tokens_for("plan_forge_chat"),
         schema=SPEC_SCHEMA,
     )
     spec = normalize_spec(spec, source_checksum, analyze=analyze)
