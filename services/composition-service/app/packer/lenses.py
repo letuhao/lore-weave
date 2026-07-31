@@ -205,12 +205,38 @@ async def gather_structural(
     outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo, *,
     project_id: UUID, node: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """L2 beat/goal/POV/synopsis + setup_payoff threads, and L2′ planned
-    synopses of unwritten scenes at/before this position."""
+    """L2 the scene's AUTHORED INTENT + setup_payoff threads, and L2′ planned
+    synopses of unwritten scenes at/before this position.
+
+    D-SCENE-INTENT-NEVER-SHOWN — this used to build a five-key dict (beat_role, goal,
+    pov, synopsis, title) and the docstring said so: it predates SC4, which added eight
+    fields of authored scene intent, and was never updated. The result was that the
+    richest signal in the system was asked for, schema-validated, stored — and then
+    never shown to the drafter.
+
+    Measured on the Mị Đế book: five scenes were authored with `tension` 70/80/45/35/65
+    plus conflict, outcome and stakes on every one. **None of it reached the model.** The
+    prose came back thin and drifting for the obvious reason — it was written from a goal
+    and a synopsis, with no idea what opposed the character, what was at risk, how the
+    scene should resolve, or what state it had to leave behind.
+
+    A field an author fills that no consumer reads is not a feature, it is a lie about
+    what the tool does with their work.
+    """
     beat = {
         "beat_role": node.get("beat_role"), "goal": node.get("goal", ""),
         "pov_entity_id": node.get("pov_entity_id"), "synopsis": node.get("synopsis", ""),
         "title": node.get("title", ""),
+        # SC4 authored intent — the eight fields. `assemble.build_segments` renders each
+        # one it finds, so adding a field here is the whole wiring.
+        "conflict": node.get("conflict", ""),
+        "outcome": node.get("outcome", ""),
+        "stakes": node.get("stakes", ""),
+        "value_shift": node.get("value_shift"),
+        "tension": node.get("tension"),
+        "story_time": node.get("story_time"),
+        "location_entity_id": node.get("location_entity_id"),
+        "exit_state": node.get("exit_state"),
     }
     threads: list[dict[str, Any]] = []
     planned: list[dict[str, Any]] = []

@@ -838,7 +838,58 @@ Fixed in all three, with a gate that also fails if a fourth reader is added with
 **All five endings are now distinct and on their own beat** — the Thanh Tâm Ấn seed appears
 only in scene 5, and no deleted-scene prose survives anywhere.
 
-### 🧪 Then the ceilings were raised properly, and the answer came back NO
+## 🎯 D-SCENE-INTENT-NEVER-SHOWN — the author fills twelve fields, the drafter saw four
+
+The author's question was the right one: *"have we defined the detail before writing, and
+does the current logic exploit it, feed it in, and instruct the model how to use it?"*
+
+**We define it. Nothing fed it in.**
+
+`gather_structural` built a five-key beat dict — `beat_role, goal, pov, synopsis, title` —
+and its docstring said exactly that. It predates SC4, which added **eight fields of authored
+scene intent**, and was never updated. `assemble.build_segments` then rendered four of them.
+So `conflict`, `outcome`, `stakes`, `value_shift`, `tension`, `story_time`,
+`location_entity_id` and `exit_state` were asked for on the create tool, schema-validated,
+written to the database — and never shown to the model.
+
+Measured: the five Mị Đế scenes carried `tension` 70/80/45/35/65 plus conflict, outcome and
+stakes on every one. **None of it reached the prompt.** The prose was thin and drifting for
+the obvious reason — written from a goal and a summary, with no idea what opposed the
+character, what was at risk, how the scene should resolve, or what state it had to leave
+behind. *A field an author fills that no consumer reads is not a feature; it is a lie about
+what the tool does with their work.*
+
+And the `draft_scene` instruction named exactly the four fields that were being sent — honest
+then, starving now. Both halves had to grow: the data AND the instruction that says what each
+field is FOR (a label with no job attached gets skimmed).
+
+Fixed in all three layers, plus a gate that reads the create tool's own schema and fails when
+an authored field cannot be traced to the rendered prompt — proven red by dropping `stakes`
+from the lens and restoring from memory.
+
+**Re-drafted, and this is the best result of the session:**
+
+| | target | flat 1024 | +budget | 10240+medium | **+intent** |
+|---|---|---|---|---|---|
+| Hiện trường đẫm máu | 900 | 445 | 584 | 563 | **507** |
+| Ánh mắt rạn nứt | 850 | 414 | 573 | 512 | **559** |
+| Ánh nhìn thầm lặng | 800 | 532 | 510 | 387 | **681** |
+| Sự dao động của linh năng | 750 | 618 | 573 | 405 | **657** |
+| Mầm mống trả thù | 800 | 736 | 590 | 730 | **720** |
+| **total** | | 2,745 | 2,830 | 2,597 | **3,124** |
+
+Best total, and much the most even spread (507–720, against 387–736). More importantly the
+intent is visibly LANDING: scene 2 closes on *"Hôn ước trên giấy tờ… tất cả đều đã chết"* —
+its authored `outcome` was *"hôn ước còn trên giấy, đã chết trong lòng nàng"*. Scene 5 names
+the *"chữ ký"* the Thanh Tâm Ấn outcome describes. These are not paraphrases of the synopsis;
+they are the scene arriving where the author said it should.
+
+**Still short of target**, which supports the author's own next thesis: a weak model cannot
+hold focus over 900 words, so the answer is smaller units (split a scene into 2–3 beats and
+draft each) rather than a length-check retry. Feeding the intent raised the ceiling of what
+each unit can be; it did not change how long the model will stay focused.
+
+### 🧪 Earlier: the ceilings were raised properly, and the answer came back NO
 
 The author's objection was right as a principle: *"a flat limit is a bad LLM usage pattern —
 our tool is a creation tool, not a strict-logic tool"*. `max_tokens` cannot make prose

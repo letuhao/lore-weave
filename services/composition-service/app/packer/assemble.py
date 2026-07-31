@@ -97,12 +97,46 @@ def build_segments(
               if str(p.get("entity_id")) == str(pov_id) and p.get("name")), None)
         if pov_id else None
     )
+    # D-SCENE-INTENT-NEVER-SHOWN — the scene's AUTHORED INTENT, all of it.
+    #
+    # This used to render four fields (pov/beat/goal/synopsis) while the author was being
+    # asked for twelve. Everything below the first four was written, validated and stored,
+    # and the drafter never saw it — so it wrote from a goal and a summary with no idea
+    # what opposed the character, what was at risk, how the scene should resolve, or what
+    # state it had to leave behind. That is most of what makes a scene a scene.
+    #
+    # Rendered with CRAFT names rather than column names (`conflict=` not `conflict_text`,
+    # `leaves=` for exit_state) because the reader is a model writing fiction, not a
+    # developer reading a schema. Each line is emitted only when the author actually
+    # filled it, so an outline in progress stays quiet rather than padding the prompt with
+    # empty labels.
+    _loc_name = next(
+        (p.get("name") for p in bundle.present
+         if str(p.get("entity_id")) == str(beat.get("location_entity_id")) and p.get("name")),
+        None,
+    ) if beat.get("location_entity_id") else None
+    _exit = beat.get("exit_state")
+    _exit_text = ""
+    if isinstance(_exit, dict):
+        # SC12 envelope {v:1, …}. Render its content, never the version key.
+        _exit_text = "; ".join(
+            f"{k}={v}" for k, v in _exit.items() if k != "v" and v not in (None, "", [], {})
+        )
     beat_line = " | ".join(
         x for x in [
             f'pov={pov_name}' if pov_name else "",
             f'beat={beat.get("beat_role")}' if beat.get("beat_role") else "",
             f'goal={beat.get("goal")}' if beat.get("goal") else "",
             f'synopsis={beat.get("synopsis")}' if beat.get("synopsis") else "",
+            f'conflict={beat.get("conflict")}' if beat.get("conflict") else "",
+            f'stakes={beat.get("stakes")}' if beat.get("stakes") else "",
+            f'outcome={beat.get("outcome")}' if beat.get("outcome") else "",
+            # 0 is a MEANINGFUL tension/shift (flat / no net change), so test for None.
+            f'tension={beat.get("tension")}/100' if beat.get("tension") is not None else "",
+            f'value_shift={beat.get("value_shift")}' if beat.get("value_shift") is not None else "",
+            f'when={beat.get("story_time")}' if beat.get("story_time") else "",
+            f'where={_loc_name}' if _loc_name else "",
+            f'leaves={_exit_text}' if _exit_text else "",
         ] if x
     )
     if beat_line:

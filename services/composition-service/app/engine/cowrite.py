@@ -34,9 +34,23 @@ _OPERATION_INSTRUCTIONS = {
     # "draft this scene" alone let the drafter run straight through its neighbours —
     # scene 1's draft arrived carrying scene 3's and scene 4's material. The boundary
     # has to be stated, not implied by the singular "this".
-    "draft_scene": "Draft ONLY this scene, from its beat, goal, POV, and synopsis. Other "
-                   "scenes appear in the plan for context: do NOT write them. Stop when "
-                   "THIS scene's beat has played out, even if later beats are visible.",
+    # D-SCENE-INTENT-NEVER-SHOWN — this named exactly the four fields the packer used to
+    # send, which was honest then and starves the model now that all twelve arrive. An
+    # author who fills `conflict`, `stakes` and `outcome` is describing the SHAPE of the
+    # scene; saying "draft from the beat" leaves the model to infer a shape it was handed.
+    # So name each one and what it is FOR — a label with no job attached gets skimmed.
+    "draft_scene": "Draft ONLY this scene, using every field of its <beat>. Read them as a "
+                   "brief, not a summary to paraphrase: `goal` is what the scene must "
+                   "achieve; `conflict` is what stands in the way and must be FELT on the "
+                   "page, not asserted; `stakes` is what it costs to lose, so let it press "
+                   "on the characters; `outcome` is where the scene must arrive, so steer "
+                   "there rather than stopping early; `tension` is its intensity out of "
+                   "100, which should govern the rhythm; `value_shift` is the net "
+                   "emotional change, so the reader must end somewhere different from "
+                   "where they began; `leaves` is the state the next scene inherits, so "
+                   "land on it. Other scenes appear in the plan for context: do NOT write "
+                   "them. Stop when THIS scene's beat has played out, even if later beats "
+                   "are visible.",
     # W6 — the conformance judge read the WRITTEN scene and found it did not realize its planned
     # beat. This is a second attempt with that knowledge, so it must not be a bare re-roll: the
     # plan above is unchanged and the beat is already in it, what failed was landing it ON THE
