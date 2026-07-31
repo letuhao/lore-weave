@@ -32,6 +32,8 @@ mod binding;
 mod epoch;
 mod layer;
 mod patch;
+mod patch_progression;
+mod resolve_pin;
 mod patch_resource;
 mod progression_store;
 mod store;
@@ -41,6 +43,8 @@ pub use binding::{binding_store, BindingError, BindingStore, FileBindingStore, R
 pub use epoch::{activate_reality_epoch, prior_quantity_tables, EpochSwitchError};
 pub use layer::Layer;
 pub use patch::{CombatPatch, PatchError, RulesetPatch, StatPatch};
+pub use patch_progression::{ProgressionKindPatch, ProgressionPatchError, TierPatch};
+pub use resolve_pin::resolve_and_pin;
 pub use patch_resource::ResourcePatch;
 pub use progression_store::{
     resolve_progression, ProgressionStore, ProgressionStoreError,
@@ -173,6 +177,16 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
                 layer: l.layer,
                 field: "resources",
                 floor: Floor::Preset,
+            });
+        }
+        // PGN-R2b — a progression kind folds into a TABLE, and this call has no
+        // store to put one in. Refused rather than ignored: dropping the rows
+        // would lose the author's entire ladder with the run staying green,
+        // which is the QTY-Q5 class this whole tier exists to refuse.
+        if !l.patch.progression_kinds.is_empty() {
+            return Err(LoadError::ProgressionNeedsStore {
+                layer: l.layer,
+                kinds: l.patch.progression_kinds.len(),
             });
         }
         l.patch.apply(&mut out).map_err(|e| match e {

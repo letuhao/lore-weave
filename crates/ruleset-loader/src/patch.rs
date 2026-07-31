@@ -28,7 +28,7 @@ use crate::patch_resource::ResourcePatch;
 use serde::Deserialize;
 
 /// One layer's contribution to the combat rules.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CombatPatch {
     pub hit_base_pm: Option<i64>,
@@ -189,7 +189,11 @@ impl StatPatch {
 }
 
 /// One layer of the RLS-A3 stack, as authored.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+// `Eq` dropped when `progression_kinds` landed: the authored form carries
+// decimals (a rate is `1.5` in TOML) and `f64` has no `Eq`. The DECLARATION
+// the patch produces is fully `Eq`, which is what the digest rests on - the
+// decimals exist only between the file and `RLS-A7` normalization.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RulesetPatch {
     #[serde(default)]
@@ -218,6 +222,16 @@ pub struct RulesetPatch {
     /// carry pool policy would tax the majority for the minority's benefit.
     #[serde(default)]
     pub resources: Vec<ResourcePatch>,
+
+    /// `PGN-R2b` — the progression kinds this layer declares.
+    ///
+    /// **Not applied by [`RulesetPatch::apply`].** Every other field here folds
+    /// into a `Ruleset` in memory; a progression kind folds into a TABLE that
+    /// has to be stored before the `Ruleset` can carry its digest. So these rows
+    /// are read by `resolve_and_pin`, which has a store, and `resolve` refuses a
+    /// layer that declares them rather than dropping them.
+    #[serde(default)]
+    pub progression_kinds: Vec<crate::patch_progression::ProgressionKindPatch>,
 }
 
 /// Why a patch could not be folded. Two sources, kept apart so the loader can

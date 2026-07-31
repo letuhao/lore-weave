@@ -255,12 +255,47 @@ of re-digesting reds `substituted_bytes_are_refused_not_served`.
 `error.rs` 106. `LoadError` and its `Display` moved as ONE piece — a variant whose message lives in
 another file is a variant whose message drifts.
 
-**▶ NEXT:** `PGN-R2b` — the loader's TOML authoring form. Note the naming asymmetry it must respect:
-the authored key is **`[[progression_kinds]]`** (rows) while the `Ruleset` field is **`progression`**
-(a computed digest). They are deliberately different names, which is what keeps the `progression`
-`FORBIDDEN_KEYS` row honest — nobody authors a digest. That slice also carries the layer-fold question
-`resources` answered with `Union`: folding progression means resolving both layers' TABLES from the
-store, unioning, re-storing and re-pinning — digests do not union.
+**✅ `PGN-R2b` BUILT — a reality AUTHORS its progression, TOML → fold → validate → store → pin.**
+`patch_progression.rs` (the authored form) + `resolve_pin.rs` (`resolve_and_pin`), 15 tests. The exit
+criterion is 《寒潭劍錄》's three systems written the way an author writes them, ending as a digest:
+內功 a staged ladder · 劑術 a skill deriving from 悟性 · 悟性 an attribute that follows the **SOUL**.
+`base_rate = 1.5` in the file is `1500` in the bytes — `RLS-A7` normalization, so no float ever
+reaches the digest.
+
+**Digests do not union, and that is why the fold works on ROWS.** `quantities` and `resources` are
+`AdditiveOnly`/`Union` and progression looks like it should follow — it cannot, because **a digest is
+not a set**. Two layers each carrying a 32-byte content address have nothing to merge; the union has
+to happen over the TABLES those addresses name. So the rows are folded while they are still rows, a
+higher layer's row REPLACES a lower one's, and exactly one table is stored at the end. That is also
+what makes the `progression` `FORBIDDEN_KEYS` row honest: an author declares a **row**, and the digest
+is derived from all of them together.
+
+**The naming asymmetry is the design, not an inconsistency:** the authored key is
+`[[progression_kinds]]`, the `Ruleset` field is `progression`. `resources` needs no such split because
+its field IS its table.
+
+**`resolve` REFUSES a layer that declares progression** rather than dropping the rows, and names
+`resolve_and_pin`. Dropping them would lose an author's entire ladder with the run staying green — the
+`QTY-Q5` class this whole tier exists to refuse.
+
+**Every closed-set value is refused BY NAME**, and `at_max_plus` — the variant a 武俠 book most wants
+(寒潭, a pill, a sealed room) — is refused with `PGN-A20`'s reason and the owning modules named, rather
+than as an unknown value.
+
+**⚠ THE BITE-TEST CAUGHT MY OWN TEST BEING VACUOUS.** `an_inadmissible_table_never_reaches_the_store`
+first asserted that the EMPTY table's path did not exist — which is true whatever the code does. Bite 2
+(store-before-validate) left it **green**. `NV-2`, the subject cannot vary, in a test written the same
+hour as a commit message about `NV-2`. Rewritten to count what is actually on disk; it now reds and
+names the file: `an inadmissible table was stored anyway: ["130029dd….prog"]`.
+
+**One more ceiling paid with a split:** `lib.rs` 416 → 330 + `resolve_pin.rs` 100. The seam is honest
+rather than arithmetic — everything left in `lib.rs` folds layers into a `Ruleset` **in memory**, and
+`resolve_and_pin` is the one call that performs I/O to complete one.
+
+**▶ NEXT:** `PGN-R2` is complete. The POC-1 chain now runs TOML → table → validator → store → pin →
+ruleset digest → epoch switch. What remains for POC-1 is the **pipeline** half (doc 39's S0–S5 in
+`lore-enrichment-service`, against the 武俠 fixture). POC-2 still needs `Q2 B4` (the `QTY-A8` caps arm)
+then `Q4` (the L3 contribution trait) — without `Q4` a generated ladder is inert.
 `Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot
 (365) · file-ceiling · deferral · gate-wiring.
 

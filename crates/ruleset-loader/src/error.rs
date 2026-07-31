@@ -7,7 +7,10 @@
 //! because a variant whose message lives in another file is a variant whose
 //! message drifts.
 
-use ruleset_core::{Floor, QuantityError, ResourceError};
+use ruleset_core::{Floor, ProgressionInvalid, QuantityError, ResourceError};
+
+use crate::patch_progression::ProgressionPatchError;
+use crate::progression_store::ProgressionStoreError;
 
 use crate::validate::ValidationError;
 use crate::Layer;
@@ -56,6 +59,21 @@ pub enum LoadError {
     /// not the first — an author fixing one number per round trip is how a
     /// validator earns the reputation that gets it bypassed.
     Invalid(Vec<ValidationError>),
+    /// A layer declares `[[progression_kinds]]` and this call has no store to
+    /// pin them in.
+    ///
+    /// **A refusal, not a drop.** `resolve` folds into a `Ruleset` in memory,
+    /// and a progression kind needs a table stored before its digest can go on
+    /// one. Ignoring the rows would be the `QTY-Q5` silent-drop class with the
+    /// author's whole ladder in it, so the refusal names the call that works.
+    ProgressionNeedsStore { layer: Layer, kinds: usize },
+    /// An authored progression row is not a legal declaration.
+    Progression { layer: Layer, source: ProgressionPatchError },
+    /// The resolved progression table is not admissible against its ruleset
+    /// (`PROG_001` §5.5 and the rest of `ProgressionSchemaValidator`).
+    ProgressionInvalid(Vec<ProgressionInvalid>),
+    /// The progression table could not be stored or resolved.
+    ProgressionStore(ProgressionStoreError),
 }
 
 impl core::fmt::Display for LoadError {
@@ -98,6 +116,23 @@ impl core::fmt::Display for LoadError {
                 }
                 Ok(())
             }
+            Self::ProgressionNeedsStore { layer, kinds } => write!(
+                f,
+                "layer `{}` declares {kinds} progression kind(s), but `resolve` has no store                  to pin them in. A progression kind folds into a TABLE, and the ruleset                  carries that table's DIGEST - so it must be stored first. Use                  `resolve_and_pin(layers, &store)`. Refused rather than ignored: dropping                  them would lose the author's whole ladder with the run staying green",
+                layer.name()
+            ),
+            Self::Progression { layer, source } => {
+                write!(f, "layer `{}`: {source}", layer.name())
+            }
+            Self::ProgressionInvalid(v) => {
+                write!(f, "progression table is not admissible ({} finding(s)):", v.len())?;
+                for e in v {
+                    write!(f, "
+  - {e}")?;
+                }
+                Ok(())
+            }
+            Self::ProgressionStore(e) => write!(f, "{e}"),
         }
     }
 }
