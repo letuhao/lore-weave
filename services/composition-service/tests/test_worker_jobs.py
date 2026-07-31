@@ -203,7 +203,12 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
         return ("STITCHED PROSE", "stop")
 
     reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="ok", revise_finish_reason=None)
+                              status="ok", revise_finish_reason=None,
+                              # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER: the envelope now
+                              # reports WHICH checks ran, so a stub must carry them.
+                              coverage=["name_grounding", "canon_cast"],
+                              unanchored_names=[], name_near_misses=[],
+                              name_check_method="capitalised_latin")
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 0)
@@ -303,7 +308,12 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
                          rerank_reason="B", rerank_measured=True)
 
     reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="ok", revise_finish_reason=None)
+                              status="ok", revise_finish_reason=None,
+                              # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER: the envelope now
+                              # reports WHICH checks ran, so a stub must carry them.
+                              coverage=["name_grounding", "canon_cast"],
+                              unanchored_names=[], name_near_misses=[],
+                              name_check_method="capitalised_latin")
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 3)
@@ -367,7 +377,10 @@ async def test_run_generate_forwards_the_length_target_and_the_beats(monkeypatch
 
     async def _fake_reflect(**kw):
         return (kw["draft"], SimpleNamespace(violations=[], resolved=True, iterations=0,
-                                             status="ok", revise_finish_reason=None), 0)
+                                             status="ok", revise_finish_reason=None,
+                                             coverage=["name_grounding"],
+                                             unanchored_names=[], name_near_misses=[],
+                                             name_check_method="capitalised_latin"), 0)
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
     monkeypatch.setattr(select_mod, "select_draft", _fake_select)
@@ -416,7 +429,10 @@ async def test_run_generate_with_no_beats_makes_exactly_one_call_carrying_the_ta
 
     async def _fake_reflect(**kw):
         return (kw["draft"], SimpleNamespace(violations=[], resolved=True, iterations=0,
-                                             status="ok", revise_finish_reason=None), 0)
+                                             status="ok", revise_finish_reason=None,
+                                             coverage=["name_grounding"],
+                                             unanchored_names=[], name_near_misses=[],
+                                             name_check_method="capitalised_latin"), 0)
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
     monkeypatch.setattr(select_mod, "select_draft", _fake_select)
@@ -501,7 +517,10 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
         return [Candidate("CHAPTER PROSE", DraftMetering(40, 12, True))]
 
     reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="checked", revise_finish_reason=None)
+                              status="checked", revise_finish_reason=None,
+                              coverage=["name_grounding", "canon_cast"],
+                              unanchored_names=[], name_near_misses=[],
+                              name_check_method="capitalised_latin")
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 4)

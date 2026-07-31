@@ -489,6 +489,21 @@ def build_messages(
         "the reader has read it: CONTINUE the story forward from that point — do "
         "NOT re-introduce characters, re-describe the established setting, or "
         "re-narrate prior scenes/events already shown; advance new action instead. "
+        # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER (2026-08-01). "Never introduce facts beyond what
+        # is given" was already here and did not cover the case that actually happened: over a
+        # real 4-scene chapter the drafter invented a NAMED character, "Mira", and gave her the
+        # mentor role in three scenes. The book's cast is Cassius and Silas; it contains "Mina"
+        # twice and "Mira" never — so this is not even a new invention, it is a corruption of a
+        # minor character's name promoted to a lead.
+        #
+        # A name is not read as a "fact" by a model writing fiction; inventing one feels like
+        # craft. So the constraint has to be stated about NAMES specifically, and it has to give
+        # the legitimate alternative (an unnamed role) rather than only forbidding.
+        "Use ONLY the character, place and object names that appear in the context above. Do "
+        "NOT invent a new proper name, and do not alter one you were given — a name that is "
+        "close to but not the same as an established one reads as a different character. If "
+        "this passage needs someone or somewhere the context does not name, refer to them by "
+        "role or description (\"the gatekeeper\", \"the older scribe\") instead of naming them. "
         # Anti-repetition (LOOM-69d): the model-vs-architecture diagnostic found the
         # local drafter reuses a small set of distinctive images/openings across
         # scenes (recurring weather/color motifs, a repeated opening construction).

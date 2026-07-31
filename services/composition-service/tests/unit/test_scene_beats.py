@@ -121,6 +121,7 @@ def test_nothing_in_the_engine_computes_from_the_undirected_yield():
     assert sorted(hits) == sorted([
         "services/composition-service/app/engine/cowrite.py",
         "services/composition-service/tests/unit/test_scene_beats.py",
+        "services/composition-service/tests/unit/test_scene_beats_drafting.py",
     ]), f"a new consumer appeared: {hits}"
 
 

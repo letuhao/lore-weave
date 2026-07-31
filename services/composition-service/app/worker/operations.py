@@ -312,6 +312,13 @@ async def run_stitch(
         )
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
+                   # alone read green on a book with no bound cast; the whole 8,116-word chapter
+                   # that exposed this was generated with `coverage` empty and nobody able to tell.
+                   "coverage": reflect.coverage,
+                   "unanchored_names": reflect.unanchored_names,
+                   "name_near_misses": reflect.name_near_misses,
+                   "name_check_method": reflect.name_check_method,
                    "status": reflect.status}
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect is advisory, never blocks
@@ -413,10 +420,57 @@ async def run_generate(
         )
         canon = {"violations": [v.model_dump() for v in reflect.violations],
                  "resolved": reflect.resolved, "iterations": reflect.iterations,
+                 # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
+                 # alone read green on a book with no bound cast; the whole 8,116-word chapter
+                 # that exposed this was generated with `coverage` empty and nobody able to tell.
+                 "coverage": reflect.coverage,
+                 "unanchored_names": reflect.unanchored_names,
+                 "name_near_misses": reflect.name_near_misses,
+                 "name_check_method": reflect.name_check_method,
                  "status": reflect.status}
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).
         logger.warning("generate canon reflect failed (advisory) — keeping winner", exc_info=True)
+
+    # D-CROSS-SCENE-CONTRADICTION — does this scene contradict the one before it?
+    #
+    # The only guard here that needs NO ground truth: it compares the text against itself, so
+    # it works on a book with no glossary, no canon and no extraction — the state that made
+    # every other check blind. Measured on a real chapter: scene 2 ended "He is the anchor…
+    # he has been waiting for someone to take his place" and scene 3 opened "She's a Scribe…
+    # she was a sentinel, waiting for the next hand". Nothing saw it.
+    #
+    # One call, against the IMMEDIATELY preceding scene only (seams are where a reader trips).
+    # Advisory + degrade-safe, like every other producer here: a contradiction can be right —
+    # a character lies, a reveal recasts an earlier scene — so it reports and the author judges.
+    cross_scene: dict[str, Any] = {"status": "not_run", "contradictions": []}
+    try:
+        from app.db.repositories.generation_jobs import GenerationJobsRepo as _Jobs
+        from app.engine.cross_scene_check import check_chapter_consistency
+
+        _ch, _so = input.get("chapter_id"), input.get("story_order")
+        prior_texts: list[str] = []
+        if _ch and _so is not None:
+            prior_texts = await _Jobs(pool).prior_scene_drafts(
+                UUID(project_id), UUID(str(_ch)), int(_so))
+        if prior_texts:
+            res = await check_chapter_consistency(
+                llm, user_id=user_id,
+                model_source=critic_source or model_source,
+                model_ref=critic_ref or model_ref,
+                scenes=[prior_texts[-1], final_text],
+                source_language=profile.source_language,
+                cancel_check=cancel_check,
+            )
+            cross_scene = {
+                "status": res.status, "pairs_checked": res.pairs_checked,
+                "contradictions": [dataclasses.asdict(c) for c in res.contradictions],
+            }
+        else:
+            cross_scene["status"] = "skipped_single_scene"
+    except Exception:  # noqa: BLE001 — a continuity judge must never fail a generate (F1)
+        logger.warning("cross-scene check failed (advisory)", exc_info=True)
+        cross_scene = {"status": "degraded", "contradictions": []}
 
     # FD-1 narrative_thread S2: best-effort promise-ledger producer (gated per-work).
     await _maybe_narrative_threads(
@@ -454,6 +508,9 @@ async def run_generate(
         # so "did splitting the scene into beats reach the target" is answerable from the job
         # row instead of by re-reading prose. `beats_failed` > 0 ⇒ the scene is INCOMPLETE
         # against its plan, which the text alone cannot tell anyone.
+        # D-CROSS-SCENE-CONTRADICTION — `status` is part of the payload on purpose: a
+        # `degraded` continuity judge must not read like a clean one.
+        "cross_scene": cross_scene,
         "scene_assembly": sel.scene_assembly, "beats_drafted": sel.beats_drafted,
         "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
         "repeated_chars": sel.repeated_chars, "beats_over_ceiling": sel.beats_over_ceiling,
@@ -544,6 +601,13 @@ async def run_chapter_generate(
         )
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
+                   # alone read green on a book with no bound cast; the whole 8,116-word chapter
+                   # that exposed this was generated with `coverage` empty and nobody able to tell.
+                   "coverage": reflect.coverage,
+                   "unanchored_names": reflect.unanchored_names,
+                   "name_near_misses": reflect.name_near_misses,
+                   "name_check_method": reflect.name_check_method,
                    "status": reflect.status}
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).

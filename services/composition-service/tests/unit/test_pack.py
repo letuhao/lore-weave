@@ -34,6 +34,13 @@ class StubBook:
     async def get_reader_language(self, book_id, user_id):
         # KG-ML M7 — pack() resolves the author's reader-language; default unset.
         return getattr(self, "_reader_lang", None)
+    # D-PRIOR-CHAPTER-BLIND — the prior-chapter fallback reads the book's chapter list and
+    # each predecessor's published blocks. Default: no predecessors, so the fallback is a
+    # no-op for every test that is not about it (set `_chapters`/`_blocks` to exercise it).
+    async def list_chapters(self, book_id, bearer, **kw):
+        return getattr(self, "_chapters", [])
+    async def chapter_blocks_text(self, book_id, chapter_id, max_chars=8000):
+        return getattr(self, "_blocks", {}).get(str(chapter_id), "")
 
 
 class StubGrant:
@@ -430,8 +437,13 @@ async def _pack_with_compress(req, compress_fn, **kw):
 
 async def test_s2_compress_fires_over_threshold(monkeypatch):
     # tiny threshold → the 3 draft paras exceed it → compress the older 2, keep 1.
+    # D-RECENT-FLOOR-COMPRESSED: the threshold alone no longer decides. The current chapter's
+    # prose is an incompressible FLOOR sized by `pack_recent_floor_share`, so compression only
+    # engages for what overflows it — and at the default share these three paragraphs all fit.
+    # Driving the share to 0 is what this test now needs to say: "assume the floor is full".
     monkeypatch.setattr("app.packer.pack.settings.pack_compress_recent_threshold_chars", 5)
     monkeypatch.setattr("app.packer.pack.settings.pack_compress_keep_immediate", 1)
+    monkeypatch.setattr("app.packer.pack.settings.pack_recent_floor_share", 0.0)
     seen: dict = {}
 
     async def fake_compress(older, timeline, plan):

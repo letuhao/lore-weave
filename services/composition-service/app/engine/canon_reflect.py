@@ -28,6 +28,7 @@ from app.engine.canon_check import (
 from loreweave_llm import ReasoningDirective
 
 from app.engine.cowrite import build_revise_messages, revise_draft
+from app.engine.name_grounding import audit_names
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +48,37 @@ async def run_canon_reflect(
 ) -> tuple[str, ReflectResult, int]:
     """Run the canon check→revise loop on `draft`. Returns
     (final_text, ReflectResult, revise_output_tokens)."""
+    # ── name grounding — runs on EVERY path, including the three that return early below.
+    #
+    # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER: those early returns used to be the whole story, so a
+    # book with no bound cast got no checking at all. This check needs neither a glossary nor a
+    # reading position — only the draft and what the model was shown — so there is no path on
+    # which it cannot run, and the case it catches (an invented character) is *most* likely
+    # exactly where the old code checked least.
+    audit = audit_names(draft, packed_prompt, getattr(profile, "source_language", None))
+    name_fields = dict(
+        unanchored_names=audit.unanchored, name_near_misses=audit.near_misses,
+        name_check_method=audit.method,
+    )
+    # A check that could not see (caseless script, no grounding names) is not coverage.
+    name_cov = ["name_grounding"] if audit.method == "capitalised_latin" else []
+    if audit.near_misses:
+        logger.info("draft uses %d name(s) close to but not matching a known one: %s",
+                    len(audit.near_misses),
+                    ", ".join(f"{n['name']}~{n['closest']}" for n in audit.near_misses))
+
     # Explicit skip reasons so dirty data (a dangling chapter ref, a knowledge
     # outage) doesn't SILENTLY strip canon protection while reporting a green.
     if not cast_glossary_ids:
-        # Nothing to check — benign (no entities could contradict).
-        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_cast"), 0
+        # No entity could be contradicted — but that is NOT "nothing to check", which is what
+        # this branch used to assume on its way to returning a green.
+        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_cast",
+                                    coverage=name_cov, **name_fields), 0
     at_order = scene_at_order(scene_sort_order)
     if at_order is None:
         # Has a cast but no resolved reading position → could NOT verify.
-        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_position"), 0
+        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_position",
+                                    coverage=name_cov, **name_fields), 0
 
     snapshot = await knowledge.fact_for_check(
         project_id=project_id, at_order=at_order,
@@ -107,6 +130,15 @@ async def run_canon_reflect(
     # `checked` only when the snapshot was actually retrieved; a knowledge
     # outage verified nothing even though reflect_revise ran cleanly.
     result.status = "degraded" if degraded else "checked"
+    # The name audit ran on the FINAL text, which a revise pass may have rewritten — re-run it
+    # so the report describes the draft the author receives, not the one before repair.
+    final_audit = audit_names(result.text, packed_prompt,
+                              getattr(profile, "source_language", None))
+    result.unanchored_names = final_audit.unanchored
+    result.name_near_misses = final_audit.near_misses
+    result.name_check_method = final_audit.method
+    result.coverage = (["name_grounding"] if final_audit.method == "capitalised_latin" else []) \
+        + ([] if degraded else ["canon_cast"])
     if result.iterations:
         logger.info(
             "A2-S3b canon reflect: project=%s iters=%d resolved=%s remaining=%d",

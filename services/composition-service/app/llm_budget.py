@@ -64,6 +64,9 @@ PROFILES: dict[str, CallProfile] = {
                                why="per-candidate verdicts + a one-line why"),
     "judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, why="the critic's scored findings"),
     "pairwise_judge": CallProfile(OutputKind.VERDICT, 1536, 1024, why="A/B verdict + rationale"),
+    "cross_scene_check": CallProfile(
+        OutputKind.VERDICT, 2048, 2048,
+        why="a contradiction list across one scene seam — usually EMPTY, but each entry quotes both sides, so a chapter that really did drift needs room to say so"),
     "judge_motif_conformance": CallProfile(OutputKind.VERDICT, 1536, 512,
                                            why="did the draft realize its motif"),
     "select_score": CallProfile(OutputKind.VERDICT, 1536, 512, why="retrieval scoring"),

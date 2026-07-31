@@ -560,6 +560,13 @@ async def generate(
             "present_entity_ids": [str(e) for e in (node.present_entity_ids or [])],
             "beat_role": node.beat_role, "tension": node.tension,
             "outline_node_id": str(node.id), "guide": body.guide,
+            # D-CROSS-SCENE-CONTRADICTION — the worker has no bearer and cannot re-read the
+            # node, so the continuity judge can only find this scene's predecessor if the
+            # endpoint serialises which chapter it is in and where. Absent ⇒ the check
+            # silently never runs, the failure shape D-LENGTH-DIRECTIVE-NEVER-SENT already
+            # cost a day.
+            "chapter_id": str(node.chapter_id) if node.chapter_id else None,
+            "story_order": node.story_order,
             # Length target for the worker's diverge draft (else it free-runs SHORT — 83 words).
             "target_words": node.target_words or DEFAULT_SCENE_TARGET_WORDS,
             # D-SCENE-BEATS slice 2 — the passages this scene is drafted in. Empty (every
@@ -694,6 +701,13 @@ async def generate(
             canon = {
                 "violations": [v.model_dump() for v in reflect.violations],
                 "resolved": reflect.resolved, "iterations": reflect.iterations,
+                # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
+                # alone read green on a book with no bound cast; the whole 8,116-word chapter
+                # that exposed this was generated with `coverage` empty and nobody able to tell.
+                "coverage": reflect.coverage,
+                "unanchored_names": reflect.unanchored_names,
+                "name_near_misses": reflect.name_near_misses,
+                "name_check_method": reflect.name_check_method,
                 "status": reflect.status,
             }
             revise_finish = reflect.revise_finish_reason
@@ -1297,6 +1311,13 @@ async def generate_chapter(
             reasoning=reasoning)
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
+                   # alone read green on a book with no bound cast; the whole 8,116-word chapter
+                   # that exposed this was generated with `coverage` empty and nobody able to tell.
+                   "coverage": reflect.coverage,
+                   "unanchored_names": reflect.unanchored_names,
+                   "name_near_misses": reflect.name_near_misses,
+                   "name_check_method": reflect.name_check_method,
                    "status": reflect.status}
         revise_finish = reflect.revise_finish_reason
     except Exception:  # canon reflect must NEVER fail the generate (F1).
@@ -1532,6 +1553,13 @@ async def stitch_chapter_endpoint(
             reasoning=reasoning)
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
+                   # alone read green on a book with no bound cast; the whole 8,116-word chapter
+                   # that exposed this was generated with `coverage` empty and nobody able to tell.
+                   "coverage": reflect.coverage,
+                   "unanchored_names": reflect.unanchored_names,
+                   "name_near_misses": reflect.name_near_misses,
+                   "name_check_method": reflect.name_check_method,
                    "status": reflect.status}
         revise_finish = reflect.revise_finish_reason
     except Exception:

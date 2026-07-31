@@ -193,6 +193,26 @@ class ReflectResult(BaseModel):
     # status it means "nothing was verified", which the FE + publish-gate surface
     # so dirty data doesn't silently strip canon protection.
     status: str = "checked"
+    # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHICH checks actually ran, listed rather than
+    # inferred from `status`.
+    #
+    # `status` describes the gone-cast check only, and on a book with no bound cast it read
+    # `skipped_no_cast` while `resolved=True` and `violations=[]` — honest field by field, and
+    # green to anything that looks at the two fields a caller naturally looks at. Measured
+    # 2026-08-01: a 4-scene, 8,116-word chapter generated with every scene reporting that, an
+    # invented character in three of them, and nothing anywhere saying "no check ran".
+    #
+    # A guard whose coverage is conditional on data the author may never have created must
+    # REPORT its coverage. Empty list = nothing was verified.
+    coverage: list[str] = Field(default_factory=list)
+    # Names in the draft that appear nowhere in what the model was shown. Advisory by
+    # construction — fiction introduces names — but `name_near_misses` is the sharper signal:
+    # a name 1-2 edits from one the story already uses ("Mira" ← "Mina") is a corruption.
+    unanchored_names: list[str] = Field(default_factory=list)
+    name_near_misses: list[dict] = Field(default_factory=list)
+    #: capitalised_latin | caseless_script | empty — a check that cannot see must say so
+    #: rather than report a clean result (the `realised_words` discipline).
+    name_check_method: str = ""
     text: str                                    # final draft (possibly revised)
     # Remaining violations the author should see: confirmed-HARD (confirmed=True)
     # AND ADVISORY (confirmed=None — symbolic-only, the judge was down/not-distinct

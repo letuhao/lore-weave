@@ -106,7 +106,30 @@ class Settings(BaseSettings):
     # (keeping the last N immediate paragraphs verbatim) so long chapters don't
     # blow the prompt budget. ~4 chars/token → 6000 chars ≈ 1500 tokens.
     pack_compress_recent_threshold_chars: int = 6000
+    #: LOWER BOUND on how much of the current chapter's prose stays VERBATIM — a floor, not a
+    #: cap. It used to be the whole policy ("keep the last 2 paragraphs, LLM-summarise the
+    #: rest"), which is why it is still counted in paragraphs; `pack_recent_floor_share` is what
+    #: actually governs now, and this only guarantees the immediately-preceding prose survives
+    #: even on a tiny budget.
     pack_compress_keep_immediate: int = 2
+    #: D-RECENT-FLOOR-COMPRESSED — the share of the pack budget the current chapter's
+    #: already-written prose may hold VERBATIM before any of it is compressed.
+    #:
+    #: Those scenes are not "history": they are the chapter being written right now, and their
+    #: exact wording is the constraint the next scene has to stay consistent with. Compressing
+    #: them is compressing the answer. Measured 2026-08-01 on a real 4-scene chapter: with the
+    #: old paragraph rule, scene 2 was summarised into a state ledger that recorded the
+    #: character it introduced as `Condition: Unknown` — dropping the gender — and scene 3 then
+    #: contradicted it ("He is the anchor" → "She's a Scribe") at the seam.
+    #:
+    #: 0.6 leaves room for canon/cast/beat/lore, which are protected and must not be evicted to
+    #: make space for prose. Overflow is compressed OLDEST-FIRST and REPORTED, never silently.
+    pack_recent_floor_share: float = 0.6
+    #: How many chapters back the D-PRIOR-CHAPTER-BLIND fallback reads when the knowledge
+    #: timeline is empty. 2 because the chapter immediately before carries almost all of the
+    #: continuity a new chapter needs, and each one costs a book-service read plus its share of
+    #: one compress call.
+    pack_prior_chapters: int = 2
 
     # L1b timeline RECENT-WINDOW (LOOM-32 /review-impl MED#1) — the knowledge
     # timeline endpoint orders event_order ASC + LIMIT, so an unbounded query deep

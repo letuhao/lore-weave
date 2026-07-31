@@ -586,6 +586,50 @@ async def gather_recent(
     return paras[-k:]
 
 
+async def gather_prior_chapters(
+    book: BookClient, book_id: UUID, bearer: str, *,
+    chapter_id: UUID | None, chapter_sort: int | None, k: int = 2,
+) -> list[tuple[str, str]]:
+    """D-PRIOR-CHAPTER-BLIND — the last `k` chapters BEFORE this one, as (title, prose).
+
+    The knowledge timeline (`gather_timeline`) is the designed carrier for "what happened
+    earlier", and it is the right one when extraction has run. When it has not — which is the
+    normal state of a book someone is still writing — it returns [] and the `<memory>` block
+    simply does not appear, so a new chapter is drafted blind to every chapter before it.
+    Measured on a real book: 9 written chapters, 10k words, and the tenth chapter's prompt
+    contained nothing from any of them.
+
+    STRICTLY position-bounded (`sort_order < chapter_sort`) for the same spoiler reason
+    `prior_scene_drafts` is: a chapter must never see its own future.
+
+    Returns the prose RAW. Compression happens in `pack`, through the same `compress_fn` the
+    current chapter used to be (wrongly) compressed with — previous chapters are what that
+    machinery is actually for.
+    """
+    if chapter_sort is None:
+        return []
+    try:
+        chapters = await book.list_chapters(book_id, bearer)
+    except BookClientError:
+        logger.warning("gather_prior_chapters: chapter list unavailable", exc_info=True)
+        return []
+    prior = [c for c in chapters
+             if c.get("sort_order") is not None
+             and int(c["sort_order"]) < int(chapter_sort)
+             and str(c.get("chapter_id")) != str(chapter_id)]
+    prior.sort(key=lambda c: int(c["sort_order"]))
+    out: list[tuple[str, str]] = []
+    for c in prior[-max(1, k):]:
+        try:
+            text = await book.chapter_blocks_text(book_id, UUID(str(c["chapter_id"])))
+        except Exception:  # noqa: BLE001 — a missing chapter must not fail the pack
+            logger.warning("gather_prior_chapters: blocks unavailable", exc_info=True)
+            continue
+        if text.strip():
+            out.append((c.get("title") or "", text))
+    return out
+
+
 async def gather_source_scene(
     book: BookClient, book_id: UUID, source_chapter_id: UUID, bearer: str, *,
     branch_point: int | None = None, chapter_sort_order: int | None = None,
