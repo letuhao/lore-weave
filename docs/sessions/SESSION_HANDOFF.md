@@ -445,9 +445,19 @@ more confident than the last. `MEASURED_BEAT_YIELD_WORDS` is renamed
 
 The model tracks a length target closely, up to a **single-call ceiling around ~1500 words**.
 Past it the curve does not flatten — it **inverts**: asking for 4000 produced barely half what
-asking for 2500 did, and a third of what 1200 did. An ask far beyond reach appears to push the
-model toward summarising the span rather than drafting part of it. **"Just ask for more" makes
-a shortfall worse.**
+asking for 2500 did, and a third of what 1200 did.
+
+**Reading the actual prose explains the inversion, and corrected my first explanation for it**
+("the model summarises the span" — wrong). It **negotiates**. Both 4000 runs opened with:
+
+> *"Do lỗi kỹ thuật, tôi không thể tạo ra một văn bản dài 4000 chữ trong một phản hồi duy nhất
+> do giới hạn về độ dài đầu ra của hệ thống. Tuy nhiên, tôi sẽ viết một phân đoạn…"*
+> — "I cannot produce a 4000-word text in a single response… However, I will write one segment."
+
+…then a `***` rule, then an opening scene. All three 2500 single-call runs opened with a shorter
+variant of the same move. So **those word counts partly count text that is not prose**, the real
+shortfall is worse than 0.24/0.61, and "just ask for more" does not merely fail — it makes the
+engine file the model's refusal as a draft.
 
 ### D-SCENE-BEATS slice 2 — and now it has a real justification
 `select_scene` drafts a scene in one call, or one call per declared `draft_beats` entry, each
@@ -466,6 +476,29 @@ there at the price of the step where prose most often gets compressed away).
 `repeated_chars` was **0** on every beated run — the passages did not restate each other.
 So the user's instinct ("pull several beats into one scene and generate per beat") was right
 in kind; the threshold is ~1500 words per call, not the ~500 I had claimed.
+
+### 🔴 D-DRAFT-OUTPUT-NO-POST-CONDITION — the engine has no idea what prose looks like
+**Found by reading the drafts, not the metrics** (author: *"read the output and check the
+quality"*). The engine accepts whatever the model returns as prose: assistant meta-text,
+outright refusals, and echoed prompt blocks all land in `result.text`, get counted in
+`actual_words`, and would be persisted into the chapter.
+
+**8 confirmed cases across 152 completed generations (~5%)**, in two clean clusters:
+
+| cluster | shape | seen |
+|---|---|---|
+| ask above the single-call ceiling | *"I cannot produce a 4000-word text in a single response…"* | 5 · `draft_scene` @ target ≥2500, single-call |
+| ungrounded book (no canon/cast/prose) | *"Please provide the **canon, present characters, threads, beat, recent prose, and lore** you mentioned in your instructions"* | 3 · `draft_chapter`, 2026-07-16 |
+
+One pre-fix gpt-4o run returned **the `<beat>` block itself** as its draft — so yesterday's
+"gpt-4o produced the shortest draft, 461 words" was counting an echoed prompt.
+
+**Every per-beat run was clean** (5/5 at 2500 and 4000), because each passage asks for ≤1250
+words — inside the range the model complies with instead of negotiating. That is a stronger
+argument for `draft_beats` than the word counts are.
+
+Not fixed yet: detect-and-surface vs detect-and-reject vs strip is a product decision (it
+affects spend and UX on a paid generation), so it needs the author's call, not mine.
 
 ### The lesson, which is the session's recurring one in a new costume
 A correct function, plus a unit test proving that function is correct, is **not coverage of

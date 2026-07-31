@@ -197,9 +197,16 @@ DEFECTS: tuple[DefectClass, ...] = (
         # So the model DOES follow a length target — closely, up to a single-call ceiling
         # around ~1500 words. Past it the curve does not saturate, it INVERTS: asking for 4000
         # produced barely half of what asking for 2500 did, and a third of what asking for
-        # 1200 did. An ask far beyond reach appears to push the model toward summarising the
-        # whole span rather than drafting part of it. Worth knowing before "just ask for more"
-        # is ever proposed as a fix.
+        # 1200 did.
+        #
+        # READING the drafts explains why, and it is not the "the model summarises the span"
+        # I first wrote here. It NEGOTIATES: both 4000 runs opened with an explicit refusal
+        # ("I cannot produce a 4000-word text in a single response due to the system's output
+        # length limit — however, I will write one segment"), and all three 2500 single-call
+        # runs opened with a shorter variant of the same move. So those word counts are partly
+        # counting text that is not prose, and the seeded variant here fires for a reason
+        # worth stating precisely: the engine asked for more than the model will agree to, and
+        # then filed the disagreement as a draft (D-DRAFT-OUTPUT-NO-POST-CONDITION).
         #
         # This replaces the previous seeded/control pair, both of which were derived from runs
         # where no directive was ever sent. The old seeded value (1500) now lands ABOVE its

@@ -147,9 +147,22 @@ MEASURED_UNDIRECTED_YIELD_WORDS = 500
 #:
 #: Two facts, and the second is the surprising one. The model tracks a target closely up to
 #: about here — and past it the curve does not flatten, it INVERTS: asking for 4000 produced
-#: barely half what asking for 2500 did, and a third of what asking for 1200 did. An ask far
-#: beyond reach seems to push the model toward summarising the whole span instead of drafting
-#: part of it, so "just ask for more" makes the shortfall worse, not better.
+#: barely half what asking for 2500 did, and a third of what asking for 1200 did.
+#:
+#: READING THE PROSE explains the inversion, and it is not what I first wrote here ("an ask far
+#: beyond reach pushes the model toward summarising the span"). The model REFUSES, in-band, and
+#: the platform files the refusal as prose:
+#:
+#:   "Do lỗi kỹ thuật, tôi không thể tạo ra một văn bản dài 4000 chữ trong một phản hồi duy
+#:    nhất do giới hạn về độ dài đầu ra của hệ thống. Tuy nhiên, tôi sẽ viết một phân đoạn…"
+#:   ("…I cannot produce a 4000-word text in a single response… However, I will write one
+#:    segment.")  — then a `***` rule, then an opening scene.
+#:
+#: Both 4000 runs opened that way; all three 2500 single-call runs opened with a shorter
+#: variant ("since you have not supplied the original text, I will build the scene from…").
+#: So the word counts at those two points are INFLATED by text that is not prose at all, the
+#: real shortfall is worse than 0.61/0.24, and the mechanism is negotiation, not compression.
+#: See D-DRAFT-OUTPUT-NO-POST-CONDITION.
 #:
 #: This is the number `draft_beats` is actually for, and it is ~3x the 500 first claimed. The
 #: payoff is measured, not argued — same book, same model, same day:

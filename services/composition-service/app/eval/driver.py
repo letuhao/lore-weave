@@ -206,8 +206,9 @@ class LiveDriver:
         target", which was an artefact of the directive never being sent. The target lever DOES
         move now (400→1.14x, 1200→1.10x). But it is still not a truncation lever: past ~1500
         words the model STOPS on its own, `finish="stop"`, and asking for 4000 produced FEWER
-        words than asking for 2500 (849/1052 vs 1557/1515). A larger target buys less text, not
-        a clipped response — so it can never seed a capacity failure.
+        words than asking for 2500 (849/1052 vs 1557/1515) — because at 4000 it opens by
+        REFUSING the ask in prose and then writing one segment. A larger target buys a
+        negotiation, not a clipped response, so it can never seed a capacity failure.
 
         `max_output_tokens` is a real lever: it rides to the wire as the request's cap, and
         `eval_a2_canon.py` already uses it to bound its runs.
