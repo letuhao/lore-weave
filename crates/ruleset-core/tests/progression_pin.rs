@@ -73,30 +73,33 @@ fn a_v4_artifact_decodes_to_none_and_re_encodes_unchanged() {
     );
 }
 
-/// **`D-PROGRESSION-EMPTY-PIN` — a demonstrated hazard with no refusal yet.**
+/// **`D-PROGRESSION-EMPTY-PIN` — CLOSED by `PGN-R2a`.**
 ///
 /// `None` and `Some(digest_of_an_empty_table)` are the same *behavioural* state
 /// — this reality has no progression kinds — under two different pins. One set
-/// of rules with two digests is what `RLS-A13` forbids, and this test proves
-/// the two spellings really are distinguishable rather than assuming it.
+/// of rules with two digests is what `RLS-A13` forbids.
 ///
-/// Refusing the second belongs on the path that WRITES the pin. That path does
-/// not exist: `progression` is classified `Forbidden`, so no layer can author
-/// one, and the loader has no progression form at all until `PGN-R2`. **This
-/// test is the trigger** — when a pin-writing path lands, it must refuse
-/// `Some(empty)` and this assertion inverts.
+/// **This file cannot enforce it.** `ruleset-core` has no store, and the pin is
+/// a plain `pub` field, so the refusal has to live on the path that MINTS one.
+/// It now does, in `ruleset-loader`: `ProgressionStore::put` refuses an empty
+/// table, and `resolve_progression` refuses an empty pin that reached the store
+/// by some other route — a rule enforced at exactly one end holds only until
+/// someone adds a second end.
+///
+/// What survives here is the fact those refusals rest on: the two spellings are
+/// genuinely **distinguishable**. If they ever collided, the refusals over there
+/// would be guarding nothing, and this is what would say so.
 #[test]
-fn an_empty_table_must_never_be_pinned_and_nothing_enforces_it_yet() {
-    let mut none = Ruleset::engine_default();
+fn the_two_spellings_of_no_progression_are_distinguishable() {
+    let none = Ruleset::engine_default();
     let mut empty = Ruleset::engine_default();
     empty.progression = Some(ProgressionTable::EMPTY.digest());
+    assert_eq!(none.progression, None);
     assert_ne!(
         none.digest(),
         empty.digest(),
-        "if these ever collide the hazard is gone and this test should be deleted"
+        "if these ever collide, PGN-R2a's empty-pin refusals are guarding nothing"
     );
-    none.progression = None;
-    assert_eq!(none.progression, None);
     assert_ne!(
         ProgressionTable::EMPTY.digest(),
         // zero-digest-gate: ok — an ASSERTION THAT THE ZERO IS WRONG, not a pin.
@@ -106,7 +109,6 @@ fn an_empty_table_must_never_be_pinned_and_nothing_enforces_it_yet() {
         // `ProgressionDigest` joined its type list — which is the gate working,
         // and is why this carries a reason instead of the type being left out.
         ProgressionDigest([0u8; 32]),
-        "an empty table still has a real content address - it is not the zero digest, \
-         which is why `None` and not a zero sentinel is the spelling for 'no progression'"
+        "an empty table still has a real content address - it is not the zero digest,          which is why `None` and not a zero sentinel is the spelling for 'no progression'"
     );
 }

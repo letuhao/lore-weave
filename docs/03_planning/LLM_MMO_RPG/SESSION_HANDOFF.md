@@ -218,10 +218,49 @@ and that assertion inverts.
 writing it at v4 reds `a_v4_artifact_decodes_to_none_and_re_encodes_unchanged` (the purely-additive
 upcast property `digest_at` rests on).
 
-**▶ NEXT:** `PGN-R2` — the progression store (generalise `RulesetStore` over content or add a
-sibling; **the nested resolve-and-verify is separately written**, and a tolerant nested decoder would
-re-create non-vacuity register row 7 one level down) + the loader's TOML authoring form, which is
-where `D-PROGRESSION-EMPTY-PIN`'s refusal and the `progression` classification row both land.
+**✅ `PGN-R2a` BUILT — the progression store, and the check `RulesetStore::get` does NOT do.**
+`crates/ruleset-loader/src/progression_store.rs` + 12 tests.
+
+**A sibling, not a generalisation, and the reason is in `RulesetStore::get`'s own body:** it
+re-digests **at the artifact's own schema version** (`digest_at(src_version)`), because an older
+`Ruleset` is upcast on decode and re-encoding at the current layout would reject every artifact
+written before the last schema bump. A `ProgressionTable` has one version and no upcast, so a trait
+abstracting *content-addressed thing* would carry version dispatch for the one implementor that needs
+it and a degenerate answer for the one that does not. Two small stores are honest; one clever store is
+a place for the version logic to drift.
+
+**The hazard doc 39 §8.3 flagged, now closed.** `RulesetStore::get` verifies the **outer** artifact
+only — a `Ruleset` whose progression pin names absent, corrupt or substituted bytes comes back
+**completely clean**, because the pin is 32 bytes *inside* the bytes that verified.
+`the_outer_store_cannot_see_a_dangling_inner_pin` is that seam as an assertion. So the nested resolve
+is separately written, and it refuses rather than tolerates: **a dangling pin is an `Err`, never
+`Ok(None)`** — collapsing the two would make an UNLOADABLE reality indistinguishable from one that
+declares no progression, and every ladder would vanish with the run staying green. That is the
+`QTY-Q5` silent-drop class at load time, for a whole progression system, and it is exactly the
+*"tolerant nested decoder re-creates register row 7 one level down"* shape the doc warned about.
+
+**✅ `D-PROGRESSION-EMPTY-PIN` CLOSED.** `ProgressionStore::put` refuses to mint an empty pin — it is
+the only place one can be minted — and `resolve_progression` refuses one that reached the store by
+another route (a restored backup, an operator copy, a future writer), because **a rule enforced at
+exactly one end holds only until someone adds a second end**. The `ruleset-core` trigger test was
+rewritten rather than deleted: it now pins the fact those refusals rest on (the two spellings are
+genuinely distinguishable) and names where the enforcement lives.
+
+**BITE-TESTS (NV-6), all restored:** a dangling pin returning `Ok(None)` reds
+`a_dangling_pin_is_an_error_never_none` **and** `the_outer_store_cannot_see_a_dangling_inner_pin`;
+letting `put` mint an empty pin reds `an_empty_table_cannot_be_pinned`; trusting the filename instead
+of re-digesting reds `substituted_bytes_are_refused_not_served`.
+
+**One ceiling paid with a split, never a raise:** `ruleset-loader/src/lib.rs` 403 → 316 +
+`error.rs` 106. `LoadError` and its `Display` moved as ONE piece — a variant whose message lives in
+another file is a variant whose message drifts.
+
+**▶ NEXT:** `PGN-R2b` — the loader's TOML authoring form. Note the naming asymmetry it must respect:
+the authored key is **`[[progression_kinds]]`** (rows) while the `Ruleset` field is **`progression`**
+(a computed digest). They are deliberately different names, which is what keeps the `progression`
+`FORBIDDEN_KEYS` row honest — nobody authors a digest. That slice also carries the layer-fold question
+`resources` answered with `Union`: folding progression means resolving both layers' TABLES from the
+store, unioning, re-storing and re-pinning — digests do not union.
 `Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot
 (365) · file-ceiling · deferral · gate-wiring.
 

@@ -116,10 +116,10 @@ pub struct Ruleset {
     /// ⚠ **`None` is the ONLY spelling of "no progression".** A `Some(d)` where
     /// `d == ProgressionTable::EMPTY.digest()` is the same behavioural state
     /// under a different pin, which would give one set of rules two digests and
-    /// break `RLS-A13`. Refusing it belongs on the path that WRITES the pin —
-    /// the loader — and that path does not exist yet (`PGN-R2`);
-    /// `an_empty_table_must_never_be_pinned_and_nothing_enforces_it_yet` is the
-    /// asserted trigger that reds when it arrives.
+    /// break `RLS-A13`. The refusal lives on the path that WRITES the pin —
+    /// `ruleset_loader::ProgressionStore::put`, with `resolve_progression` as a
+    /// second end for bytes that arrive by another route
+    /// (`D-PROGRESSION-EMPTY-PIN`, CLOSED by `PGN-R2a`).
     pub progression: Option<ProgressionDigest>,
 }
 
