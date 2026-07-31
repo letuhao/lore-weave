@@ -1271,8 +1271,13 @@ CREATE TABLE IF NOT EXISTS gamegen_numeric_policy (
 -- identity: a System policy has no book to be unique within.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_gamegen_policy_system
   ON gamegen_numeric_policy(element_kind, policy_version) WHERE tier = 'system';
+-- owner_user_id is in the key, and a probe is why. Without it, user B writing a
+-- policy for user A's book at v1 takes the slot and A's own write fails with a
+-- unique violation - a cross-tenant denial reachable by anyone who can guess a
+-- book id. (The read is owner-scoped too; this is the write half.)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_gamegen_policy_book
-  ON gamegen_numeric_policy(element_kind, book_id, policy_version) WHERE tier = 'book';
+  ON gamegen_numeric_policy(element_kind, book_id, owner_user_id, policy_version)
+  WHERE tier = 'book';
 CREATE INDEX IF NOT EXISTS idx_gamegen_policy_scope
   ON gamegen_numeric_policy(owner_user_id, book_id) WHERE tier = 'book';
 

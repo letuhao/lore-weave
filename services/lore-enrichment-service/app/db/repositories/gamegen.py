@@ -37,8 +37,8 @@ import asyncpg
 
 from app.gamegen.brief import load_brief, load_contract
 from app.gamegen.policy import (
-    Band, Policy, PolicyError, assert_covers_magnitudes, body_json, from_body,
-    narrow, policy_hash,
+    Band, Policy, PolicyError, assert_covers_magnitudes, body_json,
+    containment_violations, from_body, narrow, policy_hash,
 )
 from app.gamegen.fold import ApprovedAnswer, FoldRefusal, fold
 from app.gamegen.answer_hash import (
@@ -602,6 +602,26 @@ class GamegenS2Repo:
         caller believes was. That is the same self-reported-input class this run
         has now removed four times.
         """
+        # TENANCY. `book_id` has no foreign key - books live in another service's
+        # database - so nothing in this schema says the book is this user's. A
+        # probe proved the consequence: user B authored a policy for user A's
+        # book and it became A's EFFECTIVE balance. The local evidence of a
+        # working relationship is an enrichment job: this user has run one on
+        # this book. Same shape the service already uses for cross-DB scope
+        # ("validation of those is done in application code").
+        async with self._pool.acquire() as conn:
+            works_on = await conn.fetchval(
+                "SELECT 1 FROM enrichment_job WHERE user_id=$1 AND book_id=$2 LIMIT 1",
+                owner_user_id, book_id,
+            )
+        if not works_on:
+            raise PermissionError(
+                f"user {owner_user_id} has no enrichment job on book {book_id}, so there "
+                f"is no evidence this book is theirs to balance. `book_id` carries no "
+                f"foreign key (books live in another service), which means the tenant "
+                f"boundary here has to be checked, not assumed."
+            )
+
         parent = await self.get_policy(parent_policy_id)
         if parent is None:
             raise PolicyError(f"parent policy {parent_policy_id} does not exist")
@@ -652,27 +672,70 @@ class GamegenS2Repo:
             body=json.loads(r["body_json"]),
         )
 
-    async def effective_policy(self, *, element_kind: str, book_id: UUID) -> Policy | None:
+    async def effective_policy(
+        self, *, element_kind: str, book_id: UUID, owner_user_id: UUID
+    ) -> Policy | None:
         """The policy S5 applies: the book's narrowing if there is one, else the
         latest System baseline.
 
-        The resolution is the tier cascade CLAUDE.md specifies — System defaults,
-        then the book's narrowing shadowing them by path. ``narrow()`` already
-        merged the inherited bands in, so the book row IS the effective policy;
-        re-merging here would be a second implementation of the same rule.
+        **Owner-scoped, and that is a fix.** The first version filtered the book
+        row on ``book_id`` alone, so a policy another user had written for this
+        book became this book's effective balance — proven by probe. The System
+        row stays unscoped because the System tier is world-READABLE by design;
+        the *book* row is per-book tier and is read by its owner only.
+
+        **The ceiling is re-evaluated HERE, not only at write time.** A book
+        narrowing is authored against the baseline that existed then; when an
+        admin later TIGHTENS the baseline, that narrowing can fall outside the new
+        ceiling and the write-time check has long since passed. Settings & Config
+        SET-3 says ``effective = AND(deploy_allows, user_enables)`` — an AND
+        evaluated once and cached is not an AND. So the containment is re-checked
+        against the current System policy and a stale narrowing is **refused**,
+        naming the paths.
+
+        Refused rather than clamped: clamping would change a book's balance to
+        numbers nobody chose, silently, which is the whole failure class this
+        pipeline exists to prove it does not have. The refusal is actionable —
+        re-narrow against the current baseline.
         """
         async with self._pool.acquire() as conn:
-            r = await conn.fetchrow(
+            rows = await conn.fetch(
                 "SELECT element_kind, tier, policy_version, schema_fingerprint, body_json "
                 "FROM gamegen_numeric_policy "
-                "WHERE element_kind=$1 AND ((tier='book' AND book_id=$2) OR tier='system') "
-                "ORDER BY (tier='book') DESC, policy_version DESC LIMIT 1",
-                element_kind, book_id,
+                "WHERE element_kind=$1 AND ("
+                "  (tier='book' AND book_id=$2 AND owner_user_id=$3) OR tier='system') "
+                "ORDER BY (tier='book') DESC, policy_version DESC",
+                element_kind, book_id, owner_user_id,
             )
-        if r is None:
+        if not rows:
             return None
-        return from_body(
-            element_kind=r["element_kind"], schema_fingerprint=r["schema_fingerprint"],
-            tier=r["tier"], policy_version=r["policy_version"],
-            body=json.loads(r["body_json"]),
-        )
+
+        def _mk(r):
+            return from_body(
+                element_kind=r["element_kind"], schema_fingerprint=r["schema_fingerprint"],
+                tier=r["tier"], policy_version=r["policy_version"],
+                body=json.loads(r["body_json"]),
+            )
+
+        chosen = _mk(rows[0])
+        if chosen.tier != "book":
+            return chosen
+
+        current_system = next((_mk(r) for r in rows if r["tier"] == "system"), None)
+        if current_system is None:
+            raise PolicyError(
+                f"book {book_id} has a narrowing but no System baseline for "
+                f"{element_kind!r} exists. A narrowing of nothing is a global policy that "
+                f"went through a per-book door."
+            )
+        stale = containment_violations(parent=current_system, child_bands=chosen.bands)
+        if stale:
+            raise PolicyError(
+                f"book {book_id}'s policy v{chosen.policy_version} no longer fits the "
+                f"current System baseline v{current_system.policy_version}: "
+                + "; ".join(stale)
+                + ". The baseline was TIGHTENED after this narrowing was authored. "
+                "`effective = AND(deploy_allows, user_enables)` is not an AND if it is "
+                "evaluated once at write time - re-narrow against the current baseline."
+            )
+        return chosen

@@ -58,6 +58,52 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S4 /review-impl — a cross-tenant read, and a ceiling that had stopped being one (2026-07-31)
+
+`/review-impl` on `dc37d8714`. **1225 passed / 1 skipped.** Three probes, three findings, two of them
+serious — and the pattern held: the fresh System-tier boundary is where the risk concentrated.
+
+**A user could author a policy for ANOTHER user's book, and it became that book's effective balance.**
+
+```
+!!! PROBE 1: B authored a policy for A's book A_BOOK
+!!! PROBE 2: A's EFFECTIVE policy is B's: tier=book cap=Band(1, 1, 1)
+```
+
+`book_id` carries **no foreign key** — books live in another service's database — so nothing in this
+schema said the book was this user's, and `effective_policy` filtered the book row on `book_id`
+alone. Three arms now: the read is **owner-scoped**; `uq_gamegen_policy_book` carries
+`owner_user_id` (without it, whoever writes first squats the `(book, version)` slot and the real
+owner's write fails — a cross-tenant *denial* reachable by guessing a book id); and `narrow_for_book`
+requires **local evidence** the user works on the book — an `enrichment_job` row. That is the same
+shape this service already uses for cross-DB scope: *validation of those is done in application code*.
+
+**The ceiling was evaluated once at write time and then cached, which is not an AND.**
+
+```
+!!! PROBE 3: baseline tightened to [500,600]; the book still resolves to Band(1,1,1)
+```
+
+A book narrowing is authored against the baseline that existed *then*. When an admin later TIGHTENS
+the baseline, the narrowing can fall outside the new ceiling and the write-time check passed long
+ago. Settings & Config SET-3 says `effective = AND(deploy_allows, user_enables)` — **an AND evaluated
+once and cached is not an AND.** Containment is now re-checked at read time against the *current*
+System policy, and a stale narrowing is **refused**, naming the paths.
+
+**Refused, not clamped.** Clamping would change a book's balance to numbers nobody chose, silently —
+the exact failure class this pipeline exists to prove it does not have. The refusal is actionable:
+*re-narrow against the current baseline*. And a compatible baseline move does **not** fire, tested,
+because a check that turns every book policy into an outage on the first admin publish is a check that
+gets removed.
+
+**One containment rule, two call sites.** `containment_violations` was extracted so write-time and
+read-time cannot disagree about what `PGN-A15` means — with a test asserting both call it, since the
+read-time half is the one nobody would have written twice.
+
+**BITE-TESTS, three, all restored:** book-ownership check disabled → cross-tenant authoring DID NOT
+RAISE · read-time containment stubbed to `[]` → the tightened-baseline test DID NOT RAISE ·
+`owner_user_id` dropped from the read predicate → the owner-scoping test failed.
+
 ### ✅ S4 — the numeric policy, and the first System-tier row in this pipeline (2026-07-31)
 
 Doc 39 §6 in `app/gamegen/policy.py` + `gamegen_numeric_policy`. **1219 passed / 1 skipped.**

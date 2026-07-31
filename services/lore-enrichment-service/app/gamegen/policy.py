@@ -69,6 +69,7 @@ __all__ = [
     "assert_covers_magnitudes",
     "magnitude_paths",
     "narrow",
+    "containment_violations",
     "policy_hash",
 ]
 
@@ -193,6 +194,25 @@ def assert_covers_magnitudes(policy: Policy, contract: dict | None = None) -> No
         )
 
 
+def containment_violations(
+    *, parent: Policy, child_bands: Mapping[str, Band]
+) -> list[str]:
+    """Every path where ``child_bands`` escapes ``parent``, described.
+
+    Extracted so :func:`narrow` (write time) and the effective-policy resolution
+    (read time) use **one** implementation. Two copies of a containment rule is
+    two chances to disagree about what `PGN-A15` means, and the read-time half is
+    the one nobody would have written twice.
+    """
+    out: list[str] = []
+    for path, band in child_bands.items():
+        p = parent.bands.get(path)
+        if p is None or not p.contains(band):
+            where = f"system [{p.min}, {p.max}]" if p else "no system band at all"
+            out.append(f"{path}: book [{band.min}, {band.max}] is not inside {where}")
+    return out
+
+
 def narrow(*, parent: Policy, child_bands: Mapping[str, Band], book_version: int) -> Policy:
     """Produce a **book** policy that narrows a **System** parent.
 
@@ -223,13 +243,7 @@ def narrow(*, parent: Policy, child_bands: Mapping[str, Band], book_version: int
             f"is how a per-book override quietly becomes a second global policy."
         )
 
-    widened: list[str] = []
-    for path, band in child_bands.items():
-        if not parent.bands[path].contains(band):
-            p = parent.bands[path]
-            widened.append(
-                f"{path}: book [{band.min}, {band.max}] is not inside system [{p.min}, {p.max}]"
-            )
+    widened = containment_violations(parent=parent, child_bands=child_bands)
     if widened:
         raise PolicyError(
             "book policy WIDENS the System baseline: "

@@ -39,8 +39,20 @@ def bands(**over) -> dict[str, Band]:
     return b
 
 
-async def _baseline(pool, version: int = 1):
+async def _job_for(pool, owner, book):
+    """`narrow_for_book` now requires local evidence that this user works on this
+    book — an enrichment job. `book_id` has no FK (books live in another service),
+    so the tenant boundary has to be checked rather than assumed."""
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO enrichment_job (project_id, user_id, technique, book_id) "
+            "VALUES ($1,$2,'retrieval',$3)", book, owner, book)
+
+
+async def _baseline(pool, version: int = 1, *, with_job_for=(OWNER, BOOK)):
     repo = GamegenS2Repo(pool)
+    if with_job_for:
+        await _job_for(pool, *with_job_for)
     pid = await repo.publish_system_policy(
         element_kind="progression_system", policy_version=version, bands=bands(),
         authored_by=ADMIN, is_admin=True,
@@ -232,7 +244,8 @@ async def test_a_book_with_no_narrowing_resolves_to_the_system_baseline(pool):
     A book that never authored a policy still gets a reviewed baseline rather than
     engine defaults."""
     repo, _ = await _baseline(pool)
-    eff = await repo.effective_policy(element_kind="progression_system", book_id=BOOK)
+    eff = await repo.effective_policy(element_kind="progression_system", book_id=BOOK,
+                                      owner_user_id=OWNER)
     assert eff is not None and eff.tier == "system"
 
 
@@ -242,7 +255,8 @@ async def test_a_books_narrowing_shadows_the_baseline(pool):
         parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
         bands={"kind.cap_rule.cap": Band(10, 20, 15)}, authored_by=OWNER,
     )
-    eff = await repo.effective_policy(element_kind="progression_system", book_id=BOOK)
+    eff = await repo.effective_policy(element_kind="progression_system", book_id=BOOK,
+                                      owner_user_id=OWNER)
     assert eff.tier == "book"
     assert eff.bands["kind.cap_rule.cap"] == Band(10, 20, 15)
 
@@ -256,7 +270,8 @@ async def test_one_books_narrowing_does_not_reach_ANOTHER_book(pool):
         parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
         bands={"kind.cap_rule.cap": Band(10, 20, 15)}, authored_by=OWNER,
     )
-    eff = await repo.effective_policy(element_kind="progression_system", book_id=other_book)
+    eff = await repo.effective_policy(element_kind="progression_system", book_id=other_book,
+                                      owner_user_id=OWNER)
     assert eff.tier == "system"
     assert eff.bands["kind.cap_rule.cap"] == Band(0, 1000, 100)
 
@@ -275,3 +290,117 @@ async def test_the_stored_hash_is_the_one_the_module_derives(pool):
         on_disk = await c.fetchval(
             "SELECT policy_hash FROM gamegen_numeric_policy WHERE policy_id=$1", pid)
     assert on_disk == policy_hash(stored)
+
+
+# ── the tenant boundary a probe found, and the ceiling that stopped being one ──
+
+
+async def test_a_user_cannot_author_a_policy_for_ANOTHER_users_book(pool):
+    """**PROBE 1/2 — the serious one.** `book_id` carries no foreign key (books
+    live in another service's database), so nothing in this schema said the book
+    was this user's. B authored a policy for A's book and it became **A's
+    effective balance**: a cross-tenant write that a cross-tenant read then
+    served."""
+    repo, parent = await _baseline(pool)  # OWNER has a job on BOOK
+    with pytest.raises(PermissionError) as e:
+        await repo.narrow_for_book(
+            parent_policy_id=parent, owner_user_id=OTHER_OWNER, book_id=BOOK,
+            policy_version=1, bands={"kind.cap_rule.cap": Band(1, 1, 1)},
+            authored_by=OTHER_OWNER,
+        )
+    assert "no enrichment job on book" in str(e.value)
+    async with pool.acquire() as c:
+        assert await c.fetchval(
+            "SELECT count(*) FROM gamegen_numeric_policy WHERE tier='book'") == 0
+
+
+async def test_the_effective_policy_read_is_owner_scoped(pool):
+    """The read half. Even if a book row for this book existed under another
+    owner, it is not this owner's effective policy."""
+    repo, parent = await _baseline(pool)
+    await repo.narrow_for_book(
+        parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
+        bands={"kind.cap_rule.cap": Band(1, 1, 1)}, authored_by=OWNER,
+    )
+    mine = await repo.effective_policy(
+        element_kind="progression_system", book_id=BOOK, owner_user_id=OWNER)
+    theirs = await repo.effective_policy(
+        element_kind="progression_system", book_id=BOOK, owner_user_id=OTHER_OWNER)
+    assert mine.tier == "book" and mine.bands["kind.cap_rule.cap"] == Band(1, 1, 1)
+    assert theirs.tier == "system", "another user sees the baseline, not my narrowing"
+
+
+async def test_two_owners_can_hold_a_policy_for_the_same_book_id_without_colliding(pool):
+    """The unique index carries ``owner_user_id``. Without it, whoever writes
+    first takes the ``(book, version)`` slot and the real owner's write fails with
+    a unique violation — a cross-tenant denial reachable by guessing a book id."""
+    repo, parent = await _baseline(pool)
+    await _job_for(pool, OTHER_OWNER, BOOK)
+    await repo.narrow_for_book(
+        parent_policy_id=parent, owner_user_id=OTHER_OWNER, book_id=BOOK,
+        policy_version=1, bands={"kind.cap_rule.cap": Band(1, 1, 1)},
+        authored_by=OTHER_OWNER,
+    )
+    await repo.narrow_for_book(
+        parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
+        bands={"kind.cap_rule.cap": Band(900, 950, 920)}, authored_by=OWNER,
+    )
+    eff = await repo.effective_policy(
+        element_kind="progression_system", book_id=BOOK, owner_user_id=OWNER)
+    assert eff.bands["kind.cap_rule.cap"] == Band(900, 950, 920)
+
+
+async def test_a_TIGHTENED_baseline_refuses_a_stale_book_narrowing(pool):
+    """**PROBE 3.** ``effective = AND(deploy_allows, user_enables)`` is not an AND
+    if it is evaluated once at write time and cached. A narrowing authored against
+    v1 can fall outside a v2 baseline the admin published later, and the
+    write-time check passed long ago."""
+    repo, parent = await _baseline(pool, version=1)
+    await repo.narrow_for_book(
+        parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
+        bands={"kind.cap_rule.cap": Band(1, 10, 5)}, authored_by=OWNER,
+    )
+    await repo.publish_system_policy(
+        element_kind="progression_system", policy_version=2,
+        bands=bands(**{"kind.cap_rule.cap": Band(500, 600, 550)}),
+        authored_by=ADMIN, is_admin=True,
+    )
+    with pytest.raises(PolicyError) as e:
+        await repo.effective_policy(
+            element_kind="progression_system", book_id=BOOK, owner_user_id=OWNER)
+    assert "no longer fits the current System baseline" in str(e.value)
+    assert "kind.cap_rule.cap" in str(e.value)
+    assert "re-narrow" in str(e.value)
+
+
+async def test_a_still_contained_narrowing_survives_a_baseline_change(pool):
+    """The re-check must not fire on a baseline that moved compatibly, or the
+    first admin publish turns every book policy into an outage and the check gets
+    removed."""
+    repo, parent = await _baseline(pool, version=1)
+    await repo.narrow_for_book(
+        parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
+        bands={"kind.cap_rule.cap": Band(500, 550, 520)}, authored_by=OWNER,
+    )
+    await repo.publish_system_policy(
+        element_kind="progression_system", policy_version=2,
+        bands=bands(**{"kind.cap_rule.cap": Band(400, 700, 550)}),
+        authored_by=ADMIN, is_admin=True,
+    )
+    eff = await repo.effective_policy(
+        element_kind="progression_system", book_id=BOOK, owner_user_id=OWNER)
+    assert eff.tier == "book" and eff.bands["kind.cap_rule.cap"] == Band(500, 550, 520)
+
+
+async def test_the_containment_rule_has_ONE_implementation(pool):
+    """Write-time and read-time both call ``containment_violations``. Two copies
+    of a containment rule are two chances to disagree about what `PGN-A15` means,
+    and the read-time half is the one nobody would have written twice."""
+    import inspect
+
+    from app.db.repositories import gamegen as repo_mod
+    from app.gamegen import policy as policy_mod
+
+    assert "containment_violations" in inspect.getsource(policy_mod.narrow)
+    assert "containment_violations" in inspect.getsource(
+        repo_mod.GamegenS2Repo.effective_policy)
