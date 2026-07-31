@@ -121,6 +121,25 @@ impl ProgressionStore {
         Self { root: root.into() }
     }
 
+    /// The progression store that belongs to a ruleset store.
+    ///
+    /// **The same root, by construction.** The alternative — passing both
+    /// stores to every reality entry point — makes it possible to pass the
+    /// wrong one, or to forget one, and *forgetting one* is exactly the defect
+    /// this module was written to catch and then shipped anyway:
+    /// `resolve_progression` had **zero production callers** for a whole slice,
+    /// so `activate_reality_epoch` moved realities onto rulesets whose ladders
+    /// were gone and returned `Ok`.
+    ///
+    /// Deriving it means a caller who has the rules necessarily has the
+    /// progression bytes that belong to them, which is also what you want for
+    /// backup and restore: a reality's rules and its ladders travel together or
+    /// not at all. The `.canon` / `.prog` split makes sharing a root safe by
+    /// construction — see `the_two_stores_share_a_root_without_colliding`.
+    pub fn beside(rules: &crate::RulesetStore) -> Self {
+        Self { root: rules.root().to_path_buf() }
+    }
+
     pub fn ensure_root(&self) -> Result<(), ProgressionStoreError> {
         fs::create_dir_all(&self.root)?;
         Ok(())

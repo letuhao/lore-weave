@@ -70,6 +70,7 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # from "this domain genuinely has no ruleset". Now the second case is the NAMED
 # `RulesetDigest::UNPINNED` (kernel harness + tests only) and the first is a finding.
 "$PY" "$ROOT/scripts/zero-digest-gate.py" --staged
+"$PY" "$ROOT/scripts/pin-resolution-gate.py"
 
 # NO STRING-KEYED LOOKUP on the island step path (IMP-D4 / QTY-A9). Q1 introduces author-declared
 # quantities, which arrive as NAMES in TOML, and the shortest path from `name = "qi"` to a working

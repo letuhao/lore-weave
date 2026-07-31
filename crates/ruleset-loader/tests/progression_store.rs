@@ -251,3 +251,93 @@ fn the_two_stores_share_a_root_without_colliding() {
     let same_bytes = ProgressionDigest(rd.0);
     assert_ne!(inner.path_for(&same_bytes), outer.path_for(&rd));
 }
+
+// ── the hole this module was built for, and then left open ──────────────────
+
+/// **The defect: a mechanism nothing invoked.**
+///
+/// `resolve_progression` shipped with 12 tests, a module doc arguing for it, and
+/// **zero production callers**. A probe showed `activate_reality_epoch` moving a
+/// reality to epoch 2 onto a ruleset whose ladder had been deleted — and
+/// returning `Ok`:
+///
+/// ```text
+/// !!! SWITCH SUCCEEDED onto a dangling progression pin: epoch=2
+/// ```
+///
+/// An epoch switch is the one moment a reality changes rules, so admitting an
+/// unresolvable one there admits it forever. This is that probe, inverted.
+#[test]
+fn an_epoch_switch_onto_a_dangling_progression_pin_is_refused() {
+    use ruleset_loader::{
+        activate_reality_epoch, binding_store, parse_layer, resolve_and_pin, BindingStore,
+        EpochSwitchError, Layer,
+    };
+
+    let root = tmp("epochdangle");
+    let rules = RulesetStore::new(root.join("rules"));
+    let prog = ProgressionStore::new(root.join("rules")); // beside(), by construction
+    let bindings = binding_store(&root.join("bind"));
+
+    let d0 = rules.put(&Ruleset::engine_default()).unwrap();
+    bindings.create("r1", &d0).unwrap();
+
+    let layer = parse_layer(
+        Layer::Reality,
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\n\
+         curve = \"linear\"\ncap = \"unbounded\"\n",
+    )
+    .unwrap();
+    let pinned = resolve_and_pin(&[layer], &prog).unwrap();
+    let d1 = rules.put(&pinned).unwrap();
+
+    // The ladder is deleted. The RULESET bytes are untouched and still verify.
+    std::fs::remove_file(prog.path_for(&pinned.progression.unwrap())).unwrap();
+    assert!(rules.get(&d1).unwrap().is_some(), "the outer artifact is still perfectly fine");
+
+    let e = activate_reality_epoch(&bindings, &rules, "r1", &d1, "switch")
+        .expect_err("a switch onto an unresolvable ruleset must be REFUSED");
+    assert!(
+        matches!(e, EpochSwitchError::Progression(ProgressionStoreError::Dangling { .. })),
+        "expected a Dangling refusal, got {e}"
+    );
+    assert!(format!("{e}").contains("UNLOADABLE"), "{e}");
+
+    // And the reality did NOT move.
+    assert_eq!(
+        bindings.load("r1").unwrap().unwrap().digest,
+        d0.to_hex(),
+        "a refused switch must leave the reality where it was"
+    );
+}
+
+/// The same hole at the other two admission points. `load_reality` is the one
+/// that would otherwise hand a live island a ruleset whose ladders are gone.
+#[test]
+fn loading_a_reality_with_a_dangling_progression_pin_is_refused() {
+    use ruleset_loader::{
+        binding_store, load_reality, parse_layer, resolve_and_pin, BindingStore, Layer,
+        RealityError,
+    };
+
+    let root = tmp("loaddangle");
+    let rules = RulesetStore::new(root.join("rules"));
+    let prog = ProgressionStore::new(root.join("rules"));
+    let bindings = binding_store(&root.join("bind"));
+
+    let layer = parse_layer(
+        Layer::Reality,
+        "quantities = [\"qi\"]\n[[progression_kinds]]\nquantity = \"qi\"\ntype = \"skill\"\n\
+         curve = \"linear\"\ncap = \"unbounded\"\n",
+    )
+    .unwrap();
+    let pinned = resolve_and_pin(&[layer], &prog).unwrap();
+    let d = rules.put(&pinned).unwrap();
+    bindings.create("r2", &d).unwrap();
+
+    std::fs::remove_file(prog.path_for(&pinned.progression.unwrap())).unwrap();
+
+    let e = load_reality("r2", &rules, &bindings)
+        .expect_err("a reality whose ladders are gone is UNLOADABLE, and must say so");
+    assert!(matches!(e, RealityError::Progression(ProgressionStoreError::Dangling { .. })), "{e}");
+}

@@ -38,6 +38,7 @@
 
 use ruleset_core::{OrdinalReuse, QuantityTable, RulesetDigest};
 
+use crate::progression_store::{ProgressionStore, ProgressionStoreError};
 use crate::binding::{BindingError, BindingStore, RealityBinding};
 use crate::store::{RulesetStore, StoreError};
 
@@ -46,6 +47,12 @@ use crate::store::{RulesetStore, StoreError};
 pub enum EpochSwitchError {
     /// The binding could not be read or appended.
     Binding(BindingError),
+    /// The new ruleset PINS a progression table that does not resolve.
+    ///
+    /// The switch is refused rather than completed: an epoch switch is the one
+    /// moment a reality changes rules, so admitting an unresolvable ruleset here
+    /// admits it forever.
+    Progression(ProgressionStoreError),
     /// The content store could not be read.
     Store(StoreError),
     /// A ruleset a prior epoch is bound to is **not in the store**.
@@ -69,6 +76,7 @@ impl core::fmt::Display for EpochSwitchError {
         match self {
             Self::Binding(e) => write!(f, "epoch switch: {e}"),
             Self::Store(e) => write!(f, "epoch switch: {e}"),
+            Self::Progression(e) => write!(f, "epoch switch REFUSED - {e}"),
             Self::PriorRulesetMissing { epoch, digest } => write!(
                 f,
                 "epoch {epoch} is bound to ruleset {digest}, which is NOT in the content \
@@ -110,6 +118,13 @@ pub fn prior_quantity_tables(
     store: &RulesetStore,
     reality_id: &str,
 ) -> Result<Vec<QuantityTable>, EpochSwitchError> {
+    // pin-resolution-gate: ok — READ-ONLY, and it admits nothing. It gathers the
+    // quantity tables of PRIOR epochs so the never-reuse check can be computed;
+    // no reality is created, loaded or moved by it, and the rulesets it reads
+    // are ones a past admission already accepted. Resolving their progression
+    // here would ALSO be wrong in a specific way: a prior epoch's ladder may
+    // have been superseded, and demanding it still resolve would make a
+    // historical read fail on content the present does not use.
     let mut out = Vec::new();
     for b in bindings.history(reality_id)? {
         // A digest that is not 64 hex is a corrupt BINDING, not a missing
@@ -160,6 +175,14 @@ pub fn activate_reality_epoch(
     if let Err(reuse) = next.quantities.check_never_reused(&refs) {
         return Err(EpochSwitchError::OrdinalReused(reuse));
     }
+
+    // The pin INSIDE the bytes that just verified. `store.get` above checked the
+    // ruleset against its own digest and cannot see this: a probe showed a
+    // reality moving to epoch 2 onto a ruleset whose ladder had been deleted,
+    // and returning `Ok`. An epoch switch is the one moment a reality changes
+    // rules, so admitting an unresolvable one here admits it forever.
+    crate::resolve_progression(&next, &ProgressionStore::beside(store))
+        .map_err(EpochSwitchError::Progression)?;
 
     Ok(bindings.activate_epoch(reality_id, digest, reason)?)
 }

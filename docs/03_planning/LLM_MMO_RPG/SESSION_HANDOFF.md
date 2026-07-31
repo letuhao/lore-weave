@@ -292,8 +292,54 @@ names the file: `an inadmissible table was stored anyway: ["130029dd….prog"]`.
 rather than arithmetic — everything left in `lib.rs` folds layers into a `Ruleset` **in memory**, and
 `resolve_and_pin` is the one call that performs I/O to complete one.
 
-**▶ NEXT:** `PGN-R2` is complete. The POC-1 chain now runs TOML → table → validator → store → pin →
-ruleset digest → epoch switch. What remains for POC-1 is the **pipeline** half (doc 39's S0–S5 in
+**THE FIRST HALF WAS EVALUATED AND IT HAD A HOLE: `resolve_progression` had ZERO PRODUCTION
+CALLERS.** Written with 12 tests, a module doc arguing for it, cited twice in a commit message — and
+wired into nothing. A probe, not an assertion, showed what that meant:
+
+```
+!!! SWITCH SUCCEEDED onto a dangling progression pin: epoch=2
+```
+
+A reality whose progression bytes had been **deleted** moved to epoch 2 cleanly. `RulesetStore::get`
+verifies the OUTER artifact and the pin is 32 bytes *inside* the bytes that verified, so nothing
+looked. The repeated claim *"`Q0b B3`'s epoch switch works unchanged"* was **half true stated as
+whole**: the switch CARRIES a progression change because the digest moves; it did not VERIFY one.
+
+**Fixed at all three admission points** — `create_reality`, `load_reality`, `activate_reality_epoch`
+— via `admit_progression`, plus `EpochSwitchError::Progression` and `RealityError::Progression`. The
+probe is now a permanent test, inverted, and it also asserts **a refused switch leaves the reality
+where it was**.
+
+**`ProgressionStore::beside(&RulesetStore)` instead of a second parameter.** Threading two stores
+through every entry point makes it possible to pass the wrong one or forget one — and *forgetting one*
+is the defect that just shipped. Deriving it means a caller holding the rules necessarily holds the
+ladders that belong to them, which is also what backup/restore wants: they travel together or not at
+all. The `.canon`/`.prog` split makes a shared root safe by construction.
+
+**NEW GATE `pin-resolution-gate.py`** (67 gates now). **The general form was prototyped FIRST and
+REJECTED ON MEASUREMENT**: *"every exported entry point must have a production caller"* fires on
+**64 of 143** module-level `pub fn`s in `crates/`, because the game tier is young and much of it is
+exercised only by its own suites. A gate that fires 64 times is a gate someone switches off, which is
+worse than no gate. So the subject narrows to the invariant that actually bit — and **both halves are
+DISCOVERED, never listed**, because a hand-list is `NV-3` waiting to happen: **pins** are `Ruleset`
+fields whose type names a non-self `*Digest`; **admission points** are every `pub fn` taking BOTH a
+`RulesetStore` and a `BindingStore`. An empty discovery is a **FAILURE**, not a quiet OK.
+
+It immediately found a 4th admission point I had not listed — `prior_quantity_tables` — which earns a
+reasoned pragma: it is read-only, and demanding a *prior* epoch's ladder still resolve would make a
+historical read fail on content the present does not use. Bite-proven: removing the resolve from
+`activate_reality_epoch` reds it by name.
+
+**A TOOLING NEAR-MISS WORTH RECORDING.** Writing this very entry TRUNCATED this file to zero bytes:
+`open(path, "w")` truncates before the write, and the write then raised `UnicodeEncodeError` on an
+emoji surrogate. `git checkout HEAD --` restored it because the previous entry was already committed.
+**Edit scripts in this repo should build the whole string first and write via a temp + rename**, the
+same discipline `RulesetStore::put` already uses for exactly this reason: *"a reader must never
+observe a half-written ruleset."*
+
+**▶ NEXT:** `PGN-R2` is complete and the hole found evaluating it is closed. The POC-1 chain now runs
+TOML → table → validator → store → pin → ruleset digest → epoch switch, **with every admission point
+verifying the pin resolves.** What remains for POC-1 is the **pipeline** half (doc 39's S0–S5 in
 `lore-enrichment-service`, against the 武俠 fixture). POC-2 still needs `Q2 B4` (the `QTY-A8` caps arm)
 then `Q4` (the L3 contribution trait) — without `Q4` a generated ladder is inert.
 `Q2 B2/B3/B4` and `Q4` remain the POC-2 path. Gates green: design-lint (371 docs) · amendment-rot

@@ -222,6 +222,14 @@ pub enum RealityError {
     /// (RLS-D6 is why: the store is append-only and never pruned *because* of
     /// this. A missing digest means someone pruned it or the store moved.)
     RulesetMissing { reality_id: String, digest: String },
+    /// The ruleset resolves, and the progression table it PINS does not.
+    ///
+    /// A separate variant from `RulesetMissing` because the diagnosis differs:
+    /// the rules are here and readable, and the ladders they name are gone. A
+    /// reality in that state is unloadable in exactly the same way, and saying
+    /// so is the whole point — the alternative is a world that boots with every
+    /// progression system silently missing.
+    Progression(ProgressionStoreError),
 }
 
 impl core::fmt::Display for RealityError {
@@ -230,6 +238,7 @@ impl core::fmt::Display for RealityError {
             Self::Load(e) => write!(f, "{e}"),
             Self::Binding(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "{e}"),
+            Self::Progression(e) => write!(f, "{e}"),
             Self::RulesetMissing { reality_id, digest } => write!(
                 f,
                 "reality {reality_id} is UNLOADABLE: it is bound to ruleset {digest}, \
@@ -276,6 +285,7 @@ pub fn create_reality(
     bindings: &dyn BindingStore,
 ) -> Result<(Ruleset, RealityBinding), RealityError> {
     let resolved = resolve(layers)?;
+    admit_progression(&resolved, store)?;
     let digest = store.put(&resolved)?;
     let binding = bindings.create(reality_id, &digest)?;
     Ok((resolved, binding))
@@ -320,11 +330,38 @@ pub fn load_reality(
         RealityError::Binding(BindingError::BadDigest(binding.digest.clone()))
     })?;
     match store.get(&digest)? {
-        Some(r) => Ok((r, binding)),
+        Some(r) => {
+            admit_progression(&r, store)?;
+            Ok((r, binding))
+        }
         None => Err(RealityError::RulesetMissing {
             reality_id: reality_id.to_string(),
             digest: digest.to_hex(),
         }),
     }
+}
+
+/// **Every admission point resolves every pin the ruleset carries.**
+///
+/// `RulesetStore::get` verifies the OUTER artifact only — a `Ruleset` whose
+/// `progression` pin names absent or corrupt bytes comes back from it clean,
+/// because the pin is 32 bytes *inside* the bytes that verified. So each of the
+/// three entry points that admits a ruleset into a reality — `create_reality`,
+/// `load_reality`, `activate_reality_epoch` — calls this.
+///
+/// **This function exists because the check it performs already existed and was
+/// never called.** `resolve_progression` shipped with 12 tests, a module doc
+/// arguing for it, and ZERO production callers; a probe showed
+/// `activate_reality_epoch` moving a reality to epoch 2 onto a ruleset whose
+/// ladder had been deleted, returning `Ok`. A mechanism nothing invokes is not a
+/// mechanism — it is a claim with a test suite attached.
+pub(crate) fn admit_progression(
+    ruleset: &Ruleset,
+    store: &RulesetStore,
+) -> Result<(), RealityError> {
+    let progression = ProgressionStore::beside(store);
+    resolve_progression(ruleset, &progression)
+        .map(|_| ())
+        .map_err(RealityError::Progression)
 }
 

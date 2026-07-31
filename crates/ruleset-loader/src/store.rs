@@ -101,6 +101,15 @@ impl RulesetStore {
         Ok(())
     }
 
+    /// The directory these bytes live in.
+    ///
+    /// Exposed so [`crate::ProgressionStore::beside`] can be derived from it
+    /// rather than passed alongside it — see that constructor for why the two
+    /// stores must not be independently addressable.
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
     /// Where a digest is filed: `<root>/<digest>.canon`.
     ///
     /// Public because in a CONTENT-ADDRESSED store the path is derivable from
