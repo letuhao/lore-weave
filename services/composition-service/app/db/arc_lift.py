@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import logging
 
+from loreweave_obs import setup_logging
+
 import asyncpg
 
 logger = logging.getLogger(__name__)
@@ -324,7 +326,17 @@ async def _amain() -> None:
     dsn = os.environ.get("COMPOSITION_DB_URL") or os.environ.get("TEST_COMPOSITION_DB_URL")
     if not dsn:
         raise SystemExit("set COMPOSITION_DB_URL to the target composition DB")
-    logging.basicConfig(level=logging.INFO)
+    # D-CI-RED-FOR-20-DAYS (2026-07-31): this single `logging.basicConfig` is the HARD
+    # violation in `logging-discipline-lint.sh`, which is step 24 of 28 in foundation-ci's
+    # lint job. It landed on 2026-07-11, and GitHub Actions stops a job at the first
+    # failing step — so the lint job has been RED for twenty days, and steps 25-28
+    # (tracing-completeness, runbook-drift, runbook-verification, template-fixture) have
+    # not run in that time either. One line took four gates down and kept them down.
+    #
+    # `basicConfig` is banned because it installs a plain formatter on the root logger and
+    # wins over the shared JSON handler — a service whose logs bypass the trace-id
+    # correlation cannot be read alongside the rest of a request.
+    setup_logging("composition-arc-lift")
     conn = await asyncpg.connect(dsn)
     try:
         applied = await run_arc_lift(conn)

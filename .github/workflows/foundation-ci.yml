@@ -127,6 +127,44 @@ jobs:
       # A gated test that no workflow arms has never run — 200 of them were found this
       # way, in two sweeps, the second only because the first under-counted by 4x.
       - run: python scripts/test-dsn-coverage-gate.py
+
+      # ── D-QC-GATES-BUILT-BUT-NOT-WIRED (2026-07-31) ──────────────────────────
+      # An inventory of every gate script in scripts/ against every workflow found
+      # **63 gates, 18 wired**. Nine more ran only via the pre-commit hook — which needs
+      # `git config core.hooksPath .githooks` run once per checkout, so it is opt-in per
+      # machine and absent in CI. Thirty-six ran nowhere at all.
+      #
+      # This is not a backlog, it is the mechanism: the repo builds quality gates faster
+      # than it wires them, and an unwired gate is indistinguishable from no gate. Three of
+      # the unwired ones are RED right now with 17 real findings nobody has seen —
+      # including six modules building prompts from retrieved text with no injection
+      # sanitizer, the exact class hand-fixed this cycle as B2 while a detector for it sat
+      # unrun.
+      #
+      # Every gate below was executed and PASSES as of this commit, so wiring them is a
+      # pure regression lock with no triage debt. The three red ones are tracked separately;
+      # they are not silently skipped here.
+      - run: python scripts/injection-coverage-lint.py
+      - run: python scripts/pagination-cap-lint.py
+      - run: python scripts/raw-sql-lint.py
+      - run: python scripts/blocking-in-async-lint.py
+      - run: python scripts/context-budget-l3-lint.py
+      - run: python scripts/language-bias-gate.py
+      - run: python scripts/sdk-duplication-gate.py
+      - run: python scripts/slo-latency-lint.py
+      # NOT amaw-guardrail-gate.py — despite the name it is a Claude Code PreToolUse
+      # HOOK that reads a JSON payload from stdin, so in CI it blocks forever (measured:
+      # a 300s timeout). Classifying it as a lint by filename was the mistake; running it
+      # exactly as CI would is what caught it.
+      # Previously pre-commit-hook-only. The hook is opt-in per checkout; CI is not.
+      - run: python scripts/context-budget-defaults-lint.py
+      - run: python scripts/context-inspector-checklist-gate.py
+      - run: python scripts/db-safety-gate.py
+      - run: python scripts/design-draft-token-lint.py
+      - run: python scripts/i18n-completeness-gate.py
+      - run: python scripts/knowledge-access-gate.py
+      - run: python scripts/knowledge-http-surface-gate.py
+      - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh
       - run: bash scripts/admin-command-registry-lint.sh
       - run: bash scripts/logging-discipline-lint.sh

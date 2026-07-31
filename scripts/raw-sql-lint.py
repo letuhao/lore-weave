@@ -65,10 +65,31 @@ ALLOWLIST_PREFIXES: tuple[str, ...] = (
 # Known-current offenders, as "relpath:snippet-substring". The lint passes when
 # every flagged site is in the baseline; a NEW site (not listed) fails the run.
 # The audit (docs/standards/security.md §Enforcement) found the codebase clean,
-# so this is intentionally EMPTY — the lint's whole job is to catch the next
-# regression. If a legitimate exception ever appears, add a
-# "relpath::matched-line-substring" row here with a comment explaining why.
-BASELINE: frozenset[str] = frozenset()
+# so this started EMPTY — the lint's whole job is to catch the next regression.
+#
+# D-QC-GATES-BUILT-BUT-NOT-WIRED (2026-07-31): this lint had never run in CI. Its first
+# execution reported six sites; each was read before being listed, and all six are the
+# exception the module docstring already sanctions ("only allowlisted identifiers may be
+# interpolated"):
+#
+#   · package_rekey.py ×4 — a marker-gated MIGRATION. What it interpolates is TABLE and
+#     COLUMN identifiers, which SQL cannot bind as placeholders at all, drawn from
+#     module-level constant lists (_USER_ID_RENAMES, _OWNER_USER_ID_RENAMES,
+#     _BOOK_ID_TABLES, _ORPHAN_TABLES, _BATCH_TABLES, _SMALL_PROJECT_TABLES) — closed sets
+#     in the file, never user input. `{marker}` is the module's own `pkg_rekey_v1` constant.
+#   · two knowledge `_smoke_*` dev scripts — not runtime; one of the two is inside a
+#     `print()` that emits a Cypher string for a human to paste.
+#
+# Listed WITH the verification rather than left red. A genuinely user-derived value
+# interpolated into SQL still fails, which is the whole point.
+BASELINE: frozenset[str] = frozenset({
+    "services/composition-service/app/db/package_rekey.py::DELETE FROM package_migration WHERE marker = '{marker}';",
+    "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = 'created_by'",
+    "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{t}' AND column_name = 'book_id'",
+    "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = '{old}'",
+    "services/knowledge-service/scripts/_smoke_a2s1b2.py::print(f'CYPHER: MATCH (s:EntityStatus) WHERE s.project_id=\"{project_id}\" RETURN s.status, count(s)')",
+    "services/knowledge-service/scripts/_smoke_a2s1b2_fullchain.py::f'\"MATCH (s:EntityStatus) WHERE s.project_id=\\\\\"{proj}\\\\\" RETURN s.status AS status, count(s) AS n\"')",
+})
 
 # ── detection ─────────────────────────────────────────────────────────────
 

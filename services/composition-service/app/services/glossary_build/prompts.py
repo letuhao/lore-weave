@@ -12,6 +12,12 @@ POC-locked rules baked in:
 """
 from __future__ import annotations
 
+# D-INJECTION-COVERAGE (2026-07-31): every builder here drops `source_text` — the book's
+# own prose, which for an IMPORTED book is arbitrary third-party text — straight into a
+# prompt. `injection-coverage-lint` has flagged this module all along; it had never run in
+# CI, so the hole was reported to nobody.
+from app.packer.sanitize import neutralize
+
 # Closed sets — Frontend-Tool-Contract discipline applies wherever these cross a
 # schema boundary later (M2 exposes them as enums).
 RELATION_TYPES = [
@@ -65,7 +71,7 @@ def planner_messages(source_text: str, kinds: list[str], existing_names: list[st
         f"— enumerate only. At most {max_items} items. " + _lang_line(lang)
     )
     user = (
-        f"STORY CONTEXT:\n{source_text}\n\n"
+        f"STORY CONTEXT:\n{neutralize(source_text)}\n\n"
         "List EVERY entity worth a glossary entry that this text establishes "
         "(characters, factions/organizations, events, terminology, power systems, "
         f"relationships, locations, items). Already in the glossary — skip these: {existing}."
@@ -179,7 +185,7 @@ def executor_messages(source_text: str, item_name: str, item_kind: str,
     system = ("You are a profile editor for a fiction glossary. "
               + _entity_schema_hint(fields, lang, types))
     user = (
-        f"STORY CONTEXT:\n{source_text}\n\n"
+        f"STORY CONTEXT:\n{neutralize(source_text)}\n\n"
         f"Build a DETAILED profile for exactly ONE entity: {item_name} (kind: {item_kind})."
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -194,7 +200,7 @@ def deep_outline_messages(source_text: str, item_name: str, item_kind: str,
         "are asked for — no skipping ahead, no repeating content. " + _lang_line(lang)
     )
     user = (
-        f"STORY CONTEXT:\n{source_text}\n\n"
+        f"STORY CONTEXT:\n{neutralize(source_text)}\n\n"
         f"We will build a DEEP profile for {item_name} (kind: {item_kind}), step by step.\n"
         "STEP 1 — OUTLINE: return ONLY a JSON array of 5-7 items "
         '[{"section":"short section label","focus":"the core question this section must answer"}]. '
@@ -257,7 +263,7 @@ def batch_messages(source_text: str, names: list[str], item_kind: str,
         "relations.target_name is the OTHER entity's NAME (never an id). "
         + _RELATION_RULE + _lang_line(lang)
     )
-    user = (f"STORY CONTEXT:\n{source_text}\n\n"
+    user = (f"STORY CONTEXT:\n{neutralize(source_text)}\n\n"
             f"Build a profile for EACH of these {len(names)} entities (all of kind "
             f"{item_kind}): " + ", ".join(names) + ".")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]

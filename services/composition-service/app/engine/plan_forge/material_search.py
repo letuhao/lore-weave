@@ -29,6 +29,8 @@ that auto-concluded on those would have silently swallowed the real question.
 
 from __future__ import annotations
 
+from app.packer.sanitize import neutralize
+
 import json
 import logging
 import re
@@ -146,12 +148,22 @@ async def search_material(
         return {"kind": kind, "candidates": [], "dropped_ungrounded": 0,
                 "note": "no source document to search"}
 
+    # D-INJECTION-COVERAGE (2026-07-31): the document is an author's own file or an
+    # IMPORT — arbitrary text — and it goes straight into a prompt.
+    # `injection-coverage-lint` has flagged this module all along; it simply never ran.
+    #
+    # The care needed here: the prompt asks the model to copy lines VERBATIM, and the
+    # grounding gate below re-matches each quote against the document. Neutralising only
+    # the prompt side would make every quote fail to ground — a security fix that
+    # silently breaks the feature. The SAME transformed text feeds both, so the two stay
+    # in lockstep by construction rather than by comment.
+    _safe_doc = neutralize(document_markdown)
     user = (
         f"Below is an author's planning document.\n\n"
         f"Find up to {max_candidates} lines in it that are: {meaning}.\n\n"
         f"Copy each line EXACTLY as it appears. Do not rewrite, translate or shorten it. "
         f"If there are none, return an empty list.\n\n"
-        f"--- DOCUMENT ---\n{document_markdown}\n--- END ---"
+        f"--- DOCUMENT ---\n{_safe_doc}\n--- END ---"
     )
 
     raw = await call_json(
@@ -182,7 +194,7 @@ async def search_material(
     # shown to the author under "here is what you already wrote" is worse than showing nothing: they
     # would keep it, and it would enter their plan as their own material. Dropped, never rendered —
     # and counted, so a search that invented everything cannot pass for a search that found nothing.
-    hay = _normalize(document_markdown)
+    hay = _normalize(_safe_doc)  # the same transform the model was shown
     candidates: list[dict[str, str]] = []
     dropped = 0
     seen: set[str] = set()

@@ -84,13 +84,16 @@ EXCLUDE_DIRS = {
 # Delete each row as the module routes its own retrieved text through the
 # sanitizer (or, for the upstream ones, once verified end-to-end).
 BASELINE: frozenset[str] = frozenset({
+    # sanitized upstream — the module delegates its prompt building to a sibling that
+    # DOES sanitize, and per-file coverage cannot see across the call. Kept listed
+    # rather than cleared: security-conservative, same as the chat-service pair below.
+    "services/composition-service/app/services/glossary_build/engine.py",
     # sanitized upstream at the stream_service chokepoint (kctx.context)
     "services/chat-service/app/services/compact_service.py",
     "services/chat-service/app/services/composer.py",
     # genuine gaps — composition-service has no sanitizer anywhere
     "services/composition-service/app/engine/canon_check.py",
     "services/composition-service/app/engine/canon_reflect.py",
-    "services/composition-service/app/engine/cowrite.py",
     "services/composition-service/app/engine/critic.py",
     "services/composition-service/app/engine/motif_conformance.py",
     "services/composition-service/app/engine/motif_deconstruct.py",

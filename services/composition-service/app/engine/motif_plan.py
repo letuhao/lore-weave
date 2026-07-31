@@ -17,6 +17,8 @@ motif-less, exactly today's behavior).
 
 from __future__ import annotations
 
+from app.packer.sanitize import neutralize
+
 import json
 import logging
 import re
@@ -62,10 +64,15 @@ def build_select_motifs_messages(
         'Return ONLY a JSON array [{"code":...,"why":...,"arc_role":...}]. No prose around it.'
         + lang
     )
+    # D-INJECTION-COVERAGE (2026-07-31): `premise` is the author's own text, and the motif
+    # names/summaries are authored or MINED FROM IMPORTED SOURCE MATERIAL — both arbitrary,
+    # both concatenated straight into a prompt. Flagged by `injection-coverage-lint` all
+    # along; the lint had never run in CI.
     catalog = "\n".join(
-        f"- {c['code']}: {c['name']} — {c.get('summary', '')}" for c in candidates
+        f"- {c['code']}: {neutralize(c['name'])} — {neutralize(c.get('summary', ''))}"
+        for c in candidates
     )
-    user = f"PREMISE:\n{premise}\n\nCANDIDATE MOTIFS:\n{catalog}"
+    user = f"PREMISE:\n{neutralize(premise)}\n\nCANDIDATE MOTIFS:\n{catalog}"
     return system, user
 
 

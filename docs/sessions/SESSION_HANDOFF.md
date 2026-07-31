@@ -128,8 +128,61 @@ and a violation would otherwise surface only after the KEK is irreversibly shred
 than pre-commit-only) · `enforcement-claims-gate` (S12) · `test-dsn-coverage-gate` · plus the
 pre-existing lints.
 
+### 🔌 QC WAS NEVER PLUGGED IN — 63 gates, 18 wired, and CI RED for 20 days
+
+The author's read after the Phase-0 checkpoint: *"the repo is rot by bypass QC."* Inventorying
+every gate script against every workflow says it is worse than bypass — most of the QC had
+**never been connected**.
+
+```
+63 gate scripts in scripts/
+18 ran in CI
+ 9 ran only via the pre-commit hook — which needs `git config core.hooksPath .githooks`
+   per checkout, so it is opt-in per machine and absent in CI
+36 ran nowhere at all
+```
+
+**And `foundation-ci`'s lint job had been RED since 2026-07-11.** One `logging.basicConfig` in
+`composition/app/db/arc_lift.py` fails `logging-discipline-lint.sh`, which is **step 24 of 28** —
+and GitHub Actions stops a job at the first failing step, so `tracing-completeness`,
+`runbook-drift`, `runbook-verification` and `template-fixture-validator` had not run for twenty
+days either. **One line took four gates down and kept them down.** That is why nothing in this
+cycle was ever reported by the gates that already knew about it.
+
+Fixed (`setup_logging`), and the lint job now runs **30 gate steps, all green** — verified by
+executing every step in CI order, not by reading the YAML.
+
+**16 gates newly wired**, all verified passing first. One mistake worth keeping: I added
+`amaw-guardrail-gate.py` because its filename ends in `-gate.py`. It is a Claude Code
+`PreToolUse` **hook** that reads stdin, so in CI it blocks forever (measured: a 300s timeout).
+Running it the way CI would is what caught it; the name is what fooled me.
+
+**Three gates were RED with 17 findings nobody had ever seen.** Each was triaged
+finding-by-finding — baselining on sight would have reproduced the disease one layer up:
+
+- **injection-coverage — 6 modules, and this is the one that matters.** `B2` (the raw author
+  guide re-appended to the prompt) was fixed by hand this cycle as if it were one bug. It was one
+  instance of a class **the repo already had a detector for**, and the detector was unplugged.
+  Five sites sanitized (`error_block_heal` was a *third* raw-guide site; `material_search`,
+  `motif_plan`, `glossary_build/prompts`, `knowledge/extraction/canon_check`), one baselined as
+  sanitized-upstream. `cowrite.py` **dropped from the baseline** — B2 genuinely cleared it at the
+  lint's own layer.
+  ⚠️ `material_search` needed the sanitizer on the prompt **and** on the grounding haystack: the
+  model is asked to copy lines verbatim and the quotes are matched back against the document, so
+  neutralizing one side only would have made every quote fail to ground — a security fix that
+  silently kills the feature.
+- **pagination-cap — 5, all lint-precision false positives**, each verified: two are `batchSize`
+  parameters of background sweepers (server-set), three clamp 3-40 lines above the query where the
+  regex cannot see.
+- **raw-sql — 6, all the exception the lint's own docstring sanctions**: table/column identifiers,
+  which SQL cannot bind as placeholders, drawn from closed module-level constant lists; plus two
+  dev smoke scripts, one of them inside a `print()`.
+
+Both baselines carry the verification, not just the fingerprint.
+
 ### ▶ NEXT
-1. **The LLM-budget SSOT axis** — see below. ROT-1 is closed.
+1. **QC-4/QC-5** — `context-inspector-trace-gate.py` crashes on a missing `JWT_SECRET`; ~26 unwired scripts still need classifying (real gate / dev tool / one-off) and wiring or retiring.
+2. **The LLM-budget SSOT axis** — see below. ROT-1 is closed.
 2. Detail for the axis above: SDK kinds+formula (**done** —
    `sdks/python/loreweave_llm/budget.py`) · **one call-profile registry per service** (the
    per-operation knowledge belongs to the service; `_OPERATION_INSTRUCTIONS`/`PASS_REGISTRY` are the

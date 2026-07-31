@@ -19,6 +19,8 @@ Design + the sealed decisions: docs/specs/2026-07-26-atom-edit/DESIGN-error-bloc
 
 from __future__ import annotations
 
+from app.packer.sanitize import sanitize_guide
+
 import hashlib
 import logging
 import re
@@ -278,7 +280,12 @@ async def propose_for_blocks(
             ))
             continue
         guide = (
-            f"{f.guide} Edit ONLY the selected passage; keep a similar length; "
+            # D-INJECTION-COVERAGE / D-COWRITE-GUIDE-UNSANITIZED (2026-07-31): the THIRD
+            # site interpolating a raw author guide into a prompt. The other two were
+            # fixed by hand this cycle as B2; this one was already flagged by
+            # `injection-coverage-lint`, which had never run in CI. Fixing an instance
+            # while its detector sits unwired is how a class survives.
+            f"{sanitize_guide(f.guide)} Edit ONLY the selected passage; keep a similar length; "
             "add no new events; change nothing the author did not complain about."
         )
         messages = build_selection_messages(
