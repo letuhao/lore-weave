@@ -72,6 +72,58 @@ from value. Verified stable across two consecutive runs on a dirty DB.
 
 Everything else in the family passed — the suites had not rotted, they had simply never been asked.
 
+## ▶ THE RUN ORDER + THE PER-SLICE PROTOCOL (2026-08-01 — author-set)
+
+Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh bị drift … cần thêm bước audit
+lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
+
+**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME` → `S1 → S2 → S8 → S12` →
+`S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+`D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
+failures this session measured: a fact the generator invents (a character's gender, a name, a
+new object) has no path into anything authoritative, so the next scene's spec can contradict it
+and nothing reconciles them. `exit_state` exists for exactly this and is authored-only, never
+written back from what was generated. S1 (GuardStatus unification) will have to carry whatever
+shape this produces, so doing it after S1 means migrating twice.
+
+### Every slice ends with the same four things, in this order
+
+| # | step | what makes it real |
+|---|---|---|
+| 1 | **VERIFY** | run the tests + the gates and **PASTE the output**. A claim that they pass is not evidence. |
+| 2 | **LIVE** | for anything on a generation path: a real run on a **throwaway** book, with the numbers pasted. Mock-green has hidden a cross-service bug four times in this repo. |
+| 3 | **AUDIT** | the block below, written out. Not "looks good" — the four questions answered. |
+| 4 | **COMMIT + RUNSTATE** | code and the slice board move in the same commit. |
+
+### The AUDIT block — write it verbatim, every slice
+
+```
+AUDIT <slice>
+  BUILT      — what exists now that did not before, in one sentence
+  PROVEN     — the evidence, quoted: test counts, gate lines, live numbers
+  NOT PROVEN — what I claimed or assumed but did not measure. NEVER "nothing".
+  DRIFT      — what I nearly did wrong, or a bar I nearly lowered. NEVER "none".
+  NEXT       — the next slice, and what about this one changes its shape
+```
+
+`NOT PROVEN` and `DRIFT` are the anti-drift mechanism and they are **required to be non-empty**.
+This session produced seven drift entries and four retractions; a slice that reports neither has
+not been audited, it has been rubber-stamped. If a slice genuinely has nothing, the honest entry
+is *what I did not check*, which is never nothing.
+
+### Standing quality bars — a slice is NOT done if any of these is skipped
+
+- **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
+  seeded defect and on its control cannot fail; this session shipped one and caught it only by
+  running the control.
+- **A guard reports its COVERAGE.** "Nothing found" and "nothing was checked" must be
+  distinguishable in the output, not inferrable from a status string.
+- **No measurement is trusted at n=1** when it decides a design. Three probes this session
+  reversed on the second run.
+- **Verify the input reached the system** before concluding anything from an output.
+- **A verifier must not share its source of truth with the thing it verifies.**
+
 ## SSOT slices — after Phase 0 seals
 
 `S10 → S1 → S2 → S8 → S12` · `S7 → S6(+UI) → S11 → S3 → S4` · `[translation+knowledge adopt] → S9 → S5`
