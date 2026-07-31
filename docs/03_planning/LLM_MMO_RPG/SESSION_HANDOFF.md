@@ -58,6 +58,47 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S5a — generation, and the engine refusing a ladder that could not be climbed (2026-07-31)
+
+`app/gamegen/generate.py`. **1242 passed / 1 skipped.** The structure supplies SHAPE; the policy
+supplies **every number** — `PGN-A5` at the point where it finally bites, because this is where a
+magnitude has to come from *somewhere* and the only somewhere is a band a human authored or narrowed.
+
+**The end-to-end run found what 14 green unit tests could not.** Generated TOML handed to
+`progression-validate`:
+
+```
+progression.schema.tiers_not_monotonic: kind at ordinal 0, tier 1 does not raise
+tier_max above the tier before it. A ladder whose rungs do not rise is a ladder
+an actor can never climb
+```
+
+`tier[].tier_max` is *n* numbers and the policy supplied **one** — correct for a per-kind magnitude,
+wrong for a per-tier one. The band is now read as the **span** and the rungs are interpolated across
+it: `PGN-A11`'s shape one tier down, with monotonicity holding **by construction** rather than by a
+check that would have to refuse a policy a human legitimately wrote. Re-run: **`admitted`, digest
+`83273d6cad43578d…`, exit 0.**
+
+**`PGN-A9`'s second direction is positional, not numeric.** S3 proved every approved answer reached a
+position; S5 records a `read_set` and refuses a leaf outside it **by pointer**. v1's count identity
+cannot see its own worked example.
+
+**`PGN-A17` built:** `adjust` is admissible; `remove`/`weaken`/`substitute` and any *untyped* op are
+refusals that return to the S3 gate, checked **before** anything is generated — an artifact that
+exists is an artifact something can read.
+
+**Defaults are named:** `default_provenance` carries each engine-filled field with its reason from the
+contract, so §7.2's *"you are approving N tiers of which M fields will be engine-defaulted"* is a
+number a human can actually see.
+
+**BITE-TESTS, four, restored:** read-set check disabled → the unread-leaf test DID NOT RAISE ·
+`PGN-A17` arm disabled → all three ops plus the ordering test DID NOT RAISE · the flat ladder restored
+→ **the cross-language admission test went red**, which is the e2e test proving it catches the real bug.
+
+**▶ NEXT:** S5b — `gamegen_candidate` (the verdict row, `read_set_json`, `default_provenance_json`,
+`repair_ops_json`, and the S5 human gate v1 had no human in), then S6 pin. **POC-1 also still needs an
+ingest and a real LLM interrogation — no model has run yet.**
+
 ### ✅ S4 /review-impl — a cross-tenant read, and a ceiling that had stopped being one (2026-07-31)
 
 `/review-impl` on `dc37d8714`. **1225 passed / 1 skipped.** Three probes, three findings, two of them
