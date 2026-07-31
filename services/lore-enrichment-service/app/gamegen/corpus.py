@@ -41,6 +41,7 @@ coincidence still fails here.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -49,10 +50,42 @@ from app.retrieval.chunker import chunk_text
 
 __all__ = [
     "CitationVerdict",
+    "to_prose",
     "CorpusIngestResult",
     "GamegenCorpus",
     "read_fixture_corpus",
 ]
+
+
+#: Markdown that is *presentation*, not text the book says. Stripped at ingest.
+#:
+#: **Found by the first live run.** The fixture writes 是為**凝脈**。 and a model
+#: quotes 是為凝脈。 — which is verbatim to a reader and not to `str.find`, so every
+#: citation touching an emphasised term was refused as a fabrication. The model was
+#: right and the corpus was wrong: ``**`` is how the fixture's author marked a term
+#: up, not something the book *says*. A citation must point at prose a human reads.
+#:
+#: Deliberately narrow — emphasis, heading markers, list bullets. It is not a
+#: markdown parser, and it must not become one: anything cleverer would start
+#: rewriting the text a citation is checked against, which is the one thing this
+#: corpus must never do.
+_MD_EMPHASIS = re.compile(r"(\*\*|__|\*|_)")
+_MD_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
+_MD_BULLET = re.compile(r"^\s{0,3}[-*+]\s+", re.MULTILINE)
+
+
+def to_prose(markdown: str) -> str:
+    """Strip presentation markup so a stored chunk is what the book SAYS.
+
+    Offsets are into *this* text, which is the text a reviewer reads and the text
+    a model quotes. Keeping the markup would make every citation touching a bolded
+    term a false fabrication — and the fabrication check is the one thing in this
+    pipeline that must not cry wolf.
+    """
+    out = _MD_HEADING.sub("", markdown)
+    out = _MD_BULLET.sub("", out)
+    out = _MD_EMPHASIS.sub("", out)
+    return out
 
 
 @dataclass(frozen=True)
@@ -112,8 +145,13 @@ class GamegenCorpus:
         chunked as one text. Per-file chunking would make a chunk ordinal mean
         *"the n-th chunk of file f"*, and a citation would then need the filename
         too — one more thing to get wrong at a seam that already has a span.
+
+        Markup is stripped first (:func:`to_prose`): a stored chunk is what the
+        book says, not how a file marked it up.
         """
-        text = "\n\n".join(f"# {title}\n\n{body}".strip() for title, body in documents)
+        text = to_prose(
+            "\n\n".join(f"{title}\n\n{body}".strip() for title, body in documents)
+        )
         chunks = chunk_text(text)
         if not chunks:
             raise ValueError(

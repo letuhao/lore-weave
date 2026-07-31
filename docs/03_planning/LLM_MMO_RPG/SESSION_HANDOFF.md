@@ -58,6 +58,65 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ The interrogation stage — a model finally runs, and every fabrication was refused (2026-07-31)
+
+`app/gamegen/interrogate.py`. **1307 passed / 2 skipped**, plus **three live runs against a real
+local model through provider-registry** (BYOK `model_ref`, $0).
+
+**The design decision this stage turns on: the model never supplies an offset.** The obvious shape is
+to ask for `[start, end)` and store it — wrong twice over. Models cannot count characters, so over CJK
+the offsets would be wrong almost every time and an evidence layer that fails constantly gets switched
+off. And an offset the model supplies is *another self-reported input* — the class already removed six
+times here. So the model emits a **chunk id and a quote**, and the span is **derived** by finding that
+quote in the sealed text:
+
+> **a quote that is not in the chunk cannot be given a span at all.**
+
+Fabrication stops being something to detect and becomes something that cannot be expressed. There is
+no code path that stores an unverified citation, because a citation without an offset is not a
+citation and the only source of offsets is the corpus.
+
+**Three shapes and no fourth:** `extracted` (with quotes that verify), `invented` (marked, no evidence
+claimed), `not_stated` (closed-set reason). A claim of `extracted` whose quotes do not verify is a
+**refusal, never a silent downgrade to `invented`** — downgrading would teach that claiming evidence
+is free, which is laundering run backwards.
+
+**What the live runs proved.** Across three runs against 《寒潭劍錄》: **zero fabricated citations
+reached storage.** Every one was refused, by name, with the reason. Two answers verified with real
+character spans — `cardinality = ['內功','劍術']` at span `[233,242)` = `內功與劍術,是兩事`.
+
+**What they also proved, and it is worth stating plainly:** a 26B local model **cannot reliably quote
+classical Chinese verbatim**. It reformats, joins lines into numbered lists, and re-adds markdown that
+is not in the source. That is a *model-capability* finding, not a pipeline defect — and the pipeline's
+value is that it makes it **visible** rather than storing the paraphrase as evidence. Final run: 5
+answered, 6 refused, out of 11.
+
+**Five defects the live runs found, none of which the unit tests could:**
+
+1. **`[chunk <uuid>]` invited the model to answer `"chunk 0191f2a0-…"` as the id** — it copied the
+   label with the value. The prompt is what changed: `chunk_id: <uuid>` on its own line.
+2. **The corpus stored markdown.** The fixture writes 是為`**`凝脈`**`。 and a model quotes 是為凝脈。 —
+   verbatim to a reader and not to `str.find`, so every citation touching an emphasised term was
+   refused as a fabrication. **The model was right and the corpus was wrong:** `**` is how the file
+   marked a term up, not something the book *says*. `to_prose()` strips it at ingest.
+3. **The prompt said *keep quotes SHORT* while `locate` refuses an ambiguous one** — two instructions
+   in direct conflict, and a model duly quoted 引氣 (2 characters), which appears many times. Now:
+   *a quote must be UNIQUE in its chunk; extend it until only one place matches.*
+4. **Truncated replies were reported as *"not JSON"***, which points the reader at the model's
+   competence instead of the token limit. Now detected by **brace depth** — the first attempt checked
+   *"is there a closing brace"* and missed every truncation that stopped after a nested object closed,
+   which is most of them, since `quotes` is a list of objects.
+5. **A model assembled `1. 引氣\n2. 凝脈` from separate lines** — a list it built itself. Correctly
+   refused; the prompt now says *do not join lines, renumber a list, or add markup that is not there.*
+
+**Standards:** non-agentic single-shot generation, so **MCP-first does not apply** (it exempts LLM
+pipelines); **provider-gateway does**, and is honoured by an injected `CompleteFn` — no SDK import, no
+model name, the model is a `model_ref` on the context. Asserted by a test that greps this module, and
+`ai-provider-gate` is clean.
+
+**▶ NEXT:** wire the interrogation into `S2` so a verified answer becomes a `gamegen_answer` row under
+a decision — the last unwired seam. After that, POC-1 runs end to end from a book.
+
 ### ✅ S0's real half — the fixture is ingested, and a citation is finally READ (2026-07-31)
 
 `app/gamegen/corpus.py`. **1279 passed / 2 skipped.** Until this slice every citation in the pipeline
