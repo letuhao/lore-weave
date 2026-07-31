@@ -11,8 +11,15 @@ Translation output length is dictated by the SOURCE text, not chosen. The chapte
 chunked upstream (`split_chapter`), and a translation is a fidelity contract — clipping one
 mid-sentence is worse than any overspend a cap would prevent. So the model's natural stop is
 the correct bound, and `OutputKind.MIRROR` resolves to `0`, this platform's existing wire
-sentinel for *omit the cap* (`provider/adapters.go`; the SDK drops a 0 in `models.py:179`, and
-Anthropic — which 400s on a missing cap — substitutes 8192).
+sentinel for *omit the cap* (`provider/adapters.go`; the SDK drops a 0 in `models.py:179`).
+
+**With one real exception, and it is not hypothetical: Anthropic rejects a missing cap with a
+400, so the adapter substitutes 8192.** "The model's natural stop" is therefore a guarantee
+this registry cannot make on that provider — a chunk needing more than 8192 output tokens
+comes back clipped. Saying otherwise here would be a guarantee asserted in prose with nothing
+in code behind it, which is the exact class this repo keeps finding. What IS in code:
+`_parse_sdk_response` now logs `finish_reason == "length"`, so the loss is reported rather
+than silent. Rejecting or re-chunking a truncated translation is a separate design decision.
 
 That was ALREADY the behaviour: all four sites sent `input={"messages": …}` with no cap. What
 was missing is that nothing distinguished "we decided the model should run to its natural

@@ -53,15 +53,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 #: Unattributed budgets (bare literal, or a variable not traceable to `call_budget`).
-#: Ratcheted. 2026-07-31: 32 — MEASURED. The first value here was a guess of 41 and the gate
-#: rejected it on its own first run, which is what a ratchet is for.
-UNATTRIBUTED_BASELINE = 32
+#: Ratcheted. 2026-07-31: **59** — MEASURED, after `/review-impl`.
+#:
+#: The committed value was 32, and it was wrong for a reason worth keeping: the gate bailed
+#: to `opaque` on any payload containing a `**spread`, and `**no_thinking_fields()` is the
+#: dominant idiom in composition-service — so 27 sites with a perfectly visible budget were
+#: discarded, and the baseline understated the real backlog by 46%. A ratchet set from a
+#: detector's blind spot ratchets the blind spot.
+UNATTRIBUTED_BASELINE = 59
 
-#: Methods that submit an LLM request. Structural, not name-based: what makes a budget an
-#: OUTPUT budget is that it rides in one of these payloads.
-_SUBMIT = {"submit_and_wait", "submit_job", "submit"}
+#: Methods that submit an LLM request with a payload DICT. Structural, not name-based: what
+#: makes a budget an OUTPUT budget is that it rides in one of these payloads.
+#:
+#: `submit` is deliberately absent. It would match `Executor.submit(...)` and any other
+#: unrelated `.submit()` — zero false positives today, but a gate should not be one stdlib
+#: idiom away from counting a thread pool as an LLM call.
+_SUBMIT = {"submit_and_wait", "submit_job"}
+
+#: The OTHER call shape: a request OBJECT, not a payload dict — `client.stream(ChatRequest(…))`.
+#: Missing this was the gate's own completeness lie: it printed "79 LLM call sites; every one
+#: declares a budget" while never looking at the entire chat streaming path (11 sites), where
+#: the budget is `ChatRequest.max_tokens` (models.py:148) and `stream_service.py:366-368`
+#: normalises it to None on purpose. The AI-Task Standard had already documented a no-budget
+#: site on exactly this seam.
+_STREAM = {"stream", "submit_and_await_event"}
 _PAYLOAD_KWARGS = ("input", "payload", "body")
 _BUDGET_KEYS = {"max_tokens", "max_output_tokens", "max_out", "max_completion_tokens"}
+
+#: A third shape this gate does NOT parse: a raw `POST /internal/llm/stream` with a JSON body
+#: (chat-service, lore-enrichment-service, video-gen-service). Named here, and named in the
+#: PASS line, because an unscanned surface that goes unmentioned is how "every one" becomes
+#: a false claim. Tracked for a follow-up rather than silently excluded.
+UNSCANNED_SURFACES = "raw POST /internal/llm/stream (chat, lore-enrichment, video-gen)"
 
 _SKIP_PARTS = ("/tests/", "/build/", "/.venv/", "/node_modules/")
 
@@ -117,8 +140,15 @@ def budget_provider_names(roots: list[Path]) -> set[str]:
                             out.add(t.id)
                 elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
                     out.add(n.target.id)
+    # These names are repo-global once collected, so a generic one launders every same-named
+    # symbol in every other service. The first run returned {'PROFILES', 'TranslationCall',
+    # '__all__', 'budget_for'} — and the repo has 453 other top-level `PROFILES`/`__all__`
+    # definitions, any of which would have been read as "traced to call_budget". A dunder
+    # certainly is not an accessor; a single-word generic is not distinctive enough to be one.
     out.discard("call_budget")
-    return out
+    return {n for n in out
+            if not n.startswith("__")
+            and ("budget" in n.lower() or "max_tokens" in n.lower() or "output" in n.lower())}
 
 
 def _call_budget_names(tree: ast.AST) -> set[str]:
@@ -154,6 +184,30 @@ def _attributed(node: ast.AST, names: set[str], providers: set[str]) -> bool:
     return False
 
 
+def _classify_stream(rel: str, node: ast.Call, names: set[str], providers: set[str]) -> dict:
+    """Budget verdict for the request-OBJECT shape: `client.stream(ChatRequest(max_tokens=…))`.
+
+    The budget may be a kwarg on an inline request literal, or the request may be built
+    off-site (`client.stream(request)`) — in which case it is honestly opaque rather than
+    assumed clean."""
+    site = {"file": rel, "line": node.lineno}
+    for arg in list(node.args) + [kw.value for kw in node.keywords]:
+        if not isinstance(arg, ast.Call):
+            continue                                  # a bare name → request built off-site
+        for kw in arg.keywords:
+            if kw.arg in _BUDGET_KEYS:
+                if _attributed(kw.value, names, providers):
+                    return {**site, "verdict": "attributed"}
+                if isinstance(kw.value, ast.Constant) and kw.value.value == 0:
+                    return {**site, "verdict": "attributed"}
+                if isinstance(kw.value, ast.Constant):
+                    return {**site, "verdict": "literal"}
+                return {**site, "verdict": "unattributed"}
+        # An inline request literal with NO budget kwarg really has no budget.
+        return {**site, "verdict": "ABSENT"}
+    return {**site, "verdict": "opaque"}
+
+
 def scan() -> tuple[list[dict], list[dict]]:
     """(call sites, signature defaults that feed an LLM payload)."""
     sites: list[dict] = []
@@ -175,6 +229,9 @@ def scan() -> tuple[list[dict], list[dict]]:
                 if not isinstance(n, ast.Call):
                     continue
                 fn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
+                if fn in _STREAM:
+                    sites.append(_classify_stream(rel, n, names, providers))
+                    continue
                 if fn not in _SUBMIT:
                     continue
                 payload = next((kw.value for kw in n.keywords if kw.arg in _PAYLOAD_KWARGS), None)
@@ -183,13 +240,27 @@ def scan() -> tuple[list[dict], list[dict]]:
                     # be the "asserted with nothing behind it" shape it exists to reject.
                     sites.append({"file": rel, "line": n.lineno, "verdict": "opaque"})
                     continue
-                if any(k is None for k in payload.keys):      # {**spread}
-                    sites.append({"file": rel, "line": n.lineno, "verdict": "opaque"})
-                    continue
+                # Read the EXPLICIT keys first, then decide about any `**spread`.
+                #
+                # This used to bail to `opaque` the moment a payload contained a spread —
+                # and `input={…, "max_tokens": max_tokens, **no_thinking_fields()}` is the
+                # dominant idiom in composition-service, so 27 sites with a perfectly
+                # visible budget were thrown away over an unrelated `**`. Same
+                # bail-on-a-construct-you-could-handle shape as deprecated-tool-scan's
+                # per-line reading of a wrapped call.
+                #
+                # The dangerous half was the other direction: a payload with a spread and
+                # NO budget key reported `opaque`, so the HARD rule was silently bypassed
+                # by an idiom that has nothing to do with budgets. Measured 0 such sites
+                # today — one `**kwargs` away from being live.
                 val = None
                 for k, v in zip(payload.keys, payload.values):
                     if isinstance(k, ast.Constant) and k.value in _BUDGET_KEYS:
                         val = v
+                if val is None and any(k is None for k in payload.keys):
+                    # No explicit budget, but a spread COULD carry one — genuinely unknown.
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "opaque"})
+                    continue
                 if val is None:
                     sites.append({"file": rel, "line": n.lineno, "verdict": "ABSENT"})
                 elif _attributed(val, names, providers):
@@ -267,11 +338,15 @@ def main() -> int:
         rc = 1
 
     if rc == 0:
-        print(f"llm-budget-ssot-gate: PASS — {len(sites)} LLM call site(s); every one "
-              f"declares a budget.")
+        # "every one declares a budget" was this gate's own completeness lie — true of the
+        # sites it scanned, printed as though it were true of the repo. The scanned surface
+        # is now named, and so is the one that is not.
+        print(f"llm-budget-ssot-gate: PASS — {len(sites)} LLM call site(s) scanned "
+              f"(payload-dict + request-object shapes); none leaves its budget undeclared.")
         print(f"  {len(attributed)} traced to call_budget() · {backlog} held at baseline "
               f"({len(literal)} literal, {len(unattr)} unattributed, {len(sigs)} signature "
-              f"defaults) · {len(opaque)} payload built off-site (not statically visible).")
+              f"defaults) · {len(opaque)} built off-site, not statically visible.")
+        print(f"  NOT scanned: {UNSCANNED_SURFACES}.")
     return rc
 
 

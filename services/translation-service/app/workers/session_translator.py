@@ -66,6 +66,28 @@ def _parse_sdk_response(job: Job) -> tuple[str, int, int]:
     usage_dict = result.get("usage") or {}
     in_tok = _safe_int(usage_dict.get("input_tokens"))
     out_tok = _safe_int(usage_dict.get("output_tokens"))
+    # TRUNCATION — the translate path had no `finish_reason` check at all, while extraction
+    # has had one since M0 and documents the failure precisely ("truncated — finish_reason=
+    # length: output cut mid-array, entities LOST"). The gap matters because the translate
+    # path sends NO output cap on purpose (OutputKind.MIRROR: a translation's length is set
+    # by its source, and clipping a fidelity contract is worse than any overspend). That is
+    # right for every provider EXCEPT Anthropic, which rejects a missing cap with a 400 and
+    # so has 8192 substituted for it (provider/adapters.go). A chunk needing more than that
+    # came back clipped and was persisted as a COMPLETE translation — silent, and invisible
+    # to the reader until they hit the seam mid-sentence.
+    #
+    # Advisory by design: this is the same degrade-safe rule the critics follow — a detector
+    # must not turn a working path into a broken one. It makes the loss REPORTABLE, which is
+    # the half that was missing. Rejecting or re-chunking a truncated translation is a
+    # behaviour change with a real design question behind it (retry smaller? fail the
+    # chapter?) and is tracked separately.
+    if getattr(job, "finish_reason", None) == "length":
+        log.warning(
+            "translation TRUNCATED by the provider (finish_reason=length, job=%s, "
+            "output_tokens=%d) — the text stored for this chunk is INCOMPLETE. The translate "
+            "path sends no cap by design; Anthropic substitutes 8192 for a missing one.",
+            getattr(job, "job_id", "?"), out_tok,
+        )
     return content, in_tok, out_tok
 
 
