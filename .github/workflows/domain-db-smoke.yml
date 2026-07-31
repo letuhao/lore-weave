@@ -26,12 +26,26 @@ on:
     paths:
       - "services/book-service/**"
       - "services/glossary-service/**"
+      - "services/admin-cli/**"
+      - "services/meta-worker/**"
+      - "services/breach-notifier/**"
+      - "services/meta-outbox-relay/**"
+      - "sdks/go/piikms/**"
+      - "sdks/go/metaoutbox/**"
+      - "migrations/meta/**"
       - ".github/workflows/domain-db-smoke.yml"
   pull_request:
     branches: ["**"]
     paths:
       - "services/book-service/**"
       - "services/glossary-service/**"
+      - "services/admin-cli/**"
+      - "services/meta-worker/**"
+      - "services/breach-notifier/**"
+      - "services/meta-outbox-relay/**"
+      - "sdks/go/piikms/**"
+      - "sdks/go/metaoutbox/**"
+      - "migrations/meta/**"
       - ".github/workflows/domain-db-smoke.yml"
 
 permissions:
@@ -81,3 +95,73 @@ jobs:
         env:
           GLOSSARY_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_glossary_test?sslmode=disable
         run: go -C services/glossary-service test ./internal/api/... -count=1
+
+  # ── meta / PII-KMS family (added 2026-07-31) ────────────────────────────────
+  # SAME class of gap as the book+glossary one above, found by auditing which skipped
+  # suites any workflow actually runs. 28 Go tests across 6 modules are gated on
+  # PIIKMS_TEST_PG_URL, and **no workflow set it** — so they compiled (the foundation-ci
+  # `go test ./...` module loop covers them) and then skipped, every run, forever.
+  #
+  # What was skipping: PgKEKManager (key-encryption-key destroy/shred/co-tenant
+  # suppression), PII erasure live, admin-cli erasure/archive/migration-status/
+  # projection-drift, meta-worker's user_erased writer, breach-notifier's store +
+  # handler, and the meta-outbox relay's drain/prune. Encryption-key handling, GDPR
+  # erasure and breach notification — the least acceptable surface in the repo to be
+  # "green by skip".
+  #
+  # Their first real execution found one defect (a FIFO-drain test that assumed a fixed
+  # LIMIT would contain its own seeded rows; it does not once sibling suites leave
+  # pending rows in the shared throwaway DB — D-METAOUTBOX-DRAIN-TEST-ISOLATION).
+  #
+  # One database for the whole family on purpose: they SHARE `PIIKMS_TEST_PG_URL` by
+  # design (the piikms/metaoutbox harnesses cross-apply each other's schema), and running
+  # them together is what surfaced the isolation bug a per-module DB would have hidden.
+  meta-db-smoke:
+    name: Meta + PII-KMS DB round-trips
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: loreweave
+          POSTGRES_PASSWORD: loreweave_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loreweave -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25"
+      # Throwaway marker required, same rule as the job above.
+      - name: create throwaway meta database
+        env:
+          PGPASSWORD: loreweave_dev
+        run: |
+          set -euo pipefail
+          psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE loreweave_piikms_test;"
+      # The harnesses self-apply their DDL (migrations/meta/*.up.sql read at runtime),
+      # so an empty database is enough. `-count=1` because a contract/SQL-only edit
+      # leaves the test binary unchanged and would otherwise hit go test's cache.
+      - name: meta + PII-KMS DB round-trips
+        env:
+          PIIKMS_TEST_PG_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_piikms_test?sslmode=disable
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in sdks/go/piikms sdks/go/metaoutbox services/admin-cli \
+                     services/meta-worker services/breach-notifier services/meta-outbox-relay; do
+            echo "::group::$dir"
+            if ! go -C "$dir" test ./... -count=1; then
+              echo "::error::meta db-smoke failed: $dir"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail

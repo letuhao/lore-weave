@@ -25,6 +25,7 @@ from loreweave_llm.models import DoneEvent, ReasoningEvent, StreamRequest, Token
 from app.reasoning import wire_fields
 
 from app.packer.profile import BookProfile, style_directive
+from app.packer.sanitize import sanitize_guide
 
 logger = logging.getLogger(__name__)
 
@@ -278,8 +279,20 @@ def build_messages(
         "If those beats are genuinely finished, stop: ending a little short is correct, "
         "writing beyond your assigned scope is not."
     ) if target_words and target_words > 0 else ""
+    # D-COWRITE-GUIDE-UNSANITIZED (2026-07-31): the SAME `guide` value reaches this
+    # function and `build_pack`. The pack neutralises it into a protected `<guide>`
+    # segment (assemble.py) — and then this wrapper appended the RAW original again,
+    # LAST, which is the strongest position in the prompt for an injection payload.
+    # `sanitize_guide` had exactly ONE call site; the wrapper bypassed it twice (here
+    # and in `build_revise_messages`), so the guard §13 SEC3 describes was defeated on
+    # the live prose path.
+    #
+    # Sanitising here is a no-op for legitimate guidance (it fullwidth-escapes angle
+    # brackets and BRACKETS directive spans rather than deleting them), so the model
+    # reads the same instruction — it just can no longer read a forged `<canon>` tag or
+    # an "ignore previous instructions" as a command.
     user = packed_prompt + "\n\n" + instruction + promise_steer + length_steer + (
-        f"\n\nAuthor guidance: {guide}" if guide else "")
+        f"\n\nAuthor guidance: {sanitize_guide(guide)}" if guide else "")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
@@ -330,7 +343,7 @@ def build_selection_messages(
     parts.append(_SELECTION_INSTRUCTIONS[operation])
     parts.append("SELECTED PASSAGE:\n" + selection)
     if guide:
-        parts.append("Author guidance: " + guide)
+        parts.append("Author guidance: " + sanitize_guide(guide))  # D-COWRITE-GUIDE-UNSANITIZED
     return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(parts)}]
 
 

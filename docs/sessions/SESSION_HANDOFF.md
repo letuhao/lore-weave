@@ -1,5 +1,91 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧱 GENERATION SSOT — the spec was written, red-teamed, and largely FALSIFIED (2026-07-31)
+
+**Read first:** [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md)
+(spec v2) and [`docs/plans/2026-07-31-generation-ssot-RUNSTATE.md`](../plans/2026-07-31-generation-ssot-RUNSTATE.md)
+(commitment · invariants · slice board · decisions · **drift log**). After any compaction,
+re-read the RUN-STATE before anything else.
+
+### The thesis
+Deciding what the story says and writing what the story says are the same problem, and this
+repo solves them with disjoint toolchains sharing only a provider client. ~30 `build_*_messages`
+in one service, 18 LLM callers bypassing the packer, ≥9 finding types, 3 self-heal
+implementations, ~40 flat `max_tokens`, 17+ self-grading call sites across 8 services.
+
+### v1 was scoped from one service and generalised to the repo — a 4-lane cold-start red team
+### falsified it, including **both** claims in the section written to be falsifiable
+- Scope was **4 services**; it is **13 + 6 shared SDKs + Go + Rust**. Counts low ~3x.
+- Two of four stated root causes for the dogfood defect were the **wrong code path**.
+- Four slices would have broken working code (S6 would have made every auto-generate burn
+  k drafts to pick at random; S1's `NO_RULES` would have painted permanent amber on every
+  book where nobody has died).
+- Two red-team findings needed walking back after verification — B4 is internal-token gated
+  (not attacker-selectable) and B5's fail-open was *justified*; the bug was that the
+  justification was fiction. **Do not accept a sub-agent's severity unverified.**
+
+### PHASE 0 — live bugs, fix · live-smoke · seal. **3 of 8 sealed, 5 open.**
+Sealed (each with a gate proven red-able by injecting the defect and restoring **by hand** —
+never `git checkout`, which would discard real edits in the same file):
+
+| id | bug | the red |
+|---|---|---|
+| **B5** | campaign `except DispatchError: owned = True` failed OPEN on an ownership check | `201 Created` on an unverified project |
+| **B2** | `guide` neutralised into the pack, then re-appended **RAW and LAST** by the wrapper (2 sites; `sanitize_guide` had ONE call site) | 3 injection payloads reaching a message body |
+| **B1** | packer still counted with `cl100k_base`, retired repo-wide 2026-07-07 → **VN/CJK books trimmed to 40% of a Latin book's grounding** | `1.98` chars/budget-token (floor 2.4); VN held `42%` of the English pack |
+
+**Still open: B4 · B3 · B6 · B7 · B8** — see the spec's Phase 0 table for each. **B3 is the
+sharpest:** `YamlGuardrail` has **zero production call sites** while `contracts/canon/guardrail_rules.yaml`
+and `docs/standards/README.md:114` both assert it gates every L3 write. It needs a decision
+(wire the crate, or correct both documents), not a patch.
+
+### ROT-0 — the skip audit (author-requested: *"coi chừng degraded bugs"*)
+**41 DB-gated tests had never executed anywhere.** `JOBS_TEST_PG_DSN` and `PIIKMS_TEST_PG_URL`
+were set by **no workflow** — so PgKEKManager, PII erasure, admin-cli erasure/archive/drift,
+meta-worker's erased-writer, breach-notifier and the meta-outbox relay were *green by skip*.
+They compiled (foundation-ci's module loop covers them), and compiling does not check SQL.
+
+Ran all 41 against real Postgres 18 on throwaway DBs: **one real defect**
+(`D-METAOUTBOX-DRAIN-TEST-ISOLATION` — a FIFO-drain test assumed a fixed `LIMIT 10` would
+contain its own seeded rows; with 17 pending it drained ten others, and its map-lookup
+failure message could not distinguish "absent" from "empty"). Fixed. Two CI jobs wired:
+`meta-db-smoke` in `domain-db-smoke.yml`, and `jobs-service` in the `python-integration-tests`
+matrix. Also de-rotted a composition test that had **skipped on every run since it was
+written** (`GrantLevel` has no tier between NONE and VIEW, so its `below` list is always empty).
+
+**The pattern worth carrying forward:** B3, B5 and ROT-0 are one disease — *a guarantee
+asserted in prose with nothing in code behind it.* A comment said it. A standards index said
+it. A workflow's own docstring said it. None were checked mechanically. That is what §S12
+exists for.
+
+### NEW — the LLM call-budget seam ([`sdks/python/loreweave_llm/budget.py`](../../sdks/python/loreweave_llm/budget.py))
+Not "effort enum" and not "max_tokens" — the function producing **both**, because reasoning
+tokens are spent first and drawn from the same allowance. Keyed on **`OutputKind`**
+(prose · structured · verdict · edit), because the kind decides the sizing model *and*
+whether truncation is fatal — a distinction no `max_tokens` literal in the repo records
+(a clipped JSON object is unrecoverable; a clipped scene is merely short).
+
+**Half of this already exists for the other axis:** the chat GUI's `auto` reasoning mode is
+`score_effort(ReasoningSignals)` — real per-call signals. Effort adapts; budget does not.
+So the module is deliberately **mechanism, not policy**, mirroring the SDK/service split that
+`resolve_reasoning` / `score_effort` already use. Note `adaptive` is **taken** —
+`ReasoningControl="adaptive"` means *the model self-orchestrates*; a scored budget policy says
+`source="scored:<name>"`.
+
+97 tests, incl. 80 parametrised checks that it **never undercuts** `scene_output_budget`.
+
+### ▶ NEXT
+1. **Finish Phase 0** — B4 · B3 · B6 · B7 · B8, each fix + gate + live evidence.
+2. **Then the LLM-budget SSOT axis** (author-directed, promoted out of S7): three tiers —
+   SDK kinds+formula (done) · **one call-profile registry per service** (the per-operation
+   knowledge belongs to the service, not the SDK; `_OPERATION_INSTRUCTIONS` / `PASS_REGISTRY`
+   are the precedent) · **an AST gate catching all three forms**: a literal at a call site
+   (~9), an int default in a signature (**~31 — the common form, and the form v1's gate would
+   have greened**), and **absent entirely** (`llm_verifier`, glossary's Go tools, tilemap —
+   and glossary has *zero* `FinishReason` checks service-wide). Go/Rust get a contract file +
+   drift test, not an import. The billing estimator stays OUT: it over-estimates on purpose.
+3. Then Phase 1–3 per spec §6.
+
 ## ◐ `authoring_run_review`: "needs real spend" was MY wrong framing (2026-07-30)
 
 I had parked this family's last two ops behind "requires real spend, the human's call". That

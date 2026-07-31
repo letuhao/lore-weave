@@ -79,6 +79,12 @@ from loreweave_llm.models import (
     VideoGenDataItem,
     VideoGenResult,
 )
+from .budget import (
+    DEFAULT_CEILING,
+    CallBudget,
+    OutputKind,
+    call_budget,
+)
 from .reasoning import (
     ReasoningControl,
     ReasoningDirective,
@@ -110,6 +116,10 @@ __all__ = [
     "ReasoningControl",
     "UserReasoningPref",
     "ReasoningDirective",
+    "CallBudget",
+    "OutputKind",
+    "call_budget",
+    "DEFAULT_CEILING",
     "infer_reasoning_control",
     "bucket_effort",
     "resolve_reasoning",

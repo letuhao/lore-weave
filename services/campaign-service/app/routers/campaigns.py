@@ -169,8 +169,18 @@ async def create_campaign(
 
     # D-CAMPAIGN-KPROJECT-OWNERSHIP: the project is owned by the BOOK OWNER (E0-3
     # projects are book-owner-only), so verify ownership against the book owner — NOT
-    # the caller, who won't own it. A transient knowledge-service error must NOT block
-    # create (the dispatch path re-verifies); only a definitive 404 hard-rejects.
+    # the caller, who won't own it.
+    #
+    # D-CAMPAIGN-OWNERSHIP-FAIL-OPEN (2026-07-31): this used to swallow `DispatchError`
+    # into `owned = True`, justified in a comment by "the dispatch path re-verifies".
+    # **It does not.** `verify_project_owner` has exactly ONE call site — this one — so
+    # the second line of defence the fail-open leaned on was fiction, and a transient
+    # knowledge-service error granted ownership of an arbitrary project.
+    #
+    # An authorization question has no safe default answer. "Could not verify" is not
+    # "verified" — it is 503 + retry, which is a worse UX for a genuine blip and the only
+    # honest outcome. A guarantee asserted in prose and unbacked by code is exactly the
+    # class this cycle exists to kill; see docs/specs/2026-07-31-generation-ssot.md §S12.
     _kc = KnowledgeDispatchClient(
         settings.knowledge_service_internal_url, settings.internal_service_token,
         timeout_s=settings.dispatch_timeout_s,
@@ -178,8 +188,13 @@ async def create_campaign(
     try:
         owned = await _kc.verify_project_owner(
             user_id=book_owner, project_id=str(payload.knowledge_project_id))
-    except DispatchError:
-        owned = True  # transient — don't block create on a knowledge blip
+    except DispatchError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "CAMPAIGN_OWNERSHIP_UNVERIFIABLE",
+                    "message": ("could not verify ownership of knowledge_project_id "
+                                "(knowledge-service unreachable) — retry")},
+        ) from exc
     finally:
         await _kc.aclose()
     if not owned:

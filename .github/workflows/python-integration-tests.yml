@@ -46,6 +46,7 @@ on:
       - "services/composition-service/**"
       - "services/knowledge-service/**"
       - "services/campaign-service/**"
+      - "services/jobs-service/**"
       - "services/lore-enrichment-service/**"
       - "services/chat-service/**"
       - "services/translation-service/**"
@@ -57,6 +58,7 @@ on:
       - "services/composition-service/**"
       - "services/knowledge-service/**"
       - "services/campaign-service/**"
+      - "services/jobs-service/**"
       - "services/lore-enrichment-service/**"
       - "services/chat-service/**"
       - "services/translation-service/**"
@@ -84,6 +86,16 @@ jobs:
             dsn_var: TEST_CAMPAIGN_DB_URL
             db_name: loreweave_campaign_test
             test_path: tests/integration
+            needs_migrate: false
+          # jobs-service (added 2026-07-31). Its 13 DB-gated tests were gated on
+          # JOBS_TEST_PG_DSN, which NO workflow set — the service appears only in
+          # python-unit-tests.yml, which sets no DSN at all. Same "green by skip" class
+          # this whole workflow exists to kill; it was simply missed when the other six
+          # were wired. Verified: all 13 pass against a fresh throwaway DB.
+          - service: jobs-service
+            dsn_var: JOBS_TEST_PG_DSN
+            db_name: loreweave_jobs_test
+            test_path: tests
             needs_migrate: false
           - service: lore-enrichment-service
             dsn_var: TEST_LORE_ENRICHMENT_DB_URL

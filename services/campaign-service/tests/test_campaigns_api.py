@@ -114,6 +114,39 @@ def test_create_project_not_owned_400(client, mocker):
     assert resp.json()["detail"]["code"] == "CAMPAIGN_PROJECT_NOT_FOUND"
 
 
+def test_create_when_ownership_is_unverifiable_does_not_create_503(client, mocker):
+    """D-CAMPAIGN-OWNERSHIP-FAIL-OPEN — an authorization question has no safe default.
+
+    This swallowed `DispatchError` into `owned = True`, and the comment justifying it
+    said "the dispatch path re-verifies". `verify_project_owner` has exactly ONE call
+    site (the create path), so nothing re-verified: a knowledge-service blip granted
+    ownership of an arbitrary project.
+
+    The bug is not the fail-open on its own — it is a fail-open leaning on a guarantee
+    that was asserted in a comment and never existed in code. This test pins the honest
+    outcome: could-not-verify is 503-and-retry, and **no campaign is created**.
+    """
+    from app.clients.dispatch_clients import DispatchError
+
+    _book_stub(mocker)
+    kn = _knowledge_stub(mocker)
+    kn.verify_project_owner = AsyncMock(side_effect=DispatchError("knowledge down"))
+    # Stub the write path exactly as test_create_success does. Without this the
+    # fail-open version crashes on the real repo, and a gate that reds on an unrelated
+    # crash proves nothing — re-stub the downstream and the defect sails through.
+    created = mocker.patch("app.repositories.create_campaign",
+                           new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+
+    resp = client.post("/v1/campaigns", json=_payload())
+
+    assert resp.status_code == 503, resp.text
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_OWNERSHIP_UNVERIFIABLE"
+    # The load-bearing assertion: the security property itself, not the status code.
+    # Under the fail-open this is called and a campaign exists on an unverified project.
+    created.assert_not_called()
+
+
 def test_create_requires_knowledge_project(client, mocker):
     _book_stub(mocker)
     resp = client.post("/v1/campaigns", json=_payload(knowledge_project_id=None))
