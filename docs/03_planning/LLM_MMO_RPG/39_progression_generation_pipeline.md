@@ -211,7 +211,7 @@ gamegen_answer               S2   evidence, not the click
   proposed_text    TEXT NULL                       span FORBIDDEN
   not_stated · not_stated_reason                   closed set
   answer_hash                                      APPEND-ONLY; supersede, never UPDATE
-  UNIQUE (job_id, question_id, target_ref)
+  UNIQUE (job_id, question_id, target_ref) WHERE superseded_by IS NULL   ← PARTIAL
 
 gamegen_creative_structure   S3
   structure_id · job_id · element_kind · content_hash
@@ -236,6 +236,42 @@ gamegen_candidate            S5
   review_status · approved_by · approved_at        ← v1 had NO human at S5 at all
   engine_schema_version · engine_law_version
 ```
+
+#### 3.3.1 What building S0/S2 changed about this sketch
+
+Recorded rather than silently diverged from, because a sketch that no longer matches the DDL is a
+second source of truth. Built in `services/lore-enrichment-service`: `app/db/migrate.py` (DDL),
+`app/gamegen/answer_hash.py`, `app/db/repositories/gamegen.py`.
+
+1. **The `UNIQUE` on `gamegen_answer` had to become PARTIAL.** As written it contradicts the
+   append-only rule one line above it: a superseding answer carries the same
+   `(job_id, question_id, target_ref)` **by definition**, so the plain constraint makes supersession
+   impossible and the only way to correct an answer becomes the `UPDATE` the rule forbids. The
+   constraint that was meant is *exactly one **live** answer per question per target*.
+
+2. **`superseded_by_answer_id` is a DEFERRABLE FK, and that is load-bearing.** With a partial unique
+   index, a supersession must **retire the old answer before inserting the new one** — otherwise the
+   index correctly sees two live answers, which is precisely the instant the chain has two truths.
+   Retiring first means naming an `answer_id` that does not exist yet. (The first implementation did
+   it the other way round and failed here.)
+
+3. **`batch_size` is checked, not merely recorded.** A self-reported count makes T3's *"bulk is
+   visible"* a claim: declaring `batch_size = 1` while approving 24 renders as twenty-four careful
+   individual reviews. A `DEFERRABLE INITIALLY DEFERRED` constraint trigger compares it to the real
+   count at COMMIT — which catches both understating at write time and **adding a decision to a
+   committed batch afterwards**, the second being invisible to any application-level check.
+
+4. **`PGN-A14` is structural before it is implemented.** `gamegen_corpus_seal` exists now, ahead of
+   the verifier that will read it, so that `CHECK (says[] = [] OR verified_against_seal_id IS NOT
+   NULL)` can hold from the first row. A verifier added later has somewhere to record its result; a
+   verifier never added leaves rows that visibly point at an unverified seal, rather than rows that
+   look complete. `PGN-A14`'s **span disjointness** is enforced today, inside a `CHECK`, by an
+   `IMMUTABLE` function — it is the arm that kills citing one span 24 times for 24 tier names.
+
+5. **Two silent-drop paths the sketch did not close**, both reachable through a legal API and both
+   now refused: superseding an answer to a **different question** (which retires that question's only
+   live answer and gives the slot to another), and **sealing another user's corpus** (a seal anyone
+   can mint over anyone's bytes grounds nothing).
 
 ### 3.4 `PGN-A11` — the approval unit is the assertion class, not the row
 
@@ -576,16 +612,16 @@ rows and did not notice. **NOT ENFORCED is now a legal value** — an honest gap
 | # | Property | Mechanism | Status |
 |---|---|---|---|
 | T1 | I can tell what the model invented | two columns, span required/forbidden, DB `CHECK`; **`PGN-A10`** removes the merging stage | ✅ |
-| T1b | a citation supports its claim | live bytes from the **sealed** corpus; quote mismatch = refusal; span disjointness for lists | 🔨 unbuilt (`PGN-A14`) |
+| T1b | a citation supports its claim | live bytes from the **sealed** corpus; quote mismatch = refusal; span disjointness for lists | 🔨 **half built** — span disjointness + the seal requirement are `CHECK`s (S2); the live-byte comparison needs the corpus ingested |
 | T2 | I can tell where a number came from | `(structure_hash, policy_hash)`; no numeric literal in `body_json` | ✅ |
-| T3 | nothing reaches players unreviewed | `gamegen_decision` with `approved_by`; **`batch_id`/`batch_size` make bulk visible**; S3 refuses a batch above a declared size | 🔨 unbuilt |
+| T3 | nothing reaches players unreviewed | `gamegen_decision` with `approved_by`; **`batch_id`/`batch_size` make bulk visible**; S3 refuses a batch above a declared size | 🔨 **half built** — the table, the `approved`⇒`approved_by` `CHECK`, and a DEFERRED trigger that refuses a `batch_size` disagreeing with the real batch count, in either direction. S3's size ceiling needs S3 |
 | T4 | same inputs → same artifact | S3 is a fold; S5 is fixed-point saturating-integer (`PGN-A16`); artifact content-addressed | 🔨 **at risk until `PGN-A16` is built** — see `world-gen` |
 | T5 | a wrong rule is traceable **to a person** | 5 hops + `approved_by` on the decision. v1's chain contained **no human at all** | ✅ |
 | T6 | nothing is silently dropped | **consumption ledger, both directions** (`PGN-A9`) — not a count | ✅ |
 | T7 | a stale verdict cannot launder | version-stamped verdict | 🔨 needs S-1's binary |
 | T8 | the artifact cannot be swapped | `store.get` re-digests the decoded value | ✅ |
 | T9 | approved content survives repair | typed `repair_ops_json`; `Remove`/`Weaken` refuse (`PGN-A17`) | 🔨 unbuilt |
-| T10 | labels exist for every key | load-time coverage refusal (`PGN-A18`) | 🔨 **NOT ENFORCED** |
+| T10 | labels exist for every key | load-time coverage refusal (`PGN-A18`) | ✅ `ruleset-loader::labels` — `admit()` refuses a missing label file, an uncovered kind/tier, and an empty name, each named |
 
 ### 11.1 Limits accepted, stated rather than hidden
 

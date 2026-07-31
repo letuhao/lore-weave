@@ -58,6 +58,73 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S2 — the interrogation tier, and two tenancy holes that owner-filtered reads did not close (2026-07-31)
+
+Doc 39 §3.3's S0/S2 tables, built in `lore-enrichment-service`: `gamegen_corpus_seal`,
+`gamegen_decision` (the approval unit), `gamegen_answer` (the evidence). `1126 passed / 1 skipped`
+against a real Postgres on a throwaway DB. Divergences from the doc's sketch are recorded in its new
+**§3.3.1** rather than left to drift.
+
+**Most of the 46 DB tests write RAW SQL that bypasses the repository, deliberately.** The point of
+putting `PGN-A3`'s split, `PGN-A4`'s closed set, `PGN-A14`'s seal and `PGN-A9`'s append-only rule in
+`CHECK`s and triggers is that a writer skipping the repository still cannot evade them. A suite that
+only drove `GamegenS2Repo` would have proven nothing about that.
+
+**Five corrections to the doc's sketch, each because building it found the reason:**
+
+1. The `UNIQUE (job_id, question_id, target_ref)` had to become **PARTIAL**. It contradicts the
+   append-only rule *one line above it* — a superseding answer carries the same triple by definition.
+2. `superseded_by_answer_id` is a **DEFERRABLE** FK, and that is load-bearing: a supersession must
+   retire the old answer *before* inserting the new one, or the partial index correctly sees two live
+   answers. **The first implementation did it the other way round and the index caught it.**
+3. `batch_size` is **checked, not merely recorded** — a DEFERRED constraint trigger compares it to the
+   real count at COMMIT, catching both understating at write time and *enlarging a committed batch
+   afterwards*, which no application-level check can see.
+4. `PGN-A14` is **structural before it is implemented**: the seal table exists ahead of its verifier so
+   `CHECK (says[] = [] OR seal IS NOT NULL)` holds from row one.
+5. `merkle_root` → **`corpus_digest`**, and both it and `chunk_count` are **derived in the same
+   statement as the insert**. A flat ordered hash shipped as `merkle_root` would promise inclusion
+   proofs that are not there.
+
+**`/review-impl` found what Phase 7 did not — I wrote an adversarial probe instead of reading.**
+Five probes, five holes, all on code reviewed clean minutes earlier:
+
+| Probe | Result on the first implementation |
+|---|---|
+| B creates a decision on A's job | **succeeded** |
+| B attaches an answer to A's *approved* decision | **succeeded** |
+| B reads its own invention back | **`'B INVENTED THIS'` … APPROVED BY `019d5e3c-…`** |
+| A writes its own answer afterwards | **blocked — B had taken the live slot** |
+| a citation to `chunk_id='not-a-uuid-at-all'` | **stored** |
+
+**B's invention wore A's signature.** That is T5 naming the *wrong* person, which is worse than naming
+nobody, because it is confidently false. **Every read already filtered on owner and it did not help —
+the rows themselves were inconsistent.** The fix is a foreign key, not a `WHERE` clause:
+`owner_user_id` is now a column of both composite FKs (`answer → decision`, `decision → job`).
+
+**The span unit was defined nowhere, over a Chinese corpus.** Characters and bytes differ by 3× on
+CJK, so a byte-offset citation would have verified against the wrong substring the moment the corpus
+was ingested — silently, and only for non-ASCII text. Pinned mechanically rather than documented:
+`chunk_id` must be a UUID, and **`length(quote) = end - start`**.
+
+**One deferral written and then withdrawn.** The `merkle_root` gap got a defer row citing *"needs S0's
+canonical chunk encoding"* — then checking showed `source_corpus_chunk` already carries content and
+index. That is the *"missing infrastructure ≠ blocked"* trap in CLAUDE.md, walked into and caught.
+
+**BITE-TESTS (NV-6), six, all restored.** Batch-honesty disabled → understated-batch *and*
+enlarge-later both DID NOT RAISE · append-only reduced to *"is supersession set?"* →
+edit-alongside-supersession DID NOT RAISE · disjointness loop removed → overlapping-spans DID NOT
+RAISE · owner dropped from the FK → cross-tenant answer DID NOT RAISE · unit pin removed →
+byte-offset span DID NOT RAISE · digest from `count()` only → `assert 'd4735e3a…' == '914fcd1d…'`.
+
+**The last bite bit back.** My first attempt to apply it silently did not match the source and the
+tests stayed green. **A bite that does not apply looks exactly like a check that works** — the file
+was checked rather than the green trusted, and the no-op was found.
+
+**▶ NEXT:** S3 — the deterministic fold and its consumption ledger (`PGN-A9`, both directions), then
+S4 the numeric policy (`PGN-A15`, System-tier default narrowed per book). `approved_answers()` is the
+hand-off S3 folds over.
+
 ### ✅ The content pipeline (38) + the progression module (39) — and a red team that found five checks which could not fail (2026-07-30)
 
 **Two new design docs, `CPL-*` and `PGN-*`.** Doc 38 is the tier between a LoreWeave **book** and a
@@ -431,9 +498,10 @@ assertion class. One decision, expanded deterministically by the fold.
 missing path named; moving the contract's fingerprint reds with *"the schema MOVED"*. The first is
 **precisely the case v1 was provably green for**.
 
-**▶ NEXT:** S2 — `gamegen_decision` / `gamegen_answer` (the approval unit and the evidence), then S3
-the deterministic fold with its consumption ledger, then S4 the numeric policy. The brief now has
-something to be a brief FOR.
+**▶ NEXT** *(at the time — S2 is now built; see the 2026-07-31 entry above)***:** S2 —
+`gamegen_decision` / `gamegen_answer` (the approval unit and the evidence), then S3 the deterministic
+fold with its consumption ledger, then S4 the numeric policy. The brief now has something to be a
+brief FOR.
 
 **`PGN-R2` is complete and the hole found evaluating it is closed.** The POC-1 chain now runs
 TOML → table → validator → store → pin → ruleset digest → epoch switch, **with every admission point
