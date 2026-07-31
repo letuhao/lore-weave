@@ -22,6 +22,7 @@ manuscript.
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ from app.eval.defects import DefectClass, Observation
 
 #: The public gateway. Everything goes through it — the platform's gateway invariant applies
 #: to an eval as much as to a feature.
-GATEWAY = "http://localhost:3123"
+GATEWAY = os.environ.get("EVAL_GATEWAY", "http://localhost:3123")
 
 Variant = str  # "seeded" | "control"
 
@@ -84,6 +85,20 @@ def login(email: str, password: str) -> str:
     return _req("POST", "/v1/auth/login", body={"email": email, "password": password})["access_token"]
 
 
+def _project(result: dict, keys: tuple[str, ...]) -> dict:
+    """Copy only the keys the result ACTUALLY carries.
+
+    Building the observation with `r.get(k)` inserts every key with a None value, which
+    defeats the suite's missing-field guard: the key is present, so `observe` does not raise
+    ERROR, and the detector then reads `int(None or 0)` and goes QUIET — scoring as "the
+    engine did not have this defect" when the engine reported nothing at all.
+
+    That is the same false-negative-dressed-as-a-finding class the blindness handling exists
+    for, reintroduced one layer out. A key the result omits must stay omitted.
+    """
+    return {k: result[k] for k in keys if k in result}
+
+
 @dataclass
 class LiveDriver:
     """Drives the real engine through the public gateway, on a fresh throwaway book per run.
@@ -97,6 +112,10 @@ class LiveDriver:
     token: str
     model_ref: str
     language: str = "vi"
+    #: A local-model scene draft takes ~10-60s; the ceiling is generous because a TIMEOUT is
+    #: reported as a failed Observation (ERROR), never as a quiet detector.
+    job_timeout_s: float = 600.0
+    poll_interval_s: float = 4.0
 
     def _throwaway_work(self, label: str) -> tuple[str, str, str]:
         """(book_id, chapter_id, project_id) — a book that exists only for this scenario."""
@@ -109,19 +128,60 @@ class LiveDriver:
         project = _req("POST", f"/v1/composition/books/{book}/work", self.token)["project_id"]
         return book, chapter, project
 
-    def _draft(self, project: str, node: str) -> dict:
-        return _req("POST", f"/v1/composition/works/{project}/generate", self.token,
-                    {"outline_node_id": node, "model_source": "user_model",
-                     "model_ref": self.model_ref, "operation": "draft_scene",
-                     "mode": "auto", "reasoning": "off"})
+    def _draft(self, project: str, node: str, *, max_output_tokens: int | None = None) -> dict:
+        """Start a draft and return the JOB RESULT — not the POST response.
+
+        `mode:"auto"` ENQUEUES: the POST answers 202 with `{job_id, status:"pending"}` and the
+        draft lands on the job row. Reading fields off that immediate response yields None for
+        everything, which the suite scores as ERROR for every class.
+
+        `scripts/eval_a2_canon.py` does exactly that — it reads `canon` off the POST — so the
+        one pre-existing seeded harness reports "did not detect the seeded contradiction" for a
+        reason that has nothing to do with canon. This function exists in this shape so the
+        replacement does not inherit the bug it was written to replace.
+        """
+        body: dict[str, Any] = {
+            "outline_node_id": node, "model_source": "user_model",
+            "model_ref": self.model_ref, "operation": "draft_scene",
+            "mode": "auto", "reasoning": "off",
+        }
+        if max_output_tokens is not None:
+            body["max_output_tokens"] = max_output_tokens
+        posted = _req("POST", f"/v1/composition/works/{project}/generate", self.token, body)
+        job_id = posted.get("job_id")
+        if not job_id:
+            raise RuntimeError(f"generate returned no job_id: {posted}")
+        # An inline/replay response already carries the result.
+        if posted.get("status") == "completed":
+            return posted
+        return self._await_job(job_id)
+
+    def _await_job(self, job_id: str) -> dict:
+        deadline = time.time() + self.job_timeout_s
+        last = "pending"
+        while time.time() < deadline:
+            time.sleep(self.poll_interval_s)
+            job = _req("GET", f"/v1/composition/jobs/{job_id}", self.token, timeout=60)
+            last = job.get("status") or last
+            if last in ("completed", "failed", "cancelled"):
+                if last != "completed":
+                    raise RuntimeError(f"job {job_id} ended {last}: {(job.get('result') or {})}")
+                return job.get("result") or {}
+        raise TimeoutError(f"job {job_id} still {last} after {self.job_timeout_s}s")
 
     # ── per-class seeding ────────────────────────────────────────────────────────────────
 
     def _length(self, variant: Variant) -> Observation:
-        """Seeded = a 900-word Vietnamese target (the measured Mị Đế case); control = 200,
-        comfortably inside any budget. Same scene, same model — only the ask differs, which
-        is what makes the control a control."""
-        target = 900 if variant == "seeded" else 200
+        """Seeded = a 1500-word Vietnamese target; control = 500.
+
+        The control is NOT "a target comfortably met" — measured 2026-07-31, the model writes
+        ~500-670 words whatever you ask for (200→565, 400→673, 900→497, 900→625, 1500→559),
+        so it overshoots a small target by 2.8x. 500 is picked to sit ON the observed natural
+        output, which makes the detector quiet WITHOUT the directive having been obeyed. That
+        is a coincidence standing in for a control, and the registry row says so — see
+        `defects.py::length_directive_ignored`.
+        """
+        target = 1500 if variant == "seeded" else 500
         _book, chapter, project = self._throwaway_work(f"length-{variant}")
         node = _req("POST", f"/v1/composition/works/{project}/outline/nodes", self.token,
                     {"kind": "scene", "chapter_id": chapter, "title": f"length {variant}",
@@ -129,25 +189,31 @@ class LiveDriver:
                                  "gác cổng và đòi được vào trong.",
                      "target_words": target, "story_order": 1})["id"]
         r = self._draft(project, node)
-        return Observation(fields={
-            "target_words": r.get("target_words"),
-            "actual_words": r.get("actual_words"),
-            "word_count_method": r.get("word_count_method"),
-        }, note=f"target={target}")
+        return Observation(
+            fields=_project(r, ("target_words", "actual_words", "word_count_method")),
+            note=f"target={target}")
 
     def _truncation(self, variant: Variant) -> Observation:
-        """Seeded = a target far beyond the scene budget's ceiling, so the wire clips;
-        control = a modest one. Reads `finish_reason`, which the generate response already
-        carried before this package existed."""
-        target = 20000 if variant == "seeded" else 200
+        """Seeded = a hard output CAP the draft cannot fit in; control = ample room.
+
+        The cap is `max_output_tokens`, NOT a large `target_words`. The first version of this
+        used `target_words=20000` to "ask for more than fits" — which the very measurement in
+        this package disproves: output is ~580 words regardless of the target across a 7.5x
+        range, so a big target produces no more text and therefore never clips. A seeding
+        recipe built on a lever that does not move is a class that can never fire.
+
+        `max_output_tokens` is a real lever: it rides to the wire as the request's cap, and
+        `eval_a2_canon.py` already uses it to bound its runs.
+        """
+        cap = 64 if variant == "seeded" else 4096
         _book, chapter, project = self._throwaway_work(f"trunc-{variant}")
         node = _req("POST", f"/v1/composition/works/{project}/outline/nodes", self.token,
                     {"kind": "scene", "chapter_id": chapter, "title": f"trunc {variant}",
                      "synopsis": "Một trận chiến dài giữa hai đạo quân trên cánh đồng tuyết.",
-                     "target_words": target, "story_order": 1})["id"]
-        r = self._draft(project, node)
-        return Observation(fields={"finish_reason": r.get("finish_reason")},
-                           note=f"target={target}")
+                     "target_words": 800, "story_order": 1})["id"]
+        r = self._draft(project, node, max_output_tokens=cap)
+        return Observation(fields=_project(r, ("finish_reason",)),
+                           note=f"max_output_tokens={cap}")
 
     #: code → seeding function. A class absent here is NOT driveable yet, and says so.
     def _seeders(self) -> dict[str, Any]:
