@@ -35,6 +35,7 @@ def cited(**kw) -> AnswerEvidence:
     base = dict(
         question_id="q_tier_count",
         target_ref="kind:internal_energy",
+        value="stage",
         says=(Citation(CHUNK_A, 10, 16, "內功分為九層"),),
         proposed_text=None,
         not_stated=False,
@@ -49,6 +50,7 @@ def silent(**kw) -> AnswerEvidence:
     base = dict(
         question_id="q_cap_rule",
         target_ref="kind:comprehension",
+        value=None,
         says=(),
         proposed_text=None,
         not_stated=True,
@@ -245,6 +247,7 @@ def test_the_hash_ignores_nothing_it_claims_to_cover() -> None:
     h0 = answer_hash(base)
     mutations = {
         "question_id": {"question_id": "q_other"},
+        "value": {"value": "attribute"},
         "target_ref": {"target_ref": "kind:swordsmanship"},
         "says": {"says": (Citation(CHUNK_A, 10, 16, "內功分為八層"),)},
         "proposed_text": {"proposed_text": "a different proposal"},

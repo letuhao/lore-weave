@@ -273,6 +273,15 @@ second source of truth. Built in `services/lore-enrichment-service`: `app/db/mig
    live answer and gives the slot to another), and **sealing another user's corpus** (a seal anyone
    can mint over anyone's bytes grounds nothing).
 
+6. **`gamegen_answer` needed a sixth column: `value_json`, the ANSWER as a structured value.**
+   Building S3 is what showed why. With only `says_json` and `proposed_text`, the fold would have to
+   *read* `"I'd call it a staged ladder"* and decide that means `ProgressionType::Stage` — **a model
+   at consolidation, which is precisely the stage `PGN-A10` exists to remove.** So the value is
+   resolved at S2, under the human signature, and S3 stays a pure fold over settled values. This does
+   **not** re-merge `PGN-A3`'s two halves: provenance stays exact and derivable — `says[]` non-empty
+   means EXTRACTED with a span behind it, `says[]` empty with `proposed_text` means INVENTED. A
+   `CHECK` makes value and silence exclusive and exhaustive: `(value_json IS NULL) = not_stated`.
+
 ### 3.4 `PGN-A11` — the approval unit is the assertion class, not the row
 
 The POC's honest row count is **121**, not v1's claimed few hundred — and 121 rows is not 121
@@ -613,11 +622,11 @@ rows and did not notice. **NOT ENFORCED is now a legal value** — an honest gap
 |---|---|---|---|
 | T1 | I can tell what the model invented | two columns, span required/forbidden, DB `CHECK`; **`PGN-A10`** removes the merging stage | ✅ |
 | T1b | a citation supports its claim | live bytes from the **sealed** corpus; quote mismatch = refusal; span disjointness for lists | 🔨 **half built** — span disjointness + the seal requirement are `CHECK`s (S2); the live-byte comparison needs the corpus ingested |
-| T2 | I can tell where a number came from | `(structure_hash, policy_hash)`; no numeric literal in `body_json` | ✅ |
-| T3 | nothing reaches players unreviewed | `gamegen_decision` with `approved_by`; **`batch_id`/`batch_size` make bulk visible**; S3 refuses a batch above a declared size | 🔨 **half built** — the table, the `approved`⇒`approved_by` `CHECK`, and a DEFERRED trigger that refuses a `batch_size` disagreeing with the real batch count, in either direction. S3's size ceiling needs S3 |
-| T4 | same inputs → same artifact | S3 is a fold; S5 is fixed-point saturating-integer (`PGN-A16`); artifact content-addressed | 🔨 **at risk until `PGN-A16` is built** — see `world-gen` |
+| T2 | I can tell where a number came from | `(structure_hash, policy_hash)`; no numeric literal in `body_json` | ✅ `assert_no_magnitude_leaked` walks the folded structure and refuses any number outside `{tier_index, tier_count, initial_tier, kind_count}` **by pointer** |
+| T3 | nothing reaches players unreviewed | `gamegen_decision` with `approved_by`; **`batch_id`/`batch_size` make bulk visible**; S3 refuses a batch above a declared size | ✅ the table, the `approved`⇒`approved_by` `CHECK`, a DEFERRED trigger refusing a `batch_size` that disagrees with the real count *in either direction*, and `fold(max_batch_size=…)` refusing the whole run above the ceiling. S3 folds `approved_answers`, never `live_answers` |
+| T4 | same inputs → same artifact | S3 is a fold; S5 is fixed-point saturating-integer (`PGN-A16`); artifact content-addressed | 🔨 **S3 half done** — the fold is pure and its output content-addressed (`uq_gamegen_structure`, re-folding is a no-op). S5 still at risk until `PGN-A16` is built — see `world-gen` |
 | T5 | a wrong rule is traceable **to a person** | 5 hops + `approved_by` on the decision. v1's chain contained **no human at all** | ✅ |
-| T6 | nothing is silently dropped | **consumption ledger, both directions** (`PGN-A9`) — not a count | ✅ |
+| T6 | nothing is silently dropped | **consumption ledger, both directions** (`PGN-A9`) — not a count | ✅ enforced twice: `fold()` refuses an unconsumed approved answer, and `gamegen_ledger_is_total` re-checks it as a `CHECK` so a row not written by the fold cannot carry a ledger nobody verified |
 | T7 | a stale verdict cannot launder | version-stamped verdict | 🔨 needs S-1's binary |
 | T8 | the artifact cannot be swapped | `store.get` re-digests the decoded value | ✅ |
 | T9 | approved content survives repair | typed `repair_ops_json`; `Remove`/`Weaken` refuse (`PGN-A17`) | 🔨 unbuilt |

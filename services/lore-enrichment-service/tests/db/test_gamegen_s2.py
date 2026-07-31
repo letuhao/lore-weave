@@ -81,6 +81,7 @@ def _cited(seal: UUID, **kw) -> AnswerEvidence:
     base = dict(
         question_id="q_tier_count",
         target_ref="kind:internal_energy",
+        value="stage",
         # 6 CHARACTERS, span 6 wide. In UTF-8 these are 18 bytes — the check that
         # `len(quote) == end - start` is what makes that distinction load-bearing
         # instead of a comment.
@@ -101,6 +102,8 @@ async def _raw_answer(pool, *, decision_id, job_id, **overrides):
         question_id="q_raw",
         target_ref="kind:internal_energy",
         says_json="[]",
+        # value XOR silence: a raw row that is not `not_stated` must carry one.
+        value_json='"stage"',
         proposed_text="something",
         verified_against_seal_id=None,
         not_stated=False,
@@ -108,18 +111,21 @@ async def _raw_answer(pool, *, decision_id, job_id, **overrides):
         answer_hash="b" * 64,
     )
     row.update(overrides)
+    if row["not_stated"] and "value_json" not in overrides:
+        row["value_json"] = None
     async with pool.acquire() as c:
         return await c.fetchval(
             """
             INSERT INTO gamegen_answer
               (decision_id, job_id, owner_user_id, book_id, question_id, target_ref,
-               says_json, proposed_text, verified_against_seal_id,
+               says_json, value_json, proposed_text, verified_against_seal_id,
                not_stated, not_stated_reason, answer_hash, created_by)
-            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$3)
+            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$3)
             RETURNING answer_id
             """,
             decision_id, job_id, OWNER, BOOK, row["question_id"], row["target_ref"],
-            row["says_json"], row["proposed_text"], row["verified_against_seal_id"],
+            row["says_json"], row["value_json"], row["proposed_text"],
+            row["verified_against_seal_id"],
             row["not_stated"], row["not_stated_reason"], row["answer_hash"],
         )
 
@@ -144,11 +150,17 @@ async def test_the_gamegen_tier_survives_a_down_up_roundtrip(pool):
             r["proname"]
             for r in await c.fetch("SELECT proname FROM pg_proc WHERE proname LIKE 'gamegen%'")
         }
-    assert tables == {"gamegen_corpus_seal", "gamegen_decision", "gamegen_answer"}
+    assert tables == {
+        "gamegen_corpus_seal",
+        "gamegen_decision",
+        "gamegen_answer",
+        "gamegen_creative_structure",
+    }
     assert funcs == {
         "gamegen_says_wellformed",
         "gamegen_answer_append_only",
         "gamegen_decision_batch_honest",
+        "gamegen_ledger_is_total",
     }
 
 
@@ -453,7 +465,7 @@ async def test_not_stated_ratio_is_reported_per_question_class(pool):
         decision_id=d_mag, job_id=job_id, owner_user_id=OWNER, book_id=BOOK,
         created_by=OWNER,
         evidence=AnswerEvidence(
-            question_id="q_max", target_ref="kind:ie", says=(), proposed_text=None,
+            question_id="q_max", target_ref="kind:ie", value=None, says=(), proposed_text=None,
             not_stated=True, not_stated_reason="absent_from_corpus",
             verified_against_seal_id=None,
         ),
@@ -726,9 +738,9 @@ async def test_an_answer_cannot_hang_off_another_users_decision(pool):
         async with pool.acquire() as c:
             await c.execute(
                 "INSERT INTO gamegen_answer (decision_id, job_id, owner_user_id, book_id, "
-                "question_id, target_ref, says_json, proposed_text, not_stated, "
-                "answer_hash, created_by) "
-                "VALUES ($1,$2,$3,$4,'q','kind:internal_energy','[]'::jsonb,"
+                "question_id, target_ref, says_json, value_json, proposed_text, "
+                "not_stated, answer_hash, created_by) "
+                "VALUES ($1,$2,$3,$4,'q','kind:internal_energy','[]'::jsonb,'\"x\"'::jsonb,"
                 "'B INVENTED THIS',false,$5,$3)",
                 d, job_id, OTHER_OWNER, BOOK, "b" * 64,
             )

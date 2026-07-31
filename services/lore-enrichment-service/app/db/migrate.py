@@ -960,6 +960,23 @@ CREATE TABLE IF NOT EXISTS gamegen_answer (
   says_json      JSONB NOT NULL DEFAULT '[]'::jsonb,
   proposed_text  TEXT,
 
+  -- The ANSWER, as a structured value. `says_json`/`proposed_text` are why it is
+  -- the answer; this is the answer.
+  --
+  -- Doc 39's sketch has only the two evidence columns, and building S3 showed why
+  -- that cannot work: with nothing but prose, the fold would have to READ
+  -- `proposed_text` and decide that "I'd call it a staged ladder" means
+  -- `ProgressionType::Stage` - a model at consolidation, which `PGN-A10` exists to
+  -- remove. So the interrogation stage resolves the value, under the human
+  -- signature, and S3 stays a pure fold over settled values.
+  --
+  -- This does NOT re-merge `PGN-A3`'s two halves. Provenance is still exact and
+  -- still derivable: says[] non-empty means the value is EXTRACTED and a span
+  -- supports it; says[] empty with proposed_text means it was INVENTED. What
+  -- changes is only that the fold no longer has to infer the value from the
+  -- evidence.
+  value_json     JSONB,
+
   -- PGN-A14 made structural. See gamegen_corpus_seal above.
   verified_against_seal_id UUID REFERENCES gamegen_corpus_seal(seal_id) ON DELETE RESTRICT,
 
@@ -1015,6 +1032,12 @@ CREATE TABLE IF NOT EXISTS gamegen_answer (
   -- consumption ledger would faithfully record that it was consumed.
   CONSTRAINT gamegen_answer_says_something CHECK (
     not_stated OR jsonb_array_length(says_json) > 0 OR proposed_text IS NOT NULL
+  ),
+  -- The value and the silence are exclusive and exhaustive. An answer with
+  -- neither is one S3 must fold and has nothing to fold; an answer with both
+  -- says "the book does not say" and then says what it says.
+  CONSTRAINT gamegen_answer_value_xor_silence CHECK (
+    (value_json IS NULL) = not_stated
   ),
   -- PGN-A4: not_stated is exclusive and carries its reason from the closed set.
   CONSTRAINT gamegen_answer_not_stated_shape CHECK (
@@ -1102,6 +1125,7 @@ BEGIN
      OR NEW.target_ref    IS DISTINCT FROM OLD.target_ref
      OR NEW.says_json     IS DISTINCT FROM OLD.says_json
      OR NEW.proposed_text IS DISTINCT FROM OLD.proposed_text
+     OR NEW.value_json    IS DISTINCT FROM OLD.value_json
      OR NEW.verified_against_seal_id IS DISTINCT FROM OLD.verified_against_seal_id
      OR NEW.not_stated        IS DISTINCT FROM OLD.not_stated
      OR NEW.not_stated_reason IS DISTINCT FROM OLD.not_stated_reason
@@ -1123,6 +1147,81 @@ DROP TRIGGER IF EXISTS trg_gamegen_answer_append_only ON gamegen_answer;
 CREATE TRIGGER trg_gamegen_answer_append_only
   BEFORE UPDATE OR DELETE ON gamegen_answer
   FOR EACH ROW EXECUTE FUNCTION gamegen_answer_append_only();
+
+-- ── gamegen_creative_structure (S3) — the fold's output, at rest ────────────
+-- PGN-A9's ledger is enforced by `fold()` in memory. It is enforced AGAIN here
+-- because the fold is a function and a table is a place: a row written by
+-- anything else - a backfill, a repair script, a future S3b - would otherwise
+-- carry a ledger nobody checked. The same reason the S2 invariants are CHECKs.
+CREATE OR REPLACE FUNCTION gamegen_ledger_is_total(consumption JSONB, refs JSONB)
+RETURNS BOOLEAN
+LANGUAGE plpgsql IMMUTABLE
+AS $ledger_fn$
+DECLARE
+  e JSONB;
+  i INT;
+BEGIN
+  IF jsonb_typeof(consumption) <> 'object' OR jsonb_typeof(refs) <> 'array' THEN
+    RETURN FALSE;
+  END IF;
+  IF jsonb_array_length(refs) = 0 THEN
+    RETURN FALSE;  -- a structure folded from no answers is authored by nobody
+  END IF;
+  -- every ref is [answer_id, answer_hash] and appears in the consumption map
+  -- with at least one pointer
+  FOR i IN 0 .. jsonb_array_length(refs) - 1 LOOP
+    e := refs -> i;
+    IF jsonb_typeof(e) <> 'array' OR jsonb_array_length(e) <> 2 THEN RETURN FALSE; END IF;
+    IF (e ->> 1) !~ '^[0-9a-f]{64}$' THEN RETURN FALSE; END IF;  -- hash-linked
+    IF NOT (consumption ? (e ->> 0)) THEN RETURN FALSE; END IF;
+    IF jsonb_typeof(consumption -> (e ->> 0)) <> 'array'
+       OR jsonb_array_length(consumption -> (e ->> 0)) = 0 THEN
+      RETURN FALSE;
+    END IF;
+  END LOOP;
+  -- and the other direction: no consumed answer without a hash-linked ref, which
+  -- is how an answer could be recorded as consumed while nothing pins WHICH
+  -- version of it was.
+  IF (SELECT count(*) FROM jsonb_object_keys(consumption)) <> jsonb_array_length(refs) THEN
+    RETURN FALSE;
+  END IF;
+  RETURN TRUE;
+END
+$ledger_fn$;
+
+CREATE TABLE IF NOT EXISTS gamegen_creative_structure (
+  structure_id   UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id         UUID NOT NULL,
+  owner_user_id  UUID NOT NULL,
+  book_id        UUID,
+  element_kind   TEXT NOT NULL,
+  -- The engine schema the brief was asserted total against
+  -- (contracts/progression-schema.json). Carried so a structure folded under one
+  -- schema is not silently consumed under another; S1's brief lives in a file, so
+  -- there is no brief_id to reference yet.
+  schema_fingerprint TEXT NOT NULL,
+  content_hash   TEXT NOT NULL,
+  body_json      JSONB NOT NULL,
+  consumption_json JSONB NOT NULL,
+  answer_refs_json JSONB NOT NULL,
+  approved_by    UUID,
+  approved_at    TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by     UUID NOT NULL,
+
+  CONSTRAINT gamegen_structure_job_fk
+    FOREIGN KEY (job_id, owner_user_id)
+    REFERENCES enrichment_job(job_id, user_id) ON DELETE CASCADE,
+  CONSTRAINT gamegen_structure_hash_hex CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT gamegen_structure_ledger_total
+    CHECK (gamegen_ledger_is_total(consumption_json, answer_refs_json)),
+  -- Content-addressed within a job: re-folding the SAME answers is a no-op, and a
+  -- second row for the same hash would make "which structure did S5 read" a
+  -- question with two answers.
+  CONSTRAINT uq_gamegen_structure UNIQUE (job_id, element_kind, content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_gamegen_structure_scope
+  ON gamegen_creative_structure(owner_user_id, book_id);
 
 -- ── batch_size honesty (T3) ─────────────────────────────────────────────────
 -- DEFERRABLE INITIALLY DEFERRED, because a batch is written one row at a time:
@@ -1183,6 +1282,8 @@ CREATE CONSTRAINT TRIGGER trg_gamegen_decision_batch_honest
 DOWN_DDL = """
 DROP TRIGGER IF EXISTS trg_gamegen_answer_append_only ON gamegen_answer;
 DROP TRIGGER IF EXISTS trg_gamegen_decision_batch_honest ON gamegen_decision;
+DROP TABLE IF EXISTS gamegen_creative_structure;
+DROP FUNCTION IF EXISTS gamegen_ledger_is_total(JSONB, JSONB);
 DROP TABLE IF EXISTS gamegen_answer;
 DROP TABLE IF EXISTS gamegen_decision;
 DROP TABLE IF EXISTS gamegen_corpus_seal;

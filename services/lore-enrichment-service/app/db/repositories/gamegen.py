@@ -30,11 +30,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Sequence
+from typing import Mapping, Sequence
 from uuid import UUID, uuid4
 
 import asyncpg
 
+from app.gamegen.fold import ApprovedAnswer, FoldRefusal, fold
 from app.gamegen.answer_hash import (
     AnswerEvidence,
     AnswerShapeError,
@@ -75,6 +76,7 @@ class Answer:
     job_id: UUID
     question_id: str
     target_ref: str
+    value: object
     says: list[dict]
     proposed_text: str | None
     not_stated: bool
@@ -353,14 +355,16 @@ class GamegenS2Repo:
                     """
                     INSERT INTO gamegen_answer
                       (answer_id, decision_id, job_id, owner_user_id, book_id,
-                       question_id, target_ref, says_json, proposed_text,
+                       question_id, target_ref, says_json, value_json, proposed_text,
                        verified_against_seal_id, not_stated, not_stated_reason,
                        answer_hash, created_by)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15)
                     """,
                     new_id, decision_id, job_id, owner_user_id, book_id,
                     evidence.question_id, evidence.target_ref,
                     json.dumps(says_json(evidence.says), ensure_ascii=False),
+                    None if evidence.value is None
+                    else json.dumps(evidence.value, ensure_ascii=False),
                     evidence.proposed_text,
                     UUID(evidence.verified_against_seal_id)
                     if evidence.verified_against_seal_id else None,
@@ -370,7 +374,7 @@ class GamegenS2Repo:
 
     _SELECT_LIVE = """
         SELECT a.answer_id, a.decision_id, a.job_id, a.question_id, a.target_ref,
-               a.says_json, a.proposed_text, a.not_stated, a.not_stated_reason,
+               a.says_json, a.value_json, a.proposed_text, a.not_stated, a.not_stated_reason,
                a.answer_hash, a.verified_against_seal_id, a.superseded_by_answer_id
           FROM gamegen_answer a
           JOIN gamegen_decision d ON d.decision_id = a.decision_id
@@ -388,6 +392,7 @@ class GamegenS2Repo:
                 job_id=r["job_id"],
                 question_id=r["question_id"],
                 target_ref=r["target_ref"],
+                value=None if r["value_json"] is None else json.loads(r["value_json"]),
                 says=json.loads(r["says_json"]),
                 proposed_text=r["proposed_text"],
                 not_stated=r["not_stated"],
@@ -446,3 +451,96 @@ class GamegenS2Repo:
                 job_id, owner_user_id,
             )
         return {r["question_class"]: (r["silent"], r["total"]) for r in rows}
+
+    # ── S3: the fold, persisted ─────────────────────────────────────────────
+
+    async def fold_and_store(
+        self,
+        *,
+        job_id: UUID,
+        owner_user_id: UUID,
+        book_id: UUID | None,
+        element_kind: str,
+        created_by: UUID,
+        schema_fingerprint: str,
+        question_paths: Mapping[str, str],
+        max_batch_size: int | None = None,
+    ) -> tuple[UUID, str]:
+        """Fold this job's APPROVED answers and store the result.
+
+        One call, not two, and that is the design: a ``store_structure`` taking a
+        caller-built body would let a structure reach S5 without passing the
+        ledger, the magnitude guard, or the density rule — every property S3 has
+        lives in :func:`~app.gamegen.fold.fold`, so anything that can write the
+        table without calling it is a way around all of them at once.
+
+        ``question_paths`` maps ``question_id -> schema path`` and comes from the
+        brief (``load_brief``). The path is deliberately NOT read off the answer
+        row: the answer knows which question it answers, and the brief is the only
+        thing that decides where that question's answer belongs. Carrying the path
+        on the answer would let two answers to one question claim two positions.
+
+        Returns ``(structure_id, content_hash)``. Re-folding unchanged answers
+        returns the existing row — the structure is content-addressed within the
+        job, so an identical fold is a no-op rather than a second row that makes
+        *"which structure did S5 read"* a question with two answers.
+        """
+        answers = await self.approved_answers(job_id=job_id, owner_user_id=owner_user_id)
+        batch_sizes = await self._batch_sizes(job_id=job_id, owner_user_id=owner_user_id)
+
+        unknown = sorted({a.question_id for a in answers} - set(question_paths))
+        if unknown:
+            raise FoldRefusal(
+                f"approved answers reference question(s) {unknown} that this brief does "
+                f"not define. The brief is version-pinned by schema_fingerprint "
+                f"{schema_fingerprint[:12]}…; folding them against a brief that never "
+                f"asked would place an answer at a position nobody chose."
+            )
+
+        structure = fold(
+            element_kind=element_kind,
+            answers=[
+                ApprovedAnswer(
+                    answer_id=str(a.answer_id),
+                    answer_hash=a.answer_hash,
+                    question_id=a.question_id,
+                    question_path=question_paths[a.question_id],
+                    target_ref=a.target_ref,
+                    value=a.value,
+                    not_stated=a.not_stated,
+                    not_stated_reason=a.not_stated_reason,
+                )
+                for a in answers
+            ],
+            max_batch_size=max_batch_size,
+            batch_sizes=batch_sizes,
+        )
+
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO gamegen_creative_structure
+                  (job_id, owner_user_id, book_id, element_kind, schema_fingerprint,
+                   content_hash, body_json, consumption_json, answer_refs_json, created_by)
+                VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10)
+                ON CONFLICT (job_id, element_kind, content_hash) DO UPDATE
+                  SET job_id = EXCLUDED.job_id  -- no-op; forces RETURNING
+                RETURNING structure_id
+                """,
+                job_id, owner_user_id, book_id, element_kind, schema_fingerprint,
+                structure.content_hash,
+                json.dumps(structure.body, ensure_ascii=False),
+                json.dumps(structure.consumption, ensure_ascii=False),
+                json.dumps([list(r) for r in structure.answer_refs], ensure_ascii=False),
+                created_by,
+            )
+        return row["structure_id"], structure.content_hash
+
+    async def _batch_sizes(self, *, job_id: UUID, owner_user_id: UUID) -> list[int]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT batch_id, batch_size FROM gamegen_decision "
+                "WHERE job_id=$1 AND owner_user_id=$2 AND batch_id IS NOT NULL",
+                job_id, owner_user_id,
+            )
+        return [r["batch_size"] for r in rows]

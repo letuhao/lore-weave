@@ -58,6 +58,54 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S3 — the fold, and a bite-test that found a hole instead of confirming one (2026-07-31)
+
+Doc 39 §5, in `app/gamegen/fold.py` + `gamegen_creative_structure`. **1171 passed / 1 skipped.**
+Deterministic, dense, accountable both directions — the three properties v1 asserted and none of
+which it had.
+
+**A sixth correction to doc 39's sketch, and building S3 is what surfaced it.** `gamegen_answer`
+needed a **`value_json`**: the answer as a structured value. With only `says_json` and
+`proposed_text`, the fold would have to *read* *"I'd call it a staged ladder"* and decide that means
+`ProgressionType::Stage` — **a model at consolidation, which is precisely the stage `PGN-A10` exists
+to remove.** So the value is resolved at S2 under the human signature and S3 stays a pure fold. This
+does **not** re-merge `PGN-A3`: `says[]` non-empty ⇒ EXTRACTED with a span behind it; `says[]` empty
+with `proposed_text` ⇒ INVENTED. `CHECK ((value_json IS NULL) = not_stated)`.
+
+**Dense, and the reason the number matters:** v1's sparse `{tier_count: 24}` made S5 synthesise
+**132 required values from one integer**, of which exactly one had a policy path. Every leaf is now a
+cell carrying its `answer_id`, and a cell is one of three things — `value`, `not_stated` (`PGN-A4`),
+or **`refused`** (`PGN-A20`), which is how 寒潭 stays visible: *"refused — requires the place element
+module"*, named with its owner, **consumed rather than dropped**.
+
+**Two non-vacuity guards fired unprompted, mid-build.** Adding `value` to `AnswerEvidence` reddened
+`assert_fields_are_partitioned` (*"neither in HASHED_FIELDS nor UNHASHED_FIELDS"*) and then the
+hash-mutation sweep (*"a field was added with no mutation here, so nothing proves the hash reads
+it"*). Neither was anticipated by the edit; both are `NV-3` guards written in the previous slice
+catching their own author a slice later.
+
+**BITE F found a hole rather than confirming one — the most useful result of the day.** Removing the
+membership arm from `gamegen_ledger_is_total` left the suite **GREEN**. Both existing ledger tests
+happened to change the *cardinality*, so the count check masked the arm entirely. The missing case is
+`consumption={a1,a3}` against `refs=[a1,a2]`: **both directions broken at once and the counts agree.**
+That is `PGN-A9`'s own thesis arriving one tier down — *rows-in equals rows-out while a leaf
+vanishes* — in the check written to enforce it. Test added, re-bitten, reds.
+
+**Other bites, restored:** forward ledger removed → unconsumed-answer DID NOT RAISE · magnitude guard
+disabled → planted `tier_max: 500` and a nested `soft_cap` both DID NOT RAISE.
+
+**One honest downgrade.** The fold's RFC 6901 escaping has **no live subject**: kinds are an array, so
+a kind reaches a pointer as its *index*, never as its author-supplied id. My first test asserted the
+escape through `fold()` and was green for that reason. It now tests `_pointer` directly and asserts
+the property that actually holds — `NV-3` recorded rather than papered over.
+
+Trust table: **T2, T3, T6 → built** with mechanisms named; **T4 → half** (the fold is pure and
+content-addressed; S5 still needs `PGN-A16`).
+
+**▶ NEXT:** S4 — the numeric policy (`PGN-A15`: System-tier default that a book policy NARROWS, per
+the Settings & Config `effective = AND(deploy, user)` shape). Then S5 admission, which is where
+`PGN-A17`'s typed `repair_ops` and the `read_set` half of the ledger live.
+
 ### ✅ S2 — the interrogation tier, and two tenancy holes that owner-filtered reads did not close (2026-07-31)
 
 Doc 39 §3.3's S0/S2 tables, built in `lore-enrichment-service`: `gamegen_corpus_seal`,
@@ -121,9 +169,8 @@ byte-offset span DID NOT RAISE · digest from `count()` only → `assert 'd4735e
 tests stayed green. **A bite that does not apply looks exactly like a check that works** — the file
 was checked rather than the green trusted, and the no-op was found.
 
-**▶ NEXT:** S3 — the deterministic fold and its consumption ledger (`PGN-A9`, both directions), then
-S4 the numeric policy (`PGN-A15`, System-tier default narrowed per book). `approved_answers()` is the
-hand-off S3 folds over.
+**▶ NEXT** *(at the time — S3 is now built; see the entry above)***:** S3 — the deterministic fold
+and its consumption ledger (`PGN-A9`, both directions), then S4 the numeric policy.
 
 ### ✅ The content pipeline (38) + the progression module (39) — and a red team that found five checks which could not fail (2026-07-30)
 

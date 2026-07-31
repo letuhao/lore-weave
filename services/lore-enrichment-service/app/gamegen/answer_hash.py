@@ -46,6 +46,7 @@ service that does not otherwise need one would be the larger change.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, fields
 from typing import Any, Sequence
 from uuid import UUID
@@ -109,6 +110,10 @@ class AnswerEvidence:
 
     question_id: str
     target_ref: str
+    #: The ANSWER, structured. ``says``/``proposed_text`` are why it is the answer.
+    #: JSON-serialisable; ``None`` exactly when ``not_stated``. See the DB comment
+    #: on ``gamegen_answer.value_json`` for why S3 cannot infer this from prose.
+    value: Any
     says: tuple[Citation, ...]
     proposed_text: str | None
     not_stated: bool
@@ -121,6 +126,7 @@ HASHED_FIELDS = frozenset(
     {
         "question_id",
         "target_ref",
+        "value",
         "says",
         "proposed_text",
         "not_stated",
@@ -180,6 +186,13 @@ def _validate(ev: AnswerEvidence) -> None:
     buys a named error before the round trip, and nothing more; if the two ever
     disagree the DB wins, and ``test_gamegen_s2`` asserts they do not.
     """
+    if (ev.value is None) != ev.not_stated:
+        raise AnswerShapeError(
+            "an answer carries a value XOR a silence. With neither, S3 must fold it and "
+            "has nothing to fold; with both, it says the book does not say and then says "
+            "what it says."
+        )
+
     if ev.not_stated:
         if ev.says:
             raise AnswerShapeError(
@@ -285,6 +298,15 @@ def answer_hash(ev: AnswerEvidence) -> str:
             _w(h, optional)
 
     h.update(b"\x01" if ev.not_stated else b"\x00")
+
+    # `sort_keys` + no whitespace makes the encoding canonical for any
+    # JSON-serialisable value; `ensure_ascii=False` keeps CJK as real UTF-8 rather
+    # than \uXXXX escapes, so the hashed bytes are the bytes (ML-6).
+    if ev.value is None:
+        h.update(b"\x00")
+    else:
+        h.update(b"\x01")
+        _w(h, json.dumps(ev.value, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
     return h.hexdigest()
 
 
