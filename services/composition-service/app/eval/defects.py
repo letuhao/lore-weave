@@ -162,6 +162,19 @@ DEFECTS: tuple[DefectClass, ...] = (
         provenance="eval_a2_canon.py (the one seeded class that already existed); the "
                    "Mị Đế book shipped the inverse — Tô Thanh Dao killed in scene 1 against "
                    "the synopsis",
+        # LIVE STATUS 2026-08-01: driveable, and the seeded half is ERROR — honestly. The
+        # seeder mints the glossary entity, adopts the book's ontology and calls persist-pass2
+        # with a `status_effects` death, and the `:Entity` anchors — but NO `:EntityStatus`
+        # attaches, verified in Neo4j and again through the guard's own `fact-for-check`
+        # snapshot. So there is nothing at the scene position for the guard to find.
+        #
+        # The first working version of this seeder reported `seeded=quiet`, which the suite
+        # scores as MISSED — "the canon guard did not detect a seeded contradiction". It had
+        # not; the contradiction was never planted. **A seeder that does not verify its own
+        # seed reports the engine's innocence as guilt**, and that false finding is precisely
+        # what this registry exists to prevent. The seeder now checks and returns ERROR with
+        # the reason. Closing the arc (why `status_effects` does not resolve on a
+        # freshly-anchored entity) is knowledge-service work, not instrument work.
     ),
     DefectClass(
         code="scene_boundary_overrun",

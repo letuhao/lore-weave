@@ -127,6 +127,13 @@ jobs:
       # A gated test that no workflow arms has never run — 200 of them were found this
       # way, in two sweeps, the second only because the first under-counted by 4x.
       - run: python scripts/test-dsn-coverage-gate.py
+      # S10 — the seeded-defect INSTRUMENT gate. It does not score the engine; it asserts the
+      # suite can tell a working detector from one that always fires, that every non-blind
+      # class has a live seeder, and that a blind class is declared rather than silently
+      # measuring nothing. It ran nowhere until 2026-08-01 — the same "built but not wired"
+      # shape the 63-gate inventory found, in the slice whose whole job is measurement.
+      - run: python -m app.eval.gate
+        working-directory: services/composition-service
 
       # ── D-QC-GATES-BUILT-BUT-NOT-WIRED (2026-07-31) ──────────────────────────
       # An inventory of every gate script in scripts/ against every workflow found

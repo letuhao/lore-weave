@@ -1,0 +1,16 @@
+{
+  "classes": {
+    "gone_cast_asserted_active": {
+      "control": "quiet",
+      "seeded": "error"
+    },
+    "length_target_unmet": {
+      "control": "quiet",
+      "seeded": "fired"
+    },
+    "structured_output_truncated": {
+      "control": "quiet",
+      "seeded": "fired"
+    }
+  }
+}

@@ -120,9 +120,32 @@ def test_a_job_that_never_terminates_times_out_as_an_error(live, monkeypatch):
 
 
 def test_an_unimplemented_class_reports_what_is_missing(live):
-    blind = next(x for x in DEFECTS if x.code == "gone_cast_asserted_active")
-    obs = live(_Transport(["completed"])).run(blind, "seeded")
+    """Uses a SYNTHETIC class, not a real one.
+
+    It used to name `gone_cast_asserted_active`, which made the test assert an accident of
+    the registry's current wiring: the day that class got a seeder (2026-08-01) the test went
+    red for a good change. What is being pinned is the DRIVER's contract — an unseeded class
+    is a failed Observation naming what is missing, never a quiet detector — and that must
+    hold whatever the registry happens to contain.
+    """
+    from app.eval.defects import DefectClass
+
+    unseeded = DefectClass(
+        code="__no_seeder_exists__", defect="d", seeded="s", control="c",
+        detector=lambda o: False, provenance="synthetic — see the docstring")
+    obs = live(_Transport(["completed"])).run(unseeded, "seeded")
     assert obs.failed and "no live seeding implemented" in obs.note
+
+
+def test_every_driveable_class_is_a_real_registry_code(live):
+    """The inverse guard: a seeder keyed on a code the registry does not contain would never
+    run and nothing would say so."""
+    from app.eval.defects import DEFECTS as _D
+    from app.eval.driver import LiveDriver
+
+    codes = {d.code for d in _D}
+    stray = set(LiveDriver(token="", model_ref="")._seeders()) - codes
+    assert not stray, f"seeder(s) for unknown class code(s): {sorted(stray)}"
 
 
 # ── the truncation seeding must use a lever that actually moves ───────────────────────────

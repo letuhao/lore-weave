@@ -128,6 +128,21 @@ def _blindness() -> list[str]:
     return bad
 
 
+def _undriveable() -> list[str]:
+    """A class that is NOT blind but has no live seeder measures nothing either.
+
+    `blocked_on` covers "the engine emits no field for this". It does NOT cover "the field
+    exists, the detector is fine, and nobody wrote the seeding" — and the first live run found
+    exactly that: `gone_cast_asserted_active` scored `error/error` while the gate reported it
+    SCORABLE. Scorable and driveable are different properties, and only one of them was
+    checked.
+    """
+    from app.eval.driver import LiveDriver
+
+    seeders = set(LiveDriver(token="", model_ref="")._seeders())
+    return [d.code for d in DEFECTS if not d.blocked_on and d.code not in seeders]
+
+
 def _self_check() -> list[str]:
     """The scorer must actually punish the failure the controls exist to expose.
 
@@ -171,6 +186,14 @@ def main() -> int:
             f"only {len(scorable)} class(es) are SCORABLE (the rest are blind on fields the "
             f"engine does not emit); MIN_SCORABLE is {MIN_SCORABLE}. A registry can look "
             f"broad and measure almost nothing."
+        )
+    undriveable = _undriveable()
+    if undriveable:
+        problems.append(
+            f"declared SCORABLE but no live seeder: {', '.join(undriveable)}. `blocked_on` "
+            f"covers 'the engine emits no such field'; it does not cover 'nobody wrote the "
+            f"seeding'. Such a class scores error/error on every live run while this gate "
+            f"counts it toward MIN_SCORABLE — the exact gap the first live run exposed."
         )
     problems += (_uncontrolled() + _shared_detectors() + _degenerate_detectors()
                  + _blindness() + _self_check())

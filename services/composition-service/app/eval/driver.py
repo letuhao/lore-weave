@@ -31,6 +31,38 @@ from typing import Any, Protocol
 
 from app.eval.defects import DefectClass, Observation
 
+#: Internal service URLs/token are read LAZILY, inside the call.
+#:
+#: `app.config.settings` fails to construct without COMPOSITION_DB_URL / JWT_SECRET / the two
+#: token secrets — correct for a service, fatal for a CI gate. Importing it at module scope
+#: made `python -m app.eval.gate` crash on a machine with no service env, which is precisely
+#: the "a gate that cannot even start reports nothing" bug this session already fixed once
+#: (the trace gate's `os.environ["JWT_SECRET"]` at import). The seeding needs the token; the
+#: GATE only needs to know which classes have a seeder.
+_GLOSSARY_ENV = ("GLOSSARY_INTERNAL_URL", "http://glossary-service:8088")
+_KNOWLEDGE_ENV = ("KNOWLEDGE_INTERNAL_URL", "http://knowledge-service:8092")
+
+
+def _internal_base(which: str) -> str:
+    env, default = _GLOSSARY_ENV if which == "glossary" else _KNOWLEDGE_ENV
+    return os.environ.get(env) or default
+
+
+def _internal(method: str, which: str, path: str, body: Any, timeout: float = 120) -> dict:
+    """An internal-token call. The gone-cast arc is seeded through glossary + knowledge
+    internal routes; there is no bearer-facing way to plant an :EntityStatus."""
+    token = os.environ.get("INTERNAL_SERVICE_TOKEN")
+    if not token:
+        raise RuntimeError("INTERNAL_SERVICE_TOKEN is unset — the gone-cast arc cannot be "
+                           "seeded without it (this surfaces as ERROR, never a quiet detector)")
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(_internal_base(which) + path, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    req.add_header("X-Internal-Token", token)
+    resp = urllib.request.urlopen(req, timeout=timeout)
+    raw = resp.read().decode().strip()
+    return json.loads(raw) if raw else {}
+
 #: The public gateway. Everything goes through it — the platform's gateway invariant applies
 #: to an eval as much as to a feature.
 GATEWAY = os.environ.get("EVAL_GATEWAY", "http://localhost:3123")
@@ -112,6 +144,9 @@ class LiveDriver:
     token: str
     model_ref: str
     language: str = "vi"
+    #: The acting user for the INTERNAL seeding calls (knowledge persist-pass2 is
+    #: project-scoped and wants the owner). Only the gone-cast arc needs it.
+    user_id: str = ""
     #: A local-model scene draft takes ~10-60s; the ceiling is generous because a TIMEOUT is
     #: reported as a failed Observation (ERROR), never as a quiet detector.
     job_timeout_s: float = 600.0
@@ -223,11 +258,116 @@ class LiveDriver:
         return Observation(fields=_project(r, ("finish_reason",)),
                            note=f"max_output_tokens={cap}")
 
+    def _gone_cast(self, variant: Variant) -> Observation:
+        """Seeded = a cast member the KG knows is GONE, put on stage after their death.
+
+        Lifted from `scripts/eval_a2_canon.py`, which proved the seeding arc works end to end
+        — and which this replaces for two reasons S10 exists to fix. It has **no control**, so
+        a working canon loop and an engine that revises unconditionally produce the identical
+        green; and it reads `canon` off the POST, which on `mode:"auto"` is a 202 carrying
+        `{job_id, status:"pending"}`, so the field it gates on is None.
+
+        The control is the SAME scene with the same character NOT marked gone — so a fire on
+        the control means the loop revises regardless of the canon state, which is exactly the
+        thing the old harness could not distinguish.
+
+        Needs the internal token (glossary extract + knowledge persist-pass2) and Neo4j. A
+        stack without them yields a failed Observation, i.e. ERROR, never a quiet detector.
+        """
+        import uuid as _uuid
+
+        name = f"Rhun{int(time.time() * 1000) % 100000}"
+        book, chapter, project = self._throwaway_work(f"gonecast-{variant}")
+        ch2 = _req("POST", f"/v1/books/{book}/chapters", self.token,
+                   {"original_language": self.language, "title": "Chapter 2"})["chapter_id"]
+
+        # A real glossary entity linked to BOTH chapters — the knowledge anchor loader
+        # HAVING-filters `COUNT(chapter_entity_links) >= 2`, so one link makes the entity
+        # invisible to it and no :EntityStatus is ever written (the seeding failure mode).
+        # The book must ADOPT the glossary ontology before any entity can be minted —
+        # `GLOSS_BOOK_NOT_SCAFFOLDED` otherwise, which is what the lifted payload hit. The old
+        # harness ran against books that had been adopted by hand, so its seeding was never
+        # self-contained; a throwaway book has to do it itself.
+        _req("POST", f"/v1/glossary/books/{book}/adopt", self.token, {})
+
+        er = _internal("POST", "glossary", f"/internal/books/{book}/extract-entities",
+                       {"source_language": self.language,
+                        "entities": [{"kind_code": "character", "name": name, "attributes": {},
+                                      "evidence": f"{name} dies in battle.",
+                                      "chapter_links": [
+                                          {"chapter_id": chapter, "chapter_title": "Chapter 1",
+                                           "chapter_index": 1, "relevance": "appears"},
+                                          {"chapter_id": ch2, "chapter_title": "Chapter 2",
+                                           "chapter_index": 2, "relevance": "appears"}]}]})
+        ents = er.get("entities") or []
+        if not ents:
+            return Observation(failed=True, note=f"glossary seeded no entity for {name}")
+        gid = ents[0]["entity_id"]
+
+        if variant == "seeded":
+            # chapter_index=1 → event_order 1_000_000; the scene sits at chapter 2
+            # (2_000_000), so from_order ≤ at_order and the guard sees `gone`.
+            _internal("POST", "knowledge", "/internal/extraction/persist-pass2", {
+                "user_id": self.user_id, "project_id": project, "source_type": "chapter",
+                "source_id": f"seed:{chapter}", "job_id": str(_uuid.uuid4()),
+                "extraction_model": "s10-seed", "entities": [], "relations": [], "facts": [],
+                "events": [{"name": f"The death of {name}", "kind": "death",
+                            "participants": [name], "participant_ids": [None],
+                            "location": None, "time_cue": None,
+                            "summary": f"{name} is slain at the end of chapter one.",
+                            "confidence": 0.97, "event_id": None,
+                            "status_effects": [{"entity_ref": name, "status": "gone"}]}],
+                "hierarchy_paths": {
+                    "book_id": book, "book_path": "book", "book_title": None,
+                    "part_id": str(_uuid.uuid4()), "part_path": "book/part-1",
+                    "part_index": 1, "part_title": None, "chapter_id": chapter,
+                    "chapter_path": "book/part-1/chapter-1", "chapter_index": 1,
+                    "chapter_title": None, "scenes": []},
+                "provenance": "human_authored"})
+
+        # VERIFY THE SEED — the difference between an engine finding and an instrument bug.
+        #
+        # Measured: the first working version of this seeder produced `seeded=quiet`, which the
+        # suite scores as MISSED, i.e. "the canon guard did not detect a seeded contradiction".
+        # It had not. Neo4j showed the entity anchored and NO `:EntityStatus` attached — the
+        # `status_effects` never resolved, so there was nothing to detect. A seeder that does
+        # not check its own seed reports the engine's innocence as guilt.
+        #
+        # This asks the guard's OWN snapshot route the question the guard asks: at the scene's
+        # position, is this entity gone? If the answer is no on the seeded variant, the run is
+        # an ERROR with the reason, never a quiet detector.
+        if variant == "seeded":
+            try:
+                snap = _internal("POST", "knowledge",
+                                 f"/internal/projects/{project}/fact-for-check",
+                                 {"at_order": 2_000_000, "glossary_entity_ids": [gid]})
+            except Exception as exc:  # noqa: BLE001
+                return Observation(failed=True, note=f"fact-for-check unavailable: {exc}")
+            blob = json.dumps(snap)
+            if '"gone"' not in blob:
+                return Observation(
+                    failed=True,
+                    note=("seed did not land: the entity anchored but no EntityStatus{gone} is "
+                          "visible at the scene position, so there is nothing for the guard to "
+                          f"find. snapshot={blob[:200]}"))
+
+        node = _req("POST", f"/v1/composition/works/{project}/outline/nodes", self.token,
+                    {"kind": "scene", "chapter_id": ch2, "title": f"gone-cast {variant}",
+                     "synopsis": f"{name} walks into the hall and speaks.",
+                     "goal": f"{name} confronts the council",
+                     "present_entity_ids": [gid], "target_words": 400,
+                     "story_order": 1})["id"]
+        r = self._draft(project, node)
+        canon = r.get("canon") or {}
+        return Observation(fields=_project(canon, ("status", "iterations")),
+                           note=f"entity={name} gone={variant == 'seeded'}")
+
     #: code → seeding function. A class absent here is NOT driveable yet, and says so.
     def _seeders(self) -> dict[str, Any]:
         return {
             "length_target_unmet": self._length,
             "structured_output_truncated": self._truncation,
+            "gone_cast_asserted_active": self._gone_cast,
         }
 
     def run(self, cls: DefectClass, variant: Variant) -> Observation:
