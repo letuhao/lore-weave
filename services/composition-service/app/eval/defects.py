@@ -179,33 +179,50 @@ DEFECTS: tuple[DefectClass, ...] = (
                    "scene 3's and scene 4's material",
     ),
     DefectClass(
-        code="length_directive_ignored",
+        # RENAMED from `length_directive_ignored` (2026-08-01). That name asserted a
+        # MECHANISM — that the model reads the directive and disregards it — which turned out
+        # to be false: the directive was never in the prompt at all. A class code should name
+        # the observable, not a theory of its cause, or the registry teaches the wrong lesson
+        # every time someone reads it.
+        code="length_target_unmet",
         defect="the draft lands far under the word count its own prompt requested",
-        seeded="target_words=1500 on a Vietnamese scene",
-        # MEASURED 2026-07-31, gemma-26b via lm_studio, 5 live runs on throwaway books:
-        #   target  200  400  900  900 1500
-        #   actual  565  673  497  625  559
-        # Output is ~500-670 words REGARDLESS of the ask, across a 7.5x target range, and
-        # every run ended `finish_reason="stop"` — never truncation. The LENGTH directive has
-        # no measurable effect on length.
+        # MEASURED 2026-08-01, gemma-26b via lm_studio, throwaway books, AFTER
+        # D-LENGTH-DIRECTIVE-NEVER-SENT was fixed (n=3 per point except where noted):
+        #   target   400 -> 468 · 458 · 447    (ratio 1.14)
+        #   target  1200 -> 1375 · 1260 · 1319 (ratio 1.10)
+        #   target  2500 -> 1557 · 1515        (ratio 0.61)
+        #   target  4000 ->  849 · 1052        (ratio 0.24)
+        # Every run finish="stop", none truncated.
         #
-        # That makes a clean control impossible to state as "a target the model meets": the
-        # only quiet control is one that happens to coincide with the model's natural output,
-        # which is a coincidence, not compliance. 500 is chosen for exactly that reason and
-        # for no other — and saying so is the point, because a control that passes by accident
-        # is the failure this registry exists to make visible.
-        control="target_words=500 — near the model's OBSERVED natural output, so the detector "
-                "goes quiet without the directive having been obeyed",
+        # So the model DOES follow a length target — closely, up to a single-call ceiling
+        # around ~1500 words. Past it the curve does not saturate, it INVERTS: asking for 4000
+        # produced barely half of what asking for 2500 did, and a third of what asking for
+        # 1200 did. An ask far beyond reach appears to push the model toward summarising the
+        # whole span rather than drafting part of it. Worth knowing before "just ask for more"
+        # is ever proposed as a fix.
+        #
+        # This replaces the previous seeded/control pair, both of which were derived from runs
+        # where no directive was ever sent. The old seeded value (1500) now lands ABOVE its
+        # target and would go quiet, and the old control (500) was explicitly chosen to be
+        # quiet by COINCIDENCE — "near the model's observed natural output, so the detector
+        # goes quiet without the directive having been obeyed". Both halves are now real:
+        # 2500 fires because the ask exceeds what one call yields, 1200 stays quiet because
+        # the directive was OBEYED.
+        seeded="target_words=2500 on a Vietnamese scene — past the ~1500-word single-call "
+               "ceiling, so one draft call cannot reach it",
+        control="target_words=1200 — MEASURED 1375/1260/1319 (1.10x). Quiet by COMPLIANCE, "
+                "not by coincidence, which is what the previous control could not claim",
         detector=_fired_length_shortfall,
         # UNBLOCKED 2026-07-31: the generate response now carries `actual_words` +
-        # `word_count_method` (routers/engine.py -> cowrite.realised_words). This was the
-        # cheapest of the three gaps and it makes the Mị Đế bug — 900 words asked, 445
-        # delivered — the first thing this suite can actually measure.
+        # `word_count_method` (routers/engine.py -> cowrite.realised_words).
         reads=("target_words", "actual_words", "word_count_method"),
         provenance="D-SCENE-OUTPUT-BUDGET-FLAT — measured 900/850/800/750/800 -> "
-                   "445/414/532/618/736 words. RE-MEASURED live 2026-07-31 with an adequate "
-                   "budget: still ~580 words mean, uncorrelated with the target, finish=stop. "
-                   "The budget fix was necessary and NOT sufficient — the directive is inert.",
+                   "445/414/532/618/736 words, because max_tokens was 1024 while 900 "
+                   "Vietnamese words is ~2300 tokens. A second cause was found 2026-07-31 "
+                   "and was the larger one: D-LENGTH-DIRECTIVE-NEVER-SENT — `select_draft` "
+                   "had no `target_words` parameter, so the LENGTH directive reached no "
+                   "per-scene draft at all. With both fixed the engine tracks its target to "
+                   "~1.1x up to ~1500 words per call.",
     ),
     DefectClass(
         code="structured_output_truncated",

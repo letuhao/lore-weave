@@ -475,7 +475,7 @@ def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
         return Selection(winner=cands[1], winner_index=1, candidates=cands,
                          rerank_reason="B tightest", rerank_measured=True)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     body = r.json()  # JSON, NOT an SSE stream
@@ -504,7 +504,7 @@ def test_generate_auto_surfaces_truncated(ctx, monkeypatch):
         return Selection(winner=cands[0], winner_index=0, candidates=cands,
                          rerank_reason="", rerank_measured=False)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", trunc_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", trunc_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     body = r.json()
@@ -530,7 +530,7 @@ def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):
         return Selection(winner=cands[0], winner_index=0, candidates=cands,
                          rerank_reason="", rerank_measured=False)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     assert seen["k"] == 1  # tension 10 (low, 0..100) → K=1, not the fixed default 3
@@ -542,7 +542,7 @@ def test_generate_auto_select_failure_fails_job_502(ctx, monkeypatch):
     async def boom(llm, judge, **kw):
         raise RuntimeError("diverge produced no candidates")
 
-    monkeypatch.setattr("app.routers.engine.select_draft", boom)
+    monkeypatch.setattr("app.routers.engine.select_scene", boom)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 502
     assert any(s == "failed" for _, s, _ in jobs.updates)
@@ -557,7 +557,7 @@ def test_generate_auto_idempotent_replay_returns_existing(ctx, monkeypatch):
         called["n"] += 1
         raise AssertionError("must not run on replay")
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate",
                json={**_gen_body(), "mode": "auto", "idempotency_key": "k1"})
     assert r.status_code == 200 and r.json()["replay"] is True
@@ -580,7 +580,7 @@ def test_generate_auto_worker_enabled_enqueues_202(ctx, monkeypatch):
         raise AssertionError("worker path must not run select_draft inline")
 
     monkeypatch.setattr("app.routers.engine.enqueue_job", fake_enqueue)
-    monkeypatch.setattr("app.routers.engine.select_draft", must_not_run)
+    monkeypatch.setattr("app.routers.engine.select_scene", must_not_run)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 202
     body = r.json()
@@ -590,6 +590,12 @@ def test_generate_auto_worker_enabled_enqueues_202(ctx, monkeypatch):
     inp = jobs._last_create["input"]
     assert inp["worker_op"] == "generate" and inp["packed_prompt"] == "GROUNDING"
     assert inp["reinjected_promise_count"] == 2  # echoed from the pack
+    # D-SCENE-BEATS slice 2 — the worker cannot re-read the node (no bearer), so a field the
+    # endpoint does not serialise here is a field the enqueued path can NEVER see. That is the
+    # same shape as D-LENGTH-DIRECTIVE-NEVER-SENT: stored on the node, dropped at a boundary.
+    from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS
+    assert "draft_beats" in inp and inp["draft_beats"] == []
+    assert inp["target_words"] == DEFAULT_SCENE_TARGET_WORDS
     assert jobs._last_create["status"] == "pending"
     # no terminal update happened inline (the worker will complete it)
     assert not [s for _, s, _ in jobs.updates if s == "completed"]

@@ -101,6 +101,23 @@ BASELINE: frozenset[str] = frozenset({
     "services/composition-service/app/engine/self_heal.py",
     "services/composition-service/app/routers/engine.py",
     "services/composition-service/app/worker/operations.py",
+    # select.py — the diverge/converge core. Added 2026-08-01 when D-SCENE-BEATS slice 2
+    # gave it the word "passage" (a chunk of prose the model WRITES), which is a (b) marker
+    # meant for a RETRIEVED passage. The word is right for the feature and was not renamed
+    # to dodge the regex; the row is the honest alternative.
+    #
+    # In substance it belongs with the two rows above it, which it feeds: it has assembled
+    # prompts from `packed_prompt` — carrying `<lore>` from imported book text — since A1,
+    # and was invisible here only for lack of a marker word. Its content IS neutralised, by
+    # the packer at assembly (`app/packer/assemble.py` + `sanitize.py`), which per-file
+    # coverage cannot see.
+    #
+    # The one genuinely NEW untrusted flow it introduced — one passage's model output
+    # becoming the next passage's prompt, where a `<lore>` payload could steer a forged
+    # closing tag — is closed at the point the string is built (`cowrite.build_beat_scope`
+    # → `sanitize_prose_context`), not here. Putting an unused import in this file to turn
+    # the regex green would be a claim, not a defense.
+    "services/composition-service/app/engine/select.py",
     # genuine gap — passages selector doesn't neutralize like the wiki path
     "services/knowledge-service/app/context/selectors/passages.py",
     # sanitized upstream in knowledge wiki/context.py (IR spans neutralized)

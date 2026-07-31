@@ -406,6 +406,78 @@ get a char-based ESTIMATE, the method rides in the response, and the length dete
 regardless of language, and "words" has no clear referent in CJK. Better to score nothing than
 to score a fiction. (That the directive is ambiguous for CJK at all is a real S2 finding.)
 
+## 🩹 RETRACTION — the LENGTH directive was never SENT, and three sections below are wrong (2026-08-01)
+
+`select_draft` **had no `target_words` parameter.** `diverge` accepted one, `build_messages`
+rendered a LENGTH directive from it, `test_cowrite.py` proved that rendering — and
+`select_draft`, the only route to a per-scene draft from *both* the inline endpoint and the
+worker, dropped it between itself and `diverge`. So the value was computed, stored in
+`job.input["target_words"]`, used to size `max_output_tokens`, and reported back in the result
+envelope as the number the model was asked for. It never entered a prompt. Only the chapter
+single-pass (`run_chapter_generate`, which calls `diverge` directly) ever carried it.
+
+**Every per-scene draft this repo has produced was written with no length instruction.**
+
+### What that invalidates, explicitly
+The three sections immediately below are kept as written, and are wrong:
+
+- **"the LENGTH directive is INERT"** — it was absent, not inert. Output uncorrelated with the
+  ask across a 7.5× range, `finish="stop"` every run, on two models, is the signature of a
+  request that carried no length at all.
+- **"S2 attempt 1 — diagnosis good, fix unproven"** — the diagnosis was *wrong*. I rewrote an
+  escape clause inside a directive that was not being sent, then correctly reported that the
+  A/B showed nothing. It showed nothing because neither wording was in a prompt.
+- **"D-SCENE-BEATS — the ceiling is the MATERIAL"** — gpt-4o writing 461 words for a 1500 ask
+  is not evidence about a beat's material. It is two models free-running to similar lengths.
+
+The retracted claims all came from ONE broken measurement, re-read three times, each reading
+more confident than the last. `MEASURED_BEAT_YIELD_WORDS` is renamed
+`MEASURED_UNDIRECTED_YIELD_WORDS` and now says what it actually measured.
+
+### Re-measured with the directive actually in the prompt (gemma-26b, throwaway books, $0)
+
+| target | actual | ratio | n |
+|---|---|---|---|
+| 400 | 468 · 458 · 447 | **1.14** | 3 |
+| 1200 | 1375 · 1260 · 1319 | **1.10** | 3 |
+| 2500 | 1557 · 1515 | 0.61 | 2 |
+| 4000 | 849 · 1052 | **0.24** | 2 |
+
+The model tracks a length target closely, up to a **single-call ceiling around ~1500 words**.
+Past it the curve does not flatten — it **inverts**: asking for 4000 produced barely half what
+asking for 2500 did, and a third of what 1200 did. An ask far beyond reach appears to push the
+model toward summarising the span rather than drafting part of it. **"Just ask for more" makes
+a shortfall worse.**
+
+### D-SCENE-BEATS slice 2 — and now it has a real justification
+`select_scene` drafts a scene in one call, or one call per declared `draft_beats` entry, each
+passage seeing the prose already written and continuing from it. Sequential, not parallel (k
+parallel beat calls would each write the scene's opening). Joined, not LLM-stitched (the
+passages are not blind to each other, so a merge pass would buy continuity that is already
+there at the price of the step where prose most often gets compressed away).
+
+**The payoff, measured — same book, same model, same day:**
+
+| scene target | one call | with passages |
+|---|---|---|
+| 2500 | 1557 · 1515 (**0.61**) | 2365 · 3067 — 2 beats (**0.95 · 1.23**) |
+| 4000 | 849 · 1052 (**0.24**) | 4849 · 4163 — 3 beats (**1.21 · 1.04**) |
+
+`repeated_chars` was **0** on every beated run — the passages did not restate each other.
+So the user's instinct ("pull several beats into one scene and generate per beat") was right
+in kind; the threshold is ~1500 words per call, not the ~500 I had claimed.
+
+### The lesson, which is the session's recurring one in a new costume
+A correct function, plus a unit test proving that function is correct, is **not coverage of
+the path**. `build_messages` was right the whole time and had tests to prove it. Nothing
+asserted the directive reached a draft *call*. The new gate does exactly that — it captures
+what was handed to the LLM client, not what the builder returned.
+
+Second lesson: **a measurement is a claim about a code path, and the path has to be verified
+too.** I read one number three times and built a database column, a migration, an engine
+feature and a design rationale on it, without once checking that the input I believed I was
+varying reached the model.
+
 ## 🔴 S10-b FIRST MEASUREMENT — the LENGTH directive is INERT (2026-07-31)
 
 **Five live runs, gemma-26b via lm_studio ($0), throwaway books, the real worker path:**
@@ -502,24 +574,28 @@ the `json.loads` decode + `::jsonb` bind that `exit_state` already documents, on
 and the generic-update paths.
 
 ### ▶ NEXT
-1. **D-SCENE-BEATS slice 2 — draft PER BEAT and stitch within the scene.** The `per_scene_stitch`
-   assembly pattern already exists at chapter level; this is the same thing one level down.
-   Scene target ÷ ~500 = beat count. Guard: the beats must not repeat or contradict each other.
-2. **S2 attempt 2** — with slice 2 in, re-measure: does a 2-beat 900-word scene reach 900?
-   Use n≥3 per point (within-target variance is ~26%).
+1. **S2 attempt 2 is DONE and folded into the retraction above** — the length problem was a
+   dropped parameter, and the engine now tracks its target to ~1.1× below ~1500 words per
+   call. What remains of S2 is `scenes_covered` (the scene-boundary blind class).
 2. **`eval_a2_canon.py` reads `canon` off the 202** — the one pre-existing seeded harness is
    broken against the enqueue path. Same fix the driver already has.
-2. **S10-b remainder** — the live driver (`app/eval/driver.py`) needs the job-POLLING path
-   (written against the sync response), plus gone-cast seeding lifted from `eval_a2_canon.py`. The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding
-   mechanics". The 2 remaining blind classes need `scenes_covered` (S2 territory) and
-   `unresolved_refs`.
-2. **S1 → S2** per spec §6.
-3. **LLM-budget backlog** — 29 rows: 12 composition, 10 knowledge, 4 translation, 3 misc.
+3. **Re-run the eval suite against the corrected length class.** `length_directive_ignored`
+   is renamed **`length_target_unmet`** (the old name asserted a mechanism that turned out to
+   be false), and BOTH its variants are new: seeded 2500 (fires, 0.61×) and control 1200
+   (quiet by **compliance**, 1.10× — the previous control was quiet by coincidence and said
+   so). It has not been run end-to-end since.
+4. **S10-b remainder** — gone-cast seeding lifted from `eval_a2_canon.py` §"Seeding
+   mechanics". The 2 blind classes still need `scenes_covered` and `unresolved_refs`.
+5. **Consider surfacing `beats_over_ceiling` in the FE.** The engine now reports when a scene
+   (or a passage) was asked for more words than one call delivers — the signal that would have
+   explained the Mị Đế shortfall immediately. Nothing renders it yet.
+6. **S1 → S2** per spec §6.
+7. **LLM-budget backlog** — 29 rows: 12 composition, 10 knowledge, 4 translation, 3 misc.
    Billing estimators stay OUT — they over-estimate on purpose.
-4. Still unscanned by the budget gate, and named in its PASS line so it cannot pass for
+8. Still unscanned by the budget gate, and named in its PASS line so it cannot pass for
    coverage: the raw `POST /internal/llm/stream` shape (chat, lore-enrichment, video-gen).
-2. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
-   slice — read it before planning any slice.
+9. Phase 1-3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an
+   owning slice — read it before planning any slice.
 
 ## ◐ `authoring_run_review`: "needs real spend" was MY wrong framing (2026-07-30)
 

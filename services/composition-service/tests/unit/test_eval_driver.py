@@ -22,14 +22,14 @@ from app.eval import driver as drv
 from app.eval.defects import DEFECTS, Outcome
 from app.eval.suite import observe
 
-_LENGTH = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+_LENGTH = next(d for d in DEFECTS if d.code == "length_target_unmet")
 
 
 # ── ReplayDriver ──────────────────────────────────────────────────────────────────────────
 
 def test_replay_serves_a_recorded_observation():
     r = drv.ReplayDriver(recordings={
-        "length_directive_ignored:seeded": {
+        "length_target_unmet:seeded": {
             "fields": {"target_words": 1500, "actual_words": 559,
                        "word_count_method": "whitespace"}}})
     obs = r.run(_LENGTH, "seeded")
@@ -46,7 +46,7 @@ def test_a_missing_recording_is_an_error_not_a_quiet_detector():
 def test_replay_round_trips_a_recording_file(tmp_path):
     p = tmp_path / "baseline.json"
     p.write_text(json.dumps({"observations": {
-        "length_directive_ignored:control": {"fields": {"target_words": 500,
+        "length_target_unmet:control": {"fields": {"target_words": 500,
                                                         "actual_words": 565,
                                                         "word_count_method": "whitespace"}}}}),
                  encoding="utf-8")

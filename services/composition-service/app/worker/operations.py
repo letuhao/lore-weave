@@ -342,7 +342,7 @@ async def run_generate(
     from app.db.repositories.works import WorksRepo
     from app.engine.adaptive_k import adaptive_k
     from app.engine.canon_reflect import run_canon_reflect
-    from app.engine.select import select_draft
+    from app.engine.select import select_scene
     from app.packer.profile import from_settings
 
     user_id = input["user_id"]
@@ -373,7 +373,7 @@ async def run_generate(
         high_threshold=settings.plan_high_tension_threshold,
     )
     try:
-        sel = await select_draft(
+        sel = await select_scene(
             llm, llm, user_id=user_id,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source or model_source,
@@ -382,6 +382,12 @@ async def run_generate(
             k=k, prompt_est=prompt_estimate, max_tokens=max_out,
             temperature=settings.compose_diverge_temperature, reasoning=reasoning,
             cancel_check=cancel_check,
+            # D-LENGTH-DIRECTIVE-NEVER-SENT: this was `select_draft`, which had no
+            # `target_words` parameter — so `input["target_words"]` was stored, used to size
+            # `max_out`, reported in the result envelope, and never reached the prompt.
+            target_words=input.get("target_words"),
+            # D-SCENE-BEATS slice 2: empty ⇒ one call, exactly as before.
+            draft_beats=input.get("draft_beats"),
         )
     except Exception as exc:  # noqa: BLE001 — mirror inline: diverge produced
         # nothing / transport → a TERMINAL job failure (run_job marks failed + ACK,
@@ -443,6 +449,14 @@ async def run_generate(
     _aw, _wcm = realised_words(final_text, input.get("source_language"))
     return {
         "target_words": _target_words, "actual_words": _aw, "word_count_method": _wcm,
+        # D-SCENE-BEATS slice 2 — HOW the text was produced. `beat_words` is the whole point
+        # of the feature being measurable at all: it is what each passage actually yielded,
+        # so "did splitting the scene into beats reach the target" is answerable from the job
+        # row instead of by re-reading prose. `beats_failed` > 0 ⇒ the scene is INCOMPLETE
+        # against its plan, which the text alone cannot tell anyone.
+        "scene_assembly": sel.scene_assembly, "beats_drafted": sel.beats_drafted,
+        "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
+        "repeated_chars": sel.repeated_chars, "beats_over_ceiling": sel.beats_over_ceiling,
         "text": final_text, "input_tokens": w.metering.input_tokens,
         "output_tokens": total_out, "measured": w.metering.measured,
         "k": len(sel.candidates), "winner_index": sel.winner_index,

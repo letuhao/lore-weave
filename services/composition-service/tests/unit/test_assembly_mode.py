@@ -129,7 +129,7 @@ def test_generate_auto_echoes_assembly_mode(ctx, monkeypatch):
         return Selection(winner=cand, winner_index=0, candidates=[cand],
                          rerank_reason="", rerank_measured=False)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     assert r.json()["assembly_mode"] == "per_scene"

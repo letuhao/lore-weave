@@ -53,3 +53,21 @@ def sanitize_lore(text: str) -> str:
 def sanitize_guide(text: str, max_len: int = GUIDE_MAX_LEN) -> str:
     """Bound + neutralise the author's free-text steer."""
     return neutralize((text or "")[:max_len])
+
+
+def sanitize_prose_context(text: str) -> str:
+    """Delimiter-escape MODEL-GENERATED prose that is fed back in as context.
+
+    D-SCENE-BEATS slice 2: each beat of a scene is drafted with the previous beats' prose
+    in its prompt, so one passage's output becomes the next passage's input — a place a
+    forged closing tag would end a block early. The packed prompt carries `<lore>` from
+    IMPORTED book text, which is untrusted, so a payload there can steer passage 1 into
+    emitting the delimiter that breaks passage 2's frame.
+
+    Deliberately NOT `neutralize`. That also brackets directive-looking spans, which is
+    right for a retrieved lore passage and wrong for fiction: "you are now the head of
+    this house" is dialogue, and wrapping it in ⟦⟧ writes editing marks into the very
+    continuity context the next passage continues from — and a model continues what it
+    sees. Close the delimiter seam; leave the prose alone.
+    """
+    return (text or "").replace("<", "＜").replace(">", "＞")

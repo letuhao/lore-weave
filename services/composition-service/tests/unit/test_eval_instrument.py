@@ -250,7 +250,7 @@ def test_an_empty_draft_is_zero_not_an_estimate():
 
 def test_the_length_detector_fires_on_the_measured_mi_de_shortfall():
     """The bug this whole cycle started from: 900 asked, 445 delivered."""
-    cls = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+    cls = next(d for d in DEFECTS if d.code == "length_target_unmet")
     short = Observation(fields={"target_words": 900, "actual_words": 445,
                                 "word_count_method": "whitespace"})
     ok = Observation(fields={"target_words": 900, "actual_words": 880,
@@ -262,12 +262,12 @@ def test_the_length_detector_fires_on_the_measured_mi_de_shortfall():
 def test_the_length_detector_stays_quiet_on_an_estimated_count():
     """Better to score nothing than to score a fiction — an estimate cannot support a 0.75
     threshold against a target whose own referent is ambiguous."""
-    cls = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+    cls = next(d for d in DEFECTS if d.code == "length_target_unmet")
     est = Observation(fields={"target_words": 900, "actual_words": 100,
                               "word_count_method": "zh_chars_estimate"})
     assert not cls.detector(est)
 
 
 def test_the_length_class_is_no_longer_blind():
-    cls = next(d for d in DEFECTS if d.code == "length_directive_ignored")
+    cls = next(d for d in DEFECTS if d.code == "length_target_unmet")
     assert not cls.blocked_on, "the generate response now emits actual_words"

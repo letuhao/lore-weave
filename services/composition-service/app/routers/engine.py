@@ -73,7 +73,7 @@ from app.engine.critic_override import (
     critique_overrides,
     evaluate_override_gate as co_evaluate_override_gate,
 )
-from app.engine.select import diverge, select_draft
+from app.engine.select import diverge, select_scene
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_context import scale_by_window
 from loreweave_llm import ReasoningControl, infer_reasoning_control, resolve_reasoning
@@ -562,6 +562,9 @@ async def generate(
             "outline_node_id": str(node.id), "guide": body.guide,
             # Length target for the worker's diverge draft (else it free-runs SHORT — 83 words).
             "target_words": node.target_words or DEFAULT_SCENE_TARGET_WORDS,
+            # D-SCENE-BEATS slice 2 — the passages this scene is drafted in. Empty (every
+            # scene authored before the feature) ⇒ the worker makes exactly one call, as before.
+            "draft_beats": node.draft_beats or [],
             # ...and the language it will be written in, so the worker can count the RESULT
             # the same way. Without it `realised_words` falls back to whitespace, which
             # under-counts a spaceless script by ~an order of magnitude and would report every
@@ -626,12 +629,18 @@ async def generate(
         c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
         distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
         try:
-            sel = await select_draft(
+            sel = await select_scene(
                 llm, llm, user_id=str(user_id),
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),
                 judge_source=str(c_src) if distinct else body.model_source,
                 judge_ref=str(c_ref) if distinct else str(body.model_ref),
                 packed_prompt=pc.prompt, profile=pc.profile, operation=body.operation,
+                # D-LENGTH-DIRECTIVE-NEVER-SENT — `_scene_target` was computed 130 lines up,
+                # used to build `messages` for the prompt ESTIMATE and to size `_max_out`, and
+                # then never reached the draft call: `select_draft` had no such parameter.
+                target_words=_scene_target,
+                # D-SCENE-BEATS slice 2 — empty ⇒ one call, byte-identical to before.
+                draft_beats=node.draft_beats or [],
                 # A3 — adaptive K from the scene's structural weight (beat_role +
                 # tension the planner emitted). Hand-authored nodes (no beat_role/
                 # tension) fall back to compose_diverge_k. NOTE: there is no
@@ -710,6 +719,14 @@ async def generate(
                     "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
                     "candidates": [c.text for c in sel.candidates],
                     "truncated": truncated, "finish_reason": w.metering.finish_reason,
+                    # D-SCENE-BEATS slice 2 — the same five keys the worker path stores. The
+                    # scene envelope is assembled in FOUR places in this repo and a field
+                    # added to one of them has already been read back as None by a live
+                    # probe; until that consolidation (S1/S2) lands, every path carries it.
+                    "scene_assembly": sel.scene_assembly, "beats_drafted": sel.beats_drafted,
+                    "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
+                    "repeated_chars": sel.repeated_chars,
+                    "beats_over_ceiling": sel.beats_over_ceiling,
                     "canon": canon},
         )
         # D-SCENE-OUTPUT-BUDGET-FLAT / eval S10 — the LENGTH directive asked for
@@ -723,6 +740,10 @@ async def generate(
             "truncated": truncated, "finish_reason": w.metering.finish_reason,
             "target_words": _scene_target, "actual_words": _actual_words,
             "word_count_method": _wc_method,
+            "scene_assembly": sel.scene_assembly, "beats_drafted": sel.beats_drafted,
+            "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
+            "repeated_chars": sel.repeated_chars,
+            "beats_over_ceiling": sel.beats_over_ceiling,
             "winner_index": sel.winner_index, "k": len(sel.candidates),
             # The K candidate texts so the FE can show ALL options as cards (the
             # controlled-auto human gate, slice 3). They're already computed +

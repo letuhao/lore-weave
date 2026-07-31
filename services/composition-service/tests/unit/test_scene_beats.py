@@ -1,30 +1,41 @@
 """D-SCENE-BEATS — the scene's draft units (slice 1: the field).
 
-Why the field exists, measured rather than assumed
---------------------------------------------------
-9 live runs on throwaway books, targets 200→1500:
+Why the field exists — and the correction to why it was FIRST said to exist
+---------------------------------------------------------------------------
+It was introduced on this reading of 10 live runs (targets 200→1500):
 
     gemma-26b   565 · 673 · 497 · 625 · 559 · 519 · 509 · 528 · 698
     gpt-4o      461      ← for a 1500 target, FEWER than the local model
 
-A frontier model with enormous output capacity produced the SHORTEST draft in the set, every
-run ending `finish_reason="stop"`. So it is neither a model ceiling nor disobedience: one
-beat's material genuinely runs out around 500 words, and both models do exactly what the
-prompt says — *"stop when THIS scene's beat has played out"*.
+    "…neither a model ceiling nor disobedience: one beat's material genuinely runs out
+    around 500 words, and both models do exactly what the prompt says."
 
-Authors set `target_words` to 750–900 (the Mị Đế values), ~1.7× what one beat carries, so
-every scene lands ~60% and the shortfall compounds across a chapter. A scene reaches its
-target by having ENOUGH BEATS, not by asking one beat to stretch.
+**The runs were real; the reading was wrong.** Every one went through `select_draft`, which
+had no `target_words` parameter, so the LENGTH directive never entered the prompt
+(D-LENGTH-DIRECTIVE-NEVER-SENT — see `test_scene_beats_drafting.py`). Output uncorrelated
+with an ask that was never sent says nothing about what a beat's material can carry. The
+"~500 words per beat" ceiling, and the arithmetic that a 900-word scene therefore needs two
+beats, were conclusions drawn from a broken measurement.
 
-This slice adds the field only — nothing drafts per beat yet — so the invariant that matters
-here is that an EMPTY `beats` behaves exactly as today, because that is every existing scene.
+What survives is the CAPABILITY, on its own merits: an author who wants a scene written as
+three consecutive passages, each with its own brief, can say so — and slice 2 drafts it that
+way. Whether it is also the answer to short scenes is now an open question with the
+confounder removed, not a settled one.
+
+This slice adds the field only. The invariant that matters here is that an EMPTY list behaves
+exactly as today, because that is every existing scene.
 """
 from __future__ import annotations
 
 from app.db.models import OutlineNode
 from app.db.repositories.outline import _row_to_node
-from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS, MEASURED_BEAT_YIELD_WORDS
+from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS, MEASURED_UNDIRECTED_YIELD_WORDS
 from app.routers.outline import NodeCreate, NodePatch
+
+
+def _repo_root() -> str:
+    import pathlib
+    return str(pathlib.Path(__file__).resolve().parents[4])
 
 
 def _row(**over):
@@ -88,18 +99,29 @@ def test_the_repo_accepts_beats_as_an_updatable_column():
 
 # ── the measured constant ─────────────────────────────────────────────────────────────────
 
-def test_the_beat_yield_is_below_the_scene_default_which_is_the_whole_finding():
-    """If these were equal there would be no gap to explain. The scene default (and the
-    750-900 authors set) is ~1.5-2x what one beat delivers."""
-    assert MEASURED_BEAT_YIELD_WORDS < DEFAULT_SCENE_TARGET_WORDS
-    assert 400 <= MEASURED_BEAT_YIELD_WORDS <= 700, "outside the measured 461-698 range"
+def test_the_undirected_yield_is_recorded_as_what_it_actually_measured():
+    """It stays in the range the 10 runs produced, and it stays BELOW the scene default —
+    that gap is the size of the bug those runs were really showing.
+
+    What this deliberately no longer asserts: that a scene therefore needs ≥2 beats. That
+    arithmetic (`ceil(target / 500) >= 2`) was a real test here one commit ago, and it encoded
+    a conclusion drawn from prompts that carried no length instruction."""
+    assert MEASURED_UNDIRECTED_YIELD_WORDS < DEFAULT_SCENE_TARGET_WORDS
+    assert 400 <= MEASURED_UNDIRECTED_YIELD_WORDS <= 700, "outside the measured 461-698 range"
 
 
-def test_a_scene_target_implies_more_than_one_beat_at_the_measured_yield():
-    """The arithmetic the next slice is built on: an 800-word scene needs 2 beats, not 1."""
-    import math
-    for target in (750, 800, 850, 900):
-        assert math.ceil(target / MEASURED_BEAT_YIELD_WORDS) >= 2
+def test_nothing_in_the_engine_computes_from_the_undirected_yield():
+    """It is a historical datum, not a design input. `beat_targets` divides the SCENE's
+    target; if this number ever starts governing behaviour, a stale measurement is steering
+    the engine again."""
+    import subprocess
+    hits = subprocess.run(
+        ["git", "grep", "-l", "MEASURED_UNDIRECTED_YIELD_WORDS", "--", "services/"],
+        capture_output=True, text=True, cwd=_repo_root()).stdout.split()
+    assert sorted(hits) == sorted([
+        "services/composition-service/app/engine/cowrite.py",
+        "services/composition-service/tests/unit/test_scene_beats.py",
+    ]), f"a new consumer appeared: {hits}"
 
 
 # ── the name must not collide with the OTHER two meanings of "beat" ───────────────────────
@@ -129,10 +151,11 @@ def test_the_list_is_capped():
 
 
 def test_the_cap_is_generous_enough_for_any_real_scene():
-    """At the measured ~500 words/beat the cap is a 12,000-word scene — past anything an
-    author writes, so hitting it is a mistake or an attack, not a long scene."""
+    """Even at a conservative few-hundred words per passage the cap is a five-figure scene —
+    past anything an author writes, so hitting it is a mistake or an attack, not a long
+    scene."""
     from app.db.models import MAX_DRAFT_BEATS
-    assert MAX_DRAFT_BEATS * MEASURED_BEAT_YIELD_WORDS >= 10_000
+    assert MAX_DRAFT_BEATS * MEASURED_UNDIRECTED_YIELD_WORDS >= 10_000
 
 
 # ── both front doors, not just one ────────────────────────────────────────────────────────

@@ -205,8 +205,12 @@ class OutlineNode(BaseModel):
     #: single-beat scene (the eight intent fields above ARE the one beat), which is what every
     #: existing scene is, so an empty list must keep behaving exactly as today.
     #:
-    #: A scene reaches its `target_words` by having enough beats, not by asking one beat to
-    #: stretch: measured, one beat carries ~500 words in every model tried, gpt-4o included.
+    #: This was introduced with the rationale "a scene reaches its `target_words` by having
+    #: enough beats, not by asking one beat to stretch — measured, one beat carries ~500 words
+    #: in every model tried". That measurement was taken on a path where the LENGTH directive
+    #: never reached the prompt (D-LENGTH-DIRECTIVE-NEVER-SENT), so it did not measure a beat's
+    #: capacity. The field stands on the plainer ground: an author who wants a scene written as
+    #: several consecutive passages, each with its own brief, can say so.
     #: BOUNDED. Every comparable list in this repo carries a cap (`MaxPlanOps=50`,
     #: `maxDocExtractCandidates=200`) because an unbounded array reaches a PROMPT: at the
     #: measured ~500 words/beat, 24 beats is already a 12,000-word scene, far past anything an

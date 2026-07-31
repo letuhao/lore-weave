@@ -172,16 +172,20 @@ class LiveDriver:
     # ── per-class seeding ────────────────────────────────────────────────────────────────
 
     def _length(self, variant: Variant) -> Observation:
-        """Seeded = a 1500-word Vietnamese target; control = 500.
+        """Seeded = a 2500-word Vietnamese target; control = 1200.
 
-        The control is NOT "a target comfortably met" — measured 2026-07-31, the model writes
-        ~500-670 words whatever you ask for (200→565, 400→673, 900→497, 900→625, 1500→559),
-        so it overshoots a small target by 2.8x. 500 is picked to sit ON the observed natural
-        output, which makes the detector quiet WITHOUT the directive having been obeyed. That
-        is a coincidence standing in for a control, and the registry row says so — see
-        `defects.py::length_directive_ignored`.
+        Both halves are MEASURED, 2026-08-01, after D-LENGTH-DIRECTIVE-NEVER-SENT was fixed:
+        1200 → 1375/1260/1319 (1.10x, quiet) and 2500 → 1557/1515 (0.61x, fires). Neither
+        depends on a coincidence.
+
+        The previous pair — seeded 1500, control 500 — was derived from runs on which the
+        LENGTH directive never reached the prompt, and its own docstring admitted the control
+        "makes the detector quiet WITHOUT the directive having been obeyed". Both values are
+        now wrong in opposite directions: 1500 is comfortably MET (so the seeded half would go
+        quiet and score MISSED — a false finding, the exact failure this instrument exists to
+        avoid), and 500 is over-met by 15%.
         """
-        target = 1500 if variant == "seeded" else 500
+        target = 2500 if variant == "seeded" else 1200
         _book, chapter, project = self._throwaway_work(f"length-{variant}")
         node = _req("POST", f"/v1/composition/works/{project}/outline/nodes", self.token,
                     {"kind": "scene", "chapter_id": chapter, "title": f"length {variant}",
@@ -197,10 +201,13 @@ class LiveDriver:
         """Seeded = a hard output CAP the draft cannot fit in; control = ample room.
 
         The cap is `max_output_tokens`, NOT a large `target_words`. The first version of this
-        used `target_words=20000` to "ask for more than fits" — which the very measurement in
-        this package disproves: output is ~580 words regardless of the target across a 7.5x
-        range, so a big target produces no more text and therefore never clips. A seeding
-        recipe built on a lever that does not move is a class that can never fire.
+        used `target_words=20000` to "ask for more than fits" — and that is still wrong, though
+        the reason has changed. It was rejected because "output is ~580 words regardless of the
+        target", which was an artefact of the directive never being sent. The target lever DOES
+        move now (400→1.14x, 1200→1.10x). But it is still not a truncation lever: past ~1500
+        words the model STOPS on its own, `finish="stop"`, and asking for 4000 produced FEWER
+        words than asking for 2500 (849/1052 vs 1557/1515). A larger target buys less text, not
+        a clipped response — so it can never seed a capacity failure.
 
         `max_output_tokens` is a real lever: it rides to the wire as the request's cap, and
         `eval_a2_canon.py` already uses it to bound its runs.
@@ -218,7 +225,7 @@ class LiveDriver:
     #: code → seeding function. A class absent here is NOT driveable yet, and says so.
     def _seeders(self) -> dict[str, Any]:
         return {
-            "length_directive_ignored": self._length,
+            "length_target_unmet": self._length,
             "structured_output_truncated": self._truncation,
         }
 

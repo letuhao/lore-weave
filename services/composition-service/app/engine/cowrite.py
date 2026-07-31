@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
@@ -25,7 +26,7 @@ from loreweave_llm.models import DoneEvent, ReasoningEvent, StreamRequest, Token
 from app.reasoning import wire_fields
 
 from app.packer.profile import BookProfile, style_directive
-from app.packer.sanitize import sanitize_guide
+from app.packer.sanitize import sanitize_guide, sanitize_prose_context
 
 logger = logging.getLogger(__name__)
 
@@ -114,22 +115,212 @@ def estimate_prompt_tokens(messages: list[dict[str, Any]], counter: Callable[[st
 #: chapter). Tunable; the scene's own `target_words` (when the planner sets it) always wins.
 DEFAULT_SCENE_TARGET_WORDS = 1000
 
-#: D-SCENE-BEATS — what ONE beat actually yields in a single draft call.
+#: What a scene draft came back at when the model was given NO length instruction at all.
 #:
-#: MEASURED 2026-07-31, 9 live runs on throwaway books, targets 200→1500:
+#: MEASURED 2026-07-31, 10 live runs on throwaway books, asks of 200→1500:
 #:   gemma-26b  565 · 673 · 497 · 625 · 559 · 519 · 509 · 528 · 698
-#:   gpt-4o     461   ← for a 1500 target, FEWER than the local model
+#:   gpt-4o     461   ← for a 1500 ask, FEWER than the local model
 #:
-#: A frontier model with enormous output capacity produced the SHORTEST draft of the set. So
-#: this is not a model ceiling and not disobedience: one beat's material genuinely runs out
-#: around here, and both models do exactly what the prompt says — "stop when THIS scene's beat
-#: has played out". `DEFAULT_SCENE_TARGET_WORDS` above (1000) and the 750-900 authors actually
-#: set are ~1.5-2x this, which is why every scene lands ~60% and the gap compounds per chapter.
+#: **These runs did not measure what they were first read as measuring.** They were taken
+#: through `select_draft`, which had no `target_words` parameter and therefore never put the
+#: LENGTH directive in the prompt (D-LENGTH-DIRECTIVE-NEVER-SENT, fixed the same day). Output
+#: uncorrelated with the ask across a 7.5x range, on two models, every run `finish="stop"`, is
+#: exactly the signature of a request that carried no length at all — and the first reading of
+#: it, "one beat's material runs out around 500 words", was a conclusion about a prompt nobody
+#: had sent. gpt-4o being SHORTEST does not show a material ceiling; it shows two models
+#: free-running to similar lengths, which is unremarkable.
 #:
-#: The consequence for design: a scene reaches its target by having ENOUGH BEATS, not by asking
-#: one beat to stretch. Nothing reads this constant yet — the per-beat drafting loop is the next
-#: slice — but it is the honest number the rest of the arithmetic is built on.
-MEASURED_BEAT_YIELD_WORDS = 500
+#: Kept, renamed, because it is still a real number and the honest BEFORE: it is the length
+#: this engine produced when it asked for nothing, it is what the eval instrument's length
+#: control was picked to sit on (`eval/defects.py`), and it is the baseline any claim that the
+#: directive now works has to beat. Nothing computes from it — `beat_targets` divides the
+#: scene's target, not this.
+MEASURED_UNDIRECTED_YIELD_WORDS = 500
+
+#: What ONE draft call actually delivers, once it is genuinely told a length.
+#:
+#: MEASURED 2026-08-01, gemma-26b, throwaway books, n=3/3/2/2, every run finish="stop":
+#:   target   400 -> 468 · 458 · 447     ratio 1.14
+#:   target  1200 -> 1375 · 1260 · 1319  ratio 1.10
+#:   target  2500 -> 1557 · 1515         ratio 0.61
+#:   target  4000 ->  849 · 1052         ratio 0.24
+#:
+#: Two facts, and the second is the surprising one. The model tracks a target closely up to
+#: about here — and past it the curve does not flatten, it INVERTS: asking for 4000 produced
+#: barely half what asking for 2500 did, and a third of what asking for 1200 did. An ask far
+#: beyond reach seems to push the model toward summarising the whole span instead of drafting
+#: part of it, so "just ask for more" makes the shortfall worse, not better.
+#:
+#: This is the number `draft_beats` is actually for, and it is ~3x the 500 first claimed. The
+#: payoff is measured, not argued — same book, same model, same day:
+#:   2500 in one call   -> 1557 · 1515   ratio 0.61
+#:   2500 in two beats  -> 2365 · 3067   ratio 0.95 · 1.23
+#:   4000 in one call   ->  849 · 1052   ratio 0.24
+#:   4000 in three      -> 4849 · 4163   ratio 1.21 · 1.04
+#: `repeated_chars` was 0 on every beated run — the passages did not restate each other.
+#:
+#: A scene wanting more than this needs MORE PASSAGES, each asked for a length inside the
+#: ceiling. Advisory, never enforced: it is one local model's measurement, and silently
+#: re-splitting an author's declared passages would be the engine overruling authored intent.
+MEASURED_SINGLE_CALL_CEILING_WORDS = 1500
+
+#: D-SCENE-BEATS slice 2 — the order a per-beat brief renders its fields in.
+#:
+#: Mirrors the packer's `<beat>` block (`assemble.build_segments`) EXACTLY, down to the
+#: `key=value | key=value` shape, so a beat brief and a scene beat read to the model as the
+#: same kind of object. Two renderings of one concept is how a model learns to skim one of
+#: them.
+_BEAT_BRIEF_ORDER = ("title", "goal", "synopsis", "conflict", "stakes", "outcome",
+                     "tension", "value_shift", "when", "leaves")
+
+#: Keys that are drafting CONTROL, not story direction — rendered nowhere, read by the loop.
+#: Same distinction `_NOT_SCENE_INTENT` draws for `target_words` at the scene level.
+_BEAT_CONTROL_KEYS = frozenset({"target_words"})
+
+#: A single beat field is a brief line, not an essay. Bounded for the same reason `guide` is.
+_BEAT_VALUE_MAX_LEN = 600
+
+#: How much of the scene's already-written prose a later beat is shown. A runaway guard, not
+#: a budget: at the measured ~500 words/beat a 4-beat scene is ~2,000 words (~12k Latin chars,
+#: fewer for CJK), well inside this — only a scene near the 24-beat cap can reach it. There the
+#: TAIL is what continuity needs, but the elision is MARKED, because a model that cannot see
+#: the scene's opening must be told that rather than assume the scene starts where its context
+#: does (and then write a second opening).
+_BEAT_CONTEXT_MAX_CHARS = 24_000
+
+
+def beat_targets(draft_beats: list[dict[str, Any]], scene_target: int) -> list[int]:
+    """Per-beat word targets for a scene drafted in beats.
+
+    A beat carrying its own `target_words` takes it; what is left of the scene's target
+    splits evenly over the rest. That ordering matters — the author's explicit number is
+    the authored intent and an even split is the machine's guess, so the guess must yield.
+
+    NO floor. It is tempting to refuse to ask for a 100-word passage, but the measurement
+    this whole feature rests on says the model will not go that short anyway (the shortest
+    of ten live runs was 461 words against a 1500-word ask). A floor here would silently
+    overrule an author to prevent something that does not happen.
+    """
+    n = len(draft_beats)
+    if n == 0:
+        return []
+    explicit: list[int | None] = []
+    for b in draft_beats:
+        raw = (b or {}).get("target_words")
+        explicit.append(int(raw) if isinstance(raw, int) and not isinstance(raw, bool) and raw > 0
+                        else None)
+    spoken_for = sum(v for v in explicit if v)
+    implicit = [i for i, v in enumerate(explicit) if v is None]
+    share = max(1, (max(0, int(scene_target) - spoken_for)) // len(implicit)) if implicit else 0
+    return [v if v is not None else share for v in explicit]
+
+
+def render_beat_brief(beat: dict[str, Any]) -> str:
+    """One beat's brief, in the packer's own `key=value | …` beat shape.
+
+    Every non-control key reaches the string: the known ones first in `_BEAT_BRIEF_ORDER`,
+    then anything else the author put there, sorted. Rendering only a known set would
+    re-commit D-SCENE-INTENT-NEVER-SHOWN — an author fills a field and the drafter never
+    sees it — and a freeform `dict[str, Any]` is exactly where that recurs.
+
+    Values are sanitised: a beat brief is author free-text arriving at the strongest
+    position in the prompt, which is the same trust level as `guide`.
+    """
+    b = beat or {}
+    known = [k for k in _BEAT_BRIEF_ORDER if k in b]
+    extra = sorted(k for k in b if k not in _BEAT_BRIEF_ORDER and k not in _BEAT_CONTROL_KEYS)
+    parts = []
+    for k in known + extra:
+        v = b.get(k)
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        text = sanitize_guide(str(v), max_len=_BEAT_VALUE_MAX_LEN)
+        parts.append(f"{k}={text}/100" if k == "tension" else f"{k}={text}")
+    return " | ".join(parts)
+
+
+def build_beat_scope(
+    *, index: int, total: int, beat: dict[str, Any], written_so_far: str = "",
+    max_context_chars: int = _BEAT_CONTEXT_MAX_CHARS,
+) -> str:
+    """The block that narrows a scene draft to ONE of its beats (D-SCENE-BEATS slice 2).
+
+    Two jobs, and they pull against each other:
+
+    1. **Scope it.** The model must write this passage and not the scene's other ones —
+       the same boundary problem SCENE-BOUNDARY hit one level up, where a plan block
+       showing the whole chapter let the drafter run through its neighbours.
+    2. **Continue it.** Passage 3 that re-opens the scene, re-introduces the cast and
+       re-establishes the setting is worse than no passage 3. So the prose written so far
+       rides along, with an explicit instruction to continue FROM it rather than restate it.
+
+    Job 2 is why the beats are drafted SEQUENTIALLY rather than in parallel: k parallel
+    beat calls would be faster and would each write the scene's opening.
+    """
+    n = max(1, int(total))
+    i = int(index) + 1
+    brief = render_beat_brief(beat)
+    head = (
+        f"\n\nPASSAGE {i} OF {n}. This scene is written as {n} consecutive passages and you "
+        f"are writing passage {i}. Write ONLY what this passage's brief asks for: the other "
+        "passages' material belongs to them, and covering it here — or repeating what an "
+        "earlier passage has already covered — is a failure, not thoroughness."
+    )
+    if brief:
+        head += f"\n\nThis passage covers: {brief}"
+    body = (written_so_far or "").strip()
+    if not body:
+        # Passage 1 opens the scene; every later one must not.
+        return head
+    elided = ""
+    if len(body) > max_context_chars:
+        body = body[-max_context_chars:]
+        elided = ("[…the earlier part of this scene is not shown; it exists — do NOT treat "
+                  "what follows as the scene's opening]\n")
+    return head + (
+        f"\n\nPassages 1-{i - 1} of THIS SAME scene are already written and appear below. "
+        "Continue directly from where they end: do not re-open the scene, re-introduce the "
+        "characters, re-establish the setting, or restate anything already on the page. "
+        "Carry it forward.\n\n<written_so_far>\n"
+        + elided + sanitize_prose_context(body)
+        + "\n</written_so_far>"
+    )
+
+
+#: A run this long recurring verbatim is a repetition, not a coincidence. Short enough to
+#: catch a restated sentence, long enough that a shared idiom or a character's name is not
+#: a hit.
+_REPEAT_MIN_SPAN_CHARS = 60
+
+#: Sentence-ish boundaries, Latin and CJK. Coarse on purpose — this counts repetition, it
+#: does not parse language.
+_SENTENCE_SPLIT = re.compile(r"[.!?;\n]+|[。！？；\n]+")
+
+
+def repeated_span_chars(earlier: str, later: str,
+                        min_span: int = _REPEAT_MIN_SPAN_CHARS) -> int:
+    """Chars of `later` that appear VERBATIM in `earlier`, counted in sentence units.
+
+    The per-beat prompt tells the model not to repeat what an earlier passage covered. That
+    is an instruction, and an instruction is not a guarantee — this is the cheap measurement
+    of whether it held, so the result can SAY it rather than assert it. No LLM, no judge:
+    exact repetition is the failure mode a stitched-from-passages scene actually exhibits,
+    and it is detectable by string equality.
+
+    Deliberately conservative. It counts only whole sentence-ish units of at least
+    `min_span` chars, so a shared name, a repeated stock phrase, or a deliberate refrain in
+    dialogue does not register. It will therefore MISS a paraphrase — that is a known blind
+    spot, not a claim of completeness, and the honest one to have: a false "the beats
+    repeated" reading would be worse than a missed soft echo.
+    """
+    if not earlier or not later:
+        return 0
+    seen = {s.strip() for s in _SENTENCE_SPLIT.split(earlier) if len(s.strip()) >= min_span}
+    if not seen:
+        return 0
+    return sum(len(s) for s in
+               (u.strip() for u in _SENTENCE_SPLIT.split(later))
+               if len(s) >= min_span and s in seen)
 
 #: D-SCENE-OUTPUT-BUDGET-FLAT — tokens per WORD, by script family.
 #:
@@ -256,7 +447,7 @@ def scene_output_budget(
 
 def build_messages(
     packed_prompt: str, profile: BookProfile, operation: str, guide: str = "",
-    target_words: int | None = None,
+    target_words: int | None = None, beat_scope: str | None = None,
 ) -> list[dict[str, str]]:
     """System + user messages for the drafter. The packer's structured blocks are
     the grounding; the wrapper carries language + the operation steer.
@@ -264,7 +455,14 @@ def build_messages(
     ``target_words`` (scene-draft path only) appends an explicit LENGTH directive so the model
     writes a full scene instead of a sketch — a max_output_tokens cap is a ceiling, not a target,
     so with no directive a local model stops early. Callers that are NOT drafting a full scene
-    (selection ops, revise) pass None and the prompt is unchanged."""
+    (selection ops, revise) pass None and the prompt is unchanged.
+
+    ``beat_scope`` (D-SCENE-BEATS slice 2, from ``build_beat_scope``) narrows the draft to ONE
+    of the scene's beats and carries the passages already written. It is placed immediately
+    ABOVE the LENGTH directive on purpose: that directive says "reach that length by playing
+    out the beats THIS passage covers more fully", a sentence whose referent is vague for a
+    whole scene and exact once a passage brief sits directly above it. None ⇒ the single-call
+    scene draft, byte-unchanged."""
     lang = "" if profile.source_language in ("", "auto") else (
         f" Write the prose in the language with code '{profile.source_language}'."
     )
@@ -330,24 +528,30 @@ def build_messages(
         "compress, or stop early; a short sketch is a failure. Reach that length by playing "
         "out the beats THIS passage covers more fully — deeper interiority, sharper sensory "
         "detail, real dialogue — never by extending past the material you were asked to write. "
-        # D-LENGTH-DIRECTIVE-INERT (2026-07-31) — the sentence that used to close this
-        # directive was "If those beats are genuinely finished, stop: ending a little short is
-        # correct, writing beyond your assigned scope is not."
+        # The sentence that used to close this directive was "If those beats are genuinely
+        # finished, stop: ending a little short is correct, writing beyond your assigned scope
+        # is not." It was replaced by what follows, on this reasoning:
         #
-        # MEASURED, 5 live runs on throwaway books (gemma-26b): targets 200/400/900/900/1500
-        # produced 565/673/497/625/559 words — ~580 mean, UNCORRELATED with the ask across a
-        # 7.5x range, every run finish_reason="stop". The directive was not being ignored; it
-        # was being OVERRIDDEN by its own last sentence. A model handed one fuzzy numeric
-        # target and an explicit permission to stop early takes the permission, and
-        # `draft_scene` separately ends "Stop when THIS scene's beat has played out" — two
-        # stop instructions against one soft number.
+        #   "MEASURED, 5 live runs: targets 200/400/900/900/1500 produced 565/673/497/625/559
+        #   words — UNCORRELATED with the ask across a 7.5x range. The directive was not being
+        #   ignored; it was being OVERRIDDEN by its own last sentence."
         #
-        # The clause was added by the 2026-07-30 SCENE-BOUNDARY fix, and it was RIGHT to add:
-        # before it, length won and the drafter annexed its neighbours' beats to reach the
-        # count. That fix over-corrected. What follows keeps the anti-annexation guarantee —
-        # the only sanctioned way to gain length is still depth, never scope — while removing
-        # the free pass: stopping short now has to be earned, and "a little short" is given a
-        # magnitude so a third of the target cannot pass as it.
+        # **That diagnosis was wrong, and this comment is kept as the correction rather than
+        # quietly rewritten.** Those runs went through `select_draft`, which had no
+        # `target_words` parameter — so NO length directive reached the model on any of them
+        # (D-LENGTH-DIRECTIVE-NEVER-SENT, same day). Output uncorrelated with an ask that was
+        # never sent is not evidence about the wording of the ask. The escape clause was not
+        # overriding anything; nothing was there to override.
+        #
+        # The replacement text below is kept because it is defensible ON ITS OWN TERMS — a
+        # model handed one soft number and an explicit permission to stop early takes the
+        # permission, and `draft_scene` separately ends "Stop when THIS scene's beat has played
+        # out", so two stop instructions against one soft number is a real imbalance. It
+        # preserves the anti-annexation guarantee the 2026-07-30 SCENE-BOUNDARY fix added (the
+        # only sanctioned way to gain length is depth, never scope) while giving "a little
+        # short" a magnitude. But it has never been TESTED against the alternative, because
+        # until the fix neither version was in a prompt. Whether it beats the original wording
+        # is an open question, not a settled one.
         "Do not pad, and do not annex the next scene. Stop short ONLY if you have genuinely "
         "exhausted the interiority, sensory detail and dialogue these beats can carry — and a "
         "passage under half the target has not been written fully, it has been summarised."
@@ -364,8 +568,8 @@ def build_messages(
     # brackets and BRACKETS directive spans rather than deleting them), so the model
     # reads the same instruction — it just can no longer read a forged `<canon>` tag or
     # an "ignore previous instructions" as a command.
-    user = packed_prompt + "\n\n" + instruction + promise_steer + length_steer + (
-        f"\n\nAuthor guidance: {sanitize_guide(guide)}" if guide else "")
+    user = packed_prompt + "\n\n" + instruction + promise_steer + (beat_scope or "") + (
+        length_steer) + (f"\n\nAuthor guidance: {sanitize_guide(guide)}" if guide else "")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
