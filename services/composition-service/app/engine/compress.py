@@ -28,6 +28,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.llm_budget import max_tokens_for
+from app.engine.cross_scene_check import build_extract_prompt, extract_people
 
 logger = logging.getLogger(__name__)
 
@@ -122,4 +123,79 @@ async def compress(
     if getattr(job, "status", None) != "completed":
         logger.info("compress status=%s — keeping raw prose", getattr(job, "status", None))
         return ""
-    return extract_judge_content(job.result).strip()
+    ledger = extract_judge_content(job.result).strip()
+    if not ledger:
+        return ""
+
+    # D-LEDGER-DROPS-CAST-ATTRIBUTES — the summariser decides what matters, and it drops the
+    # thing that breaks continuity.
+    #
+    # The prompt above already demands each character's CONDITION and LOCATION. Measured
+    # anyway, on two real runs: the ledger recorded the character scene 2 had just introduced
+    # as `Condition: Unknown` (gender gone — and scene 3 then contradicted it), and a later
+    # ledger listed Elara and The Void but omitted the Scribe entirely. Asking harder is not
+    # the fix; the request was already explicit.
+    #
+    # So the cast facts are carried MECHANICALLY. The same extraction that the seam check
+    # proved reliable on this model runs over the prose, and the rows are prepended verbatim.
+    # The LLM still writes the narrative ledger — it just no longer gets to decide whether a
+    # character's pronoun survives.
+    cast = await _cast_state(
+        llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        prose=prose, source_language=source_language, trace_id=trace_id,
+        cancel_check=cancel_check)
+    return f"{cast}\n\n{ledger}" if cast else ledger
+
+
+async def _cast_state(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    prose: list[str], source_language: str, trace_id: str | None,
+    cancel_check: Callable[[], Awaitable[bool]] | None,
+) -> str:
+    """A deterministic `WHO IS IN THIS: name — pronoun — role` block, or "" if unavailable.
+
+    Degrade-safe on purpose: a failed extraction costs the mechanical guarantee, not the
+    summary. The caller still gets the LLM ledger.
+    """
+    body = "\n\n".join(prose)[-8000:]
+    if not body.strip():
+        return ""
+    try:
+        job = await llm.submit_and_wait(
+            user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
+            input={"messages": [{"role": "system",
+                                 "content": build_extract_prompt(source_language)},
+                                {"role": "user", "content": body}],
+                   "response_format": {"type": "text"}, "temperature": 0.0,
+                   "max_tokens": max_tokens_for("cross_scene_check"), **no_thinking_fields()},
+            job_meta={"usage_purpose": "context_compress", "extractor": "cast_state"},
+            trace_id=trace_id, cancel_check=cancel_check,
+        )
+    except LLMError as exc:
+        logger.warning("cast-state extract failed (%s) — ledger only", exc)
+        return ""
+    if getattr(job, "status", None) != "completed":
+        return ""
+    rows = extract_people(job.result)
+    lines = []
+    seen: set[str] = set()
+    for r in rows:
+        who = r["who"].strip()
+        key = who.lower().lstrip("the ").strip()
+        # A pronoun-only row ("she", "her") names nobody; keeping it would put a bare pronoun
+        # in the ledger as if it were a character.
+        if not who or key in seen or len(key) < 3 or r["pronoun"] == who.lower():
+            continue
+        seen.add(key)
+        bits = [who]
+        if r["pronoun"] != "none":
+            bits.append(r["pronoun"])
+        if r["role"]:
+            bits.append(r["role"])
+        lines.append("- " + " — ".join(bits))
+        if len(lines) >= 20:
+            break
+    if not lines:
+        return ""
+    header = "WHO IS IN THIS (carried verbatim; do not change a name, pronoun or role):"
+    return header + "\n" + "\n".join(lines)

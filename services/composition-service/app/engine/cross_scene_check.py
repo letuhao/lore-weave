@@ -141,7 +141,7 @@ def _norm_name(who: str) -> str:
     return "" if w in _NOT_A_NAME or len(w) < 3 else w
 
 
-def _people(raw: Any) -> list[dict]:
+def extract_people(raw: Any) -> list[dict]:
     parsed = parse_critique_json(extract_judge_content(raw)) or {}
     out: list[dict] = []
     for row in (parsed.get("people") or [])[:40]:
@@ -231,7 +231,7 @@ async def check_chapter_consistency(
         if job.status != "completed":
             logger.info("cross-scene extract status=%s → degraded", job.status)
             return None
-        return _people(job.result)
+        return extract_people(job.result)
 
     merged = CrossSceneResult(status="checked")
     degraded = False

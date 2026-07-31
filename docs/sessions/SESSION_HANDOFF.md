@@ -406,6 +406,64 @@ get a char-based ESTIMATE, the method rides in the response, and the length dete
 regardless of language, and "words" has no clear referent in CJK. Better to score nothing than
 to score a fiction. (That the directive is ambiguous for CJK at all is a real S2 finding.)
 
+## 📖 THE REAL CHAPTERS — four guards a book without extraction actually gets (2026-08-01)
+
+Author: *"đã thực sự tạo ra được chapter thực sự nào để phân tích chưa? chứ đếm từ không làm
+gì"* — and they were right. Every measurement to that point was ONE scene on an EMPTY book: no
+canon, no cast, no prior prose, one synopsis line. So: **three consecutive chapters, 19,494
+words, 9 scenes**, authored with full intent into a book with 10k words of existing prose and a
+31-scene plan. Reading them found what counting could not.
+
+### Four defects, each measured on that prose
+
+| id | what was wrong | how it showed |
+|---|---|---|
+| **D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER** | `run_canon_reflect` returned a GREEN before doing anything when the book had no bound cast — *"Nothing to check — benign"*, which is inverted | an 8,116-word chapter, every scene `skipped_no_cast`, an invented character in three of them, nothing saying "no check ran" |
+| **D-RECENT-FLOOR-COMPRESSED** | `<recent>` is ENTIRELY current-chapter prose, and `pack_compress_keep_immediate=2` LLM-summarised all but two paragraphs of it | scene 2 became a ledger recording the character it had just introduced as `Condition: Unknown`; scene 3 then contradicted it at the seam |
+| **D-PRIOR-CHAPTER-BLIND** | the only carrier for earlier chapters was the knowledge timeline, empty until extraction runs | a 9-chapter book drafted its tenth with **not one word** from any predecessor |
+| **D-LEDGER-DROPS-CAST-ATTRIBUTES** | the compressor decides what matters, and drops what breaks continuity | two runs: `Condition: Unknown`, then a ledger listing Elara and The Void but omitting the Scribe entirely |
+
+### The check I built that COULD NOT FAIL — caught by its own control
+`cross_scene_check` v1 asked the judge *"report only DIRECT CONTRADICTIONS"*. Run against the
+exact pair that shipped, plus a hand-consistent control:
+
+    SEEDED (he→she)        contradictions=0
+    CONTROL (consistent)   contradictions=0
+
+Valid JSON, no parse error — **gemma-26b simply does not make that judgement**. Identical
+answers on a seeded defect and its control is the InkOS F1 shape (*"QA dịch thuật về mặt cấu
+trúc không thể fail"*), and I had just built a fifth instance of it.
+
+Rewritten as **EXTRACT-then-compare-in-code**: the model fills slots (reliable — `A → {who:"He",
+pronoun:"he", role:"the anchor"}`), the comparison is deterministic and unit-tested. A linking
+prompt was tried too and matched `Elara↔Elara` but NOT `the anchor↔the Scribe`, so that
+coreference is **not recoverable with this model** — the result reports `unlinked_*` rather than
+claiming a clean seam. The measured case lands in that bucket and says so.
+
+### What I could NOT claim, and retracted
+That "Mira" was **wrong**. The book has no cast SSOT, fiction introduces characters, and I
+reached that verdict by 1-edit distance from "Mina" — the exact inference I had just deleted
+from the code for being unreliable (`Weaver's Lane` → `Vane`: same length, same distance,
+completely false). Without ground truth you can check **self-contradiction**, not correctness.
+`name_grounding` reports an observation and names its `truth_source` (`glossary` vs
+`prompt_proxy`) — comparing a draft against the drafter's own prompt is not verification.
+
+### Measured, not argued
+- name-detector noise on the real 19,494 words: **14 → 1**, and the survivor is a TRUE positive
+  (the model coined "the Unmaking"). The biggest source was markdown emphasis — `*Thump.*`,
+  `*Scritch.*`, `*Shhh.*` — seven of twelve, not dialogue as assumed.
+- the floor, live on the prompt: scene 2's `<recent>` = **8,330 chars against a 8,371-char
+  predecessor, no ledger** (was ~2,400 + ledger). Scene 3 holds both prior scenes, compressing
+  only the overflow.
+- `<memory>` now populated by the prior-chapter fallback where it was **absent entirely**.
+- across the 3 chapters: **no invented character in 19,494 words**; the Scribe `he=0`.
+
+### Open — the attribution question is NOT settled
+The consistency above may come from the architecture or from a better spec (this run's chapter 1
+said "a woman"; the earlier one did not). A first probe with the gender removed came back
+consistent, but was **contaminated** — the probe chapter's `<memory>` carried the earlier run's
+chapters, where the Scribe is "she". A clean probe on a brand-new book is the outstanding item.
+
 ## 🩹 RETRACTION — the LENGTH directive was never SENT, and three sections below are wrong (2026-08-01)
 
 `select_draft` **had no `target_words` parameter.** `diverge` accepted one, `build_messages`

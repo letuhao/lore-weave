@@ -443,7 +443,8 @@ async def run_generate(
     # One call, against the IMMEDIATELY preceding scene only (seams are where a reader trips).
     # Advisory + degrade-safe, like every other producer here: a contradiction can be right —
     # a character lies, a reveal recasts an earlier scene — so it reports and the author judges.
-    cross_scene: dict[str, Any] = {"status": "not_run", "contradictions": []}
+    cross_scene: dict[str, Any] = {"status": "not_run", "contradictions": [],
+                                   "linked": 0, "clean": False}
     try:
         from app.db.repositories.generation_jobs import GenerationJobsRepo as _Jobs
         from app.engine.cross_scene_check import check_chapter_consistency
@@ -464,13 +465,20 @@ async def run_generate(
             )
             cross_scene = {
                 "status": res.status, "pairs_checked": res.pairs_checked,
+                # `linked`/`unlinked_*` are not decoration: with 0 linked, an empty
+                # `contradictions` means "nobody could be matched across the seam", NOT
+                # "the scenes agree". Dropping them here would rebuild the false green
+                # this whole check exists to remove.
+                "linked": res.linked, "unlinked_earlier": res.unlinked_earlier,
+                "unlinked_later": res.unlinked_later, "clean": res.clean,
                 "contradictions": [dataclasses.asdict(c) for c in res.contradictions],
             }
         else:
             cross_scene["status"] = "skipped_single_scene"
     except Exception:  # noqa: BLE001 — a continuity judge must never fail a generate (F1)
         logger.warning("cross-scene check failed (advisory)", exc_info=True)
-        cross_scene = {"status": "degraded", "contradictions": []}
+        cross_scene = {"status": "degraded", "contradictions": [],
+                       "linked": 0, "clean": False}
 
     # FD-1 narrative_thread S2: best-effort promise-ledger producer (gated per-work).
     await _maybe_narrative_threads(
