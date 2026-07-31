@@ -58,6 +58,55 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S0's real half — the fixture is ingested, and a citation is finally READ (2026-07-31)
+
+`app/gamegen/corpus.py`. **1279 passed / 2 skipped.** Until this slice every citation in the pipeline
+was *nameable* and none had ever been *read*: the 武俠 fixture was ten markdown files on disk and
+`source_corpus_chunk` was empty. **`T1b` was half built by construction, not by omission** — there
+were no bytes to fetch.
+
+**`PGN-A14` now has teeth.** `verify_citation` fetches the bytes at `[chunk_id, span)` from the corpus
+the seal covers, and refuses three ways — each a different lie:
+
+* the chunk is **not in the sealed corpus** → the seal grounds nothing;
+* the span is **outside the chunk** → a citation to bytes that do not exist;
+* the bytes **differ** → the quote was written, not read.
+
+And the verdict carries **what the corpus actually says**. That is the whole point: rendering the
+*claimed* quote to a reviewer would have them compare the model against itself, which is exactly the
+comparison the axiom exists to break.
+
+**Reused, not reinvented:** chunking is `app.retrieval.chunker.chunk_text`, the CJK-aware sentence
+window this service already owns. A second chunker would produce different offsets for the same text,
+so a citation verified under one and stored under the other would drift silently — worse than the
+copy-paste `SDK-First` forbids.
+
+**Not reused, deliberately:** `ingest_corpus`, because it embeds and embedding needs a resolved model.
+A gamegen citation is verified by **byte comparison at an offset**; nothing here retrieves
+semantically. Requiring a provider call to seal a corpus would couple S0 to a model for a vector no
+stage reads — and make the fixture un-ingestable on a machine with no BYOK credential.
+
+**The byte-vs-character rule closes both ends.** S2's `length(quote) = end - start` CHECK refuses a
+byte offset at insert; the verifier compares the *actual* substring, so a citation that survived the
+length check by coincidence still fails when the bytes are read. Tested with a real CJK offset from
+the fixture.
+
+**Three test bugs of my own, each informative rather than embarrassing:** file order is by `Path`
+(so `book/ch03.md` precedes `README.md`) and asserting lexicographic *title* order was asserting the
+wrong property; a title-only document still chunks, because the ingest prepends `# {title}` and a
+title IS citable text — so the genuine empty case is *no documents*; and chunk 0 opens with an ASCII
+markdown heading, so the byte-offset test had to seek a real CJK position rather than assume offset 0.
+
+**BITE-TESTS, three, restored:** the byte comparison disabled → fabricated-quote, byte-offset and
+bare-bool tests all failed · the range check disabled → span-outside-chunk failed · the seal join
+weakened → chunk-outside-seal failed.
+
+Trust table: **T1b → built.**
+
+**▶ NEXT:** the interrogation stage — a sealed corpus + the brief → *proposed* answers with real
+spans, which is the first time a model runs in this pipeline. Everything downstream of it now exists
+and refuses correctly; nothing upstream of it does.
+
 ### ✅ S6 /review-impl — the pin regenerated with the WRONG policy, silently (2026-07-31)
 
 `/review-impl` on `b414fdbfb`. **1265 passed / 2 skipped.** Two findings, and the first is the
