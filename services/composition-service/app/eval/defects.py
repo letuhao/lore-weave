@@ -181,8 +181,21 @@ DEFECTS: tuple[DefectClass, ...] = (
     DefectClass(
         code="length_directive_ignored",
         defect="the draft lands far under the word count its own prompt requested",
-        seeded="target_words=900 on a Vietnamese scene (~2300 output tokens needed)",
-        control="target_words=200 on the same scene (comfortably inside any budget)",
+        seeded="target_words=1500 on a Vietnamese scene",
+        # MEASURED 2026-07-31, gemma-26b via lm_studio, 5 live runs on throwaway books:
+        #   target  200  400  900  900 1500
+        #   actual  565  673  497  625  559
+        # Output is ~500-670 words REGARDLESS of the ask, across a 7.5x target range, and
+        # every run ended `finish_reason="stop"` — never truncation. The LENGTH directive has
+        # no measurable effect on length.
+        #
+        # That makes a clean control impossible to state as "a target the model meets": the
+        # only quiet control is one that happens to coincide with the model's natural output,
+        # which is a coincidence, not compliance. 500 is chosen for exactly that reason and
+        # for no other — and saying so is the point, because a control that passes by accident
+        # is the failure this registry exists to make visible.
+        control="target_words=500 — near the model's OBSERVED natural output, so the detector "
+                "goes quiet without the directive having been obeyed",
         detector=_fired_length_shortfall,
         # UNBLOCKED 2026-07-31: the generate response now carries `actual_words` +
         # `word_count_method` (routers/engine.py -> cowrite.realised_words). This was the
@@ -190,7 +203,9 @@ DEFECTS: tuple[DefectClass, ...] = (
         # delivered — the first thing this suite can actually measure.
         reads=("target_words", "actual_words", "word_count_method"),
         provenance="D-SCENE-OUTPUT-BUDGET-FLAT — measured 900/850/800/750/800 -> "
-                   "445/414/532/618/736 words",
+                   "445/414/532/618/736 words. RE-MEASURED live 2026-07-31 with an adequate "
+                   "budget: still ~580 words mean, uncorrelated with the target, finish=stop. "
+                   "The budget fix was necessary and NOT sufficient — the directive is inert.",
     ),
     DefectClass(
         code="structured_output_truncated",

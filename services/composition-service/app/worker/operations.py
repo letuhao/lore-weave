@@ -25,6 +25,7 @@ from loreweave_llm import ReasoningDirective, directive_from_parts
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.engine.cowrite import realised_words
 from app.worker.constants import SUPPORTED_OPERATIONS
 from loreweave_context import scale_by_window
 
@@ -432,7 +433,16 @@ async def run_generate(
 
     total_out = w.metering.output_tokens + revise_out_tokens
     truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
+    # D-SCENE-OUTPUT-BUDGET-FLAT / eval S10 — the LENGTH directive asked for `target_words`;
+    # report what came back. This assembly is a near-duplicate of the router's inline branch
+    # (routers/engine.py) and of the chapter path below — the envelope is built in FOUR places,
+    # which is why the first version of this field reached only one of them and the live probe
+    # read None. Consolidating them is S1/S2; until then the field goes on every path that can
+    # produce a scene draft, or the eval measures whichever branch it happened to hit.
+    _target_words = input.get("target_words")
+    _aw, _wcm = realised_words(final_text, input.get("source_language"))
     return {
+        "target_words": _target_words, "actual_words": _aw, "word_count_method": _wcm,
         "text": final_text, "input_tokens": w.metering.input_tokens,
         "output_tokens": total_out, "measured": w.metering.measured,
         "k": len(sel.candidates), "winner_index": sel.winner_index,

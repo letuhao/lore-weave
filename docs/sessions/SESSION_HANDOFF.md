@@ -406,9 +406,45 @@ get a char-based ESTIMATE, the method rides in the response, and the length dete
 regardless of language, and "words" has no clear referent in CJK. Better to score nothing than
 to score a fiction. (That the directive is ambiguous for CJK at all is a real S2 finding.)
 
+## 🔴 S10-b FIRST MEASUREMENT — the LENGTH directive is INERT (2026-07-31)
+
+**Five live runs, gemma-26b via lm_studio ($0), throwaway books, the real worker path:**
+
+| target | 200 | 400 | 900 | 900 | 1500 |
+|---|---|---|---|---|---|
+| **actual_words** | 565 | 673 | 497 | 625 | 559 |
+| ratio | 2.82 | 1.68 | 0.55 | 0.69 | 0.37 |
+
+Output is **~500–670 words regardless of the ask, across a 7.5× target range**, and **every
+run ended `finish_reason="stop"` — never truncation.** The LENGTH directive has no measurable
+effect on output length.
+
+**This reframes D-SCENE-OUTPUT-BUDGET-FLAT.** That fix was diagnosed as "max_tokens 1024 <
+~2300 needed, so it truncated" and it was correct — but with an adequate budget the output is
+STILL ~580 words and uncorrelated with the target. **The budget fix was necessary and not
+sufficient**; the directive itself is not being followed. This is the Mị Đế chapter-length bug,
+and it is an S2 finding about prompt construction, not a budget one.
+
+⚠️ It also **invalidated my own control**. `length_directive_ignored` used target=200 as "a
+target comfortably met" — the model overshoots it 2.8×. The only control that goes quiet is one
+that happens to coincide with the model's natural output (~500), which is a *coincidence, not
+compliance*. The row now says exactly that, because a control that passes by accident is the
+failure this registry exists to make visible.
+
+**Getting here took four real bugs on the way**, all found by running rather than reading:
+`mode:auto` **enqueues** (returns `{job_id, status:"pending"}`) so the fields I added to the
+router's inline branch were never reached — and **`eval_a2_canon.py` reads `canon` off that
+same immediate response**, so the one pre-existing seeded harness is very likely broken against
+the current engine. The result envelope is assembled in **four places** (router inline ×2,
+worker ×2), which is why one edit reached one branch. And `source_language` was not in the
+generate job input at all, so the worker's counter would have fallen back to whitespace on a
+CJK book — the exact metric-manufactured finding guarded against one commit earlier.
+
 ### ▶ NEXT
-1. **S10-b** — the live driver: run the 3 scorable classes against a real stack, on a
-   throwaway book. The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding
+1. **S2 — why the LENGTH directive is inert.** The measurement above is the entry point.
+   Check `eval_a2_canon.py` against the enqueue path while there.
+2. **S10-b remainder** — the live driver (`app/eval/driver.py`) needs the job-POLLING path
+   (written against the sync response), plus gone-cast seeding lifted from `eval_a2_canon.py`. The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding
    mechanics". The 2 remaining blind classes need `scenes_covered` (S2 territory) and
    `unresolved_refs`.
 2. **S1 → S2** per spec §6.

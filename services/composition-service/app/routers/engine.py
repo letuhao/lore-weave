@@ -562,6 +562,11 @@ async def generate(
             "outline_node_id": str(node.id), "guide": body.guide,
             # Length target for the worker's diverge draft (else it free-runs SHORT — 83 words).
             "target_words": node.target_words or DEFAULT_SCENE_TARGET_WORDS,
+            # ...and the language it will be written in, so the worker can count the RESULT
+            # the same way. Without it `realised_words` falls back to whitespace, which
+            # under-counts a spaceless script by ~an order of magnitude and would report every
+            # CJK scene as short — a finding manufactured by the metric.
+            "source_language": _src_lang,
             "max_out": _max_out,
             "reasoning_passthrough": reasoning.passthrough,
             "grounding_available": pc.grounding_available,
