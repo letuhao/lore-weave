@@ -440,9 +440,46 @@ worker ×2), which is why one edit reached one branch. And `source_language` was
 generate job input at all, so the worker's counter would have fallen back to whitespace on a
 CJK book — the exact metric-manufactured finding guarded against one commit earlier.
 
+## ◐ S2 attempt 1 — diagnosis good, fix UNPROVEN (2026-07-31)
+
+**The directive was not being ignored — it was overridden by its own last sentence.** It read:
+*"…do NOT summarise, compress, or stop early; a short sketch is a failure … **If those beats
+are genuinely finished, stop: ending a little short is correct**."* Plus `draft_scene`
+separately ends *"Stop when THIS scene's beat has played out."* Two explicit stop permissions
+against one fuzzy numeric target — and the model takes the permission. The clause came from the
+2026-07-30 SCENE-BOUNDARY fix, which was right to add it (before it, length won and the drafter
+annexed its neighbours) and over-corrected.
+
+Replaced with a clause that keeps the anti-annexation guarantee but makes stopping short
+*earned*, and gives "a little short" a magnitude: *"Stop short ONLY if you have genuinely
+exhausted the interiority, sensory detail and dialogue these beats can carry — and a passage
+under half the target has not been written fully, it has been summarised."*
+
+**The A/B does not show it working.**
+
+| target | 200 | 400 | 900 | 1500 |
+|---|---|---|---|---|
+| before | 565 | 673 | 497 | 559 |
+| after | 519 | 509 | 528 | **698** |
+
+Only the 1500 case moved (+25%). But the BEFORE set already produced **497 and 625 at the same
+target=900** — a **26% spread at a fixed input** — so a 25% move at one point is inside the
+noise. **n=1 per point cannot detect an effect smaller than ~30%; future A/Bs need n≥3.**
+
+The change is kept because the old clause is indefensible on its face (a blanket "ending a
+little short is correct" against a 3× shortfall), not because it was shown to help. **Output is
+still ~500–700 words whatever is asked.**
+
+**What this points at next:** if no prompt wording moves it, the lever is probably not the
+prompt. Candidates — scene granularity (the planner sets `target_words` far above what one
+beat can carry, so the model is right to stop), or an explicit expand/continue pass. Note the
+instrument earned its keep here: it produced the number, and then told me my fix did not work.
+
 ### ▶ NEXT
-1. **S2 — why the LENGTH directive is inert.** The measurement above is the entry point.
-   Check `eval_a2_canon.py` against the enqueue path while there.
+1. **S2 attempt 2** — test the granularity hypothesis: does a scene whose beat genuinely
+   carries 1500 words reach 1500? Use n≥3 per point. `app/eval/driver.py` drives it.
+2. **`eval_a2_canon.py` reads `canon` off the 202** — the one pre-existing seeded harness is
+   broken against the enqueue path. Same fix the driver already has.
 2. **S10-b remainder** — the live driver (`app/eval/driver.py`) needs the job-POLLING path
    (written against the sync response), plus gone-cast seeding lifted from `eval_a2_canon.py`. The seeding mechanics already exist in `eval_a2_canon.py` §"Seeding
    mechanics". The 2 remaining blind classes need `scenes_covered` (S2 territory) and

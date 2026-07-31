@@ -313,8 +313,27 @@ def build_messages(
         "compress, or stop early; a short sketch is a failure. Reach that length by playing "
         "out the beats THIS passage covers more fully — deeper interiority, sharper sensory "
         "detail, real dialogue — never by extending past the material you were asked to write. "
-        "If those beats are genuinely finished, stop: ending a little short is correct, "
-        "writing beyond your assigned scope is not."
+        # D-LENGTH-DIRECTIVE-INERT (2026-07-31) — the sentence that used to close this
+        # directive was "If those beats are genuinely finished, stop: ending a little short is
+        # correct, writing beyond your assigned scope is not."
+        #
+        # MEASURED, 5 live runs on throwaway books (gemma-26b): targets 200/400/900/900/1500
+        # produced 565/673/497/625/559 words — ~580 mean, UNCORRELATED with the ask across a
+        # 7.5x range, every run finish_reason="stop". The directive was not being ignored; it
+        # was being OVERRIDDEN by its own last sentence. A model handed one fuzzy numeric
+        # target and an explicit permission to stop early takes the permission, and
+        # `draft_scene` separately ends "Stop when THIS scene's beat has played out" — two
+        # stop instructions against one soft number.
+        #
+        # The clause was added by the 2026-07-30 SCENE-BOUNDARY fix, and it was RIGHT to add:
+        # before it, length won and the drafter annexed its neighbours' beats to reach the
+        # count. That fix over-corrected. What follows keeps the anti-annexation guarantee —
+        # the only sanctioned way to gain length is still depth, never scope — while removing
+        # the free pass: stopping short now has to be earned, and "a little short" is given a
+        # magnitude so a third of the target cannot pass as it.
+        "Do not pad, and do not annex the next scene. Stop short ONLY if you have genuinely "
+        "exhausted the interiority, sensory detail and dialogue these beats can carry — and a "
+        "passage under half the target has not been written fully, it has been summarised."
     ) if target_words and target_words > 0 else ""
     # D-COWRITE-GUIDE-UNSANITIZED (2026-07-31): the SAME `guide` value reaches this
     # function and `build_pack`. The pack neutralises it into a protected `<guide>`
