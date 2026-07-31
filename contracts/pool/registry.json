@@ -1,0 +1,66 @@
+{
+  "_why": [
+    "The L0 slot registry (EPL-A2): slot SHAPES are declared by their owning module;",
+    "MEMBERS are authored per reality by the pool loop. This file is the single source",
+    "both the Rust engine and the Python loop read, so they cannot disagree.",
+    "",
+    "HAND-WRITTEN TODAY, GENERATED LATER. doc 40.12 §7 puts the declaration in Rust",
+    "(`declare_pool_slot!` in crates/ruleset-core/src/pool/) with this file as its build",
+    "output plus a drift test. Until that lands this file is authored directly, and a",
+    "`\"generated\": false` flag says so rather than letting a reader assume otherwise."
+  ],
+  "generated": false,
+  "schema_version": 1,
+
+  "_axes": {
+    "shape": "what the output looks like — MOD-A1",
+    "operation": "what the planner does to its evidence — BLD-A1. Yields the criteria.",
+    "visibility": "SHARED = other modules may reference its members; PRIVATE = owner only (EPL-A7)"
+  },
+
+  "slots": [
+    {
+      "id": "instrument_tag",
+      "owner": "item",
+      "shape": "unordered",
+      "operation": "ABSTRACT",
+      "visibility": "SHARED",
+      "arity": [0, 32],
+      "suggest": [2, 12],
+      "member": {},
+      "consumed_by": [
+        "progression.training_rule.instrument_match",
+        "df07.stat_term.instrument_match"
+      ],
+      "_axis_note": "BLD-A2: the axis is computed from `consumed_by` — these consumers condition rules on the tag, so the abstraction is by what a practitioner trains with, not by how an object looks."
+    },
+    {
+      "id": "item_archetype",
+      "owner": "item",
+      "shape": "unordered",
+      "operation": "CLASSIFY_LINK",
+      "visibility": "SHARED",
+      "arity": [1, 64],
+      "suggest": [3, 24],
+      "member": {
+        "class": { "ref": "engine:ItemClass", "required": true },
+        "instrument_tags": { "ref": "slot:instrument_tag", "list": true, "required": true },
+        "equip_slot": { "ref": "slot:equip_slot", "required": false },
+        "gates_on": { "ref": "slot:progression_kind", "list": true, "required": false }
+      },
+      "consumed_by": ["item.generator.tier2", "crafting.recipe", "loot.table"],
+      "_gates_on_note": "MEM-A4 open #2 — kept OPTIONAL on purpose. It is the first OUTBOUND reference from item into progression, so it is where EPL-A8 fires in that direction. progression_kind is NOT a registered slot yet, which is exactly the dangling case this cycle exists to exercise."
+    }
+  ],
+
+  "engine_enums": {
+    "ItemClass": ["Weapon", "Armor", "Trinket", "Consumable", "Tool", "Key",
+                  "Document", "Valuable"]
+  },
+
+  "_not_registered_yet": {
+    "equip_slot": "item owns it; omitted from this cycle to keep the POC at two kinds",
+    "progression_kind": "PROG_001 must register it — referenced by item_archetype.gates_on",
+    "lex_tag": "WA_001 must register it — the MEM-A4 gap"
+  }
+}
