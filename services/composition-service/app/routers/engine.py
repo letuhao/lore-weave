@@ -719,6 +719,20 @@ async def generate(
             work, llm=llm, repo=narrative_threads, user_id=user_id, project_id=project_id,
             scene_text=final_text, opened_at_node=node.id,
             model_source=body.model_source, model_ref=body.model_ref, source_language=_src_lang)
+        # D-GENERATED-FACT-HAS-NO-HOME — the write-back, on THIS path too.
+        #
+        # `COMPOSITION_WORKER_ENABLED` defaults to false in code and true in the shipped
+        # compose, so which of these two branches is "the real one" depends on deployment.
+        # Wiring a continuity feature into only the branch that happens to be live is how a
+        # capability becomes invisible the moment a flag flips — and the fix costs six lines.
+        from app.services.exit_state_writeback import record_scene_exit_state
+        exit_state_record = await record_scene_exit_state(
+            None, llm, user_id=str(user_id), outline_node_id=node.id,
+            final_text=final_text,
+            model_source=str(c_src) if distinct else body.model_source,
+            model_ref=str(c_ref) if distinct else str(body.model_ref),
+            source_language=_src_lang,
+        )
         total_out = w.metering.output_tokens + revise_out_tokens
         # D-COMP-TRUNCATION-SURFACING: authoritative truncation flag from the
         # drafter's stop reason (the winner draft is the cap-prone generation). A
@@ -741,6 +755,7 @@ async def generate(
                     "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
                     "repeated_chars": sel.repeated_chars,
                     "beats_over_ceiling": sel.beats_over_ceiling,
+                    "exit_state_record": exit_state_record,
                     "canon": canon},
         )
         # D-SCENE-OUTPUT-BUDGET-FLAT / eval S10 — the LENGTH directive asked for
@@ -765,6 +780,9 @@ async def generate(
             "candidates": [c.text for c in sel.candidates],
             "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
             "grounding_available": pc.grounding_available,
+            # D-GENERATED-FACT-HAS-NO-HOME — did this scene's cast get recorded, and if not,
+            # which reason. Silence here would be indistinguishable from a working write-back.
+            "exit_state_record": exit_state_record,
             # A2-S3b — the canon gate: `resolved=false` + violations means a
             # confirmed contradiction survived revision (D4 hard-gate signal for
             # the publish/commit path + the author).

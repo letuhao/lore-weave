@@ -1,184 +1,102 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## 🧱 GENERATION SSOT — the spec was written, red-teamed, and largely FALSIFIED (2026-07-31)
+**HEAD:** `c3a187b0f` + this cycle · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-01
 
-**Read first:** [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md)
-(spec v2) and [`docs/plans/2026-07-31-generation-ssot-RUNSTATE.md`](../plans/2026-07-31-generation-ssot-RUNSTATE.md)
-(commitment · invariants · slice board · decisions · **drift log**). After any compaction,
-re-read the RUN-STATE before anything else.
+## 🧭 THE RUN — read the RUN-STATE first, always
 
-### The thesis
-Deciding what the story says and writing what the story says are the same problem, and this
-repo solves them with disjoint toolchains sharing only a provider client. ~30 `build_*_messages`
-in one service, 18 LLM callers bypassing the packer, ≥9 finding types, 3 self-heal
-implementations, ~40 flat `max_tokens`, 17+ self-grading call sites across 8 services.
+**[`docs/plans/2026-07-31-generation-ssot-RUNSTATE.md`](../plans/2026-07-31-generation-ssot-RUNSTATE.md)**
+is the authority: the run order, the four-step per-slice protocol (VERIFY → LIVE → AUDIT →
+COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and the drift log.
+**After any compaction, re-read it before anything else.** Spec:
+[`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
-### v1 was scoped from one service and generalised to the repo — a 4-lane cold-start red team
-### falsified it, including **both** claims in the section written to be falsifiable
-- Scope was **4 services**; it is **13 + 6 shared SDKs + Go + Rust**. Counts low ~3x.
-- Two of four stated root causes for the dogfood defect were the **wrong code path**.
-- Four slices would have broken working code (S6 would have made every auto-generate burn
-  k drafts to pick at random; S1's `NO_RULES` would have painted permanent amber on every
-  book where nobody has died).
-- Two red-team findings needed walking back after verification — B4 is internal-token gated
-  (not attacker-selectable) and B5's fail-open was *justified*; the bug was that the
-  justification was fiction. **Do not accept a sub-agent's severity unverified.**
+**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → **`[CI-RED sweep]`** → `S1 → S2 → S8 →
+S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
-### PHASE 0 — live bugs, fix · live-smoke · seal. **3 of 8 sealed, 5 open.**
-Sealed (each with a gate proven red-able by injecting the defect and restoring **by hand** —
-never `git checkout`, which would discard real edits in the same file):
+Phase 0 is **CLOSED 8/8**. ROT-0 and ROT-1 are **SEALED** (209 never-run DB-gated tests, all
+executed; `scripts/test-dsn-coverage-gate.py` now compares gating variables against what CI arms).
 
-| id | bug | the red |
+## 🔴 DO THIS FIRST — CI is RED and has been
+
+Measured 2026-08-01 (`gh run list --branch feat/frontend-tools-mcp-migration`):
+`python-integration-tests` · `python-unit-tests` · `domain-db-smoke` all **failure**.
+
+Composition's share is **33 integration failures with ONE root**: the motif model/DDL renamed
+`language` → `original_language` and six test files were never updated. Symptoms:
+`MotifCreateArgs(language=…)` → 422 · `MotifRetriever.retrieve(language=…)` → TypeError ·
+`column "language" does not exist`. Files: `test_motif_repo.py`, `test_motif_retrieve_db.py`,
+`test_motif_swap.py`, `test_seed_motifs.py`, `test_motif_migrate.py`, `test_rnode_p1_dataplane.py`.
+
+This is a mechanical rename sweep, not a design question. **The HEAD baseline is measured**, so
+the fix has a number to hit: composition integration goes `33 failed / 347 passed` → `0 / 380`.
+The other two workflows' failures are NOT yet diagnosed — that is the first thing to look at.
+
+## ✅ D-GENERATED-FACT-HAS-NO-HOME — closed 2026-08-01
+
+A drafted scene now **records the people it named** into `outline_node.exit_state.cast`
+(`source='generator'`); the next scene's prompt carries them as a protected, uncompressible
+`carries=` line; and the seam check compares against that record rather than re-reading prose.
+`exit_state`'s provenance enum had said `'generator' (the drafting seam emitted it)` since SC12 —
+nothing had ever written it.
+
+**Why it matters:** the facts a drafter invents (a gender, a name, a role) had exactly one path
+into the next scene — the prose, in `<recent>`, which is the first thing the budget compresses.
+Measured earlier this session: a 14,314-char `<recent>` carried an invented `he` correctly in one
+run, and in another turned *"He is the anchor"* into *"She's a Scribe"* one scene later. Three
+rows of `who/pronoun/role` survive a squeeze the paragraph does not.
+
+**The live pair ($0, gemma-4-26b, two throwaway Vietnamese books):**
+
+| | SEEDED (named) | CONTROL (nobody named) |
 |---|---|---|
-| **B5** | campaign `except DispatchError: owned = True` failed OPEN on an ownership check | `201 Created` on an unverified project |
-| **B2** | `guide` neutralised into the pack, then re-appended **RAW and LAST** by the wrapper (2 sites; `sanitize_guide` had ONE call site) | 3 injection payloads reaching a message body |
-| **B1** | packer still counted with `cl100k_base`, retired repo-wide 2026-07-07 → **VN/CJK books trimmed to 40% of a Latin book's grounding** | `1.98` chars/budget-token (floor 2.4); VN held `42%` of the English pack |
+| `exit_state_record` | `recorded`, 2 | `no_cast_extracted`, 0 |
+| DB `exit_state` | `Lục Hàn — he; Thanh Dao — she` | `NULL` |
+| `carries=` in the prompt | **present** | **absent** |
+| `cross_scene.earlier_source` | `recorded` | `extracted` |
+| `linked` / `clean` | 2 / `true` | 0 / `false` |
+| words drafted | 811 + 878 | 883 + 898 |
 
-**Still open: B4 · B3 · B6 · B7 · B8** — see the spec's Phase 0 table for each. **B3 is the
-sharpest:** `YamlGuardrail` has **zero production call sites** while `contracts/canon/guardrail_rules.yaml`
-and `docs/standards/README.md:114` both assert it gates every L3 write. It needs a decision
-(wire the crate, or correct both documents), not a patch.
+**The bug the live run found, and unit tests could not.** The first live run returned
+`{'status': 'recorded', 'cast_size': 10}` — and the ten rows were Vietnamese pronouns and common
+nouns (*Anh ta*, *ngươi*, *Ánh mắt họ* — "their gaze"). The identity filter was an **English word
+list**. Every one of them would have been injected into the next scene as a fact about the cast.
+The same broken key was **already live inside `compare_people`**, where two different people both
+called *anh ta* would link as one and could be reported as a gender contradiction.
 
-### ROT-0 — the skip audit (author-requested: *"coi chừng degraded bugs"*)
-**41 DB-gated tests had never executed anywhere.** `JOBS_TEST_PG_DSN` and `PIIKMS_TEST_PG_URL`
-were set by **no workflow** — so PgKEKManager, PII erasure, admin-cli erasure/archive/drift,
-meta-worker's erased-writer, breach-notifier and the meta-outbox relay were *green by skip*.
-They compiled (foundation-ci's module loop covers them), and compiling does not check SQL.
+There is no deterministic language-independent test for "is this a proper name" — Vietnamese is
+Latin-scripted, so capitalisation cannot decide it. The fix asks the **extractor** to fill a
+`name` slot (a reading question a weak model answers reliably) and keeps the decision in code,
+**failing closed**: no name, no identity. `identity_of()` keys on the presence of the `name` KEY,
+not its value — an empty `name` is an *answer*, and falling back on it re-created the false green.
 
-Ran all 41 against real Postgres 18 on throwaway DBs: **one real defect**
-(`D-METAOUTBOX-DRAIN-TEST-ISOLATION` — a FIFO-drain test assumed a fixed `LIMIT 10` would
-contain its own seeded rows; with 17 pending it drained ten others, and its map-lookup
-failure message could not distinguish "absent" from "empty"). Fixed. Two CI jobs wired:
-`meta-db-smoke` in `domain-db-smoke.yml`, and `jobs-service` in the `python-integration-tests`
-matrix. Also de-rotted a composition test that had **skipped on every run since it was
-written** (`GrantLevel` has no tier between NONE and VIEW, so its `below` list is always empty).
+**Known limit, stated not hidden:** an UNNAMED referent still does not link, so the original
+anchor→Scribe defect is still not *detected* — only *prevented*, and prevention is unmeasured.
+A language whose gendered reference rides on kinship terms (VN *anh/chị*, JP honorifics)
+collapses to `pronoun: none`, so the contradiction rule cannot fire there. That limit predates
+this slice; it is not widened.
 
-**The pattern worth carrying forward:** B3, B5 and ROT-0 are one disease — *a guarantee
-asserted in prose with nothing in code behind it.* A comment said it. A standards index said
-it. A workflow's own docstring said it. None were checked mechanically. That is what §S12
-exists for.
+**Full AUDIT block — including everything NOT proven and five drift entries — is in the RUN-STATE.**
 
-### NEW — the LLM call-budget seam ([`sdks/python/loreweave_llm/budget.py`](../../sdks/python/loreweave_llm/budget.py))
-Not "effort enum" and not "max_tokens" — the function producing **both**, because reasoning
-tokens are spent first and drawn from the same allowance. Keyed on **`OutputKind`**
-(prose · structured · verdict · edit), because the kind decides the sizing model *and*
-whether truncation is fatal — a distinction no `max_tokens` literal in the repo records
-(a clipped JSON object is unrecoverable; a clipped scene is merely short).
+## ✅ PHASE 1 · S10 — the eval instrument, closed 2026-07-31/08-01
 
-**Half of this already exists for the other axis:** the chat GUI's `auto` reasoning mode is
-`score_effort(ReasoningSignals)` — real per-call signals. Effort adapts; budget does not.
-So the module is deliberately **mechanism, not policy**, mirroring the SDK/service split that
-`resolve_reasoning` / `score_effort` already use. Note `adaptive` is **taken** —
-`ReasoningControl="adaptive"` means *the model self-orchestrates*; a scored budget policy says
-`source="scored:<name>"`.
+A recorded **baseline** (`app/eval/baseline.json`), a live driver that runs each seeded class
+**with its control**, a gone-cast seeder that **verifies its own seed** via `fact-for-check`
+(it had been reporting the engine's innocence as guilt), and `_undriveable()` — a gate check that
+reds when a class is scorable on paper but has no live seeder. Wired into `foundation-ci`.
+Two classes remain **BLIND, and say so**: `scene_boundary_overrun` (needs `scenes_covered`) and
+`unresolved_cast_reference` (needs `unresolved_refs`) — both are S2's to emit.
 
-97 tests, incl. 80 parametrised checks that it **never undercuts** `scene_output_budget`.
+## 📌 Standing constraints (do not re-derive)
 
-### PHASE 0 CLOSED — 8/8, and the re-audit found the biggest miss
-
-6 fixed · 1 closed as **not a bug** (B8 — the tilemap harness is a CLI that prints its own fallback
-count; nothing can be misled) · 1 corrected-in-docs + gated (B3). **Three red-team findings had to be
-walked back after verification** — B4's severity (internal-token gated, not attacker-selectable),
-B5's framing (the fail-open was justified; the *justification* was fiction), and B8 entirely.
-Cold-start reviewers find the SHAPE of a defect reliably and judge its REACHABILITY badly.
-
-**B7 turned out to be about the gate, not the two POC files.** `ai-provider-gate.py` enforced *half*
-its own rule (SDK imports, never direct API calls), `MODEL_NAME` knew **no local model family** — no
-gemma, no qwen, no bge, i.e. none of the models actually served — and the superseding gate ran
-**only as a pre-commit hook**, which needs `git config core.hooksPath .githooks` per checkout, so CI
-had only the narrow legacy lint. All now wired into `foundation-ci`.
-
-**§S12 exists because B3, B5 and ROT-0 are one disease:** a guarantee asserted in prose with nothing
-in code behind it. `scripts/enforcement-claims-gate.py` checks that every contract registered in the
-standards index has a non-test reader *that something actually calls*. It went **green on its own
-motivating example three times** before it worked — once because the crate reads the contract (and
-nothing calls the crate), once because a doc comment and a workspace membership list mention the
-crate name, and once because **the gate itself names the contracts in its docstring**. A gate that
-has never been observed to fail is not a gate.
-
-### ✅ ROT-1 CLOSED — 209 never-run tests in total, and a gate so there is no ROT-2
-
-ROT-0 reported **41** because it swept only the two DSN variables it happened to be holding. Sweeping
-every `*_TEST_*` variable found **eight more**, covering **159 further test functions** — provider-registry
-54, usage-billing 37, auth 36, incident-bot 12, scheduler 8, admin-cli 6, metapg 3, piikms-KMS 3.
-
-All 159 now execute. auth and provider-registry were clean on first run. **Three reds, and unlike
-ROT-0's all three were STALE TESTS, not product bugs** — a distinction that exists only because they
-were triaged rather than assumed:
-
-- **admin-cli** — the hand-listed migration set omitted `032`, the migration that adds `'started'` to
-  the `result_kind` CHECK, whose own comment says it applies to the test DB. It was written FOR this
-  test, and the test did not apply it. It could never have passed.
-- **scheduler** — `recordSuccess` gained an `AND locked_by = $4` lease guard after the test was
-  written; the test never claimed the row, so the UPDATE matched zero rows. **The guard working
-  correctly read as the re-arm being broken.**
-- **usage-billing** — the free-tier assertion reserved `$8` against an owner daily cap of `$10` with
-  `$3` already spent, so it 402'd on a limit unrelated to the free tier.
-
-**`scripts/test-dsn-coverage-gate.py` is the generalisable fix**: it compares the set of `*_TEST_*`
-variables that gate a test against the set any workflow arms — the comparison whose absence made
-both sweeps possible. On its **first run it found a tenth gap the manual ROT-1 sweep had missed**
-(that sweep grepped Go only): nine Redis-gated scheduler tests whose docstring says their correctness
-lives in Lua scripts, *"invariants a mock/fake Redis cannot prove"*. Now armed.
-`PIIKMS_TEST_KMS_ENDPOINT` is **declared** unarmed with its reason (needs LocalStack-KMS) rather than
-silently missing — the test it gates proves an ErasePII audit row satisfies its CHECK constraints,
-and a violation would otherwise surface only after the KEK is irreversibly shredded.
-
-**Four repo gates now run in `foundation-ci`:** `ai-provider-gate` (widened + finally in CI rather
-than pre-commit-only) · `enforcement-claims-gate` (S12) · `test-dsn-coverage-gate` · plus the
-pre-existing lints.
-
-### 🔌 QC WAS NEVER PLUGGED IN — 63 gates, 18 wired, and CI RED for 20 days
-
-The author's read after the Phase-0 checkpoint: *"the repo is rot by bypass QC."* Inventorying
-every gate script against every workflow says it is worse than bypass — most of the QC had
-**never been connected**.
-
-```
-63 gate scripts in scripts/
-18 ran in CI
- 9 ran only via the pre-commit hook — which needs `git config core.hooksPath .githooks`
-   per checkout, so it is opt-in per machine and absent in CI
-36 ran nowhere at all
-```
-
-**And `foundation-ci`'s lint job had been RED since 2026-07-11.** One `logging.basicConfig` in
-`composition/app/db/arc_lift.py` fails `logging-discipline-lint.sh`, which is **step 24 of 28** —
-and GitHub Actions stops a job at the first failing step, so `tracing-completeness`,
-`runbook-drift`, `runbook-verification` and `template-fixture-validator` had not run for twenty
-days either. **One line took four gates down and kept them down.** That is why nothing in this
-cycle was ever reported by the gates that already knew about it.
-
-Fixed (`setup_logging`), and the lint job now runs **30 gate steps, all green** — verified by
-executing every step in CI order, not by reading the YAML.
-
-**16 gates newly wired**, all verified passing first. One mistake worth keeping: I added
-`amaw-guardrail-gate.py` because its filename ends in `-gate.py`. It is a Claude Code
-`PreToolUse` **hook** that reads stdin, so in CI it blocks forever (measured: a 300s timeout).
-Running it the way CI would is what caught it; the name is what fooled me.
-
-**Three gates were RED with 17 findings nobody had ever seen.** Each was triaged
-finding-by-finding — baselining on sight would have reproduced the disease one layer up:
-
-- **injection-coverage — 6 modules, and this is the one that matters.** `B2` (the raw author
-  guide re-appended to the prompt) was fixed by hand this cycle as if it were one bug. It was one
-  instance of a class **the repo already had a detector for**, and the detector was unplugged.
-  Five sites sanitized (`error_block_heal` was a *third* raw-guide site; `material_search`,
-  `motif_plan`, `glossary_build/prompts`, `knowledge/extraction/canon_check`), one baselined as
-  sanitized-upstream. `cowrite.py` **dropped from the baseline** — B2 genuinely cleared it at the
-  lint's own layer.
-  ⚠️ `material_search` needed the sanitizer on the prompt **and** on the grounding haystack: the
-  model is asked to copy lines verbatim and the quotes are matched back against the document, so
-  neutralizing one side only would have made every quote fail to ground — a security fix that
-  silently kills the feature.
-- **pagination-cap — 5, all lint-precision false positives**, each verified: two are `batchSize`
-  parameters of background sweepers (server-set), three clamp 3-40 lines above the query where the
-  regex cannot see.
-- **raw-sql — 6, all the exception the lint's own docstring sanctions**: table/column identifiers,
-  which SQL cannot bind as placeholders, drawn from closed module-level constant lists; plus two
-  dev smoke scripts, one of them inside a `print()`.
-
-Both baselines carry the verification, not just the fingerprint.
+- **Never write the OpenAI key to a file.** OpenAI credit is ~$1 — prefer local `lm_studio`
+  gemma ($0) for every smoke. Chat-capable BYOK ids are live in `loreweave_provider_registry`;
+  `019ebb72-27a2-72f3-a42d-d2d0e0ded179` is the gemma-4-26b used above.
+- **A content-CREATING live smoke uses a THROWAWAY book** (`[eval-throwaway] …`), never the
+  dogfood book. Smoke debris in a real book reads as a product bug later.
+- **Verify the deployed image matches source before diagnosing** — hash whole files, not the
+  symbol you just added, and recreate with `--force-recreate`. Ports: gateway `:3123`,
+  postgres `:5555`, lm_studio `:1234`.
+- The composition test DSN is `postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_composition_test`.
 
 ## ✅ QC round 2 — *wired* is not *enforcing* (2026-07-31)
 

@@ -447,13 +447,22 @@ async def run_generate(
                                    "linked": 0, "clean": False}
     try:
         from app.db.repositories.generation_jobs import GenerationJobsRepo as _Jobs
+        from app.db.repositories.outline import OutlineRepo as _Outline
         from app.engine.cross_scene_check import check_chapter_consistency
+        from app.engine.exit_state import recorded_people
 
         _ch, _so = input.get("chapter_id"), input.get("story_order")
         prior_texts: list[str] = []
+        prior_people: list[dict[str, Any]] | None = None
         if _ch and _so is not None:
             prior_texts = await _Jobs(pool).prior_scene_drafts(
                 UUID(project_id), UUID(str(_ch)), int(_so))
+            # D-GENERATED-FACT-HAS-NO-HOME — the prior scene's OWN record of who it left
+            # standing, if it has one. Read here rather than serialised into `job_input`
+            # because `outline_node` is composition's own database: the worker's missing
+            # BEARER blocks book-service reads, not this one.
+            prior_people = recorded_people(await _Outline(pool).prior_scene_exit_state(
+                UUID(project_id), UUID(str(_ch)), int(_so)))
         if prior_texts:
             res = await check_chapter_consistency(
                 llm, user_id=user_id,
@@ -462,6 +471,7 @@ async def run_generate(
                 scenes=[prior_texts[-1], final_text],
                 source_language=profile.source_language,
                 cancel_check=cancel_check,
+                earlier_recorded=prior_people,
             )
             cross_scene = {
                 "status": res.status, "pairs_checked": res.pairs_checked,
@@ -471,6 +481,10 @@ async def run_generate(
                 # this whole check exists to remove.
                 "linked": res.linked, "unlinked_earlier": res.unlinked_earlier,
                 "unlinked_later": res.unlinked_later, "clean": res.clean,
+                # WHICH earlier side was compared — a record a human may have corrected, or
+                # a fresh re-reading of the prose. Same reason `coverage` rides the canon
+                # result: a reader must not have to guess what was actually compared.
+                "earlier_source": res.earlier_source,
                 "contradictions": [dataclasses.asdict(c) for c in res.contradictions],
             }
         else:
@@ -479,6 +493,21 @@ async def run_generate(
         logger.warning("cross-scene check failed (advisory)", exc_info=True)
         cross_scene = {"status": "degraded", "contradictions": [],
                        "linked": 0, "clean": False}
+
+    # D-GENERATED-FACT-HAS-NO-HOME — record what THIS scene left standing, so the next one
+    # gets it as a stated fact instead of having to find it in compressible prose.
+    #
+    # One extra extraction call per scene, over the scene's TAIL. That is the honest price and
+    # it is not shared with the seam check above, which reads the HEAD of the later scene —
+    # a different span answering a different question. Reusing it would record who ARRIVED
+    # instead of who was LEFT, which is not what `exit_state` means.
+    from app.services.exit_state_writeback import record_scene_exit_state
+    exit_state_record = await record_scene_exit_state(
+        pool, llm, user_id=user_id, outline_node_id=input.get("outline_node_id"),
+        final_text=final_text,
+        model_source=critic_source or model_source, model_ref=critic_ref or model_ref,
+        source_language=profile.source_language, cancel_check=cancel_check,
+    )
 
     # FD-1 narrative_thread S2: best-effort promise-ledger producer (gated per-work).
     await _maybe_narrative_threads(
@@ -519,6 +548,11 @@ async def run_generate(
         # D-CROSS-SCENE-CONTRADICTION — `status` is part of the payload on purpose: a
         # `degraded` continuity judge must not read like a clean one.
         "cross_scene": cross_scene,
+        # D-GENERATED-FACT-HAS-NO-HOME — `recorded` · `author_owned` · `no_cast_extracted` ·
+        # `no_node` · `degraded` · `write_failed`. On the envelope because a write-back that
+        # silently did nothing is indistinguishable from one that worked, and this feature's
+        # whole value is that the NEXT scene can rely on the record being there.
+        "exit_state_record": exit_state_record,
         "scene_assembly": sel.scene_assembly, "beats_drafted": sel.beats_drafted,
         "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
         "repeated_chars": sel.repeated_chars, "beats_over_ceiling": sel.beats_over_ceiling,

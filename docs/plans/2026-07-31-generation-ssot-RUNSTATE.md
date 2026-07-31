@@ -77,7 +77,7 @@ Everything else in the family passed — the suites had not rotted, they had sim
 Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh bị drift … cần thêm bước audit
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
-**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME` → `S1 → S2 → S8 → S12` →
+**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep]` → `S1 → S2 → S8 → S12` →
 `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
 `D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
@@ -111,6 +111,75 @@ AUDIT <slice>
 This session produced seven drift entries and four retractions; a slice that reports neither has
 not been audited, it has been rubber-stamped. If a slice genuinely has nothing, the honest entry
 is *what I did not check*, which is never nothing.
+
+### ✅ D-GENERATED-FACT-HAS-NO-HOME — CLOSED 2026-08-01
+
+```
+AUDIT D-GENERATED-FACT-HAS-NO-HOME
+  BUILT      — a drafted scene now RECORDS the people it named into `outline_node.exit_state.cast`
+               (`source='generator'`), the next scene's prompt carries them as a protected,
+               uncompressible `carries=` line, and the seam check compares against that record
+               instead of re-reading the prose.
+
+  PROVEN     — unit: `3303 passed, 58 warnings in 28.81s` (was 3272 at HEAD; +31).
+               integration on a throwaway PG: `33 failed, 353 passed, 8 skipped` — and the HEAD
+               baseline MEASURED by stashing the slice was `33 failed, 347 passed, 8 skipped`.
+               Same 33, +6 = the new repo tests. The 33 are pre-existing rot, not assumed so.
+               gates: `ai-provider-gate (full): OK` · `db-safety-gate: PASS (exit 0)` ·
+               `[language-rule] PASS` · `composition eval-gate: PASS — 5 seeded defect class(es)`.
+               Deployed image verified by whole-file sha256 against source (5 files, all MATCH).
+
+               LIVE, gemma-4-26b via lm_studio ($0), two throwaway Vietnamese books:
+                 SEEDED (characters named)        CONTROL (nobody named)
+                 exit_state_record  recorded, 2   no_cast_extracted, 0
+                 DB exit_state      Lục Hàn—he;   NULL
+                                    Thanh Dao—she
+                 carries= in prompt PRESENT       ABSENT
+                 earlier_source     recorded      extracted
+                 linked / clean     2 / true      0 / false
+                 words              811 + 878     883 + 898
+               Every field differs in the expected direction; neither half is vacuous.
+
+  NOT PROVEN — that any of this makes the PROSE better. The fact reaching the prompt is measured;
+               "a scene with `carries=` contradicts less often" is not, and needs an A/B over many
+               scenes. The anchor→Scribe case (unnamed on both sides) is still NOT detected —
+               only prevention improves there, and prevention was not measured either.
+               Also unmeasured: the `name` slot on any model but gemma-4-26b (n=2 runs); the whole
+               live path on an ENGLISH book (unit tests only); the MCP authoring merge live (unit
+               only); and the INLINE router branch, which is wired but never executed — the shipped
+               compose has `COMPOSITION_WORKER_ENABLED=true`, so only the worker branch ran.
+
+  DRIFT      — five, and two were nearly shipped.
+               1. The protected-segment gate went GREEN with `protected=False` injected. It passed
+                  because the `carries=` line is SMALL, not because it was protected — the budget
+                  drops largest-first and stops early. Rewritten to squeeze into `over_budget`,
+                  where protection actually decides. Caught only by injecting the defect.
+               2. Wrote "can never fail a generate" while calling `get_pool()` OUTSIDE the guard.
+                  Four router tests reddened; the promise was false on the path that made it.
+               3. Accepted the FIRST live run because the status field said `recorded, cast_size=10`.
+                  The payload was ten Vietnamese pronouns and common nouns — including *Ánh mắt họ*,
+                  "their gaze". A green status over garbage data; I nearly stopped at the status.
+               4. Fixed that in the recorder and left the SAME bug in `compare_people`'s fallback.
+                  The control then reported `linked=2, clean=true` on a scene where nobody is named.
+                  An empty `name` is an ANSWER, not a missing value to fall back from.
+               5. Called the 33 integration failures pre-existing before measuring. Then measured.
+               Plus: a defensive `try/except` referencing a `logger` this module does not define,
+               on a branch JSONB makes unreachable — it could only ever have fired as a NameError.
+
+  NEXT       — S1 (GuardStatus unification) inherits `exit_state_record` and `cross_scene.
+               earlier_source` as two more per-guard status fields on an envelope now assembled in
+               FOUR places, which is exactly what S1/S2 exist to collapse. Two findings feed it:
+               the INLINE generate branch has no cross-scene check at all, and `exit_state_record`
+               had to be added to both branches by hand — the parity problem is the slice.
+```
+
+**Found while doing it, NOT part of this slice — tracked so it cannot be forgotten:**
+
+| finding | disposition |
+|---|---|
+| **CI is RED** (measured 2026-08-01 via `gh run list`): `python-integration-tests`, `python-unit-tests`, `domain-db-smoke` all `failure` on this branch | own commit, immediately after this slice |
+| composition's 33 integration failures = ONE root: `language` → `original_language` on the motif model/DDL, with 6 test files never updated. `MotifCreateArgs(language=…)` 422s, `MotifRetriever.retrieve(language=…)` TypeErrors, `column "language" does not exist` | mechanical rename sweep; same commit as the CI fix |
+| the INLINE generate branch (`COMPOSITION_WORKER_ENABLED=false`) runs no cross-scene check | → S1/S2 (envelope consolidation) |
 
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
@@ -190,6 +259,9 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Built a verifier on the generator's own input.** `name_grounding` compared drafts against the packed prompt and reported as though it had verified. The author asked "if there is no glossary entity, on what basis do you say the model generated wrongly?" and the answer was: none. Now it names its `truth_source`. |
 | 2026-08-01 | **Generalised from one prompt formulation, twice.** Concluded coreference linking was impossible from a stripped-list probe; a passage-based probe then worked. Nearly built on THAT — the controls showed it was not reproducible, and that the model resolves coreference by gender agreement, so the defect and the linking signal are the same thing. |
 | 2026-08-01 | **Ran an attribution test that could not answer its own question.** The probe chapter's `<memory>` carried the earlier run's chapters, where the answer was already written. Re-ran on a fresh book with a different world before claiming anything. |
+| 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
+| 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
+| 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 
 
 - **2026-07-31 · caught in review of my own proposal.** My first S1–S5 proposal was scoped to

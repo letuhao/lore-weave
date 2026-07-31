@@ -137,8 +137,12 @@ async def test_a_non_completed_extraction_degrades_and_never_reads_clean():
 
 @pytest.mark.asyncio
 async def test_the_live_path_fires_on_a_gender_flip():
-    llm = _LLM(['{"people": [{"who": "Elara", "pronoun": "she", "role": "scribe"}]}',
-                '{"people": [{"who": "Elara", "pronoun": "he", "role": "scribe"}]}'])
+    # `name` is not decoration in this fixture: the identity key is the PROPER NAME, and the
+    # real `extract_people` always emits the field. A fake that omits it describes a producer
+    # that does not exist, and would make this test pass or fail for reasons the live path
+    # never sees. (Measured: without it, `linked` is 0 and this assertion goes red.)
+    llm = _LLM(['{"people": [{"who": "Elara", "name": "Elara", "pronoun": "she", "role": "scribe"}]}',
+                '{"people": [{"who": "Elara", "name": "Elara", "pronoun": "he", "role": "scribe"}]}'])
     r = await check_chapter_consistency(llm, user_id="u", model_source="s", model_ref="m",
                                         scenes=["earlier", "later"])
     assert r.status == "checked" and len(r.contradictions) == 1

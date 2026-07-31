@@ -139,6 +139,14 @@ def build_segments(
             f'leaves={_exit_text}' if _exit_text else "",
         ] if x
     )
+    # D-GENERATED-FACT-HAS-NO-HOME — what the PREVIOUS scene recorded it left standing, before
+    # this scene's own intent. The pairing is deliberate and reads in order: `carries=` is what
+    # arrived and must not change; `leaves=` (inside beat_line) is what this scene must hand on.
+    # Protected for the same reason `beat` is — these are constraints, not context — and the
+    # whole point of recording them is that they survive a budget squeeze the prose does not.
+    if bundle.carried_cast:
+        segs.append(Segment("beat", f"carries={bundle.carried_cast}",
+                            B.PRIO_BEAT, protected=True))
     if beat_line:
         segs.append(Segment("beat", beat_line, B.PRIO_BEAT, protected=True))
     for pl in bundle.planned:

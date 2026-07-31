@@ -41,8 +41,8 @@ from app.packer import merge as M
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
-    LensBundle, gather_arc, gather_canon, gather_lore, gather_motif, gather_open_promises,
-    gather_present, gather_recent, gather_references, gather_source_scene,
+    LensBundle, gather_arc, gather_canon, gather_carried_cast, gather_lore, gather_motif,
+    gather_open_promises, gather_present, gather_recent, gather_references, gather_source_scene,
     gather_prior_chapters, gather_structural, gather_timeline,
 )
 from app.db.repositories.references import reference_embed_model
@@ -379,7 +379,7 @@ async def pack(
             and motif_node_id is not None and req.project_id is not None)
         else _empty_str()
     )
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text, motif_text = (
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text, motif_text, carried_cast = (
         await asyncio.gather(
             gather_canon(canon_repo, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
@@ -398,6 +398,10 @@ async def pack(
                               project_id=req.project_id, query=query, model=ref_model),
             arc_gated,
             motif_gated,
+            # D-GENERATED-FACT-HAS-NO-HOME — the previous scene's RECORDED cast. Cheap (one
+            # indexed row) and it runs on the same lens fan-out as everything else, so it
+            # cannot serialise the pack.
+            gather_carried_cast(outline_repo, project_id=req.project_id, node=node),
         )
     )
 
@@ -519,6 +523,7 @@ async def pack(
         extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
         references=references_kept,  # T3.6 — author reference passages (excludes dropped)
         source_scene=source_scene,  # M1 — inherited source prose for the adapt op (empty otherwise)
+        carried_cast=carried_cast,  # D-GENERATED-FACT-HAS-NO-HOME — the prior scene's record
     )
 
     # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older

@@ -68,6 +68,13 @@ class LensBundle:
     # that op, spoiler-bounded ≤ the branch). Renders as the <source_scene> block
     # the adapt instruction points the model at. Empty for every other op / Work.
     source_scene: list[str] = field(default_factory=list)
+    # D-GENERATED-FACT-HAS-NO-HOME — the PREVIOUS scene's recorded cast, rendered as one line
+    # ("Cassius — he — the anchor; Elara — she — Scribe"). The same facts are already present
+    # as prose in `recent`, and that is exactly the problem: prose is what the budget
+    # compresses first, and `recent_floor_compressed > 0` means the next scene is written
+    # against a lossy account of its own chapter. These rows are a FLOOR — they are what the
+    # next scene must MATCH, not merely know, so they are protected and never summarised.
+    carried_cast: str = ""
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
@@ -262,6 +269,34 @@ async def gather_structural(
     except Exception:  # noqa: BLE001
         logger.warning("gather planned failed", exc_info=True)
     return beat, threads, planned
+
+
+async def gather_carried_cast(
+    outline_repo: OutlineRepo, *, project_id: UUID, node: dict[str, Any],
+) -> str:
+    """D-GENERATED-FACT-HAS-NO-HOME — the PREVIOUS scene's recorded cast, as one prompt line.
+
+    This is the consuming half of the write-back. The generator invents facts no spec contains —
+    a character's gender, a name, a role — and until now the only path those facts had into the
+    next scene was the prose itself, sitting in `recent` where the budget compresses it first.
+    Measured: a 14,314-character `<recent>` did carry an invented `he` correctly once, and a
+    different run of the same architecture turned "He is the anchor" into "She's a Scribe" one
+    scene later. A fact the next step must MATCH cannot live only in compressible prose.
+
+    Degrade-safe like every gatherer here: no chapter, no position, no predecessor, or a repo
+    failure ⇒ "" and the pack thins rather than failing.
+    """
+    chapter_id, story_order = node.get("chapter_id"), node.get("story_order")
+    if not chapter_id or story_order is None:
+        return ""
+    try:
+        prior = await outline_repo.prior_scene_exit_state(
+            project_id, UUID(str(chapter_id)), int(story_order))
+    except Exception:  # noqa: BLE001 — repo failure degrades the lens
+        logger.warning("gather_carried_cast failed", exc_info=True)
+        return ""
+    from app.engine.exit_state import render_carried_cast
+    return render_carried_cast(prior)
 
 
 def _arc_position(story_order: int | None, span: dict[str, Any]) -> int | None:

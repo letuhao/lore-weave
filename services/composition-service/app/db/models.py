@@ -297,6 +297,68 @@ class StructureNode(BaseModel):
 # silently discard an author's correction).
 ExitStateSource = Literal["generator", "author"]
 
+#: The passage's own pronoun for a person, as a CLOSED set. Deliberately English-keyed even
+#: for a non-English book: the extractor is asked for a normalised value, so the comparison
+#: downstream stays a set membership rather than a language-aware judgement.
+#: KNOWN LIMIT — a language whose gendered reference is carried by kinship/status terms
+#: (Vietnamese anh/chị/ông/bà, Japanese honorifics) collapses to `none`, so the gender
+#: contradiction this enables cannot fire there. `cross_scene_check._GENDERED` already had
+#: exactly this limit; this does not widen it, and pretending otherwise would be the worse bug.
+CastPronoun = Literal["he", "she", "they", "none"]
+
+#: D-GENERATED-FACT-HAS-NO-HOME — cap the recorded cast. The rows reach a PROMPT (the packer
+#: renders them as the next scene's incompressible floor), so an unbounded list is a budget
+#: hole. 40 is the extractor's own row cap (`cross_scene_check.extract_people`), which keeps
+#: the two ends of this pipe from disagreeing about what "too many people" means.
+MAX_EXIT_CAST = 40
+
+
+class SceneCastRow(BaseModel):
+    """D-GENERATED-FACT-HAS-NO-HOME — ONE person as the finished scene actually referred to them.
+
+    Why structured rows and not a sentence in `characters`. The next scene must MATCH these
+    facts, and a summariser is free to drop the attribute that later gets contradicted — this
+    repo has already paid for that once. A field the next step must match is a floor, not a
+    summary, so it is stored as keys.
+
+    `who` is the passage's own words: a name when there is one, otherwise the noun phrase
+    ("the anchor"). That is honest about the case this exists for — a person the GENERATOR
+    invented has no glossary entity to point at, which is exactly why the fact had no home.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    who: _Title
+    pronoun: CastPronoun = "none"
+    role: _Title = ""
+
+
+class SceneExitStateIn(BaseModel):
+    """The AUTHORING wire shape (MCP scene create/update). Identical to the stored envelope
+    MINUS `source`.
+
+    `source` is a provenance fact the SERVER decides — a write that arrives through the
+    authoring door is authored, full stop. Leaving it on the wire made it caller-selectable,
+    which meant a generator write-back could be spoofed as an author correction (and, worse,
+    that a genuine author write was stamped `generator` by the field's own default, so the
+    "never discard an author's correction" rule it exists to serve could never have worked).
+    `extra='forbid'` turns a caller that still sends it into a 422 saying so, rather than a
+    value silently overridden.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    v: Literal[1] = 1
+    characters: _Short = ""
+    world: _Short = ""
+    plot: _Short = ""
+    advances: list[_Short] = Field(default_factory=list)
+    #: `None` (omitted) = leave whatever is stored alone; `[]` = clear it. The distinction is
+    #: load-bearing: an author editing `plot` on a scene the drafter has already recorded a
+    #: cast for would otherwise silently wipe that record, because a write here REPLACES the
+    #: whole envelope. A default of `[]` cannot express "I did not touch this".
+    cast: Annotated[list[SceneCastRow], Field(max_length=MAX_EXIT_CAST)] | None = None
+
 
 class SceneExitState(BaseModel):
     """22 SC12 — the versioned `{v:1,…}` envelope stored in `outline_node.exit_state`.
@@ -307,6 +369,12 @@ class SceneExitState(BaseModel):
     (engine/plan.py) pushed down to scene granularity: three typed buckets
     (Character / World / Plot) as compact strings + the NEW-developments list.
     extra='forbid' keeps a caller (LLM/router) from smuggling unversioned keys.
+
+    `v` stays 1 across the `cast` addition on purpose. Reads do NOT go through this model —
+    `OutlineNode.exit_state` is a plain dict — so a row written with `cast` is still readable
+    by a rolled-back image (it renders as an extra key, it does not raise). Bumping the
+    literal would have made every NEW row unparseable by the OLD validator instead, which is
+    the failure this envelope was versioned to avoid.
     """
 
     model_config = {"extra": "forbid"}
@@ -317,6 +385,11 @@ class SceneExitState(BaseModel):
     world: _Short = ""       # location + time at scene end
     plot: _Short = ""        # open threads / secrets / what's now revealed
     advances: list[_Short] = Field(default_factory=list)  # NEW developments (anti-repeat signal)
+    #: WHO the scene left standing, and how it referred to them. Written by the drafting seam
+    #: (`source='generator'`) or corrected by a human (`source='author'`).
+    cast: Annotated[list[SceneCastRow], Field(max_length=MAX_EXIT_CAST)] = Field(
+        default_factory=list
+    )
 
 
 class SceneLink(BaseModel):

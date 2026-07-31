@@ -62,11 +62,19 @@ which is deterministic, and reports `unlinked_earlier`/`unlinked_later` so a cal
 "no contradiction found" from "the people who might contradict could not be matched". The
 measured anchor→Scribe case lands in the second bucket and says so.
 
-The route that would close it is not a better judge — it is removing the need to infer
-identity: have a scene WRITE BACK who was in it (`exit_state`, today authored-only and never
-updated from what was generated), so the next scene compares by a stable key instead of by
-inference. That is D-GENERATED-FACT-HAS-NO-HOME, and it is the same gap that let scene 2 invent
-a gender no spec contained.
+The route that closes it is not a better judge — it is removing the need to infer identity:
+have a scene WRITE BACK who was in it, so the next scene compares against a stable key instead
+of against a fresh inference. That is D-GENERATED-FACT-HAS-NO-HOME and it is now built
+(`engine/exit_state.py`): a drafted scene records its cast into `outline_node.exit_state`, and
+`earlier_recorded` below feeds those rows in as the earlier side of the first seam.
+
+**It does not rescue the anchor→Scribe case, and this docstring will not pretend it does.**
+That referent is unnamed on both sides; a recorded `who="the anchor"` and an extracted
+`who="She"` still do not link, and this check still counts it in `unlinked_earlier`. What the
+recording changes there is the DRAFTING side — the fact is now in the next scene's prompt as a
+stated constraint rather than as a sentence 14,000 characters back in compressible prose. For
+people the prose NAMES, the earlier side becomes a record a human can correct instead of a
+re-reading of the same text.
 
 Therefore: compare only people linked by NAME, which is deterministic; and report
 `unlinked_earlier`/`unlinked_later` so a caller can tell "no contradiction found" from "the
@@ -134,6 +142,11 @@ class CrossSceneResult:
     unlinked_earlier: int = 0
     unlinked_later: int = 0
     pairs_checked: int = 0
+    #: WHERE the earlier side of each seam came from: `recorded` (the prior scene's
+    #: `exit_state.cast`, written when that scene was drafted) or `extracted` (re-read from its
+    #: prose now). Not decoration — the two differ in what a human can have corrected, so a
+    #: reader of this result must not have to guess which one produced it.
+    earlier_source: str = "extracted"
 
     @property
     def clean(self) -> bool:
@@ -156,7 +169,10 @@ def build_extract_prompt(source_language: str = "auto") -> str:
         "For each PERSON referred to in the passage, output one row. Use the exact words the "
         "passage uses. Do not infer, do not add anyone who is not there, and do not merge two "
         "people into one row.\n"
+        '`name` is their PROPER NAME and must be "" unless the passage actually names them — '
+        'a pronoun, a title, or a description like "the man" is NOT a name.\n'
         'Return ONLY JSON: {"people": [{"who": "<name, or the noun phrase used>", '
+        '"name": "<their proper name, or empty>", '
         '"pronoun": "he"|"she"|"they"|"none", "role": "<their role in one or two words, or '
         'empty>"}]}' + lang
     )
@@ -177,9 +193,34 @@ def extract_people(raw: Any) -> list[dict]:
         if not who:
             continue
         out.append({"who": who,
+                    "name": str(row.get("name") or "").strip(),
                     "pronoun": str(row.get("pronoun") or "none").strip().lower(),
                     "role": str(row.get("role") or "").strip()})
     return out
+
+
+def identity_of(row: dict) -> str:
+    """The row's IDENTITY key — its proper name, normalised. `""` = not an identity.
+
+    MEASURED 2026-08-01, live, on a Vietnamese scene. Keying on `who` produced ten "people":
+    *Người kia · Anh ta · Người đàn ông · Anh · cộng đồng · những người xung quanh · đối phương ·
+    ngươi · hai người đàn ông · Ánh mắt họ* — every one a pronoun or a common noun, one of them
+    ("their gaze") not a person at all. `_NOT_A_NAME` is an ENGLISH word list, so it filtered
+    none of them.
+
+    That is not a cosmetic problem in either consumer. As a recorded cast it would inject ten
+    invented "facts" into the next scene's prompt. As a seam key it means two DIFFERENT people
+    both called *anh ta* link as one and can be reported as a gender contradiction — a
+    false-finding generator, and it has been live.
+
+    There is no deterministic language-independent test for "is this a proper name": Vietnamese
+    is Latin-scripted, so capitalisation cannot decide it (`Người đàn ông` at a sentence start
+    is the same shape as `Cassius`). So the EXTRACTOR is asked to fill a `name` slot — a
+    reading question, the kind a weak model answers reliably — and the decision stays here.
+    FAILS CLOSED: no `name`, no identity. Recording nothing is strictly better than recording
+    a key that means "everybody".
+    """
+    return _norm_name(str(row.get("name") or ""))
 
 
 def compare_people(earlier: list[dict], later: list[dict]) -> CrossSceneResult:
@@ -188,14 +229,31 @@ def compare_people(earlier: list[dict], later: list[dict]) -> CrossSceneResult:
     Links by normalised NAME only. A person named in one passage and referred to only by role
     in the other stays unlinked and is COUNTED, never silently treated as agreement.
     """
+    def _key(p: dict) -> str:
+        """A proper name is the only key that means ONE person.
+
+        The presence of the `name` KEY — not its value — decides which rule applies, and the
+        difference is not academic. A live CONTROL run on a Vietnamese scene where nobody is
+        named reported `linked=2, clean=true`: the first version of this fell back to `who`
+        whenever `name` was empty, so two common nouns matched and the seam read as verified.
+        An empty `name` from the extractor is an ANSWER ("the passage does not name them"), and
+        falling back on it re-created the exact false green this check exists to remove.
+
+        A row with no `name` key at all is a different thing: a stored cast (which passed the
+        name filter when it was recorded) or a pre-`name` caller. Those keep the old behaviour.
+        """
+        if "name" in p:
+            return identity_of(p)
+        return _norm_name(str(p.get("who") or ""))
+
     e_by = {}
     for p in earlier:
-        n = _norm_name(p["who"])
+        n = _key(p)
         if n:
             e_by.setdefault(n, p)
     l_by = {}
     for p in later:
-        n = _norm_name(p["who"])
+        n = _key(p)
         if n:
             l_by.setdefault(n, p)
 
@@ -203,13 +261,16 @@ def compare_people(earlier: list[dict], later: list[dict]) -> CrossSceneResult:
     found: list[Contradiction] = []
     for name in shared:
         a, b = e_by[name], l_by[name]
-        if a["pronoun"] in _GENDERED and b["pronoun"] in _GENDERED \
-                and a["pronoun"] != b["pronoun"]:
+        # `.get`, not `[...]`: this function is public and takes rows from two producers —
+        # `extract_people` and a STORED cast — so a missing optional key must not be a
+        # KeyError inside a guard that is supposed to be degrade-safe.
+        pa, pb = a.get("pronoun", "none"), b.get("pronoun", "none")
+        ra, rb = a.get("role") or "", b.get("role") or ""
+        if pa in _GENDERED and pb in _GENDERED and pa != pb:
             found.append(Contradiction(
-                what=f"{a['who']} is referred to as '{a['pronoun']}' and then '{b['pronoun']}'",
-                earlier=f"{a['who']} — {a['pronoun']}"
-                        + (f", {a['role']}" if a["role"] else ""),
-                later=f"{b['who']} — {b['pronoun']}" + (f", {b['role']}" if b["role"] else ""),
+                what=f"{a.get('who')} is referred to as '{pa}' and then '{pb}'",
+                earlier=f"{a.get('who')} — {pa}" + (f", {ra}" if ra else ""),
+                later=f"{b.get('who')} — {pb}" + (f", {rb}" if rb else ""),
             ))
     return CrossSceneResult(
         status="checked", contradictions=found, linked=len(shared),
@@ -218,14 +279,73 @@ def compare_people(earlier: list[dict], later: list[dict]) -> CrossSceneResult:
     )
 
 
+async def extract_people_from(
+    judge, *, user_id: str, model_source: str, model_ref: str, text: str,
+    source_language: str = "auto", trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> list[dict] | None:
+    """One extraction call over one passage. `None` on any outage — never `[]`, which a caller
+    would read as "nobody is in this scene".
+
+    Public because the exit-state write-back (D-GENERATED-FACT-HAS-NO-HOME) records the SAME
+    extraction this check consumes. Two different extractors over the same prose would disagree
+    eventually, and the disagreement would surface as a phantom contradiction at a seam.
+    """
+    return await _extract_one(
+        judge, user_id=user_id, model_source=model_source, model_ref=model_ref, text=text,
+        system=build_extract_prompt(source_language), trace_id=trace_id,
+        cancel_check=cancel_check,
+    )
+
+
+async def _extract_one(
+    judge, *, user_id: str, model_source: str, model_ref: str, text: str, system: str,
+    trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> list[dict] | None:
+    # The passage is DATA here, not prose to continue — it is being read for a structured
+    # answer. So `neutralize` is the right tool (unlike `build_beat_scope`, where bracketing
+    # directive spans would write editing marks into the continuity context): a payload riding
+    # in from `<lore>` must not be able to steer the extraction into returning nothing, which
+    # would degrade this guard while it reported `checked`.
+    text = neutralize(text)
+    try:
+        job = await judge.submit_and_wait(
+            user_id=user_id, operation="chat",
+            model_source=model_source, model_ref=model_ref,
+            input={"messages": [{"role": "system", "content": system},
+                                {"role": "user", "content": text}],
+                   "response_format": {"type": "text"}, "temperature": 0.0,
+                   "max_tokens": max_tokens_for("cross_scene_check"),
+                   **no_thinking_fields()},
+            job_meta={"usage_purpose": "continuity_check", "extractor": "cast_state"},
+            trace_id=trace_id, cancel_check=cancel_check,
+        )
+    except LLMError as exc:
+        logger.warning("cast extract degraded (LLM error): %s", exc)
+        return None
+    if job.status != "completed":
+        logger.info("cast extract status=%s → degraded", job.status)
+        return None
+    return extract_people(job.result)
+
+
 async def check_chapter_consistency(
     judge, *, user_id: str, model_source: str, model_ref: str,
     scenes: list[str], source_language: str = "auto",
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    earlier_recorded: list[dict] | None = None,
 ) -> CrossSceneResult:
     """Two extraction calls per seam, then `compare_people`. Degrade-safe: any outage is
-    `degraded`, never a clean pass."""
+    `degraded`, never a clean pass.
+
+    ``earlier_recorded`` (D-GENERATED-FACT-HAS-NO-HOME) is the FIRST scene's cast as the scene
+    itself recorded it at draft time (`exit_state.cast`). When present it replaces that side's
+    extraction call — same rows, but they are the ones a human can have corrected, and the call
+    is not paid twice. It applies to the first seam only; later seams still extract, because
+    only the immediately-preceding scene has been through the write-back at this point.
+    """
     body = [s for s in scenes if s and s.strip()]
     if len(body) < 2:
         return CrossSceneResult(status="skipped_single_scene")
@@ -233,36 +353,19 @@ async def check_chapter_consistency(
     system = build_extract_prompt(source_language)
 
     async def extract(text: str) -> list[dict] | None:
-        # The passage is DATA here, not prose to continue — it is being read for a structured
-        # answer. So `neutralize` is the right tool (unlike `build_beat_scope`, where
-        # bracketing directive spans would write editing marks into the continuity context):
-        # a payload riding in from `<lore>` must not be able to steer the extraction into
-        # returning nothing, which would degrade this guard while it reported `checked`.
-        text = neutralize(text)
-        try:
-            job = await judge.submit_and_wait(
-                user_id=user_id, operation="chat",
-                model_source=model_source, model_ref=model_ref,
-                input={"messages": [{"role": "system", "content": system},
-                                    {"role": "user", "content": text}],
-                       "response_format": {"type": "text"}, "temperature": 0.0,
-                       "max_tokens": max_tokens_for("cross_scene_check"),
-                       **no_thinking_fields()},
-                job_meta={"usage_purpose": "continuity_check", "extractor": "cast_state"},
-                trace_id=trace_id, cancel_check=cancel_check,
-            )
-        except LLMError as exc:
-            logger.warning("cross-scene extract degraded (LLM error): %s", exc)
-            return None
-        if job.status != "completed":
-            logger.info("cross-scene extract status=%s → degraded", job.status)
-            return None
-        return extract_people(job.result)
+        return await _extract_one(
+            judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            text=text, system=system, trace_id=trace_id, cancel_check=cancel_check,
+        )
 
     merged = CrossSceneResult(status="checked")
+    # An empty recorded list is NOT a usable earlier side — it would compare the later scene
+    # against nobody and report `linked=0` as though the extraction had run. Treat it as absent.
+    carried = list(earlier_recorded) if earlier_recorded else None
+    merged.earlier_source = "recorded" if carried else "extracted"
     degraded = False
-    for a, b in zip(body, body[1:]):
-        ea = await extract(a[-_TAIL_CHARS:])
+    for i, (a, b) in enumerate(zip(body, body[1:])):
+        ea = carried if (i == 0 and carried is not None) else await extract(a[-_TAIL_CHARS:])
         lb = await extract(b[:_HEAD_CHARS])
         if ea is None or lb is None:
             degraded = True

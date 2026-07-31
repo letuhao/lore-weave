@@ -484,6 +484,42 @@ class OutlineRepo:
             )
         return [_row_to_node(r) for r in rows]
 
+    async def prior_scene_exit_state(
+        self, project_id: UUID, chapter_id: UUID, before_story_order: int,
+    ) -> dict[str, Any] | None:
+        """D-GENERATED-FACT-HAS-NO-HOME — the `exit_state` of the scene IMMEDIATELY before
+        this one in the same chapter. None when there is no predecessor or it recorded nothing.
+
+        ⚠ ARCHIVED-EXCLUDED, for the same reason `prior_scene_drafts` is: a soft-deleted scene
+        is not part of the story. Feeding a deleted scene's cast into the next prompt would
+        resurrect a discarded character exactly the way the archived-prose leak resurrected a
+        discarded ending.
+
+        ⚠ POSITION-BOUNDED: strictly `< before_story_order`, so a scene can never see its own
+        future. A NULL `story_order` is excluded rather than sorted last — an unplaced scene has
+        no provable position, and "probably before" is not a spoiler guarantee.
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchval(
+                """
+                SELECT exit_state FROM outline_node
+                WHERE project_id = $1 AND chapter_id = $2
+                  AND kind = 'scene' AND NOT is_archived
+                  AND story_order IS NOT NULL AND story_order < $3
+                ORDER BY story_order DESC
+                LIMIT 1
+                """,
+                project_id, chapter_id, before_story_order,
+            )
+        # This pool sets no jsonb codec, so asyncpg hands back the raw string. Decoded exactly
+        # the way `_row_to_node` does it, with no try/except: the column is JSONB, so the string
+        # postgres returns is valid JSON by construction. The first version guarded it anyway
+        # and referenced a `logger` this module does not have — a defensive branch that could
+        # only ever have fired as a NameError, on a path nothing can reach.
+        if isinstance(row, str):
+            return json.loads(row)
+        return row if isinstance(row, dict) else None
+
     async def chapter_node_id(
         self, project_id: UUID, chapter_id: UUID,
     ) -> UUID | None:

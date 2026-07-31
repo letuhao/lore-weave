@@ -78,6 +78,7 @@ from app.db.models import (
     LinkKind,
     PlanPassId,
     SceneExitState,
+    SceneExitStateIn,
 )
 from app.services.agent_native import ReferenceSource, resolve_scope
 from app.services.plan_pass_service import UpstreamStale
@@ -99,6 +100,7 @@ from app.db.repositories.structure_templates import (
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
+from app.engine.exit_state import merge_authored_exit_state
 from app.engine.library_translate import (
     LANGUAGE_NAMES, MAX_ITEMS_PER_JOB, TRANSLATABLE_KINDS,
 )
@@ -1096,7 +1098,7 @@ class _NodeCreateArgs(ForbidExtra):
     # doors" divergence this file's sibling comment already records — REST lagged MCP last
     # time; this is the same gap mirrored.
     draft_beats: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_DRAFT_BEATS)
-    exit_state: SceneExitState | None = None
+    exit_state: SceneExitStateIn | None = None
     # D-SCENE-CREATE-PARITY — the last two fields PlanForge's scene upsert writes and
     # this path could not. Both feed the packer, so their absence is a QUIET grounding
     # loss rather than an error: `present_entity_ids` is the scene's cast, and it is what
@@ -1157,7 +1159,14 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
             story_time=args.story_time, conflict=args.conflict, outcome=args.outcome,
             value_shift=args.value_shift, stakes=args.stakes, target_words=args.target_words,
             draft_beats=args.draft_beats,
-            exit_state=args.exit_state.model_dump(mode="json") if args.exit_state is not None else None,
+            # D-GENERATED-FACT-HAS-NO-HOME — provenance is stamped SERVER-side (there is no
+            # stored envelope to merge onto at create, so `existing` is None). `source` is not
+            # on the wire model at all: a caller able to choose it could stamp its own write
+            # `author` and permanently block the drafter's write-back.
+            exit_state=(
+                merge_authored_exit_state(None, args.exit_state.model_dump(mode="json"))
+                if args.exit_state is not None else None
+            ),
             # D-SCENE-CREATE-PARITY — the scene's cast + beat charge, the two fields
             # PlanForge writes and this path could not (see the args).
             tension=args.tension,
@@ -1217,7 +1226,7 @@ class _NodeUpdateArgs(ForbidExtra):
     # doors" divergence this file's sibling comment already records — REST lagged MCP last
     # time; this is the same gap mirrored.
     draft_beats: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_DRAFT_BEATS)
-    exit_state: SceneExitState | None = None
+    exit_state: SceneExitStateIn | None = None
     # D-SCENE-PROSE-NOWHERE-TO-LAND — BIND a plan node to a manuscript chapter.
     # `chapter_id` used to be create-only, which made a planned node a DEAD END: it is
     # created NULL (the normal state), the compose panel keys off this column, and there
@@ -1280,7 +1289,12 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
     if args.location_entity_id is not None:
         patch["location_entity_id"] = UUID(args.location_entity_id)
     if args.exit_state is not None:
-        patch["exit_state"] = args.exit_state.model_dump(mode="json")
+        # D-GENERATED-FACT-HAS-NO-HOME — MERGE, do not replace. A write here rewrites the whole
+        # JSONB envelope, so an author who edits `plot` on a scene the drafter has already
+        # recorded a cast for would wipe that record and the next scene would silently lose its
+        # continuity floor. `cast` omitted ⇒ carried forward with its provenance.
+        patch["exit_state"] = merge_authored_exit_state(
+            prior.exit_state, args.exit_state.model_dump(mode="json"))
     # D-SCENE-PROSE-NOWHERE-TO-LAND — bind the node to a manuscript chapter (see the arg).
     if args.chapter_id is not None:
         patch["chapter_id"] = UUID(args.chapter_id)
@@ -7388,7 +7402,7 @@ class _OutlineNodeEditArgs(ForbidExtra):
     value_shift: int | None = None       # create, update
     stakes: str | None = None            # create, update
     target_words: int | None = None      # create, update
-    exit_state: SceneExitState | None = None  # create, update
+    exit_state: SceneExitStateIn | None = None  # create, update
     new_parent_id: str | None = None     # move
     after_id: str | None = None          # move
 
