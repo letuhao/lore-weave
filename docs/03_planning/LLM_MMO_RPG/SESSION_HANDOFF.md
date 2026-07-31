@@ -402,9 +402,38 @@ ENFORCED for three slices.
 **BITE-TESTS (NV-6), both restored:** reclassifying `kind.initial_tier` to `Defaultable` reds the
 count assertion AND the contract-drift test; adding a field without a path is `E0027`.
 
-**▶ NEXT:** the Python side — `gamegen_element_brief` reading `contracts/progression-schema.json` and
-asserting its `coverage_map_json` key set EQUALS the required-path set. That is `PGN-A2` closed
-end-to-end. Then S2 (`gamegen_decision`/`gamegen_answer`), S3 the deterministic fold, S4 the policy.
+**`PGN-A2` IS NOW CLOSED END TO END.** `services/lore-enrichment-service/app/gamegen/` — the brief,
+its 11 questions, and a coverage assertion that can actually fail. 12 tests, service suite **1017
+passed / 40 skipped**.
+
+**The Python side re-derives NOTHING.** It reads `contracts/progression-schema.json` — generated from
+`ruleset-core`, drift-tested on the Rust side — and asserts **set equality in both directions**:
+
+* a required path with no question → the pipeline never asks, and the field is filled by a default
+  nobody chose;
+* a question for a path that is not required → a reviewer spends one of `PGN-A11`'s ~29 decisions on
+  a position the engine will never read.
+
+Plus a duplicate check (two questions for one position give two chances to answer it differently, and
+nothing downstream can say which won) and a fingerprint check (a brief authored against an older
+schema is refused with *"the schema MOVED"*, which reads differently from *"someone deleted a
+question"* — worth the separate message).
+
+**The brief asks for what the schema CANNOT hold, on purpose.** The breakthrough question invites a
+stated requirement — a place, an object, a person — even though `PGN-A20` means `at_max_plus` has no
+module to resolve into. Asking is what lets the pipeline **refuse by name** instead of silently
+emitting `at_max`. 陳玄一's cold pool is exactly that case, and the fixture is built for it.
+
+**The tier-name question asks for a PATTERN, not 15 names** — `PGN-A11`, the approval unit is the
+assertion class. One decision, expanded deterministically by the fold.
+
+**BITE-TESTS (NV-6), both restored:** deleting `kind.cap_rule` from the shipped brief reds with the
+missing path named; moving the contract's fingerprint reds with *"the schema MOVED"*. The first is
+**precisely the case v1 was provably green for**.
+
+**▶ NEXT:** S2 — `gamegen_decision` / `gamegen_answer` (the approval unit and the evidence), then S3
+the deterministic fold with its consumption ledger, then S4 the numeric policy. The brief now has
+something to be a brief FOR.
 
 **`PGN-R2` is complete and the hole found evaluating it is closed.** The POC-1 chain now runs
 TOML → table → validator → store → pin → ruleset digest → epoch switch, **with every admission point
