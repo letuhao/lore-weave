@@ -1,4 +1,5 @@
 # 19 — Reconciliation Register
+<!-- design-lint: ok prefix ML — `ML-1..ML-7` are the Multilingual / Anti-Language-Bias rules, owned by docs/standards/multilingual.md on the PLATFORM track. Cited here, not redefined; registering `ML` in this track's id catalog would claim another track's namespace. -->
 
 > **Status:** OPEN — created 2026-07-26. **This is a work register, not a design doc.**
 > **Prefix:** `REC-*` (registered 2026-07-26).
@@ -784,3 +785,66 @@ to be **no**:
 `_retired_scan_docs()` to `_track_docs()` makes the selftest fail with the reason spelled out. That is the
 only durable form of this lesson — the first version's docstring already *claimed* an empty allowlist and
 full coverage, and **intent is not a mechanism** even when the intent is specifically about mechanisms.
+
+
+---
+
+### REC-98 — the third half-application, and the point where a sweep stops being the answer
+
+**`WSA-R19` was half-applied, and doc 32's blanket status line was false for three of the six rows it
+covered.** Found by opening the targets rather than trusting a register — the same habit that produced
+REC-93, REC-96 and REC-97, now four for four.
+
+| Row | doc 32:14 said | The target said | Truth |
+|---|---|---|---|
+| `WSA-R19` | *"still PROPOSED, not applied"* | `EF_001` §5: `EntityId { …, Place(PlaceId) }` | **half-applied** |
+| `WSA-R21` | *"still PROPOSED"* | `NPC_001_cast:67`: *"`Locus` **ADDED** 2026-07-30"* | **APPLIED** |
+| `WSA-R22` | *"still PROPOSED"* | `ACT_001:205`: *"— **NARROWED** 2026-07-30"* | **APPLIED** |
+
+**A blanket status over a RANGE of rows is the shape that goes stale silently**, because nothing has to
+be true of all six for the sentence to keep reading plausibly. `SPG-R1`'s *"Applied so far"* (REC-97) was
+the same construction pointed the other way. **And my own release note in `63d122b36` repeated it** — it
+asserted these rows were unapplied and cited `EF_001:67`/`:131` as *"self-consistent and honest"*. Those
+two lines were stale; `EF_001:352` was current. **I read the table instead of the code, one layer down
+from the error I had just finished writing up.**
+
+`EF_001` carried the applied change in §5 and contradicted it in **five** places: the domain-concepts
+table (*"4 variants V1"*), the `WSA-R19`-pending doc-comment, the exhaustiveness rationale (*"all 4
+variants"*), a missing `Place` row in the §5.1 variant table, and **`AC-EF-1`, an acceptance criterion
+describing a `match` over 4 variants that would not compile against the 5-variant enum** — the same
+vacuous shape `AC-MAP-3` had in REC-97.
+
+**Three occurrences is where the answer stops being another careful sweep.** The mechanism is
+`design-lint`'s `count` check, extended to close its own documented hole:
+
+> *"KNOWN LIMIT: it can only check enums that EXIST in code."*
+
+`EntityId` is spec-only, so *"4 variants V1"* sat beside a five-variant declaration **in the same file**
+with nothing able to look. The check now parses enums out of the corpus's own ` ```rust ` blocks,
+**per file**, and compares claims against the declaration in that same document.
+
+**Four things the build had to learn from running it, not from reasoning about it:**
+
+1. **Cross-document comparison was cut at design review.** Three docs declare `pub enum ActorId`, and two
+   are legitimately different types — the data plane's `{Player, Npc}` versus the feature layer's
+   `{Pc, Npc, Synthetic, Admin, Locus}`. A cross-doc arity check would have false-positived on its first
+   run. Per-file has no homonym problem because two files never meet. (`D-SPEC-CODE-ENUM-PARITY`.)
+2. **The first working version did not catch the defect it was built for.** `COUNT_FORMS` requires the
+   number and the symbol to be adjacent; `EF_001:67` is `| **EntityId** | … | 4 variants V1`, a table cell
+   away. A **loose** form was added, made safe by a constraint the corpus-wide check could never have: the
+   symbol must name an enum **this file declares**, and **exactly one** such name may appear on the line.
+   The historical false positives cannot survive that — *"(the §11 variant"* names no enum, and the
+   mis-attribution case needs two candidates.
+3. **Running it over the corpus found two more false-positive classes and one more real defect.**
+   Version-partitioned enums (`MemoryQuery`: *"V1 4 variants; V2+ adds…"* against a 6-variant block) have
+   **no single arity**, so they are excluded — detected on the RAW body *before* comment stripping,
+   because the version markers live in exactly the comments the stripper removes. A historical claim
+   (`TVL_003`: *"TVL_001 built `TravelMode` 2-variant"*) took the sanctioned pragma. And
+   `GEO_001b`'s summary said *"14 variants"* against a **16**-variant declaration — a genuine drift in a
+   file this arc never touched.
+4. **Teaching the matcher past tense was rejected on ML-4 grounds.** A tense-detecting rule is
+   language-biased by construction and would fail on this corpus's Vietnamese prose. The pragma is the
+   right hatch precisely because it is language-neutral.
+
+Net: **4 count claims corrected across 3 files, 2 of them defects no human had reported**, and the class
+now has a check instead of a habit.

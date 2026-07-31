@@ -11,7 +11,7 @@
 > honored (a `Region` is a fold, never a writer); `WSA-F6`'s locus-as-ownable-entity is what lets
 > territory change hands by rebinding an ownership relation instead of restructuring the containment
 > tree. `WSA-F5(c)`'s unmeasured cost of acting loci is **carried forward unchanged** as `SPG-Q6`.
-> **⚠ `WSA-R19..R24` are still PROPOSED, not applied** — as this doc recorded. `SPG-R10` **depends on
+> **⚠ STATUS CORRECTED 2026-07-30 (REC-98) — this line read *"`WSA-R19..R24` are still PROPOSED, not applied"* and was FALSE for three of the six rows it covered.** Verified by opening each target rather than trusting this sentence: **`WSA-R21` APPLIED** (`NPC_001_cast.md:67` — *"`Locus` ADDED 2026-07-30 (`WSA-R21`; boundary review + lock claim)"*); **`WSA-R22` APPLIED** (`ACT_001:205` — *"Out-of-world actors forbidden V1 (ACT-A7) — NARROWED 2026-07-30 (`WSA-R22`)"*); **`WSA-R19` was HALF-APPLIED** — `EF_001` §5 declared `Place(PlaceId)` while four statements around it still said four variants, now finished. A blanket status line over six rows is the shape that goes stale silently, because nothing has to be true of all six for it to keep reading plausibly. **`WSA-R20`, `R23`, `R24` remain PROPOSED** — as this doc recorded. `SPG-R10` **depends on
 > `WSA-R19`**: `EntityId::Place` (32) and `SpaceNode.holder` (36) are the same seam, so they must land in
 > one pass. Both sets are registered in the ownership matrix as of 2026-07-30, together with a backfill
 > of six prefixes — **including this doc's own `WSA-*`** — that docs 27–35 introduced and never

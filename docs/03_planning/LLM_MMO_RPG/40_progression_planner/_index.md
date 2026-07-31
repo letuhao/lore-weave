@@ -1,6 +1,6 @@
 # 40 — Progression planner — Index
 
-> **Category:** PPL / PPO / PPB / EPL / GP / ICT / MOD / ENR / ASK / MEM — the **authoring tier** for progression systems.
+> **Category:** PPL / PPO / PPB / EPL / GP / ICT / MOD / ENR / ASK / MEM / BLD — the **authoring tier** for progression systems.
 > **Status:** DESIGN, unreviewed. Nothing here is locked and nothing is built.
 > **One-line:** how a human + an LLM converge, in a loop, on a progression system strict enough to
 > feed procedural generation — and what "strict enough" means, mechanically.
@@ -28,6 +28,7 @@ gameplay profile** (`PPO-A4`). The profiles are the reason for the folder — th
 | 09 | [`09_asking_and_sufficiency.md`](09_asking_and_sufficiency.md) | **How a planner asks and knows it is done.** Worked end-to-end on `item_grade`: never ask for a number, ask for the structure that determines it; three separate sufficiencies; a six-state slot machine whose `STARVED` and `DECLINED` states are the ones that matter. `ASK-A1..A4`. |
 | 10 | [`10_spike_asking_results.md`](10_spike_asking_results.md) | **MEASURED.** Five probes of `40.9` against a real local model, expectations written before the run. Verdict: **usable for asking, not trustworthy for deciding** — the model obeys rules that tell it to PRODUCE and violates rules that tell it to RESTRAIN or REFUSE. `ASK-A5`. |
 | 11 | [`11_member_schema.md`](11_member_schema.md) | **What a contract IS as data.** The member envelope + slot-typed body; `code` as the immutable contract; typed references as the logic structure. **Checks the item contract backwards against `ItemDefDecl` and finds it four fields short.** Round-3 spike forces a model into the schema. `MEM-A1..A4`. |
+| 12 | [`12_operations_and_build.md`](12_operations_and_build.md) | **Part A** closes rounds 6–8: a planner kind needs an **operation**, not just an output shape — and the operation yields a criterion needing no answer key. **Part B** is the build plan: module layout, planners registered by KIND, per-kind workflow, and the LangGraph question answered with a measurement. `BLD-A1..A6`. |
 
 **Read 04 first if you only read one; read 03 before you build anything.** 01 designs a machine;
 02 defines what the machine is for; 03 draws the line around it; 04 is how it is actually built.

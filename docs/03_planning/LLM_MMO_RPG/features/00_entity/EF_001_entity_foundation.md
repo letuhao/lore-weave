@@ -64,7 +64,7 @@ EF_001 owns the foundation; consumer features (PCS_001 / NPC_001 / Item / EnvObj
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **EntityId** | Closed sum type — `Pc(PcId) \| Npc(NpcId) \| Item(ItemId) \| EnvObject(EnvObjectId)` | 4 variants V1. Reserved V1+: `Vehicle \| Spirit \| Building \| Quest \| Channel`. Replaces `ActorId` (NPC_001 §2) for cross-entity references; `ActorId` becomes a sub-set with `Pc` + `Npc` only (kept for actor-only contexts like turn submission). |
+| **EntityId** | Closed sum type — `Pc(PcId) \| Npc(NpcId) \| Item(ItemId) \| EnvObject(EnvObjectId) \| Place(PlaceId)` | **5 variants** (`Place` added 2026-07-30, `WSA-R19`; this cell said 4 while §5 already declared 5 — see REC-98). Reserved V1+: `Vehicle \| Spirit \| Building \| Quest \| Channel`. Replaces `ActorId` (NPC_001 §2) for cross-entity references; `ActorId` becomes a sub-set with `Pc` + `Npc` only (kept for actor-only contexts like turn submission). |
 | **EntityType** | Closed enum discriminator — `Pc \| Npc \| Item \| EnvObject` | Matches EntityId variants 1:1; used as run-time tag when EntityId is opaque. Sub-discriminator for EVT-T3 Derived sub-types of `entity_binding`. |
 | **PcId** | Newtype `pub struct PcId(pub Uuid)` | Owned by PCS_001 (when designed); EF_001 declares the variant only. |
 | **NpcId** | Newtype `pub struct NpcId(pub Uuid)` | Owned by NPC_001; EF_001 declares the variant only. |
@@ -128,7 +128,10 @@ pub struct EntityBinding {
     /// needed a `Cell` variant, so the economy work discovered locus-as-entity empirically and reached
     /// past this closed enum to get it (`WSA-F4`).
     ///
-    /// Correct statement until `WSA-R19` lands: cells are **not** `EntityId`s today — they live as
+    /// ⚠ SUPERSEDED 2026-07-30 — `WSA-R19` HAS landed (§5 declares `Place(PlaceId)`), so this
+/// paragraph's premise is spent. Kept because the distinction it draws is still real: a
+/// cell-as-CHANNEL and a cell-as-ENTITY are different addressings of one thing, and
+/// `SPG-A1` is why both exist. Original text: cells are **not** `EntityId`s today — they live as
     /// `ChannelId` per PF_001, so this field is populated by the RES_001 path only and has no
     /// `entity_type` discriminant to test. `WSA-R19` adds the `Place`/`Locus` variant that makes the
     /// intended guard expressible; `SPG-R10` (doc 36 `SpaceNode.holder`) is the same seam from the
@@ -338,7 +341,7 @@ pub struct EnvObjectId(pub Uuid);
 - IDs are **reality-scoped** at the `entity_binding` row level (composite key `(reality_id, entity_id)` at storage layer; logical `EntityId` is reality-internal). Cross-reality references not supported V1.
 - ID **prefix in display/log** (UX only, not in struct): `pc_<uuid>` · `npc_<uuid>` · `itm_<uuid>` · `env_<uuid>`. Helps debugging and narrator text.
 
-**Why sum type over generic ID:** compile-time exhaustiveness — Rust pattern-match on `EntityId` forces every consumer to handle all 4 variants OR explicitly mark `_ => …` as catch-all. Catches new-variant-not-handled bugs at compile time. V1+ adding `Vehicle` will surface every match site that needs updating.
+**Why sum type over generic ID:** compile-time exhaustiveness — Rust pattern-match on `EntityId` forces every consumer to handle all 5 variants (`WSA-R19`) OR explicitly mark `_ => …` as catch-all. Catches new-variant-not-handled bugs at compile time. V1+ adding `Vehicle` will surface every match site that needs updating.
 
 ### 5.1 Relationship to `ActorId` (NPC_001 §2)
 
@@ -357,6 +360,7 @@ pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind },
 |---|---|---|---|
 | Pc | ✓ | ✓ | PCs are both turn-submitting actors AND addressable entities |
 | Npc | ✓ | ✓ | Same as PCs |
+| Place / Locus | ✓ (as `Locus(PlaceId)`, `WSA-R21`) | ✓ (as `Place(PlaceId)`, `WSA-R19`) | **The row that makes `SPG-A1` work.** A locus is a thing in the world (a village can be examined, entered, burned) AND an agent that submits turns (a trap reacts; a village regards). Both carry the SAME `PlaceId`, so one identity is addressed two ways — `WSA-A7` and `SPG-A1` are this row from opposite sides. `SPG-A10`'s `holder: Option<EntityId>` resolves here: `Some(Place(p))` is an interior belonging to a locus. |
 | Synthetic (orchestrator, scheduler, BubbleUpAggregator, RealityBootstrapper) | ✓ | ✗ | System actors that emit events but aren't "things in the world" — no `entity_binding` row, no spatial location, no lifecycle |
 | Admin | ✓ | ✗ | S5 admin actors emit events but aren't in-fiction entities |
 | Item | ✗ | ✓ | Items are addressable (PL_005 tool / target) but don't submit turns — no agency |
@@ -681,7 +685,7 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 
 10 V1-testable scenarios (AC-EF-1..10). Each names the §-rule it tests + the rule_id (for reject scenarios) so closure-pass auditors can verify rule existence.
 
-1. **AC-EF-1 — EntityId variant exhaustiveness (compile-time + lint):** (a) Rust unit test that uses `match entity_id` without a default arm covering all 4 variants compiles; (b) Rust unit test that omits `Item` arm fails to compile with `error[E0004]: non-exhaustive patterns`; (c) CI lint rule (clippy custom or codebase grep) flags any `match … { _ => … }` on `EntityId` outside the 3 designated catch-all sites (logging / serialization / debug-print) — flagged matches block merge until annotated `// CLOSED-ENUM-EXEMPT: <reason>` (unified repo-wide annotation per PF_001 AC-PF-3 cleanup 2026-04-26; annotation is NOT feature-prefixed to avoid namespace fragmentation as more closed enums land). Tests rule from §5 "Why sum type over generic ID."
+1. **AC-EF-1 — EntityId variant exhaustiveness (compile-time + lint)** — ⚠ **RESTATED 2026-07-30 (`WSA-R19`, REC-98): it said 4 while §5 declared 5, so the test it describes would not compile against the current enum.** (a) Rust unit test that uses `match entity_id` without a default arm covering all **5** variants compiles; (b) Rust unit test that omits `Item` arm fails to compile with `error[E0004]: non-exhaustive patterns`; (c) CI lint rule (clippy custom or codebase grep) flags any `match … { _ => … }` on `EntityId` outside the 3 designated catch-all sites (logging / serialization / debug-print) — flagged matches block merge until annotated `// CLOSED-ENUM-EXEMPT: <reason>` (unified repo-wide annotation per PF_001 AC-PF-3 cleanup 2026-04-26; annotation is NOT feature-prefixed to avoid namespace fragmentation as more closed enums land). Tests rule from §5 "Why sum type over generic ID."
 2. **AC-EF-2 — entity_binding primary-key unique:** attempting to `t2_write` a second row for an `entity_id` that already has a row returns reject `entity.duplicate_binding`. Tests §3.1 rule "One row per entity_id" + §8 namespace.
 3. **AC-EF-3 — entity_type matches variant:** writing `entity_binding { entity_id: Pc(...), entity_type: Npc, ... }` rejects `entity.entity_type_mismatch`. Tests §3.1 denormalization invariant + §8 namespace.
 4. **AC-EF-4 — Lifecycle forbidden transitions reject:** attempting `Removed → Suspended` (or `Destroyed → Suspended` or `Removed → Destroyed`) rejects `entity.invalid_lifecycle_transition`. Tests §6 forbidden-transitions table + §8 namespace.
