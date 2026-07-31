@@ -92,6 +92,17 @@ _ARTIFACT = re.compile(
 )
 
 
+def _mentions(rel: str, contract_path: str) -> bool:
+    """Does the file at `rel` reference `contract_path` (by full path or basename)?"""
+    try:
+        with open(os.path.join(REPO_ROOT, rel.replace("/", os.sep)), encoding="utf-8",
+                  errors="ignore") as fh:
+            body = fh.read()
+    except OSError:
+        return False
+    return contract_path in body or os.path.basename(contract_path) in body
+
+
 def enforcement_artifacts(cell: str) -> list[str]:
     """Gate scripts / drift tests the enforcement cell names, de-duplicated in order."""
     out: list[str] = []
@@ -283,6 +294,16 @@ def main() -> int:
             if absent:
                 unread.append((path, "its enforcement cell names "
                                      f"{', '.join(absent)}, which does not exist"))
+                continue
+            # Existing is not enforcing. The first version of this branch stopped at "the
+            # named file is on disk", which would pass a gate that never opens the contract —
+            # trading a real check (a live reader) for a weaker one, in the gate whose whole
+            # subject is claims with nothing behind them. At least ONE named artifact must
+            # actually reference the contract path.
+            reads = [n for n in named if _mentions(n, path)]
+            if not reads:
+                unread.append((path, "its enforcement cell names "
+                                     f"{', '.join(named)}, and none of them reference {path}"))
             continue
         readers = readers_of(path, sources)
         live = [r for r in readers if is_reachable(r, sources)]

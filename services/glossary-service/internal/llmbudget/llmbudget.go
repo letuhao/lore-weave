@@ -49,30 +49,54 @@ type Profile struct {
 	Why               string
 }
 
+// TokensPerItem is the worst-case JSON cost of ONE emitted row — a kind, a name, up to a
+// dozen attribute key/value pairs, a scope label and punctuation. Taken from the Python
+// SDK's `_TOKENS_PER_ITEM` so the three registries size the same shape the same way.
+const TokensPerItem = 220
+
 // Profiles is the registry, keyed by the function the call lives in.
+//
+// A cap does NOT prevent a clip; a cap BELOW the legitimate output causes one. Both of these
+// calls were previously uncapped, so any fixed number here can only introduce a failure that
+// did not exist — which is why the row for a caller-sized output is the omit sentinel and the
+// row for a bounded one is derived from that bound.
 var Profiles = map[string]Profile{
+	// The caller passes `maxCandidates` (up to maxDocExtractCandidates = 200). At
+	// TokensPerItem that is ~44k, so ANY flat cap that fits a small model truncates a large
+	// document — the first version of this row used 4096, roughly 18 candidates against a
+	// declared maximum of 200, on a call that had no cap at all before. The output length
+	// here is dictated by the request, exactly like a translation's is dictated by its
+	// source, so the model's natural stop is the right bound and `Truncated()` is the guard.
 	"doc_extract": {
-		MaxTokens:         4096,
+		MaxTokens:         omitSentinel,
 		TruncationIsFatal: true,
-		Why: "a candidate-entity JSON array over a whole document — verbose, and the site " +
-			"where a clip costs entities outright",
+		Why: "size is caller-driven (maxCandidates ≤ 200 ≈ 44k tokens) — a flat cap can only " +
+			"clip a large doc; the finish_reason check is the guard",
 	},
 	"doc_extract_repair": {
-		MaxTokens:         4096,
+		MaxTokens:         omitSentinel,
 		TruncationIsFatal: true,
-		Why:               "the repair round re-emits the SAME object, so it needs the same room",
+		Why:               "the repair re-emits the SAME object, so it inherits the same reasoning",
 	},
+	// A plan is BOUNDED — loreweave_mcp.MaxPlanOps = 50, enforced at the planner ("over the
+	// cap is an error at the planner, never a silent truncation"). So the budget is knowable:
+	// 50 × TokensPerItem = 11k. 12000 is the number plan-forge already runs against real
+	// models in this repo, and it is ≥ the bound, so no valid plan can hit it.
 	"action_plan": {
-		MaxTokens:         4096,
+		MaxTokens:         12000,
 		TruncationIsFatal: true,
-		Why:               "a validated action plan as one JSON object",
+		Why:               "a validated plan is bounded by MaxPlanOps=50 (~11k tokens); 12000 clears it",
 	},
 	"action_plan_repair": {
-		MaxTokens:         4096,
+		MaxTokens:         12000,
 		TruncationIsFatal: true,
-		Why:               "the repair round re-emits the SAME object, so it needs the same room",
+		Why:               "the repair re-emits the SAME object, so it needs the same room",
 	},
 }
+
+// omitSentinel — 0 means "no cap; drop the field from the wire", the platform-wide
+// convention (contracts/llm-budget.contract.json; the Go SDK's `,omitempty` implements it).
+const omitSentinel = 0
 
 // For returns the row for code. Unknown codes panic rather than defaulting: a silent
 // fallback would re-create the unattributed budget this registry exists to remove, and the
@@ -96,11 +120,23 @@ func Truncated(finishReason string) bool { return finishReason == TruncatedFinis
 // TruncationError describes a clip in the terms a caller (and the agent reading the tool
 // error) can act on. Deliberately NOT phrased as a malformed-output error: that
 // misattribution is the bug this package exists to prevent.
+//
+// The limit is reported as the PROVIDER's when this row sends no cap of its own — otherwise
+// the message would name 0 and read as nonsense. An uncapped call that still clipped was
+// bounded by the provider (Anthropic substitutes 8192 for a missing cap) or by the context
+// window, and the actionable advice differs.
 func TruncationError(code string, outputTokens int) error {
+	limit := MaxTokensFor(code)
+	where := fmt.Sprintf("its output limit of %d tokens", limit)
+	advice := fmt.Sprintf("raise the %q budget in internal/llmbudget", code)
+	if limit == omitSentinel {
+		where = "the PROVIDER's own output limit (this call sends no cap of its own — " +
+			"Anthropic substitutes 8192 for a missing one)"
+		advice = "use a model with a larger output window"
+	}
 	return fmt.Errorf(
-		"the model's response was cut off at its output limit of %d tokens (finish_reason=%q) "+
-			"after %d tokens, so the JSON is incomplete — this is a capacity limit, not a "+
-			"malformed answer. Retry with a smaller input (fewer/shorter passages), or raise "+
-			"the %q budget in internal/llmbudget",
-		MaxTokensFor(code), TruncatedFinishReason, outputTokens, code)
+		"the model's response was cut off at %s (finish_reason=%q) after %d tokens, so the "+
+			"JSON is incomplete — this is a capacity limit, not a malformed answer. Retry "+
+			"with a smaller input (fewer/shorter passages), or %s",
+		where, TruncatedFinishReason, outputTokens, advice)
 }

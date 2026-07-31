@@ -5,6 +5,9 @@ package llmbudget
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,10 +70,12 @@ func TestStructuredTruncationIsFatalMatchesTheContract(t *testing.T) {
 	}
 }
 
-func TestNoRowUsesTheOmitSentinel(t *testing.T) {
-	// 0 means "no cap, let the model decide" platform-wide. That is correct for a
-	// translation and catastrophic for a JSON extraction — it is the exact state both
-	// glossary call sites shipped in.
+func TestAnOmitSentinelRowIsDeliberateAndSaysWhy(t *testing.T) {
+	// 0 means "no cap, let the model decide". That is WRONG for a bounded structured call
+	// and RIGHT for one whose size the caller sets — a flat cap below the legitimate output
+	// does not prevent a clip, it causes one. The first version of doc_extract used 4096,
+	// roughly 18 candidates against a declared maximum of 200, on a call that had no cap at
+	// all before. So a sentinel row is allowed but must justify itself.
 	sentinel := 0
 	if om, ok := contract(t)["omit_sentinel"].(map[string]any); ok {
 		if v, ok := om["value"].(float64); ok {
@@ -78,13 +83,43 @@ func TestNoRowUsesTheOmitSentinel(t *testing.T) {
 		}
 	}
 	for code, p := range Profiles {
-		if p.MaxTokens == sentinel {
-			t.Fatalf("%q declares the omit sentinel %d — an uncapped structured call is the "+
-				"bug this registry exists to remove", code, sentinel)
+		if p.MaxTokens < 0 {
+			t.Fatalf("%q has a negative budget %d", code, p.MaxTokens)
 		}
-		if p.MaxTokens <= 0 {
-			t.Fatalf("%q has a non-positive budget %d", code, p.MaxTokens)
+		if p.MaxTokens != sentinel {
+			continue
 		}
+		if !strings.Contains(p.Why, "caller-driven") && !strings.Contains(p.Why, "same reasoning") {
+			t.Fatalf("%q sends no cap but its rationale does not say the size is caller-driven: %q",
+				code, p.Why)
+		}
+	}
+}
+
+func TestABoundedRowClearsTheBoundItCites(t *testing.T) {
+	// action_plan is bounded by loreweave_mcp.MaxPlanOps = 50, so its budget is knowable and
+	// must clear it — an under-cap here would clip a valid maximal plan.
+	const maxPlanOps = 50
+	if got := MaxTokensFor("action_plan"); got < maxPlanOps*TokensPerItem {
+		t.Fatalf("action_plan budget %d is below its own bound (%d ops x %d tokens = %d)",
+			got, maxPlanOps, TokensPerItem, maxPlanOps*TokensPerItem)
+	}
+}
+
+func TestTheTruncationMessageMakesSenseForAnUncappedRow(t *testing.T) {
+	// Naming "its output limit of 0 tokens" would read as nonsense and send the reader to
+	// raise a budget that does not exist.
+	msg := TruncationError("doc_extract", 9000).Error()
+	if strings.Contains(msg, "limit of 0") {
+		t.Fatalf("uncapped row reports a 0-token limit: %s", msg)
+	}
+	if !strings.Contains(msg, "PROVIDER") {
+		t.Fatalf("uncapped row does not name the provider as the bound: %s", msg)
+	}
+	// A capped row still names its own number.
+	capped := TruncationError("action_plan", 12000).Error()
+	if !strings.Contains(capped, "12000") {
+		t.Fatalf("capped row does not name its budget: %s", capped)
 	}
 }
 
@@ -134,5 +169,54 @@ func TestTruncationErrorNamesTheCauseAsCapacityNotMalformedOutput(t *testing.T) 
 	}
 	if strings.Contains(strings.ToLower(msg), "invalid") {
 		t.Fatalf("truncation error reuses the malformed-output wording it exists to replace: %s", msg)
+	}
+}
+
+func TestEveryCallSiteCodeExistsInTheRegistry(t *testing.T) {
+	// `For` PANICS on an unknown code — correct (a silent default re-creates the
+	// unattributed budget), but it makes a typo a runtime panic inside a request handler
+	// rather than a red test. The Python and composition registries verify this by AST; Go
+	// had no equivalent, so this is it.
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, filepath.Join("..", "api"), nil, 0)
+	if err != nil {
+		t.Fatalf("parse ../api: %v", err)
+	}
+	seen := 0
+	for _, pkg := range pkgs {
+		for path, file := range pkg.Files {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
+			}
+			ast.Inspect(file, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				pkgIdent, ok := sel.X.(*ast.Ident)
+				if !ok || pkgIdent.Name != "llmbudget" || len(call.Args) == 0 {
+					return true
+				}
+				lit, ok := call.Args[0].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				code := strings.Trim(lit.Value, `"`)
+				seen++
+				if _, known := Profiles[code]; !known {
+					t.Errorf("%s calls llmbudget.%s(%q) — no such row in Profiles",
+						filepath.Base(path), sel.Sel.Name, code)
+				}
+				return true
+			})
+		}
+	}
+	if seen == 0 {
+		t.Fatal("found no llmbudget call sites in ../api — the AST walk is not seeing them, " +
+			"so this test would pass no matter what a call site said")
 	}
 }
