@@ -12,6 +12,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class ProviderPlanForgeLLM:
         system: str,
         user: str,
         temperature: float = 0.2,
-        max_tokens: int = 8000,
+        max_tokens: int = max_tokens_for("plan_forge_chat"),
         cancel_check: Callable[[], Awaitable[bool]] | None = None,
         schema: dict[str, Any] | None = None,
         frequency_penalty: float | None = None,

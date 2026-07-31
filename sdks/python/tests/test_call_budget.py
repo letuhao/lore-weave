@@ -174,3 +174,32 @@ def test_mirror_is_the_only_kind_that_may_resolve_to_zero():
             assert got == 0
         else:
             assert got > 0, f"{kind} resolved to {got} on an unknown target"
+
+
+# ── `floor`: the service's measured minimum ───────────────────────────────────────────────
+
+def test_a_service_floor_raises_the_budget_above_the_kinds_net():
+    """The kind floors were sized from a SAMPLE, and the full inventory falsified the module's
+    own promise that adoption "can never truncate something that previously fit":
+    `plan_forge` uses 8000 against a STRUCTURED net of 4096 (halved), and both self-heal
+    proposers use 3000 against an EDIT net of 2200. Three silent downgrades."""
+    assert call_budget(OutputKind.STRUCTURED, floor=8000).max_output_tokens >= 8000
+    assert call_budget(OutputKind.EDIT, floor=3000).max_output_tokens >= 3000
+
+
+def test_a_service_floor_can_never_LOWER_the_kinds_net():
+    """`max` of both, never a replacement — otherwise a registry row could quietly drop a
+    call under the safety floor its kind guarantees."""
+    for kind in (OutputKind.PROSE, OutputKind.STRUCTURED, OutputKind.VERDICT, OutputKind.EDIT):
+        bare = call_budget(kind).max_output_tokens
+        assert call_budget(kind, floor=1).max_output_tokens == bare, f"{kind} was lowered"
+
+
+def test_floor_does_not_defeat_the_runaway_ceiling():
+    assert call_budget(OutputKind.PROSE, floor=10**9).max_output_tokens == DEFAULT_CEILING
+
+
+def test_floor_is_ignored_for_mirror_because_zero_means_unbounded():
+    """The numeric `0 < floor` comparison is the trap: MIRROR's 0 is the omit sentinel, which
+    already exceeds any minimum. Pinned so a future edit does not "fix" it into a cap."""
+    assert call_budget(OutputKind.MIRROR, floor=8000).max_output_tokens == 0

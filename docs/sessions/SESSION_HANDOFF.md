@@ -265,11 +265,48 @@ unattributed, pushing the fix back to inlining. Registry attribution is now reco
 Both new baselines were **guesses that the ratchets rejected on their own first run** (41→32
 here, 43→47 for gate-teeth). That is what a ratchet is for; the constants now carry `MEASURED`.
 
+## ✅ LLM-BUDGET M2 — composition adopted; the seam's own promise was false (2026-07-31)
+
+**The floors were sampled, not measured — and a straight adoption would have silently
+downgraded three sites.** The SDK docstring promised adoption "can never truncate something
+that previously fit". Computed against the full 18-site inventory: `plan_forge_chat` 8000 →
+4096 (**halved** — and a halved plan JSON does not come back short, it comes back
+unparseable), `propose_edits_direct` and `propose_self_heal` 3000 → 2200. The floors said
+`>= cast_plan's 4000` and `>= self_heal's 2200`; both were true of the sites the module was
+written from and false of the repo. Same shape as everything else this cycle, one layer up.
+
+Fix: `call_budget(..., floor=N)` — a per-call minimum the SERVICE has measured, `max`-ed with
+the kind's net so a row can raise but never lower it. Each of composition's 18 rows records
+the literal it replaced (`was`), and **the registry test fails if any row resolves below it**.
+The promise is now a machine check instead of a sentence.
+
+`services/composition-service/app/llm_budget.py` — 18 rows, kind + measured floor + rationale.
+All 18 signature defaults migrated; **`sigs` is now 0 repo-wide** (that was the form a
+call-site-only gate would have reported clean).
+
+**The gate needed one more dataflow step to not punish the migration**: the migrated shape is
+`def f(…, max_tokens: int = max_tokens_for("propose_cast"))` feeding
+`input={… "max_tokens": max_tokens}`, so without resolving a parameter's *default* the 18
+defaults would clear while the 24 call sites they feed stayed unattributed. It follows the
+default's **provenance**, not merely its existence — `max_tokens: int = 1200` passed along is
+still backlog (pinned by test).
+
+Backlog **59 → 29**. Remaining: 12 composition sites whose budget comes from elsewhere,
+10 knowledge, 4 translation, 3 misc.
+
+⚠️ Two migration near-misses worth keeping: the line-window search for
+`max_tokens: int = N` jumped up to 12 lines on 4 files — verified every hunk landed in the
+intended function by reading `git diff`'s hunk headers, not by trusting the offsets. And the
+first import pass inserted **inside a parenthesised multi-line import**; the repair removed
+exactly the inserted line and re-inserted at each statement's AST `end_lineno`, never
+`git checkout` (which would have discarded the signature edits in the same files).
+
 ### ▶ NEXT
-1. **LLM-budget M2** — composition-service's registry (22 of the 18+ signature defaults live
-   there) and the remaining literals; then **Go/Rust get a contract file + drift test**
-   (glossary has *zero* `FinishReason` checks service-wide; `llm_verifier`, tilemap also bare).
-   Billing estimators stay OUT — they over-estimate on purpose.
+1. **LLM-budget M3** — **Go/Rust get a contract file + drift test**. glossary-service has
+   *zero* `FinishReason` checks service-wide; `llm_verifier` and tilemap are bare too. Then
+   the 29-row backlog. Billing estimators stay OUT — they over-estimate on purpose.
+   Also open: the gate does not parse the raw `POST /internal/llm/stream` shape (chat,
+   lore-enrichment, video-gen) — named in its PASS line so it cannot pass for coverage.
 2. Phase 1–3 per spec §6. **Spec §3.1 carries 13 residue rows**, each already assigned to an owning
    slice — read it before planning any slice.
 

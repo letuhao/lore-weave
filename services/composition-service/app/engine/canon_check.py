@@ -37,6 +37,7 @@ from loreweave_canon_check import (
     gone_entities_referenced,
     parse_judge_verdicts,
 )
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ def _build_judge_messages(
 async def judge_canon(
     judge, *, user_id: str, model_source: str, model_ref: str,
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
-    max_tokens: int = 1024, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("judge_canon"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CanonViolation]:
     """Confirm the symbolic candidates with the LLM-judge (D2 — only the cheap

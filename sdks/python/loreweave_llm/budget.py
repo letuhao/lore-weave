@@ -72,9 +72,13 @@ prevent.
 
 ## Today's behaviour
 
-Returns the DEFAULT policy, sized to be **at least as generous as the literal each call
-site uses today**, so adopting it can never truncate something that previously fit.
-``CallBudget.source`` says ``"default"``. When a scored policy lands, every call site that
+Returns the DEFAULT policy. Adopting it must never truncate something that previously fit —
+but that is a property of each SERVICE's registry rows, not something this module can promise
+on its own: the kind floors below are a safety net sized from a sample, and the full inventory
+contained three call sites above their kind's floor. So the guarantee is enforced where it can
+be checked — a registry row declares the measured minimum via ``floor``, and the service's own
+test asserts no row resolves below the literal it replaced. ``CallBudget.source`` says
+``"default"``. When a scored policy lands, every call site that
 already passes its signals benefits without an edit — which is the entire point of
 introducing the seam before the policy.
 
@@ -153,8 +157,19 @@ _REASONING_ALLOWANCE: dict[str, float] = {
 }
 _REASONING_ALLOWANCE_UNKNOWN = 1.2
 
-#: Floors per kind, chosen to be >= the flat literal each kind's call sites use today, so
-#: adopting the seam is never a downgrade. Raise one only with a measurement.
+#: Floors per kind — a SAFETY NET, not a per-call size.
+#:
+#: These were originally described as ">= the flat literal each kind's call sites use today,
+#: so adopting the seam is never a downgrade". That was measured against the handful of sites
+#: this module was written from, and the full inventory falsified it: `plan_forge/llm.chat`
+#: uses 8000 (STRUCTURED floor 4096 — it would have been HALVED) and
+#: `self_heal.propose_edits_direct`/`propose_self_heal` use 3000 (EDIT floor 2200). Three
+#: silent downgrades, in a seam whose docstring promised there could be none.
+#:
+#: Raising the floors to cover the maximum would over-budget every small call instead, so the
+#: floor stays a net and the per-call minimum belongs where the per-call knowledge is: the
+#: service's own call-profile registry, via the `floor` argument below. `PASS_REGISTRY` is the
+#: precedent — mechanism in the SDK, per-operation facts in the service.
 _FLOOR: dict[OutputKind, int] = {
     OutputKind.PROSE: 1024,
     OutputKind.STRUCTURED: 4096,   # >= cast_plan's 4000, the site truncation already bit
@@ -206,6 +221,7 @@ def call_budget(
     language: str | None = None,
     reasoning: ReasoningDirective | None = None,
     context_length: int | None = None,
+    floor: int | None = None,
     ceiling: int = DEFAULT_CEILING,
 ) -> CallBudget:
     """Resolve the output budget for one LLM call.
@@ -223,12 +239,21 @@ def call_budget(
         copies of the reasoning decision came about, and the caller already holds it.
     :param context_length: the model's window, for clamping. Omitted means no window clamp
         is applied and ``clamped_to_window`` stays ``None`` so the gap is visible.
+    :param floor: a per-call minimum the SERVICE has measured, overriding the kind's floor
+        when it is larger. This is how a call that genuinely needs more than its kind's net
+        (``plan_forge``'s 8000-token plan JSON) keeps it without inflating every sibling —
+        and it is what makes "adopting this is never a downgrade" enforceable instead of
+        merely stated. Belongs in the service's call-profile registry, never at a call site.
     :param ceiling: hard runaway guard.
     """
     # MIRROR short-circuits the whole sizing model: there is no target to size FROM, and
     # every clamp below (floor, headroom, window share, ceiling) would turn a deliberate
     # "no cap" into a cap. Returns 0 = the wire's omit sentinel, and never fatal — a model
     # stopping naturally is the intended end of the call, not a truncation.
+    #
+    # `floor` is deliberately ignored here rather than raising: 0 means UNBOUNDED, which
+    # already satisfies any minimum. The numeric 0 < floor comparison is the trap, so the
+    # rule is stated instead of left to be inferred, and pinned by a test.
     if kind is OutputKind.MIRROR:
         return CallBudget(
             max_output_tokens=0,
@@ -253,7 +278,10 @@ def call_budget(
 
     need = base * _HEADROOM[kind]
     need += need * _reasoning_multiplier(reasoning)
-    resolved = max(_FLOOR[kind], int(need))
+    # The service's measured minimum wins over the kind's net when it is larger; the net still
+    # applies when the service has none. `max` of both, never a replacement — a registry row
+    # must not be able to lower a kind's safety floor.
+    resolved = max(_FLOOR[kind], floor or 0, int(need))
 
     window_cap: int | None = None
     if context_length and context_length > 0:

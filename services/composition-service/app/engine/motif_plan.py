@@ -32,6 +32,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ async def select_arc_motifs(
     llm: LLMClient, retriever: Any, *, user_id: str, book_id: UUID, project_id: UUID,
     premise: str, genre_tags: list[str], source_language: str = "auto",
     model_source: str, model_ref: str, max_select: int = 4, candidate_limit: int = 15,
-    max_tokens: int = 1200, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("select_arc_motifs"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[SelectedArcMotif]:
     """Pick the arc's thematic motifs from the in-genre library. Returns [] when there are

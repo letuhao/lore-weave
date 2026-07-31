@@ -39,6 +39,7 @@ from app.clients.eval_client import extract_judge_content
 from app.engine.adaptive_k import HIGH_WEIGHT_BEATS
 from app.engine.critic import parse_critique_json  # REUSE the tolerant fence-stripping parser
 from app.packer.profile import BookProfile
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ async def judge_motif_conformance(
     expected_roles: list[str],
     passage: str,
     profile: BookProfile,
-    max_tokens: int = 512,
+    max_tokens: int = max_tokens_for("judge_motif_conformance"),
     trace_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the binary conformance judge. Returns the judge-output dict (WITHOUT

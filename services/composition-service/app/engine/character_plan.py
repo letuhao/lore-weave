@@ -25,6 +25,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def parse_character_arcs(
 async def plan_character_arcs(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, cast: list[dict[str, Any]], beat_roles: list[str | None],
-    source_language: str = "auto", max_tokens: int = 2000,
+    source_language: str = "auto", max_tokens: int = max_tokens_for("plan_character_arcs"),
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CharacterArc]:

@@ -31,6 +31,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +296,7 @@ async def propose_world(
     cast_names: list[str] | None = None,
     known_world: dict[str, list[str]] | None = None,
     canon: str = "",
-    max_tokens: int = 4000,   # a full world JSON is verbose — undersizing truncates the array → parse fails
+    max_tokens: int = max_tokens_for("propose_world"),   # a full world JSON is verbose — undersizing truncates the array → parse fails
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[ProposedWorldEntity]:

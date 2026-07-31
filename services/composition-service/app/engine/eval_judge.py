@@ -30,6 +30,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ def _parse_verdict(content: str) -> dict[str, Any]:
 async def pairwise_judge(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     draft_a: str, draft_b: str, source_language: str = "auto",
-    max_tokens: int = 1024, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("pairwise_judge"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the pairwise comparison. On any LLM/parse failure returns a 'tie'

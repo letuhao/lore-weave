@@ -60,7 +60,9 @@ ROOT = Path(__file__).resolve().parents[1]
 #: dominant idiom in composition-service — so 27 sites with a perfectly visible budget were
 #: discarded, and the baseline understated the real backlog by 46%. A ratchet set from a
 #: detector's blind spot ratchets the blind spot.
-UNATTRIBUTED_BASELINE = 59
+#: 2026-07-31 M2 — 59 → **29** after composition-service adopted its registry: 18 signature
+#: defaults resolved (`sigs` is now 0 repo-wide) and 12 of the call sites they feed followed.
+UNATTRIBUTED_BASELINE = 29
 
 #: Methods that submit an LLM request with a payload DICT. Structural, not name-based: what
 #: makes a budget an OUTPUT budget is that it rides in one of these payloads.
@@ -184,6 +186,36 @@ def _attributed(node: ast.AST, names: set[str], providers: set[str]) -> bool:
     return False
 
 
+def _param_defaults_by_call(tree: ast.AST, names: set[str], providers: set[str]) -> dict[int, set[str]]:
+    """{id(call node): parameter names whose DEFAULT resolves through the SSOT}.
+
+    The migrated shape is `def propose_cast(…, max_tokens: int = max_tokens_for("propose_cast"))`
+    with `input={… "max_tokens": max_tokens}` — the budget IS attributed, one function boundary
+    away. Without this the gate reports every correctly-migrated site as unattributed, which is
+    the same "punishes its own architecture" failure the registry indirection already hit: the
+    18 signature defaults would clear and the 24 call sites they feed would not move at all.
+
+    Scopes are unioned rather than resolved innermost-first — a name bound in an enclosing
+    function is visible in a closure anyway, and a false ATTRIBUTED here is bounded (the site
+    genuinely does read a budget-derived parameter) while a false unattributed is the bug above.
+    """
+    out: dict[int, set[str]] = {}
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        a = fn.args
+        pairs = list(zip(a.args[len(a.args) - len(a.defaults):], a.defaults))
+        pairs += list(zip(a.kwonlyargs, a.kw_defaults))
+        attributed = {arg.arg for arg, d in pairs
+                      if d is not None and _attributed(d, names, providers)}
+        if not attributed:
+            continue
+        for sub in ast.walk(fn):
+            if isinstance(sub, ast.Call):
+                out.setdefault(id(sub), set()).update(attributed)
+    return out
+
+
 def _classify_stream(rel: str, node: ast.Call, names: set[str], providers: set[str]) -> dict:
     """Budget verdict for the request-OBJECT shape: `client.stream(ChatRequest(max_tokens=…))`.
 
@@ -224,13 +256,15 @@ def scan() -> tuple[list[dict], list[dict]]:
                 continue
             rel = p.relative_to(ROOT).as_posix()
             names = _call_budget_names(tree)
+            param_budgets = _param_defaults_by_call(tree, names, providers)
 
             for n in ast.walk(tree):
                 if not isinstance(n, ast.Call):
                     continue
                 fn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
                 if fn in _STREAM:
-                    sites.append(_classify_stream(rel, n, names, providers))
+                    sites.append(_classify_stream(
+                        rel, n, names | param_budgets.get(id(n), set()), providers))
                     continue
                 if fn not in _SUBMIT:
                     continue
@@ -263,7 +297,7 @@ def scan() -> tuple[list[dict], list[dict]]:
                     continue
                 if val is None:
                     sites.append({"file": rel, "line": n.lineno, "verdict": "ABSENT"})
-                elif _attributed(val, names, providers):
+                elif _attributed(val, names | param_budgets.get(id(n), set()), providers):
                     sites.append({"file": rel, "line": n.lineno, "verdict": "attributed"})
                 elif isinstance(val, ast.Constant) and val.value == 0:
                     # The wire sentinel for "omit the cap" — a decision, not a gap.

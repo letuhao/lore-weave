@@ -32,6 +32,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ def _parse_audit(content: str) -> dict[str, Any]:
 async def audit_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     arc_text: str, source_language: str = "auto",
-    max_tokens: int = 1500, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("audit_promises"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Audit one arc's promises. On any LLM/parse failure returns empty lists +
@@ -277,7 +278,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
 async def extract_tracked_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, plan_text: str, source_language: str = "auto",
-    max_tokens: int = 800, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("extract_tracked_promises"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[str]:
     """Derive the fixed tracked-promise set from premise+plan. Returns [] on
@@ -295,7 +296,7 @@ async def extract_tracked_promises(
 async def score_promise_coverage(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     promises: list[str], arc_text: str, source_language: str = "auto",
-    max_tokens: int = 1500, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("score_promise_coverage"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Score one arc's prose against the FIXED promise set. On failure returns the

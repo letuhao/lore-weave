@@ -27,6 +27,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ def cap_recent_prose(prose: list[str], max_chars: int) -> list[str]:
 async def compress(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     prose: list[str], timeline: list[str], plan: str = "",
-    source_language: str = "auto", max_tokens: int = 512,
+    source_language: str = "auto", max_tokens: int = max_tokens_for("compress"),
     max_input_chars: int = 24000, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> str:

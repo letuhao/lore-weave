@@ -35,6 +35,7 @@ from app.engine.cowrite import DraftMetering, build_messages, char_estimate
 from app.engine.critic import parse_critique_json
 from app.packer.profile import BookProfile
 from app.reasoning import wire_fields
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ def build_rerank_prompt(candidates: list[Candidate], profile: BookProfile) -> tu
 
 async def score(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    candidates: list[Candidate], profile: BookProfile, max_tokens: int = 512,
+    candidates: list[Candidate], profile: BookProfile, max_tokens: int = max_tokens_for("select_score"),
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[int, str, bool]:

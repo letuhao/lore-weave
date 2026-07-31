@@ -30,6 +30,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ async def detect_and_update_threads(
     drafter_ref: str,
     source_language: str = "auto",
     max_open: int = 5,
-    max_tokens: int = 1024,
+    max_tokens: int = max_tokens_for("detect_and_update_threads"),
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> ThreadUpdateResult:

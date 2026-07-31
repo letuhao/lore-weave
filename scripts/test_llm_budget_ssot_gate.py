@@ -182,3 +182,45 @@ def test_no_llm_call_site_in_this_repo_is_missing_a_budget():
     sites, _ = lbg.scan()
     absent = [f"{s['file']}:{s['line']}" for s in sites if s["verdict"] == "ABSENT"]
     assert absent == [], f"LLM call sites with no declared output budget: {absent}"
+
+
+# ── a budget that arrives via a PARAMETER DEFAULT ─────────────────────────────────────────
+
+def test_a_parameter_whose_default_resolves_through_the_ssot_is_attributed(tmp_path, monkeypatch):
+    """The migrated shape: `def f(…, max_tokens: int = max_tokens_for("propose_cast"))` with
+    `input={… "max_tokens": max_tokens}`. Without resolving the default, all 18 signature
+    defaults would clear and the 24 call sites they feed would not move — the same
+    punishes-its-own-architecture failure the registry indirection already hit."""
+    src = '''
+from loreweave_llm.budget import OutputKind, call_budget
+def max_tokens_for(code):
+    return call_budget(OutputKind.STRUCTURED).max_output_tokens
+
+async def go(llm, max_tokens: int = max_tokens_for("propose_cast")):
+    return await llm.submit_and_wait(
+        user_id="u", input={"messages": [], "max_tokens": max_tokens},
+    )
+'''
+    sites, _ = _tree(tmp_path, monkeypatch, {"services/x/app/a.py": src})
+    assert _verdicts(sites) == ["attributed"], sites
+
+
+def test_a_parameter_with_a_LITERAL_default_is_still_the_backlog(tmp_path, monkeypatch):
+    """The resolution must follow the default's PROVENANCE, not merely the existence of one —
+    otherwise every `max_tokens: int = 1200` launders itself by being passed along."""
+    src = '''
+async def go(llm, max_tokens: int = 1200):
+    return await llm.submit_and_wait(
+        user_id="u", input={"messages": [], "max_tokens": max_tokens},
+    )
+'''
+    sites, sigs = _tree(tmp_path, monkeypatch, {"services/x/app/a.py": src})
+    assert _verdicts(sites) == ["unattributed"], sites
+    assert [s["default"] for s in sigs] == [1200]
+
+
+def test_the_repo_has_no_remaining_signature_default_feeding_an_llm_payload():
+    """M2's actual deliverable, against the live tree — the form a call-site-only gate would
+    have reported clean."""
+    _, sigs = lbg.scan()
+    assert sigs == [], f"signature defaults still feeding LLM payloads: {sigs}"

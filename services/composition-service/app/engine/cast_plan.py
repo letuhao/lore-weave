@@ -28,6 +28,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +199,7 @@ async def propose_cast(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, source_language: str = "auto", genre_tags: list[str] | None = None,
     known_cast: list[str] | None = None, canon: str = "",
-    max_tokens: int = 4000, trace_id: str | None = None,  # a full cast JSON is verbose — undersizing truncates the array → parse fails
+    max_tokens: int = max_tokens_for("propose_cast"), trace_id: str | None = None,  # a full cast JSON is verbose — undersizing truncates the array → parse fails
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[ProposedChar]:
     """Propose the cast (named + invented-supporting) from the premise. Returns [] on any
