@@ -58,6 +58,58 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S4 — the numeric policy, and the first System-tier row in this pipeline (2026-07-31)
+
+Doc 39 §6 in `app/gamegen/policy.py` + `gamegen_numeric_policy`. **1219 passed / 1 skipped.**
+
+**The mechanism is the brief's, reused, and that is the point.** A policy maps every **magnitude
+path** to a `Band` — `[min, max]` plus a default inside it — and `assert_covers_magnitudes` asserts
+the band set **equals** the contract's magnitude set, both directions. The seven paths come from
+`contracts/progression-schema.json`, never re-derived here. A magnitude with no band is a number S5
+must invent, and *the engine's default would ship wearing this policy's signature*; a band for a
+non-magnitude is a knob nothing reads, tuned by someone watching for an effect that cannot arrive.
+
+**A range, not a value — because that is what makes narrowing mean something.** The System tier ships
+what a book MAY choose; the book chooses within it. `narrow()` refuses a band not contained in its
+parent's, **by path**, and containment is two-sided: lowering a floor widens exactly as surely as
+raising a ceiling, and only one of those is intuitive. `min == max` stays legal, because that is how
+an author says *"this one is deliberately not a choice"*.
+
+**`PGN-A15` is encoded in the schema, not in the repository.** `tier='book' ⇒ parent_policy_id IS NOT
+NULL`, with the two tiers exclusive and exhaustive:
+
+```
+system: no owner, no book, NO PARENT   — the shipped baseline
+book:   an owner, a book, and a PARENT — a narrowing of it
+```
+
+**You may narrow a shipped baseline; you may not author from scratch.** Without it a "book policy" is
+a second global policy with extra steps — precisely what v1 shipped by declaring no tier at all.
+
+**This is the first System-tier table in the pipeline** (S0–S3 are all per-book), so CLAUDE.md's *a
+regular user MUST NOT mutate a System-tier row* becomes live for the first time.
+`publish_system_policy` takes a required **`is_admin` with no default**: `False` would be safe and
+`True` catastrophic, but either way a caller could forget the argument exists. Required means every
+call site has stated, in writing, whose authority it acts under — and a test asserts the parameter has
+no default, so adding one later reds.
+
+**Two more self-reported inputs removed** — `policy_hash` is derived, and `narrow_for_book` reads the
+parent **from the database** rather than accepting it, because narrowing must be checked against what
+was actually published. That makes **six** across this run: `chunk_count`, `merkle_root`,
+`schema_fingerprint`, `question_paths`, `policy_hash`, `parent`.
+
+**`PGN-A16`:** every band value is an `int`, and `bool` is refused *before* `int` — `isinstance(True,
+int)` is True in Python, so without that arm `True` is a legal rate of 1 and a policy typo becomes a
+balance decision.
+
+**BITE-TESTS (NV-6), three, all restored:** containment check disabled → both widening tests DID NOT
+RAISE · `bool`/`float` arm relaxed → both `PGN-A16` tests DID NOT RAISE · the parent requirement
+dropped from the tier CHECK → a parentless book policy inserted cleanly.
+
+**▶ NEXT:** S5 — admission. `PGN-A17`'s typed `repair_ops` (a `Remove`/`Weaken` cannot reach
+`admitted`), the `read_set` half of the ledger, and the version-stamped verdict (T7) that needs S-1's
+binary. That closes POC-1's chain.
+
 ### ✅ S3 /review-impl — three more found by probing, one of them ASCII-only over a Chinese corpus (2026-07-31)
 
 `/review-impl` on `eebfc9d0f`. **1180 passed / 1 skipped.** Same method as S2's review — write an

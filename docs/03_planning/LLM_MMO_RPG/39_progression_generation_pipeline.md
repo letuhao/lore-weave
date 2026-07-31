@@ -423,8 +423,15 @@ refuses a mismatch.
 How many tiers, which is fourth, and what the book calls them are facts a span supports. How much
 grinding a tier costs is a balance decision no amount of reading produces.
 
-**`PGN-A15` — the policy is System-tier by default and a book policy NARROWS it.** v1 declared no
-tier, and the consequence was concrete: a novelist reaching S4 faces knobs she has no basis to set,
+**`PGN-A15` — the policy is System-tier by default and a book policy NARROWS it.** ✅ **BUILT**
+(`app/gamegen/policy.py` + `gamegen_numeric_policy`). A policy maps every **magnitude path** to a
+`Band` — `[min, max]` plus a default inside it — and both halves are refusals:
+`assert_covers_magnitudes` asserts the band set **equals** the contract's magnitude set (both
+directions, the same mechanism as the brief), and `narrow()` refuses a book band not contained in its
+System parent's, **by path**. `tier='book' ⇒ parent_policy_id IS NOT NULL` is the axiom as a **schema
+fact**: you may narrow a shipped baseline, you may not author from scratch. `publish_system_policy`
+takes a required `is_admin` with **no default**, so every call site has had to state whose authority
+it acts under. v1 declared no tier, and the consequence was concrete: a novelist reaching S4 faces knobs she has no basis to set,
 no default to narrow, and one complete plausible example in the document — so §6's illustrative
 numbers become the platform's de-facto global balance, reviewed by nobody, while every gate reports a
 human-authored policy. This is the `effective = AND(deploy_allows, user_enables)` shape the Settings
@@ -649,7 +656,7 @@ rows and did not notice. **NOT ENFORCED is now a legal value** — an honest gap
 |---|---|---|---|
 | T1 | I can tell what the model invented | two columns, span required/forbidden, DB `CHECK`; **`PGN-A10`** removes the merging stage | ✅ |
 | T1b | a citation supports its claim | live bytes from the **sealed** corpus; quote mismatch = refusal; span disjointness for lists | 🔨 **half built** — span disjointness + the seal requirement are `CHECK`s (S2); the live-byte comparison needs the corpus ingested |
-| T2 | I can tell where a number came from | `(structure_hash, policy_hash)`; no numeric literal in `body_json` | ✅ `assert_no_magnitude_leaked` walks the folded structure and refuses any number outside `{tier_index, tier_count, initial_tier, kind_count}` **by pointer** |
+| T2 | I can tell where a number came from | `(structure_hash, policy_hash)`; no numeric literal in `body_json` | ✅ `assert_no_magnitude_leaked` refuses any number outside `{tier_index, tier_count, initial_tier, kind_count}` **by pointer**, and only at a cell's own `value` slot; `policy_hash` covers the **tier**, so the same numbers as a System baseline and as one book's narrowing are different facts about who chose them |
 | T3 | nothing reaches players unreviewed | `gamegen_decision` with `approved_by`; **`batch_id`/`batch_size` make bulk visible**; S3 refuses a batch above a declared size | ✅ the table, the `approved`⇒`approved_by` `CHECK`, a DEFERRED trigger refusing a `batch_size` that disagrees with the real count *in either direction*, and `fold(max_batch_size=…)` refusing the whole run above the ceiling. S3 folds `approved_answers`, never `live_answers` |
 | T4 | same inputs → same artifact | S3 is a fold; S5 is fixed-point saturating-integer (`PGN-A16`); artifact content-addressed | 🔨 **S3 half done** — the fold is pure and its output content-addressed (`uq_gamegen_structure`, re-folding is a no-op). S5 still at risk until `PGN-A16` is built — see `world-gen` |
 | T5 | a wrong rule is traceable **to a person** | 5 hops + `approved_by` on the decision. v1's chain contained **no human at all** | ✅ |

@@ -155,6 +155,7 @@ async def test_the_gamegen_tier_survives_a_down_up_roundtrip(pool):
         "gamegen_decision",
         "gamegen_answer",
         "gamegen_creative_structure",
+        "gamegen_numeric_policy",
     }
     assert funcs == {
         "gamegen_says_wellformed",

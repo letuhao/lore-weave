@@ -35,7 +35,11 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
-from app.gamegen.brief import load_brief
+from app.gamegen.brief import load_brief, load_contract
+from app.gamegen.policy import (
+    Band, Policy, PolicyError, assert_covers_magnitudes, body_json, from_body,
+    narrow, policy_hash,
+)
 from app.gamegen.fold import ApprovedAnswer, FoldRefusal, fold
 from app.gamegen.answer_hash import (
     AnswerEvidence,
@@ -556,3 +560,119 @@ class GamegenS2Repo:
                 job_id, owner_user_id,
             )
         return [r["batch_size"] for r in rows]
+
+    # ── S4: the numeric policy ──────────────────────────────────────────────
+
+    async def publish_system_policy(
+        self, *, element_kind: str, policy_version: int, bands: Mapping[str, Band],
+        authored_by: UUID, is_admin: bool,
+    ) -> UUID:
+        """Publish the System-tier baseline. **Admin only.**
+
+        ``is_admin`` is a required argument with no default, deliberately. A
+        default of ``False`` would be safe-by-default and a default of ``True``
+        catastrophic — but either way the caller could forget it existed. Required
+        means every call site has had to state, in writing, whose authority it is
+        acting under. This is the tenancy rule CLAUDE.md states as *"a regular user
+        MUST NOT mutate a System-tier row"*, at the only door into that tier.
+        """
+        if not is_admin:
+            raise PermissionError(
+                "the System-tier numeric policy is the platform's shipped balance "
+                "baseline; a regular user narrows it per book (PGN-A15) and never edits "
+                "it. A write endpoint on a shared resource that any authenticated user "
+                "can call is a tenancy defect, not a feature."
+            )
+        policy = Policy(
+            element_kind=element_kind, schema_fingerprint=load_contract()["fingerprint"],
+            tier="system", policy_version=policy_version, bands=bands,
+        )
+        assert_covers_magnitudes(policy)
+        return await self._insert_policy(policy, authored_by=authored_by,
+                                         owner_user_id=None, book_id=None, parent=None)
+
+    async def narrow_for_book(
+        self, *, parent_policy_id: UUID, owner_user_id: UUID, book_id: UUID,
+        policy_version: int, bands: Mapping[str, Band], authored_by: UUID,
+    ) -> UUID:
+        """Narrow a System baseline for one book.
+
+        The parent is **read from the database**, never passed in: narrowing must
+        be checked against what was actually published, not against what the
+        caller believes was. That is the same self-reported-input class this run
+        has now removed four times.
+        """
+        parent = await self.get_policy(parent_policy_id)
+        if parent is None:
+            raise PolicyError(f"parent policy {parent_policy_id} does not exist")
+        child = narrow(parent=parent, child_bands=bands, book_version=policy_version)
+        assert_covers_magnitudes(child)
+        return await self._insert_policy(child, authored_by=authored_by,
+                                         owner_user_id=owner_user_id, book_id=book_id,
+                                         parent=parent_policy_id)
+
+    async def _insert_policy(
+        self, policy: Policy, *, authored_by: UUID, owner_user_id: UUID | None,
+        book_id: UUID | None, parent: UUID | None,
+    ) -> UUID:
+        # policy_hash is DERIVED, never accepted — the same rule as answer_hash,
+        # content_hash, and the corpus seal's digest.
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO gamegen_numeric_policy
+                  (element_kind, tier, policy_version, owner_user_id, book_id,
+                   parent_policy_id, schema_fingerprint, body_json, policy_hash, authored_by)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
+                RETURNING policy_id
+                """,
+                policy.element_kind, policy.tier, policy.policy_version, owner_user_id,
+                book_id, parent, policy.schema_fingerprint,
+                json.dumps(body_json(policy), ensure_ascii=False),
+                policy_hash(policy), authored_by,
+            )
+        return row["policy_id"]
+
+    async def get_policy(self, policy_id: UUID) -> Policy | None:
+        """Read a policy. **Not owner-scoped, and that is correct:** the System
+        tier is world-READABLE by design (System defaults are visible to everyone
+        and writable by admins only), and a book policy is reachable only through
+        an id its owner holds. Scoping the read would make a book unable to see
+        the baseline it must narrow."""
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                "SELECT element_kind, tier, policy_version, schema_fingerprint, body_json "
+                "FROM gamegen_numeric_policy WHERE policy_id=$1", policy_id,
+            )
+        if r is None:
+            return None
+        return from_body(
+            element_kind=r["element_kind"], schema_fingerprint=r["schema_fingerprint"],
+            tier=r["tier"], policy_version=r["policy_version"],
+            body=json.loads(r["body_json"]),
+        )
+
+    async def effective_policy(self, *, element_kind: str, book_id: UUID) -> Policy | None:
+        """The policy S5 applies: the book's narrowing if there is one, else the
+        latest System baseline.
+
+        The resolution is the tier cascade CLAUDE.md specifies — System defaults,
+        then the book's narrowing shadowing them by path. ``narrow()`` already
+        merged the inherited bands in, so the book row IS the effective policy;
+        re-merging here would be a second implementation of the same rule.
+        """
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                "SELECT element_kind, tier, policy_version, schema_fingerprint, body_json "
+                "FROM gamegen_numeric_policy "
+                "WHERE element_kind=$1 AND ((tier='book' AND book_id=$2) OR tier='system') "
+                "ORDER BY (tier='book') DESC, policy_version DESC LIMIT 1",
+                element_kind, book_id,
+            )
+        if r is None:
+            return None
+        return from_body(
+            element_kind=r["element_kind"], schema_fingerprint=r["schema_fingerprint"],
+            tier=r["tier"], policy_version=r["policy_version"],
+            body=json.loads(r["body_json"]),
+        )

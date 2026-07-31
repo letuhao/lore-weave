@@ -1223,6 +1223,59 @@ CREATE TABLE IF NOT EXISTS gamegen_creative_structure (
 CREATE INDEX IF NOT EXISTS idx_gamegen_structure_scope
   ON gamegen_creative_structure(owner_user_id, book_id);
 
+-- ── gamegen_numeric_policy (S4) — where magnitudes come from ────────────────
+-- PGN-A15. The FIRST System-tier table in this pipeline: everything before it is
+-- per-book. That distinction is the point, and it is encoded here rather than
+-- left to the repository, because CLAUDE.md's tenancy rule is that a regular user
+-- MUST NOT mutate a System-tier row and "the code does not do that today" is not
+-- a boundary.
+--
+-- The two tiers are exclusive and exhaustive, and the shape of each says what it
+-- is for:
+--   system: no owner, no book, NO PARENT   — the shipped baseline
+--   book:   an owner, a book, and a PARENT — a narrowing of that baseline
+--
+-- `tier='book' => parent_policy_id IS NOT NULL` is `PGN-A15` as a schema fact: a
+-- book policy CANNOT EXIST without something to narrow. You may narrow a shipped
+-- baseline; you may not author from scratch. Without it a "book policy" is just a
+-- second global policy with extra steps, which is exactly what v1 shipped by
+-- declaring no tier at all.
+CREATE TABLE IF NOT EXISTS gamegen_numeric_policy (
+  policy_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  element_kind    TEXT NOT NULL,
+  tier            TEXT NOT NULL CHECK (tier IN ('system','book')),
+  policy_version  INT  NOT NULL CHECK (policy_version >= 1),
+  -- NULL on a System row: the platform owns it, no user does.
+  owner_user_id   UUID,
+  book_id         UUID,
+  parent_policy_id UUID REFERENCES gamegen_numeric_policy(policy_id) ON DELETE RESTRICT,
+  -- The engine schema the bands were authored against. A policy banding a
+  -- magnitude set the engine no longer has is one S5 would apply anyway.
+  schema_fingerprint TEXT NOT NULL,
+  body_json       JSONB NOT NULL,
+  policy_hash     TEXT NOT NULL,
+  authored_by     UUID NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT gamegen_policy_hash_hex CHECK (policy_hash ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT gamegen_policy_tier_shape CHECK (
+       (tier = 'system'
+        AND owner_user_id IS NULL AND book_id IS NULL AND parent_policy_id IS NULL)
+    OR (tier = 'book'
+        AND owner_user_id IS NOT NULL AND book_id IS NOT NULL
+        AND parent_policy_id IS NOT NULL)
+  )
+);
+-- One System baseline per (element_kind, version), and one book narrowing per
+-- (element_kind, book, version). Partial because the two tiers have different
+-- identity: a System policy has no book to be unique within.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gamegen_policy_system
+  ON gamegen_numeric_policy(element_kind, policy_version) WHERE tier = 'system';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gamegen_policy_book
+  ON gamegen_numeric_policy(element_kind, book_id, policy_version) WHERE tier = 'book';
+CREATE INDEX IF NOT EXISTS idx_gamegen_policy_scope
+  ON gamegen_numeric_policy(owner_user_id, book_id) WHERE tier = 'book';
+
 -- ── batch_size honesty (T3) ─────────────────────────────────────────────────
 -- DEFERRABLE INITIALLY DEFERRED, because a batch is written one row at a time:
 -- an immediate check would fire on row 1 of 24 and see a count of 1. At COMMIT
@@ -1282,6 +1335,7 @@ CREATE CONSTRAINT TRIGGER trg_gamegen_decision_batch_honest
 DOWN_DDL = """
 DROP TRIGGER IF EXISTS trg_gamegen_answer_append_only ON gamegen_answer;
 DROP TRIGGER IF EXISTS trg_gamegen_decision_batch_honest ON gamegen_decision;
+DROP TABLE IF EXISTS gamegen_numeric_policy;
 DROP TABLE IF EXISTS gamegen_creative_structure;
 DROP FUNCTION IF EXISTS gamegen_ledger_is_total(JSONB, JSONB);
 DROP TABLE IF EXISTS gamegen_answer;
