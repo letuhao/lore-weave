@@ -58,6 +58,44 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S6 /review-impl — the pin regenerated with the WRONG policy, silently (2026-07-31)
+
+`/review-impl` on `b414fdbfb`. **1265 passed / 2 skipped.** Two findings, and the first is the
+sharpest of the session because **it had a check that was already passing over it**.
+
+**`pin_candidate` regenerated with the CURRENT effective policy, not the one the candidate was
+approved under.** `--expect` catches that *only when the bytes differ*. So narrowing a band the
+artifact never reads — `kind.curve.rate_milli` on a `stage` curve — moves `policy_hash` and leaves
+the generated TOML byte-identical:
+
+```
+approved under a3872516a7d1… ; in force now 77adcc430867…
+!!! PINNED — the candidate records policy_hash a3872516…, the numbers came from 77adcc43…
+```
+
+The digest matched, every gate stayed green, and the row's own answer to *"where did this number
+come from"* was **wrong**. T2 is exactly that question.
+
+**The lesson is the shape, not the case:** `--expect` guards the **OUTPUT**; nothing guarded the
+**INPUTS**, and neither implies the other. A digest check over a function's result cannot see a
+changed argument that happens not to move the result. `pin_candidate` now compares
+`policy_hash(effective)` against the candidate's recorded one and refuses by name — *"re-admit
+against the current policy and approve that."*
+
+**Second finding:** with the policy deleted between approval and pin, `pin_candidate` raised
+`AttributeError: 'NoneType' object has no attribute 'bands'`. `admit_candidate` guarded this and its
+sibling did not — a crash where a refusal belongs.
+
+**And a third, found while fixing:** the guard's first version read `r["policy_hash"]` from a query
+whose outer `SELECT` never projected it. Six tests went red with `KeyError` — the query was written
+before the column was needed and nothing made the two move together.
+
+**BITE-TESTS, two, restored:** the drift guard disabled → the MOVED test DID NOT RAISE · the
+None-policy guard disabled → the crash came back as `AttributeError` in `policy.py:276`.
+
+Gates: db-safety rc=0 · ai-provider OK · language-rule PASS · language-bias 0 in lore-enrichment ·
+design-lint OK.
+
 ### ✅ S6 — POC-1's chain is closed, and a bite-test that PASSED found the worse bug (2026-07-31)
 
 `progression-pin` + `app/gamegen/pinner.py` + the pin columns. **1262 passed / 2 skipped · 15 Rust

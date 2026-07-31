@@ -161,3 +161,66 @@ async def test_a_missing_store_root_is_an_ERROR_never_a_default(pool, monkeypatc
     async with pool.acquire() as c:
         assert await c.fetchval(
             "SELECT pinned_at FROM gamegen_candidate WHERE candidate_id=$1", cid) is None
+
+
+# ── pin what was APPROVED, inputs included ──────────────────────────────────
+
+
+async def test_a_policy_that_MOVED_since_approval_refuses_the_pin(pool, store):
+    """**Found by probe, and the silent case is the point.**
+
+    `pin_candidate` regenerates, and it was regenerating with the *current*
+    effective policy. `--expect` only notices when the bytes differ — so narrowing
+    a band the artifact never reads (`kind.curve.rate_milli` on a `stage` curve)
+    moved `policy_hash` and **not** the generated TOML, and the pin succeeded:
+
+    ``approved under a3872516a7d1… ; in force now 77adcc430867…``
+
+    The candidate then recorded one policy while the numbers came from another.
+    T2 is *"I can tell where a number came from"*, and the recorded answer was
+    wrong. The digest check is about the OUTPUT; this is about the INPUTS, and
+    neither implies the other.
+    """
+    from app.gamegen.policy import Band
+
+    repo, job_id, structure_id, parent = await _ready(pool)
+    cid = await repo.admit_candidate(
+        job_id=job_id, owner_user_id=OWNER, book_id=BOOK,
+        element_kind="progression_system", structure_id=structure_id, created_by=OWNER)
+    assert await repo.approve_candidate(
+        candidate_id=cid, owner_user_id=OWNER, approved_by=OWNER)
+
+    # A band the artifact never reads: same bytes, different policy.
+    await repo.narrow_for_book(
+        parent_policy_id=parent, owner_user_id=OWNER, book_id=BOOK, policy_version=1,
+        bands={"kind.curve.rate_milli": Band(1, 2, 1)}, authored_by=OWNER)
+
+    with pytest.raises(AdmissionRefusal) as e:
+        await repo.pin_candidate(candidate_id=cid, owner_user_id=OWNER, pinned_by=OWNER)
+    assert "policy has MOVED" in str(e.value)
+    assert "nobody signed for even when the bytes happen to match" in str(e.value)
+
+    async with pool.acquire() as c:
+        assert await c.fetchval(
+            "SELECT pinned_at FROM gamegen_candidate WHERE candidate_id=$1", cid) is None
+
+
+async def test_an_unchanged_policy_still_pins(pool, store):
+    """The guard must not fire on the normal path, or it gets removed the first
+    time a legitimate pin trips it."""
+    repo, cid = await _approved(pool)
+    assert await repo.pin_candidate(
+        candidate_id=cid, owner_user_id=OWNER, pinned_by=OWNER)
+
+
+async def test_a_policy_DELETED_before_the_pin_is_a_refusal_not_a_crash(pool, store):
+    """`admit_candidate` guarded this; `pin_candidate` did not, and the result was
+    a bare ``AttributeError: 'NoneType' object has no attribute 'bands'`` — a crash
+    where a refusal belongs."""
+    repo, cid = await _approved(pool)
+    async with pool.acquire() as c:
+        await c.execute("DELETE FROM gamegen_numeric_policy WHERE tier='system'")
+    with pytest.raises(AdmissionRefusal) as e:
+        await repo.pin_candidate(candidate_id=cid, owner_user_id=OWNER, pinned_by=OWNER)
+    assert "no longer exists" in str(e.value)
+    assert "invent every magnitude" in str(e.value)

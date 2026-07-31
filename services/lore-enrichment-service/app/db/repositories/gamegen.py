@@ -909,7 +909,7 @@ class GamegenS2Repo:
         """
         async with self._pool.acquire() as conn:
             r = await conn.fetchrow(
-                "SELECT job_id, book_id, element_kind, structure_id_hint, "
+                "SELECT job_id, book_id, element_kind, structure_id_hint, policy_hash, "
                 "       progression_digest, review_status, pinned_at, repair_ops_json "
                 "FROM ("
                 "  SELECT c.*, s.structure_id AS structure_id_hint"
@@ -945,6 +945,41 @@ class GamegenS2Repo:
             element_kind=r["element_kind"], book_id=r["book_id"],
             owner_user_id=owner_user_id,
         )
+        if policy is None:
+            # `admit_candidate` guards this; before this check `pin_candidate` did
+            # not, and the result was a bare AttributeError on `policy.bands` — a
+            # crash where a refusal belongs.
+            raise AdmissionRefusal(
+                f"candidate {candidate_id} was admitted under a policy that no longer "
+                f"exists. Refused: regenerating without one would ask this stage to "
+                f"invent every magnitude, which is the single thing S4 exists to prevent."
+            )
+
+        # **Pin what was APPROVED, inputs included.** Found by probe: this
+        # regenerates with the CURRENT effective policy, and `--expect` only
+        # notices when the BYTES differ. Narrowing a band the artifact never reads
+        # — `kind.curve.rate_milli` on a `stage` curve — moves `policy_hash` and
+        # not the generated TOML, so the pin succeeded while the candidate recorded
+        # one policy and the numbers came from another:
+        #
+        #     approved under a3872516a7d1… ; in force now 77adcc430867…
+        #     PINNED — the candidate records a3872516…, the numbers came from 77adcc43…
+        #
+        # T2 is "I can tell where a number came from", and the recorded answer was
+        # wrong. The digest check is about the OUTPUT; this is about the INPUTS,
+        # and neither implies the other.
+        current_policy_hash = policy_hash(policy)
+        if current_policy_hash != r["policy_hash"]:
+            raise AdmissionRefusal(
+                f"the effective policy has MOVED since candidate {candidate_id} was "
+                f"approved: approved under {r['policy_hash'][:12]}…, now in force "
+                f"{current_policy_hash[:12]}…. Refused rather than pinned under the new "
+                f"one - a human approved a ladder built from specific bands, and pinning "
+                f"under different bands puts numbers into the world that nobody signed "
+                f"for even when the bytes happen to match. Re-admit against the current "
+                f"policy and approve that."
+            )
+
         art = generate(
             body=structure["body"], policy=policy,
             repair_ops=json.loads(r["repair_ops_json"]),
