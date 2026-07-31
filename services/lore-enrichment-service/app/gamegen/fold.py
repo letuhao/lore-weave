@@ -61,7 +61,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 __all__ = [
@@ -71,6 +71,8 @@ __all__ = [
     "OUT_OF_SCOPE_OWNERS",
     "ORDINAL_LEAVES",
     "fold",
+    "content_hash",
+    "NUMERALS",
     "assert_no_magnitude_leaked",
 ]
 
@@ -229,6 +231,7 @@ _CARDINALITY_PATH = "kind.quantity"
 def fold(
     *,
     element_kind: str,
+    schema_fingerprint: str,
     answers: Sequence[ApprovedAnswer],
     max_batch_size: int | None = None,
     batch_sizes: Iterable[int] = (),
@@ -367,7 +370,7 @@ def fold(
         body=body,
         consumption={k: sorted(v) for k, v in consumption.items()},
         answer_refs=sorted(refs.items()),
-        content_hash=content_hash(element_kind, body),
+        content_hash=content_hash(element_kind, schema_fingerprint, body),
     )
 
 
@@ -391,12 +394,47 @@ def _tier_count(kind_obj: dict[str, Any], target: str) -> int:
     return n
 
 
+_CN_DIGITS = "〇一二三四五六七八九"
+
+
+def _cn_numeral(n: int) -> str:
+    """1–99 in Chinese numerals: 一, 十, 十一, 二十, 二十一, 六十四.
+
+    Bounded by ``MAX_TIERS_PER_KIND`` (64), so no 百/千 arm is needed and adding
+    one speculatively would be untested code on a path nothing reaches.
+    """
+    if not 1 <= n <= 99:
+        raise FoldRefusal(f"{n} is outside the 1–99 range Chinese tier numerals cover")
+    if n < 10:
+        return _CN_DIGITS[n]
+    tens, ones = divmod(n, 10)
+    head = "十" if tens == 1 else _CN_DIGITS[tens] + "十"
+    return head + (_CN_DIGITS[ones] if ones else "")
+
+
+#: Numeral systems a tier-name pattern may request. **This exists because the
+#: first version could not express the fixture's own convention.**
+#:
+#: Doc 39 §1 states the sub-levels are named *一層…九層 by convention* — one
+#: pattern, one decision (`PGN-A11`). The first implementation expanded ``{n}``
+#: with ``str(index + 1)``, which produces ``1層, 2層, 3層``: ASCII digits for a
+#: Chinese corpus. An author wanting the real names would have had to fall back to
+#: an explicit 9-item list, which is nine decisions and defeats `PGN-A11` exactly
+#: where the fixture needs it. That is ML-4 — English/ASCII-first rule logic on a
+#: path every language traverses — in the one module whose corpus is Chinese.
+NUMERALS = {
+    "arabic": lambda n: str(n),
+    "cn": _cn_numeral,
+}
+
+
 def _expand(pattern: Any, index: int, total: int, target: str) -> Any:
     """Expand one approved naming answer into the name for tier ``index``.
 
     Two shapes, and no third: an explicit list of exactly ``total`` names, or a
-    pattern with ``{n}``. A pattern with no placeholder would name every tier the
-    same, which reads as a ladder and is not one.
+    pattern containing ``{n}`` (Arabic) or ``{n:<system>}`` from :data:`NUMERALS`.
+    A pattern with no placeholder would name every tier the same, which reads as a
+    ladder and is not one.
     """
     if isinstance(pattern, list):
         if len(pattern) != total:
@@ -407,13 +445,24 @@ def _expand(pattern: Any, index: int, total: int, target: str) -> Any:
             )
         return pattern[index]
     if isinstance(pattern, str):
-        if "{n}" not in pattern:
+        for system, render in NUMERALS.items():
+            token = "{n}" if system == "arabic" else "{n:" + system + "}"
+            if token in pattern:
+                return pattern.replace(token, render(index + 1))
+        # An unrecognised `{n:...}` is refused BY NAME rather than passed through
+        # as a literal — a tier called `九{n:jp}` shipping to a player is the
+        # silent-degradation ML-4 forbids.
+        if "{n:" in pattern:
             raise FoldRefusal(
-                f"{target}: tier-name pattern {pattern!r} has no {{n}} placeholder, so "
-                f"every tier would get the same name. `PGN-A11` approves a PATTERN; a "
-                f"constant is not one."
+                f"{target}: tier-name pattern {pattern!r} asks for a numeral system this "
+                f"module does not have. Known: {sorted(NUMERALS)}. Refused rather than "
+                f"left as a literal, which would ship the placeholder to a player."
             )
-        return pattern.replace("{n}", str(index + 1))
+        raise FoldRefusal(
+            f"{target}: tier-name pattern {pattern!r} has no {{n}} placeholder, so "
+            f"every tier would get the same name. `PGN-A11` approves a PATTERN; a "
+            f"constant is not one."
+        )
     raise FoldRefusal(
         f"{target}: tier-name answer {pattern!r} is neither a list of names nor a pattern"
     )
@@ -434,20 +483,33 @@ def assert_no_magnitude_leaked(body: Mapping[str, Any]) -> None:
     """
     bad: list[str] = []
 
-    def walk(node: Any, pointer: str, leaf: str | None) -> None:
+    def walk(node: Any, pointer: str, leaf: str | None, direct: bool) -> None:
+        """``direct`` is True only for a number sitting AT a cell's own ``value``
+        slot. Everything deeper is inside an author-supplied structure.
+
+        This distinction closes a bypass an adversarial probe found: the first
+        version carried ``leaf`` down through nested values, so a cap-rule
+        answered as ``{"soft_cap": null, "tier_count": 500}`` re-bound ``leaf`` to
+        ``"tier_count"`` and **500 sailed through** — a magnitude smuggled in by
+        naming its key after an ordinal. An allow-list keyed on a name the input
+        controls is not an allow-list.
+        """
         if isinstance(node, dict):
             for k, v in node.items():
-                walk(v, pointer + _pointer(k), k if k != "value" else leaf)
+                if k == "value":
+                    walk(v, pointer + _pointer(k), leaf, True)
+                else:
+                    walk(v, pointer + _pointer(k), k, False)
         elif isinstance(node, list):
             for i, v in enumerate(node):
-                walk(v, pointer + _pointer(i), leaf)
+                walk(v, pointer + _pointer(i), leaf, False)
         elif isinstance(node, bool):
             return
         elif isinstance(node, (int, float)):
-            if leaf not in ORDINAL_LEAVES:
+            if not (direct and leaf in ORDINAL_LEAVES):
                 bad.append(f"{pointer} = {node!r}")
 
-    walk(dict(body), "", None)
+    walk(dict(body), "", None, False)
     if bad:
         raise FoldRefusal(
             f"MAGNITUDE in the creative structure at {bad}. `PGN-A5`: a model may emit "
@@ -458,12 +520,24 @@ def assert_no_magnitude_leaked(body: Mapping[str, Any]) -> None:
         )
 
 
-def content_hash(element_kind: str, body: Mapping[str, Any]) -> str:
+def content_hash(element_kind: str, schema_fingerprint: str, body: Mapping[str, Any]) -> str:
     """Content address for the structure. Canonical JSON, same discipline as
-    ``answer_hash``: sorted keys, no whitespace, real UTF-8 for CJK."""
+    ``answer_hash``: sorted keys, no whitespace, real UTF-8 for CJK.
+
+    **``schema_fingerprint`` is part of the address, and that is a fix, not a
+    decoration.** A structure is only meaningful relative to the schema it was
+    folded against. With the fingerprint outside the hash, re-folding the same
+    answers after the schema MOVED produced the same ``content_hash``, the
+    ``ON CONFLICT (job_id, element_kind, content_hash)`` returned the OLD row, and
+    the new fingerprint was **silently discarded** — the stored row then claimed a
+    schema the caller never asserted, which is exactly the drift the column exists
+    to make loud. Found by probe, not by reading.
+    """
     h = hashlib.blake2b(digest_size=32)
     h.update(_DOMAIN)
     h.update(element_kind.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(schema_fingerprint.encode("utf-8"))
     h.update(b"\x00")
     h.update(
         json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

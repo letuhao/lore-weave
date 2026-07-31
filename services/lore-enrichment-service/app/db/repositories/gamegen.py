@@ -35,6 +35,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
+from app.gamegen.brief import load_brief
 from app.gamegen.fold import ApprovedAnswer, FoldRefusal, fold
 from app.gamegen.answer_hash import (
     AnswerEvidence,
@@ -462,8 +463,6 @@ class GamegenS2Repo:
         book_id: UUID | None,
         element_kind: str,
         created_by: UUID,
-        schema_fingerprint: str,
-        question_paths: Mapping[str, str],
         max_batch_size: int | None = None,
     ) -> tuple[UUID, str]:
         """Fold this job's APPROVED answers and store the result.
@@ -474,17 +473,29 @@ class GamegenS2Repo:
         lives in :func:`~app.gamegen.fold.fold`, so anything that can write the
         table without calling it is a way around all of them at once.
 
-        ``question_paths`` maps ``question_id -> schema path`` and comes from the
-        brief (``load_brief``). The path is deliberately NOT read off the answer
-        row: the answer knows which question it answers, and the brief is the only
-        thing that decides where that question's answer belongs. Carrying the path
-        on the answer would let two answers to one question claim two positions.
+        **The brief is LOADED, not passed in.** An earlier signature took
+        ``schema_fingerprint`` and ``question_paths`` as arguments, which made both
+        self-reported: a caller could assert any fingerprint and any placement map,
+        and nothing checked either against the shipped brief. That is the same
+        class as the seal's caller-supplied digest, one tier up — so
+        :func:`~app.gamegen.brief.load_brief` is the only source, and it
+        ``assert_covers`` at load, which means a brief that stopped covering the
+        engine's schema stops this stage rather than folding against a hole.
+
+        The ``question_id -> path`` map comes from the brief and never from the
+        answer row: the answer knows which question it answers, and the brief is
+        the only thing that decides where that answer belongs. Carrying the path on
+        the answer would let two answers to one question claim two positions.
 
         Returns ``(structure_id, content_hash)``. Re-folding unchanged answers
         returns the existing row — the structure is content-addressed within the
         job, so an identical fold is a no-op rather than a second row that makes
         *"which structure did S5 read"* a question with two answers.
         """
+        brief = load_brief(element_kind)
+        schema_fingerprint = brief.schema_fingerprint
+        question_paths = {q.id: q.path for q in brief.questions}
+
         answers = await self.approved_answers(job_id=job_id, owner_user_id=owner_user_id)
         batch_sizes = await self._batch_sizes(job_id=job_id, owner_user_id=owner_user_id)
 
@@ -499,6 +510,7 @@ class GamegenS2Repo:
 
         structure = fold(
             element_kind=element_kind,
+            schema_fingerprint=schema_fingerprint,
             answers=[
                 ApprovedAnswer(
                     answer_id=str(a.answer_id),

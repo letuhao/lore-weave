@@ -32,26 +32,29 @@ HEX_A = "f" * 64
 HEX_B = "e" * 64
 FINGERPRINT = "787c69388addda04170236c72ba1dfd8ee3c69d46d705c3739ec50967a8b225b"
 
-#: ``question_id -> schema path``, the map S1's brief supplies. Deliberately NOT
-#: stored on the answer row: the answer knows which question it answers, and the
-#: brief is the only thing that decides where that answer belongs.
-QUESTION_PATHS = {
-    "q_quantity": "kind.quantity",
-    "q_name": "kind.name",
-    "q_type": "kind.progression_type",
-    "q_curve": "kind.curve",
-    "q_cap": "kind.cap_rule",
-    "q_start": "kind.initial_tier",
-    "q_count": "kind.tier_count",
-    "q_order": "kind.tier[].tier_index",
-    "q_tname": "kind.tier[].name",
-    "q_shape": "kind.tier[].within_tier_curve",
-    "q_break": "kind.tier[].breakthrough",
-}
+#: The brief's real question ids, asserted against the shipped brief below. The
+#: PATH MAP is no longer injectable — ``fold_and_store`` loads the brief itself,
+#: because a caller-supplied placement map and fingerprint were self-reported in
+#: exactly the way the seal's caller-supplied digest was.
+BRIEF_QUESTION_IDS = [
+    "cardinality", "kind_name", "kind_type", "curve", "cap", "start_tier",
+    "tier_count", "tier_order", "tier_name", "tier_shape", "breakthrough",
+]
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_the_plan_below_uses_the_SHIPPED_briefs_question_ids():
+    """Not a DB test, and deliberately in this file: if the brief renames a
+    question, the fold below would silently produce a `q_… not defined` refusal
+    that reads like a code bug. This makes it read like what it is."""
+    from app.gamegen.brief import load_brief
+
+    assert {q.id for q in load_brief("progression_system").questions} == set(BRIEF_QUESTION_IDS)
+
 
 STORE_KW = dict(
     owner_user_id=OWNER, book_id=BOOK, element_kind="progression_system",
-    created_by=OWNER, schema_fingerprint=FINGERPRINT, question_paths=QUESTION_PATHS,
+    created_by=OWNER,
 )
 
 
@@ -61,17 +64,17 @@ async def _approved_run(pool, *, tier_count=9, breakthrough="at_max"):
     seal = await _seal(pool, corpus)
     repo = GamegenS2Repo(pool)
     plan = [
-        ("q_quantity", "element:progression_system", ["internal_energy"]),
-        ("q_name", "kind:internal_energy", "內功"),
-        ("q_type", "kind:internal_energy", "stage"),
-        ("q_curve", "kind:internal_energy", "stage"),
-        ("q_cap", "kind:internal_energy", "tier_based"),
-        ("q_start", "kind:internal_energy", 0),
-        ("q_count", "kind:internal_energy", tier_count),
-        ("q_order", "kind:internal_energy", "ascending"),
-        ("q_tname", "kind:internal_energy", "{n}層"),
-        ("q_shape", "kind:internal_energy", "linear"),
-        ("q_break", "kind:internal_energy", breakthrough),
+        ("cardinality", "element:progression_system", ["internal_energy"]),
+        ("kind_name", "kind:internal_energy", "內功"),
+        ("kind_type", "kind:internal_energy", "stage"),
+        ("curve", "kind:internal_energy", "stage"),
+        ("cap", "kind:internal_energy", "tier_based"),
+        ("start_tier", "kind:internal_energy", 0),
+        ("tier_count", "kind:internal_energy", tier_count),
+        ("tier_order", "kind:internal_energy", "ascending"),
+        ("tier_name", "kind:internal_energy", "{n}層"),
+        ("tier_shape", "kind:internal_energy", "linear"),
+        ("breakthrough", "kind:internal_energy", breakthrough),
     ]
     ds = []
     for qid, target, value in plan:
@@ -141,10 +144,7 @@ async def test_an_UNAPPROVED_answer_is_not_folded(pool):
         evidence=_cited(seal, question_id="q_extra", target_ref="kind:internal_energy",
                         value="unapproved"),
     )
-    sid, _ = await repo.fold_and_store(
-        job_id=job_id, **{**STORE_KW,
-                          "question_paths": {**QUESTION_PATHS, "q_extra": "kind.name"}},
-    )
+    sid, _ = await repo.fold_and_store(job_id=job_id, **STORE_KW)
     async with pool.acquire() as c:
         refs = json.loads(await c.fetchval(
             "SELECT answer_refs_json FROM gamegen_creative_structure WHERE structure_id=$1",
@@ -152,14 +152,60 @@ async def test_an_UNAPPROVED_answer_is_not_folded(pool):
     assert len(refs) == 11, "the unapproved answer is absent, and is NOT an unconsumed refusal"
 
 
-async def test_an_answer_to_a_question_the_brief_does_not_define_is_refused(pool):
-    """The brief is version-pinned by ``schema_fingerprint``. Folding an answer
-    against a brief that never asked would place it at a position nobody chose."""
-    repo, job_id, _ = await _approved_run(pool)
-    thin = {k: v for k, v in QUESTION_PATHS.items() if k != "q_cap"}
+async def test_an_APPROVED_answer_to_a_question_the_brief_does_not_define_is_refused(pool):
+    """An approved answer whose question the shipped brief never asked. Folding it
+    would place an answer at a position nobody chose; refused, and the fingerprint
+    is named so the message reads as *"the brief moved"* rather than *"bad id"*."""
+    repo, job_id, seal = await _approved_run(pool)
+    d = await _decision(pool, job_id, klass="ghost", target="kind:internal_energy")
+    await repo.record_answer(
+        decision_id=d, job_id=job_id, owner_user_id=OWNER, book_id=BOOK, created_by=OWNER,
+        evidence=_cited(seal, question_id="a_question_no_brief_asked",
+                        target_ref="kind:internal_energy", value="x"),
+    )
+    await repo.approve(decision_ids=[d], owner_user_id=OWNER, approved_by=OWNER)
     with pytest.raises(FoldRefusal) as e:
-        await repo.fold_and_store(job_id=job_id, **{**STORE_KW, "question_paths": thin})
-    assert "q_cap" in str(e.value)
+        await repo.fold_and_store(job_id=job_id, **STORE_KW)
+    assert "a_question_no_brief_asked" in str(e.value)
+
+
+async def test_the_stored_fingerprint_comes_from_the_BRIEF_not_the_caller(pool):
+    """**Found by probe.** The signature used to take ``schema_fingerprint``, so a
+    caller could assert any value and nothing checked it against the shipped
+    brief — the seal's caller-supplied-digest class, one tier up. It is now loaded
+    from ``load_brief``, which ``assert_covers`` at load."""
+    import inspect
+
+    from app.gamegen.brief import load_brief
+
+    sig = inspect.signature(GamegenS2Repo.fold_and_store)
+    assert "schema_fingerprint" not in sig.parameters
+    assert "question_paths" not in sig.parameters
+
+    repo, job_id, _ = await _approved_run(pool)
+    sid, _ = await repo.fold_and_store(job_id=job_id, **STORE_KW)
+    async with pool.acquire() as c:
+        stored = await c.fetchval(
+            "SELECT schema_fingerprint FROM gamegen_creative_structure WHERE structure_id=$1",
+            sid)
+    assert stored == load_brief("progression_system").schema_fingerprint
+
+
+async def test_a_MOVED_schema_yields_a_new_structure_rather_than_silently_keeping_the_old(pool):
+    """**The probe's finding.** ``schema_fingerprint`` sat outside the content
+    hash, so re-folding the same answers after the schema moved produced the same
+    ``content_hash``, ``ON CONFLICT`` returned the OLD row, and the new fingerprint
+    was silently discarded — the row then claimed a schema nobody asserted, which
+    is precisely the drift the column exists to make loud.
+
+    Asserted at the hash, because the fingerprint is no longer injectable through
+    the repository (which is the other half of the fix)."""
+    from app.gamegen.fold import content_hash
+
+    body = {"element_kind": "progression_system", "kinds": []}
+    assert content_hash("progression_system", "a" * 64, body) != content_hash(
+        "progression_system", "b" * 64, body
+    )
 
 
 async def test_a_batch_above_the_ceiling_refuses_the_whole_fold(pool):

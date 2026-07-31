@@ -58,6 +58,53 @@ its subject arrived. **Intent is not a mechanism.**
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
 
+### ✅ S3 /review-impl — three more found by probing, one of them ASCII-only over a Chinese corpus (2026-07-31)
+
+`/review-impl` on `eebfc9d0f`. **1180 passed / 1 skipped.** Same method as S2's review — write an
+adversarial probe rather than read — and the same hit rate: **three findings, all confirmed by
+execution before any fix.**
+
+**The multilingual one is the sharpest.** Doc 39 §1 says the sub-levels are named *一層…九層 by
+convention* — one pattern, one decision (`PGN-A11`). The fold expanded `{n}` with `str(index + 1)`:
+
+```
+    PROBE 2: pattern '{n}層' over a Chinese corpus -> ['1層', '2層', '3層', '4層']
+!!! doc 39 §1 says the sub-levels are named 一層…九層. Cannot be produced.
+```
+
+An author wanting the real names would have had to fall back to an explicit nine-item list — **nine
+decisions, defeating `PGN-A11` exactly where the fixture needs it.** `{n:cn}` now renders Chinese
+numerals across 1–99 (the whole range `MAX_TIERS_PER_KIND` reaches; a 百 arm would be untested code),
+and an unknown system is a refusal *by name* rather than a placeholder shipped to a player. This is
+ML-4 — ASCII-first rule logic on a path every language traverses — in the one module whose corpus is
+Chinese. The gate could not have caught it: `language-bias-gate` looks for naive `.lower()` and Latin
+regexes, not for a numeral renderer that is simply too narrow.
+
+**An allow-list keyed on a name the INPUT controls is not an allow-list.** The magnitude guard
+carried its leaf name down through nested values, so a cap-rule answered as
+`{"soft_cap": null, "tier_count": 500}` re-bound the leaf to `tier_count` and **500 sailed through** —
+a magnitude smuggled in by naming its key after an ordinal. Only a number sitting *directly* at a
+cell's own `value` slot may be ordinal now.
+
+**`schema_fingerprint` sat outside the content address.** Re-folding the same answers after the schema
+moved produced the same `content_hash`, `ON CONFLICT` returned the old row, and the new fingerprint
+was **silently discarded** — the stored structure then claimed a schema nobody asserted, which is the
+exact drift the column exists to make loud. Probe output: *"rows stored: 1 · fingerprint=787c6938…"*
+after asserting `dddddddddddd…`.
+
+**And the fix for that exposed a fourth thing.** `fold_and_store` took both `schema_fingerprint` and
+`question_paths` as arguments — **self-reported**, in precisely the way the seal's caller-supplied
+digest was two slices ago. It now loads the brief itself, which `assert_covers` at load. Three
+self-reported parameters removed across this run: `chunk_count`, `merkle_root`, and now these two.
+
+**BITE H passed on the first attempt, and the edit had not applied** — the second time today. A bite
+that fails to land looks exactly like a check that works. Verified the file, re-bit, red. The lesson
+is now mechanical for me: *read the file back, do not read the green.*
+
+Doc 39 §3.3.1 carries corrections **7–9**, and design-lint caught `ML-4` reading as an unregistered
+id prefix — the *same* false-read as `RFC 6901` an hour earlier, caught by the same gate — exempted with a scoped comment rather than by claiming
+another track's namespace.
+
 ### ✅ S3 — the fold, and a bite-test that found a hole instead of confirming one (2026-07-31)
 
 Doc 39 §5, in `app/gamegen/fold.py` + `gamegen_creative_structure`. **1171 passed / 1 skipped.**
@@ -104,7 +151,9 @@ content-addressed; S5 still needs `PGN-A16`).
 
 **▶ NEXT:** S4 — the numeric policy (`PGN-A15`: System-tier default that a book policy NARROWS, per
 the Settings & Config `effective = AND(deploy, user)` shape). Then S5 admission, which is where
-`PGN-A17`'s typed `repair_ops` and the `read_set` half of the ledger live.
+`PGN-A17`'s typed `repair_ops` and the `read_set` half of the ledger live. **Carry the review lesson
+into S4:** every S4 input that a caller could self-report — the policy body, its hash, its parent —
+should be derived or loaded, not accepted. Three such parameters have been removed this run.
 
 ### ✅ S2 — the interrogation tier, and two tenancy holes that owner-filtered reads did not close (2026-07-31)
 

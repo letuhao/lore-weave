@@ -24,6 +24,7 @@ from app.gamegen.fold import (
 
 # The three kinds §10's fixture declares.
 KINDS = ["internal_energy", "swordsmanship", "comprehension"]
+FP = "787c69388addda04170236c72ba1dfd8ee3c69d46d705c3739ec50967a8b225b"
 
 
 def ans(path, target, value, *, aid=None, not_stated=False, reason=None) -> ApprovedAnswer:
@@ -66,7 +67,7 @@ def full_set(*, kinds=None, tier_count=9, tier_names="{n}層", **override) -> li
 
 
 def run(**kw):
-    return fold(element_kind="progression_system", answers=full_set(**kw))
+    return fold(element_kind="progression_system", schema_fingerprint=FP, answers=full_set(**kw))
 
 
 # ── the happy path, and what makes it dense ─────────────────────────────────
@@ -100,6 +101,40 @@ def test_a_naming_PATTERN_expands_to_dense_rows(*_) -> None:
     assert len(aids) == 1, "nine names, one approved answer"
 
 
+def test_the_fixtures_OWN_convention_is_expressible_as_a_pattern() -> None:
+    """**The multilingual bite, and the reason `NUMERALS` exists.**
+
+    Doc 39 §1 says the sub-levels are named *一層…九層 by convention* — one
+    pattern, one decision (`PGN-A11`). The first implementation expanded ``{n}``
+    with ``str(index + 1)`` and produced ``1層, 2層, 3層``: **ASCII digits for a
+    Chinese corpus.** An author wanting the real names would have had to fall back
+    to an explicit 9-item list — nine decisions — which defeats `PGN-A11` exactly
+    where the fixture needs it. ML-4, in the one module whose corpus is Chinese.
+    """
+    s = run(tier_count=9, tier_names="{n:cn}層")
+    names = [t["name"]["value"] for t in s.body["kinds"][0]["tiers"]]
+    assert names == ["一層", "二層", "三層", "四層", "五層", "六層", "七層", "八層", "九層"]
+    assert len({t["name"]["answer_id"] for t in s.body["kinds"][0]["tiers"]}) == 1
+
+
+def test_chinese_numerals_are_correct_past_ten() -> None:
+    """十, 十一, 二十, 二十一 — not 一十 and not 二十〇. Tiers cap at 64, so 1–99
+    is the whole reachable range and a 百 arm would be untested code."""
+    s = run(tier_count=25, tier_names="{n:cn}")
+    names = [t["name"]["value"] for t in s.body["kinds"][0]["tiers"]]
+    assert names[9] == "十" and names[10] == "十一" and names[19] == "二十"
+    assert names[20] == "二十一" and names[24] == "二十五"
+
+
+def test_an_unknown_numeral_system_is_refused_by_name() -> None:
+    """Left as a literal, ``九{n:jp}`` would ship the placeholder to a player —
+    the silent degradation ML-4 forbids."""
+    with pytest.raises(FoldRefusal) as e:
+        run(tier_names="{n:jp}層")
+    assert "numeral system this module does not have" in str(e.value)
+    assert "'cn'" in str(e.value)
+
+
 def test_an_explicit_name_list_is_also_accepted() -> None:
     names = ["一層", "二層", "三層"]
     s = run(tier_count=3, tier_names=names)
@@ -116,7 +151,7 @@ def test_changing_one_answer_moves_the_content_hash() -> None:
 
 
 def test_three_kinds_fold_independently() -> None:
-    s = fold(element_kind="progression_system", answers=full_set(kinds=KINDS))
+    s = fold(element_kind="progression_system", schema_fingerprint=FP, answers=full_set(kinds=KINDS))
     assert [k["id"] for k in s.body["kinds"]] == KINDS
 
 
@@ -126,7 +161,7 @@ def test_three_kinds_fold_independently() -> None:
 def test_every_approved_answer_maps_to_at_least_one_pointer() -> None:
     """The forward half of the ledger."""
     answers = full_set(tier_count=9)
-    s = fold(element_kind="progression_system", answers=answers)
+    s = fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert set(s.consumption) == {a.answer_id for a in answers}
     assert all(len(v) >= 1 for v in s.consumption.values())
 
@@ -143,7 +178,7 @@ def test_an_unconsumed_approved_answer_is_a_REFUSAL() -> None:
     equals rows-out while a leaf vanishes."""
     answers = full_set() + [ans("kind.name", "kind:a_kind_nobody_declared", "幻功")]
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "reached no position" in str(e.value)
     assert "a_kind_nobody_declared" in str(e.value)
 
@@ -193,6 +228,45 @@ def test_a_magnitude_hidden_inside_a_nested_value_is_still_found() -> None:
     assert "soft_cap" in str(e.value)
 
 
+def test_a_magnitude_cannot_hide_behind_an_ORDINAL_KEY_NAME() -> None:
+    """**Found by probe, and it is the sharper version of the guard's job.**
+
+    The first walk carried ``leaf`` down through nested values, so a cap-rule
+    answered as ``{"soft_cap": null, "tier_count": 500}`` re-bound ``leaf`` to
+    ``"tier_count"`` and **500 sailed through**: a magnitude smuggled in by naming
+    its key after an ordinal. An allow-list keyed on a name the *input* controls is
+    not an allow-list. Only a number sitting directly at a cell's own ``value``
+    slot may be ordinal now.
+    """
+    with pytest.raises(FoldRefusal) as e:
+        run(swap={("kind.cap_rule", "kind:internal_energy"): ans(
+            "kind.cap_rule", "kind:internal_energy", {"soft_cap": None, "tier_count": 500})})
+    assert "500" in str(e.value)
+    assert "/kinds/0/cap_rule/value/tier_count" in str(e.value)
+
+
+def test_an_ordinal_leaf_still_passes_after_that_fix() -> None:
+    """The narrowing must not break the legitimate case, or the whole guard gets
+    widened back the first time a real ladder trips it."""
+    s = run(tier_count=5)
+    assert_no_magnitude_leaked(s.body)
+    assert s.body["kinds"][0]["tiers"][2]["tier_index"]["value"] == 2
+
+
+def test_the_schema_fingerprint_is_part_of_the_content_ADDRESS() -> None:
+    """**The probe's other finding.** With the fingerprint outside the hash,
+    re-folding the same answers after the schema MOVED produced the same
+    ``content_hash``; the store's ``ON CONFLICT`` returned the OLD row and the new
+    fingerprint was silently discarded, so the stored structure claimed a schema
+    nobody asserted — the exact drift the column exists to make loud."""
+    a = fold(element_kind="progression_system", schema_fingerprint="a" * 64,
+             answers=full_set())
+    b = fold(element_kind="progression_system", schema_fingerprint="b" * 64,
+             answers=full_set())
+    assert a.body == b.body, "same answers, same structure"
+    assert a.content_hash != b.content_hash, "and yet a different address"
+
+
 def test_a_boolean_is_not_a_magnitude() -> None:
     """``isinstance(True, int)`` is True in Python. Without the explicit bool arm
     every flag in the structure would read as a leaked magnitude, the check would
@@ -221,7 +295,7 @@ def test_an_out_of_scope_requirement_is_recorded_with_its_owner() -> None:
             )
         }
     )
-    s = fold(element_kind="progression_system", answers=answers)
+    s = fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     cell = s.body["kinds"][0]["tiers"][0]["breakthrough"]
     assert cell["state"] == "refused"
     assert "place element module" in cell["owner"]
@@ -241,7 +315,7 @@ def test_an_out_of_scope_marker_with_no_known_owner_is_refused() -> None:
         }
     )
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "names no owning module" in str(e.value)
     assert sorted(OUT_OF_SCOPE_OWNERS)[0] in str(e.value)
 
@@ -260,7 +334,7 @@ def test_a_not_stated_answer_becomes_a_sentinel_not_a_default() -> None:
             )
         }
     )
-    s = fold(element_kind="progression_system", answers=answers)
+    s = fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     cell = s.body["kinds"][0]["tiers"][0]["within_tier_curve"]
     assert cell == {
         "state": "not_stated",
@@ -282,7 +356,7 @@ def test_not_stated_on_the_CARDINALITY_is_refused() -> None:
         }
     )
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "author the book's premise" in str(e.value)
 
 
@@ -298,7 +372,7 @@ def test_not_stated_on_TIER_COUNT_is_refused() -> None:
         }
     )
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "cannot be made dense" in str(e.value)
 
 
@@ -308,7 +382,7 @@ def test_not_stated_on_TIER_COUNT_is_refused() -> None:
 def test_a_missing_answer_is_refused_and_names_the_position() -> None:
     answers = full_set(swap={("kind.curve", "kind:internal_energy"): None})
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "kind.curve" in str(e.value)
     assert "default nobody chose" in str(e.value)
 
@@ -316,14 +390,14 @@ def test_a_missing_answer_is_refused_and_names_the_position() -> None:
 def test_a_missing_cardinality_answer_is_refused() -> None:
     answers = [a for a in full_set() if a.question_path != "kind.quantity"]
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "structurally valid element containing nothing" in str(e.value)
 
 
 def test_two_answers_for_one_position_are_refused_rather_than_picked_between() -> None:
     answers = full_set() + [ans("kind.curve", "kind:internal_energy", "linear", aid="second")]
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "refuses rather than picking one" in str(e.value)
 
 
@@ -360,7 +434,7 @@ def test_a_repeated_kind_in_the_cardinality_answer_is_refused() -> None:
             ["internal_energy", "internal_energy"])
     )
     with pytest.raises(FoldRefusal) as e:
-        fold(element_kind="progression_system", answers=answers)
+        fold(element_kind="progression_system", schema_fingerprint=FP, answers=answers)
     assert "repeats a kind" in str(e.value)
 
 
@@ -372,7 +446,7 @@ def test_a_batch_above_the_declared_ceiling_is_refused() -> None:
     reaches players unreviewed"* fails while every signature is present."""
     with pytest.raises(FoldRefusal) as e:
         fold(
-            element_kind="progression_system", answers=full_set(),
+            element_kind="progression_system", schema_fingerprint=FP, answers=full_set(),
             max_batch_size=10, batch_sizes=[3, 40],
         )
     assert "ceiling is 10" in str(e.value)
@@ -380,7 +454,7 @@ def test_a_batch_above_the_declared_ceiling_is_refused() -> None:
 
 def test_no_ceiling_is_the_default_and_is_honest_about_it() -> None:
     """A ceiling nobody chose is a number that looks like a policy."""
-    fold(element_kind="progression_system", answers=full_set(), batch_sizes=[10_000])
+    fold(element_kind="progression_system", schema_fingerprint=FP, answers=full_set(), batch_sizes=[10_000])
 
 
 # ── the pointer encoding ────────────────────────────────────────────────────

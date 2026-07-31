@@ -1,5 +1,7 @@
 # 39 — The progression generation pipeline: a book's cultivation ladder becomes rules
 
+<!-- design-lint: ok prefix ML — `ML-4` is a Multilingual / Anti-Language-Bias rule owned by docs/standards/multilingual.md on the PLATFORM track. It is cited here (2026-07-31) because a /review-impl probe found this module's tier-name expansion could only emit ASCII digits over a Chinese corpus. Registering `ML` in this track's id catalog would claim another track's namespace, which is the opposite of what the catalog is for. -->
+
 > **Status:** DESIGN v2 — rewritten 2026-07-30 after a four-lens red team. Prefix `PGN-*`, registered
 > in [`00_foundation/06_id_catalog.md`](00_foundation/06_id_catalog.md).
 >
@@ -281,6 +283,31 @@ second source of truth. Built in `services/lore-enrichment-service`: `app/db/mig
    **not** re-merge `PGN-A3`'s two halves: provenance stays exact and derivable — `says[]` non-empty
    means EXTRACTED with a span behind it, `says[]` empty with `proposed_text` means INVENTED. A
    `CHECK` makes value and silence exclusive and exhaustive: `(value_json IS NULL) = not_stated`.
+
+7. **A tier-name pattern must be able to say 一層.** §1 states the sub-levels are named *一層…九層 by
+   convention* — one pattern, one decision. The first fold expanded `{n}` with `str(index + 1)` and
+   produced **`1層, 2層, 3層`: ASCII digits for a Chinese corpus.** An author wanting the real names
+   would have had to fall back to an explicit nine-item list, which is nine decisions and defeats
+   `PGN-A11` exactly where the fixture needs it. `{n:cn}` now renders Chinese numerals (1–99, the
+   whole range `MAX_TIERS_PER_KIND` reaches), and an unknown system is a refusal **by name** rather
+   than a placeholder shipped to a player. Multilingual standard ML-4, in the one module whose corpus
+   is Chinese.
+
+8. **An allow-list keyed on a name the INPUT controls is not an allow-list.** The magnitude guard
+   carried its leaf name down through nested values, so a cap-rule answered as
+   `{"soft_cap": null, "tier_count": 500}` re-bound the leaf to `tier_count` and **500 sailed
+   through**. Only a number sitting *directly* at a cell's own `value` slot may be ordinal now.
+
+9. **`schema_fingerprint` is part of the content ADDRESS.** Outside the hash, re-folding the same
+   answers after the schema moved produced the same `content_hash`; `ON CONFLICT` returned the old
+   row and the new fingerprint was **silently discarded**, so the stored structure claimed a schema
+   nobody asserted — the exact drift the column exists to make loud. The fingerprint and the
+   `question_id → path` map are also no longer **parameters**: `fold_and_store` loads the brief
+   itself, because a caller-supplied placement map and fingerprint are self-reported in precisely the
+   way the seal's caller-supplied digest was.
+
+Corrections 7–9 were all found by an adversarial probe at `/review-impl`, not by reading — the same
+method that found S2's two tenancy holes, and with the same hit rate.
 
 ### 3.4 `PGN-A11` — the approval unit is the assertion class, not the row
 
