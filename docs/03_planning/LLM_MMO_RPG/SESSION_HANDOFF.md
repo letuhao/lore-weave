@@ -370,7 +370,43 @@ is the artifact — one file tests what becomes the HASHED table, the other what
 Keyed on a content sum now. It had not bitten yet; it would have, intermittently, and been blamed on
 anything else.
 
-**▶ NEXT:** `PGN-R2` is complete and the hole found evaluating it is closed. The POC-1 chain now runs
+**THE PIPELINE HALF HAS STARTED: the schema closure is EXPORTED, and `PGN-A2`'s vacuity is fixed at
+the root.** `crates/ruleset-core/src/progression/schema.rs` + `contracts/progression-schema.json` +
+4 tests.
+
+**The red team's second finding, answered.** A coverage check computed on the Python side would be
+*"a second implementation of a Rust type — a mirror nothing forces to agree"*, which is `CPL-A2`'s
+own objection one tier up. So Rust owns the schema, the JSON under `contracts/` is **generated from
+it**, a drift test fails if the committed file goes stale, and the consuming service reads it and
+**never re-derives anything**.
+
+**22 positions, 11 of them `Required`.** Each non-required one carries a REASON — and the test
+enforcing that caught my own two `"as above"` placeholders, which is exactly the *"defaultable with no
+reason is how a required field quietly becomes optional"* case it exists for.
+
+**The fingerprint now covers RECLASSIFICATION, not just membership.** v1's could not see a question
+disappear; this one hashes each position's `askable`, so silently turning a `Required` into a
+`Defaultable` — the way a question vanishes without the list getting shorter — moves it.
+`the_fingerprint_covers_reclassification_not_just_membership` proves the hash reads the askable at all.
+
+**Totality is a COMPILE ERROR.** `assert_paths_are_total` destructures every type in the reachable
+graph with no `..`, the same mechanism `CanonEncode for Ruleset` relies on. Bite-proven: adding
+`stability_factor` to `TierDecl` without giving it a path fails to build with **`E0027: pattern does
+not mention field`**. The pinned counts are a second, independent proof — the destructure catches a
+field with no path, the counts catch a path quietly deleted, and neither can see the other's case.
+
+**`kind.name` and `kind.tier[].name` ARE in the closure** even though they never reach the hashed
+bytes. Excluding them because they are unhashed would be the exact category error that left `T10` NOT
+ENFORCED for three slices.
+
+**BITE-TESTS (NV-6), both restored:** reclassifying `kind.initial_tier` to `Defaultable` reds the
+count assertion AND the contract-drift test; adding a field without a path is `E0027`.
+
+**▶ NEXT:** the Python side — `gamegen_element_brief` reading `contracts/progression-schema.json` and
+asserting its `coverage_map_json` key set EQUALS the required-path set. That is `PGN-A2` closed
+end-to-end. Then S2 (`gamegen_decision`/`gamegen_answer`), S3 the deterministic fold, S4 the policy.
+
+**`PGN-R2` is complete and the hole found evaluating it is closed.** The POC-1 chain now runs
 TOML → table → validator → store → pin → ruleset digest → epoch switch, **with every admission point
 verifying the pin resolves.** What remains for POC-1 is the **pipeline** half (doc 39's S0–S5 in
 `lore-enrichment-service`, against the 武俠 fixture). POC-2 still needs `Q2 B4` (the `QTY-A8` caps arm)

@@ -49,6 +49,7 @@
 //! world-generation pipeline (`LocationMatch` → a place, `InstrumentMatch` → an
 //! item) and cannot complete now.
 
+mod schema;
 mod table;
 mod validate;
 
@@ -74,6 +75,10 @@ impl ProgressionDigest {
     }
 }
 
+pub use schema::{
+    assert_paths_are_total, required_paths, schema_fingerprint, schema_paths, Askable,
+    FieldPath,
+};
 pub use table::ProgressionTable;
 pub use validate::{validate, ProgressionInvalid};
 

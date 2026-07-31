@@ -1,0 +1,29 @@
+{
+  "_generated_by": "cargo test -p ruleset-core --test schema_export",
+  "_why": "PGN-A2. The pipeline's question set must be ASSERTED total against this list, not assumed so. Rust owns the schema; this file is generated from it; the consuming service reads it and never re-derives it, because a re-derivation is a mirror nothing forces to agree (CPL-A2).",
+  "fingerprint": "787c69388addda04170236c72ba1dfd8ee3c69d46d705c3739ec50967a8b225b",
+  "paths": [
+    { "path": "kind.quantity", "askable": "required" },
+    { "path": "kind.progression_type", "askable": "required" },
+    { "path": "kind.body_or_soul", "askable": "defaultable", "why": "PROG_001 §4.3 makes Body the V1 default; a soul-bound kind is an explicit authorial choice" },
+    { "path": "kind.curve", "askable": "required" },
+    { "path": "kind.curve.rate_milli", "askable": "magnitude", "why": "a training rate is a balance decision, not a fact the book states" },
+    { "path": "kind.curve.base_rate_milli", "askable": "magnitude", "why": "the initial gain of a Log curve - a tuning value, and a book that says a skill starts fast says nothing about how fast" },
+    { "path": "kind.curve.difficulty_milli", "askable": "magnitude", "why": "how sharply a Log curve approaches its ceiling; pure balance, and the shape token in the creative structure is what a source CAN support" },
+    { "path": "kind.cap_rule", "askable": "required" },
+    { "path": "kind.cap_rule.cap", "askable": "magnitude", "why": "a ceiling is a balance decision; PROG_001 §5.4's cap is a raw count nobody writes in a novel" },
+    { "path": "kind.initial_value", "askable": "magnitude", "why": "where an ordinary person starts NUMERICALLY; the ordinal start is `kind.initial_tier`, which IS asked" },
+    { "path": "kind.initial_tier", "askable": "required" },
+    { "path": "kind.derives_from", "askable": "defaultable", "why": "most kinds derive from nothing; absence is a complete statement" },
+    { "path": "kind.derives_from.rate_factor_milli", "askable": "magnitude", "why": "how MUCH a derivation helps is balance" },
+    { "path": "kind.tier_count", "askable": "required" },
+    { "path": "kind.tier[].tier_index", "askable": "required" },
+    { "path": "kind.tier[].tier_max", "askable": "magnitude", "why": "PGN-A5's headline case - the book names tiers and never their cost" },
+    { "path": "kind.tier[].within_tier_curve", "askable": "required" },
+    { "path": "kind.tier[].breakthrough", "askable": "required" },
+    { "path": "kind.tier[].initial_value_on_advance", "askable": "defaultable", "why": "PROG_001 Q2g: typically 0, rarely a carry-over" },
+    { "path": "kind.name", "askable": "required" },
+    { "path": "kind.description", "askable": "defaultable", "why": "prose about a kind is enrichment, and a reality with none is complete" },
+    { "path": "kind.tier[].name", "askable": "required" }
+  ]
+}

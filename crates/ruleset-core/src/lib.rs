@@ -63,7 +63,8 @@ pub use quantity::{
     QuantityError, QuantityName, QuantityTable, MAX_DECLARED_QUANTITIES, MAX_QUANTITY_NAME_LEN,
 };
 pub use progression::{
-    validate as validate_progression, BodyOrSoul, BreakthroughCondition, CapRule, CurveKind,
+    assert_paths_are_total, required_paths, schema_fingerprint, schema_paths,
+    validate as validate_progression, Askable, FieldPath, BodyOrSoul, BreakthroughCondition, CapRule, CurveKind,
     Derivation, ProgressionDigest, ProgressionInvalid, ProgressionKindDecl, ProgressionTable,
     ProgressionType,
     TierDecl, WithinTierCurve, MAX_DECLARED_PROGRESSION_KINDS, MAX_TIERS_PER_KIND,
