@@ -1307,6 +1307,57 @@ AUDIT PLAN-LIVENESS (judge truncation)
   NEXT       — per the author: stop POCing, the finding is wired. Then the three POC defects.
 ```
 
+### ✅ THE BUDGET SEAM WAS NEVER WIRED — 28 of 30 call sites passed nothing
+
+```
+AUDIT LLM-BUDGET (adaptive signal)
+  BUILT      — three things, in the order that keeps them honest:
+               1. VERDICT gets a REAL sizing model. It was `base = 0.0` with the comment
+                  "bounded by construction, the floor IS the model", which made `target` and
+                  `language` provably inert for the kind — so no judge call could ever carry
+                  signal. Now `target` verdicts x (30 reason-words x the language's tokens/word
+                  + 24 envelope). Measured: 25 verdicts → en 2812 / vi 3825, against a flat
+                  1536 before.
+               2. Both judges pass `target=len(candidates), language=source_language`.
+               3. `llm-budget-ssot-gate` gains a SECOND axis, ratcheted at 28: a budget call
+                  that passes no `target`/`language`/`reasoning`/`context_length`.
+
+  PROVEN     — the author asked "is there a hard gate against this rot yet?" and the answer,
+               measured, was no: the existing gate checks ATTRIBUTION, so a call resolving
+               through `call_budget` counts as correct while returning the same number every
+               time. `llm-budget-ssot-gate` PASSes with 93 sites — and 28 of 30 budget calls
+               passed no signal at all.
+
+               THE SEAM DID NOT ROT. It shipped unwired, hours after being built, and the two
+               sites that DO carry signal are the two judges I fixed this hour. That is not
+               drift over time; the gate simply could not see the axis it was written for.
+
+               registry no-downgrade test `31 passed` · sdk `996 passed, 9 skipped` ·
+               composition `11 failed, 3835 passed, 8 skipped in 110.87s` (the same 11
+               pre-existing) · gate teeth `13 passed` · all six gates OK ·
+               `adaptive signal: 2/30 budget calls pass one (28 held at baseline)`
+               red-able: reverting one judge to `max_tokens_for("judge_plan_conflict")` makes
+               the gate FAIL and name the site; restored by re-editing.
+
+  NOT PROVEN — THIS DOES NOT FIX THE TRUNCATION THAT FOUND IT. My case was ONE candidate, and
+               the floor (1536) still dominates below ~15 verdicts, so the number my judge got
+               is unchanged. What it fixes is multi-candidate under-budgeting, which is a real
+               bug nobody had hit yet. The observed overrun is a verbose judge model, and the
+               UNPARSEABLE status is what makes it visible — a budget cannot fix a model that
+               ignores "do not think aloud".
+               `_VERDICT_REASON_WORDS = 30` is REASONED from the prompt's own "why" field, not
+               measured against real verdicts.
+               The ratchet freezes 28 sites; nothing schedules paying them down.
+
+  DRIFT      — I answered the author's rot question with "the mechanism exists and my call
+               ignores it", which put the fault on my call site. Counting first showed 28 of 30
+               did the same, and that VERDICT could not have carried signal if I had passed it.
+               I had reached for the explanation that made it a local mistake before measuring
+               whether it was a systemic one.
+
+  NEXT       — the three POC defects (A/B/C), and surfacing UNPARSEABLE to the author.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1388,6 +1439,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Blamed my own call site before counting the others.** Asked whether the budget seam had rotted, I said the mechanism existed and my new call ignored it. Counting showed 28 of 30 call sites passed no signal, and that the VERDICT kind was hardcoded `base = 0.0` so no judge call COULD have carried any. A local explanation reached for before a systemic measurement. |
 | 2026-08-01 | **Asserted a CAUSE from one observation, in a probe that had drifted off the platform's own call path.** I wrote that the thinking-disable flags “do not work for this model”; `build_judge_request` in fact sends the STRONGER disable. The author caught it. The observation — a truncated judge silently kills the blocking tier — held; the explanation I had already committed to prose did not. |
 | 2026-08-01 | **Validated a judge on three-sentence excerpts and called the tier proven.** The 3/3 real/dream/feint result was real and useless as evidence for production: on 500-word drafts the same judge overruns its budget and returns nothing. Fixture LENGTH was the difference between a working tier and a dead one. |
 | 2026-08-01 | **Fixed one confound by recreating the one I had explicitly set out to avoid.** v1 failed because the drafter never resolved the fight; I fixed that by having the synopsis COMMAND a terminal outcome — which is the conflicting-instructions trap v1 was designed around. v2 measures synopsis-vs-constraint, not prevention. The result is valuable; the framing would have been wrong for the third time if I had not checked. |

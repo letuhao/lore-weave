@@ -128,7 +128,7 @@ def _build_judge_messages(
 async def judge_canon(
     judge, *, user_id: str, model_source: str, model_ref: str,
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
-    max_tokens: int = max_tokens_for("judge_canon"), trace_id: str | None = None,
+    max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CanonViolation]:
     """Confirm the symbolic candidates with the LLM-judge (D2 — only the cheap
@@ -143,6 +143,14 @@ async def judge_canon(
         return []
     from loreweave_llm.errors import LLMError
 
+    # THE SIGNAL, not a constant. `budget_for` takes `target` (how many verdicts) and
+    # `language` (a Vietnamese `why` costs 2.6 tokens/word against English's 1.7) and until
+    # 2026-08-01 the VERDICT kind ignored both — `base = 0.0`, "the floor IS the model" — so
+    # every judge call here was the renamed constant this SDK's own docstring warns about.
+    # Resolved per call rather than as a default argument because the count is not knowable
+    # at import time.
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_canon", target=len(candidates), language=source_language)
     system, user = _build_judge_messages(draft, candidates, source_language)
     req = build_judge_request(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -200,7 +208,7 @@ def _build_plan_conflict_messages(
 async def judge_plan_conflicts(
     judge, *, user_id: str, model_source: str, model_ref: str,
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
-    max_tokens: int = max_tokens_for("judge_plan_conflict"), trace_id: str | None = None,
+    max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[CanonViolation], bool]:
     """Promote plan-liveness candidates from ADVISORY to HARD — or clear them.
@@ -229,6 +237,10 @@ async def judge_plan_conflicts(
         return [], True
     from loreweave_llm.errors import LLMError
 
+    # Sized per verdict and per language — see judge_canon above for why this is resolved
+    # here and not as a default argument.
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_plan_conflict", target=len(candidates), language=source_language)
     system, user = _build_plan_conflict_messages(draft, candidates, source_language)
     req = build_judge_request(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],

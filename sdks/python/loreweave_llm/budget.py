@@ -182,6 +182,16 @@ _FLOOR: dict[OutputKind, int] = {
 #: glossary/cast/beat row with a few short string fields lands around here.
 _TOKENS_PER_ITEM = 220
 
+#: Words a judge is expected to spend on ONE verdict's `why`, and the JSON scaffolding around
+#: it (`{"entity_id":…,"violated":…,"why":…}`). VERDICT used to be sized `base = 0.0` with the
+#: comment "bounded by construction, the floor IS the model" — which made `target` and
+#: `language` provably inert for the kind, so every judge call site was the "renamed constant"
+#: this module's own docstring warns about. It is bounded, but bounded PER VERDICT: ten
+#: candidates need ten reasons, and a Vietnamese reason costs 2.6 tokens/word against
+#: English's 1.7. A single flat floor cannot express either.
+_VERDICT_REASON_WORDS = 30
+_TOKENS_PER_VERDICT_ENVELOPE = 24
+
 #: Fraction of the model's context window an output may claim. Both this and the ceiling
 #: apply; the tighter wins. Two SDK sites clamp against the window today and two do not,
 #: which is why one worker's distiller is unclamped while its extractor is not.
@@ -273,7 +283,12 @@ def call_budget(
     elif kind is OutputKind.EDIT:
         # `target` is input characters; the edit is roughly the same size back out.
         base = (target or 0) / 3.0
-    else:  # VERDICT — bounded by construction, the floor IS the model
+    elif kind is OutputKind.VERDICT:
+        # `target` is the number of verdicts expected — normally `len(candidates)`. Bounded,
+        # but per verdict and per language; the kind's floor still applies underneath, so a
+        # caller that cannot count its candidates is no worse off than before this branch.
+        base = (target or 0) * (_VERDICT_REASON_WORDS * per_word + _TOKENS_PER_VERDICT_ENVELOPE)
+    else:
         base = 0.0
 
     need = base * _HEADROOM[kind]

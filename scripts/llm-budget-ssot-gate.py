@@ -64,6 +64,29 @@ ROOT = Path(__file__).resolve().parents[1]
 #: defaults resolved (`sigs` is now 0 repo-wide) and 12 of the call sites they feed followed.
 UNATTRIBUTED_BASELINE = 29
 
+#: Budget calls that pass NO adaptive signal — no `target`, `language`, `reasoning` or
+#: `context_length`. Ratcheted, and it is a SECOND axis from the one above: a site here is
+#: correctly attributed to `call_budget` and still resolves to the same number every time,
+#: which this seam's own module docstring names for what it is —
+#:
+#:     "A seam that carries no signal is a renamed constant. If a call site calls
+#:      call_budget(OutputKind.VERDICT) with no arguments, a future adaptive policy has
+#:      nothing to adapt on and this file is ceremony."
+#:
+#: MEASURED 2026-08-01: **28 of 30** call sites repo-wide passed nothing (the two that
+#: do are the judges, fixed the same hour the truncation was found). The seam did not
+#: rot — it shipped unwired, and the first gate could not see it because attribution was the
+#: only thing it checked. A judge truncated in production (`finish_reason=length`, zero
+#: verdicts parsed, the HARD tier silently dead) is what surfaced it.
+#:
+#: Ratchet rather than hard-fail for the same reason as the line above: ~29 findings and no
+#: path to green helps nobody. It may not GROW.
+NO_SIGNAL_BASELINE = 28
+
+#: The kwargs that make a budget call adaptive. `floor`/`ceiling` are deliberately absent —
+#: they are per-call CONSTANTS from the registry, not per-call signal.
+ADAPTIVE_SIGNAL = frozenset({"target", "language", "reasoning", "context_length"})
+
 #: Methods that submit an LLM request with a payload DICT. Structural, not name-based: what
 #: makes a budget an OUTPUT budget is that it rides in one of these payloads.
 #:
@@ -326,6 +349,41 @@ def scan() -> tuple[list[dict], list[dict]]:
     return sites, sigs
 
 
+def scan_signal() -> list[dict]:
+    """Every `budget_for` / `max_tokens_for` call, and whether it passes any adaptive signal.
+
+    A SECOND axis from `scan()`. That one asks "is this budget traceable to the seam"; this
+    one asks "does the seam get told anything". A call can pass the first and fail this — 29
+    of 31 did on the day this was written — and the failure is invisible precisely because the
+    first check is green.
+    """
+    out: list[dict] = []
+    for py in (ROOT / "services").rglob("*.py"):
+        posix = py.as_posix()
+        if "/tests/" in posix or "/build/" in posix:
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if fn not in ("budget_for", "max_tokens_for"):
+                continue
+            # The registry's own definition of `max_tokens_for` forwards **kw; it is the
+            # mechanism, not a call site.
+            if py.name == "llm_budget.py":
+                continue
+            passed = {k.arg for k in node.keywords} & ADAPTIVE_SIGNAL
+            code = (node.args[0].value
+                    if node.args and isinstance(node.args[0], ast.Constant) else "?")
+            out.append({"file": posix.split("/services/")[-1], "line": node.lineno,
+                        "code": code, "signal": sorted(passed)})
+    return out
+
+
 def main() -> int:
     sites, sigs = scan()
     absent = [s for s in sites if s["verdict"] == "ABSENT"]
@@ -371,6 +429,24 @@ def main() -> int:
                   f"{Path(__file__).name}.")
         rc = 1
 
+    signal_sites = scan_signal()
+    no_signal = [s for s in signal_sites if not s["signal"]]
+    if len(no_signal) != NO_SIGNAL_BASELINE:
+        grew = len(no_signal) > NO_SIGNAL_BASELINE
+        print(f"\n{'FAIL' if grew else 'NOTE'} — budget calls passing NO adaptive signal "
+              f"{'grew to' if grew else 'dropped to'} {len(no_signal)} "
+              f"(baseline {NO_SIGNAL_BASELINE}).")
+        if grew:
+            print("   A budget call with no target/language/reasoning/context_length is a")
+            print("   renamed constant — this seam's own docstring says so. Pass what the")
+            print("   call site already knows.")
+            for s in no_signal[-6:]:
+                print(f"     {s['file']}:{s['line']}  {s['code']}")
+        else:
+            print(f"   Progress — lower NO_SIGNAL_BASELINE to {len(no_signal)} in "
+                  f"{Path(__file__).name}.")
+        rc = 1
+
     if rc == 0:
         # "every one declares a budget" was this gate's own completeness lie — true of the
         # sites it scanned, printed as though it were true of the repo. The scanned surface
@@ -381,6 +457,8 @@ def main() -> int:
               f"({len(literal)} literal, {len(unattr)} unattributed, {len(sigs)} signature "
               f"defaults) · {len(opaque)} built off-site, not statically visible.")
         print(f"  NOT scanned: {UNSCANNED_SURFACES}.")
+        print(f"  adaptive signal: {len(signal_sites) - len(no_signal)}/{len(signal_sites)} "
+              f"budget calls pass one ({len(no_signal)} held at baseline).")
     return rc
 
 
