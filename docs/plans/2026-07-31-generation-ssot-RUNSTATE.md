@@ -1107,6 +1107,90 @@ AUDIT PLAN-LIVENESS (prevention)
                and the three defects the POC surfaced.
 ```
 
+### ⚠ PREVENTION efficacy — A NEGATIVE RESULT, recorded as one
+
+```
+AUDIT PLAN-LIVENESS (prevention efficacy)
+  BUILT      — nothing. This is a MEASUREMENT of the slice shipped in ef785a398, run because
+               that slice's own NOT PROVEN said its effect was unmeasured.
+
+  PROVEN     — the A/B design, and its own powerlessness. Two structurally identical throwaway
+               books; the ONLY difference is whether the successor scene DECLARES A CAST, which
+               is what makes the plan rung speak. Verified per arm before any generate:
+                 constrained → `constraint_in_prompt=True`
+                 free        → `constraint_in_prompt=False`
+               (the script EXITS if an arm's prompt does not match its intent, so a silently
+               mis-set arm cannot be reported as a result).
+
+               Scored by the SAME `status_effects` extractor the detector uses, not by me
+               reading the prose. Attempt 1 (a confrontation, blade drawn, outcome open):
+                 constrained 0/5 · free 0/5   event kinds: action, dialogue
+               Attempt 2 (a fight that "reaches its end", still not commanded):
+                 constrained 0/5 · free 0/5   event kinds: battle in ALL TEN drafts
+               So attempt 2's synopsis DID land — they fight — and nobody dies either way.
+
+  NOT PROVEN — THE THING THE SLICE IS FOR. With 0 deaths in both arms the constraint had
+               nothing to prevent, so its efficacy is still unmeasured and I am not claiming
+               otherwise. I bound myself to ONE retry before running, and stopped there:
+               tuning the synopsis until a difference appears is choosing the fixture that
+               gives the answer I want.
+
+               What the data DOES say, stated no more strongly than it supports: this drafter,
+               at ~400 words, did not spontaneously kill a NAMED cast member in 10 drafts of a
+               sword fight. It kills readily when the synopsis says to (the earlier POC). So
+               the risk the prevention half addresses may be RARE in this configuration — which
+               would make the DETECTION half the load-bearing one and prevention cheap
+               insurance. 10 drafts, one model, one length: that is a hint, not a rate.
+
+  DRIFT      — my first scoring pass nearly used `plan_violations` from the run envelope as the
+               metric. It is 0 in the "free" arm BY CONSTRUCTION — no plan rung means the check
+               is NOT_APPLICABLE — so an arm that killed everyone would still have scored 0.
+               I would have reported "constrained 0, free 0, no difference" from a column that
+               cannot differ, and called it a measurement.
+
+  NEXT       — the chapter-level paths, which take no plan rung and say nothing about it.
+```
+
+### ✅ CHAPTER paths — the gap is DECLARED instead of looking like a pass
+
+```
+AUDIT PLAN-LIVENESS (chapter paths)
+  BUILT      — `plan_supported: bool` on `run_canon_reflect`, passed False by the four
+               chapter-level call sites (worker single-pass + stitch, router single-pass +
+               stitch). They report `plan_liveness = NO_POSITION` instead of NOT_APPLICABLE.
+
+               The two are DIFFERENT and were indistinguishable on the envelope: a scene with
+               nothing after it has genuinely nothing to check (NOT_APPLICABLE, no amber), while
+               a chapter path covers many scenes at once, has no single position to be "after",
+               and simply DID NOT RUN the check (a GAP). Collapsing them is the exact
+               conflation the per-check vocabulary was added to end.
+
+  PROVEN     — tests `42 passed` across the three plan-liveness files (3 new: the chapter
+               status, the scene CONTROL that must stay NOT_APPLICABLE, and a mechanical
+               no-omission guard) · suite `11 failed, 3832 passed, 8 skipped in 112.29s`, the
+               same 11 pre-existing · gates: `ai-provider-gate (full): OK` ·
+               `llm-budget-ssot-gate: PASS — 93` · `generation-guard-gate: PASS` ·
+               `enforcement-claims-gate: OK` · `db-safety-gate: OK` · `[language-rule] PASS`
+               red-able: deleting one `plan_supported=False` fails the guard.
+
+  NOT PROVEN — the chapter paths still do not CHECK anything; they now say so. Whether a
+               chapter-level rung is even definable is unanswered: `story_order` has two
+               conventions live in one project (stride vs 1..N), so "the cast a LATER chapter
+               needs" cannot be computed reliably today. That is finding (A)'s root, and this
+               slice does not touch it.
+
+  DRIFT      — the no-omission guard PASSED ITS OWN INJECTION. Written as a regex over call
+               bodies, it caught 2 of 3 calls in `routers/engine.py` and one match ran to
+               19,993 characters, having swallowed the next call whole — so the flag I deleted
+               from one site was still found inside another's blob. Rewritten with `ast`, it
+               reds. That is the THIRD gate this session to survive its own defect on the first
+               attempt (generation-guard-gate's via-hop did it twice). The pattern is mine, not
+               the tooling's: I reach for a regex where the structure is a parse tree.
+
+  NEXT       — the three defects the POC surfaced, (A) first: `gather_structural` injects 809
+               foreign-chapter synopses across 41/41 scenes of the dogfood book.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1188,6 +1272,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **A third gate that passed its own injection — same cause each time.** The chapter-path no-omission guard used a regex over call bodies; it matched 2 of 3 calls and one match ran 19,993 chars, swallowing the next call, so a deleted flag was still found inside another's blob. `ast` reds correctly. I keep reaching for a regex where the structure is a parse tree. |
+| 2026-08-01 | **Nearly scored an A/B with a column that cannot differ.** The `free` arm has no plan rung, so its `plan_violations` is 0 by construction — an arm that killed everyone would still read 0. I caught it while writing the scorer, not while designing the experiment. |
 | 2026-08-01 | **Wrote a field name from memory instead of reading it — twice in one session.** `seg.kind` (it is `block`), after the judge stub's `{"content": …}` (it is `messages[0].content`). Both were caught by a failing test, and both were the same habit: asserting the shape I expected rather than the shape the producer defines. |
 | 2026-08-01 | **Invented a fixture's shape from the consumer instead of the producer.** My judge stub returned `{"content": …}`; the gateway's job result puts it at `messages[0].content`, which `extract_judge_text` calls LOAD-BEARING in its own docstring and which this repo already has a lesson row for. Two tests failed for a reason that had nothing to do with the code. |
 | 2026-08-01 | **Nearly ‘fixed’ the honesty rule to make my own test pass.** I asserted `verdict is False` on a fixture with an empty `packed_prompt`, so name-grounding was NO_RULES, `guard_status` was not `checked`, and `verdict` was None — exactly as the rule I wrote hours earlier requires. The fixture was wrong, not the rule. |

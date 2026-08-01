@@ -49,7 +49,7 @@ async def _check_plan_liveness(
     plan_cast: list[dict[str, Any]] | None,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None, source_language: str | None,
-    trace_id: str | None, cancel_check,
+    plan_supported: bool, trace_id: str | None, cancel_check,
 ) -> tuple[CheckStatus, list[str]]:
     """Does this draft kill someone the PLAN still needs? Appends any conflict to
     `result.violations` and returns `(CheckStatus, unlinked_names)`.
@@ -71,8 +71,17 @@ async def _check_plan_liveness(
     Every failure mode returns a STATUS rather than raising: this runs on a draft the author has
     already paid for, and it must never be the reason a generate fails (F1).
     """
+    if not plan_supported:
+        # The CHAPTER-level paths (single-pass, stitch). They cover many scenes at once, so
+        # there is no single position for "who does the plan need AFTER this", and the rung
+        # cannot be built. That is NO_POSITION, not NOT_APPLICABLE: the check is relevant here
+        # and did not run, which is a GAP, and the whole point of the per-check vocabulary is
+        # that a caller can tell those two apart. Reported as NOT_APPLICABLE — as it was until
+        # this line — a chapter would read exactly like a scene with nothing after it.
+        return CheckStatus.NO_POSITION, []
     if not plan_status:
-        # No later scene needs anyone — nothing to contradict. Not a gap.
+        # No later scene needs anyone — nothing to contradict. NOT a gap: this is the last
+        # scene of the chapter, and calling it one would paint amber on every chapter ending.
         return CheckStatus.NOT_APPLICABLE, []
     if not plan_cast:
         # The plan HAS an opinion and we could not fetch the names to join it to. That is a
@@ -146,6 +155,12 @@ async def run_canon_reflect(
     # Absent while `plan_status` is present ⇒ the check reports UNVERIFIED_INPUT rather than a
     # clean result, because an unjoinable plan is a hole, not an absence of conflicts.
     plan_cast: list[dict[str, Any]] | None = None,
+    # Does THIS path support the plan rung at all? The scene paths do. The chapter-level ones
+    # (single-pass, stitch) do not — they cover many scenes, so there is no single position to
+    # be "after". False makes the check report NO_POSITION (a declared gap) instead of
+    # NOT_APPLICABLE (nothing to check), which are different things and were indistinguishable
+    # on the envelope until this flag existed.
+    plan_supported: bool = True,
     draft: str, packed_prompt: str, profile: Any,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
@@ -300,7 +315,7 @@ async def run_canon_reflect(
         drafter_source=drafter_source, drafter_ref=drafter_ref,
         judge_source=judge_source, judge_ref=judge_ref,
         source_language=getattr(profile, "source_language", None),
-        trace_id=trace_id, cancel_check=cancel_check,
+        plan_supported=plan_supported, trace_id=trace_id, cancel_check=cancel_check,
     )
     result.unlinked_gone_refs = plan_unlinked
     result.checks = {

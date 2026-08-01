@@ -82,7 +82,12 @@ death: REAL → true, DREAM → false, FEINT → false, `why` in Vietnamese, 3/3
 ⚠ Three hand-written passages is an existence proof, not a false-positive rate. And with
 no critic configured the blocking tier is silently off — S6's axis, still open.
 
-⚠ Scene paths only (chapter single-pass + stitch pass no plan rung, and say nothing about it).
+✅ The chapter paths now DECLARE the gap: `plan_liveness = NO_POSITION`, distinct from a
+scene with nothing after it (NOT_APPLICABLE). They still check nothing — they say so.
+⚠ Prevention's EFFECT remains unmeasured: two A/B attempts on a neutral synopsis came
+back 0/5 vs 0/5 deaths. The drafter did not spontaneously kill a named character in 10
+drafts of a sword fight, so the constraint had nothing to prevent. It kills readily when
+the synopsis says to. 10 drafts, one model, one length — a hint, not a rate.
 The extraction takes the SDK's default budget; a long scene will chunk into several calls and
 that is unmeasured.
 

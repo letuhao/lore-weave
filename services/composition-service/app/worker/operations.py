@@ -301,6 +301,10 @@ async def run_stitch(
     revise_finish: str | None = None
     try:
         final_text, reflect, _ = await run_canon_reflect(
+            # CHAPTER-level: no single scene position, so no plan rung. Declared, not
+            # silently absent — the check reports NO_POSITION rather than passing for
+            # a reason nobody can see on the envelope.
+            plan_supported=False,
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=input.get("cast_glossary_ids") or [],
             scene_sort_order=input.get("chapter_sort"),
@@ -645,6 +649,10 @@ async def run_chapter_generate(
     revise_finish: str | None = None
     try:
         final_text, reflect, revise_out_tokens = await run_canon_reflect(
+            # CHAPTER-level: no single scene position, so no plan rung. Declared, not
+            # silently absent — the check reports NO_POSITION rather than passing for
+            # a reason nobody can see on the envelope.
+            plan_supported=False,
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
             draft=winner.text, packed_prompt=packed_prompt, profile=profile,

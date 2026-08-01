@@ -301,3 +301,72 @@ def test_the_plan_judge_asks_a_DIFFERENT_question_from_the_gone_cast_judge():
     assert "permanently" in plan_sys and "ACTIVE PRESENCE" not in plan_sys
     assert "vi" in plan_sys, "the judge must write its `why` in the book's language"
     assert "Tô Thanh Dao" in plan_user
+
+
+# ── the CHAPTER paths: a declared gap, not a silent pass ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_chapter_level_path_reports_NO_POSITION_not_not_applicable(monkeypatch):
+    """The single-pass and stitch paths cover many scenes at once, so there is no single
+    position for "who does the plan need AFTER this" and the rung cannot be built.
+
+    That is a GAP, and it must not look like the other reason `plan_status` is empty — a scene
+    with nothing after it, where there is genuinely nothing to check. Until `plan_supported`
+    existed both returned NOT_APPLICABLE and the envelope could not tell them apart, which is
+    precisely the distinction the per-check vocabulary was added for."""
+    _stub_extractor(monkeypatch, events=[])
+    _t, r, _ = await CR.run_canon_reflect(
+        knowledge=_Knowledge(), llm=None, user_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        cast_glossary_ids=[DAO], scene_sort_order=1,
+        plan_status=None, plan_cast=None, plan_supported=False,
+        draft="prose", packed_prompt="",
+        profile=type("P", (), {"source_language": "vi"})(),
+        drafter_source="user_model", drafter_ref="m",
+        judge_source=None, judge_ref=None,
+        prompt_estimate=0, max_output_tokens=100, max_iters=0,
+    )
+    assert r.checks["plan_liveness"] == CheckStatus.NO_POSITION
+    assert r.guard_status != "checked", "a declared gap must not round up to a checked guard"
+
+
+@pytest.mark.asyncio
+async def test_CONTROL_a_SCENE_with_nothing_after_it_is_still_NOT_APPLICABLE(monkeypatch):
+    """The counterweight: without it, "always NO_POSITION" satisfies the test above and every
+    chapter-ending scene turns amber forever — the permanent-amber failure S1 exists to stop."""
+    _t, r, _ = await _reflect(monkeypatch, plan={}, events=[])
+    assert r.checks["plan_liveness"] == CheckStatus.NOT_APPLICABLE
+
+
+def test_every_CHAPTER_level_call_site_declares_plan_supported_False():
+    r"""Mechanical, because the failure is an omission: a fifth chapter path added later that
+    forgets the flag would silently report NOT_APPLICABLE — indistinguishable from a scene with
+    nothing after it, which is the exact confusion this flag removes.
+
+    AST, not a regex. The first version matched call bodies with
+    `r"await run_canon_reflect\((.*?)
+\s{4,8}\)"` and PASSED its own injection: in
+    `routers/engine.py` it caught 2 of 3 calls and one match ran to 19,993 characters, having
+    swallowed the next call whole — so a flag deleted from one site was still found inside
+    another's blob. A guard that survives its own defect is not a guard.
+    """
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2] / "app"
+    checked, missing = 0, []
+    for rel in ("worker/operations.py", "routers/engine.py"):
+        tree = ast.parse((root / rel).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            if getattr(fn, "id", None) != "run_canon_reflect" and                     getattr(fn, "attr", None) != "run_canon_reflect":
+                continue
+            checked += 1
+            kw = {k.arg for k in node.keywords}
+            # A call is scene-level iff it passes the rung; anything else is chapter-level and
+            # must SAY so rather than defaulting to "nothing to check".
+            if "plan_status" not in kw and "plan_supported" not in kw:
+                missing.append(f"{rel}:{node.lineno}")
+    assert checked == 6, f"expected 6 run_canon_reflect call sites, found {checked}"
+    assert missing == [], f"chapter-level call sites not declaring the gap: {missing}"
