@@ -10,8 +10,16 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 **After any compaction, re-read it before anything else.** Spec:
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
-**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → **`S1`** → `S2 →
-S8 → S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → **`S2`**
+→ `S8 → S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+**S1 closed** — `loreweave_guard` (per-check `CheckStatus`, a derived headline, and
+`verdict` as a property that returns None unless the report is CHECKED), the canon
+guard adopting it additively, a fail-safe publish-gate clause, and
+`contracts/generation-paths.yaml` + `scripts/generation-guard-gate.py` in CI.
+Live: a no-cast scene now reports `guard_status=no_subject` where it used to report
+`resolved=True` and nothing else. Full AUDIT — including what is NOT covered — in the
+RUN-STATE.
 
 Phase 0 is **CLOSED 8/8**. ROT-0 and ROT-1 are **SEALED** (209 never-run DB-gated tests, all
 executed; `scripts/test-dsn-coverage-gate.py` now compares gating variables against what CI arms).

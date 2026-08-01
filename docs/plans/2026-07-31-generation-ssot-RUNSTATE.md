@@ -77,7 +77,7 @@ Everything else in the family passed — the suites had not rotted, they had sim
 Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh bị drift … cần thêm bước audit
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
-**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep]` → `S1 → S2 → S8 → S12` →
+**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 → S8 → S12` →
 `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
 `D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
@@ -283,6 +283,73 @@ AUDIT CI-RED sweep
                is that this sweep proves the repo has stale-test rot in tracks the SSOT run
                does not touch, so a red integration suite is no longer a safe proxy for "my
                change broke something" — measure the baseline before believing a delta.
+```
+
+## ✅ S1 · one honest verdict shape — CLOSED 2026-08-01
+
+```
+AUDIT S1
+  BUILT      — `loreweave_guard` (CheckStatus + GuardReport: per-check statuses, a DERIVED
+               headline, and `verdict` as a PROPERTY that returns None unless the report is
+               CHECKED). Adopted by the canon guard additively — `status` keeps its legacy
+               strings because SQL reads them — plus `guard_status` on all six envelope sites,
+               a fail-safe publish-gate clause, `contracts/generation-paths.yaml`, and
+               `scripts/generation-guard-gate.py` wired into foundation-ci with its teeth test.
+
+  PROVEN     — sdks/python `22 passed`; composition unit `3311 passed` (3303 before, +8);
+               publish-gate integration `17 passed` on a fresh throwaway PG;
+               `scripts/test_generation_guard_gate.py` + gate-teeth `32 passed`.
+               gates: `generation-guard-gate: PASS — 8 generation paths enumerated across 3
+               languages; 4 guarded, 4 tracked-unguarded` ·
+               `gate-teeth-gate: PASS — 56 CI-invoked gate(s) … 9 carry a red-ability proof`
+               (it FAILED first at "grew to 48 (baseline 47)", which is what forced the teeth
+               test rather than a baseline bump) · enforcement-claims OK · ai-provider OK ·
+               db-safety PASS · language-rule PASS.
+               `loreweave_guard` PROVEN present in the built image, not assumed — the
+               pyproject include-list trap that silently dropped `loreweave_crypto`.
+
+               LIVE, $0 gemma-4-26b, two throwaway books:
+                                     no cast bound           cast bound (control)
+                 canon.status        skipped_no_cast         checked
+                 canon.guard_status  no_subject              checked
+                 canon.checks        canon_cast=no_subject   canon_cast=checked
+                                     name_grounding=checked  name_grounding=checked
+                 canon.resolved      True                    True   ← identical, the point
+                 words               497                     475
+
+               GATE PROVEN RED-ABLE by five injections, each run against the real contract and
+               then removed by re-editing: a phantom file; a symbol that appears ONLY in a
+               comment (the S12 shape, which greened that gate three times); a `guarded` claim
+               whose coverage field is never emitted; an untracked `unguarded` gap; and the
+               model-gateway caller count growing. All five reddened; the file returned to PASS.
+
+  NOT PROVEN — the registry is NOT complete and does not claim to be. 93 files call a model
+               gateway; 8 paths are enumerated. The uncovered surface is measured and prevented
+               from GROWING, which is a different and weaker guarantee than covering it — I did
+               not classify the other 85 and will not pretend a curated list is a denominator.
+               Nothing verifies that a `guarded` path's coverage field is CORRECT, only that it
+               is emitted. The four `unguarded` rows are recorded, not fixed: composition's two
+               SSE generators still stream user-visible prose with no guard at all. And no
+               adopter outside composition moved — wiki verify, translation's two tiers and the
+               Go/Rust paths still carry their own scalar shapes.
+
+  DRIFT      — I wrote the discovery baseline (`rust: 25`) from a shell grep typed at a prompt
+               while the GATE's own detector counts 24. That single-digit gap would have masked
+               one new Rust caller forever. A baseline is only a guard if the thing that checks
+               it produced the number — the same "derive it from the SSOT" rule I had just
+               written into the file's own comment, violated four lines below.
+               Second: my first publish-gate test asserted `canon_blocked is True` for an
+               unchecked scene. That was my ASSUMPTION about the design; the code blocks only
+               on confirmed contradictions, by a written decision, because blocking on
+               unchecked would fire on nearly every real book. I nearly "fixed" working code to
+               match a test I had just invented.
+
+  NEXT       — S2 (one cast-liveness SSOT, both directions). It inherits `CheckStatus`
+               directly: its per-entity resolution is `unknown` + `source="none"` when the
+               snapshot has no status row for THAT entity, which is `NO_RULES` computed on the
+               entity's own corpus — the exact distinction this slice's primitive now carries.
+               S2 also owes `scenes_covered` and `unresolved_refs`, the two fields S10's eval
+               declares BLIND on.
 ```
 
 ### Standing quality bars — a slice is NOT done if any of these is skipped

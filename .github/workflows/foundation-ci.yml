@@ -213,6 +213,13 @@ jobs:
       # (OutputKind.MIRROR), so only a site that never decided reds.
       - run: python scripts/llm-budget-ssot-gate.py
 
+      # S1 GENERATION-SSOT. Enumerates generation PATHS, not modules — the paths that matter
+      # most contain no guard module at all (composition's two SSE generators mention `canon`
+      # zero times), and a module lint cannot see an absence. Reds on a phantom row, on a
+      # `guarded` claim with no emitted coverage field, on an untracked gap, and on the
+      # model-gateway caller count growing past its recorded baseline.
+      - run: python scripts/generation-guard-gate.py --verbose
+
       # A gate must be able to FAIL, and the proof of that is a test. These suites exist
       # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
       # own teeth were as unwired as the gates were.
@@ -221,7 +228,8 @@ jobs:
                scripts/test_warp_base_pin.py scripts/test_warp_worktrees.py
                scripts/test_deprecated_tool_scan.py scripts/test_gate_teeth_gate.py
                scripts/test_llm_budget_ssot_gate.py scripts/perf/test_slo_assert.py
-               scripts/eval/tests/test_persist_claim_detector.py -q
+               scripts/eval/tests/test_persist_claim_detector.py
+               scripts/test_generation_guard_gate.py -q
       - run: python scripts/gate-teeth-gate.py
 
       # NOT wired, with the reason, because "it exists" is not "it enforces":
