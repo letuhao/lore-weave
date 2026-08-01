@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/loreweave/grantclient"
 	"github.com/loreweave/glossary-service/internal/textnorm"
+	"github.com/loreweave/grantclient"
 )
 
 // pgxRWQuerier is the read+write querier shared by *pgxpool.Pool and pgx.Tx —
@@ -547,7 +547,7 @@ const (
 //     This set must stay in sync with translation-service's extraction_provenance.py;
 //     TestEvidenceProvenanceTaxonomyParity reds if the two drift.
 //
-// block_or_line is TEXT NOT NULL DEFAULT '' (the legacy column), so a present block index
+// block_or_line is TEXT NOT NULL DEFAULT ” (the legacy column), so a present block index
 // is rendered as a decimal string and absence is the empty string.
 func evidenceProvenanceFields(ent extractedEntity) (status string, charStart, charEnd *int, blockOrLine string) {
 	status = "unverified"
@@ -717,6 +717,25 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		updated int
 		skipped int
 	)
+
+	// Kind resolution (spec 2026-08-02-entity-kind-resolution.md). Loaded ONCE per request:
+	// the hierarchy is book-local and tiny, and the inverse of kindMap is needed so the outbox
+	// event can carry the RESOLVED kind rather than the one this batch happened to propose.
+	kindParents, kperr := s.loadKindParents(ctx, tx, bookID)
+	if kperr != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind hierarchy load failed")
+		return
+	}
+	// CANONICAL codes, not the inverse of the alias-folded kindMap -- inverting that map
+	// yields whichever alias iteration reached (`generic` for `terminology`), and this value
+	// goes out on the wire to knowledge-service as the entity's kind.
+	codeByKind, cberr := s.loadCanonicalKindCodes(ctx, tx, bookID)
+	if cberr != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind code map load failed")
+		return
+	}
 
 	// Temporal-knowledge Path A (§12): when the caller supplies the chapter ordinal, ingest
 	// the immutable episode for this chapter revision ONCE (UNIQUE(chapter_id, content_hash)
@@ -1046,13 +1065,51 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// within the same request. Best-effort (pool.Exec already
 		// committed each entity above; a broker hiccup must not fail the
 		// whole bulk response).
-		if result.Status == "created" || result.Status == "updated" {
+		// 5b. KIND RESOLUTION (spec 2026-08-02). Record what this batch proposed and
+		// re-resolve the entity's kind from the whole ledger.
+		//
+		// This is the site that used to DISCARD the incoming kind: `findEntityCrossKind`
+		// returned the stored one and the proposal was dropped without a trace, so the first
+		// batch to ever name a thing decided its kind permanently. Measured cost: 173 of
+		// 1,531 entities held a kind the model disagreed with by majority, the protagonist
+		// among them.
+		//
+		// A `skipped` entity votes too, and that is deliberate: a settled entity whose
+		// attributes are all filled skips every run, so excluding it would freeze its ledger
+		// at whatever the early runs said — reintroducing the exact defect one level down.
+		// A TOMBSTONED skip does not vote (the user rejected the suggestion outright).
+		resolvedKindCode := ent.KindCode
+		kindMoved := false
+		if kindOK && result.EntityID != "" && result.SkipReason != "tombstoned" {
+			if entID, perr := uuid.Parse(result.EntityID); perr == nil {
+				res, rerr := s.resolveEntityKind(ctx, tx, entID, kindID, mergeKindID, kindParents)
+				if rerr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
+						"kind resolution failed: "+rerr.Error())
+					return
+				}
+				if c, ok := codeByKind[res.Primary]; ok {
+					resolvedKindCode = c
+				}
+				kindMoved = res.Changed
+				result.KindCode = resolvedKindCode
+			}
+		}
+
+		// `kindMoved` joins the emit condition: a re-kind on an otherwise unchanged entity
+		// must still reach the KG, or the graph keeps projecting the kind we just corrected.
+		if result.Status == "created" || result.Status == "updated" || kindMoved {
 			entID, _ := uuid.Parse(result.EntityID)
 			// Phase B: actor_type="pipeline" — this is the extraction's
 			// ORIGINAL output, not a user correction. learning-service skips
 			// pipeline events (no before/after attached).
+			//
+			// The payload carries the RESOLVED kind, not the one this batch proposed. It
+			// used to send `ent.KindCode` unconditionally, so on any cross-kind hit the KG
+			// was told a kind the database did not hold.
 			payload := buildEntityEventPayload(
-				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
+				bookID.String(), result.EntityID, ent.Name, resolvedKindCode,
 				nil, "", result.Status, "pipeline", "", nil,
 			)
 			// Transactional outbox (INV-O12): the event row now commits ATOMICALLY

@@ -157,6 +157,11 @@ var chain = []Step{
 	// ...and its attributes, in a step of their own — 0056 was already applied when this
 	// was written, and an applied ledger entry never runs again.
 	{"0057_technique_kind_attrs", UpTechniqueKindAttrs},
+	// The entity-kind VOTE ledger + the kind hierarchy. An entity's kind stops being decided
+	// by whichever extraction batch named it first (BTG-A49/A66) and becomes the argmax over
+	// every observation, with a refinement rule so a corrected ontology can correct the data
+	// the wrong one produced.
+	{"0058_entity_kind_votes", UpEntityKindVotes},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

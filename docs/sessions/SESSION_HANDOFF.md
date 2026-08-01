@@ -1,5 +1,59 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🗳️ ENTITY KIND: FIRST-WRITER-WINS → A RESOLVED VOTE (2026-08-02)
+
+Spec: `docs/specs/2026-08-02-entity-kind-resolution.md`. PO chose **all three** directions
+(vote · sub-kinds · facets) plus re-kind-by-mode. **M1–M3 shipped; M4 is the remainder.**
+
+**The estimator.** `entity_kind_votes(entity_id, kind_id, votes)` — one ledger, two jobs: the
+argmax is the **primary** kind, everything else above a floor is a **facet**. That is why all
+three directions fit one table; multi-label is the same rows read at a looser threshold.
+`glossary_entities.kind_id` **stays a scalar** (≈470 Go sites, KG's `NOT NULL` mirror, Neo4j) —
+it just stops being frozen. `domain.ResolveKind` is pure, so it is tested without a pool.
+
+Rules, each with a test that reds when the mechanism is removed:
+- **hysteresis** (`>1.5×`, `≥2` votes) — one stray observation must not re-kind; a near-tie
+  must not flip (every flip re-emits to the KG).
+- **refinement is exempt** — parent→descendant loses no information, so `terminology →
+  technique` needs no majority. This is the only way a corrected ontology can correct the data
+  the wrong one produced.
+- **roll-up + strict-majority descent** — `{technique 7, power_system 7}` beats `character 8`
+  as a branch, but an even split between siblings resolves to the **parent**. "If unsure, use
+  the generic kind" is now a rule, not a hope.
+- **a challenger that leads and loses is RECORDED** (`kind_conflict_id`) — the writeback said
+  `updated` and never `conflict`, so a standing disagreement was invisible.
+
+**Hierarchy** (`parent_kind_id` × 3 tiers): `terminology → {technique, power_system}`. This
+**describes** what the model already did — terminology collected 崑崙之妙術, 土遁, 五行方位.
+
+**Applied, on 封神演義:** 77 re-kinds + 77 outbox events (KG re-syncs through the existing
+path), then **idempotent** (a re-run applies 0). 姜子牙 **species → character**, keeping
+`species` as a *facet* — the second reading survives instead of being erased. 武王 → character.
+八九變化 → **technique**, as a refinement. 西岐 → organization **+ location**. Book-wide:
+character 272→302, species 227→202, organization 112→96, location 92→108. **399 entities carry
+a facet, 33 carry a live conflict.**
+
+**A re-kind is not always a MOVE — 17 of them are MERGES.** The dedup key is
+`(book_id, kind_id, normalized_name, scope_label)`, so moving into a kind that already holds
+that name is a unique violation. The first backfill aborted its whole transaction on one. Now
+detected, skipped, recorded as a conflict, and reported as `blocked_by_duplicate` — the run's
+output does not overstate what it did.
+
+**Three of my own defects, found by using it:** the alias-folded `loadKindMap` inverted to
+`generic` (an alias of `terminology`) and that value was going out to the KG as the entity's
+kind · pgx cannot bind `[]uuid.UUID` into `uuid[]`, failing opaquely where the same statement
+worked by hand · the import INCREMENTED, so four runs inflated 姜子牙's ledger 84 → 321 (ratios
+survived, the numbers were fiction) — it now RESTATES absolutely.
+
+**Verified** — glossary `internal/...` all green (`-count=1`) · translation **1117 passed** ·
+`tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested hysteresis / refinement /
+roll-up, each red when removed · live: backfill + a real extraction recording votes through the
+**writeback** path (20 new ledger rows).
+
+**▶ NEXT — M4:** surface the facets. `kind_labels` + `kind_conflict_id` are populated and read
+by nothing: expose them on the entity API, badge them in the FE, mirror them to the KG. Then
+the 17 blocked merges are their own decision (merging two entities is destructive).
+
 ## 🧭 THE KIND WAS WRONG, AND SO WAS MY READING OF ITS ZERO (2026-08-02)
 
 The PO challenged a claim rather than a line of code, and was right on both counts.
