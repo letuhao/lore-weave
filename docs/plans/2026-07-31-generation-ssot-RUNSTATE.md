@@ -1399,6 +1399,48 @@ AUDIT PLAN-LIVENESS (surfacing)
   NEXT       — the three POC defects (A/B/C).
 ```
 
+### ✅ (A) THE PLANNED LENS WAS LEAKING FUTURE CHAPTERS INTO EVERY SCENE
+
+```
+AUDIT POC-DEFECT A (cross-chapter synopsis leak)
+  BUILT      — `gather_structural`'s planned-synopsis lens is scoped to the scene's OWN chapter.
+               One `if`, and the reason it was not there is the interesting part.
+
+  PROVEN     — MEASURED on the dogfood project, which holds TWO `story_order` conventions AT
+               ONCE: five chapters numbered 1,2,3,4 and the rest chapter*1000+i (2000-2002,
+               3000-3001, 4000-4002). The lens filtered on `n.story_order <= my_order` over
+               `list_tree(project_id)` — the WHOLE project — so it was comparing numbers from
+               incompatible schemes.
+                 one scene at story_order 10002 pulled in 40 synopses from 14 chapters
+                 chapter-scoped, the honest answer is 2
+                 across all 41 scenes: 850 injections BEFORE, 41 AFTER (-95%)
+
+               THIS IS A SPOILER LEAK, not prompt bloat. Any chapter on the small convention
+               sorts below every 4-digit order, so a scene early in the book was shown the
+               unwritten synopses of chapters ten ahead of it. The lens whose job is "what is
+               planned BEFORE me" was reliably showing what comes after.
+
+               tests `5 passed` (new file) · suite `11 failed, 3840 passed, 8 skipped in
+               108.65s` — the same 11 pre-existing · all six gates OK
+               red-able: removing the chapter bound fails exactly the two-convention test.
+
+  NOT PROVEN — the CROSS-chapter signal is now gone entirely, not fixed. "What is planned
+               earlier in the BOOK" needs the chapter's own sort_order, which this lens does
+               not have; the narrow answer is correct while the numbering is unreliable, but it
+               IS a narrowing and no test asserts the wider behaviour we gave up.
+               Nothing repairs the two conventions themselves — the project still holds both,
+               and every other consumer comparing `story_order` across chapters has the same
+               bug. I did not audit who else does.
+               No live regeneration to show the prose improved; the 95% is a count of what
+               reaches the prompt, not a quality measurement.
+
+  DRIFT      — my POC note recorded "809 foreign synopses". The real number is 850, and I had
+               written the smaller one down from a query I did not re-run before quoting it.
+               Small, and exactly the kind of number that gets repeated into a report.
+
+  NEXT       — (B) POST /entities dropping documented fields, then (C).
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1480,6 +1522,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Quoted a number I had not re-run.** The POC note said 809 leaked synopses; measuring properly gave 850. The figure had been carried forward from a one-off query into a defect list as if it were established. |
 | 2026-08-01 | **Moved a component off the legacy scalar and left half of it behind.** `checked` was switched to `guard_status`; the unchecked-REASON chain in the same file kept keying on `canon.status`, so every new status fell through to a branch that asserts “the canon service was unavailable”. I then wrote the gap up as “the FE renders nothing”, when it rendered a fabricated cause. |
 | 2026-08-01 | **Blamed my own call site before counting the others.** Asked whether the budget seam had rotted, I said the mechanism existed and my new call ignored it. Counting showed 28 of 30 call sites passed no signal, and that the VERDICT kind was hardcoded `base = 0.0` so no judge call COULD have carried any. A local explanation reached for before a systemic measurement. |
 | 2026-08-01 | **Asserted a CAUSE from one observation, in a probe that had drifted off the platform's own call path.** I wrote that the thinking-disable flags “do not work for this model”; `build_judge_request` in fact sends the STRONGER disable. The author caught it. The observation — a truncated judge silently kills the blocking tier — held; the explanation I had already committed to prose did not. |

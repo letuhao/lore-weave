@@ -265,8 +265,25 @@ async def gather_structural(
     try:
         tree = await outline_repo.list_tree(project_id)
         my_order = node.get("story_order")
+        my_chapter = node.get("chapter_id")
         for n in tree:
             if n.kind != "scene" or n.status == "done" or str(n.id) == str(node_id):
+                continue
+            # SAME CHAPTER ONLY. `story_order` is comparable WITHIN a chapter and not across
+            # them: MEASURED on the dogfood book 2026-08-01, one project holds two conventions
+            # at once — five chapters numbered 1,2,3,4 and the rest chapter*1000+i (2000-2002,
+            # 3000-3001, 4000-4002). So `n.story_order <= my_order` compared numbers from two
+            # incompatible schemes, and a scene at 10002 pulled in 40 planned synopses from 14
+            # chapters where the honest answer is 2.
+            #
+            # That is a SPOILER LEAK, not merely prompt bloat: any chapter using the small
+            # convention sorts below every 4-digit order, so a scene early in the book was
+            # shown the unwritten synopses of chapters ten ahead of it.
+            #
+            # Cross-chapter "what is planned before me" needs the CHAPTER's own sort order,
+            # which this lens does not have. Until it does, the narrow answer is the correct
+            # one — a lens that silently spans the book is worse than one that says it does not.
+            if my_chapter and str(n.chapter_id) != str(my_chapter):
                 continue
             if my_order is not None and n.story_order is not None and n.story_order > my_order:
                 continue
