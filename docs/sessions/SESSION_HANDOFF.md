@@ -40,14 +40,36 @@ green · bite-tested (remove the `sort_order` read → red; an entity with neith
 writes `chapter_index=92`, and its new `terminology` entities (`山河社稷圖`, `梅山七怪`)
 carry both a name and a dedup key.
 
+**Both pre-merge items are now CLEARED.**
+
+**`edc_cited` is WIRED and live** — sweep pre-pass, then stage 2 types from the citations
+rather than re-reading the chapter. `PLANNED` is now empty but the refusal gate is kept and
+re-tested; it is what stops the next declared-but-unwired name running as the default.
+
+**The −38.4% is attributed** (`BTG-A60`): running `single_call` WITHOUT delta over the same
+chapters recovers **49 distinct entities** — nearly all `event` (47→71) and `terminology`
+(6→16) — but only closes the gap to **−27.3%**. So the delta instruction is ~a third of it;
+**the rest is intrinsic to packing eight kinds into one response**, and no wording fixes an
+attention budget.
+
+**And the shape that does fix it** (`BTG-A61`), measured live on 5 fresh chapters:
+
+| shape | in/ch | entities/ch | vs `batched` |
+|---|---|---|---|
+| `batched` | 30,687 | 29.3 | — |
+| `single_call_delta` | 9,866 | 18.1 | **−38%** |
+| **`edc_cited`** | **13,397** | **27.2** | **−7% at −56% input** |
+
+⚠ 5 chapters only, and **`power_system` came back ZERO** on that sample — possibly just what
+chapters 88–92 contain, but it is exactly `BTG-A53`'s defect shape. **Re-run at 15 chapters
+before promoting `edc_cited`.**
+
 **▶ NEXT**
-1. **Wire A9 as `edc_cited`** — currently `PLANNED`, refused at the boundary with 400 "NOT
-   YET WIRED" so it cannot silently run as `batched`. Two-stage call flow. Not a linkage
-   concern; it is a new extraction shape.
-2. **Separate the two changes in `single_call_delta`** — run `single_call` without the
-   delta instruction at 30-chapter scale. `BTG-A57`'s −38.4% coverage loss cannot be
-   attributed to one or the other yet.
-3. The 57 unrecoverable terminology names — only re-extraction can restore them.
+1. **Re-run `edc_cited` at 15 chapters**, scored per kind, to confirm `BTG-A61` and settle
+   the `power_system` zero.
+2. The 57 unrecoverable terminology names — only re-extraction can restore them.
+3. `BTG-A49` re-decide-on-merge — still the deepest unfixed thing, and untouched by any of
+   this: an entity's kind is still fixed by the first chapter that mentions it.
 
 
 ## 🔀 EXTRACTION STRATEGY — the POC shapes ship as a PER-JOB parameter (2026-08-01)
