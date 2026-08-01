@@ -217,6 +217,12 @@ class ReflectResult(BaseModel):
     #: zero occurrences anywhere in the service. A COUNT OF FACTS, not of failures: a book
     #: early in its life legitimately has a cast the graph has not caught up with.
     unresolved_refs: int = 0
+    #: Names the draft asserts are GONE that the cast name-index could not resolve to an
+    #: entity. NOT a count of failures — prose legitimately kills people who are not in the
+    #: plan's cast. It exists so "the check ran and found nothing" is distinguishable from "the
+    #: check found something it could not place": the live POC hit the second (glossary held the
+    #: cast with an empty `cached_name`) and a version without this field read as clean.
+    unlinked_gone_refs: list[str] = Field(default_factory=list)
     #
     # `status` describes the gone-cast check only, and on a book with no bound cast it read
     # `skipped_no_cast` while `resolved=True` and `violations=[]` — honest field by field, and
@@ -340,6 +346,10 @@ def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
         # `unresolved_cast_reference` in the eval was BLIND on this field.
         "cast_liveness": reflect.cast_liveness,
         "unresolved_refs": reflect.unresolved_refs,
+        # The plan-liveness check's own gap list. Rides the envelope for the same reason
+        # `unresolved_refs` does: a FE that cannot see what the guard could not place will
+        # render its silence as an all-clear.
+        "unlinked_gone_refs": reflect.unlinked_gone_refs,
         "unanchored_names": reflect.unanchored_names,
         "name_near_misses": reflect.name_near_misses,
         "name_check_method": reflect.name_check_method,

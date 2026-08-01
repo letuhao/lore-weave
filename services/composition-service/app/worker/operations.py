@@ -404,6 +404,7 @@ async def run_generate(
     # must thin the cascade back to KG-only, never fail a draft the user has already paid for
     # — the same F1 rule the exit-state write-back follows.
     plan_status: dict[str, str] = {}
+    plan_cast: list[dict[str, Any]] = []
     try:
         _pch, _pso = input.get("chapter_id"), input.get("story_order")
         if _pch and _pso is not None:
@@ -413,13 +414,21 @@ async def run_generate(
             from app.db.repositories.outline import OutlineRepo as _OutlineForPlan
             plan_status = await _OutlineForPlan(pool).plan_liveness_after(
                 UUID(project_id), UUID(str(_pch)), int(_pso))
+            # Names for the plan-liveness join. `book_id` is NOT in the job input (measured on
+            # a real completed draft_scene row) — it comes off the work the worker already
+            # loaded, so this adds no read.
+            if plan_status and work is not None:
+                from app.clients.glossary_client import get_glossary_client
+                plan_cast = await get_glossary_client().entities_by_ids(
+                    work.book_id, list(plan_status),
+                    language=getattr(profile, "source_language", None))
     except Exception:  # noqa: BLE001
         logger.warning("plan liveness lookup failed (cascade falls back to KG)", exc_info=True)
     try:
         final_text, reflect, revise_out_tokens = await run_canon_reflect(
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
-            plan_status=plan_status,
+            plan_status=plan_status, plan_cast=plan_cast,
             draft=w.text, packed_prompt=packed_prompt, profile=profile,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source, judge_ref=critic_ref,

@@ -26,13 +26,83 @@ from app.engine.canon_check import (
     scene_at_order,
 )
 from loreweave_canon_check import resolve_cast_liveness, unresolved_cast_refs
+from loreweave_extraction.extractors.event import extract_events
 from loreweave_guard import CheckStatus, GuardReport, check_over
+
+from app.engine.plan_conflict import (
+    PLAN_CONFLICT_KIND,
+    asserted_gone,
+    name_index,
+    plan_conflicts,
+)
 from loreweave_llm import ReasoningDirective
 
 from app.engine.cowrite import build_revise_messages, revise_draft
 from app.engine.name_grounding import audit_names
 
 logger = logging.getLogger(__name__)
+
+
+async def _check_plan_liveness(
+    llm, result, *, user_id: UUID, plan_status: dict[str, str] | None,
+    plan_cast: list[dict[str, Any]] | None,
+    drafter_source: str, drafter_ref: str, cancel_check,
+) -> tuple[CheckStatus, list[str]]:
+    """Does this draft kill someone the PLAN still needs? Appends any conflict to
+    `result.violations` and returns `(CheckStatus, unlinked_names)`.
+
+    The acceptance defect of the whole generation-SSOT run. `gone_cast_in_draft` asks the
+    inverse question and cannot see this: the death is being CREATED here, in a draft nothing
+    has extracted, so the knowledge snapshot has no row and the symbolic pre-filter finds no
+    candidate. Measured on two isolated throwaway books — the scene that kills her and the one
+    that does not both returned `guard_status='checked'`.
+
+    Advisory tier only (`confirmed=None`). `status_effects` is one model's reading of a passage,
+    and a feint, a dream, a prophecy or a body that turns out to be someone else all look the
+    same to it. Promoting to HARD is the judge's job (the same two tiers the gone-cast check
+    already uses) and is the next slice.
+
+    Every failure mode returns a STATUS rather than raising: this runs on a draft the author has
+    already paid for, and it must never be the reason a generate fails (F1).
+    """
+    if not plan_status:
+        # No later scene needs anyone — nothing to contradict. Not a gap.
+        return CheckStatus.NOT_APPLICABLE, []
+    if not plan_cast:
+        # The plan HAS an opinion and we could not fetch the names to join it to. That is a
+        # hole, not a pass: without this branch a glossary outage would read as "no conflicts".
+        return CheckStatus.UNVERIFIED_INPUT, []
+    text = (result.text or "").strip()
+    if not text:
+        return CheckStatus.NO_SUBJECT, []
+    try:
+        events = await extract_events(
+            text, [], [n for n in (e.get("cached_name") for e in plan_cast) if n],
+            user_id=str(user_id), project_id=None,
+            model_source=drafter_source, model_ref=drafter_ref,
+            llm_client=llm, reasoning_effort="none", cancel_check=cancel_check,
+        )
+    except Exception:  # noqa: BLE001 — F1: a check never fails a generate.
+        logger.warning("plan-liveness extraction failed (advisory)", exc_info=True)
+        return CheckStatus.DEGRADED, []
+
+    conflicts, unlinked = plan_conflicts(
+        asserted_gone(events), name_index(plan_cast), plan_status)
+    for c in conflicts:
+        result.violations.append(CanonViolation(
+            kind=PLAN_CONFLICT_KIND, source="score_symbolic",
+            entity_id=c["entity_id"], glossary_entity_id=c["entity_id"],
+            name=c["name"], matched=c["name"], status="gone", confirmed=None,
+            why=("the prose has this character die or depart, but the plan places them in a "
+                 "later scene of this chapter"),
+        ))
+    if conflicts:
+        logger.info("plan-liveness conflict: %d entity(ies) the plan still needs", len(conflicts))
+    # UNLINKED is not clean. The check ran, but on a corpus it could only partly resolve, and
+    # the live POC hit exactly this (glossary held the cast with an empty `cached_name`): the
+    # death was detected and nothing joined. Reporting `checked` there is the false-green this
+    # whole arc exists to kill.
+    return (CheckStatus.UNVERIFIED_INPUT if unlinked else CheckStatus.CHECKED), unlinked
 
 
 async def run_canon_reflect(
@@ -45,6 +115,11 @@ async def run_canon_reflect(
     # scene position to be "after", and a caller that cannot answer must pass nothing rather
     # than a guess. Absent ⇒ the cascade is KG-only, which is what it was before this review.
     plan_status: dict[str, str] | None = None,
+    # The cast rows (`entity_id`, `cached_name`, `cached_aliases`) the plan-liveness join needs.
+    # Produced by the caller for the same reason `plan_status` is: it owns the glossary client.
+    # Absent while `plan_status` is present ⇒ the check reports UNVERIFIED_INPUT rather than a
+    # clean result, because an unjoinable plan is a hole, not an absence of conflicts.
+    plan_cast: list[dict[str, Any]] | None = None,
     draft: str, packed_prompt: str, profile: Any,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
@@ -194,10 +269,17 @@ async def run_canon_reflect(
     # DEGRADED" branch. It is called here rather than restated because it had NO production
     # call site at all until this review — the branch above it was a hand-rolled copy, and a
     # rule with one implementation and one copy has two implementations.
+    plan_status_check, plan_unlinked = await _check_plan_liveness(
+        llm, result, user_id=user_id, plan_status=plan_status, plan_cast=plan_cast,
+        drafter_source=drafter_source, drafter_ref=drafter_ref,
+        cancel_check=cancel_check,
+    )
+    result.unlinked_gone_refs = plan_unlinked
     result.checks = {
         "canon_cast": check_over(
             len(result.cast_liveness) - len(unresolved), degraded=degraded),
         "name_grounding": _name_check(final_audit),
+        "plan_liveness": plan_status_check,
     }
     result.coverage = GuardReport(checks=result.checks).covered
     if result.iterations:

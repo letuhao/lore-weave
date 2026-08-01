@@ -924,6 +924,79 @@ AUDIT POST-RUN REVIEW
                `scenes_covered` and a comparison step, neither of which this review touched.
 ```
 
+### ✅ THE ACCEPTANCE TEST IS CLOSED — prose-death vs plan-alive is caught by a gate
+
+```
+AUDIT PLAN-LIVENESS (detection half)
+  BUILT      — the check the run was written for. `app/engine/plan_conflict.py` (pure: normalise,
+               index the cast by name+alias, intersect) + `_check_plan_liveness` in
+               `canon_reflect` + `GlossaryClient.entities_by_ids` + a `plan_liveness` entry in
+               `checks` + `unlinked_gone_refs` on the envelope.
+
+               THE SHAPE, and it is the point: the model is asked ONLY to fill a slot — *who
+               does this passage say died* — using `status_effects`, an extractor that already
+               existed and was already prompt-taught. It is never asked whether that
+               contradicts the plan. That comparison is set intersection, in code, with tests.
+
+  PROVEN     — LIVE, two ISOLATED throwaway books, both images rebuilt + hash-verified:
+                 CONTROL (no death, 439w) — `checks={canon_cast:checked, plan_liveness:checked,
+                   name_grounding:checked}` · PLAN-LIVENESS VIOLATIONS: none ·
+                   `unlinked_gone_refs=[]`
+                 DEATH (404w) — same three checks `checked`, and
+                   `[{"kind":"plan_liveness_conflict","name":"Tô Thanh Dao",
+                     "entity_id":"019fbc0f-66b2…","confirmed":null}]`
+               Same model, same cast, same prompt shape — the ONLY difference is whether the
+               prose kills her. Before this slice both scenes returned `guard_status='checked'`
+               with no violation at all.
+
+               The POC that preceded it, on the same two books:
+                 CONTROL → 2 events (travel, dialogue), `status_effects []`
+                 DEATH   → 1 event  (death),             `status_effects [('Tô Thanh Dao','gone')]`
+
+               tests: `24 passed` (15 comparison + 9 wiring) · `3352 passed` for
+               `tests/unit` + `test_canon_reflect.py` · composition full suite below.
+               gates: `ai-provider-gate (full): OK` · `llm-budget-ssot-gate: PASS — 92 LLM call
+               site(s)` · `generation-guard-gate: PASS` · `enforcement-claims-gate: OK` ·
+               `db-safety-gate: OK` · `[language-rule] PASS`
+
+  NOT PROVEN — THE JUDGE TIER IS NOT BUILT. Every conflict is `confirmed=None`, i.e. ADVISORY,
+               so it flags and does NOT block publish. The author's decision was *judge
+               confirms ⇒ HARD, no judge ⇒ advisory*; only the second half exists. A feint, a
+               dream, a prophecy and a body that turns out to be someone else all look
+               identical to `status_effects`, which is exactly why promoting without a judge
+               would be wrong — but until it exists the gate warns rather than gates.
+               The extraction runs with NO `context_budget`, so it takes the SDK's default
+               (4096 output, 15-paragraph chunks). Measured only on ~400-word scenes; a
+               3000-word scene will CHUNK, i.e. cost more than one call, and nothing has
+               measured that.
+               `plan_liveness` is wired on the two SCENE paths only — the chapter-level
+               single-pass and stitch still pass no plan rung and their envelope does not say so.
+               And the check inherits the plan rung's own limit: chapter-scoped, so a death in
+               the last scene of chapter 1 is not compared against a cast chapter 2 needs.
+
+  DRIFT      — the fixture failed THREE times before it could measure anything, and each
+               failure was mine, not the code's:
+               1. cast were bare UUIDs pointing at nothing → the drafter wrote "Tô Thanh Dao"
+                  as a FORTRESS ("những lớp giáp đá vĩ đại"), so "did it detect a CHARACTER
+                  death" was unanswerable — and the control, generated after the death scene in
+                  the same chapter, inherited the killing through `<recent>`.
+               2. both scenes hand-set to `story_order 10` in different chapters → their
+                  synopses landed in each OTHER's prompt and the two drafts swapped. I was one
+                  step from writing this up as a cross-chapter spoiler leak in
+                  `gather_structural` before measuring the stride.
+               3. then the opposite error: having found the stride, I began "fixing"
+                  `plan_liveness_after` to scan project-wide — which under the mixed convention
+                  the data actually has would have been the bug. Its chapter scope is right.
+               Plus: the first version of the wiring passed `trace_id=` and `source_language=`
+               to `extract_events`, which accepts NEITHER. Every stubbed test stays green on
+               that; only a live call raises. `test_the_extractor_is_called_with_kwargs_it_
+               actually_accepts` now asserts against the real signature.
+
+  NEXT       — the judge tier (advisory → HARD), then the PREVENTION half: carry liveness and
+               a "must survive this scene" line into the drafter's prompt, which today contains
+               nothing about who may die.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1005,6 +1078,9 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Built a fixture three times before it could measure anything.** Bare-UUID cast made the drafter write a character as a fortress; a same-chapter control inherited the death through `<recent>`; two scenes at the same `story_order` swapped each other's synopsis. Every failure was the fixture, and every one of them would have produced a confident wrong answer if I had not read the prose. |
+| 2026-08-01 | **Nearly wrote up a cross-chapter spoiler leak that isn’t one — then nearly ‘fixed’ correct code into a bug.** `gather_structural` scans project-wide; I called it a leak before finding `STORY_ORDER_CHAPTER_STRIDE`. Then, having found it, I started widening `plan_liveness_after` to match — which under the mixed convention the data really has would have broken it. Both directions were caught by measuring, not by thinking harder. |
+| 2026-08-01 | **Passed two kwargs the callee does not accept.** `extract_events` takes neither `trace_id` nor `source_language`. Every test that stubs the extractor stays green; only a live call raises — and the degrade-safe `except` would have swallowed it into a permanent DEGRADED status nobody would have questioned. |
 | 2026-08-01 | **Verified ONE of two images and drew a conclusion about the path that ran in the other.** Rebuilt `composition-service`, hash-checked it, ran the live probe, saw the plan rung silent and began writing up a code defect. The job runs in `composition-worker` — a separate image, still stale. The measurement was of code I had not deployed. |
 | 2026-08-01 | **My fix for the null-swallowing bug swallowed a null.** `canon.verdict ?? canon.resolved` treats an explicit `null` — *nothing verified this* — as absent and falls back. `undefined` and `null` mean OPPOSITE things there. The `??` operator reads as the safe one, which is why it got through. |
 | 2026-08-01 | **Wrote a gate that passed its own injection — twice — inside the gate whose job is that rule.** The `via`-hop evidence check first matched the property DEFINITION, then matched a DOCSTRING through an `or field=` escape hatch I added for generality. Only the third version went red on the renamed key. |

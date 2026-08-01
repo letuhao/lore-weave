@@ -689,17 +689,25 @@ async def generate(
             # AFTER this scene. Degrade-safe: a repo failure thins the cascade to KG-only
             # rather than failing a generate the user already paid for.
             plan_status: dict[str, str] = {}
+            plan_cast: list[dict[str, Any]] = []
             try:
                 if node.chapter_id and node.story_order is not None:
                     plan_status = await outline.plan_liveness_after(
                         project_id, node.chapter_id, int(node.story_order))
+                    # Names for the plan-liveness join. Fetched only when the plan HAS an
+                    # opinion, so a book with no later scenes pays nothing. `[]` here while
+                    # `plan_status` is populated makes the check report UNVERIFIED_INPUT — a
+                    # glossary outage must not read as "no conflicts".
+                    if plan_status:
+                        plan_cast = await glossary.entities_by_ids(
+                            work.book_id, list(plan_status), language=_src_lang)
             except Exception:  # noqa: BLE001
                 logger.warning("plan liveness lookup failed (KG-only cascade)", exc_info=True)
             final_text, reflect, revise_out_tokens = await run_canon_reflect(
                 knowledge=knowledge, llm=llm,
                 user_id=user_id, project_id=project_id,
                 cast_glossary_ids=cast_glossary_ids,
-                plan_status=plan_status,
+                plan_status=plan_status, plan_cast=plan_cast,
                 scene_sort_order=pc.scene_sort_order,
                 draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),

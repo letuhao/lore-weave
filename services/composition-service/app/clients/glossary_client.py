@@ -98,6 +98,37 @@ class GlossaryClient:
     # owns + drains that bounded-but-complete list (X1 / D4). The direct glossary
     # entity-list read was removed here so it can't be reintroduced as a bypass.
 
+    async def entities_by_ids(
+        self, book_id: UUID, entity_ids: list[str], *, language: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Identity ONLY (`entity_id`, `cached_name`, `cached_aliases`, `kind_code`) for a
+        known id set. `[]` on any failure — every caller of this is advisory.
+
+        This is a BOUNDED by-id read, not the roster INV-KAL removed above: the ids come from
+        the outline's own `present_entity_ids`, so it cannot become "list the book's cast" by
+        drift. It exists because the plan-liveness check joins the extractor's display strings
+        to entity ids by NAME, and a name is the one thing composition does not already hold —
+        the knowledge snapshot carries names only for entities extraction has already seen,
+        which on a book still being written is none of them.
+
+        `language` augments each row's aliases with that language's alias set, the same reason
+        `select_for_context` takes it: prose uses the names a vi author actually writes.
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        payload: dict[str, Any] = {"entity_ids": [str(e) for e in entity_ids]}
+        if language:
+            payload["language"] = language
+        try:
+            resp = await self._http.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.warning("glossary entities/by-ids → %d", resp.status_code)
+                return []
+            return resp.json().get("items", [])
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("glossary entities/by-ids unavailable: %s", exc)
+            return []
 
     async def read_book_ontology(
         self, bearer: str, book_id: UUID,

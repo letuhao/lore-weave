@@ -49,6 +49,48 @@ measured against a real completion (that needs a live lmstudio L3 run's
 the JSON kinds (`cast_plan` 4000 = rows × per-row; `motif_conformance` 512 = a 20-word
 reason) — is untouched.**
 
+## ✅ THE RUN'S ACCEPTANCE TEST IS CLOSED (detection half)
+
+**Spec §6 item 7** — *scene 1's prose killing Tô Thanh Dao, whom the plan has alive in scene 2,
+is caught by a GATE, not by a human reading the prose* — now holds. Live, two isolated
+throwaway books, both images rebuilt and hash-verified:
+
+| | CONTROL (kills nobody) | DEATH |
+|---|---|---|
+| `checks` | all three `checked` | all three `checked` |
+| plan-liveness violations | **none** | **`plan_liveness_conflict` · Tô Thanh Dao** |
+| `unlinked_gone_refs` | `[]` | `[]` |
+
+Same model, same cast, same prompt shape. Before this slice BOTH returned `guard_status='checked'`
+with no violation.
+
+**How it works, and why it is not a model judging.** The model fills one slot — *who does this
+passage say died* — via `status_effects`, an extractor that already existed and was already
+prompt-taught. The contradiction is set intersection against the plan rung, in
+`app/engine/plan_conflict.py`, in code, with 15 tests.
+
+⚠ **The judge tier is NOT built.** Every conflict is `confirmed=None` — ADVISORY. It flags; it
+does not block publish. The decision was *judge confirms ⇒ HARD, no judge ⇒ advisory* and only
+the second half exists.
+
+⚠ Scene paths only (chapter single-pass + stitch pass no plan rung, and say nothing about it).
+The extraction takes the SDK's default budget; a long scene will chunk into several calls and
+that is unmeasured.
+
+### Three defects found while proving this, all measured, none fixed yet
+
+1. **`gather_structural` injects other chapters' synopses.** Measured on the dogfood book:
+   **809 foreign-chapter synopses vs 41 own-chapter, across 41/41 scenes.** Root: `story_order`
+   has TWO conventions live in one project — `chapter_gen`'s `chapter_sort × 1000 + idx` and
+   plain 1..N from manual creation. The lens assumes the global one, so chapter 15's plans reach
+   chapter 1's prompt. Same class as `ddfa70f41`.
+2. **`POST /v1/glossary/books/{id}/entities` silently drops `display_name`, `status` and `tags`.**
+   The OpenAPI documents all three; the handler's request struct reads only `kind_id` +
+   `genre_ids`. A caller gets 201 and a NAMELESS `draft` entity, no error.
+3. **`glossary_entities.alive`** — the author's own "this character is dead" flag — has no UI,
+   no agent tool, and no path to the canon guard. It only filters extraction candidates. It is
+   also POSITION-FREE, so it must NOT be fed to the cascade as a per-scene status.
+
 ## ⚠ A POST-RUN REVIEW FOUND THREE DEFECTS IN WORK THIS RUN CALLED DONE
 
 The author paused the run and asked for a quality audit before continuing. Reading the CODE
