@@ -102,27 +102,37 @@ type attrValueResp struct {
 }
 
 type entityListItem struct {
-	EntityID               string       `json:"entity_id"`
-	BookID                 string       `json:"book_id,omitempty"`
-	KindID                 string       `json:"kind_id"`
-	Kind                   kindSummary  `json:"kind"`
-	DisplayName            string       `json:"display_name"`
-	DisplayNameTranslation *string      `json:"display_name_translation"`
-	Status                 string       `json:"status"`
-	Tags                   []string     `json:"tags"`
-	ShortDescription       *string      `json:"short_description"`
+	EntityID               string      `json:"entity_id"`
+	BookID                 string      `json:"book_id,omitempty"`
+	KindID                 string      `json:"kind_id"`
+	Kind                   kindSummary `json:"kind"`
+	DisplayName            string      `json:"display_name"`
+	DisplayNameTranslation *string     `json:"display_name_translation"`
+	Status                 string      `json:"status"`
+	Tags                   []string    `json:"tags"`
+	ShortDescription       *string     `json:"short_description"`
 	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE) — an optional author-set disambiguator
 	// (e.g. a world/realm name); "" when unset (the common case). Surfaced so an
 	// agent/human can see whether a name collision already carries a scope before
 	// deciding whether a NEW entity of the same name needs a different one.
-	ScopeLabel             string       `json:"scope_label,omitempty"`
-	IsPinnedForContext     bool         `json:"is_pinned_for_context"`
-	ChapterLinkCount       int          `json:"chapter_link_count"`
-	TranslationCount       int          `json:"translation_count"`
-	EvidenceCount          int          `json:"evidence_count"`
-	CreatedAt              time.Time    `json:"created_at"`
-	UpdatedAt              time.Time    `json:"updated_at"`
-	Match                  *entityMatch `json:"match,omitempty"` // raw-search only: why this entity matched
+	ScopeLabel string `json:"scope_label,omitempty"`
+	// KindLabels are the SECONDARY readings of this entity's kind — the facets
+	// (spec 2026-08-02-entity-kind-resolution.md). 西岐 is an organization 52 times and a
+	// location 38: both are true, and before the vote ledger existed one of them was simply
+	// erased by whichever extraction batch named it first. Empty for the common case.
+	KindLabels []kindSummary `json:"kind_labels,omitempty"`
+	// KindConflict is a kind the model currently LEADS with that has not cleared the switch
+	// threshold. Surfaced because the writeback used to report `updated` and never
+	// `conflict`, so a standing model-vs-store disagreement was invisible for as long as it
+	// stood. nil when there is no live disagreement.
+	KindConflict       *kindSummary `json:"kind_conflict,omitempty"`
+	IsPinnedForContext bool         `json:"is_pinned_for_context"`
+	ChapterLinkCount   int          `json:"chapter_link_count"`
+	TranslationCount   int          `json:"translation_count"`
+	EvidenceCount      int          `json:"evidence_count"`
+	CreatedAt          time.Time    `json:"created_at"`
+	UpdatedAt          time.Time    `json:"updated_at"`
+	Match              *entityMatch `json:"match,omitempty"` // raw-search only: why this entity matched
 }
 
 type entityListResp struct {
@@ -154,6 +164,7 @@ func splitNonEmpty(s, sep string) []string {
 
 func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUID) (*entityDetailResp, error) {
 	var d entityDetailResp
+	var detailLabelsJSON, detailConflictJSON []byte
 
 	// Query 1: entity + kind + aggregate counts + display_name
 	err := s.pool.QueryRow(ctx, `
@@ -173,7 +184,17 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				WHERE eav2.entity_id = e.entity_id) AS translation_count,
 			(SELECT COUNT(*) FROM evidences ev
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
-				WHERE eav3.entity_id = e.entity_id) AS evidence_count
+				WHERE eav3.entity_id = e.entity_id) AS evidence_count,
+			-- Facets + the live conflict, as JSON so one query answers it (a per-row
+			-- lookup would be an N+1 on a list endpoint). See kindFacetsSQL.
+			(SELECT coalesce(jsonb_agg(jsonb_build_object(
+			          'kind_id', lk.book_kind_id, 'code', lk.code, 'name', lk.name,
+			          'icon', lk.icon, 'color', lk.color) ORDER BY lk.sort_order), '[]'::jsonb)
+			   FROM book_kinds lk WHERE lk.book_kind_id = ANY(e.kind_labels)) AS kind_labels,
+			(SELECT jsonb_build_object(
+			          'kind_id', ck.book_kind_id, 'code', ck.code, 'name', ck.name,
+			          'icon', ck.icon, 'color', ck.color)
+			   FROM book_kinds ck WHERE ck.book_kind_id = e.kind_conflict_id) AS kind_conflict
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.entity_id = $1 AND e.book_id = $2 AND e.deleted_at IS NULL`,
@@ -184,6 +205,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		&d.DisplayName,
 		&d.ShortDescription, &d.ScopeLabel, &d.IsPinnedForContext,
 		&d.ChapterLinkCount, &d.TranslationCount, &d.EvidenceCount,
+		&detailLabelsJSON, &detailConflictJSON,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, pgx.ErrNoRows
@@ -194,6 +216,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	if d.Tags == nil {
 		d.Tags = []string{}
 	}
+	d.KindLabels, d.KindConflict = decodeKindFacets(detailLabelsJSON, detailConflictJSON)
 
 	// Query 2: chapter links
 	clRows, err := s.pool.Query(ctx, `
@@ -789,6 +812,16 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			(SELECT COUNT(*) FROM evidences ev
 				JOIN entity_attribute_values eav3 ON eav3.attr_value_id = ev.attr_value_id
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count,
+			-- Facets + the live conflict, as JSON so one query answers it (a per-row
+			-- lookup would be an N+1 on a list endpoint). See kindFacetsSQL.
+			(SELECT coalesce(jsonb_agg(jsonb_build_object(
+			          'kind_id', lk.book_kind_id, 'code', lk.code, 'name', lk.name,
+			          'icon', lk.icon, 'color', lk.color) ORDER BY lk.sort_order), '[]'::jsonb)
+			   FROM book_kinds lk WHERE lk.book_kind_id = ANY(e.kind_labels)) AS kind_labels,
+			(SELECT jsonb_build_object(
+			          'kind_id', ck.book_kind_id, 'code', ck.code, 'name', ck.name,
+			          'icon', ck.icon, 'color', ck.color)
+			   FROM book_kinds ck WHERE ck.book_kind_id = e.kind_conflict_id) AS kind_conflict,
 			e.cached_name, e.cached_aliases
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
@@ -809,6 +842,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		var item entityListItem
 		var cachedName *string
 		var cachedAliases []string
+		var labelsJSON, conflictJSON []byte
 		if err := rows.Scan(
 			&item.EntityID, &item.BookID, &item.KindID, &item.Status, &item.Tags,
 			&item.CreatedAt, &item.UpdatedAt,
@@ -817,6 +851,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			&item.DisplayNameTranslation,
 			&item.ShortDescription, &item.ScopeLabel, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
+			&labelsJSON, &conflictJSON,
 			&cachedName, &cachedAliases,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
@@ -825,6 +860,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		if item.Tags == nil {
 			item.Tags = []string{}
 		}
+		item.KindLabels, item.KindConflict = decodeKindFacets(labelsJSON, conflictJSON)
 		// Raw mode: attach the per-row "why it matched" payload (field + verbatim
 		// snippet + rune offsets) so the UI can show the match at 20K scale.
 		if rawMode && searchVal != "" {

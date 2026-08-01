@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 
@@ -196,4 +197,28 @@ func (s *Server) resolveEntityKind(
 		return res, err
 	}
 	return res, nil
+}
+
+// decodeKindFacets turns the two JSON columns the entity queries select into the response
+// shape. Tolerant by design: a decode failure yields no facets rather than failing the read.
+// These are an ADVISORY overlay on a kind the row already carries -- an entity list that 500s
+// because a badge could not be built would be a strictly worse outcome than a missing badge.
+func decodeKindFacets(labelsJSON, conflictJSON []byte) ([]kindSummary, *kindSummary) {
+	var labels []kindSummary
+	if len(labelsJSON) > 0 {
+		if err := json.Unmarshal(labelsJSON, &labels); err != nil {
+			labels = nil
+		}
+	}
+	if len(labels) == 0 {
+		labels = nil // omitempty: the common case sends no key at all
+	}
+	var conflict *kindSummary
+	if len(conflictJSON) > 0 {
+		var c kindSummary
+		if err := json.Unmarshal(conflictJSON, &c); err == nil && c.Code != "" {
+			conflict = &c
+		}
+	}
+	return labels, conflict
 }

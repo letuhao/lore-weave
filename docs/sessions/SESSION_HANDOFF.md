@@ -50,9 +50,25 @@ survived, the numbers were fiction) — it now RESTATES absolutely.
 roll-up, each red when removed · live: backfill + a real extraction recording votes through the
 **writeback** path (20 new ledger rows).
 
-**▶ NEXT — M4:** surface the facets. `kind_labels` + `kind_conflict_id` are populated and read
-by nothing: expose them on the entity API, badge them in the FE, mirror them to the KG. Then
-the 17 blocked merges are their own decision (merging two entities is destructive).
+**M4 — the facets are now VISIBLE (API + FE).** `kind_labels` / `kind_conflict` ride the entity
+list *and* detail as one query each (a JSON sub-select, not an N+1). The list shows the primary
+badge solid, each secondary faded, and a standing disagreement as a **dashed outline with a
+`?`** — a genuine "we are not sure" that reads as one. Proven by effect in a browser, not by a
+green unit test: 陳塘關 renders `🏛 Organization` + `📍 Location?`, 姜子牙 renders
+`👤 Character` + a faded `🧬 Species / Race`, and the 9 event rows beside them carry no badge
+at all, so the overlay is signal rather than decoration.
+- Decoding is deliberately **tolerant** — a malformed facet yields no badge rather than a 500.
+  It is an advisory overlay on a kind the row already carries; a list that fails to load
+  because a badge could not be built would be strictly worse than a missing badge.
+
+**▶ NEXT, two decisions that are yours because both touch data:**
+1. **The 17 blocked merges.** A re-kind into a kind that already holds that name is a MERGE of
+   two entities, and merging is destructive. The pairs are recorded (`kind_conflict_id`) and
+   listed by `--apply` under `blocked_by_duplicate`.
+2. **`D-KG-KIND-FACETS`** — knowledge-service still mirrors ONE `kind_code TEXT NOT NULL`, so
+   the graph cannot filter on a facet. **Deliberately deferred** (defer-gate #1, out of scope):
+   it is a cross-service contract change, and you have a glossary↔KG entity-consistency
+   refactor coming that will re-cut this seam. Trigger: that refactor.
 
 ## 🧭 THE KIND WAS WRONG, AND SO WAS MY READING OF ITS ZERO (2026-08-02)
 
